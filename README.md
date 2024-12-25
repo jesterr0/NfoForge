@@ -2,6 +2,14 @@
 
 A powerful utility to create NFOs and upload assistant.
 
+## Information
+
+NfoForge is currently under active development, and I’m excited to share it with the community now that it has reached a stable stage.
+
+At present, **Movies** are the only supported media type. However, support for **TV shows** and **Anime** is already planned and will be added in the near future.
+
+Comprehensive documentation is on the way and will be available soon.
+
 ## Key Features
 
 - Token system for advanced media file renaming.
