@@ -16,7 +16,7 @@ from src.backend.utils.working_dir import RUNTIME_DIR
 
 about_txt = f"""\
 <h2 style="text-align: center;">NfoForge v{__version__}</h2>
-<p style="text-align: center;">A powerful utility to create NFOs and upload assistant.</p>
+<p style="text-align: center;">A powerful media upload assistant.</p>
 <h3>Key Features</h3>
 <ul>
     <li>Token system for advanced media file renaming.</li>

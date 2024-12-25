@@ -1,6 +1,6 @@
 # NfoForge
 
-A powerful utility to create NFOs and upload assistant.
+A powerful media upload assistant.
 
 ## Information
 
