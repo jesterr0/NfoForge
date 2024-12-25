@@ -38,6 +38,12 @@ _Supported trackers will be added overtime_
 
 _Support for Linux is coming soon_
 
+## Supported Image Hosts
+
+- Chevereto v3/v4
+- ImageBox
+- ImageBB
+
 ## Thanks and Credits
 
 - aiohttp
