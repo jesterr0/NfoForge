@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "AAC": {
+    "AAC LC": "AAC",
+    "AAC LC SBR": "AAC",
+    "AAC LC SBR PS": "AAC",
+    "AAC Main": "AAC"
+  },
+  "AC-3": "DD",
+  "AC-3 Dep": "DDP",
+  "DTS": {
+    "DTS": "DTS",
+    "DTS 96 24": "DTS 96-24",
+    "DTS ES": "DTS-ES",
+    "DTS ES XXCH": "DTS-ES",
+    "DTS XBR": "DTS-HD HRA",
+    "DTS ES XBR": "DTS-HD HRA",
+    "DTS ES XXCH XBR": "DTS-HD HRA",
+    "DTS XLL": "DTS-HD MA",
+    "DTS ES XLL": "DTS-HD MA",
+    "DTS ES XXCH XLL": "DTS-HD MA",
+    "DTS XLL X": "DTS-X"
+  },
+  "E-AC-3": {
+    "E-AC-3": "DDP",
+    "E-AC-3 JOC": "DDP Atmos",
+    "AC-3 Dep JOC": "DDP Atmos"
+  },
+  "FLAC": "FLAC",
+  "MLP FBA": {
+    "MLP FBA": "TrueHD",
+    "MLP FBA 16-ch": "TrueHD Atmos"
+  },
+  "MPEG Audio": "MP2",
+  "MP3": "MP3",
+  "Opus": "Opus",
+  "PCM": "LPCM",
+  "Vorbis": "Vorbis"
+}

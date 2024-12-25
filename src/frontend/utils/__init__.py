@@ -1,0 +1,184 @@
+from typing import Any
+from pathlib import Path
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QLayout,
+    QFrame,
+    QStackedWidget,
+)
+from PySide6.QtGui import QIcon, QCursor
+from PySide6.QtCore import Qt, QSize, Slot
+
+from src.backend.utils.working_dir import RUNTIME_DIR
+
+
+def icon_button_factory(base_class):
+    """Factory function to create an IconButton class inheriting from the specified base class."""
+
+    class IconButton(base_class):
+        def __init__(
+            self,
+            icon: str,
+            object_name: str,
+            width: int,
+            height: int,
+            text_included: bool = False,
+            parent=None,
+        ):
+            """Initializes the IconButton object."""
+            super().__init__(parent)
+
+            self.icon = icon
+            self.object_name = object_name
+            self.icon_width = width
+            self.icon_height = height
+            self.text_included = text_included
+            self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon
+
+            self.setObjectName(self.object_name)
+
+            # set up the button's initial properties
+            self.setup_button()
+
+            # connect to color scheme change signal
+            self.app = QApplication.instance()
+            self.app.styleHints().colorSchemeChanged.connect(self.update_icon)  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+
+            # set the initial icon based on the current color scheme
+            self.update_icon(self.app.styleHints().colorScheme())  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+
+        def setup_button(self):
+            """Sets up the button's initial properties."""
+            self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+            if self.text_included:
+                self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+        @Slot(Qt.ColorScheme)
+        def update_icon(self, color_scheme: Qt.ColorScheme):
+            """Updates the button icon based on the color scheme."""
+            if color_scheme == Qt.ColorScheme.Dark:
+                dark_icon_path = self.svg_path.parent / (
+                    self.svg_path.stem + "_dark.svg"
+                )
+                # set the dark mode icon
+                self.setIcon(QIcon(str(dark_icon_path)))
+            else:
+                # set the light mode icon
+                self.setIcon(QIcon(str(self.svg_path)))
+            self.setIconSize(QSize(self.icon_width, self.icon_height))
+
+        def get_button(self):
+            """Returns the button instance (self)."""
+            return self
+
+    return IconButton
+
+
+def build_auto_theme_icon_buttons(
+    widget,
+    icon: str,
+    object_name: str,
+    width: int,
+    height: int,
+    text_included: bool = False,
+    parent: QWidget | None = None,
+) -> Any:
+    """
+    Builds and returns an IconButton instance that can swap SVG files based on the theme.
+
+    This does require an included "*_dark.svg" version of each file that will use this.
+    """
+    IconButton = icon_button_factory(widget)
+    icon_button = IconButton(
+        icon=icon,
+        object_name=object_name,
+        width=width,
+        height=height,
+        text_included=text_included,
+        parent=parent,
+    )
+    return icon_button.get_button()
+
+
+class SvgWidget(QSvgWidget):
+    def __init__(
+        self,
+        icon: str,
+        icon_width: int,
+        icon_height: int,
+        parent=None,
+    ):
+        """Initializes the SvgWidget that updates based on color scheme changes."""
+        super().__init__(parent)
+
+        self.icon = icon
+        self.icon_width = icon_width
+        self.icon_height = icon_height
+        self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon
+
+        # connect to color scheme change signal
+        self.app = QApplication.instance()
+        self.app.styleHints().colorSchemeChanged.connect(self.update_icon)  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+
+        # set the initial icon based on the current color scheme
+        self.update_icon(self.app.styleHints().colorScheme())  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+
+    @Slot(Qt.ColorScheme)
+    def update_icon(self, color_scheme: Qt.ColorScheme):
+        """Updates the SVG icon based on the color scheme."""
+        if color_scheme == Qt.ColorScheme.Dark:
+            dark_icon_path = self.svg_path.parent / (self.svg_path.stem + "_dark.svg")
+            # load dark version of SVG
+            self.load(str(dark_icon_path))
+        else:
+            # load light version of SVG
+            self.load(str(self.svg_path))
+        self.setFixedSize(QSize(self.icon_width, self.icon_height))
+
+
+def build_auto_theme_svg_widget(icon: str, width: int, height: int, parent=None):
+    """
+    Builds and returns an SvgWidget instance that can swap SVG files based on the theme.
+
+    This does require an included "*_dark.svg" version of each file that will use this.
+    """
+    svg_widget = SvgWidget(
+        icon=icon, icon_width=width, icon_height=height, parent=parent
+    )
+    return svg_widget
+
+
+def build_h_line(values: tuple[int, int, int, int]) -> QFrame:
+    """
+    Accepts a tuple of int to control the margins.
+
+    (left, top, right, bottom)
+    """
+    h_line = QFrame()
+    h_line.setFrameShape(QFrame.Shape.HLine)
+    h_line.setFrameShadow(QFrame.Shadow.Sunken)
+    h_line.setContentsMargins(*values)
+    return h_line
+
+
+def recursively_clear_layout(layout: QLayout) -> None:
+    """Recursively clears layouts and deletes widgets as needed"""
+    while layout.count():
+        item = layout.takeAt(0)
+        widget = item.widget()
+
+        if widget is not None:
+            widget.deleteLater()
+        elif item.layout() is not None:
+            recursively_clear_layout(item.layout())
+
+
+def clear_stacked_widget(stacked_widget: QStackedWidget) -> None:
+    """Recursively clears QStackedWidgets and deletes widgets as needed"""
+    while stacked_widget.count():
+        widget = stacked_widget.widget(0)
+        stacked_widget.removeWidget(widget)
+        widget.deleteLater()

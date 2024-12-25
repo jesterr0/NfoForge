@@ -1,0 +1,199 @@
+[general]
+ui_suffix = ""
+nfo_forge_theme = 1
+profile = 1
+media_mode = 1
+source_media_ext_filter = [".mkv", ".mp4"]
+encode_media_ext_filter = [".mkv", ".mp4"]
+media_input_dir = false
+releasers_name = ""
+image_host = 1
+timeout = 60
+log_level = 20
+log_total = 50
+
+[dependencies]
+ffmpeg = ""
+frame_forge = ""
+
+[api_keys]
+tmdb_api_key = ""
+
+[tracker.settings]
+order = []
+piece_sizes = {}
+
+[tracker.more_than_tv]
+upload_enabled = true
+anonymous = false
+api_key = ""
+announce_url = ""
+enabled = false
+source = "MTV"
+comments = ""
+nfo_template = ""
+max_piece_size = 8000000
+specific_params = { "textm__username" = "", "textm__password" = "", "textm__totp" = "", "text__group_desc" = "", "text__additional_tags" = "", "enum__mtv__source_origin" = 1 }
+
+[tracker.torrent_leech]
+upload_enabled = true
+anonymous = false
+api_key = ""
+announce_url = ""
+enabled = false
+source = "TorrentLeech.org"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+specific_params = { "textm__username" = "", "textm__password" = "", "textm__alt_2_fa_token" = "" }
+
+[tracker.beyond_hd]
+upload_enabled = true
+anonymous = false
+api_key = ""
+announce_url = ""
+enabled = false
+source = "BHD"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+specific_params = { "textm__rss_key" = "", "enum__bhd__promo" = 0, "enum__bhd__live_release" = 1, "check__internal" = 0 }
+
+[torrent_client]
+
+[torrent_client.qbittorrent]
+enabled = false
+host = "http://127.0.0.1"
+port = 0
+user = ""
+password = ""
+specific_params = { "category" = "" }
+
+[torrent_client.deluge]
+enabled = false
+host = "http://127.0.0.1"
+port = 0
+user = ""
+password = ""
+specific_params = { "label" = "", "path" = "" }
+
+[torrent_client.rtorrent]
+enabled = false
+host = "https://<user>:<password>@www.url.com/rutorrent/plugins/httprpc/action.php"
+port = 0
+user = ""
+password = ""
+specific_params = { "label" = "", "path" = "" }
+
+[torrent_client.transmission]
+enabled = false
+host = "http://<user>:<password>@127.0.0.1/transmission/rpc"
+port = 0
+user = ""
+password = ""
+specific_params = { "label" = "", "path" = "" }
+
+[watch_folder]
+enabled = false
+path = ""
+
+[movie_rename]
+mvr_enabled = true
+mvr_imdb_parse = false
+mvr_replace_illegal_chars = true
+mvr_parse_with_media_info = true
+mvr_colon_replacement = 2
+mvr_token = "{movie_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
+mvr_clean_title_rules = [
+    [
+        "",
+        "[unidecode]",
+    ],
+    [
+        "&",
+        "and",
+    ],
+    [
+        '/',
+        '\\',
+    ],
+    [
+        "'",
+        "[remove]",
+    ],
+    [
+        '''(?<=\s)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|(\(|\)|\[|\]|\{|\})''',
+        "[space]",
+    ],
+    [
+        '\s{2,}',
+        "[space]",
+    ],
+]
+mvr_release_group = ""
+
+[screenshots]
+crop_mode = 2
+screenshots_enabled = false
+screen_shot_count = 20
+ss_mode = 1
+sub_size_height_720 = 12
+sub_size_height_1080 = 16
+sub_size_height_2160 = 32
+subtitle_alignment = 7
+subtitle_color = "#f5c70a"
+trim_start = 20
+trim_end = 20
+required_selected_screens = 0
+comparison_subtitles = true
+comparison_subtitle_source_name = "Source"
+comparison_subtitle_encode_name = "Encode"
+compress_images = true
+indexer = 1
+image_plugin = 1
+
+[image_hosts.chevereto_v3]
+base_url = ""
+user = ""
+password = ""
+
+[image_hosts.chevereto_v4]
+base_url = ""
+api_key = ""
+
+[image_hosts.image_bb]
+api_key = ""
+
+[urls]
+alt = ""
+columns = 1
+vertical = 1
+horizontal = 1
+mode = 0
+type = 1
+image_width = 0
+urls_manual = 0
+
+[plugins]
+wizard_page = ""
+token_replacer = ""
+pre_upload = ""
+
+[template_settings]
+block_start_string = "{%"
+block_end_string = "%}"
+block_syntax_color = "#A4036F"
+variable_start_string = "{{"
+variable_end_string = "}}"
+variable_syntax_color = "#048BA8"
+comment_start_string = "{#"
+comment_end_string = "#}"
+comment_syntax_color = "#16DB93"
+line_statement_prefix = ""
+line_statement_syntax_color = "#ff0000"
+line_comment_prefix = ""
+line_comment_syntax_color = "#00aaff"
+trim_blocks = 1
+lstrip_blocks = 1
+newline_sequence = '\\n'
+keep_trailing_newline = 0

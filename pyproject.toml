@@ -1,0 +1,54 @@
+[tool.poetry]
+name = "NfoForge"
+version = "0.4.4"
+description = "NFO generator and upload assistant"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11.5,<3.13"
+pymediainfo = "^6.1.0"
+requests = "^2.31.0"
+tomlkit = "^0.13.2"
+guessit = "^3.8.0"
+autoqpf = "^0.2.4"
+lxml = "^5.1.0"
+iso639-lang = "^2.2.3"
+unidecode = "^1.3.8"
+shortuuid = "^1.0.13"
+cinemagoer = "^2023.5.1"
+torf = "^4.2.6"
+pyside6 = "6.8.0.2"
+psutil = "^6.0.0"
+pyimgbox = "^1.0.7"
+aiohttp = "^3.9.5"
+semver = "^3.0.2"
+pyotp = "^2.9.0"
+qbittorrent-api = "^2024.10.68"
+bencode-py = "^4.0.0"
+transmission-rpc = "^7.0.11"
+deluge-web-client = "^1.0.4"
+regex = "^2024.9.11"
+stdlib-list = "^0.11.0"
+jinja2 = "^3.1.4"
+beautifulsoup4 = "^4.12.3"
+
+
+[tool.poetry.group.dev.dependencies]
+pyinstaller = { path = "custom-pyinstaller" }
+pyinstaller-hooks-contrib = "^2024.1"
+ruff = "^0.6.9"
+cython = "^3.0.11"
+
+[tool.ruff]
+line-length = 88
+
+[tool.basedpyright]
+include = ["src", "plugins"]
+# ignore = [""]
+typeCheckingMode = "standard" # "off", "basic", "standard", "strict", "recommended" or "all"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

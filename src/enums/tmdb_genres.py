@@ -1,0 +1,44 @@
+from enum import Enum
+
+
+class TMDBGenreIDsMovies(Enum):
+    UNDEFINED = 0
+    ACTION = 28
+    ADVENTURE = 12
+    ANIMATION = 16
+    COMEDY = 35
+    CRIME = 80
+    DOCUMENTARY = 99
+    DRAMA = 18
+    FAMILY = 10751
+    FANTASY = 14
+    HISTORY = 36
+    HORROR = 27
+    MUSIC = 10402
+    MYSTERY = 9648
+    ROMANCE = 10749
+    SCIENCE_FICTION = 878
+    THRILLER = 53
+    TV_MOVIE = 10770
+    WAR = 10752
+    WESTERN = 37
+
+
+class TMDBGenreIDsSeries(Enum):
+    UNDEFINED = 0
+    ACTION_ADVENTURE = 10759
+    ANIMATION = 16
+    COMEDY = 35
+    CRIME = 80
+    DOCUMENTARY = 99
+    DRAMA = 18
+    FAMILY = 10751
+    KIDS = 10762
+    MYSTERY = 9648
+    NEWS = 10763
+    REALITY = 10764
+    SCIFI_FANTASY = 10765
+    SOAP = 10766
+    TALK = 10767
+    WAR_POLITICS = 10768
+    WESTERN = 37
