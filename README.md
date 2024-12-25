@@ -32,6 +32,12 @@ Comprehensive documentation is on the way and will be available soon.
 
 _Supported trackers will be added overtime_
 
+## Supported Operating Systems
+
+- Windows 8.1+
+
+_Support for Linux is coming soon_
+
 ## Thanks and Credits
 
 - aiohttp
