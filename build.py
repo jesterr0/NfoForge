@@ -136,7 +136,9 @@ def build_app(folder_name: str, include_std_lib: bool):
         template_file.unlink()
 
     # remove user packages
-    shutil.rmtree(bundled_runtime / "user_packages")
+    user_packages = bundled_runtime / "user_packages"
+    if user_packages.exists():
+        shutil.rmtree(bundled_runtime / "user_packages")
 
     # remove logs
     for log_file in Path(bundled_runtime / "logs").glob("*.log"):
