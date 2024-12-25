@@ -19,11 +19,18 @@ Comprehensive documentation is on the way and will be available soon.
 - Output file organization, saving .torrent and .NFO files to disk.
 - Torrent cloning support for multi-tracker releases without re-generation.
 - Duplicate release checker - checks trackers for duplicates pre-upload.
-- Support for BeyondHD, MoreThanTV, and TorrentLeech, with more trackers coming soon.
 - Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.
 - Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require the same Python version as NfoForge).
 - Support for movie files in MKV and MP4 format.
 - Additional format support and features coming soon!
+
+## Supported Trackers
+
+- BeyondHD
+- MoreThanTv
+- TorrentLeech
+
+_Supported trackers will be added overtime_
 
 ## Thanks and Credits
 
