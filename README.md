@@ -46,10 +46,10 @@ NfoForge is a free application. Donations of any size are greatly appreciated an
 
 #### Bitcoin
 
-[**QR Code**]()\
+<img src="https://github.com/user-attachments/assets/88b7643f-8567-4d6d-ade4-13d725490062" alt="bitcoin:bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc" width="140">\
 BTC: `bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc`
 
 #### Ethereum
 
-[**QR Code**]()\
+<img src="https://github.com/user-attachments/assets/e34fa9d4-531f-4586-9deb-47413861279a" alt="ethereum:0x86a726C7158b852C8001Fb6762f3a263742529e6" width="140">\
 ETH: `0x86a726C7158b852C8001Fb6762f3a263742529e6`
