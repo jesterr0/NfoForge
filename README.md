@@ -46,8 +46,8 @@ _Support for Linux is coming soon_
 
 ## Requirements
 
-- TMDB Api <a href="https://www.themoviedb.org/settings/api" target="_blank">Key v3</a>
-- FFMPEG or <a href="https://github.com/jessielw/FrameForge/" target="_blank">FrameForge</a> depending on your preferred image generation type
+- TMDB Api [Key v3](https://www.themoviedb.org/settings/api)
+- FFMPEG or [FrameForge](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
 ## Thanks and Credits
 
