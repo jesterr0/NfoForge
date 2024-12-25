@@ -173,7 +173,7 @@ class MainWindowWizard(QWizard):
 
     @Slot(int)
     def _handle_page_change(self, idx: int) -> None:
-        if WizardPages(idx) in self._START_PAGES:
+        if idx > -1 and WizardPages(idx) in self._START_PAGES:
             self.setButtonLayout(self.starting_buttons)
         else:
             if idx != WizardPages.PROCESS_PAGE.value:

@@ -5,7 +5,7 @@ from guessit import guessit
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Qt, Signal, Slot, QThread
+from PySide6.QtCore import Qt, Signal, Slot, QThread, QTimer
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QLabel,
@@ -272,7 +272,7 @@ class MediaSearch(BaseWizardPage):
     def initializePage(self):
         if not self._get_tmdb_api_key():
             if self.main_window.wizard:
-                self.main_window.wizard.reset_wizard()
+                QTimer.singleShot(1, self.main_window.wizard.reset_wizard)
             return
 
         path_obj = self.config.media_input_payload.source_file
