@@ -68,6 +68,18 @@ _Support for Linux is coming soon_
 - torf
 - transmission-rpc
 
+## Basic Setup Guide
+
+- Download the current latest release and extract (or run it in your python environment).
+- You should go through **Settings** and setup a few required things.
+  - Create a template, when you select the button to create a new one you'll be presented with a very basic starting template.<br><img src="https://github.com/user-attachments/assets/083e31d5-8f3e-4b94-a3e2-5acc1672d1e5" alt="template" width="350">
+  - You are **required** to have a TMDB Api Key (v3), set this below.<br><img src="https://github.com/user-attachments/assets/3839b849-eca6-4ddd-b2b7-611f0d4b5226" alt="tmdb api key" width="350">
+  - You'll of course want to enable you desired tracker(s).<br><img src="https://github.com/user-attachments/assets/2410b5d6-f771-4d1d-999b-06a739296861" alt="enable trackers" width="350">
+    - Ensure you expand the tracker and fill out the required details.<br><img src="https://github.com/user-attachments/assets/85c19583-a14e-47f1-8d1c-4026375774f7" alt="tracker details" width="350">
+- You can simply save your settings, open a file and walk through the wizard to complete your upload.
+
+_This is a basic setup guide, proper guides/documentation will be added in the near future._
+
 ## Support
 
 [Github](https://github.com/jesterr0/NfoForge)
