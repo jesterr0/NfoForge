@@ -71,7 +71,7 @@ _Support for Linux is coming soon_
 
 ## Basic Setup Guide
 
-- Download the current latest release and extract (or run it in your python environment).
+- Download the current latest release, extract, and run the executable (or run it in your python environment).
 - You should go through **Settings** and setup a few required things.
   - Create a template, when you select the button to create a new one you'll be presented with a very basic starting template.<br><img src="https://github.com/user-attachments/assets/083e31d5-8f3e-4b94-a3e2-5acc1672d1e5" alt="template" width="350">
   - You are **required** to have a TMDB Api Key (v3), set this below.<br><img src="https://github.com/user-attachments/assets/3839b849-eca6-4ddd-b2b7-611f0d4b5226" alt="tmdb api key" width="350">
