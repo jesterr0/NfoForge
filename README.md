@@ -22,6 +22,7 @@ Comprehensive documentation is on the way and will be available soon.
 - Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.
 - Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require the same Python version as NfoForge).
 - Support for movie files in MKV and MP4 format.
+- Automatic detection for light/dark mode (with a manual override if desired).
 - Additional format support and features coming soon!
 
 ## Supported Trackers
