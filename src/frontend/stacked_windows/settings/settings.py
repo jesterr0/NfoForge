@@ -167,6 +167,7 @@ class Settings(QWidget):
         self.trackers_settings_content.update_saved_settings.emit()
         self.screenshots_settings_content.update_saved_settings.emit()
         self.dependencies_settings_content.update_saved_settings.emit()
+        self.about_content.update_saved_settings.emit()
 
     @Slot()
     def _update_applied_settings_counter(self) -> None:
