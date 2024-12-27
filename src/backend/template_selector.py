@@ -56,7 +56,7 @@ class TemplateSelectorBackEnd:
                 if name == key:
                     _path = self.templates[key]
                     break
-        elif not _path and idx is not None:
+        elif not _path and (idx is not None and idx != -1):
             _path = tuple(self.templates.values())[idx]
 
         if _path:

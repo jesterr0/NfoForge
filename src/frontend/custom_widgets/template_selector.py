@@ -148,33 +148,40 @@ class TemplateSelector(QWidget):
         return {name: i for i, name in enumerate(self.backend.templates.keys())}
 
     def load_templates(self) -> None:
+        self.template_combo.clear()
         templates = self.backend.load_templates()
         if templates:
-            self.template_combo.clear()
             self.template_combo.addItems(tuple(templates.keys()))
             self.template_index_map = self.create_template_index_map()
-            self._update_tracker_toggles()
-            # INFO: if we wanted to load last used template or a default template we could do it here
-            # self.template_combo.setCurrentIndex(
-            #     self.template_index_map[self.config.cfg_payload.nfo_template]
-            # )
+        self._update_tracker_toggles()
+        # INFO: if we wanted to load last used template or a default template we could do it here
+        # self.template_combo.setCurrentIndex(
+        #     self.template_index_map[self.config.cfg_payload.nfo_template]
+        # )
 
     def _update_tracker_toggles(self) -> None:
+        selected_template = self.template_combo.currentText()
         trackers = [
             (
                 str(tracker),
-                tracker_settings.nfo_template == self.template_combo.currentText(),
+                tracker_settings.nfo_template == selected_template
+                if selected_template
+                else False,
             )
             for tracker, tracker_settings in self.config.tracker_map.items()
         ]
         self.popup_button.update_items(trackers)
+        if not selected_template:
+            self.popup_button.setDisabled(True)
+        else:
+            self.popup_button.setDisabled(False)
 
     def read_template(self) -> None:
+        self.text_edit.clear()
         get_template = self.backend.read_template(
             idx=self.template_combo.currentIndex()
         )
         if get_template is not None:
-            self.text_edit.clear()
             self.text_edit.setPlainText(get_template)
 
     @Slot(tuple)
@@ -250,7 +257,11 @@ class TemplateSelector(QWidget):
 
     @Slot()
     def delete_template(self) -> None:
-        selected_template = self.backend.templates[self.template_combo.currentText()]
+        current_template = self.template_combo.currentText()
+        if not current_template:
+            return
+
+        selected_template = self.backend.templates[current_template]
         if not self._template_in_use(selected_template):
             return
         self.backend.delete_template(selected_template)
