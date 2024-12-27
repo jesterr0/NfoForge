@@ -336,9 +336,10 @@ class RenameEncode(BaseWizardPage):
                 )
                 is QMessageBox.StandardButton.Yes
             ):
-                self.output_entry.setText(
-                    f"{input_text.replace(detect_group.group(1), '')}{saved_release_group}"
-                )
+                new_name = f"{input_text.replace(detect_group.group(1), '')}{saved_release_group}"
+                if new_name.endswith("-"):
+                    new_name = new_name[:-1]
+                self.output_entry.setText(new_name)
                 return False
         elif not detect_group and saved_release_group:
             if (
