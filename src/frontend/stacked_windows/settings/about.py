@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QClipboard, QPixmap
 from PySide6.QtWidgets import (
     QLabel,
@@ -62,6 +62,8 @@ class AboutTab(BaseSettings):
     def __init__(self, config, main_window, parent) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("aboutTab")
+
+        self.update_saved_settings.connect(self._save_settings)
 
         self.about_lbl = QLabel(about_txt, self)
         self.about_lbl.setWordWrap(True)
@@ -154,3 +156,8 @@ class AboutTab(BaseSettings):
         layout.addWidget(entry, stretch=1)
         layout.addWidget(btn)
         return layout
+
+    @Slot()
+    def _save_settings(self) -> None:
+        """Even though no settings are changed, this still needs to be called to "complete" the save."""
+        self.updated_settings_applied.emit()
