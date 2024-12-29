@@ -103,6 +103,11 @@ class MainWindowWizard(QWizard):
             QWizard.WizardButton.CustomButton3,
         )
 
+        self.early_ending_buttons = (
+            QWizard.WizardButton.CustomButton2,
+            QWizard.WizardButton.Stretch,
+        )
+
         self.setButtonLayout(self.starting_buttons)
 
         self._connect_current_id_changed()
@@ -186,7 +191,7 @@ class MainWindowWizard(QWizard):
         self.next_button.setDisabled(value)
 
     def end_early(self) -> None:
-        self.setButtonLayout(self.ending_buttons)
+        self.setButtonLayout(self.early_ending_buttons)
 
     def _insert_plugin_page(self) -> None:
         if self.config.cfg_payload.wizard_page and self.config.loaded_plugins:
