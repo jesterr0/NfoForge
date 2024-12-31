@@ -60,3 +60,7 @@ class TrackerClientError(NfoForgeError):
 
 class PluginError(NfoForgeError):
     """Custom exception for plugin related errors"""
+
+
+class MediaSearchError(NfoForgeError):
+    """Custom exception for media search related errors"""
