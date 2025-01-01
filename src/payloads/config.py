@@ -13,7 +13,12 @@ from src.enums.cropping import Cropping
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.token_replacer import ColonReplace
 from src.enums.url_type import URLType
-from src.payloads.trackers import TrackerInfo
+from src.payloads.trackers import (
+    MoreThanTvInfo,
+    TorrentLeechInfo,
+    BeyondHDInfo,
+    PassThePopcornInfo,
+)
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
 from src.payloads.image_hosts import (
@@ -56,10 +61,10 @@ class ConfigPayload:
 
     # trackers
     tracker_order: list[int]
-    mtv_tracker: TrackerInfo
-    tl_tracker: TrackerInfo
-    bhd_tracker: TrackerInfo
-    ptp_tracker: TrackerInfo
+    mtv_tracker: MoreThanTvInfo
+    tl_tracker: TorrentLeechInfo
+    bhd_tracker: BeyondHDInfo
+    ptp_tracker: PassThePopcornInfo
 
     # torrent client settings
     qbittorrent: TorrentClient
