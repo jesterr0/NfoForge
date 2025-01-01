@@ -130,6 +130,8 @@ class NfoForge:
             if traceback:
                 traceback = f"\n{traceback}"
             QMessageBox.critical(detect_parent, title, f"{message}{traceback}")
+            if self.splash_screen.isVisible():
+                self.app.quit()
 
 
 if __name__ == "__main__":
