@@ -14,6 +14,7 @@ from src.enums.image_host import ImageHost
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
+from src.enums.trackers import MTVSourceOrigin, BHDPromo, BHDLiveRelease
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import TorrentClientSelection
@@ -23,7 +24,13 @@ from src.payloads.config import ConfigPayload, ProgramConfigPayload
 from src.payloads.shared_data import SharedPayload
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
-from src.payloads.trackers import TrackerInfo
+from src.payloads.trackers import (
+    TrackerInfo,
+    MoreThanTvInfo,
+    TorrentLeechInfo,
+    BeyondHDInfo,
+    PassThePopcornInfo,
+)
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
 from src.payloads.image_hosts import (
@@ -50,43 +57,6 @@ class Config:
     DEV_MODE: bool = False
 
     ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
-
-    MTV_SPECIFIC = (
-        "check__anonymous",
-        "textm__api_key",
-        "textm__username",
-        "textm__password",
-        "textm__totp",
-        "textm__group_desc",
-        "textm__additional_tags",
-        "enum__mtv__source_origin",
-    )
-
-    TL_SPECIFIC = (
-        "textm__username",
-        "textm__password",
-        "textm__torrent_pass_key",
-        "textm__alt_2_fa_token",
-    )
-
-    BHD_SPECIFIC = (
-        "check__anonymous",
-        "textm__api_key",
-        "textm__rss_key",
-        "enum__bhd__promo",
-        "enum__bhd__live_release",
-        "check__internal",
-    )
-
-    PTP_SPECIFIC = (
-        "textm__api_user",
-        "textm__api_key",
-        "textm__username",
-        "textm__password",
-        "textm__totp",
-        "textm__ptpimg_api_key",
-        "check__reupload_images_to_ptpimg",
-    )
 
     QBIT_SPECIFIC = ("category",)
 
@@ -336,7 +306,18 @@ class Config:
             mtv_data["comments"] = self.cfg_payload.mtv_tracker.comments
             mtv_data["nfo_template"] = self.cfg_payload.mtv_tracker.nfo_template
             mtv_data["max_piece_size"] = self.cfg_payload.mtv_tracker.max_piece_size
-            mtv_data["specific_params"] = self.cfg_payload.mtv_tracker.specific_params
+            mtv_data["anonymous"] = self.cfg_payload.mtv_tracker.anonymous
+            mtv_data["api_key"] = self.cfg_payload.mtv_tracker.api_key
+            mtv_data["username"] = self.cfg_payload.mtv_tracker.username
+            mtv_data["password"] = self.cfg_payload.mtv_tracker.password
+            mtv_data["totp"] = self.cfg_payload.mtv_tracker.totp
+            mtv_data["group_description"] = (
+                self.cfg_payload.mtv_tracker.group_description
+            )
+            mtv_data["additional_tags"] = self.cfg_payload.mtv_tracker.additional_tags
+            mtv_data["source_origin"] = MTVSourceOrigin(
+                self.cfg_payload.mtv_tracker.source_origin
+            ).value
 
             # torrent_leech tracker
             if "torrent_leech" not in tracker_data:
@@ -349,7 +330,10 @@ class Config:
             tl_data["comments"] = self.cfg_payload.tl_tracker.comments
             tl_data["nfo_template"] = self.cfg_payload.tl_tracker.nfo_template
             tl_data["max_piece_size"] = self.cfg_payload.tl_tracker.max_piece_size
-            tl_data["specific_params"] = self.cfg_payload.tl_tracker.specific_params
+            tl_data["username"] = self.cfg_payload.tl_tracker.username
+            tl_data["password"] = self.cfg_payload.tl_tracker.password
+            tl_data["torrent_passkey"] = self.cfg_payload.tl_tracker.torrent_passkey
+            tl_data["alt_2_fa_token"] = self.cfg_payload.tl_tracker.alt_2_fa_token
 
             # BeyondHD tracker
             if "beyond_hd" not in tracker_data:
@@ -362,7 +346,14 @@ class Config:
             bhd_data["comments"] = self.cfg_payload.bhd_tracker.comments
             bhd_data["nfo_template"] = self.cfg_payload.bhd_tracker.nfo_template
             bhd_data["max_piece_size"] = self.cfg_payload.bhd_tracker.max_piece_size
-            bhd_data["specific_params"] = self.cfg_payload.bhd_tracker.specific_params
+            bhd_data["anonymous"] = self.cfg_payload.bhd_tracker.anonymous
+            bhd_data["api_key"] = self.cfg_payload.bhd_tracker.api_key
+            bhd_data["rss_key"] = self.cfg_payload.bhd_tracker.rss_key
+            bhd_data["promo"] = BHDPromo(self.cfg_payload.bhd_tracker.promo).value
+            bhd_data["live_release"] = BHDLiveRelease(
+                self.cfg_payload.bhd_tracker.live_release
+            ).value
+            bhd_data["internal"] = self.cfg_payload.bhd_tracker.internal
 
             # PassThePopcorn tracker
             if "pass_the_popcorn" not in tracker_data:
@@ -375,7 +366,15 @@ class Config:
             ptp_data["comments"] = self.cfg_payload.ptp_tracker.comments
             ptp_data["nfo_template"] = self.cfg_payload.ptp_tracker.nfo_template
             ptp_data["max_piece_size"] = self.cfg_payload.ptp_tracker.max_piece_size
-            ptp_data["specific_params"] = self.cfg_payload.ptp_tracker.specific_params
+            ptp_data["api_user"] = self.cfg_payload.ptp_tracker.api_user
+            ptp_data["api_key"] = self.cfg_payload.ptp_tracker.api_key
+            ptp_data["username"] = self.cfg_payload.ptp_tracker.username
+            ptp_data["password"] = self.cfg_payload.ptp_tracker.password
+            ptp_data["totp"] = self.cfg_payload.ptp_tracker.totp
+            ptp_data["ptpimg_api_key"] = self.cfg_payload.ptp_tracker.ptpimg_api_key
+            ptp_data["reupload_images_to_ptp_img"] = (
+                self.cfg_payload.ptp_tracker.reupload_images_to_ptp_img
+            )
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -652,38 +651,77 @@ class Config:
             ):
                 tracker_settings_order = self.default_tracker_order
 
-            # trackers (sites)
-            mtv_tracker = TrackerInfo(**tracker_data["more_than_tv"])
-            for mtv_specific in self.MTV_SPECIFIC:
-                if (
-                    not mtv_tracker.specific_params.get(mtv_specific)
-                    and mtv_tracker.specific_params.get(mtv_specific) != 0
-                ):
-                    mtv_tracker.specific_params[mtv_specific] = ""
+            # trackers
+            mtv_tracker_data = tracker_data["more_than_tv"]
+            mtv_tracker = MoreThanTvInfo(
+                upload_enabled=mtv_tracker_data["upload_enabled"],
+                announce_url=mtv_tracker_data["announce_url"],
+                enabled=mtv_tracker_data["enabled"],
+                source=mtv_tracker_data["source"],
+                comments=mtv_tracker_data["comments"],
+                nfo_template=mtv_tracker_data["nfo_template"],
+                max_piece_size=mtv_tracker_data["max_piece_size"],
+                anonymous=mtv_tracker_data["anonymous"],
+                api_key=mtv_tracker_data["api_key"],
+                username=mtv_tracker_data["username"],
+                password=mtv_tracker_data["password"],
+                totp=mtv_tracker_data["totp"],
+                group_description=mtv_tracker_data["group_description"],
+                additional_tags=mtv_tracker_data["additional_tags"],
+                source_origin=MTVSourceOrigin(mtv_tracker_data["source_origin"]),
+            )
 
-            tl_tracker = TrackerInfo(**tracker_data["torrent_leech"])
-            for tl_specific in self.TL_SPECIFIC:
-                if (
-                    not tl_tracker.specific_params.get(tl_specific)
-                    and tl_tracker.specific_params.get(tl_specific) != 0
-                ):
-                    tl_tracker.specific_params[tl_specific] = ""
+            tl_tracker_data = tracker_data["torrent_leech"]
+            tl_tracker = TorrentLeechInfo(
+                upload_enabled=tl_tracker_data["upload_enabled"],
+                announce_url=tl_tracker_data["announce_url"],
+                enabled=tl_tracker_data["enabled"],
+                source=tl_tracker_data["source"],
+                comments=tl_tracker_data["comments"],
+                nfo_template=tl_tracker_data["nfo_template"],
+                max_piece_size=tl_tracker_data["max_piece_size"],
+                username=tl_tracker_data["username"],
+                password=tl_tracker_data["password"],
+                torrent_passkey=tl_tracker_data["torrent_passkey"],
+                alt_2_fa_token=tl_tracker_data["alt_2_fa_token"],
+            )
 
-            bhd_tracker = TrackerInfo(**tracker_data["beyond_hd"])
-            for bhd_specific in self.BHD_SPECIFIC:
-                if (
-                    not bhd_tracker.specific_params.get(bhd_specific)
-                    and bhd_tracker.specific_params.get(bhd_specific) != 0
-                ):
-                    bhd_tracker.specific_params[bhd_specific] = ""
+            bhd_tracker_data = tracker_data["beyond_hd"]
+            bhd_tracker = BeyondHDInfo(
+                upload_enabled=bhd_tracker_data["upload_enabled"],
+                announce_url=bhd_tracker_data["announce_url"],
+                enabled=bhd_tracker_data["enabled"],
+                source=bhd_tracker_data["source"],
+                comments=bhd_tracker_data["comments"],
+                nfo_template=bhd_tracker_data["nfo_template"],
+                max_piece_size=bhd_tracker_data["max_piece_size"],
+                anonymous=bhd_tracker_data["anonymous"],
+                api_key=bhd_tracker_data["rss_key"],
+                rss_key=bhd_tracker_data["rss_key"],
+                promo=BHDPromo(bhd_tracker_data["promo"]),
+                live_release=BHDLiveRelease(bhd_tracker_data["live_release"]),
+                internal=bhd_tracker_data["internal"],
+            )
 
-            ptp_tracker = TrackerInfo(**tracker_data["pass_the_popcorn"])
-            for ptp_specific in self.PTP_SPECIFIC:
-                if (
-                    not ptp_tracker.specific_params.get(ptp_specific)
-                    and ptp_tracker.specific_params.get(ptp_specific) != 0
-                ):
-                    ptp_tracker.specific_params[ptp_specific] = ""
+            ptp_tracker_data = tracker_data["pass_the_popcorn"]
+            ptp_tracker = PassThePopcornInfo(
+                upload_enabled=ptp_tracker_data["upload_enabled"],
+                announce_url=ptp_tracker_data["announce_url"],
+                enabled=ptp_tracker_data["enabled"],
+                source=ptp_tracker_data["source"],
+                comments=ptp_tracker_data["comments"],
+                nfo_template=ptp_tracker_data["nfo_template"],
+                max_piece_size=ptp_tracker_data["max_piece_size"],
+                api_user=ptp_tracker_data["api_user"],
+                api_key=ptp_tracker_data["api_key"],
+                username=ptp_tracker_data["username"],
+                password=ptp_tracker_data["password"],
+                totp=ptp_tracker_data["totp"],
+                ptpimg_api_key=ptp_tracker_data["ptpimg_api_key"],
+                reupload_images_to_ptp_img=ptp_tracker_data[
+                    "reupload_images_to_ptp_img"
+                ],
+            )
 
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]

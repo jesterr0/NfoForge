@@ -30,7 +30,14 @@ source = "MTV"
 comments = ""
 nfo_template = ""
 max_piece_size = 8000000
-specific_params = { "check__anonymous" = "", "textm__api_key" = "", "textm__username" = "", "textm__password" = "", "textm__totp" = "", "text__group_desc" = "", "text__additional_tags" = "", "enum__mtv__source_origin" = 1 }
+anonymous = 0
+api_key = ""
+username = ""
+password = ""
+totp = ""
+group_description = ""
+additional_tags = ""
+source_origin = 1
 
 [tracker.torrent_leech]
 upload_enabled = true
@@ -40,7 +47,10 @@ source = "TorrentLeech.org"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
-specific_params = { "textm__username" = "", "textm__password" = "", "textm__torrent_pass_key" = "", "textm__alt_2_fa_token" = "" }
+username = ""
+password = ""
+torrent_passkey = ""
+alt_2_fa_token = ""
 
 [tracker.beyond_hd]
 upload_enabled = true
@@ -50,7 +60,12 @@ source = "BHD"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
-specific_params = { "check__anonymous" = "", "textm__rss_key" = "", "enum__bhd__promo" = 0, "enum__bhd__live_release" = 1, "check__internal" = 0 }
+anonymous = 0
+api_key = ""
+rss_key = ""
+promo = 0
+live_release = 1
+internal = 0
 
 [tracker.pass_the_popcorn]
 upload_enabled = true
@@ -60,7 +75,13 @@ source = "PTP"
 comments = ""
 nfo_template = ""
 max_piece_size = 16777216
-specific_params = { "textm__api_user" = "", "textm__api_key" = "", "textm__username" = "", "textm__password" = "", "textm__totp" = "", "textm__ptpimg_api_key" = "", "check__reupload_images_to_ptpimg" = 0 }
+api_user = ""
+api_key = ""
+username = ""
+password = ""
+totp = ""
+ptpimg_api_key = ""
+reupload_images_to_ptp_img = false
 
 [torrent_client]
 
