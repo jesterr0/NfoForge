@@ -15,13 +15,13 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 
 
 def tl_upload(
-    api_key: str,
+    announce_key: str,
     nfo: str,
-    torrent_file: Path | PathLike[str],
+    torrent_file: Path,
     mediainfo_obj: MediaInfo,
     timeout: int,
 ) -> str | None:
-    uploader = TLUploader(announce_key=api_key, timeout=timeout)
+    uploader = TLUploader(announce_key=announce_key, timeout=timeout)
     return uploader.upload(
         nfo=nfo, torrent_file=torrent_file, mediainfo_obj=mediainfo_obj
     )

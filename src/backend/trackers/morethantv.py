@@ -46,7 +46,9 @@ def mtv_uploader(
 ):
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
-    uploader = MTVUploader(torrent_input=torrent_file, mediainfo_obj=mediainfo_obj)
+    uploader = MTVUploader(
+        torrent_input=torrent_file, mediainfo_obj=mediainfo_obj, timeout=timeout
+    )
     auth_token = uploader.login(username=username, password=password, totp=totp)
     if not auth_token:
         raise TrackerError("Failed to get auth token")

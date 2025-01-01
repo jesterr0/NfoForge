@@ -21,36 +21,32 @@ tmdb_api_key = ""
 
 [tracker.settings]
 order = []
-piece_sizes = {}
 
 [tracker.more_than_tv]
 upload_enabled = true
 anonymous = false
-api_key = ""
 announce_url = ""
 enabled = false
 source = "MTV"
 comments = ""
 nfo_template = ""
 max_piece_size = 8000000
-specific_params = { "textm__username" = "", "textm__password" = "", "textm__totp" = "", "text__group_desc" = "", "text__additional_tags" = "", "enum__mtv__source_origin" = 1 }
+specific_params = { "textm__api_key" = "", "textm__username" = "", "textm__password" = "", "textm__totp" = "", "text__group_desc" = "", "text__additional_tags" = "", "enum__mtv__source_origin" = 1 }
 
 [tracker.torrent_leech]
 upload_enabled = true
 anonymous = false
-api_key = ""
 announce_url = ""
 enabled = false
 source = "TorrentLeech.org"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
-specific_params = { "textm__username" = "", "textm__password" = "", "textm__alt_2_fa_token" = "" }
+specific_params = { "textm__username" = "", "textm__password" = "", "textm__torrent_pass_key" = "", "textm__alt_2_fa_token" = "" }
 
 [tracker.beyond_hd]
 upload_enabled = true
 anonymous = false
-api_key = ""
 announce_url = ""
 enabled = false
 source = "BHD"
@@ -58,6 +54,17 @@ comments = ""
 nfo_template = ""
 max_piece_size = 0
 specific_params = { "textm__rss_key" = "", "enum__bhd__promo" = 0, "enum__bhd__live_release" = 1, "check__internal" = 0 }
+
+[tracker.pass_the_popcorn]
+upload_enabled = true
+anonymous = false
+announce_url = ""
+enabled = false
+source = "PTP"
+comments = ""
+nfo_template = ""
+max_piece_size = 16777216
+specific_params = { "textm__api_user" = "", "textm__api_key" = "", "textm__username" = "", "textm__password" = "", "textm__totp" = "", "textm__ptpimg_api_key" = "", "check__reupload_images_to_ptpimg" = 0 }
 
 [torrent_client]
 
@@ -99,7 +106,6 @@ path = ""
 
 [movie_rename]
 mvr_enabled = true
-mvr_imdb_parse = false
 mvr_replace_illegal_chars = true
 mvr_parse_with_media_info = true
 mvr_colon_replacement = 2

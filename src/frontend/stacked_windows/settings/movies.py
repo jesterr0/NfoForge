@@ -33,11 +33,6 @@ class MoviesSettings(BaseSettings):
             "Will use the existing file name if renaming is disabled"
         )
 
-        self.imdb_check_box = QCheckBox("IMDb Parsing")
-        self.imdb_check_box.setToolTip(
-            "Will prioritize IMDb for title/year/information instead of the default TMDB. This can be slower."
-        )
-
         self.replace_illegal_chars = QCheckBox("Replace Illegal Characters")
         self.replace_illegal_chars.setToolTip(
             "Replace illegal characters. If unchecked, NfoForge will remove them instead"
@@ -45,7 +40,6 @@ class MoviesSettings(BaseSettings):
 
         check_button_layout = QFormLayout()
         check_button_layout.addWidget(self.rename_check_box)
-        check_button_layout.addWidget(self.imdb_check_box)
         check_button_layout.addWidget(self.replace_illegal_chars)
 
         self.check_media_info = QCheckBox("Parse With MediaInfo")
@@ -167,7 +161,6 @@ class MoviesSettings(BaseSettings):
         self.colon_replacement_combo.blockSignals(True)
 
         self.rename_check_box.setChecked(self.config.cfg_payload.mvr_enabled)
-        self.imdb_check_box.setChecked(self.config.cfg_payload.mvr_imdb_parse)
         self.replace_illegal_chars.setChecked(
             self.config.cfg_payload.mvr_replace_illegal_chars
         )
@@ -196,7 +189,6 @@ class MoviesSettings(BaseSettings):
     @Slot()
     def _save_settings(self) -> None:
         self.config.cfg_payload.mvr_enabled = self.rename_check_box.isChecked()
-        self.config.cfg_payload.mvr_imdb_parse = self.imdb_check_box.isChecked()
         self.config.cfg_payload.mvr_replace_illegal_chars = (
             self.replace_illegal_chars.isChecked()
         )
@@ -212,7 +204,6 @@ class MoviesSettings(BaseSettings):
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(False)
-        self.imdb_check_box.setChecked(False)
         self.replace_illegal_chars.setChecked(True)
         self.check_media_info.setChecked(True)
         self.colon_replacement_combo.setCurrentIndex(0)

@@ -56,10 +56,10 @@ class ConfigPayload:
 
     # trackers
     tracker_order: list[int]
-    piece_sizes: dict
     mtv_tracker: TrackerInfo
     tl_tracker: TrackerInfo
     bhd_tracker: TrackerInfo
+    ptp_tracker: TrackerInfo
 
     # torrent client settings
     qbittorrent: TorrentClient
@@ -72,7 +72,6 @@ class ConfigPayload:
 
     # movie renamer settings
     mvr_enabled: bool
-    mvr_imdb_parse: bool
     mvr_replace_illegal_chars: bool
     mvr_parse_with_media_info: bool
     mvr_colon_replacement: ColonReplace
