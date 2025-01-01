@@ -66,14 +66,14 @@ class BHDUploader:
 
     def upload(
         self,
-        imdb_id: str = None,
-        tmdb_id: str = None,
-        nfo: str = None,
+        imdb_id: str | None = None,
+        tmdb_id: str | None = None,
+        nfo: str | None = None,
         internal: bool = False,
         live_release: BHDLiveRelease = BHDLiveRelease.LIVE,
         anonymous: bool = False,
-        promo: BHDPromo = None,
-    ):
+        promo: BHDPromo | None = None,
+    ) -> TrackerError | str | None:
         upload_payload = {
             "name": self._generate_name(),
             "category_id": self._category_id(),
@@ -143,7 +143,7 @@ class BHDUploader:
         name = re.sub(r"\s{2,}", " ", name)
         return name
 
-    def _category_id(self) -> int:
+    def _category_id(self) -> int | None:
         if self.media_mode == MediaMode.MOVIES:
             return BHDCategoryID.MOVIE.value
         elif self.media_mode == MediaMode.SERIES:
@@ -182,7 +182,7 @@ class BHDUploader:
                 return BHDType.BD_25.value
             elif input_file_size <= 53_687_091_200:
                 if "1080i" in title_lowered or "1080p" in title_lowered:
-                    return BHDType.BD_50
+                    return BHDType.BD_50.value
                 elif "2160p" in title_lowered:
                     return BHDType.UHD_50.value
             elif input_file_size <= 70_866_960_384:
@@ -324,7 +324,7 @@ class BHDSearch:
     def _handle_date(timestamp: str | None) -> datetime | None:
         if timestamp:
             return datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
-        return timestamp
+        return timestamp if timestamp else None
 
     @staticmethod
     def _tmdb_id_format(id_str: str | None) -> str | None:
