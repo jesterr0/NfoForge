@@ -33,9 +33,6 @@ class TrackerEdit(QFrame):
         self.announce_url_lbl = QLabel("Announce URL", self)
         self.announce_url = MaskedQLineEdit(masked=True, parent=self)
 
-        self.anonymous_lbl = QLabel("Anonymous", self)
-        self.anonymous = QCheckBox(self)
-
         self._enum_map = {
             "enum__mtv__source_origin": MTVSourceOrigin,
             "enum__bhd__promo": BHDPromo,
@@ -57,9 +54,6 @@ class TrackerEdit(QFrame):
         )
         settings_layout.addLayout(
             self.build_form_layout(self.announce_url_lbl, self.announce_url)
-        )
-        settings_layout.addLayout(
-            self.build_form_layout(self.anonymous_lbl, self.anonymous)
         )
         settings_layout.addWidget(build_h_line((10, 1, 10, 1)))
         settings_layout.addLayout(self.specific_params_layout)
@@ -191,7 +185,6 @@ class TrackerListWidget(QWidget):
         tracker_widget.announce_url.setText(
             tracker_info.announce_url if tracker_info.announce_url else ""
         )
-        tracker_widget.anonymous.setChecked(tracker_info.anonymous)
         tracker_widget.build_widgets_from_dict(tracker_info.specific_params)
         tracker_widget.comments.setText(
             tracker_info.comments if tracker_info.comments else ""
@@ -254,7 +247,6 @@ class TrackerListWidget(QWidget):
         tracker_attributes.announce_url = self._tracker_announce_url_check(
             tracker, tracker_widget.announce_url.text().strip()
         )
-        tracker_attributes.anonymous = tracker_widget.anonymous.isChecked()
 
         # update 'specific params'
         for key, val_widget in tracker_widget.specific_params_map.items():

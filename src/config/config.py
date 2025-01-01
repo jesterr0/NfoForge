@@ -52,6 +52,7 @@ class Config:
     ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
 
     MTV_SPECIFIC = (
+        "check__anonymous",
         "textm__api_key",
         "textm__username",
         "textm__password",
@@ -69,6 +70,7 @@ class Config:
     )
 
     BHD_SPECIFIC = (
+        "check__anonymous",
         "textm__api_key",
         "textm__rss_key",
         "enum__bhd__promo",
@@ -328,7 +330,6 @@ class Config:
                 tracker_data["more_than_tv"] = tomlkit.table()
             mtv_data = tracker_data["more_than_tv"]
             mtv_data["upload_enabled"] = self.cfg_payload.mtv_tracker.upload_enabled
-            mtv_data["anonymous"] = self.cfg_payload.mtv_tracker.anonymous
             mtv_data["announce_url"] = self.cfg_payload.mtv_tracker.announce_url
             mtv_data["enabled"] = self.cfg_payload.mtv_tracker.enabled
             mtv_data["source"] = self.cfg_payload.mtv_tracker.source
@@ -342,7 +343,6 @@ class Config:
                 tracker_data["torrent_leech"] = tomlkit.table()
             tl_data = tracker_data["torrent_leech"]
             tl_data["upload_enabled"] = self.cfg_payload.tl_tracker.upload_enabled
-            tl_data["anonymous"] = self.cfg_payload.tl_tracker.anonymous
             tl_data["announce_url"] = self.cfg_payload.tl_tracker.announce_url
             tl_data["enabled"] = self.cfg_payload.tl_tracker.enabled
             tl_data["source"] = self.cfg_payload.tl_tracker.source
@@ -356,7 +356,6 @@ class Config:
                 tracker_data["beyond_hd"] = tomlkit.table()
             bhd_data = tracker_data["beyond_hd"]
             bhd_data["upload_enabled"] = self.cfg_payload.bhd_tracker.upload_enabled
-            bhd_data["anonymous"] = self.cfg_payload.bhd_tracker.anonymous
             bhd_data["announce_url"] = self.cfg_payload.bhd_tracker.announce_url
             bhd_data["enabled"] = self.cfg_payload.bhd_tracker.enabled
             bhd_data["source"] = self.cfg_payload.bhd_tracker.source
@@ -370,7 +369,6 @@ class Config:
                 tracker_data["pass_the_popcorn"] = tomlkit.table()
             ptp_data = tracker_data["pass_the_popcorn"]
             ptp_data["upload_enabled"] = self.cfg_payload.ptp_tracker.upload_enabled
-            ptp_data["anonymous"] = self.cfg_payload.ptp_tracker.anonymous
             ptp_data["announce_url"] = self.cfg_payload.ptp_tracker.announce_url
             ptp_data["enabled"] = self.cfg_payload.ptp_tracker.enabled
             ptp_data["source"] = self.cfg_payload.ptp_tracker.source

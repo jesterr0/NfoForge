@@ -24,18 +24,16 @@ order = []
 
 [tracker.more_than_tv]
 upload_enabled = true
-anonymous = false
 announce_url = ""
 enabled = false
 source = "MTV"
 comments = ""
 nfo_template = ""
 max_piece_size = 8000000
-specific_params = { "textm__api_key" = "", "textm__username" = "", "textm__password" = "", "textm__totp" = "", "text__group_desc" = "", "text__additional_tags" = "", "enum__mtv__source_origin" = 1 }
+specific_params = { "check__anonymous" = "", "textm__api_key" = "", "textm__username" = "", "textm__password" = "", "textm__totp" = "", "text__group_desc" = "", "text__additional_tags" = "", "enum__mtv__source_origin" = 1 }
 
 [tracker.torrent_leech]
 upload_enabled = true
-anonymous = false
 announce_url = ""
 enabled = false
 source = "TorrentLeech.org"
@@ -46,18 +44,16 @@ specific_params = { "textm__username" = "", "textm__password" = "", "textm__torr
 
 [tracker.beyond_hd]
 upload_enabled = true
-anonymous = false
 announce_url = ""
 enabled = false
 source = "BHD"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
-specific_params = { "textm__rss_key" = "", "enum__bhd__promo" = 0, "enum__bhd__live_release" = 1, "check__internal" = 0 }
+specific_params = { "check__anonymous" = "", "textm__rss_key" = "", "enum__bhd__promo" = 0, "enum__bhd__live_release" = 1, "check__internal" = 0 }
 
 [tracker.pass_the_popcorn]
 upload_enabled = true
-anonymous = false
 announce_url = ""
 enabled = false
 source = "PTP"
