@@ -52,6 +52,7 @@ class Config:
     ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
 
     MTV_SPECIFIC = (
+        "textm__api_key",
         "textm__username",
         "textm__password",
         "textm__totp",
@@ -76,6 +77,8 @@ class Config:
     )
 
     PTP_SPECIFIC = (
+        "textm__api_user",
+        "textm__api_key",
         "textm__username",
         "textm__password",
         "textm__totp",
