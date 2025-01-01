@@ -1,4 +1,6 @@
-import re
+from enum import Enum
+from typing import Type
+
 from PySide6.QtWidgets import (
     QFrame,
     QVBoxLayout,
@@ -11,7 +13,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QMenu,
 )
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QAction
 
 from src.enums.trackers import MTVSourceOrigin, BHDPromo, BHDLiveRelease
@@ -23,9 +25,16 @@ from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 
 
-class TrackerEdit(QFrame):
-    def __init__(self, parent=None) -> None:
+class TrackerEditBase(QFrame):
+    load_data = Signal()
+    save_data = Signal()
+
+    def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
+
+        self.config = config
+        self.load_data.connect(self.load_settings)
+        self.save_data.connect(self.save_settings)
 
         self.upload_enabled_lbl = QLabel("Upload Enabled", self)
         self.upload_enabled = QCheckBox(self)
@@ -33,86 +42,41 @@ class TrackerEdit(QFrame):
         self.announce_url_lbl = QLabel("Announce URL", self)
         self.announce_url = MaskedQLineEdit(masked=True, parent=self)
 
-        self._enum_map = {
-            "enum__mtv__source_origin": MTVSourceOrigin,
-            "enum__bhd__promo": BHDPromo,
-            "enum__bhd__live_release": BHDLiveRelease,
-        }
-
-        self.specific_params_layout = QVBoxLayout()
-        self.specific_params_map: dict[str, QWidget] = {}
-
         self.comments_lbl = QLabel("Torrent Comments", self)
         self.comments = QLineEdit(self)
 
         self.source_lbl = QLabel("Torrent Source", self)
         self.source = QLineEdit(self)
 
-        settings_layout = QVBoxLayout()
-        settings_layout.addLayout(
+        self.settings_layout = QVBoxLayout()
+        self.settings_layout.addLayout(
             self.build_form_layout(self.upload_enabled_lbl, self.upload_enabled)
         )
-        settings_layout.addLayout(
+        self.settings_layout.addLayout(
             self.build_form_layout(self.announce_url_lbl, self.announce_url)
         )
-        settings_layout.addWidget(build_h_line((10, 1, 10, 1)))
-        settings_layout.addLayout(self.specific_params_layout)
-        settings_layout.addWidget(build_h_line((10, 1, 10, 1)))
-        settings_layout.addLayout(
+        self.settings_layout.addLayout(
             self.build_form_layout(self.comments_lbl, self.comments)
         )
-        settings_layout.addLayout(self.build_form_layout(self.source_lbl, self.source))
-        settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
+        self.settings_layout.addLayout(
+            self.build_form_layout(self.source_lbl, self.source)
+        )
+        self.settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
 
-        main_layout = QVBoxLayout(self)
-        main_layout.addLayout(settings_layout)
-        self.setLayout(main_layout)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.addLayout(self.settings_layout)
+        self.setLayout(self.main_layout)
 
-    def build_widgets_from_dict(self, data: dict[str, str]) -> None:
-        """
-        Builds widgets as needed dynamically.
+    def add_pair_to_layout(self, label: QLabel, widget: QWidget) -> QFormLayout:
+        layout = self.build_form_layout(label, widget)
+        self.settings_layout.addLayout(layout)
+        return layout
 
-        Anything prefixed with 'enum_tracker__' will generate a ComboBox (control enums with '_enum_map' above).
-        Anything prefixed with 'textm__' will generate a MastedQLineEdit.
-        Anything prefixed with 'text__' will generate a QLineEdit.
-        """
-        for key, value in data.items():
-            og_key = key
-            widget = None
-            if key.startswith("enum__"):
-                mapped_enum = self._enum_map[key]
-                widget = CustomComboBox(
-                    completer=True, disable_mouse_wheel=True, parent=self
-                )
-                for enum_member in mapped_enum:
-                    widget.addItem(
-                        str(enum_member), (enum_member.name, enum_member.value)
-                    )
-                saved_index = widget.findText(str(mapped_enum(value)))
-                if saved_index >= 0:
-                    widget.setCurrentIndex(saved_index)
-                key = re.sub(r"enum__\w+?__", "", key)
+    def load_settings(self) -> None:
+        raise NotImplementedError("Must be implemented this per tracker")
 
-            elif key.startswith("textm__"):
-                widget = MaskedQLineEdit(self, True)
-                widget.setText(value)
-                key = key.replace("textm__", "")
-
-            elif key.startswith("text__"):
-                widget = MaskedQLineEdit(self, False)
-                widget.setText(value)
-                key = key.replace("text__", "")
-
-            elif key.startswith("check__"):
-                widget = QCheckBox(self)
-                if value and bool(int(value)):
-                    widget.setChecked(True)
-                key = key.replace("check__", "")
-
-            if widget:
-                self.specific_params_map[og_key] = widget
-                form = self.build_form_layout(key.title().replace("_", " "), widget)
-                self.specific_params_layout.addLayout(form)
+    def save_settings(self) -> None:
+        raise NotImplementedError("Must be implemented this per tracker")
 
     @staticmethod
     def build_form_layout(lbl: QLabel | str, widget: QWidget) -> QFormLayout:
@@ -124,14 +88,314 @@ class TrackerEdit(QFrame):
         layout.addWidget(widget)
         return layout
 
+    @staticmethod
+    def load_combo_box(
+        widget: CustomComboBox, enum: Type[Enum], saved_data: Enum
+    ) -> None:
+        """Clears CustomComboBox and reloads it with fresh data, setting the default value if available"""
+        widget.clear()
+        for item in enum:
+            widget.addItem(str(item), item)
+        current_index = widget.findText(str(enum(saved_data)))
+        if current_index >= 0:
+            widget.setCurrentIndex(current_index)
+
+
+class MTVTrackerEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        username_lbl = QLabel("Username", self)
+        self.username = MaskedQLineEdit(parent=self)
+
+        password_lbl = QLabel("Password", self)
+        self.password = MaskedQLineEdit(parent=self, masked=True)
+
+        totp_lbl = QLabel("TOTP", self)
+        self.totp = MaskedQLineEdit(parent=self, masked=True)
+
+        group_description_lbl = QLabel("Group Description", self)
+        self.group_description = MaskedQLineEdit(parent=self)
+
+        additional_tags_lbl = QLabel("Additional Tags", self)
+        self.additional_tags = MaskedQLineEdit(parent=self)
+
+        source_origin_lbl = QLabel("Source Origin", self)
+        self.source_origin = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(username_lbl, self.username)
+        self.add_pair_to_layout(password_lbl, self.password)
+        self.add_pair_to_layout(totp_lbl, self.totp)
+        self.add_pair_to_layout(group_description_lbl, self.group_description)
+        self.add_pair_to_layout(additional_tags_lbl, self.additional_tags)
+        self.add_pair_to_layout(source_origin_lbl, self.source_origin)
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.mtv_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.username.setText(tracker_data.username if tracker_data.username else "")
+        self.password.setText(tracker_data.password if tracker_data.password else "")
+        self.totp.setText(tracker_data.totp if tracker_data.totp else "")
+        self.group_description.setText(
+            tracker_data.group_description if tracker_data.group_description else ""
+        )
+        self.additional_tags.setText(
+            tracker_data.additional_tags if tracker_data.additional_tags else ""
+        )
+        self.load_combo_box(
+            self.source_origin, MTVSourceOrigin, tracker_data.source_origin
+        )
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.mtv_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.mtv_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.mtv_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.mtv_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.mtv_tracker.anonymous = int(self.anonymous.isChecked())
+        self.config.cfg_payload.mtv_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.mtv_tracker.username = self.username.text().strip()
+        self.config.cfg_payload.mtv_tracker.password = self.password.text().strip()
+        self.config.cfg_payload.mtv_tracker.totp = self.totp.text().strip()
+        self.config.cfg_payload.mtv_tracker.group_description = (
+            self.group_description.text().strip()
+        )
+        self.config.cfg_payload.mtv_tracker.additional_tags = (
+            self.additional_tags.text().strip()
+        )
+        self.config.cfg_payload.mtv_tracker.source_origin = MTVSourceOrigin(
+            self.source_origin.currentData()
+        )
+
+
+class TLTrackerEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        username_lbl = QLabel("Username", self)
+        self.username = MaskedQLineEdit(parent=self)
+
+        password_lbl = QLabel("Password", self)
+        self.password = MaskedQLineEdit(parent=self, masked=True)
+
+        torrent_passkey_lbl = QLabel("Torrent Passkey", self)
+        self.torrent_passkey = MaskedQLineEdit(parent=self, masked=True)
+
+        alt_2_fa_token_lbl = QLabel("Alt2FaToken", self)
+        self.alt_2_fa_token = MaskedQLineEdit(parent=self, masked=True)
+
+        self.add_pair_to_layout(username_lbl, self.username)
+        self.add_pair_to_layout(password_lbl, self.password)
+        self.add_pair_to_layout(torrent_passkey_lbl, self.torrent_passkey)
+        self.add_pair_to_layout(alt_2_fa_token_lbl, self.alt_2_fa_token)
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.tl_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.username.setText(tracker_data.username if tracker_data.username else "")
+        self.password.setText(tracker_data.password if tracker_data.password else "")
+        self.torrent_passkey.setText(
+            tracker_data.torrent_passkey if tracker_data.torrent_passkey else ""
+        )
+        self.alt_2_fa_token.setText(
+            tracker_data.alt_2_fa_token if tracker_data.alt_2_fa_token else ""
+        )
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.tl_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.tl_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.tl_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.tl_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.tl_tracker.username = self.username.text().strip()
+        self.config.cfg_payload.tl_tracker.password = self.password.text().strip()
+        self.config.cfg_payload.tl_tracker.torrent_passkey = (
+            self.torrent_passkey.text().strip()
+        )
+        self.config.cfg_payload.tl_tracker.alt_2_fa_token = (
+            self.alt_2_fa_token.text().strip()
+        )
+
+
+class BHDTrackerEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        rss_key_lbl = QLabel("RSS Key", self)
+        self.rss_key = MaskedQLineEdit(parent=self, masked=True)
+
+        promo_lbl = QLabel("Promo", self)
+        self.promo = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        live_release_lbl = QLabel("Live Release", self)
+        self.live_release = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(rss_key_lbl, self.rss_key)
+        self.add_pair_to_layout(promo_lbl, self.promo)
+        self.add_pair_to_layout(live_release_lbl, self.live_release)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.bhd_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.rss_key.setText(tracker_data.rss_key if tracker_data.rss_key else "")
+        self.load_combo_box(self.promo, BHDPromo, tracker_data.promo)
+        self.load_combo_box(
+            self.live_release, BHDLiveRelease, tracker_data.live_release
+        )
+        self.internal.setChecked(bool(tracker_data.internal))
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.bhd_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.bhd_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.bhd_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.bhd_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.bhd_tracker.anonymous = int(self.anonymous.isChecked())
+        self.config.cfg_payload.bhd_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.bhd_tracker.rss_key = self.rss_key.text().strip()
+        self.config.cfg_payload.bhd_tracker.promo = BHDPromo(self.promo.currentData())
+        self.config.cfg_payload.bhd_tracker.live_release = BHDLiveRelease(
+            self.live_release.currentData()
+        )
+        self.config.cfg_payload.bhd_tracker.internal = int(self.internal.isChecked())
+
+
+class PTPTrackerEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        api_user_lbl = QLabel("API User", self)
+        self.api_user = MaskedQLineEdit(parent=self, masked=True)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        username_lbl = QLabel("Username", self)
+        self.username = MaskedQLineEdit(parent=self)
+
+        password_lbl = QLabel("Password", self)
+        self.password = MaskedQLineEdit(parent=self, masked=True)
+
+        totp_lbl = QLabel("TOTP", self)
+        self.totp = MaskedQLineEdit(parent=self, masked=True)
+
+        ptpimg_api_key_lbl = QLabel("PTPIMG Api Key", self)
+        self.ptpimg_api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        reupload_images_to_ptp_img_lbl = QLabel("Reupload all images to PTPIMG", self)
+        self.reupload_images_to_ptp_img = QCheckBox(self)
+
+        self.add_pair_to_layout(api_user_lbl, self.api_user)
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(username_lbl, self.username)
+        self.add_pair_to_layout(password_lbl, self.password)
+        self.add_pair_to_layout(totp_lbl, self.totp)
+        self.add_pair_to_layout(ptpimg_api_key_lbl, self.ptpimg_api_key)
+        self.add_pair_to_layout(
+            reupload_images_to_ptp_img_lbl, self.reupload_images_to_ptp_img
+        )
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.ptp_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_user.setText(tracker_data.api_user if tracker_data.api_user else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.username.setText(tracker_data.username if tracker_data.username else "")
+        self.password.setText(tracker_data.password if tracker_data.password else "")
+        self.totp.setText(tracker_data.totp if tracker_data.totp else "")
+        self.ptpimg_api_key.setText(
+            tracker_data.ptpimg_api_key if tracker_data.ptpimg_api_key else ""
+        )
+        self.reupload_images_to_ptp_img.setChecked(
+            bool(tracker_data.reupload_images_to_ptp_img)
+        )
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.ptp_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.ptp_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.ptp_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.ptp_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.ptp_tracker.api_user = self.api_user.text().strip()
+        self.config.cfg_payload.ptp_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.ptp_tracker.username = self.username.text().strip()
+        self.config.cfg_payload.ptp_tracker.password = self.password.text().strip()
+        self.config.cfg_payload.ptp_tracker.totp = self.totp.text().strip()
+        self.config.cfg_payload.ptp_tracker.ptpimg_api_key = (
+            self.ptpimg_api_key.text().strip()
+        )
+        self.config.cfg_payload.ptp_tracker.reupload_images_to_ptp_img = (
+            self.reupload_images_to_ptp_img.isChecked()
+        )
+
 
 class TrackerListWidget(QWidget):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
 
         self.config = config
-
-        self._save_settings_map = {}
 
         self.tree = QTreeWidget(self)
         self.tree.setFrameShape(QFrame.Shape.Box)
@@ -151,9 +415,6 @@ class TrackerListWidget(QWidget):
 
     def add_items(self, items: dict[TrackerSelection, TrackerInfo]) -> None:
         self.tree.blockSignals(True)
-        self._save_settings_map.clear()
-
-        # clear tree widget
         self.tree.clear()
 
         for tracker, tracker_info in items.items():
@@ -168,38 +429,25 @@ class TrackerListWidget(QWidget):
                 else Qt.CheckState.Unchecked,
             )
 
-            self.add_child_widgets(parent_item, tracker, tracker_info)
+            self.add_child_widget(parent_item, tracker)
 
         self.tree.blockSignals(False)
 
-    def add_child_widgets(
-        self, parent_item, tracker: TrackerSelection, tracker_info: TrackerInfo
-    ) -> None:
-        child_widget = QWidget()
-        child_layout = QVBoxLayout(child_widget)
-        child_layout.setContentsMargins(0, 0, 0, 0)
+    def add_child_widget(self, parent_item, tracker: TrackerSelection) -> None:
+        tracker_widget = None
+        if tracker is TrackerSelection.MORE_THAN_TV:
+            tracker_widget = MTVTrackerEdit(self.config, self)
+        elif tracker is TrackerSelection.TORRENT_LEECH:
+            tracker_widget = TLTrackerEdit(self.config, self)
+        elif tracker is TrackerSelection.BEYOND_HD:
+            tracker_widget = BHDTrackerEdit(self.config, self)
+        elif tracker is TrackerSelection.PASS_THE_POPCORN:
+            tracker_widget = PTPTrackerEdit(self.config, self)
 
-        # build TrackerEdit widget
-        tracker_widget = TrackerEdit()
-        tracker_widget.upload_enabled.setChecked(tracker_info.upload_enabled)
-        tracker_widget.announce_url.setText(
-            tracker_info.announce_url if tracker_info.announce_url else ""
-        )
-        tracker_widget.build_widgets_from_dict(tracker_info.specific_params)
-        tracker_widget.comments.setText(
-            tracker_info.comments if tracker_info.comments else ""
-        )
-        tracker_widget.source.setText(
-            tracker_info.source if tracker_info.source else ""
-        )
-
-        self._save_settings_map[tracker] = tracker_widget
-
-        child_layout.addWidget(tracker_widget)
-
-        # add child widget to tree under parent item
-        child_item = QTreeWidgetItem(parent_item)
-        self.tree.setItemWidget(child_item, 0, child_widget)
+        if tracker_widget:
+            tracker_widget.load_data.emit()
+            child_item = QTreeWidgetItem(parent_item)
+            self.tree.setItemWidget(child_item, 0, tracker_widget)
 
     def _open_context_menu(self, position) -> None:
         """Opens the right-click context menu for expanding and collapsing all trackers"""
@@ -238,29 +486,14 @@ class TrackerListWidget(QWidget):
         )
 
     @Slot(object)
-    def save_tracker_info(self, tracker: TrackerSelection) -> None:
-        tracker_attributes: TrackerInfo = self.config.tracker_map[tracker]
-
-        # update generic tracker info
-        tracker_widget: TrackerEdit = self._save_settings_map[tracker]
-        tracker_attributes.upload_enabled = tracker_widget.upload_enabled.isChecked()
-        tracker_attributes.announce_url = self._tracker_announce_url_check(
-            tracker, tracker_widget.announce_url.text().strip()
-        )
-
-        # update 'specific params'
-        for key, val_widget in tracker_widget.specific_params_map.items():
-            if isinstance(val_widget, MaskedQLineEdit):
-                tracker_attributes.specific_params[key] = val_widget.text().strip()
-            elif isinstance(val_widget, QCheckBox):
-                tracker_attributes.specific_params[key] = int(val_widget.isChecked())
-            elif isinstance(val_widget, CustomComboBox):
-                _, enum_value = val_widget.currentData()
-                tracker_attributes.specific_params[key] = enum_value
-
-        # update torrent info
-        tracker_attributes.comments = tracker_widget.comments.text().strip()
-        tracker_attributes.source = tracker_widget.source.text().strip()
+    def save_tracker_info(self) -> None:
+        for i in range(self.tree.topLevelItemCount()):
+            parent = self.tree.topLevelItem(i)
+            for j in range(parent.childCount()):
+                child = parent.child(j)
+                tracker_edit = self.tree.itemWidget(child, 0)
+                if tracker_edit and isinstance(tracker_edit, TrackerEditBase):
+                    tracker_edit.save_data.emit()
 
     def get_selected_trackers(self) -> list[TrackerSelection] | None:
         selected_items = []
@@ -277,7 +510,6 @@ class TrackerListWidget(QWidget):
     def clear(self) -> None:
         self.tree.blockSignals(True)
         self.tree.clear()
-        self._save_settings_map.clear()
         self.tree.blockSignals(False)
 
     @staticmethod

@@ -1,6 +1,5 @@
 from PySide6.QtCore import Slot
 
-from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
 
@@ -26,8 +25,7 @@ class TrackersSettings(BaseSettings):
 
     @Slot()
     def _save_settings(self) -> None:
-        for client in TrackerSelection:
-            self.tracker_widget.save_tracker_info(client)
+        self.tracker_widget.save_tracker_info()
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
