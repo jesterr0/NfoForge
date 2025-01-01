@@ -30,9 +30,6 @@ class TrackerEdit(QFrame):
         self.upload_enabled_lbl = QLabel("Upload Enabled", self)
         self.upload_enabled = QCheckBox(self)
 
-        self.api_key_lbl = QLabel("Api Key", self)
-        self.api_key = MaskedQLineEdit(masked=True, parent=self)
-
         self.announce_url_lbl = QLabel("Announce URL", self)
         self.announce_url = MaskedQLineEdit(masked=True, parent=self)
 
@@ -57,9 +54,6 @@ class TrackerEdit(QFrame):
         settings_layout = QVBoxLayout()
         settings_layout.addLayout(
             self.build_form_layout(self.upload_enabled_lbl, self.upload_enabled)
-        )
-        settings_layout.addLayout(
-            self.build_form_layout(self.api_key_lbl, self.api_key)
         )
         settings_layout.addLayout(
             self.build_form_layout(self.announce_url_lbl, self.announce_url)
@@ -194,9 +188,6 @@ class TrackerListWidget(QWidget):
         # build TrackerEdit widget
         tracker_widget = TrackerEdit()
         tracker_widget.upload_enabled.setChecked(tracker_info.upload_enabled)
-        tracker_widget.api_key.setText(
-            tracker_info.api_key if tracker_info.api_key else ""
-        )
         tracker_widget.announce_url.setText(
             tracker_info.announce_url if tracker_info.announce_url else ""
         )
@@ -208,9 +199,6 @@ class TrackerListWidget(QWidget):
         tracker_widget.source.setText(
             tracker_info.source if tracker_info.source else ""
         )
-
-        if tracker == TrackerSelection.TORRENT_LEECH:
-            tracker_widget.api_key_lbl.setText("Torrent Passkey")
 
         self._save_settings_map[tracker] = tracker_widget
 
@@ -263,7 +251,6 @@ class TrackerListWidget(QWidget):
         # update generic tracker info
         tracker_widget: TrackerEdit = self._save_settings_map[tracker]
         tracker_attributes.upload_enabled = tracker_widget.upload_enabled.isChecked()
-        tracker_attributes.api_key = tracker_widget.api_key.text().strip()
         tracker_attributes.announce_url = self._tracker_announce_url_check(
             tracker, tracker_widget.announce_url.text().strip()
         )
