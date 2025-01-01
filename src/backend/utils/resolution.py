@@ -32,7 +32,6 @@ class VideoResolutionAnalyzer:
 
     def __init__(self, media_info_obj: MediaInfo):
         self.media_info_obj = media_info_obj
-        LOG.set_log_level(LOG.LOG_LEVEL.DEBUG)
 
     def get_resolution(self) -> str:
         video_track = self._get_video_track()
