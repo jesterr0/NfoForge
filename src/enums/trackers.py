@@ -85,20 +85,16 @@ class MTVSourceOrigin(CaseInsensitiveEnum):
     OTHER = auto_enum()
 
     def __str__(self) -> str:
-        if self == MTVSourceOrigin.UNDEFINED:
-            return "Undefined"
-        elif self == MTVSourceOrigin.INTERNAL:
-            return "Internal"
-        elif self == MTVSourceOrigin.SCENE:
-            return "Scene"
-        elif self == MTVSourceOrigin.P2P:
-            return "P2P"
-        elif self == MTVSourceOrigin.USER:
-            return "User"
-        elif self == MTVSourceOrigin.MIXED:
-            return "Mixed"
-        elif self == MTVSourceOrigin.OTHER:
-            return "Other"
+        str_map = {
+            MTVSourceOrigin.UNDEFINED: "Undefined",
+            MTVSourceOrigin.INTERNAL: "Internal",
+            MTVSourceOrigin.SCENE: "Scene",
+            MTVSourceOrigin.P2P: "P2P",
+            MTVSourceOrigin.USER: "User",
+            MTVSourceOrigin.MIXED: "Mixed",
+            MTVSourceOrigin.OTHER: "Other",
+        }
+        return str_map[self]
 
 
 # BeyondHD
@@ -145,18 +141,15 @@ class BHDPromo(Enum):
     FREELEECH_LIMITED_UL = 5
 
     def __str__(self) -> str:
-        if self == BHDPromo.NO_PROMO:
-            return "No Promo"
-        elif self == BHDPromo.PROMO_25:
-            return "25% Promo"
-        elif self == BHDPromo.PROMO_50:
-            return "50% Promo"
-        elif self == BHDPromo.PROMO_75:
-            return "75% Promo"
-        elif self == BHDPromo.FREELEECH:
-            return "Freeleech"
-        elif self == BHDPromo.FREELEECH_LIMITED_UL:
-            return "Freeleech (Limited UL)"
+        str_map = {
+            BHDPromo.NO_PROMO: "No Promo",
+            BHDPromo.PROMO_25: "25% Promo",
+            BHDPromo.PROMO_50: "50% Promo",
+            BHDPromo.PROMO_75: "75% Promo",
+            BHDPromo.FREELEECH: "Freeleech",
+            BHDPromo.FREELEECH_LIMITED_UL: "Freeleech (Limited UL)",
+        }
+        return str_map[self]
 
 
 class BHDLiveRelease(Enum):
@@ -164,7 +157,69 @@ class BHDLiveRelease(Enum):
     LIVE = 1
 
     def __str__(self) -> str:
-        if self == BHDLiveRelease.DRAFT:
-            return "Draft"
-        elif self == BHDLiveRelease.LIVE:
-            return "Live"
+        str_map = {
+            BHDLiveRelease.DRAFT: "Draft",
+            BHDLiveRelease.LIVE: "Live",
+        }
+        return str_map[self]
+
+
+class PTPResolution(Enum):
+    # PAL = "PAL" # TODO: implement
+    RES_480P = "480p"
+    RES_576P = "576p"
+    RES_720P = "720p"
+    RES_1080I = "1080i"
+    RES_1080P = "1080p"
+    RES_2160P = "2160p"
+    OTHER = "Other"
+
+
+class PTPType(Enum):
+    FEATURE_FILM = "Feature Film"
+    SHORT_FILM = "Short Film"
+    MINI_SERIES = "Miniseries"
+    STAND_UP_COMEDY = "Stand-up Comedy"
+    LIVE_PERFORMANCE = "Live Performance"
+    MOVIE_COLLECTION = "Movie Collection"
+
+
+class PTPCodec(Enum):
+    AUTO_DETECT = "* Auto-detect"
+    XVID = "XviD"
+    DIVX = "DivX"
+    H264 = "H.264"
+    X264 = "x264"
+    H265 = "H.265"
+    X265 = "x265"
+    DVD5 = "DVD5"
+    DVD9 = "DVD9"
+    BD25 = "BD25"
+    BD50 = "BD50"
+    BD66 = "BD66"
+    BD100 = "BD100"
+    OTHER = "Other"
+
+
+class PTPContainer(Enum):
+    AUTO_DETECT = "* Auto-detect"
+    AVI = "AVI"
+    MPG = "MPG"
+    MKV = "MKV"
+    MP4 = "MP4"
+    VOB_IFO = "VOB IFO"
+    ISO = "ISO"
+    M2TS = "m2ts"
+    OTHER = "Other"
+
+
+class PTPSource(Enum):
+    BLU_RAY = "Blu-ray"
+    DVD = "DVD"
+    WEB = "WEB"
+    NONE = "---"
+    HD_DVD = "HD-DVD"
+    HDTV = "HDTV"
+    TV = "TV"
+    VHS = "VHS"
+    OTHER = "Other"
