@@ -17,16 +17,6 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.media_search import MediaSearchPayload
 
 
-# TODO: we need to test actually uploading a file - DONE BUT:
-# The images must be linked directly without any url BBCode tags.
-# The screenshots must be after the MediaInfo log in the description box.
-# Template requirements will have to be like:
-# Full mediainfo
-# at least 3 screenshots
-
-# TODO: clean up code
-
-
 def ptp_uploader(
     api_user: str,
     api_key: str,
@@ -35,7 +25,9 @@ def ptp_uploader(
     announce_url: str,
     torrent_file: Path,
     file_input: Path,
+    url_data: str,
     nfo: str,
+    re_upload_images_to_ptp: bool,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     ptp_img_api_key: str,
@@ -70,7 +62,9 @@ def ptp_uploader(
         media_search_payload=media_search_payload,
         torrent_file=torrent_file,
         file_input=file_input,
+        url_data=url_data,
         nfo=nfo,
+        re_upload_images_to_ptp=re_upload_images_to_ptp,
         ptp_img_api_key=ptp_img_api_key,
         group_id=group_id,
     )
@@ -246,7 +240,9 @@ class PTPUploader:
         media_search_payload: MediaSearchPayload,
         torrent_file: Path,
         file_input: Path,
+        url_data: str,
         nfo: str,
+        re_upload_images_to_ptp: bool,
         ptp_img_api_key: str,
         group_id: str | None = None,
     ) -> bool | None:
@@ -270,12 +266,21 @@ class PTPUploader:
             "source": "Other",  # sending the source as Other to fill with other_source
             "other_source": self._source(file_input),
             "release_desc": nfo,
-            "nfo_text": nfo,
-            # "nfo_text": "",
+            "nfo_text": "",  # appears to do nothing at all
             "subtitles[]": self._subtitles(),
             # "trumpable[]": ptp_trumpable, # TODO: implement this eventually?
             "AntiCsrfToken": auth_token,
         }
+
+        # update nfo with PTP formatted images
+        get_image_urls = self._extract_image_urls(url_data)
+        if not len(get_image_urls) >= 3:
+            raise TrackerError("You must have 3 or more images for PassThePopcorn")
+        if re_upload_images_to_ptp:
+            get_image_urls = self._upload_images_to_ptp(get_image_urls, ptp_img_api_key)
+        data["release_desc"] = data["release_desc"].replace(
+            url_data, "\n".join(f"[img]{img}[/img]" for img in get_image_urls)
+        )
 
         # determine url
         if group_id:
@@ -373,13 +378,33 @@ class PTPUploader:
 
         response = requests.post(url, headers=headers, data=payload)
         try:
-            response = response.json()
-            ptpimg_code = response[0]["code"]
-            ptpimg_ext = response[0]["ext"]
+            response_json = response.json()
+            ptpimg_code = response_json[0]["code"]
+            ptpimg_ext = response_json[0]["ext"]
             img_url = f"https://ptpimg.me/{ptpimg_code}.{ptpimg_ext}"
             return img_url
         except Exception as e:
             raise TrackerError(f"Failed to re host image to ptpimg host: {e}")
+
+    def _upload_images_to_ptp(self, urls: list[str], ptp_img_api_key: str) -> list[str]:
+        images = []
+        for img in urls:
+            if "ptpimg.me" not in img:
+                images.append(self._ptp_img_upload(img, ptp_img_api_key))
+            else:
+                images.append(img)
+        return images
+
+    def _extract_image_urls(self, url_data: str) -> list[str]:
+        get_raw_url_images = re.findall(r"\[url=(.+?)\]", url_data)
+        if get_raw_url_images:
+            return get_raw_url_images
+
+        get_raw_img_images = re.findall(r"\[img\](.+?)\[/", url_data)
+        if get_raw_img_images:
+            return get_raw_img_images
+
+        raise TrackerError("Cannot detect image URLs")
 
     def _remaster_title(self, imdb_data: Movie, file_input: Path) -> str:
         remaster_title = set()
