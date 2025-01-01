@@ -52,6 +52,7 @@ class Config:
     ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
 
     MTV_SPECIFIC = (
+        "textm__api_key",
         "textm__username",
         "textm__password",
         "textm__totp",
@@ -60,13 +61,29 @@ class Config:
         "enum__mtv__source_origin",
     )
 
-    TL_SPECIFIC = ("textm__username", "textm__password", "textm__alt_2_fa_token")
+    TL_SPECIFIC = (
+        "textm__username",
+        "textm__password",
+        "textm__torrent_pass_key",
+        "textm__alt_2_fa_token",
+    )
 
     BHD_SPECIFIC = (
+        "textm__api_key",
         "textm__rss_key",
         "enum__bhd__promo",
         "enum__bhd__live_release",
         "check__internal",
+    )
+
+    PTP_SPECIFIC = (
+        "textm__api_user",
+        "textm__api_key",
+        "textm__username",
+        "textm__password",
+        "textm__totp",
+        "textm__ptpimg_api_key",
+        "check__reupload_images_to_ptpimg",
     )
 
     QBIT_SPECIFIC = ("category",)
@@ -86,7 +103,12 @@ class Config:
 
     USER_CONFIG_DIR = RUNTIME_DIR / "config" / "user"
 
+    TRACKER_COOKIE_PATH = RUNTIME_DIR / "cookies"
+
     def __init__(self):
+        # load various directories as needed
+        self.TRACKER_COOKIE_PATH.mkdir(exist_ok=True, parents=True)
+
         # keep track of plugins
         self.loaded_plugins: dict[str, "PluginPayload"] = {}
 
@@ -300,7 +322,6 @@ class Config:
             # tracker settings
             tracker_settings = tracker_data["settings"]
             tracker_settings["order"] = self.cfg_payload.tracker_order
-            tracker_settings["piece_sizes"] = self.cfg_payload.piece_sizes
 
             # more_than_tv tracker
             if "more_than_tv" not in tracker_data:
@@ -308,7 +329,6 @@ class Config:
             mtv_data = tracker_data["more_than_tv"]
             mtv_data["upload_enabled"] = self.cfg_payload.mtv_tracker.upload_enabled
             mtv_data["anonymous"] = self.cfg_payload.mtv_tracker.anonymous
-            mtv_data["api_key"] = self.cfg_payload.mtv_tracker.api_key
             mtv_data["announce_url"] = self.cfg_payload.mtv_tracker.announce_url
             mtv_data["enabled"] = self.cfg_payload.mtv_tracker.enabled
             mtv_data["source"] = self.cfg_payload.mtv_tracker.source
@@ -323,7 +343,6 @@ class Config:
             tl_data = tracker_data["torrent_leech"]
             tl_data["upload_enabled"] = self.cfg_payload.tl_tracker.upload_enabled
             tl_data["anonymous"] = self.cfg_payload.tl_tracker.anonymous
-            tl_data["api_key"] = self.cfg_payload.tl_tracker.api_key
             tl_data["announce_url"] = self.cfg_payload.tl_tracker.announce_url
             tl_data["enabled"] = self.cfg_payload.tl_tracker.enabled
             tl_data["source"] = self.cfg_payload.tl_tracker.source
@@ -338,7 +357,6 @@ class Config:
             bhd_data = tracker_data["beyond_hd"]
             bhd_data["upload_enabled"] = self.cfg_payload.bhd_tracker.upload_enabled
             bhd_data["anonymous"] = self.cfg_payload.bhd_tracker.anonymous
-            bhd_data["api_key"] = self.cfg_payload.bhd_tracker.api_key
             bhd_data["announce_url"] = self.cfg_payload.bhd_tracker.announce_url
             bhd_data["enabled"] = self.cfg_payload.bhd_tracker.enabled
             bhd_data["source"] = self.cfg_payload.bhd_tracker.source
@@ -346,6 +364,20 @@ class Config:
             bhd_data["nfo_template"] = self.cfg_payload.bhd_tracker.nfo_template
             bhd_data["max_piece_size"] = self.cfg_payload.bhd_tracker.max_piece_size
             bhd_data["specific_params"] = self.cfg_payload.bhd_tracker.specific_params
+
+            # PassThePopcorn tracker
+            if "pass_the_popcorn" not in tracker_data:
+                tracker_data["pass_the_popcorn"] = tomlkit.table()
+            ptp_data = tracker_data["pass_the_popcorn"]
+            ptp_data["upload_enabled"] = self.cfg_payload.ptp_tracker.upload_enabled
+            ptp_data["anonymous"] = self.cfg_payload.ptp_tracker.anonymous
+            ptp_data["announce_url"] = self.cfg_payload.ptp_tracker.announce_url
+            ptp_data["enabled"] = self.cfg_payload.ptp_tracker.enabled
+            ptp_data["source"] = self.cfg_payload.ptp_tracker.source
+            ptp_data["comments"] = self.cfg_payload.ptp_tracker.comments
+            ptp_data["nfo_template"] = self.cfg_payload.ptp_tracker.nfo_template
+            ptp_data["max_piece_size"] = self.cfg_payload.ptp_tracker.max_piece_size
+            ptp_data["specific_params"] = self.cfg_payload.ptp_tracker.specific_params
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -408,7 +440,6 @@ class Config:
             # movie rename
             movie_rename = self._toml_data["movie_rename"]
             movie_rename["mvr_enabled"] = self.cfg_payload.mvr_enabled
-            movie_rename["mvr_imdb_parse"] = self.cfg_payload.mvr_imdb_parse
             movie_rename["mvr_replace_illegal_chars"] = (
                 self.cfg_payload.mvr_replace_illegal_chars
             )
@@ -617,7 +648,6 @@ class Config:
             # TODO: this may need to be handled differently at some point, this will currently wipe out the users saved trackers
             # as we update new ones.
             tracker_order = tracker_settings.get("order")
-            piece_sizes = tracker_settings.get("piece_sizes", {})
             tracker_settings_order = tracker_order
             if not tracker_settings_order or (
                 len(tracker_settings_order) < len(self.default_tracker_order)
@@ -648,6 +678,14 @@ class Config:
                     and bhd_tracker.specific_params.get(bhd_specific) != 0
                 ):
                     bhd_tracker.specific_params[bhd_specific] = ""
+
+            ptp_tracker = TrackerInfo(**tracker_data["pass_the_popcorn"])
+            for ptp_specific in self.PTP_SPECIFIC:
+                if (
+                    not ptp_tracker.specific_params.get(ptp_specific)
+                    and ptp_tracker.specific_params.get(ptp_specific) != 0
+                ):
+                    ptp_tracker.specific_params[ptp_specific] = ""
 
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]
@@ -721,17 +759,16 @@ class Config:
                 frame_forge=frame_forge,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
                 tracker_order=tracker_settings_order,
-                piece_sizes=piece_sizes,
                 mtv_tracker=mtv_tracker,
                 tl_tracker=tl_tracker,
                 bhd_tracker=bhd_tracker,
+                ptp_tracker=ptp_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
                 transmission=transmission,
                 watch_folder=watch_folder,
                 mvr_enabled=movie_rename.get("mvr_enabled", False),
-                mvr_imdb_parse=movie_rename.get("mvr_imdb_parse", False),
                 mvr_replace_illegal_chars=movie_rename.get(
                     "mvr_replace_illegal_chars", True
                 ),
@@ -840,6 +877,7 @@ class Config:
             TrackerSelection.MORE_THAN_TV: self.cfg_payload.mtv_tracker,
             TrackerSelection.TORRENT_LEECH: self.cfg_payload.tl_tracker,
             TrackerSelection.BEYOND_HD: self.cfg_payload.bhd_tracker,
+            TrackerSelection.PASS_THE_POPCORN: self.cfg_payload.ptp_tracker,
         }
 
     # TODO: call this from SETTINGS later

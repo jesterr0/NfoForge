@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 class TrackerInfo:
     upload_enabled: bool = True
     anonymous: bool = False
-    api_key: str | None = None
     announce_url: str | None = None
     enabled: bool = False
     source: str | None = None

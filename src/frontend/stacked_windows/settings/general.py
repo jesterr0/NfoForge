@@ -23,6 +23,7 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.image_hosts import ImageHostStackedWidget
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.stacked_windows.settings.base import BaseSettings
+from src.logger.nfo_forge_logger import LOG
 
 
 class GeneralSettings(BaseSettings):
@@ -422,6 +423,7 @@ class GeneralSettings(BaseSettings):
                 setattr(cur_host, field_name, field_value)
         self.config.cfg_payload.timeout = self.global_timeout_spinbox.value()
         self.config.cfg_payload.log_level = LogLevel(self.log_level_combo.currentData())
+        LOG.set_log_level(self.config.cfg_payload.log_level)
         self.config.cfg_payload.log_total = self.max_log_files_spinbox.value()
         self.updated_settings_applied.emit()
 

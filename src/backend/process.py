@@ -21,6 +21,8 @@ from src.backend.trackers import (
     tl_upload,
     BHDSearch,
     bhd_uploader,
+    ptp_uploader,
+    PTPSearch,
 )
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.torrents import generate_torrent, write_torrent, clone_torrent
@@ -77,6 +79,10 @@ class ProcessBackEnd:
                 tasks.append(
                     self._dupe_bhd(tracker_name=tracker_name, file_input=file_input)
                 )
+            elif TrackerSelection(tracker_name) == TrackerSelection.PASS_THE_POPCORN:
+                tasks.append(
+                    self._dupe_ptp(tracker_name=tracker_name, file_input=file_input)
+                )
 
         async_results = await asyncio.gather(*tasks)
 
@@ -99,7 +105,7 @@ class ProcessBackEnd:
         media_search_payload: MediaSearchPayload,
     ) -> tuple[TrackerSelection, Path] | None:
         mtv_search = MTVSearch(
-            self.config.cfg_payload.mtv_tracker.api_key,
+            self.config.cfg_payload.mtv_tracker.specific_params["textm__api_key"],
             timeout=self.config.cfg_payload.timeout,
         ).search(
             title=file_input.stem,
@@ -128,11 +134,28 @@ class ProcessBackEnd:
         bhd_params = self.config.cfg_payload.bhd_tracker.specific_params
         bhd_search = BHDSearch(
             api_key=self.config.cfg_payload.bhd_tracker.api_key,
-            rss_key=bhd_params.get("textm__rss_key"),
+            rss_key=bhd_params["textm__rss_key"],
             timeout=self.config.cfg_payload.timeout,
         ).search(file_input.stem)
         if bhd_search:
             return TrackerSelection(tracker_name), bhd_search
+
+    async def _dupe_ptp(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, Path] | None:
+        ptp_params = self.config.cfg_payload.ptp_tracker.specific_params
+        ptp_search = PTPSearch(
+            api_user=ptp_params["textm__api_user"],
+            api_key=ptp_params["textm__api_key"],
+            timeout=self.config.cfg_payload.timeout,
+        ).search(
+            movie_title=self.config.media_search_payload.title,
+            movie_year=self.config.media_search_payload.year,
+            file_name=file_input.stem,
+            imdb_id=self.config.media_search_payload.imdb_id,
+        )
+        if ptp_search:
+            return TrackerSelection(tracker_name), ptp_search
 
     def process_trackers(
         self,
@@ -365,7 +388,9 @@ class ProcessBackEnd:
             )
         elif tracker == TrackerSelection.TORRENT_LEECH:
             return tl_upload(
-                api_key=self.config.cfg_payload.tl_tracker.api_key,
+                announce_key=self.config.cfg_payload.tl_tracker.specific_params[
+                    "textm__torrent_pass_key"
+                ],
                 nfo=nfo,
                 torrent_file=torrent_file,
                 mediainfo_obj=mediainfo_obj,
@@ -374,7 +399,7 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.BEYOND_HD:
             tracker_payload = self.config.cfg_payload.bhd_tracker
             return bhd_uploader(
-                api_key=tracker_payload.api_key,
+                api_key=tracker_payload.specific_params["textm__api_key"],
                 torrent_file=torrent_file,
                 file_input=file_input,
                 media_mode=media_mode,
@@ -387,6 +412,30 @@ class ProcessBackEnd:
                 ),
                 anonymous=tracker_payload.anonymous,
                 promo=BHDPromo(tracker_payload.specific_params["enum__bhd__promo"]),
+                timeout=self.config.cfg_payload.timeout,
+            )
+        elif tracker == TrackerSelection.PASS_THE_POPCORN:
+            tracker_payload = self.config.cfg_payload.ptp_tracker
+            return ptp_uploader(
+                api_user=tracker_payload.specific_params["textm__api_user"],
+                api_key=tracker_payload.specific_params["textm__api_key"],
+                username=tracker_payload.specific_params["textm__username"],
+                password=tracker_payload.specific_params["textm__password"],
+                announce_url=tracker_payload.announce_url,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                url_data=self.config.shared_data.url_data,
+                nfo=nfo,
+                re_upload_images_to_ptp=tracker_payload.specific_params[
+                    "check__reupload_images_to_ptpimg"
+                ],
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=self.config.media_search_payload,
+                ptp_img_api_key=tracker_payload.specific_params[
+                    "textm__ptpimg_api_key"
+                ],
+                cookie_dir=self.config.TRACKER_COOKIE_PATH,
+                totp=tracker_payload.specific_params["textm__totp"],
                 timeout=self.config.cfg_payload.timeout,
             )
 
