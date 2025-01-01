@@ -30,6 +30,7 @@ class MainWindow(QMainWindow):
     wizard_process_btn_set_hidden = Signal()
     hide_main_window = Signal(bool)
     update_status_bar = Signal(str, int)  # message, timeout[milliseconds]
+    clear_status_bar = Signal()
     update_status_bar_label = Signal(str)
     open_log_dir = Signal()
 
@@ -41,6 +42,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{program_name} {__version__}")
         self.status_bar = QStatusBar()
         self.update_status_bar.connect(self.update_status_tip)
+        self.clear_status_bar.connect(self.clear_message)
         self.update_status_bar_label.connect(self.update_status_label)
         self.setStatusBar(self.status_bar)
         self.resize(650, 550)
@@ -156,7 +158,14 @@ class MainWindow(QMainWindow):
     @Slot(str, int)
     def update_status_tip(self, message: str, timer: int) -> None:
         message = message if message else ""
-        self.status_bar.showMessage(message, timer)
+        if timer > 0:
+            self.status_bar.showMessage(message, timer)
+        else:
+            self.status_bar.showMessage(message)
+
+    @Slot()
+    def clear_status_tip(self) -> None:
+        self.status_bar.clearMessage()
 
     @Slot(str)
     def update_status_label(self, data: str) -> None:
