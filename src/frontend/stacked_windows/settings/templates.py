@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
+from src.enums.tracker_selection import TrackerSelection
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -367,6 +368,9 @@ class TemplatesSettings(BaseSettings):
     def _save_settings(self) -> None:
         self._save_template_edited()
 
+        if not self._validate_tracker_templates():
+            return
+
         if not self._save_inputs_valid():
             return
 
@@ -434,6 +438,26 @@ class TemplatesSettings(BaseSettings):
                 is QMessageBox.StandardButton.Yes
             ):
                 self.template_selector.save_template()
+
+    def _validate_tracker_templates(self) -> bool:
+        for tracker in self.template_selector.popup_button.get_checked_items():
+            if TrackerSelection(tracker) is TrackerSelection.PASS_THE_POPCORN:
+                ptp_template = self.template_selector.backend.read_template(
+                    self.config.cfg_payload.ptp_tracker.nfo_template
+                )
+                if ptp_template:
+                    ptp_match_rule = (
+                        r"^\n*?\s*?\{\{ media_info \}\}\n*?\s*\{\{ screen_shots \}\}"
+                    )
+                    if not re.match(ptp_match_rule, ptp_template):
+                        QMessageBox.warning(
+                            self,
+                            "Warning",
+                            "PassThePopcorn requires MediaInfo first followed by at least three screenshots. "
+                            "The start of your template should be:\n{{ media_info }}\n{{ screen_shots }}\n...",
+                        )
+                        return False
+        return True
 
     def _save_inputs_valid(self) -> bool:
         inputs_to_validate = (
