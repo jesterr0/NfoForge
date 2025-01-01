@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 @dataclass(slots=True)
 class TrackerInfo:
     upload_enabled: bool = True
-    anonymous: bool = False
     announce_url: str | None = None
     enabled: bool = False
     source: str | None = None
