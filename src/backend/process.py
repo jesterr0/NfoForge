@@ -283,7 +283,6 @@ class ProcessBackEnd:
                         file_input=media_input,
                         mediainfo_obj=mediainfo_obj,
                         media_mode=media_mode,
-                        anonymous=tracker_info.anonymous,
                         media_search_payload=media_search_payload,
                         nfo=nfo,
                     )
@@ -362,7 +361,6 @@ class ProcessBackEnd:
         file_input: Path,
         mediainfo_obj: MediaInfo,
         media_mode: MediaMode,
-        anonymous: bool,
         media_search_payload: MediaSearchPayload,
         nfo: str,
     ) -> Path | None:
@@ -380,7 +378,7 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 genre_ids=media_search_payload.genres,
                 media_mode=media_mode,
-                anonymous=anonymous,
+                anonymous=tracker_payload.specific_params["check__anonymous"],
                 source_origin=MTVSourceOrigin(
                     tracker_payload.specific_params["enum__mtv__source_origin"]
                 ),
@@ -410,7 +408,7 @@ class ProcessBackEnd:
                 live_release=BHDLiveRelease(
                     tracker_payload.specific_params["enum__bhd__live_release"]
                 ),
-                anonymous=tracker_payload.anonymous,
+                anonymous=tracker_payload.specific_params["check__anonymous"],
                 promo=BHDPromo(tracker_payload.specific_params["enum__bhd__promo"]),
                 timeout=self.config.cfg_payload.timeout,
             )
