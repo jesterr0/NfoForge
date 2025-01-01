@@ -3,6 +3,7 @@ import requests
 from itertools import zip_longest
 
 from imdb import Cinemagoer
+from imdb.Movie import Movie
 from guessit import guessit
 
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
@@ -90,6 +91,7 @@ class MediaSearchBackEnd:
                                 "poster_path": mv_poster_path,
                                 "genre_ids": mv_genre_ids,
                                 "media_type": "Movie",
+                                "raw_data": movie_result,
                             }
                         }
                     )
@@ -141,6 +143,7 @@ class MediaSearchBackEnd:
                                 "poster_path": tv_poster_path,
                                 "genre_ids": tv_genre_ids,
                                 "media_type": "Series",
+                                "raw_data": tv_result,
                             }
                         }
                     )
@@ -174,15 +177,7 @@ class MediaSearchBackEnd:
         return title, year
 
     @staticmethod
-    def parse_imdb(imdb_id: str) -> tuple[str | None, int | None, str | None] | None:
+    def parse_imdb(imdb_id: str) -> Movie | None:
         imdb_parse = Cinemagoer()
         get_movie = imdb_parse.get_movie(imdb_id.replace("t", ""))
-        if get_movie:
-            title = get_movie.get("title")
-            year = get_movie.get("year")
-            original_title = get_movie.get("original_title")
-            return (
-                title if isinstance(title, str) else None,
-                year if isinstance(year, int) else None,
-                original_title if isinstance(original_title, str) else None,
-            )
+        return get_movie if get_movie else None

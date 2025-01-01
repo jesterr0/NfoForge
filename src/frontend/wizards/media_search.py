@@ -1,6 +1,7 @@
 import traceback
 import webbrowser
 from collections import OrderedDict
+from imdb.Movie import Movie
 from guessit import guessit
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -26,7 +27,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QCursor, QPixmap
 
 from src.config.config import Config
-from src.exceptions import MediaFileNotFoundError, MediaParsingError
+from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
 from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.backend.media_search import MediaSearchBackEnd
@@ -55,7 +56,7 @@ class QueuedWorker(QThread):
 
 
 class IMDBParseWorker(QThread):
-    job_finished = Signal(tuple)
+    job_finished = Signal(object)
     job_failed = Signal(str)
 
     def __init__(self, backend: MediaSearchBackEnd, imdb_id: str) -> None:
@@ -65,18 +66,10 @@ class IMDBParseWorker(QThread):
 
     def run(self) -> None:
         try:
-            media_title = None
-            media_year = None
-            media_original_title = None
-
-            parse_imdb_data = self.backend.parse_imdb(self.imdb_id)
-            if parse_imdb_data:
-                media_title, media_year, media_original_title = parse_imdb_data
-
-            self.job_finished.emit((media_title, media_year, media_original_title))
+            self.job_finished.emit(self.backend.parse_imdb(self.imdb_id))
         except Exception as e:
             self.job_failed.emit(
-                f"Failed to parse IMDB: ({e})\n{traceback.format_exc()}"
+                f"Failed to parse IMDb: ({e})\n{traceback.format_exc()}"
             )
 
 
@@ -90,7 +83,6 @@ class MediaSearch(BaseWizardPage):
         self.main_window = parent
 
         self.config = config
-        self.payload = self.config.media_search_payload
         self.backend = MediaSearchBackEnd(api_key=self.config.cfg_payload.tmdb_api_key)
         self.queued_worker: QueuedWorker | None = None
         self.current_source = None
@@ -99,6 +91,8 @@ class MediaSearch(BaseWizardPage):
         self.imdb_parsed = False
 
         self.listbox = QListWidget()
+        self.listbox.setFrameShape(QFrame.Shape.Box)
+        self.listbox.setFrameShadow(QFrame.Shadow.Sunken)
         self.listbox.itemSelectionChanged.connect(self._select_media)
 
         self.plot_text = QPlainTextEdit()
@@ -218,15 +212,7 @@ class MediaSearch(BaseWizardPage):
         if invalid_entries:
             return False
         else:
-            # TODO: should we thread this and display loading in the UI (for imdb parse)?
-            # TMDB is the default information provided
-            media_title = self.config.media_search_payload.title
-            media_year = self.config.media_search_payload.year
-            media_original_title = self.config.media_search_payload.original_title
-            self._update_payload_data(media_title, media_year, media_original_title)
-
-            # if the user wants to use IMDb
-            if not self.imdb_parsed and self.config.cfg_payload.mvr_imdb_parse:
+            if not self.imdb_parsed:
                 self._search_imdb()
                 return False
 
@@ -239,31 +225,47 @@ class MediaSearch(BaseWizardPage):
         )
         self.imdb_worker.job_finished.connect(self._detected_imdb_data)
         self.imdb_worker.job_failed.connect(self._failed_search)
+        self.main_window.update_status_bar.emit("Parsing IMDb, please wait...", 0)
         self.imdb_worker.start()
 
-    @Slot(tuple)
-    def _detected_imdb_data(
-        self, media_data: tuple[str | None, int | None, str | None]
-    ) -> None:
-        if media_data:
-            media_title, media_year, media_original_title = media_data
-            self._update_payload_data(media_title, media_year, media_original_title)
+    @Slot(object)
+    def _detected_imdb_data(self, media_data: Movie | None) -> None:
+        self._update_payload_data(media_data)
         self.imdb_parsed = True
         self.main_window.set_disabled.emit(False)
         if self.main_window.wizard:
             self.main_window.wizard.next()
+            self.main_window.clear_status_bar.emit()
 
-    def _update_payload_data(
-        self,
-        media_title: str | None,
-        media_year: int | None,
-        media_original_title: str | None,
-    ):
-        self.payload.imdb_id = self.imdb_id_entry.text()
-        self.payload.tmdb_id = self.tmdb_id_entry.text()
-        self.payload.title = media_title
-        self.payload.year = media_year
-        self.payload.original_title = media_original_title
+    def _update_payload_data(self, media_data: Movie | None = None):
+        current_item = self.listbox.currentItem().text()
+        item_data = self.backend.media_data.get(current_item)
+        if not item_data:
+            raise MediaSearchError("Failed to parse TMDB/IMDb")
+
+        self.config.media_search_payload.imdb_id = self.imdb_id_entry.text()
+        self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
+        self.config.media_search_payload.tmdb_data = item_data.get("raw_data")
+
+        if media_data:
+            self.config.media_search_payload.imdb_data = media_data
+            self.config.media_search_payload.title = (
+                str(media_data.get("title")) if media_data.get("title") else None
+            )
+            try:
+                year = int(str(media_data.get("year")))
+            except ValueError:
+                year = None
+            self.config.media_search_payload.year = year
+            self.config.media_search_payload.original_title = (
+                str(media_data.get("original title"))
+                if media_data.get("original title")
+                else None
+            )
+            genres = None
+            if isinstance(item_data.get("genre_ids"), list):
+                genres = item_data.get("genre_ids")
+            self.config.media_search_payload.genres = genres if genres else []
 
     def isComplete(self):
         """Overrides isComplete method to control the next button"""
@@ -365,6 +367,7 @@ class MediaSearch(BaseWizardPage):
         self.search_entry.clear()
         self.search_entry.setPlaceholderText("Manually input title")
         self.main_window.set_disabled.emit(False)
+        self.main_window.clear_status_bar.emit()
 
     @Slot()
     def _select_media(self):
@@ -377,14 +380,6 @@ class MediaSearch(BaseWizardPage):
             self.rating_label.setText(item_data.get("vote_average"))
             self.release_date_label.setText(item_data.get("full_release_date"))
             self.media_type_label.setText(item_data.get("media_type"))
-
-            # set non ui related stuff on media selection click event
-            self.config.media_search_payload.title = item_data.get("title")
-            self.config.media_search_payload.original_title = item_data.get(
-                "original_title"
-            )
-            self.config.media_search_payload.year = item_data.get("year")
-            self.config.media_search_payload.genres = item_data.get("genre_ids")
 
     @Slot()
     def _open_imdb_link(self, _):
