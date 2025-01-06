@@ -1,4 +1,3 @@
-from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Slot
@@ -39,42 +38,11 @@ class TrackersPage(BaseWizardPage):
             )
             return False
 
-        confirm = self.confirm_trackers(trackers)
-        if not confirm:
-            QMessageBox.information(
-                self,
-                "Warning",
-                "You must supply 'API Key' and 'Announce URL' for the selected tracker(s)",
-            )
-            return False
-
         self.config.shared_data.selected_trackers = trackers
 
         self.tracker_selection.save_tracker_info()
 
         self.config.save_config()
-        return True
-
-    def confirm_trackers(self, trackers: Iterable) -> bool:
-        """
-        Check that the minimum required inputs are supplied.
-        At the moment this works for the supported trackers but it
-        might need to be expanded on and handled differently as we
-        add more trackers.
-        """
-        for item in trackers:
-            tracker_item = self.config.tracker_map[item]
-            if any(
-                not value
-                for value in (
-                    # TODO: we'll need to add other checks potentially here?
-                    # TODO: this is technically not needed, as it's in the announce URL, look into this further!
-                    # tracker_item.api_key,
-                    tracker_item.announce_url,
-                )
-            ):
-                return False
-
         return True
 
     @Slot()
