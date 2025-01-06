@@ -31,6 +31,7 @@ from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.rtorrent import RTorrent
 from src.backend.torrent_clients.transmission import Transmission
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.tracker_search_result import TrackerSearchResult
 from src.nf_jinja2 import Jinja2TemplateEngine
 
 
@@ -102,7 +103,7 @@ class ProcessBackEnd:
         tracker_name: str,
         file_input: Path,
         media_search_payload: MediaSearchPayload,
-    ) -> tuple[TrackerSelection, Path] | None:
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
         mtv_search = MTVSearch(
             self.config.cfg_payload.mtv_tracker.api_key,
             timeout=self.config.cfg_payload.timeout,
@@ -116,10 +117,11 @@ class ProcessBackEnd:
 
     async def _dupe_tl(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, Path] | None:
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
         tl_search = TLSearch(
             username=self.config.cfg_payload.tl_tracker.username,
             password=self.config.cfg_payload.tl_tracker.password,
+            cookie_dir=self.config.TRACKER_COOKIE_PATH,
             alt_2_fa_token=self.config.cfg_payload.tl_tracker.alt_2_fa_token,
             timeout=self.config.cfg_payload.timeout,
         ).search(file_input)
@@ -128,7 +130,7 @@ class ProcessBackEnd:
 
     async def _dupe_bhd(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, Path] | None:
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
         bhd_search = BHDSearch(
             api_key=self.config.cfg_payload.bhd_tracker.api_key,
             rss_key=self.config.cfg_payload.bhd_tracker.rss_key,
@@ -139,7 +141,7 @@ class ProcessBackEnd:
 
     async def _dupe_ptp(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, Path] | None:
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
         ptp_search = PTPSearch(
             api_user=self.config.cfg_payload.ptp_tracker.api_user,
             api_key=self.config.cfg_payload.ptp_tracker.api_key,
@@ -376,6 +378,7 @@ class ProcessBackEnd:
                 media_mode=media_mode,
                 anonymous=bool(tracker_payload.anonymous),
                 source_origin=tracker_payload.source_origin,
+                cookie_dir=self.config.TRACKER_COOKIE_PATH,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker == TrackerSelection.TORRENT_LEECH:
