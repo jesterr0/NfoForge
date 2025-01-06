@@ -754,7 +754,7 @@ class PTPSearch:
         movie_year: int,
         file_name: str,
         imdb_id: str | None = None,
-    ) -> list[TrackerSearchResult | None]:
+    ) -> list[TrackerSearchResult]:
         results = []
 
         headers = {

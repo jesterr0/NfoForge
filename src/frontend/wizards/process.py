@@ -380,7 +380,8 @@ class ProcessPage(BaseWizardPage):
 
         # handle rename if we're uploading
         if self.processing_mode == UploadProcessMode.UPLOAD:
-            if renamed_input and (og_input != renamed_input):
+            # we're doing string comparison of inputs for case sensitive vs case insensitive systems
+            if renamed_input and (str(og_input) != str(renamed_input)):
                 self._on_text_update(
                     f"Renaming input file:\n'{og_input.name}' -> '{renamed_input.name}'\n"
                 )
