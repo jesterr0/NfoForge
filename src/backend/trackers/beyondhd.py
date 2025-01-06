@@ -264,11 +264,12 @@ class BHDSearch:
         self._rss_key = rss_key
         self._timeout = timeout
 
-    def search(self, title: str) -> list[TrackerSearchResult | None]:
+    def search(self, title: str) -> list[TrackerSearchResult]:
         payload = {"action": "search", "search": title}
         if self._rss_key:
             payload["rsskey"] = self._rss_key
 
+        results = []
         try:
             LOG.info(LOG.LOG_SOURCE.BE, f"Searching BeyondHD for title: {title}")
             response = requests.post(
@@ -282,12 +283,12 @@ class BHDSearch:
             results = self._convert_response(response_json.get("results", []))
             LOG.info(LOG.LOG_SOURCE.BE, f"Total results found: {len(results)}")
             LOG.debug(LOG.LOG_SOURCE.BE, f"Total results found: {results}")
-            return results
-
         except requests.exceptions.RequestException as error_message:
             raise TrackerError(error_message)
 
-    def _convert_response(self, data: list[dict]) -> list[TrackerSearchResult | None]:
+        return results
+
+    def _convert_response(self, data: list[dict]) -> list[TrackerSearchResult]:
         results = []
 
         for release in data:
