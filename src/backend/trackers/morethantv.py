@@ -1,6 +1,7 @@
 import guessit
 import re
 import requests
+import pickle
 import pyotp
 from bs4 import BeautifulSoup, Tag as bs4Tag
 from collections.abc import Sequence
@@ -42,12 +43,16 @@ def mtv_uploader(
     media_mode: MediaMode,
     anonymous: bool,
     source_origin: MTVSourceOrigin,
+    cookie_dir: Path,
     timeout: int,
 ):
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
     uploader = MTVUploader(
-        torrent_input=torrent_file, mediainfo_obj=mediainfo_obj, timeout=timeout
+        torrent_input=torrent_file,
+        mediainfo_obj=mediainfo_obj,
+        cookie_dir=cookie_dir,
+        timeout=timeout,
     )
     auth_token = uploader.login(username=username, password=password, totp=totp)
     if not auth_token:
@@ -75,15 +80,26 @@ class MTVUploader:
     SEARCH_URL = "https://www.morethantv.me/api/torznab"
 
     def __init__(
-        self, torrent_input: Path, mediainfo_obj: MediaInfo, timeout: int = 60
+        self,
+        torrent_input: Path,
+        mediainfo_obj: MediaInfo,
+        cookie_dir: Path,
+        timeout: int = 60,
     ) -> None:
         self.torrent_input = torrent_input
         self.mediainfo_obj = mediainfo_obj
+        self.cookie_path = cookie_dir / "mtv_cookie.pkl"
         self.timeout = timeout
 
         self._session = requests.Session()
 
     def login(self, username: str, password: str, totp: str):
+        if self._load_cookies():
+            cookie_token = self._validate_session()
+            if cookie_token:
+                LOG.debug(LOG.LOG_SOURCE.BE, "MoreThanTV cookies valid, skipping login")
+                return cookie_token
+
         # Initial GET to load the login page
         login_page = self._session.get(
             self.LOGIN_URL, headers=TRACKER_HEADERS, timeout=self.timeout
@@ -138,7 +154,10 @@ class MTVUploader:
                 LOG.LOG_SOURCE.BE,
                 "Successfully logged into MoreThanTv",
             )
-            return self.get_auth_key(final_response.text)
+            auth_token = self.get_auth_key(final_response.text)
+            if auth_token:
+                self._save_cookies()
+            return auth_token
         else:
             auth_key_failed_msg = "Failed to get authentication token (login failure)"
             LOG.error(
@@ -180,6 +199,32 @@ class MTVUploader:
             return two_factor_response
 
         return login_response
+
+    def _validate_session(self) -> str | None:
+        """Perform a lightweight request to validate the session, if valid the required token is returned."""
+        try:
+            with self._session.get(self.UPLOAD_URL) as response:
+                return self.get_auth_key(response.text)
+        except requests.RequestException:
+            return None
+
+    def _save_cookies(self) -> None:
+        with open(self.cookie_path, "wb") as file:
+            pickle.dump(self._session.cookies, file)
+        LOG.debug(LOG.LOG_SOURCE.BE, f"MoreThanTv cookies saved: {self.cookie_path}")
+
+    def _load_cookies(self) -> bool:
+        if self.cookie_path.exists():
+            with open(self.cookie_path, "rb") as file:
+                cookies = pickle.load(file)
+                self._session.cookies.update(cookies)
+            LOG.debug(
+                LOG.LOG_SOURCE.BE,
+                f"MoreThanTv cookies loaded from {self.cookie_path}",
+            )
+            return True
+        LOG.debug(LOG.LOG_SOURCE.BE, "MoreThanTv cookies not found")
+        return False
 
     def upload(
         self,
