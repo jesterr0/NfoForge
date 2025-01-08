@@ -696,7 +696,7 @@ class Config:
                 nfo_template=bhd_tracker_data["nfo_template"],
                 max_piece_size=bhd_tracker_data["max_piece_size"],
                 anonymous=bhd_tracker_data["anonymous"],
-                api_key=bhd_tracker_data["rss_key"],
+                api_key=bhd_tracker_data["api_key"],
                 rss_key=bhd_tracker_data["rss_key"],
                 promo=BHDPromo(bhd_tracker_data["promo"]),
                 live_release=BHDLiveRelease(bhd_tracker_data["live_release"]),
