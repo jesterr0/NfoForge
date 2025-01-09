@@ -204,13 +204,16 @@ class MoviesSettings(BaseSettings):
 
     def _mvr_clean_title_rules_change(self) -> None:
         replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
+        defaults = self.token_table.replacement_list_widget.DEFAULT_RULES
         if not self.config.cfg_payload.mvr_clean_title_rules_modified:
-            defaults = self.token_table.replacement_list_widget.DEFAULT_RULES
-            if set(replacements) != set(defaults):
-                self.config.cfg_payload.mvr_clean_title_rules_modified = True
             self.config.cfg_payload.mvr_clean_title_rules = defaults
         else:
             self.config.cfg_payload.mvr_clean_title_rules = replacements
+
+        if set(replacements) != set(defaults):
+            self.config.cfg_payload.mvr_clean_title_rules_modified = True
+        else:
+            self.config.cfg_payload.mvr_clean_title_rules_modified = False
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(False)
@@ -219,3 +222,4 @@ class MoviesSettings(BaseSettings):
         self.colon_replacement_combo.setCurrentIndex(0)
         self.movie_format_entry.setText(self.default_user_token)
         self.token_table.reset()
+        self.config.cfg_payload.mvr_clean_title_rules_modified = False
