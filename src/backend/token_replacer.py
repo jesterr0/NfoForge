@@ -433,16 +433,28 @@ class TokenReplacer:
         try:
             formatted_title = self.token_string
             for key, value in filled_tokens.items():
-                formatted_title = formatted_title.replace(f"{{{key}}}", value)
+                if key != "movie_clean_title":
+                    formatted_title = formatted_title.replace(f"{{{key}}}", value)
+                    formatted_title = self._colon_replace(
+                        self.colon_replace, formatted_title
+                    )
+
+            # apply specific formatting for 'movie_clean_title'
+            if "movie_clean_title" in formatted_title and filled_tokens:
+                formatted_title = formatted_title.format(
+                    movie_clean_title=filled_tokens["movie_clean_title"]
+                )
 
             # remove unfilled tokens if needed
             formatted_title = self._remove_unfilled_tokens(formatted_title)
+
+            # apply final formatting
             formatted_title = re.sub(r"\s{1,}", " ", formatted_title)
-            formatted_title = re.sub(r"\s-|\s-\s|-\s", "-", formatted_title)
-            formatted_title = self._colon_replace(self.colon_replace, formatted_title)
             formatted_title = re.sub(r"\.{2,}", ".", formatted_title)
             formatted_file_name = re.sub(r"\s{1,}", ".", formatted_title)
             formatted_file_name = re.sub(r"\.{2,}", ".", formatted_file_name)
+            formatted_file_name = re.sub(r":\.", ".", formatted_file_name)
+            formatted_file_name = re.sub(r"\.-\.|\.-|-\.", "-", formatted_file_name)
 
             # return the formatted title and file name
             return formatted_title, formatted_file_name + self.media_input.suffix
