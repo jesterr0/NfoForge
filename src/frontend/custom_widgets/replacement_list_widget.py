@@ -2,6 +2,7 @@ import re
 from collections.abc import Sequence
 from PySide6.QtWidgets import (
     QApplication,
+    QMessageBox,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -20,6 +21,7 @@ class ReplacementListWidget(QTableWidget):
 
     # signals
     rows_changed = Signal(list)
+    set_defaults = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -73,6 +75,16 @@ class ReplacementListWidget(QTableWidget):
         if current_row >= 0:
             self.removeRow(current_row)
             self.rows_changed.emit(self.get_replacements())
+            if (
+                current_row == 0
+                and QMessageBox.question(
+                    self,
+                    "Defaults",
+                    "Would you like to set this back to the default configuration?",
+                )
+                == QMessageBox.StandardButton.Yes
+            ):
+                self.set_defaults.emit()
 
     def move_down(self) -> None:
         row = self.currentRow()
