@@ -450,6 +450,9 @@ class Config:
             movie_rename["mvr_clean_title_rules"] = (
                 self.cfg_payload.mvr_clean_title_rules
             )
+            movie_rename["mvr_clean_title_rules_modified"] = (
+                self.cfg_payload.mvr_clean_title_rules_modified
+            )
             movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
 
             # screenshots
@@ -815,6 +818,9 @@ class Config:
                     movie_rename.get("mvr_colon_replacement", 2)
                 ),
                 mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
+                mvr_clean_title_rules_modified=movie_rename[
+                    "mvr_clean_title_rules_modified"
+                ],
                 mvr_token=movie_rename.get(
                     "mvr_token",
                     (
