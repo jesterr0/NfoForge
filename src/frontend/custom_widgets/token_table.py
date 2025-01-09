@@ -21,25 +21,26 @@ from src.frontend.custom_widgets.replacement_list_widget import ReplacementListW
 
 
 class MovieCleanTitleReplacementWidget(QWidget):
-    DEFAULT_RULES = (
+    DEFAULT_RULES = [
         ("", "[unidecode]"),
         (r"&", "and"),
         (r"/", "\\"),
         (r"'", "[remove]"),
         (
-            r"(?<=\s)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
+            r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
             r"('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|"
             r"(\(|\)|\[|\]|\{|\})",
             "[space]",
         ),
         (r"\s{2,}", "[space]"),
-    )
+    ]
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setObjectName("movieCleanTitleReplacementWidget")
 
         self.replacement_list_widget = ReplacementListWidget(self)
+        self.replacement_list_widget.set_defaults.connect(self.apply_defaults)
         self.replacement_list_widget.setMinimumHeight(180)
 
         self.add_row_btn: QToolButton = build_auto_theme_icon_buttons(
