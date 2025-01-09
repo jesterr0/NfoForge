@@ -450,6 +450,9 @@ class Config:
             movie_rename["mvr_clean_title_rules"] = (
                 self.cfg_payload.mvr_clean_title_rules
             )
+            movie_rename["mvr_clean_title_rules_modified"] = (
+                self.cfg_payload.mvr_clean_title_rules_modified
+            )
             movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
 
             # screenshots
@@ -696,7 +699,7 @@ class Config:
                 nfo_template=bhd_tracker_data["nfo_template"],
                 max_piece_size=bhd_tracker_data["max_piece_size"],
                 anonymous=bhd_tracker_data["anonymous"],
-                api_key=bhd_tracker_data["rss_key"],
+                api_key=bhd_tracker_data["api_key"],
                 rss_key=bhd_tracker_data["rss_key"],
                 promo=BHDPromo(bhd_tracker_data["promo"]),
                 live_release=BHDLiveRelease(bhd_tracker_data["live_release"]),
@@ -815,6 +818,9 @@ class Config:
                     movie_rename.get("mvr_colon_replacement", 2)
                 ),
                 mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
+                mvr_clean_title_rules_modified=movie_rename[
+                    "mvr_clean_title_rules_modified"
+                ],
                 mvr_token=movie_rename.get(
                     "mvr_token",
                     (

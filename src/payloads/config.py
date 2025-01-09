@@ -82,6 +82,7 @@ class ConfigPayload:
     mvr_colon_replacement: ColonReplace
     mvr_token: str
     mvr_clean_title_rules: list[tuple[str, str]]
+    mvr_clean_title_rules_modified: bool
     mvr_release_group: str
 
     # screenshot settings
