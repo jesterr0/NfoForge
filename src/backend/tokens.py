@@ -157,6 +157,13 @@ class Tokens:
 
     # nfo forge specific tokens
     PROGRAM_INFO = NfoToken("{program_info}", "NfoForge vx.x.x")
+    SHARED_WITH = NfoToken("{shared_with}", "Shared with NfoForge vx.x.x")
+    SHARED_WITH_BBCODE = NfoToken(
+        "{shared_with_bbcode}", "Shared with NfoForge vx.x.x (hyperlink)"
+    )
+    SHARED_WITH_HTML = NfoToken(
+        "{shared_with_html}", "Shared with NfoForge vx.x.x (hyperlink)"
+    )
 
     @classmethod
     def get_token_objects(
