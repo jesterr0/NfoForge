@@ -32,3 +32,17 @@ class UnfilledTokenRemoval(CaseInsensitiveEnum):
             UnfilledTokenRemoval.ENTIRE_LINE: "Entire line",
         }
         return str_map[self]
+
+
+class SharedWithType(CaseInsensitiveEnum):
+    BASIC = auto_enum()
+    BBCODE = auto_enum()
+    HTML = auto_enum()
+
+    def __str__(self) -> str:
+        str_map = {
+            SharedWithType.BASIC: "Basic",
+            SharedWithType.BBCODE: "BBCODE",
+            SharedWithType.HTML: "HTML",
+        }
+        return str_map[self]

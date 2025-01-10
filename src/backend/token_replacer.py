@@ -12,7 +12,7 @@ from pathlib import Path
 from pymediainfo import MediaInfo, Track
 from typing import Type, Any
 
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval, SharedWithType
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.backend.tokens import Tokens, TokenData, TokenType, FileToken, NfoToken
 from src.backend.utils.media_info_utils import (
@@ -27,7 +27,7 @@ from src.backend.utils.language import get_language_mi, get_language_str
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.payloads.media_search import MediaSearchPayload
 from src.nf_jinja2 import Jinja2TemplateEngine
-from src.version import program_name, __version__
+from src.version import program_name, program_url, __version__
 
 
 class TokenReplacer:
@@ -426,6 +426,15 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.PROGRAM_INFO.token:
             return self._program_info(token_data)
+
+        elif token_data.bracket_token == Tokens.SHARED_WITH.token:
+            return self._shared_with(token_data, SharedWithType.BASIC)
+
+        elif token_data.bracket_token == Tokens.SHARED_WITH_BBCODE.token:
+            return self._shared_with(token_data, SharedWithType.BBCODE)
+
+        elif token_data.bracket_token == Tokens.SHARED_WITH_HTML.token:
+            return self._shared_with(token_data, SharedWithType.HTML)
 
         return ""
 
@@ -1151,6 +1160,22 @@ class TokenReplacer:
 
     def _program_info(self, token_data: TokenData) -> str:
         return self._optional_user_input(f"{program_name} v{__version__}", token_data)
+
+    def _shared_with(
+        self, token_data: TokenData, shared_by_type: SharedWithType
+    ) -> str:
+        output = ""
+        if shared_by_type is SharedWithType.BASIC:
+            output = f"Shared with {program_name} v{__version__}"
+        elif shared_by_type is SharedWithType.BBCODE:
+            output = (
+                "[align=right][size=1]"
+                f"Shared with [url={program_url}]{program_name} v{__version__}[/url]"
+                "[/size][/align]"
+            )
+        elif shared_by_type is SharedWithType.HTML:
+            output = f'<div style="text-align: right;"><a href="{program_url}">{program_name} v{__version__}</a></div>'
+        return self._optional_user_input(output, token_data)
 
     def _guessit_language(self) -> str:
         guess_lang = self.guess_name.get("language")
