@@ -16,7 +16,9 @@ Encoder                 : {{ releasers_name }}
 {% if media_info_short %}
 MediaInfo
 {{ media_info_short }}
-{% endif %}"""
+{% endif %}
+
+{{ shared_with_bbcode }}"""
 
 
 class TemplateSelectorBackEnd:
