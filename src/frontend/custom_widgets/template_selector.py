@@ -442,6 +442,8 @@ class SandBoxInputWizard(QObject):
 
 class SandBoxInput(QDialog):
     set_disabled = Signal(bool)
+    update_status_bar = Signal(str, int)
+    clear_status_bar = Signal()
 
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
@@ -475,6 +477,10 @@ class SandBoxInput(QDialog):
         self.accept_btn.setText("Accept")
         self.accept_btn.clicked.connect(self._accept)
 
+        self.fake_status_bar = QLabel(self)
+        self.update_status_bar.connect(self._update_fake_status_bar)
+        self.clear_status_bar.connect(self._clear_fake_status_bar)
+
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addWidget(self.sandbox_lbl)
         self.main_layout.addWidget(self.media_input)
@@ -488,6 +494,7 @@ class SandBoxInput(QDialog):
                 1, 20, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
             )
         )
+        self.main_layout.addWidget(self.fake_status_bar)
 
     @Slot(str)
     def _update_media_search(self, file_path: str) -> None:
@@ -508,3 +515,11 @@ class SandBoxInput(QDialog):
     @Slot(bool)
     def _set_disabled(self, disable: bool) -> None:
         self.setDisabled(disable)
+
+    @Slot(str, int)
+    def _update_fake_status_bar(self, msg: str, _timer: int) -> None:
+        self.fake_status_bar.setText(msg)
+
+    @Slot()
+    def _clear_fake_status_bar(self) -> None:
+        self.fake_status_bar.clear()
