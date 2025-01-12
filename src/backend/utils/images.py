@@ -100,7 +100,7 @@ def create_directories(
     img_selected.mkdir(parents=True)
 
     if sync_dir:
-        sync_directory = output_dir / "sync"
+        sync_directory = output_dir / "img_sync"
         if sync_directory.exists():
             shutil.rmtree(sync_directory)
         sync_directory.mkdir(parents=True)
