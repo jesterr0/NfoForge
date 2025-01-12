@@ -318,6 +318,7 @@ class TemplateSelector(QWidget):
                     self.sandbox_input.resize(self.main_window.size())
                     if self.sandbox_input.exec() == QDialog.DialogCode.Rejected:
                         self.preview_btn.setChecked(False)
+                        self.text_edit.setReadOnly(False)
                         return
 
             if not self.config.media_input_payload.encode_file:
@@ -361,6 +362,7 @@ class TemplateSelector(QWidget):
                     self, "Template Error", f"Error:\n{syntax_error}{broken_line_msg}"
                 )
                 self.preview_btn.setChecked(False)
+                self.text_edit.setReadOnly(False)
                 return
 
             try:
