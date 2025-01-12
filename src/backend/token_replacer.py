@@ -1182,17 +1182,31 @@ class TokenReplacer:
         if not guess_lang:
             return ""
 
-        get_instance = type(guess_lang)
-        if get_instance == list[BabelLanguage]:
-            return guess_lang[0].language
-        elif get_instance == BabelLanguage:
-            return guess_lang.language
+        if (
+            isinstance(guess_lang, list)
+            and guess_lang
+            and isinstance(guess_lang[0], BabelLanguage)
+        ):
+            babel_instance = guess_lang[0]
+        elif isinstance(guess_lang, BabelLanguage):
+            babel_instance = guess_lang
         elif isinstance(guess_lang, str):
             return guess_lang.upper()
         else:
             raise GuessitParsingError(
-                f"Can not accept an instance type of {get_instance}"
+                f"Cannot accept an instance type of {type(guess_lang)}"
             )
+
+        if hasattr(babel_instance, "alpha2"):
+            return babel_instance.alpha2.upper()
+        if hasattr(babel_instance, "alpha3"):
+            return babel_instance.alpha3.upper()
+        if hasattr(babel_instance, "name"):
+            return str(babel_instance.name)
+
+        raise GuessitParsingError(
+            "Failed to determine language from BabelLanguage instance"
+        )
 
     def _optional_user_input(self, token_str: str | None, token_data: TokenData) -> str:
         if token_str:
