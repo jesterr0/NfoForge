@@ -82,6 +82,7 @@ def build_app(folder_name: str, include_std_lib: bool):
             "run",
             "pyi-makespec",
             # "--onefile",
+            "-w",
             f"--icon={icon_path}",
             "--add-data",
             f"{dev_runtime};runtime",
