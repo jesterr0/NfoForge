@@ -30,6 +30,7 @@ Comprehensive documentation is on the way and will be available soon.
 - BeyondHD
 - MoreThanTv
 - TorrentLeech
+- PassThePopcorn
 
 _Supported trackers will be added overtime_
 
