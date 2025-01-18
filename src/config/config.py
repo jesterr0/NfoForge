@@ -14,7 +14,8 @@ from src.enums.image_host import ImageHost
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
-from src.enums.trackers import MTVSourceOrigin, BHDPromo, BHDLiveRelease
+from src.enums.trackers.morethantv import MTVSourceOrigin
+from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import TorrentClientSelection
@@ -30,6 +31,7 @@ from src.payloads.trackers import (
     TorrentLeechInfo,
     BeyondHDInfo,
     PassThePopcornInfo,
+    ReelFlixInfo,
 )
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
@@ -287,6 +289,7 @@ class Config:
             # api keys
             api_keys_data = self._toml_data["api_keys"]
             api_keys_data["tmdb_api_key"] = self.cfg_payload.tmdb_api_key
+            api_keys_data["tvdb_api_key"] = self.cfg_payload.tvdb_api_key
 
             # trackers
             tracker_data = self._toml_data["tracker"]
@@ -375,6 +378,30 @@ class Config:
             ptp_data["reupload_images_to_ptp_img"] = (
                 self.cfg_payload.ptp_tracker.reupload_images_to_ptp_img
             )
+
+            # ReelFliX tracker
+            if "reelflix" not in tracker_data:
+                tracker_data["reelflix"] = tomlkit.table()
+            rf_data = tracker_data["reelflix"]
+            rf_data["upload_enabled"] = self.cfg_payload.rf_tracker.upload_enabled
+            rf_data["announce_url"] = self.cfg_payload.rf_tracker.announce_url
+            rf_data["enabled"] = self.cfg_payload.rf_tracker.enabled
+            rf_data["source"] = self.cfg_payload.rf_tracker.source
+            rf_data["comments"] = self.cfg_payload.rf_tracker.comments
+            rf_data["nfo_template"] = self.cfg_payload.rf_tracker.nfo_template
+            rf_data["max_piece_size"] = self.cfg_payload.rf_tracker.max_piece_size
+            rf_data["api_key"] = self.cfg_payload.rf_tracker.api_key
+            rf_data["anonymous"] = self.cfg_payload.rf_tracker.anonymous
+            rf_data["internal"] = self.cfg_payload.rf_tracker.internal
+            rf_data["personal_release"] = self.cfg_payload.rf_tracker.personal_release
+            rf_data["stream_optimized"] = self.cfg_payload.rf_tracker.stream_optimized
+            rf_data["opt_in_to_mod_queue"] = (
+                self.cfg_payload.rf_tracker.opt_in_to_mod_queue
+            )
+            rf_data["featured"] = self.cfg_payload.rf_tracker.featured
+            rf_data["free"] = self.cfg_payload.rf_tracker.free
+            rf_data["double_up"] = self.cfg_payload.rf_tracker.double_up
+            rf_data["sticky"] = self.cfg_payload.rf_tracker.sticky
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -726,6 +753,27 @@ class Config:
                 ],
             )
 
+            rf_tracker_data = tracker_data["reelflix"]
+            rf_tracker = ReelFlixInfo(
+                upload_enabled=rf_tracker_data["upload_enabled"],
+                announce_url=rf_tracker_data["announce_url"],
+                enabled=rf_tracker_data["enabled"],
+                source=rf_tracker_data["source"],
+                comments=rf_tracker_data["comments"],
+                nfo_template=rf_tracker_data["nfo_template"],
+                max_piece_size=rf_tracker_data["max_piece_size"],
+                api_key=rf_tracker_data["api_key"],
+                anonymous=rf_tracker_data["anonymous"],
+                internal=rf_tracker_data["internal"],
+                personal_release=rf_tracker_data["personal_release"],
+                stream_optimized=rf_tracker_data["stream_optimized"],
+                opt_in_to_mod_queue=rf_tracker_data["opt_in_to_mod_queue"],
+                featured=rf_tracker_data["featured"],
+                free=rf_tracker_data["free"],
+                double_up=rf_tracker_data["double_up"],
+                sticky=rf_tracker_data["sticky"],
+            )
+
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]
 
@@ -797,11 +845,13 @@ class Config:
                 ffmpeg=ffmpeg,
                 frame_forge=frame_forge,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
+                tvdb_api_key=api_keys_data.get("tvdb_api_key", ""),
                 tracker_order=tracker_settings_order,
                 mtv_tracker=mtv_tracker,
                 tl_tracker=tl_tracker,
                 bhd_tracker=bhd_tracker,
                 ptp_tracker=ptp_tracker,
+                rf_tracker=rf_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
@@ -920,6 +970,7 @@ class Config:
             TrackerSelection.TORRENT_LEECH: self.cfg_payload.tl_tracker,
             TrackerSelection.BEYOND_HD: self.cfg_payload.bhd_tracker,
             TrackerSelection.PASS_THE_POPCORN: self.cfg_payload.ptp_tracker,
+            TrackerSelection.REELFLIX: self.cfg_payload.rf_tracker,
         }
 
     # TODO: call this from SETTINGS later
