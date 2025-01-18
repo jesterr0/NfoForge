@@ -31,6 +31,7 @@ Comprehensive documentation is on the way and will be available soon.
 - MoreThanTv
 - TorrentLeech
 - PassThePopcorn
+- ReelFliX
 
 _Supported trackers will be added overtime_
 
@@ -49,7 +50,8 @@ _Support for Linux is coming soon_
 ## Requirements
 
 - TMDB Api [Key v3](https://www.themoviedb.org/settings/api)
-- FFMPEG or [FrameForge](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
+- TVDB [Api](https://thetvdb.com/api-information)
+- FFMPEG and/or [FrameForge](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
 ## Thanks and Credits
 

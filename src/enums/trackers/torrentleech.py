@@ -1,0 +1,20 @@
+from enum import Enum
+
+
+class TLCategories(Enum):
+    ANIME = 34
+    MOVIE_4K = 47
+    MOVIE_BLURAY = 13
+    MOVIE_BLURAY_RIP = 14
+    MOVIE_CAM = 8
+    MOVIE_TS = 9
+    MOVIE_DOCUMENTARY = 29
+    MOVIE_DVD = 12
+    MOVIE_DVD_RIP = 11
+    MOVIE_FOREIGN = 36
+    MOVIE_HD_RIP = 43
+    MOVIE_WEB_RIP = 37
+    TV_BOX_SETS = 27
+    TV_EPISODES = 26
+    TV_EPISODES_HD = 32
+    TV_FOREIGN = 44

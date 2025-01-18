@@ -7,6 +7,7 @@ class TrackerSelection(Enum):
     TORRENT_LEECH = auto_enum()
     BEYOND_HD = auto_enum()
     PASS_THE_POPCORN = auto_enum()
+    REELFLIX = auto_enum()
 
     def __str__(self) -> str:
         str_map = {
@@ -14,6 +15,7 @@ class TrackerSelection(Enum):
             TrackerSelection.TORRENT_LEECH: "TorrentLeech",
             TrackerSelection.BEYOND_HD: "BeyondHD",
             TrackerSelection.PASS_THE_POPCORN: "PassThePopcorn",
+            TrackerSelection.REELFLIX: "ReelFliX",
         }
         return str_map[self]
 
