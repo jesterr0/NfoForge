@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from src.enums.trackers import MTVSourceOrigin, BHDPromo, BHDLiveRelease
+from src.enums.trackers.morethantv import MTVSourceOrigin
+from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
 
 
 @dataclass(slots=True)
@@ -52,3 +53,19 @@ class PassThePopcornInfo(TrackerInfo):
     totp: str | None = None
     ptpimg_api_key: str | None = None
     reupload_images_to_ptp_img: bool = False
+
+
+@dataclass(slots=True)
+class ReelFlixInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: int = 0
+    internal: int = 0
+    personal_release: int = 0
+    stream_optimized: int = 0
+    opt_in_to_mod_queue: int = 0
+
+    # below is only available to staff and internal users
+    featured: int = 0
+    free: int = 0
+    double_up: int = 0
+    sticky: int = 0
