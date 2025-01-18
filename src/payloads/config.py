@@ -18,6 +18,7 @@ from src.payloads.trackers import (
     TorrentLeechInfo,
     BeyondHDInfo,
     PassThePopcornInfo,
+    ReelFlixInfo,
 )
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
@@ -58,6 +59,7 @@ class ConfigPayload:
 
     # api keys
     tmdb_api_key: str
+    tvdb_api_key: str
 
     # trackers
     tracker_order: list[int]
@@ -65,6 +67,7 @@ class ConfigPayload:
     tl_tracker: TorrentLeechInfo
     bhd_tracker: BeyondHDInfo
     ptp_tracker: PassThePopcornInfo
+    rf_tracker: ReelFlixInfo
 
     # torrent client settings
     qbittorrent: TorrentClient
