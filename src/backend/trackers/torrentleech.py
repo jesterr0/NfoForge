@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from pymediainfo import MediaInfo
 
-from src.enums.trackers import TLCategories
+from src.enums.trackers.torrentleech import TLCategories
 from src.exceptions import TrackerError
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer

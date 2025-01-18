@@ -9,7 +9,13 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from src.logger.nfo_forge_logger import LOG
-from src.enums.trackers import PTPResolution, PTPType, PTPCodec, PTPContainer, PTPSource
+from src.enums.trackers.passthepopcorn import (
+    PTPResolution,
+    PTPType,
+    PTPCodec,
+    PTPContainer,
+    PTPSource,
+)
 from src.exceptions import TrackerError
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.trackers.utils import TRACKER_HEADERS

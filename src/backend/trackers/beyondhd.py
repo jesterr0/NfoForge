@@ -6,9 +6,14 @@ from os import PathLike
 from pathlib import Path
 
 from src.logger.nfo_forge_logger import LOG
-from src.enums.trackers import BHDCategoryID, BHDType, BHDSource
+from src.enums.trackers.beyondhd import (
+    BHDCategoryID,
+    BHDType,
+    BHDSource,
+    BHDPromo,
+    BHDLiveRelease,
+)
 from src.enums.media_mode import MediaMode
-from src.enums.trackers import BHDPromo, BHDLiveRelease
 from src.exceptions import TrackerError
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.media_info_utils import MinimalMediaInfo
