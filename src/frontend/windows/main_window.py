@@ -25,6 +25,8 @@ class MainWindow(QMainWindow):
     set_disabled = Signal(bool)
     wizard_set_disabled = Signal(bool)
     wizard_end_early = Signal()
+    wizard_next_button_change_txt = Signal(str)
+    wizard_next_button_reset_txt = Signal()
     wizard_process_btn_clicked = Signal()
     wizard_process_btn_change_txt = Signal(str)
     wizard_process_btn_set_hidden = Signal()
