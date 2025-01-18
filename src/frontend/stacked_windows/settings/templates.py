@@ -441,22 +441,43 @@ class TemplatesSettings(BaseSettings):
 
     def _validate_tracker_templates(self) -> bool:
         for tracker in self.template_selector.popup_button.get_checked_items():
-            if TrackerSelection(tracker) is TrackerSelection.PASS_THE_POPCORN:
+            cur_tracker = TrackerSelection(tracker)
+            if cur_tracker is TrackerSelection.PASS_THE_POPCORN:
                 ptp_template = self.template_selector.backend.read_template(
                     self.config.cfg_payload.ptp_tracker.nfo_template
                 )
                 if ptp_template:
-                    ptp_match_rule = (
-                        r"^\n*?\s*?\{\{ media_info \}\}\n*?\s*\{\{ screen_shots \}\}"
-                    )
-                    if not re.match(ptp_match_rule, ptp_template):
-                        QMessageBox.warning(
-                            self,
-                            "Warning",
-                            "PassThePopcorn requires MediaInfo first followed by at least three screenshots. "
-                            "The start of your template should be:\n{{ media_info }}\n{{ screen_shots }}\n...",
-                        )
-                        return False
+                    ptp_match_rule = r"^\n*?\s*?\{\{\s?media_info\s?\}\}\n*?\s*\{\{\s?screen_shots\s?\}\}"
+                    if not re.search(ptp_match_rule, ptp_template, flags=re.MULTILINE):
+                        if (
+                            QMessageBox.question(
+                                self,
+                                "Warning",
+                                "PassThePopcorn requires MediaInfo first followed by at least three screenshots. "
+                                "The start of your template should be:\n{{ media_info }}\n{{ screen_shots }}\n...\n\n"
+                                "Would you like to fix this now?",
+                            )
+                            is QMessageBox.StandardButton.Yes
+                        ):
+                            return False
+            elif cur_tracker is TrackerSelection.REELFLIX:
+                rf_template = self.template_selector.backend.read_template(
+                    self.config.cfg_payload.rf_tracker.nfo_template
+                )
+                if rf_template:
+                    rf_match_rule = r"\{\{\s?screen_shots\s?\}\}"
+                    if not re.search(rf_match_rule, rf_template, flags=re.MULTILINE):
+                        if (
+                            QMessageBox.question(
+                                self,
+                                "warning",
+                                "ReelFliX requires at least three screenshots in BBCode format. You "
+                                "should assign a template with {{ screen_shots }} and ensure you utilize "
+                                "the screenshot feature.\n\nWould you like to fix this now?",
+                            )
+                            is QMessageBox.StandardButton.Yes
+                        ):
+                            return False
         return True
 
     def _save_inputs_valid(self) -> bool:
