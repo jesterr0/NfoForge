@@ -15,15 +15,15 @@ from xml.etree import ElementTree as ET
 
 from src.logger.nfo_forge_logger import LOG
 from src.enums.audio_formats import AudioFormats
-from src.enums.trackers import (
+from src.enums.trackers.morethantv import (
     MTVCategories,
     MTVAudioTags,
     MTVResolutionIDs,
     MTVSourceIDs,
+    MTVSourceOrigin,
 )
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.media_mode import MediaMode
-from src.enums.trackers import MTVSourceOrigin
 from src.exceptions import TrackerError
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.trackers.utils import TRACKER_HEADERS
