@@ -66,6 +66,12 @@ class MainWindowWizard(QWizard):
         self.next_button.setToolTip("Save & Continue")
         self.next_button.setToolTipDuration(1500)
         self.setButton(QWizard.WizardButton.CommitButton, self.next_button)
+        self.main_window.wizard_next_button_change_txt.connect(
+            self._change_next_button_text
+        )
+        self.main_window.wizard_next_button_reset_txt.connect(
+            self._reset_next_button_text
+        )
 
         self.settings_button = QPushButton("Settings")
         self.settings_button.clicked.connect(self.main_window.settings_clicked.emit)
@@ -130,6 +136,14 @@ class MainWindowWizard(QWizard):
             return self._flow_production(current_page)
 
     @Slot(str)
+    def _change_next_button_text(self, text: str) -> None:
+        self.next_button.setText(text)
+
+    @Slot()
+    def _reset_next_button_text(self) -> None:
+        self.next_button.setText("Next")
+
+    @Slot(str)
     def _change_process_button_text(self, text: str) -> None:
         self.process_button.setText(text)
 
@@ -144,6 +158,7 @@ class MainWindowWizard(QWizard):
         self._set_start_page()
         self._connect_current_id_changed()
         self._set_disabled(False)
+        self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
         self.process_button.show()
         self.setButtonLayout(self.starting_buttons)
