@@ -1,7 +1,7 @@
+import asyncio
 import traceback
 import webbrowser
 from collections import OrderedDict
-from imdb.Movie import Movie
 from guessit import guessit
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QCursor, QPixmap
 
 from src.config.config import Config
+from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
 from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -55,21 +56,45 @@ class QueuedWorker(QThread):
             self.job_failed.emit(f"Failed to parse TMDB: {e}\n{traceback.format_exc()}")
 
 
-class IMDBParseWorker(QThread):
+class IDParseWorker(QThread):
     job_finished = Signal(object)
     job_failed = Signal(str)
 
-    def __init__(self, backend: MediaSearchBackEnd, imdb_id: str) -> None:
+    def __init__(
+        self,
+        backend: MediaSearchBackEnd,
+        imdb_id: str,
+        tmdb_title: str,
+        tmdb_year: int,
+        original_language: str,
+        tmdb_genres: list[TMDBGenreIDsMovies],
+        tvdb_api_key: str,
+    ) -> None:
         super().__init__()
         self.backend = backend
         self.imdb_id = imdb_id
+        self.tmdb_title = tmdb_title
+        self.tmdb_year = tmdb_year
+        self.original_language = original_language
+        self.tmdb_genres = tmdb_genres
+        self.tvdb_api_key = tvdb_api_key
 
     def run(self) -> None:
         try:
-            self.job_finished.emit(self.backend.parse_imdb(self.imdb_id))
+            parse_other_ids = asyncio.run(
+                self.backend.parse_other_ids(
+                    self.imdb_id,
+                    self.tmdb_title,
+                    self.tmdb_year,
+                    self.original_language,
+                    self.tmdb_genres,
+                    self.tvdb_api_key,
+                )
+            )
+            self.job_finished.emit(parse_other_ids)
         except Exception as e:
             self.job_failed.emit(
-                f"Failed to parse IMDb: ({e})\n{traceback.format_exc()}"
+                f"Failed to parse ID data: ({e})\n{traceback.format_exc()}"
             )
 
 
@@ -87,8 +112,8 @@ class MediaSearch(BaseWizardPage):
         self.queued_worker: QueuedWorker | None = None
         self.current_source = None
         self.loading_complete = False
-        self.imdb_worker: IMDBParseWorker | None = None
-        self.imdb_parsed = False
+        self.id_parse_worker: IDParseWorker | None = None
+        self.other_ids_parsed = False
 
         self.listbox = QListWidget()
         self.listbox.setFrameShape(QFrame.Shape.Box)
@@ -116,9 +141,6 @@ class MediaSearch(BaseWizardPage):
         imdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         imdb_label.mousePressEvent = self._open_imdb_link
         self.imdb_id_entry = QLineEdit()
-        imdb_h_layout = QHBoxLayout()
-        imdb_h_layout.addWidget(imdb_label)
-        imdb_h_layout.addWidget(self.imdb_id_entry)
 
         tmdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tmdb.png").resolve()))
         tmdb_image = tmdb_image.scaled(
@@ -132,13 +154,50 @@ class MediaSearch(BaseWizardPage):
         tmdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         tmdb_label.mousePressEvent = self._open_tmdb_link
         self.tmdb_id_entry = QLineEdit()
-        tmdb_h_layout = QHBoxLayout()
-        tmdb_h_layout.addWidget(tmdb_label)
-        tmdb_h_layout.addWidget(self.tmdb_id_entry)
+
+        tvdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tvdb.png").resolve()))
+        tvdb_image = tvdb_image.scaled(
+            28,
+            30,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        tvdb_label = QLabel()
+        tvdb_label.setPixmap(tvdb_image)
+        tvdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        tvdb_label.mousePressEvent = self._open_tvdb_link
+        self.tvdb_id_entry = QLineEdit()
+        self.tvdb_id_entry.setPlaceholderText("Automatic")
+
+        mal_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "mal.png").resolve()))
+        mal_image = mal_image.scaled(
+            28,
+            30,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        mal_label = QLabel()
+        mal_label.setPixmap(mal_image)
+        mal_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        tvdb_label.mousePressEvent = self._open_mal_link
+        self.mal_id_entry = QLineEdit()
+        self.mal_id_entry.setPlaceholderText("Automatic")
+
+        id_row_1_layout = QHBoxLayout()
+        id_row_1_layout.addWidget(imdb_label)
+        id_row_1_layout.addWidget(self.imdb_id_entry)
+        id_row_1_layout.addWidget(tmdb_label)
+        id_row_1_layout.addWidget(self.tmdb_id_entry)
+
+        id_row_2_layout = QHBoxLayout()
+        id_row_2_layout.addWidget(tvdb_label)
+        id_row_2_layout.addWidget(self.tvdb_id_entry)
+        id_row_2_layout.addWidget(mal_label)
+        id_row_2_layout.addWidget(self.mal_id_entry)
 
         tmdb_imdb_v_layout = QVBoxLayout()
-        tmdb_imdb_v_layout.addLayout(imdb_h_layout)
-        tmdb_imdb_v_layout.addLayout(tmdb_h_layout)
+        tmdb_imdb_v_layout.addLayout(id_row_1_layout)
+        tmdb_imdb_v_layout.addLayout(id_row_2_layout)
 
         release_date_icon = QSvgWidget(
             str(Path(RUNTIME_DIR / "svg" / "date.svg").resolve())
@@ -199,73 +258,133 @@ class MediaSearch(BaseWizardPage):
         self.main_layout.addWidget(search_box)
 
     def validatePage(self) -> bool:
-        required_entries = [self.tmdb_id_entry, self.imdb_id_entry]
-        invalid_entries = False
+        invalid_entries = self._check_invalid_entries(
+            (self.tmdb_id_entry, self.imdb_id_entry)
+        )
+        if invalid_entries:
+            return False
+        else:
+            if not self.other_ids_parsed:
+                self.listbox.setDisabled(True)
+                self._search_other_ids()
+                return False
+            elif self.other_ids_parsed:
+                if self._check_invalid_entries((self.tvdb_id_entry,)):
+                    self.main_window.wizard_next_button_reset_txt.emit()
+                    return False
 
-        for entry in required_entries:
+            self.main_window.wizard_next_button_reset_txt.emit()
+            return True
+
+    def _check_invalid_entries(self, entires: tuple[QLineEdit, ...]) -> bool:
+        invalid_entries = False
+        for entry in entires:
             if entry.text().strip() == "" or entry.text() == entry.placeholderText():
                 invalid_entries = True
                 # TODO: Flash red or something once we theme it
                 # entry.setStyleSheet("QLineEdit {border: 1px solid red; border-radius: 3px;}")
                 entry.setPlaceholderText("Requires ID")
+        return invalid_entries
 
-        if invalid_entries:
-            return False
-        else:
-            if not self.imdb_parsed:
-                self._search_imdb()
-                return False
-
-            return True
-
-    def _search_imdb(self) -> None:
+    def _search_other_ids(self) -> None:
         self.main_window.set_disabled.emit(True)
-        self.imdb_worker = IMDBParseWorker(
-            self.backend, self.imdb_id_entry.text().strip()
-        )
-        self.imdb_worker.job_finished.connect(self._detected_imdb_data)
-        self.imdb_worker.job_failed.connect(self._failed_search)
-        self.main_window.update_status_bar.emit("Parsing IMDb, please wait...", 0)
-        self.imdb_worker.start()
+        current_item = self.listbox.currentItem().text()
+        item_data = self.backend.media_data.get(current_item)
+        if item_data:
+            self.id_parse_worker = IDParseWorker(
+                backend=self.backend,
+                imdb_id=self.imdb_id_entry.text().strip(),
+                tmdb_title=item_data.get("title"),
+                tmdb_year=int(item_data.get("year")),
+                original_language=item_data.get("raw_data", {}).get(
+                    "original_language"
+                ),
+                tmdb_genres=item_data.get("genre_ids", []),
+                tvdb_api_key=self.config.cfg_payload.tvdb_api_key,
+            )
+            self.id_parse_worker.job_finished.connect(self._detected_id_data)
+            self.id_parse_worker.job_failed.connect(self._failed_search)
+            self.main_window.update_status_bar.emit(
+                "Parsing IMDb/TVDb/Anilist data, please wait...", 0
+            )
+            self.id_parse_worker.start()
 
     @Slot(object)
-    def _detected_imdb_data(self, media_data: Movie | None) -> None:
+    def _detected_id_data(self, media_data: dict | None) -> None:
         self._update_payload_data(media_data)
-        self.imdb_parsed = True
+        self.other_ids_parsed = True
         self.main_window.set_disabled.emit(False)
         if self.main_window.wizard:
             self.main_window.wizard.next()
             self.main_window.clear_status_bar.emit()
 
-    def _update_payload_data(self, media_data: Movie | None = None):
+    def _update_payload_data(self, media_data: dict | None = None):
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
         if not item_data:
-            raise MediaSearchError("Failed to parse TMDB/IMDb")
+            raise MediaSearchError("Failed to parse TMDB")
 
         self.config.media_search_payload.imdb_id = self.imdb_id_entry.text()
         self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
         self.config.media_search_payload.tmdb_data = item_data.get("raw_data")
 
         if media_data:
-            self.config.media_search_payload.imdb_data = media_data
-            self.config.media_search_payload.title = (
-                str(media_data.get("title")) if media_data.get("title") else None
-            )
-            try:
-                year = int(str(media_data.get("year")))
-            except ValueError:
-                year = None
-            self.config.media_search_payload.year = year
-            self.config.media_search_payload.original_title = (
-                str(media_data.get("original title"))
-                if media_data.get("original title")
-                else None
-            )
-            genres = None
-            if isinstance(item_data.get("genre_ids"), list):
-                genres = item_data.get("genre_ids")
-            self.config.media_search_payload.genres = genres if genres else []
+            imdb_data = media_data.get("imdb_data")
+            tvdb_data = media_data.get("tvdb_data")
+            ani_list_data = media_data.get("ani_list_data")
+
+            # imdb data
+            if imdb_data and imdb_data.get("success") is True:
+                imdb_data_result = imdb_data.get("result")
+                self.config.media_search_payload.imdb_data = imdb_data_result
+                self.config.media_search_payload.title = (
+                    str(imdb_data_result.get("title"))
+                    if imdb_data_result.get("title")
+                    else None
+                )
+                try:
+                    self.config.media_search_payload.year = int(
+                        imdb_data_result.get("year")
+                    )
+                except ValueError:
+                    pass
+                self.config.media_search_payload.original_title = (
+                    str(media_data.get("original title"))
+                    if media_data.get("original title")
+                    else None
+                )
+                genres = None
+                if isinstance(item_data.get("genre_ids"), list):
+                    genres = item_data.get("genre_ids")
+                self.config.media_search_payload.genres = genres if genres else []
+
+            # tvdb data
+            if tvdb_data and tvdb_data.get("success") is True:
+                tvdb_data_result = tvdb_data.get("result")
+                tvdb_data_result_movie = tvdb_data_result.get("movie")
+                self.config.media_search_payload.tvdb_data = tvdb_data_result
+                self.config.media_search_payload.tvdb_id = tvdb_data_result_movie.get(
+                    "id"
+                )
+                if self.config.media_search_payload.tvdb_id:
+                    self.tvdb_id_entry.setText(
+                        str(self.config.media_search_payload.tvdb_id)
+                    )
+
+            # anilist data
+            if ani_list_data and ani_list_data.get("success") is True:
+                ani_list_data_result = ani_list_data.get("result")
+                self.config.media_search_payload.anilist_data = ani_list_data_result
+                self.config.media_search_payload.anilist_id = ani_list_data_result.get(
+                    "id"
+                )
+                self.config.media_search_payload.mal_id = ani_list_data_result.get(
+                    "idMal"
+                )
+                if self.config.media_search_payload.mal_id:
+                    self.mal_id_entry.setText(
+                        str(self.config.media_search_payload.mal_id)
+                    )
 
     def isComplete(self):
         """Overrides isComplete method to control the next button"""
@@ -294,6 +413,12 @@ class MediaSearch(BaseWizardPage):
         else:
             if self.current_source != source_name:
                 self._search_tmdb_api()
+
+        QTimer.singleShot(1, self._after_initialization)
+
+    def _after_initialization(self) -> None:
+        """Gives time for the UI to draw widgets"""
+        self.main_window.wizard_next_button_change_txt.emit("Select Title")
 
     def _get_title_only(self, file_path: Path) -> str:
         guess = guessit(file_path.stem)
@@ -398,10 +523,31 @@ class MediaSearch(BaseWizardPage):
             webbrowser.open("https://www.themoviedb.org/movie/")
 
     @Slot()
+    def _open_tvdb_link(self, _):
+        tvdb_id = self.tvdb_id_entry.text().strip()
+        if tvdb_id != "":
+            webbrowser.open(f"https://thetvdb.com/search?query={tvdb_id}")
+        else:
+            webbrowser.open("https://thetvdb.com/search?query=")
+
+    @Slot()
+    def _open_mal_link(self, _):
+        mal_id = self.mal_id_entry.text().strip()
+        if mal_id != "":
+            webbrowser.open(f"https://myanimelist.net/anime/{mal_id}")
+        else:
+            webbrowser.open("https://myanimelist.net/")
+
+    @Slot()
     def reset_page(self, all_widgets: bool = True):
         self.listbox.clear()
+        self.listbox.setDisabled(False)
         self.imdb_id_entry.clear()
         self.tmdb_id_entry.clear()
+        self.tvdb_id_entry.clear()
+        self.tvdb_id_entry.setPlaceholderText("Automatic")
+        self.mal_id_entry.clear()
+        self.mal_id_entry.setPlaceholderText("Automatic")
         self.release_date_label.clear()
         self.rating_label.clear()
         self.plot_text.clear()
@@ -409,8 +555,8 @@ class MediaSearch(BaseWizardPage):
         self.queued_worker = None
         self.current_source = None
         self.loading_complete = False
-        self.imdb_worker = None
-        self.imdb_parsed = False
+        self.id_parse_worker = None
+        self.other_ids_parsed = False
 
         self.backend.update_api_key(self.config.cfg_payload.tmdb_api_key)
 
