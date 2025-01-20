@@ -32,6 +32,7 @@ Comprehensive documentation is on the way and will be available soon.
 - TorrentLeech
 - PassThePopcorn
 - ReelFliX
+- Aither
 
 _Supported trackers will be added overtime_
 
