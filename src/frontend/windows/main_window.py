@@ -41,7 +41,8 @@ class MainWindow(QMainWindow):
 
         # setup window
         self.setObjectName("MainWindow")
-        self.setWindowTitle(f"{program_name} {__version__}")
+        self.default_window_title = f"{program_name} {__version__}"
+        self.setWindowTitle(self.default_window_title)
         self.status_bar = QStatusBar()
         self.update_status_bar.connect(self.update_status_tip)
         self.clear_status_bar.connect(self.clear_message)
@@ -91,6 +92,7 @@ class MainWindow(QMainWindow):
     def _close_settings(self) -> None:
         self.wizard.reset_wizard()
         self.stacked_widget.setCurrentWidget(self.wizard)
+        self._check_suffix()
 
     @Slot()
     def _open_settings_window(self) -> None:
@@ -101,10 +103,14 @@ class MainWindow(QMainWindow):
         self.setDisabled(state)
 
     def _check_suffix(self) -> None:
+        title = self.default_window_title
         if self.config.cfg_payload.ui_suffix:
-            self.setWindowTitle(
-                f"{self.windowTitle()} - {self.config.cfg_payload.ui_suffix}"
-            )
+            if len(self.config.cfg_payload.ui_suffix) > 30:
+                self.config.cfg_payload.ui_suffix = (
+                    f"{self.config.cfg_payload.ui_suffix[0:31]}..."
+                )
+            title = f"{title} - {self.config.cfg_payload.ui_suffix}"
+        self.setWindowTitle(title)
 
     def _check_dependencies(self) -> None:
         if self.config.cfg_payload.screenshots_enabled:
