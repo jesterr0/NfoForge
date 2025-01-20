@@ -260,11 +260,8 @@ class GeneralSettings(BaseSettings):
 
     @Slot(int)
     def _swap_config(self, _: int | None = None) -> None:
-        config_path = (
-            self.config.USER_CONFIG_DIR / f"{self.selected_config.currentText()}.toml"
-        )
-        self.config.program_conf.current_config = config_path.stem
-        self.config.load_config(config_path)
+        self.config.program_conf.current_config = self.selected_config.currentText()
+        self.config.load_config(self.selected_config.currentText())
         self.settings_window.re_load_settings.emit()
 
     @Slot()

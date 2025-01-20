@@ -14,12 +14,14 @@ from src.backend.utils.working_dir import RUNTIME_DIR
 
 
 class NfoForge:
-    def __init__(self) -> None:
+    def __init__(self, config_file: str | None) -> None:
         self.app = QApplication(sys.argv)
         self.app.setWindowIcon(
             QIcon(str(Path(RUNTIME_DIR / "images" / "hammer_merged.png")))
         )
         self.app.setStyle("Fusion")
+
+        self.config_file: str | None = config_file
 
         self._setup_exception_hooks()
         self._setup_font()
@@ -62,7 +64,7 @@ class NfoForge:
     def _init_app(self) -> None:
         # setup config
         self.splash_screen.updateMessageBox("Initializing config")
-        self.config = Config()
+        self.config = Config(self.config_file)
         if not self.config:
             raise AttributeError("Failed to load config")
 
@@ -134,14 +136,19 @@ class NfoForge:
                 self.app.quit()
 
 
+def arg_parse() -> str | None:
+    config_arg = None
+    args = sys.argv
+    if len(args) == 3 and args[1] == "--config":
+        config_arg = args[2]
+    return config_arg
+
+
 if __name__ == "__main__":
-    NfoForge()
+    NfoForge(arg_parse())
 
 
 # TODO's
 # TODO: Setup a configuration that can increase the scale of the entire program by a %.
 # TODO: Remember last used path globally for all file dialogues
 # TODO: Check to ensure long path is enabled on Windows
-
-# main window
-# TODO: need to add a string limit for ui suffix

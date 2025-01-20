@@ -80,7 +80,7 @@ class Config:
 
     TRACKER_COOKIE_PATH = RUNTIME_DIR / "cookies"
 
-    def __init__(self):
+    def __init__(self, config_file: str | None):
         # load various directories as needed
         self.TRACKER_COOKIE_PATH.mkdir(exist_ok=True, parents=True)
 
@@ -90,7 +90,7 @@ class Config:
         # load program config
         self.program_conf = ProgramConfigPayload()
         self._program_conf_toml_data = None
-        self.load_program_conf()
+        self.load_program_conf(config_file)
 
         # variables we don't want to re-calculate in the methods, we'll define these before anything else
         self.default_tracker_order = [*range(len(TrackerSelection))]
@@ -98,7 +98,7 @@ class Config:
         # variables that are assigned during init
         self.cfg_payload: ConfigPayload = None
         self._toml_data = None
-        self.load_config()
+        self.load_config(config_file)
 
         # keep track of last data used to prevent un-needed writes when saving the config(s)
         self._program_conf_data_last = None
@@ -136,7 +136,7 @@ class Config:
 
         self.jinja_engine.reset_added_globals()
 
-    def load_program_conf(self) -> None:
+    def load_program_conf(self, config_file: str | None) -> None:
         """
         Loads program config, this will be small and only control very
         unique settings that doesn't belong in the main config.
@@ -148,13 +148,15 @@ class Config:
                     tomlkit.parse(toml_file.read()),
                     tomlkit.parse(self.PROGRAM_CONF_DEFAULT.read_text()),
                 )
+                if config_file:
+                    self._program_conf_toml_data["current_config"] = config_file
                 self._program_conf_data_last = self._program_conf_toml_data
                 self.update_conf_payload()
             self.save_program_conf()
         else:
             with open(self.CONF_PATH, "w") as toml_file:
                 toml_file.write(self.PROGRAM_CONF_DEFAULT.read_text())
-            self.load_program_conf()
+            self.load_program_conf(config_file)
 
     def update_conf_payload(self) -> None:
         data = self._program_conf_toml_data
@@ -207,10 +209,12 @@ class Config:
                     toml_file.write(tomlkit.dumps(self._toml_data))        
         """
 
-    def load_config(self, file_path: Path | None = None):
+    def load_config(self, config_file: str | None = None):
         """Loads config file, if missing automatically creates one from the example template."""
-        if file_path:
-            config_path = file_path
+        if config_file:
+            config_path = config_path = self.USER_CONFIG_DIR / str(
+                config_file + ".toml"
+            )
         else:
             if not self.program_conf.current_config:
                 raise ConfigError("Failure to load current config")
@@ -226,7 +230,7 @@ class Config:
                 )
                 self._config_data_last = self._toml_data
                 self.update_config_payload(self._toml_data)
-            self.save_config(file_path)
+            self.save_config(config_path)
         else:
             config_path.parent.mkdir(exist_ok=True, parents=True)
             with open(config_path, "w") as toml_file:
