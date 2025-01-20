@@ -2,15 +2,12 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
-from src.enums.trackers.reelflix import (
-    ReelFlixCategory,
-    ReelFlixResolution,
-    ReelFlixType,
-)
+from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
+from src.exceptions import TrackerError
 from src.payloads.media_search import MediaSearchPayload
 
 
-def rf_uploader(
+def aither_uploader(
     api_key: str,
     torrent_file: Path,
     file_input: Path,
@@ -30,7 +27,7 @@ def rf_uploader(
 ) -> bool | None:
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
-    uploader = ReelFlixUploader(
+    uploader = AitherUploader(
         api_key=api_key,
         torrent_file=torrent_file,
         file_input=file_input,
@@ -56,8 +53,8 @@ def rf_uploader(
     return upload
 
 
-class ReelFlixUploader(Unit3dBaseUploader):
-    """Upload torrents to ReelFliX"""
+class AitherUploader(Unit3dBaseUploader):
+    """Upload torrents to Aither"""
 
     __slots__ = ()
 
@@ -70,28 +67,37 @@ class ReelFlixUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name="ReelFliX",
-            base_url="https://reelflix.xyz",
+            tracker_name="Aither",
+            base_url="https://aither.cc",
             api_key=api_key,
             torrent_file=torrent_file,
             file_input=file_input,
             mediainfo_obj=mediainfo_obj,
-            cat_enum=ReelFlixCategory,
-            res_enum=ReelFlixResolution,
-            type_enum=ReelFlixType,
+            cat_enum=AitherCategory,
+            res_enum=AitherResolution,
+            type_enum=AitherType,
             timeout=timeout,
         )
 
+    # def _get_category_id(self) -> str:  # TODO: detect TV here when support is added
+    #     return super()._get_category_id()
 
-class ReelFlixSearch(Unit3dBaseSearch):
-    """Search ReelFliX"""
+    def _get_resolution_id(self) -> str:
+        try:
+            return super()._get_resolution_id()
+        except TrackerError:
+            return AitherResolution.RES_OTHER.value
+
+
+class AitherSearch(Unit3dBaseSearch):
+    """Search Aither"""
 
     __slots__ = ()
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name="ReelFliX",
-            base_url="https://reelflix.xyz",
+            tracker_name="Aither",
+            base_url="https://aither.cc",
             api_key=api_key,
             timeout=timeout,
         )

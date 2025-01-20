@@ -32,6 +32,7 @@ from src.payloads.trackers import (
     BeyondHDInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
+    AitherInfo,
 )
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
@@ -402,6 +403,38 @@ class Config:
             rf_data["free"] = self.cfg_payload.rf_tracker.free
             rf_data["double_up"] = self.cfg_payload.rf_tracker.double_up
             rf_data["sticky"] = self.cfg_payload.rf_tracker.sticky
+
+            # Aither tracker
+            if "aither" not in tracker_data:
+                tracker_data["aither"] = tomlkit.table()
+            aither_data = tracker_data["aither"]
+            aither_data["upload_enabled"] = (
+                self.cfg_payload.aither_tracker.upload_enabled
+            )
+            aither_data["announce_url"] = self.cfg_payload.aither_tracker.announce_url
+            aither_data["enabled"] = self.cfg_payload.aither_tracker.enabled
+            aither_data["source"] = self.cfg_payload.aither_tracker.source
+            aither_data["comments"] = self.cfg_payload.aither_tracker.comments
+            aither_data["nfo_template"] = self.cfg_payload.aither_tracker.nfo_template
+            aither_data["max_piece_size"] = (
+                self.cfg_payload.aither_tracker.max_piece_size
+            )
+            aither_data["api_key"] = self.cfg_payload.aither_tracker.api_key
+            aither_data["anonymous"] = self.cfg_payload.aither_tracker.anonymous
+            aither_data["internal"] = self.cfg_payload.aither_tracker.internal
+            aither_data["personal_release"] = (
+                self.cfg_payload.aither_tracker.personal_release
+            )
+            aither_data["stream_optimized"] = (
+                self.cfg_payload.aither_tracker.stream_optimized
+            )
+            aither_data["opt_in_to_mod_queue"] = (
+                self.cfg_payload.aither_tracker.opt_in_to_mod_queue
+            )
+            aither_data["featured"] = self.cfg_payload.aither_tracker.featured
+            aither_data["free"] = self.cfg_payload.aither_tracker.free
+            aither_data["double_up"] = self.cfg_payload.aither_tracker.double_up
+            aither_data["sticky"] = self.cfg_payload.aither_tracker.sticky
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -774,6 +807,27 @@ class Config:
                 sticky=rf_tracker_data["sticky"],
             )
 
+            aither_tracker_data = tracker_data["aither"]
+            aither_tracker = AitherInfo(
+                upload_enabled=aither_tracker_data["upload_enabled"],
+                announce_url=aither_tracker_data["announce_url"],
+                enabled=aither_tracker_data["enabled"],
+                source=aither_tracker_data["source"],
+                comments=aither_tracker_data["comments"],
+                nfo_template=aither_tracker_data["nfo_template"],
+                max_piece_size=aither_tracker_data["max_piece_size"],
+                api_key=aither_tracker_data["api_key"],
+                anonymous=aither_tracker_data["anonymous"],
+                internal=aither_tracker_data["internal"],
+                personal_release=aither_tracker_data["personal_release"],
+                stream_optimized=aither_tracker_data["stream_optimized"],
+                opt_in_to_mod_queue=aither_tracker_data["opt_in_to_mod_queue"],
+                featured=aither_tracker_data["featured"],
+                free=aither_tracker_data["free"],
+                double_up=aither_tracker_data["double_up"],
+                sticky=aither_tracker_data["sticky"],
+            )
+
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]
 
@@ -852,6 +906,7 @@ class Config:
                 bhd_tracker=bhd_tracker,
                 ptp_tracker=ptp_tracker,
                 rf_tracker=rf_tracker,
+                aither_tracker=aither_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
@@ -971,6 +1026,7 @@ class Config:
             TrackerSelection.BEYOND_HD: self.cfg_payload.bhd_tracker,
             TrackerSelection.PASS_THE_POPCORN: self.cfg_payload.ptp_tracker,
             TrackerSelection.REELFLIX: self.cfg_payload.rf_tracker,
+            TrackerSelection.AITHER: self.cfg_payload.aither_tracker,
         }
 
     # TODO: call this from SETTINGS later
