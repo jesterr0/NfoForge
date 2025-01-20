@@ -494,6 +494,106 @@ class RFTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.rf_tracker.sticky = int(self.sticky.isChecked())
 
 
+class AitherTrackerEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        stream_optimized_lbl = QLabel("Stream Optimized", self)
+        self.stream_optimized = QCheckBox(self)
+
+        staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
+        staff_and_internal_lbl = QLabel(
+            "All items below are available for staff and internal users", self
+        )
+        bold_font = staff_and_internal_lbl.font()
+        bold_font.setWeight(bold_font.Weight.Bold)
+        staff_and_internal_lbl.setFont(bold_font)
+
+        featured_lbl = QLabel("Featured", self)
+        self.featured = QCheckBox(self)
+
+        free_lbl = QLabel("Free", self)
+        self.free = QCheckBox(self)
+
+        double_up_lbl = QLabel("Double Up", self)
+        self.double_up = QCheckBox(self)
+
+        sticky_lbl = QLabel("Sticky", self)
+        self.sticky = QCheckBox(self)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(stream_optimized_lbl, self.stream_optimized)
+        self.add_widget_to_layout(
+            staff_and_internal_lbl,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        self.add_widget_to_layout(staff_and_internal_h_line)
+        self.add_pair_to_layout(featured_lbl, self.featured)
+        self.add_pair_to_layout(free_lbl, self.free)
+        self.add_pair_to_layout(double_up_lbl, self.double_up)
+        self.add_pair_to_layout(sticky_lbl, self.sticky)
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.aither_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.stream_optimized.setChecked(bool(tracker_data.stream_optimized))
+        self.featured.setChecked(bool(tracker_data.featured))
+        self.free.setChecked(bool(tracker_data.free))
+        self.double_up.setChecked(bool(tracker_data.double_up))
+        self.sticky.setChecked(bool(tracker_data.sticky))
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.aither_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.aither_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.aither_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.aither_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.aither_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.aither_tracker.anonymous = int(
+            self.anonymous.isChecked()
+        )
+        self.config.cfg_payload.aither_tracker.internal = int(self.internal.isChecked())
+        self.config.cfg_payload.aither_tracker.personal_release = int(
+            self.personal_release.isChecked()
+        )
+        self.config.cfg_payload.aither_tracker.stream_optimized = int(
+            self.stream_optimized.isChecked()
+        )
+        self.config.cfg_payload.aither_tracker.featured = int(self.featured.isChecked())
+        self.config.cfg_payload.aither_tracker.free = int(self.free.isChecked())
+        self.config.cfg_payload.aither_tracker.double_up = int(
+            self.double_up.isChecked()
+        )
+        self.config.cfg_payload.aither_tracker.sticky = int(self.sticky.isChecked())
+
+
 class TrackerListWidget(QWidget):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
@@ -548,6 +648,8 @@ class TrackerListWidget(QWidget):
             tracker_widget = PTPTrackerEdit(self.config, self)
         elif tracker is TrackerSelection.REELFLIX:
             tracker_widget = RFTrackerEdit(self.config, self)
+        elif tracker is TrackerSelection.AITHER:
+            tracker_widget = AitherTrackerEdit(self.config, self)
 
         if tracker_widget:
             tracker_widget.load_data.emit()
