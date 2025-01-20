@@ -460,7 +460,7 @@ class TemplatesSettings(BaseSettings):
                             is QMessageBox.StandardButton.Yes
                         ):
                             return False
-            elif cur_tracker is TrackerSelection.REELFLIX:
+            elif cur_tracker in (TrackerSelection.REELFLIX, TrackerSelection.AITHER):
                 rf_template = self.template_selector.backend.read_template(
                     self.config.cfg_payload.rf_tracker.nfo_template
                 )
@@ -471,7 +471,7 @@ class TemplatesSettings(BaseSettings):
                             QMessageBox.question(
                                 self,
                                 "warning",
-                                "ReelFliX requires at least three screenshots in BBCode format. You "
+                                f"{cur_tracker} requires at least three screenshots in BBCode format. You "
                                 "should assign a template with {{ screen_shots }} and ensure you utilize "
                                 "the screenshot feature.\n\nWould you like to fix this now?",
                             )
