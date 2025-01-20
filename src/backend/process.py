@@ -24,6 +24,8 @@ from src.backend.trackers import (
     PTPSearch,
     ReelFlixSearch,
     rf_uploader,
+    AitherSearch,
+    aither_uploader,
 )
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.torrents import generate_torrent, write_torrent, clone_torrent
@@ -88,6 +90,10 @@ class ProcessBackEnd:
             elif TrackerSelection(tracker_name) == TrackerSelection.REELFLIX:
                 tasks.append(
                     self._dupe_rf(tracker_name=tracker_name, file_input=file_input)
+                )
+            elif TrackerSelection(tracker_name) == TrackerSelection.AITHER:
+                tasks.append(
+                    self._dupe_aither(tracker_name=tracker_name, file_input=file_input)
                 )
 
         async_results = await asyncio.gather(*tasks)
@@ -169,6 +175,15 @@ class ProcessBackEnd:
         ).search(file_name=file_input)
         if rf_search:
             return TrackerSelection(tracker_name), rf_search
+
+    async def _dupe_aither(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
+        aither_search = AitherSearch(
+            api_key=self.config.cfg_payload.aither_tracker.api_key,
+        ).search(file_name=file_input)
+        if aither_search:
+            return TrackerSelection(tracker_name), aither_search
 
     def process_trackers(
         self,
@@ -443,6 +458,26 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.REELFLIX:
             tracker_payload = self.config.cfg_payload.rf_tracker
             return rf_uploader(
+                api_key=tracker_payload.api_key,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                nfo=nfo,
+                internal=bool(tracker_payload.internal),
+                anonymous=bool(tracker_payload.anonymous),
+                personal_release=bool(tracker_payload.personal_release),
+                stream_optimized=bool(tracker_payload.stream_optimized),
+                opt_in_to_mod_queue=bool(tracker_payload.opt_in_to_mod_queue),
+                featured=bool(tracker_payload.featured),
+                free=bool(tracker_payload.free),
+                double_up=bool(tracker_payload.double_up),
+                sticky=bool(tracker_payload.sticky),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_payload,
+                timeout=self.config.cfg_payload.timeout,
+            )
+        elif tracker == TrackerSelection.AITHER:
+            tracker_payload = self.config.cfg_payload.aither_tracker
+            return aither_uploader(
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
