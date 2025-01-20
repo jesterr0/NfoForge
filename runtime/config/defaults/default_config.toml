@@ -103,6 +103,25 @@ free = 0
 double_up = 0
 sticky = 0
 
+[tracker.aither]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "Aither"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+api_key = ""
+anonymous = 0
+internal = 0
+personal_release = 0
+stream_optimized = 0
+opt_in_to_mod_queue = 0
+featured = 0
+free = 0
+double_up = 0
+sticky = 0
+
 [torrent_client]
 
 [torrent_client.qbittorrent]
