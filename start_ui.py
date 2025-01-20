@@ -14,14 +14,18 @@ from src.backend.utils.working_dir import RUNTIME_DIR
 
 
 class NfoForge:
-    def __init__(self, config_file: str | None) -> None:
+    def __init__(self, arg_parse: tuple[str | None, str | None]) -> None:
         self.app = QApplication(sys.argv)
         self.app.setWindowIcon(
             QIcon(str(Path(RUNTIME_DIR / "images" / "hammer_merged.png")))
         )
         self.app.setStyle("Fusion")
 
-        self.config_file: str | None = config_file
+        self.config_file, self.arg_parse_msg = arg_parse
+
+        # check if there is any messages from arg parser
+        if not self._arg_parse_msg():
+            return
 
         self._setup_exception_hooks()
         self._setup_font()
@@ -39,6 +43,19 @@ class NfoForge:
         self.main_window: MainWindow | None = None
 
         sys.exit(self.app.exec())
+
+    def _arg_parse_msg(self) -> bool:
+        if self.arg_parse_msg:
+            msg_box = QMessageBox(
+                QMessageBox.Icon.Information,
+                "Args",
+                self.arg_parse_msg,
+                QMessageBox.StandardButton.Ok,
+            )
+            msg_box.exec()
+            self.app.quit()
+            return False
+        return True
 
     def _setup_exception_hooks(self) -> None:
         sys.excepthook = self.exception_handler
@@ -136,12 +153,21 @@ class NfoForge:
                 self.app.quit()
 
 
-def arg_parse() -> str | None:
+def arg_parse() -> tuple[str | None, str | None]:
     config_arg = None
+    message_arg = None
     args = sys.argv
-    if len(args) == 3 and args[1] == "--config":
+    length = len(args)
+    if length == 2 and args[1] in ("--help", "-h", "help", "h"):
+        message_arg = (
+            "-c/--config <config_file> (Loads the program with desired config)"
+            "\n-h/--help (Displays this message)"
+        )
+    elif length == 3 and args[1] in ("--config", "-c", "config", "c"):
         config_arg = args[2]
-    return config_arg
+        if config_arg.endswith(".toml"):
+            config_arg = config_arg[:-5]
+    return config_arg, message_arg
 
 
 if __name__ == "__main__":
