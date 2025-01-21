@@ -2,16 +2,16 @@ from qbittorrentapi import Client as QBitClient
 import qbittorrentapi.exceptions
 from pathlib import Path
 
-from src.config.config import Config
 from src.exceptions import TrackerClientError
+from src.payloads.clients import TorrentClient
 
 
 class QBittorrentClient:
     """QBittorrent Client"""
 
-    def __init__(self, config: Config) -> None:
-        self.config = config
-        self.qbit_config = config.cfg_payload.qbittorrent
+    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
+        self.timeout = timeout
+        self.qbit_config = config
 
         self.client = QBitClient(
             host=str(self.qbit_config.host),
@@ -22,9 +22,7 @@ class QBittorrentClient:
 
     def login(self) -> tuple[bool, str]:
         try:
-            self.client.auth_log_in(
-                requests_args={"timeout": self.config.cfg_payload.timeout}
-            )
+            self.client.auth_log_in(requests_args={"timeout": self.timeout})
             return True, "Login successful"
         except qbittorrentapi.LoginFailed as e:
             return False, f"Login failed. Check username and password: {e}"
@@ -41,6 +39,14 @@ class QBittorrentClient:
         except Exception as e:
             raise TrackerClientError(f"Failed to logout: {e}") from e
 
+    def test(self) -> tuple[bool, str]:
+        if self.login()[0]:
+            return (
+                True,
+                "Login successful! If your category is setup correctly injection should work.",
+            )
+        return False, "Failed"
+
     def inject_torrent(self, torrent_file: Path) -> tuple[bool, str]:
         try:
             add_torrent = self.client.torrents_add(
@@ -52,7 +58,7 @@ class QBittorrentClient:
             )
             if add_torrent == "Ok.":
                 return True, "qBittorrent injection successful"
-            elif add_torrent == "Fails.":
+            else:
                 return False, "qBittorrent injection failed"
         except qbittorrentapi.exceptions.APIError as e:
             raise TrackerClientError(f"Failed to inject torrent: {e}") from e
