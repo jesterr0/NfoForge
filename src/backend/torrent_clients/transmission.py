@@ -7,41 +7,52 @@ from transmission_rpc import (
 )
 from pathlib import Path
 
-from src.config.config import Config
 from src.exceptions import TrackerClientError
+from src.payloads.clients import TorrentClient
 
 
-class Transmission:
+class TransmissionClient:
     """
     Transmission Client
 
     Note: Automatically logs in.
     """
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
         self.config = config
-        self.transmission_config = config.cfg_payload.transmission
+        self.transmission_config = config
+        self.timeout = timeout
 
         try:
-            self.client = TransmissionClientFromUrl(self.transmission_config.host)
-        except TransmissionError as communication_error:
-            raise TrackerClientError(
-                f"Failed to communicate with Transmission: {communication_error}"
+            self.client = TransmissionClientFromUrl(
+                url=self.transmission_config.host, timeout=self.timeout
             )
         except TransmissionAuthError as credential_error:
             raise TrackerClientError(
                 f"Username and/or password is incorrect: {credential_error}"
             )
-        except TransmissionConnectError as daemon_error:
-            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
         except TransmissionTimeoutError as timeout_error:
             raise TrackerClientError(
                 f"Timed out while trying to connect to Transmission: {timeout_error}"
+            )
+        except TransmissionConnectError as daemon_error:
+            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
+        except TransmissionError as communication_error:
+            raise TrackerClientError(
+                f"Failed to communicate with Transmission: {communication_error}"
             )
         except Exception as e:
             raise TrackerClientError(
                 f"Unexpected Error initializing Transmission client: {e}"
             )
+
+    def test(self) -> tuple[bool, str]:
+        if self.client.session_stats():
+            return (
+                True,
+                "Login successful! If your label/path is setup correctly (if applicable) injection should work.",
+            )
+        return False, "Failed"
 
     def inject_torrent(self, torrent_path: Path) -> tuple[bool, str]:
         try:
@@ -49,20 +60,21 @@ class Transmission:
                 torrent=torrent_path,
                 download_dir=self._get_save_directory(),
                 labels=self._get_label(),
+                timeout=self.timeout,
             )
             if add_torrent and add_torrent.hash_string:
                 return True, "Transmission injection successful"
             else:
                 return False, "Transmission injection failed"
-        except TransmissionError as communication_error:
-            raise TrackerClientError(
-                f"Failed to communicate with Transmission: {communication_error}"
-            )
-        except TransmissionConnectError as daemon_error:
-            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
         except TransmissionTimeoutError as timeout_error:
             raise TrackerClientError(
                 f"Timed out while trying to connect to Transmission: {timeout_error}"
+            )
+        except TransmissionConnectError as daemon_error:
+            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
+        except TransmissionError as communication_error:
+            raise TrackerClientError(
+                f"Failed to communicate with Transmission: {communication_error}"
             )
         except Exception as e:
             raise TrackerClientError(

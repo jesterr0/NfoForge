@@ -32,8 +32,8 @@ from src.backend.torrents import generate_torrent, write_torrent, clone_torrent
 from src.backend.token_replacer import TokenReplacer, ColonReplace, UnfilledTokenRemoval
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.deluge import DelugeClient
-from src.backend.torrent_clients.rtorrent import RTorrent
-from src.backend.torrent_clients.transmission import Transmission
+from src.backend.torrent_clients.rtorrent import RTorrentClient
+from src.backend.torrent_clients.transmission import TransmissionClient
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -51,8 +51,8 @@ class ProcessBackEnd:
         # clients
         self.qbit_client: QBittorrentClient = None
         self.deluge_client: DelugeClient = None
-        self.rtorrent_client: RTorrent = None
-        self.transmission_client: Transmission = None
+        self.rtorrent_client: RTorrentClient = None
+        self.transmission_client: TransmissionClient = None
         self.watch_folder_counter = 0
         self.clients_can_logout = (self.qbit_client, self.deluge_client)
 
@@ -543,24 +543,32 @@ class ProcessBackEnd:
 
     def qbittorrent_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.qbit_client:
-            self.qbit_client = QBittorrentClient(self.config)
+            self.qbit_client = QBittorrentClient(
+                self.config.cfg_payload.qbittorrent, self.config.cfg_payload.timeout
+            )
             self.qbit_client.login()
         return self.qbit_client.inject_torrent(torrent_path)
 
     def deluge_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.deluge_client:
-            self.deluge_client = DelugeClient(self.config)
+            self.deluge_client = DelugeClient(
+                self.config.cfg_payload.deluge, self.config.cfg_payload.timeout
+            )
             self.deluge_client.login()
         return self.deluge_client.inject_torrent(torrent_path)
 
     def rtorrent_inject(self, torrent_path: Path, file_path: Path) -> tuple[bool, str]:
         if not self.rtorrent_client:
-            self.rtorrent_client = RTorrent(self.config)
+            self.rtorrent_client = RTorrentClient(
+                self.config.cfg_payload.rtorrent, self.config.cfg_payload.timeout
+            )
         return self.rtorrent_client.inject_torrent(torrent_path, file_path, True)
 
     def transmission_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.transmission_client:
-            self.transmission_client = Transmission(self.config)
+            self.transmission_client = TransmissionClient(
+                self.config.cfg_payload.transmission, self.config.cfg_payload.timeout
+            )
         return self.transmission_client.inject_torrent(torrent_path)
 
     def watch_folder_inject(
