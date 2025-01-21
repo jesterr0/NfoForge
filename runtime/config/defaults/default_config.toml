@@ -142,7 +142,7 @@ specific_params = { "label" = "", "path" = "" }
 
 [torrent_client.rtorrent]
 enabled = false
-host = "https://<user>:<password>@www.url.com/rutorrent/plugins/httprpc/action.php"
+host = "https://<user>:<password>@www.url.com/plugins/httprpc/action.php"
 port = 0
 user = ""
 password = ""

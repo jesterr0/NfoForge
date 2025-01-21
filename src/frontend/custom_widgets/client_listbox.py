@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtWidgets import (
     QFrame,
@@ -12,24 +13,63 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QMenu,
     QSpinBox,
+    QMessageBox,
 )
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot, QThread
 from PySide6.QtGui import QAction
 
-from src.payloads.watch_folder import WatchFolder
-from src.enums.torrent_client import TorrentClientSelection
-from src.payloads.clients import TorrentClient
 from src.config.config import Config
+from src.backend.torrent_clients.qbittorrent import QBittorrentClient
+from src.backend.torrent_clients.deluge import DelugeClient
+from src.backend.torrent_clients.transmission import TransmissionClient
+from src.backend.torrent_clients.rtorrent import RTorrentClient
+from src.enums.torrent_client import TorrentClientSelection
+from src.payloads.watch_folder import WatchFolder
+from src.payloads.clients import TorrentClient
 from src.frontend.utils import build_h_line
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 
 
+class ClientTestWorker(QThread):
+    job_finished = Signal(tuple)
+    job_failed = Signal(str)
+
+    def __init__(
+        self,
+        test_class: Callable | None = None,
+        test_args: tuple | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.test_class = test_class
+        self.test_args = test_args
+
+    def run(self) -> None:
+        try:
+            if self.test_class:
+                if self.test_args:
+                    test_class = self.test_class(*self.test_args)
+                else:
+                    test_class = self.test_class()
+                status, message = test_class.test()
+                self.job_finished.emit((status, message))
+        except Exception as e:
+            self.job_failed.emit(f"Error: {e}")
+
+
 class ClientEditBase(QFrame):
+    test_client_signal = Signal(object)
+    test_client_signal_completed = Signal()
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
         self.specific_params_layout = QVBoxLayout()
         self.specific_params_map: dict[str, QLineEdit] = {}
+
+        self.test_class: Callable | None = None
+        self.client_test_worker: ClientTestWorker | None = None
+        self.test_client_signal.connect(self._test_client)
 
     def build_widgets_from_dict(self, data: dict[str, str]) -> None:
         """Builds widgets as needed dynamically"""
@@ -39,6 +79,24 @@ class ClientEditBase(QFrame):
             self.specific_params_map[key] = widget
             form = self.build_form_layout(key.title().replace("_", " "), widget)
             self.specific_params_layout.addLayout(form)
+
+    @Slot(object)
+    def _test_client(self, test_payload: TorrentClient) -> None:
+        self.client_test_worker = ClientTestWorker(self.test_class, (test_payload,))
+        self.client_test_worker.job_finished.connect(self._test_worker_finished)
+        self.client_test_worker.job_failed.connect(self._test_worker_failed)
+        self.client_test_worker.start()
+
+    @Slot(tuple)
+    def _test_worker_finished(self, result: tuple) -> None:
+        _, message = result
+        self.test_client_signal_completed.emit()
+        QMessageBox.information(self, "Result", message)
+
+    @Slot(str)
+    def _test_worker_failed(self, msg: str) -> None:
+        self.test_client_signal_completed.emit()
+        QMessageBox.warning(self, "Result", msg)
 
     @staticmethod
     def build_form_layout(text: str, widget: QWidget) -> QFormLayout:
@@ -61,7 +119,8 @@ class ClientEdit(ClientEditBase):
         self.user.setToolTip("Client username")
         self.password = MaskedQLineEdit(parent=self, masked=True)
         self.password.setToolTip("Client password")
-        self.save = QPushButton("Save", parent=self)
+        self.test_client = QPushButton("Test", self)
+        self.test_client.clicked.connect(self._test)
 
         settings_layout = QVBoxLayout()
         settings_layout.addLayout(self.build_form_layout("Host", self.host))
@@ -69,12 +128,25 @@ class ClientEdit(ClientEditBase):
         settings_layout.addLayout(self.build_form_layout("User", self.user))
         settings_layout.addLayout(self.build_form_layout("Password", self.password))
         settings_layout.addLayout(self.specific_params_layout)
-        settings_layout.addWidget(self.save, alignment=Qt.AlignmentFlag.AlignRight)
+        settings_layout.addWidget(
+            self.test_client, alignment=Qt.AlignmentFlag.AlignRight
+        )
         settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
 
         main_layout = QVBoxLayout(self)
         main_layout.addLayout(settings_layout)
         self.setLayout(main_layout)
+
+    @Slot()
+    def _test(self) -> None:
+        test_payload = TorrentClient(
+            enabled=True,
+            host=self.host.text().strip(),
+            port=self.port.value(),
+            user=self.user.text().strip(),
+            password=self.password.text().strip(),
+        )
+        self.test_client_signal.emit(test_payload)
 
 
 class ClientEditURI(ClientEditBase):
@@ -83,17 +155,28 @@ class ClientEditURI(ClientEditBase):
 
         self.host = QLineEdit(parent=self)
         self.host.setToolTip("URI (http://<user>:<password>@127.0.0.1)")
-        self.save = QPushButton("Save", parent=self)
+        self.test_client = QPushButton("Test", self)
+        self.test_client.clicked.connect(self._test)
 
         settings_layout = QVBoxLayout()
         settings_layout.addLayout(self.build_form_layout("Host", self.host))
         settings_layout.addLayout(self.specific_params_layout)
-        settings_layout.addWidget(self.save, alignment=Qt.AlignmentFlag.AlignRight)
+        settings_layout.addWidget(
+            self.test_client, alignment=Qt.AlignmentFlag.AlignRight
+        )
         settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
 
         main_layout = QVBoxLayout(self)
         main_layout.addLayout(settings_layout)
         self.setLayout(main_layout)
+
+    @Slot()
+    def _test(self) -> None:
+        test_payload = TorrentClient(
+            enabled=True,
+            host=self.host.text().strip(),
+        )
+        self.test_client_signal.emit(test_payload)
 
 
 class ClientEditWatchFolder(ClientEditBase):
@@ -102,11 +185,9 @@ class ClientEditWatchFolder(ClientEditBase):
 
         self.path = QLineEdit(parent=self)
         self.path.setToolTip("Path to watch directory")
-        self.save = QPushButton("Save", parent=self)
 
         settings_layout = QVBoxLayout()
         settings_layout.addLayout(self.build_form_layout("Path", self.path))
-        settings_layout.addWidget(self.save, alignment=Qt.AlignmentFlag.AlignRight)
         settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
 
         main_layout = QVBoxLayout(self)
@@ -115,7 +196,8 @@ class ClientEditWatchFolder(ClientEditBase):
 
 
 class ClientListWidget(QWidget):
-    save_config_on_validation = Signal()
+    testing_started = Signal()
+    testing_ended = Signal()
 
     FULL_CLIENTS = (
         TorrentClientSelection.QBITTORRENT,
@@ -125,12 +207,17 @@ class ClientListWidget(QWidget):
         TorrentClientSelection.RTORRENT,
         TorrentClientSelection.TRANSMISSION,
     )
+    CLIENT_CLASS_MAP = {
+        TorrentClientSelection.QBITTORRENT: QBittorrentClient,
+        TorrentClientSelection.DELUGE: DelugeClient,
+        TorrentClientSelection.RTORRENT: RTorrentClient,
+        TorrentClientSelection.TRANSMISSION: TransmissionClient,
+    }
 
-    def __init__(self, config: Config, save_buttons: bool = True, parent=None) -> None:
+    def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
 
         self.config = config
-        self.save_buttons = save_buttons
 
         self._save_settings_map = {}
 
@@ -193,25 +280,29 @@ class ClientListWidget(QWidget):
             client_widget.user.setText(client_info.user)
             client_widget.password.setText(client_info.password)
             client_widget.build_widgets_from_dict(client_info.specific_params)
+            client_widget.test_class = self.CLIENT_CLASS_MAP[client]
+            client_widget.test_client_signal.connect(self._test_client)
+            client_widget.test_client_signal_completed.connect(self.testing_ended.emit)
 
         elif client in self.URI_CLIENTS and isinstance(client_info, TorrentClient):
             client_widget = ClientEditURI()
             client_widget.host.setText(client_info.host)
             client_widget.build_widgets_from_dict(client_info.specific_params)
+            client_widget.test_class = self.CLIENT_CLASS_MAP[client]
+            client_widget.test_client_signal.connect(self._test_client)
+            client_widget.test_client_signal_completed.connect(self.testing_ended.emit)
 
         elif client == TorrentClientSelection.WATCH_FOLDER and isinstance(
             client_info, WatchFolder
         ):
             client_widget = ClientEditWatchFolder()
-            client_widget.path.setText(str(client_info.path))
+            client_widget.path.setText(
+                str(client_info.path) if client_info.path else ""
+            )
 
         if not client_widget:
             raise AttributeError("Failed to build 'client_widget'")
 
-        if not self.save_buttons:
-            client_widget.save.hide()
-
-        client_widget.save.clicked.connect(lambda: self.save_client_info(client))
         self._save_settings_map[client] = client_widget
 
         child_layout.addWidget(client_widget)
@@ -247,6 +338,10 @@ class ClientListWidget(QWidget):
             item = self.tree.topLevelItem(i)
             item.setExpanded(False)
 
+    @Slot(object)
+    def _test_client(self, _: TorrentClient) -> None:
+        self.testing_started.emit()
+
     @Slot(object, int)
     def _toggle_client(self, item: QTreeWidgetItem, column: int) -> None:
         client_attributes: TorrentClient | WatchFolder = self.config.client_map[
@@ -255,7 +350,6 @@ class ClientListWidget(QWidget):
         client_attributes.enabled = (
             True if item.checkState(column) == Qt.CheckState.Checked else False
         )
-        self.save_config_on_validation.emit()
 
     @Slot(object)
     def save_client_info(self, client: TorrentClientSelection) -> None:
@@ -282,9 +376,10 @@ class ClientListWidget(QWidget):
             client_attributes, WatchFolder
         ):
             watch_folder: ClientEditWatchFolder = self._save_settings_map[client]
-            client_attributes.path = Path(watch_folder.path.text().strip())
-
-        self.save_config_on_validation.emit()
+            watch_folder_path = watch_folder.path.text().strip()
+            client_attributes.path = (
+                Path(watch_folder_path) if watch_folder_path else None
+            )
 
     def get_selected_clients(self) -> list[TorrentClientSelection | None]:
         selected_items = []

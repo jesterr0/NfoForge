@@ -10,7 +10,9 @@ class ClientsSettings(BaseSettings):
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("clientsSettings")
 
-        self.client_widget = ClientListWidget(self.config, False, self)
+        self.client_widget = ClientListWidget(self.config, self)
+        self.client_widget.testing_started.connect(self._testing_started)
+        self.client_widget.testing_ended.connect(self._testing_ended)
         self.inner_layout.removeItem(self._spacer_item)
         self.inner_layout.addWidget(self.client_widget, stretch=1)
 
@@ -18,6 +20,16 @@ class ClientsSettings(BaseSettings):
         self.update_saved_settings.connect(self._save_settings)
 
         self._load_saved_settings()
+
+    @Slot()
+    def _testing_started(self) -> None:
+        self.main_window.set_disabled.emit(True)
+        self.main_window.update_status_bar.emit("Testing client please wait...", 0)
+
+    @Slot()
+    def _testing_ended(self) -> None:
+        self.main_window.set_disabled.emit(False)
+        self.main_window.clear_status_bar.emit()
 
     @Slot()
     def _load_saved_settings(self) -> None:
