@@ -496,7 +496,11 @@ class Config:
                 watch_folder_data = tomlkit.table()
             watch_folder_data = self._toml_data["watch_folder"]
             watch_folder_data["enabled"] = self.cfg_payload.watch_folder.enabled
-            watch_folder_data["path"] = str(self.cfg_payload.watch_folder.path)
+            watch_folder_data["path"] = (
+                str(self.cfg_payload.watch_folder.path)
+                if self.cfg_payload.watch_folder.path
+                else ""
+            )
 
             # movie rename
             movie_rename = self._toml_data["movie_rename"]
