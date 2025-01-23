@@ -62,7 +62,7 @@ class MainWindowWizard(QWizard):
         self._build_wizard_pages()
         self._set_start_page()
 
-        self.next_button = QPushButton("Next")
+        self.next_button = QPushButton("Next", self)
         self.next_button.setToolTip("Save & Continue")
         self.next_button.setToolTipDuration(1500)
         self.setButton(QWizard.WizardButton.CommitButton, self.next_button)
@@ -73,16 +73,16 @@ class MainWindowWizard(QWizard):
             self._reset_next_button_text
         )
 
-        self.settings_button = QPushButton("Settings")
+        self.settings_button = QPushButton("Settings", self)
         self.settings_button.clicked.connect(self.main_window.settings_clicked.emit)
         self.setButton(QWizard.WizardButton.CustomButton1, self.settings_button)
 
-        self.reset_button = QPushButton("Start Over")
+        self.reset_button = QPushButton("Start Over", self)
         self.reset_button.clicked.connect(self.reset_wizard)
         self.setButton(QWizard.WizardButton.CustomButton2, self.reset_button)
         self.setOption(QWizard.WizardOption.HaveCustomButton2)
 
-        self.process_button = QPushButton("Process (Dupe Check)")
+        self.process_button = QPushButton("Process (Dupe Check)", self)
         self.process_button.clicked.connect(self.main_window.wizard_process_btn_clicked)
         self.main_window.wizard_process_btn_change_txt.connect(
             self._change_process_button_text
@@ -160,7 +160,6 @@ class MainWindowWizard(QWizard):
         self._set_disabled(False)
         self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
-        self.process_button.show()
         self.setButtonLayout(self.starting_buttons)
         self.restart()
 
