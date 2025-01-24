@@ -49,7 +49,7 @@ _Supported trackers will be added overtime_
 
 ## Requirements
 
-- TMDB Api [key v3](https://www.themoviedb.org/settings/api)
+- TMDB Api [key (v3)](https://www.themoviedb.org/settings/api)
 - TVDB Api [key](https://thetvdb.com/api-information)
 - FFMPEG and/or [FrameForge](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
