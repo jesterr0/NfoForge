@@ -1,4 +1,6 @@
 import re
+import platform
+import oslex2
 import subprocess
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
@@ -43,32 +45,51 @@ class ImageGeneration(ABC):
         raise NotImplementedError()
 
     def run_ffmpeg_command(
-        self, command: list, total_images: int, signal: SignalInstance
+        self, command: list[str], total_images: int, signal: "SignalInstance"
     ) -> int:
-        LOG.debug(LOG.LOG_SOURCE.BE, f"FFMPEG command: {' '.join(command)}")
-        with subprocess.Popen(
-            command,
-            stderr=subprocess.STDOUT,
-            stdout=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            creationflags=subprocess.CREATE_NO_WINDOW
-            | subprocess.CREATE_NEW_PROCESS_GROUP,
-        ) as job:
-            if job and job.stdout:
-                for line in job.stdout:
-                    line = re.sub(r"\s{2,}", "", line).rstrip()
-                    if "frame=" in line:
-                        LOG.info(LOG.LOG_SOURCE.BE, line)
-                        progress = generate_progress(line, total_images)
-                        if progress:
-                            signal.emit(line, progress)
+        try:
+            LOG.debug(
+                LOG.LOG_SOURCE.BE, f"FFMPEG command: {' '.join(map(str, command))}"
+            )
 
-                job.stdout.close()
+            with subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW
+                | subprocess.CREATE_NEW_PROCESS_GROUP
+                if platform.system() == "Windows"
+                else 0,
+            ) as job:
+                stdout_lines = []
+
+                if job.stdout:
+                    for line in job.stdout:
+                        line = re.sub(r"\s{2,}", "", line).rstrip()
+                        stdout_lines.append(line)
+                        if "frame=" in line:
+                            LOG.debug(LOG.LOG_SOURCE.BE, line)
+                            progress = generate_progress(line, total_images)
+                            if progress:
+                                signal.emit(line, progress)
+
+                if job.stdout:
+                    job.stdout.close()
+
                 job.wait()
-                LOG.info(LOG.LOG_SOURCE.BE, f"FFMPEG return code: {job.returncode}")
-                return job.returncode
-        return 1
+                return_code = job.returncode
+                LOG.info(LOG.LOG_SOURCE.BE, f"FFMPEG return code: {return_code}")
+
+                if return_code != 0:
+                    error_message = "\n".join(stdout_lines)
+                    LOG.error(LOG.LOG_SOURCE.BE, f"FFMPEG error: {error_message}")
+
+                return return_code
+        except Exception as e:
+            LOG.error(LOG.LOG_SOURCE.BE, f"Error while running FFMPEG command ({e}).")
+            return 1
 
     def run_frame_forge_command(self, command: list, signal: SignalInstance) -> int:
         completed = False
@@ -79,9 +100,11 @@ class ImageGeneration(ABC):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             creationflags=subprocess.CREATE_NO_WINDOW
-            | subprocess.CREATE_NEW_PROCESS_GROUP,
+            | subprocess.CREATE_NEW_PROCESS_GROUP
+            if platform.system == "Windows"
+            else 0,
             bufsize=1,
-            universal_newlines=True,
+            text=True,
         ) as job:
             if job and job.stdout:
                 for img_progress in job.stdout:
@@ -147,6 +170,11 @@ class BasicImageGeneration(ImageGeneration):
         cpu_cores = cpu_count() or 0
         thread_count = str(int(cpu_cores / 2)) if (cpu_cores and cpu_cores) > 0 else "0"
 
+        # build vf filter
+        rand_offset = randint(0, int(frame_rate) * 10)
+        select_filter = f"not(mod(n+{rand_offset},{interval}))"
+        vf_filter = f"select='{select_filter}'{tone_map_str}"
+
         command = [
             str(ffmpeg_path),
             "-ss",
@@ -155,11 +183,9 @@ class BasicImageGeneration(ImageGeneration):
             "-i",
             str(media_input),
             "-vf",
-            f"select='not(mod(n+{randint(0, (int(frame_rate) * 10))},{interval}))'{tone_map_str}",
+            vf_filter,
             "-frames:v",
             str(total_images),
-            "-skip_frame",
-            "nokey",
             "-fps_mode",
             "vfr",
             "-compression_level",
@@ -308,7 +334,7 @@ class ComparisonImageGeneration(ImageGeneration):
             height=media_height,
         )
 
-        if generate_encode_images == 1 and generate_source_images == 1:
+        if generate_encode_images != 0 and generate_source_images != 0:
             return 1
         else:
             return 0
@@ -353,15 +379,34 @@ class ComparisonImageGeneration(ImageGeneration):
             tone_map_str = get_ffmpeg_tone_map_str()
 
         subtitle = ""
-        if text_overlay:
+        draw_text_support = self.check_draw_text(ffmpeg)
+        if text_overlay and draw_text_support:
             font_path = (
                 Path(RUNTIME_DIR / "fonts" / "Montserrat-Medium.ttf")
                 .as_posix()
                 .replace(":", r"\:")
             )
-            subtitle = f",drawtext=fontfile='{font_path}':text='{text_overlay}':x=10:y=10:fontsize={sub_size}:fontcolor={subtitle_color}"
 
-        vf_filter = f"select='not(mod(n+{random_offset},{interval}))'{tone_map_str}{ffmpeg_crop}{resize}{subtitle}"
+            quoted_font_path = oslex2.quote(font_path)
+            quoted_text_overlay = oslex2.quote(text_overlay)
+            quoted_subtitle_color = oslex2.quote(subtitle_color)
+
+            subtitle = (
+                f",drawtext=fontfile={quoted_font_path}:"
+                f"text={quoted_text_overlay}:"
+                f"x=10:y=10:fontsize={sub_size}:fontcolor={quoted_subtitle_color}"
+            )
+        elif text_overlay and not draw_text_support:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                "Your build of FFMPEG does not support the 'drawtext' filter",
+            )
+
+        # Build the vf filter for selecting frames
+        select_filter = f"not(mod(n+{random_offset},{interval}))"
+        vf_filter = (
+            f"select='{select_filter}'{tone_map_str}{ffmpeg_crop}{resize}{subtitle}"
+        )
 
         # determine threads and use half of them, defaulting back to ffmpeg default of 0 if needed
         cpu_cores = cpu_count() or 0
@@ -378,8 +423,6 @@ class ComparisonImageGeneration(ImageGeneration):
             vf_filter,
             "-frames:v",
             str(total_images),
-            "-skip_frame",
-            "nokey",
             "-fps_mode",
             "vfr",
             "-compression_level",
@@ -395,6 +438,19 @@ class ComparisonImageGeneration(ImageGeneration):
         ]
 
         return self.run_ffmpeg_command(command, total_images, signal)
+
+    @staticmethod
+    def check_draw_text(ffmpeg_path: Path) -> bool:
+        result = subprocess.run(
+            [str(ffmpeg_path), "-filters"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if "drawtext" in result.stdout:
+            return True
+        else:
+            return False
 
 
 class FrameForgeImageGeneration(ImageGeneration):
