@@ -1,3 +1,4 @@
+import os
 import traceback
 import sys
 from pathlib import Path
@@ -11,6 +12,11 @@ from src.logger.nfo_forge_logger import LOG
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
 from src.frontend.windows.main_window import MainWindow
 from src.backend.utils.working_dir import RUNTIME_DIR
+
+DEV_MODE = False
+if DEV_MODE:
+    # This helps scale Linux desktop in vmware for development
+    os.environ["QT_SCALE_FACTOR"] = "1.3"
 
 
 class NfoForge:
