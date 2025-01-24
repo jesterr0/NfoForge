@@ -173,7 +173,7 @@ class BasicImageGeneration(ImageGeneration):
         # build vf filter
         rand_offset = randint(0, int(frame_rate) * 10)
         select_filter = f"not(mod(n+{rand_offset},{interval}))"
-        vf_filter = f"select={oslex2.quote(select_filter)}{tone_map_str}"
+        vf_filter = f"select='{select_filter}'{tone_map_str}"
 
         command = [
             str(ffmpeg_path),
@@ -404,7 +404,9 @@ class ComparisonImageGeneration(ImageGeneration):
 
         # Build the vf filter for selecting frames
         select_filter = f"not(mod(n+{random_offset},{interval}))"
-        vf_filter = f"select={oslex2.quote(select_filter)}{tone_map_str}{ffmpeg_crop}{resize}{subtitle}"
+        vf_filter = (
+            f"select='{select_filter}'{tone_map_str}{ffmpeg_crop}{resize}{subtitle}"
+        )
 
         # determine threads and use half of them, defaulting back to ffmpeg default of 0 if needed
         cpu_cores = cpu_count() or 0
