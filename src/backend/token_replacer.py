@@ -1169,12 +1169,12 @@ class TokenReplacer:
             output = f"Shared with {program_name} v{__version__}"
         elif shared_by_type is SharedWithType.BBCODE:
             output = (
-                "[align=right][size=1]"
                 f"Shared with [url={program_url}]{program_name} v{__version__}[/url]"
-                "[/size][/align]"
             )
         elif shared_by_type is SharedWithType.HTML:
-            output = f'<div style="text-align: right;">Shared with <a href="{program_url}">{program_name} v{__version__}</a></div>'
+            output = (
+                f'Shared with <a href="{program_url}">{program_name} v{__version__}</a'
+            )
         return self._optional_user_input(output, token_data)
 
     def _guessit_language(self) -> str:
