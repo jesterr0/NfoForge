@@ -1,11 +1,22 @@
+import re
 import os
+import platform
 import shutil
 import sys
 from pathlib import Path
 from subprocess import run
 from stdlib_list import stdlib_list
 
-# TODO: add support for linux
+
+def get_executable_string_by_os() -> str:
+    """Check executable type based on operating system"""
+    operating_system = platform.system()
+    if operating_system == "Windows":
+        return ".exe"
+    elif operating_system == "Linux":
+        return ""
+    else:
+        raise ValueError("Only Windows and Linux is currently supported")
 
 
 def get_std_lib() -> list:
@@ -33,6 +44,19 @@ def modify_spec_file(spec_file_path: Path, hiddenimports: list):
         spec_file.write(spec_content)
 
 
+def get_site_packages() -> Path:
+    output = run(
+        ["pip", "show", "babelfish"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    get_location = re.search(r"Location: (.+)\n", output, flags=re.MULTILINE)
+    if not get_location:
+        raise FileNotFoundError("Can not detect site packages")
+    return Path(get_location.group(1))
+
+
 def build_app(folder_name: str, include_std_lib: bool):
     # change directory to the project's root directory
     project_root = Path(__file__).parent
@@ -53,21 +77,12 @@ def build_app(folder_name: str, include_std_lib: bool):
     # create a folder for the PyInstaller output
     pyinstaller_folder.mkdir(exist_ok=True)
 
-    # grab venv path
-    venv_path = Path(
-        run(
-            ["poetry", "env", "info", "--path"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-    )
-
     # define paths before changing directory
     entry_script = project_root / "start_ui.py"
     icon_path = project_root / "runtime" / "images" / "hammer_merged.ico"
-    babel_fish = venv_path / "Lib" / "site-packages" / "babelfish"
-    guessit = venv_path / "Lib" / "site-packages" / "guessit"
+    site_packages = get_site_packages()
+    babel_fish = site_packages / "babelfish"
+    guessit = site_packages / "guessit"
 
     # dev runtime path to pull into final package
     dev_runtime = project_root / "runtime"
@@ -84,12 +99,9 @@ def build_app(folder_name: str, include_std_lib: bool):
             # "--onefile",
             "-w",
             f"--icon={icon_path}",
-            "--add-data",
-            f"{dev_runtime};runtime",
-            "--add-data",
-            f"{babel_fish};./babelfish",
-            "--add-data",
-            f"{guessit};./guessit",
+            f"--add-data={dev_runtime}:runtime",
+            f"--add-data={babel_fish}:./babelfish",
+            f"--add-data={guessit}:./guessit",
             "--contents-directory",
             "bundle",
             "--name",
@@ -111,18 +123,24 @@ def build_app(folder_name: str, include_std_lib: bool):
         ["poetry", "run", "pyinstaller", "--noconfirm", str(spec_file_path)],
     )
 
-    # ensure the output of the .exe
+    # ensure the output of the executable
     success = "Did not complete successfully"
-    exe_path = project_root / pyinstaller_folder / "dist" / "NfoForge" / "NfoForge.exe"
+    exe_path = (
+        project_root
+        / pyinstaller_folder
+        / "dist"
+        / "NfoForge"
+        / f"NfoForge{get_executable_string_by_os()}"
+    )
     if exe_path.is_file() and str(build_job.returncode) == "0":
-        success = f"\nSuccess!\nPath to exe: {str(exe_path)}"
+        success = f"\nSuccess!\nPath to executable: {str(exe_path)}"
 
     # change directory back to the original directory
     os.chdir(project_root)
 
     # create plugin folder
     plugin_folder = Path(exe_path.parent / "plugins")
-    plugin_folder.mkdir()
+    plugin_folder.mkdir(parents=True)
 
     # remove dev files
     bundled_runtime = Path(exe_path.parent / "bundle" / "runtime")
