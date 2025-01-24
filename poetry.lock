@@ -1016,6 +1016,17 @@ files = [
 ]
 
 [[package]]
+name = "mslex"
+version = "1.3.0"
+description = "shlex for windows"
+optional = false
+python-versions = ">=3.5"
+files = [
+    {file = "mslex-1.3.0-py3-none-any.whl", hash = "sha256:c7074b347201b3466fc077c5692fbce9b5f62a63a51f537a53fbbd02eff2eea4"},
+    {file = "mslex-1.3.0.tar.gz", hash = "sha256:641c887d1d3db610eee2af37a8e5abda3f70b3006cdfd2d0d29dc0d1ae28a85d"},
+]
+
+[[package]]
 name = "multidict"
 version = "6.1.0"
 description = "multidict implementation"
@@ -1115,6 +1126,20 @@ files = [
     {file = "multidict-6.1.0-py3-none-any.whl", hash = "sha256:48e171e52d1c4d33888e529b999e5900356b9ae588c2f09a52dcefb158b27506"},
     {file = "multidict-6.1.0.tar.gz", hash = "sha256:22ae2ebf9b0c69d206c003e2f6a914ea33f0a932d4aa16f236afc049d9958f4a"},
 ]
+
+[[package]]
+name = "oslex2"
+version = "0.1.5"
+description = "OS-independent wrapper for shlex and mslex, meant to be temporary until original repo updates PR"
+optional = false
+python-versions = ">=3.5"
+files = [
+    {file = "oslex2-0.1.5-py3-none-any.whl", hash = "sha256:b877c8558b30afbf55f497e9d3c7b739cdf80afa372ff133e1eddf2421689fc0"},
+    {file = "oslex2-0.1.5.tar.gz", hash = "sha256:276434abf064a72590cf7e748646e75a6cfcc78b264a5d738fe22974dbd0d1a8"},
+]
+
+[package.dependencies]
+mslex = "*"
 
 [[package]]
 name = "packaging"
@@ -2112,4 +2137,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11.5,<3.13"
-content-hash = "a1974af30e9bd1075ec7d3d64b17f94504f51f50879d7ab89095080f0abc9d3c"
+content-hash = "b4c18b4fbff06df70e93a1386555809757cf37eded20a340ce04eb5fe8314d93"

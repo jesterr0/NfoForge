@@ -35,6 +35,7 @@ jinja2 = "^3.1.4"
 beautifulsoup4 = "^4.12.3"
 tvdb-v4-official = "^1.1.0"
 rapidfuzz = "^3.11.0"
+oslex2 = "^0.1.5"
 
 [tool.poetry.group.dev.dependencies]
 # pyinstaller = { path = "custom-pyinstaller" } # this is nice for windows to prevent false positive viruses (https://github.com/jessielw/Custom-Pyinstaller)
