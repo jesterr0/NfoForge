@@ -632,11 +632,11 @@ class ImagesPage(BaseWizardPage):
         self.completeChanged.emit()
 
     def _handle_basic_profile(self) -> tuple:
-        self.media_file = Path(self.config.basic_media_input_payload.media_file)
+        self.media_file = Path(self.config.media_input_payload.encode_file)
         return (
             ScreenShotMode.BASIC_SS_GEN,
             None,
-            self.config.basic_media_input_payload.media_info_obj,
+            self.config.media_input_payload.encode_file_mi_obj,
             False,
         )
 
@@ -719,21 +719,29 @@ class ImagesPage(BaseWizardPage):
         self.queued_worker.start()
 
     @Slot(int)
-    def _generate_finished(self) -> None:
-        ss_mode = self.config.cfg_payload.ss_mode
-        if self.config.cfg_payload.profile == Profile.BASIC:
-            ss_mode = ScreenShotMode.BASIC_SS_GEN
+    def _generate_finished(self, code: int) -> None:
+        if code == 0:
+            ss_mode = self.config.cfg_payload.ss_mode
+            if self.config.cfg_payload.profile == Profile.BASIC:
+                ss_mode = ScreenShotMode.BASIC_SS_GEN
 
-        self.image_viewer = ImageViewer(
-            self.image_dir,
-            ss_mode,
-            self.config.cfg_payload.required_selected_screens,
-            self,
-        )
-        self.image_viewer.show()
-        self.main_window.set_disabled.emit(False)
-        self.image_viewer.exit_viewer.connect(self._load_images)
-        self.image_viewer.re_sync_images.connect(self._re_sync)
+            self.image_viewer = ImageViewer(
+                self.image_dir,
+                ss_mode,
+                self.config.cfg_payload.required_selected_screens,
+                self,
+            )
+            self.image_viewer.show()
+            self.main_window.set_disabled.emit(False)
+            self.image_viewer.exit_viewer.connect(self._load_images)
+            self.image_viewer.re_sync_images.connect(self._re_sync)
+        else:
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Failed to generate images, check logs for more information ({code})",
+            )
+            self._complete_loading()
 
     @Slot(str)
     def _generate_failed(self, e: str) -> None:
