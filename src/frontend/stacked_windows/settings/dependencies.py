@@ -1,3 +1,4 @@
+import platform
 from typing import Any
 from pathlib import Path
 
@@ -31,12 +32,14 @@ class DependencySettings(BaseSettings):
 
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
-
+        extension = "*.exe" if platform.system() == "Windows" else "*"
         self.ffmpeg_widgets = self._create_dependency_widgets(
-            "FFMPEG", "*.exe", "FFMPEG Path"
+            "FFMPEG", extension, "FFMPEG Path"
         )
         self.frame_forge_widgets = self._create_dependency_widgets(
-            "FrameForge", "*.exe", "FrameForge Path"
+            "FrameForge",
+            extension,
+            "FrameForge Path",
         )
 
         self.add_layout(self._build_dependency_layout(*self.ffmpeg_widgets))
