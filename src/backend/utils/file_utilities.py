@@ -5,13 +5,13 @@ from typing import Iterable
 
 def find_largest_file_in_directory(
     directory: PathLike[str], extensions: Iterable, recursive: bool = False
-) -> Path:
+) -> Path | None:
     largest_file = None
     largest_size = 0
 
-    recursive = "**\*" if recursive else "*"
+    recurse = r"**\*" if recursive else "*"
 
-    for item in Path(directory).glob(recursive):
+    for item in Path(directory).glob(recurse):
         if item.is_file():
             if item.suffix in extensions and item.stat().st_size > largest_size:
                 largest_size = item.stat().st_size

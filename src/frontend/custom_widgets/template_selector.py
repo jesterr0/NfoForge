@@ -244,6 +244,8 @@ class TemplateSelector(QWidget):
             dir=str(self.backend.template_dir),
         )
         if template:
+            if not template.endswith(".txt"):
+                template += ".txt"
             new = self.backend.create_template(template)
             self.load_templates()
             index = self.template_index_map.get(new.stem, -1)
@@ -251,17 +253,19 @@ class TemplateSelector(QWidget):
 
     @Slot(str)
     def save_template(self, _data: str | None = None) -> None:
-        selected_template = self.backend.templates[self.template_combo.currentText()]
-        self.backend.save_template(selected_template, self.text_edit.toPlainText())
-        self.main_window.update_status_bar.emit("Saved template", 3000)
+        if self.template_combo.currentIndex() != -1:
+            selected_template = self.backend.templates[
+                self.template_combo.currentText()
+            ]
+            self.backend.save_template(selected_template, self.text_edit.toPlainText())
+            self.main_window.update_status_bar.emit("Saved template", 3000)
 
     @Slot()
     def delete_template(self) -> None:
-        current_template = self.template_combo.currentText()
-        if not current_template:
+        if self.template_combo.currentIndex() == -1:
             return
 
-        selected_template = self.backend.templates[current_template]
+        selected_template = self.backend.templates[self.template_combo.currentText()]
         if not self._template_in_use(selected_template):
             return
         self.backend.delete_template(selected_template)
@@ -308,6 +312,10 @@ class TemplateSelector(QWidget):
 
     @Slot()
     def preview_template(self) -> None:
+        if self.template_combo.currentIndex() == -1:
+            self.preview_btn.setChecked(False)
+            return
+
         if self.preview_btn.isChecked():
             if self.sandbox:
                 if (

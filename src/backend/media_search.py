@@ -177,7 +177,7 @@ class MediaSearchBackEnd:
         title = get_info.get("title")
         if not title:
             raise MediaParsingError(
-                f"There was an error parsing the title from {input_string}"
+                f"There was an error parsing the title from input '{input_string}'"
             )
         year = get_info.get("year", "")
         return title, year
