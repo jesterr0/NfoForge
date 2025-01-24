@@ -39,8 +39,7 @@ _Supported trackers will be added overtime_
 ## Supported Operating Systems
 
 - Windows 8.1+
-
-_Support for Linux is coming soon_
+- Linux (tested on Ubuntu 24.04.1 LTS)
 
 ## Supported Image Hosts
 
