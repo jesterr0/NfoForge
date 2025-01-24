@@ -393,7 +393,7 @@ class MediaSearch(BaseWizardPage):
         return self.loading_complete
 
     def initializePage(self):
-        if not self._get_tmdb_api_key():
+        if not self._check_media_api_keys():
             if self.main_window.wizard:
                 QTimer.singleShot(1, self.main_window.wizard.reset_wizard)
             return
@@ -436,24 +436,33 @@ class MediaSearch(BaseWizardPage):
                 )
             return extracted_title
 
-    def _get_tmdb_api_key(self) -> bool:
-        if not self.config.cfg_payload.tmdb_api_key.strip():
-            text, ok = QInputDialog.getText(
-                self,
-                "TMDB Api Key",
-                "Requires TMDB Api Key (v3), please input this now",
-            )
-            if ok and text:
-                self.config.cfg_payload.tmdb_api_key = text.strip()
-                self.config.save_config()
-                self.backend.update_api_key(self.config.cfg_payload.tmdb_api_key)
-            else:
-                QMessageBox.critical(
+    def _check_media_api_keys(self) -> bool:
+        required_keys_map = {
+            "TMDB (v3)": "tmdb_api_key",
+            "TVDb": "tvdb_api_key",
+        }
+
+        for service, key_attr in required_keys_map.items():
+            key = getattr(self.config.cfg_payload, key_attr, None)
+
+            if not key or not key.strip():
+                text, ok = QInputDialog.getText(
                     self,
-                    "TMDB Api Key",
-                    "You must input a TMDB Api Key (v3) to continue",
+                    f"{service} Api Key",
+                    f"Requires {service} Api Key, please input this now",
                 )
-                return False
+                if ok and text:
+                    text = text.strip()
+                    setattr(self.config.cfg_payload, key_attr, text)
+                    self.config.save_config()
+                    self.backend.update_api_key(text)
+                else:
+                    QMessageBox.critical(
+                        self,
+                        f"{service} Api Key",
+                        f"You must input a {service} to continue",
+                    )
+                    return False
         return True
 
     @Slot()
