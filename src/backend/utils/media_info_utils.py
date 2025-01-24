@@ -104,11 +104,11 @@ class MinimalMediaInfo:
                     + "Format profile".ljust(LENGTH, " ")
                     + f": {track.format_profile}\n"
                 )
-            if track.format_settings:
+            if track.other_hdr_format:
                 mi_str = (
                     mi_str
-                    + "Format settings".ljust(LENGTH, " ")
-                    + f": {track.format_settings}\n"
+                    + "HDR format".ljust(LENGTH, " ")
+                    + f": {track.other_hdr_format[0]}\n"
                 )
             if track.other_duration:
                 mi_str = (
