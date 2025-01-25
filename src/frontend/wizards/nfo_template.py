@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QVBoxLayout, QMessageBox
 
 from src.config.config import Config
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.template_selector import TemplateSelector
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 
@@ -27,7 +28,7 @@ class NfoTemplate(BaseWizardPage):
             self.config, False, self.main_window, self
         )
         self.template_selector.popup_button.clicked.connect(self._reset_highlight)
-        self.template_selector.hide_parent.connect(self.main_window.hide_main_window)
+        self.template_selector.hide_parent.connect(GSigs().main_window_hide)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.template_selector)

@@ -1,6 +1,7 @@
 from PySide6.QtCore import Slot
 
 from src.enums.torrent_client import TorrentClientSelection
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.custom_widgets.client_listbox import ClientListWidget
 
@@ -23,13 +24,13 @@ class ClientsSettings(BaseSettings):
 
     @Slot()
     def _testing_started(self) -> None:
-        self.main_window.set_disabled.emit(True)
-        self.main_window.update_status_bar.emit("Testing client please wait...", 0)
+        GSigs().main_window_set_disabled.emit(True)
+        GSigs().main_window_update_status_tip.emit("Testing client please wait...", 0)
 
     @Slot()
     def _testing_ended(self) -> None:
-        self.main_window.set_disabled.emit(False)
-        self.main_window.clear_status_bar.emit()
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
 
     @Slot()
     def _load_saved_settings(self) -> None:

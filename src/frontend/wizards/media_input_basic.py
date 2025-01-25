@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Any
+from pymediainfo import MediaInfo
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Slot, Signal
 from PySide6.QtWidgets import (
@@ -12,13 +13,15 @@ from PySide6.QtWidgets import (
     QMessageBox,
 )
 
+from src.backend.media_input import MediaInputBackEnd
+from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.exceptions import MediaFileNotFoundError
-from src.config.config import Config
+from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.frontend.utils import build_auto_theme_icon_buttons
-from src.backend.media_input import MediaInputBackEnd
+from src.frontend.utils.media_input_utils import MediaInputWorker
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -36,6 +39,8 @@ class MediaInputBasic(BaseWizardPage):
 
         self.config = config
         self.backend = MediaInputBackEnd()
+        self.worker: MediaInputWorker | None = None
+        self._loading_completed = False
 
         self.extensions = self.get_media_extensions()
 
@@ -72,6 +77,9 @@ class MediaInputBasic(BaseWizardPage):
         self._toggle_dir_input()
 
     def validatePage(self) -> bool:
+        if self._loading_completed:
+            return True
+
         required_entries = [
             self.input_entry,
         ]
@@ -91,10 +99,9 @@ class MediaInputBasic(BaseWizardPage):
                 self.update_payload_data()
             except MediaFileNotFoundError as input_error:
                 required_entries[0].setPlaceholderText(str(input_error))
-                return False
-            return True
+            return False
 
-    def update_payload_data(self) -> bool:
+    def update_payload_data(self) -> None:
         entry_data = Path(self.input_entry.text())
         if self.config.cfg_payload.media_mode == MediaMode.MOVIES:
             if entry_data.is_file():
@@ -107,17 +114,39 @@ class MediaInputBasic(BaseWizardPage):
                     raise MediaFileNotFoundError("Cannot detect media file")
                 self.config.media_input_payload.encode_file = media_file
                 self.config.media_input_payload.encode_file_dir = entry_data
-
-            if self.config.media_input_payload.encode_file:
-                self.config.media_input_payload.encode_file_mi_obj = (
-                    self.backend.get_media_info(
-                        self.config.media_input_payload.encode_file
-                    )
-                )
+            self._run_worker()
         elif self.config.cfg_payload.media_mode == MediaMode.SERIES:
             # TODO: add support for SERIES
             raise NotImplementedError("No support for series yet")
-        return True
+
+    def _run_worker(self) -> None:
+        file_path = self.config.media_input_payload.encode_file
+        if not file_path:
+            raise FileNotFoundError("Failed to detect input path")
+        self.worker = MediaInputWorker(
+            func=self.backend.get_media_info, file_input=file_path
+        )
+        self.worker.job_failed.connect(self._worker_failed)
+        self.worker.job_finished.connect(self._worker_finished)
+        GSigs().main_window_set_disabled.emit(True)
+        GSigs().main_window_update_status_tip.emit("Parsing MediaInfo", 0)
+        self.worker.start()
+
+    @Slot(object)
+    def _worker_finished(self, mi_obj: MediaInfo | None) -> None:
+        if not mi_obj or (mi_obj and not isinstance(mi_obj, MediaInfo)):
+            raise AttributeError("Failed to detect MediaInfo")
+        self.config.media_input_payload.encode_file_mi_obj = mi_obj
+        self._loading_completed = True
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
+        GSigs().wizard_next.emit()
+
+    @Slot(str)
+    def _worker_failed(self, msg: str) -> None:
+        QMessageBox.critical(self, "Error", msg)
+        self._loading_completed = False
+        GSigs().main_window_set_disabled.emit(False)
 
     @Slot()
     def open_media_dialog(
@@ -143,7 +172,7 @@ class MediaInputBasic(BaseWizardPage):
         if open_dir:
             entry_widget.setText(str(Path(open_dir)))
 
-    def get_media_extensions(self) -> Iterable[str]:
+    def get_media_extensions(self) -> Sequence[str]:
         accepted_inputs = self.config.cfg_payload.source_media_ext_filter
         if (
             accepted_inputs
@@ -161,11 +190,6 @@ class MediaInputBasic(BaseWizardPage):
             return accepted_inputs
         return self.config.ACCEPTED_EXTENSIONS
 
-    @Slot()
-    def reset_page(self) -> None:
-        self.input_entry.clear()
-        self._toggle_dir_input()
-
     def _toggle_dir_input(self) -> None:
         if self.config.cfg_payload.media_input_dir:
             self.media_dir_button.show()
@@ -178,3 +202,11 @@ class MediaInputBasic(BaseWizardPage):
         file_path = str(Path(event[0]))
         widget.setText(file_path)
         self.file_loaded.emit(file_path)
+
+    @Slot()
+    def reset_page(self) -> None:
+        self.input_entry.clear()
+        self.input_entry.setPlaceholderText("")
+        self._toggle_dir_input()
+        self.worker = None
+        self._loading_completed = False
