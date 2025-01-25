@@ -27,7 +27,7 @@ from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.trackers import (
     TrackerInfo,
-    MoreThanTvInfo,
+    MoreThanTVInfo,
     TorrentLeechInfo,
     BeyondHDInfo,
     PassThePopcornInfo,
@@ -724,7 +724,7 @@ class Config:
 
             # trackers
             mtv_tracker_data = tracker_data["more_than_tv"]
-            mtv_tracker = MoreThanTvInfo(
+            mtv_tracker = MoreThanTVInfo(
                 upload_enabled=mtv_tracker_data["upload_enabled"],
                 announce_url=mtv_tracker_data["announce_url"],
                 enabled=mtv_tracker_data["enabled"],
