@@ -29,6 +29,7 @@ from PySide6.QtGui import QCursor, QPixmap
 from src.config.config import Config
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
+from src.frontend.global_signals import GSigs
 from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.backend.media_search import MediaSearchBackEnd
@@ -272,10 +273,10 @@ class MediaSearch(BaseWizardPage):
                 return False
             elif self.other_ids_parsed:
                 if self._check_invalid_entries((self.tvdb_id_entry,)):
-                    self.main_window.wizard_next_button_reset_txt.emit()
+                    GSigs().wizard_next_button_reset_txt.emit()
                     return False
 
-            self.main_window.wizard_next_button_reset_txt.emit()
+            GSigs().wizard_next_button_reset_txt.emit()
             return True
 
     def _check_invalid_entries(self, entires: tuple[QLineEdit, ...]) -> bool:
@@ -289,7 +290,7 @@ class MediaSearch(BaseWizardPage):
         return invalid_entries
 
     def _search_other_ids(self) -> None:
-        self.main_window.set_disabled.emit(True)
+        GSigs().main_window_set_disabled.emit(True)
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
         if item_data:
@@ -306,7 +307,7 @@ class MediaSearch(BaseWizardPage):
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
             self.id_parse_worker.job_failed.connect(self._failed_search)
-            self.main_window.update_status_bar.emit(
+            GSigs().main_window_update_status_tip.emit(
                 "Parsing IMDb/TVDb/Anilist data, please wait...", 0
             )
             self.id_parse_worker.start()
@@ -315,10 +316,9 @@ class MediaSearch(BaseWizardPage):
     def _detected_id_data(self, media_data: dict | None) -> None:
         self._update_payload_data(media_data)
         self.other_ids_parsed = True
-        self.main_window.set_disabled.emit(False)
-        if self.main_window.wizard:
-            self.main_window.wizard.next()
-            self.main_window.clear_status_bar.emit()
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().wizard_next.emit()
+        GSigs().main_window_clear_status_tip.emit()
 
     def _update_payload_data(self, media_data: dict | None = None):
         current_item = self.listbox.currentItem().text()
@@ -420,7 +420,7 @@ class MediaSearch(BaseWizardPage):
 
     def _after_initialization(self) -> None:
         """Gives time for the UI to draw widgets"""
-        self.main_window.wizard_next_button_change_txt.emit("Select Title")
+        GSigs().wizard_next_button_change_txt.emit("Select Title")
 
     def _get_title_only(self, file_path: Path) -> str:
         guess = guessit(file_path.stem)
@@ -502,8 +502,8 @@ class MediaSearch(BaseWizardPage):
         self.listbox.addItem(f"No results, {error_str}")
         self.search_entry.clear()
         self.search_entry.setPlaceholderText("Manually input title")
-        self.main_window.set_disabled.emit(False)
-        self.main_window.clear_status_bar.emit()
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
 
     @Slot()
     def _select_media(self):

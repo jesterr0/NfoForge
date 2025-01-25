@@ -6,12 +6,13 @@ from PySide6.QtWidgets import (
     QStatusBar,
     QLabel,
 )
-from PySide6.QtCore import QByteArray, QTimer, Signal, Slot
+from PySide6.QtCore import QByteArray, QTimer, Slot
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 
 from src.config.config import Config
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
+from src.frontend.global_signals import GSigs
 from src.frontend.utils.main_window_utils import MainWindowWorker
 from src.frontend.wizards.wizard import MainWindowWizard
 from src.frontend.stacked_windows.settings.settings import Settings
@@ -21,21 +22,6 @@ from src.version import program_name, __version__
 
 
 class MainWindow(QMainWindow):
-    settings_clicked = Signal()
-    set_disabled = Signal(bool)
-    wizard_set_disabled = Signal(bool)
-    wizard_end_early = Signal()
-    wizard_next_button_change_txt = Signal(str)
-    wizard_next_button_reset_txt = Signal()
-    wizard_process_btn_clicked = Signal()
-    wizard_process_btn_change_txt = Signal(str)
-    wizard_process_btn_set_hidden = Signal()
-    hide_main_window = Signal(bool)
-    update_status_bar = Signal(str, int)  # message, timeout[milliseconds]
-    clear_status_bar = Signal()
-    update_status_bar_label = Signal(str)
-    open_log_dir = Signal()
-
     def __init__(self, config: Config):
         super().__init__()
 
@@ -44,9 +30,9 @@ class MainWindow(QMainWindow):
         self.default_window_title = f"{program_name} {__version__}"
         self.setWindowTitle(self.default_window_title)
         self.status_bar = QStatusBar()
-        self.update_status_bar.connect(self.update_status_tip)
-        self.clear_status_bar.connect(self.clear_message)
-        self.update_status_bar_label.connect(self.update_status_label)
+        GSigs().main_window_update_status_tip.connect(self.update_status_tip)
+        GSigs().main_window_clear_status_tip.connect(self.clear_status_tip)
+        GSigs().main_window_update_status_bar_label.connect(self.update_status_label)
         self.setStatusBar(self.status_bar)
         self.resize(650, 550)
         self.config = config
@@ -64,15 +50,13 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(2, self.setup_logger)
 
         # connect signals
-        self.settings_clicked.connect(self._open_settings_window)
-        self.set_disabled.connect(self._toggle_state)
-        self.hide_main_window.connect(self.hide_window)
-        self.open_log_dir.connect(self.open_logs)
+        GSigs().settings_clicked.connect(self._open_settings_window)
+        GSigs().main_window_set_disabled.connect(self._toggle_state)
+        GSigs().main_window_hide.connect(self.hide_window)
+        GSigs().main_window_open_log_dir.connect(self.open_logs)
 
         # wizard (main stacked widget)
         self.wizard = MainWindowWizard(self.config, self)
-        self.wizard_set_disabled.connect(lambda e: self.wizard.set_disabled.emit(e))
-        self.wizard_end_early.connect(self.wizard.end_early)
 
         # additional stacked widgets (windows)
         self.settings = Settings(self.config, self)
@@ -178,10 +162,6 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def update_status_label(self, data: str) -> None:
         self.status_profile_label.setText(data)
-
-    @Slot()
-    def clear_message(self) -> None:
-        self.status_bar.showMessage("")
 
     @Slot()
     def open_logs(self) -> None:

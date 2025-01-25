@@ -22,6 +22,7 @@ from src.enums.logging_settings import LogLevel
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.image_hosts import ImageHostStackedWidget
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.logger.nfo_forge_logger import LOG
 
@@ -171,7 +172,7 @@ class GeneralSettings(BaseSettings):
         self.max_log_files_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
 
         view_log_files_btn = QPushButton("View Log Files", self)
-        view_log_files_btn.clicked.connect(self.main_window.open_log_dir.emit)
+        view_log_files_btn.clicked.connect(GSigs().main_window_open_log_dir.emit)
 
         self.add_layout(self.create_form_layout(config_lbl, config_widget))
         self.add_layout(self.create_form_layout(suffix_lbl, self.ui_suffix))

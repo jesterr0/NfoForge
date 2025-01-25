@@ -5,7 +5,7 @@ from jinja2.exceptions import TemplateSyntaxError
 from os import PathLike
 from typing import TYPE_CHECKING
 from pathlib import Path
-from PySide6.QtCore import QObject, Slot, Signal, Qt
+from PySide6.QtCore import Slot, Signal, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from src.config.config import Config
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.token_replacer import ColonReplace
+from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
@@ -258,7 +259,7 @@ class TemplateSelector(QWidget):
                 self.template_combo.currentText()
             ]
             self.backend.save_template(selected_template, self.text_edit.toPlainText())
-            self.main_window.update_status_bar.emit("Saved template", 3000)
+            GSigs().main_window_update_status_tip.emit("Saved template", 3000)
 
     @Slot()
     def delete_template(self) -> None:
@@ -436,34 +437,18 @@ class TemplateSelector(QWidget):
             self.hide_parent.emit(False)
 
 
-class SandBoxInputWizard(QObject):
-    """Fake wizard to work with media search's wizard calls"""
-
-    close_input = Signal()
-
-    __slots__ = ()
-
-    def next(self) -> None:
-        self.close_input.emit()
-
-    def reset_wizard(self) -> None:
-        pass
-
-
 class SandBoxInput(QDialog):
-    set_disabled = Signal(bool)
-    update_status_bar = Signal(str, int)
-    clear_status_bar = Signal()
-
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Sandbox Input")
 
         self.config = config
-        self.wizard = SandBoxInputWizard()
-        self.wizard.close_input.connect(self.accept)
+        self._wizard_next_count = 0
 
-        self.set_disabled.connect(self._set_disabled)
+        GSigs().main_window_set_disabled.connect(self._set_disabled)
+        GSigs().main_window_update_status_tip.connect(self._update_fake_status_bar)
+        GSigs().main_window_clear_status_tip.connect(self._clear_fake_status_bar)
+        GSigs().wizard_next.connect(self._handle_next)
 
         self.sandbox_lbl = QLabel("Input", self)
         bigger_font = self.sandbox_lbl.font()
@@ -488,8 +473,6 @@ class SandBoxInput(QDialog):
         self.accept_btn.clicked.connect(self._accept)
 
         self.fake_status_bar = QLabel(self)
-        self.update_status_bar.connect(self._update_fake_status_bar)
-        self.clear_status_bar.connect(self._clear_fake_status_bar)
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addWidget(self.sandbox_lbl)
@@ -519,7 +502,15 @@ class SandBoxInput(QDialog):
 
     @Slot()
     def _accept(self) -> None:
-        if self.media_input.validatePage() and self.media_search.validatePage():
+        self.media_input.validatePage()
+
+    @Slot()
+    def _handle_next(self) -> None:
+        if self._wizard_next_count == 0:
+            self.media_search.validatePage()
+            self._wizard_next_count += 1
+        else:
+            # closes the dialogue
             self.accept()
 
     @Slot(bool)
