@@ -12,7 +12,7 @@ class TrackerSelection(Enum):
 
     def __str__(self) -> str:
         str_map = {
-            TrackerSelection.MORE_THAN_TV: "MoreThanTv",
+            TrackerSelection.MORE_THAN_TV: "MoreThanTV",
             TrackerSelection.TORRENT_LEECH: "TorrentLeech",
             TrackerSelection.BEYOND_HD: "BeyondHD",
             TrackerSelection.PASS_THE_POPCORN: "PassThePopcorn",
