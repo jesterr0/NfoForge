@@ -17,8 +17,7 @@ runtime/logs/
 runtime/templates/
 runtime/user_packages/
 beyondhd-parser/
-!plugins/
-!plugins/*
+plugins/
 !src/plugins/
 *.spec
 
