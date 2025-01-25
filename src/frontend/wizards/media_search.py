@@ -287,6 +287,15 @@ class MediaSearch(BaseWizardPage):
                 # TODO: Flash red or something once we theme it
                 # entry.setStyleSheet("QLineEdit {border: 1px solid red; border-radius: 3px;}")
                 entry.setPlaceholderText("Requires ID")
+            else:
+                # add id manually to payload if the user provides it
+                if entry is self.tvdb_id_entry:
+                    tvdb_id_entry_text = self.tvdb_id_entry.text().strip()
+                    if (
+                        tvdb_id_entry_text
+                        and tvdb_id_entry_text != self.tvdb_id_entry.placeholderText()
+                    ):
+                        self.config.media_search_payload.tvdb_id = tvdb_id_entry_text
         return invalid_entries
 
     def _search_other_ids(self) -> None:
