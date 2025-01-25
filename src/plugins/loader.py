@@ -24,6 +24,7 @@ class PluginLoader:
         self.update_splash_msg = update_splash_msg
         self.plugins: dict[str, PluginPayload] = {}
         self.plugin_dir = CURRENT_DIR / "plugins"
+        self.plugin_dir.mkdir(exist_ok=True, parents=True)
 
     def load_plugins(self) -> dict[str, PluginPayload]:
         """Load all plugin packages."""
