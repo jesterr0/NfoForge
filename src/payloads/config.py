@@ -14,7 +14,7 @@ from src.enums.subtitles import SubtitleAlignment
 from src.enums.token_replacer import ColonReplace
 from src.enums.url_type import URLType
 from src.payloads.trackers import (
-    MoreThanTvInfo,
+    MoreThanTVInfo,
     TorrentLeechInfo,
     BeyondHDInfo,
     PassThePopcornInfo,
@@ -64,7 +64,7 @@ class ConfigPayload:
 
     # trackers
     tracker_order: list[int]
-    mtv_tracker: MoreThanTvInfo
+    mtv_tracker: MoreThanTVInfo
     tl_tracker: TorrentLeechInfo
     bhd_tracker: BeyondHDInfo
     ptp_tracker: PassThePopcornInfo
