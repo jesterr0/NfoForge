@@ -1,4 +1,5 @@
 from pathlib import Path
+from pymediainfo import MediaInfo
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Slot
@@ -8,13 +9,16 @@ from PySide6.QtWidgets import (
     QLabel,
     QFileDialog,
     QVBoxLayout,
+    QMessageBox,
 )
 
+from src.backend.media_input import MediaInputBackEnd
 from src.config.config import Config
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
+from src.frontend.global_signals import GSigs
 from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.backend.media_input import MediaInputBackEnd
+from src.frontend.utils.media_input_utils import MediaInputWorker
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -30,6 +34,8 @@ class MediaInputAdvanced(BaseWizardPage):
 
         self.config = config
         self.backend = MediaInputBackEnd()
+        self.worker: MediaInputWorker | None = None
+        self._loading_completed = False
 
         self.source_label = QLabel("Source", self)
         self.source_entry = DNDLineEdit(self)
@@ -94,6 +100,9 @@ class MediaInputAdvanced(BaseWizardPage):
         )
 
     def validatePage(self) -> bool:
+        if self._loading_completed:
+            return True
+
         required_entries = (
             self.source_entry,
             self.encode_entry,
@@ -107,22 +116,48 @@ class MediaInputAdvanced(BaseWizardPage):
                 # entry.setStyleSheet("QLineEdit {border: 1px solid red; border-radius: 3px;}")
                 entry.setPlaceholderText("Requires input")
 
-        if invalid_entries:
-            return False
-        else:
+        if not invalid_entries:
             self._update_payload_data()
-            return True
+        return False
 
     def _update_payload_data(self) -> None:
-        update_payload = self.config.media_input_payload
-        update_payload.source_file = Path(self.source_entry.text())
-        update_payload.source_file_mi_obj = self.backend.get_media_info(
-            update_payload.source_file
+        self.config.media_input_payload.source_file = Path(self.source_entry.text())
+        self.config.media_input_payload.encode_file = Path(self.encode_entry.text())
+        self._parse_media_info()
+
+    def _parse_media_info(self) -> None:
+        files = (
+            self.config.media_input_payload.source_file,
+            self.config.media_input_payload.encode_file,
         )
-        update_payload.encode_file = Path(self.encode_entry.text())
-        update_payload.encode_file_mi_obj = self.backend.get_media_info(
-            update_payload.encode_file
+        for file_path in files:
+            if not file_path:
+                raise FileNotFoundError("Failed to detect input path")
+        self.worker = MediaInputWorker(
+            func=self.backend.get_media_info_files, files=files
         )
+        self.worker.job_failed.connect(self._worker_failed)
+        self.worker.job_finished.connect(self._worker_finished)
+        GSigs().main_window_set_disabled.emit(True)
+        GSigs().main_window_update_status_tip.emit("Parsing MediaInfo", 0)
+        self.worker.start()
+
+    @Slot(list)
+    def _worker_finished(self, mi_obj_list: list[MediaInfo]) -> None:
+        if not mi_obj_list or (mi_obj_list and not isinstance(mi_obj_list, list)):
+            raise AttributeError("Failed to detect MediaInfo")
+        self.config.media_input_payload.source_file_mi_obj = mi_obj_list[0]
+        self.config.media_input_payload.encode_file_mi_obj = mi_obj_list[1]
+        self._loading_completed = True
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
+        GSigs().wizard_next.emit()
+
+    @Slot(str)
+    def _worker_failed(self, msg: str) -> None:
+        QMessageBox.critical(self, "Error", msg)
+        self._loading_completed = False
+        GSigs().main_window_set_disabled.emit(False)
 
     @Slot()
     def _open_filedialog(
@@ -139,16 +174,21 @@ class MediaInputAdvanced(BaseWizardPage):
         if open_file:
             entry_widget.setText(str(Path(open_file)))
 
-    @Slot()
-    def reset_page(self) -> None:
-        self.source_entry.clear()
-        self.source_entry.setPlaceholderText("")
-        self.encode_entry.clear()
-        self.encode_entry.setPlaceholderText("")
-
     @Slot(list)
     def _update_entries(self, event: list, widget: QLineEdit) -> None:
         widget.setText(str(Path(event[0])))
         if self.source_entry.text() == self.encode_entry.text():
             widget.clear()
             widget.setPlaceholderText("Cannot open the same files...")
+
+    @Slot()
+    def reset_page(self) -> None:
+        self.reset_entry(self.source_entry)
+        self.reset_entry(self.encode_entry)
+        self.worker = None
+        self._loading_completed = False
+
+    @staticmethod
+    def reset_entry(entry: DNDLineEdit) -> None:
+        entry.clear()
+        entry.setPlaceholderText("")
