@@ -28,7 +28,7 @@ Comprehensive documentation is on the way and will be available soon.
 ## Supported Trackers
 
 - BeyondHD
-- MoreThanTv
+- MoreThanTV
 - TorrentLeech
 - PassThePopcorn
 - ReelFliX

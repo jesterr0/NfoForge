@@ -15,7 +15,7 @@ class TrackerInfo:
 
 
 @dataclass(slots=True)
-class MoreThanTvInfo(TrackerInfo):
+class MoreThanTVInfo(TrackerInfo):
     anonymous: int = 0
     api_key: str | None = None
     username: str | None = None

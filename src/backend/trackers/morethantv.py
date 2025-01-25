@@ -152,7 +152,7 @@ class MTVUploader:
         if "authkey=" in final_response.text:
             LOG.info(
                 LOG.LOG_SOURCE.BE,
-                "Successfully logged into MoreThanTv",
+                "Successfully logged into MoreThanTV",
             )
             auth_token = self.get_auth_key(final_response.text)
             if auth_token:
@@ -211,7 +211,7 @@ class MTVUploader:
     def _save_cookies(self) -> None:
         with open(self.cookie_path, "wb") as file:
             pickle.dump(self._session.cookies, file)
-        LOG.debug(LOG.LOG_SOURCE.BE, f"MoreThanTv cookies saved: {self.cookie_path}")
+        LOG.debug(LOG.LOG_SOURCE.BE, f"MoreThanTV cookies saved: {self.cookie_path}")
 
     def _load_cookies(self) -> bool:
         if self.cookie_path.exists():
@@ -220,10 +220,10 @@ class MTVUploader:
                 self._session.cookies.update(cookies)
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
-                f"MoreThanTv cookies loaded from {self.cookie_path}",
+                f"MoreThanTV cookies loaded from {self.cookie_path}",
             )
             return True
-        LOG.debug(LOG.LOG_SOURCE.BE, "MoreThanTv cookies not found")
+        LOG.debug(LOG.LOG_SOURCE.BE, "MoreThanTV cookies not found")
         return False
 
     def upload(
@@ -318,7 +318,7 @@ class MTVUploader:
         if re.search(r"torrents\.php\?id=", upload_page.url) or re.search(
             "Your torrent has been uploaded however", str(upload_page.text)
         ):
-            LOG.info(LOG.LOG_SOURCE.BE, "Successfully uploaded to MoreThanTv")
+            LOG.info(LOG.LOG_SOURCE.BE, "Successfully uploaded to MoreThanTV")
             return torrent_file
 
         # error :(
@@ -625,7 +625,7 @@ class MTVSearch:
             cleaned_title = re.sub(r"\.{2,}", ".", cleaned_title)
             params["q"] = cleaned_title
 
-        LOG.info(LOG.LOG_SOURCE.BE, f"Searching MoreThanTv for title: {params['q']}")
+        LOG.info(LOG.LOG_SOURCE.BE, f"Searching MoreThanTV for title: {params['q']}")
 
         try:
             response = requests.get(
