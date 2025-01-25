@@ -101,7 +101,7 @@ class MediaInputBasic(BaseWizardPage):
                 required_entries[0].setPlaceholderText(str(input_error))
             return False
 
-    def update_payload_data(self) -> bool:
+    def update_payload_data(self) -> None:
         entry_data = Path(self.input_entry.text())
         if self.config.cfg_payload.media_mode == MediaMode.MOVIES:
             if entry_data.is_file():
@@ -118,7 +118,6 @@ class MediaInputBasic(BaseWizardPage):
         elif self.config.cfg_payload.media_mode == MediaMode.SERIES:
             # TODO: add support for SERIES
             raise NotImplementedError("No support for series yet")
-        return True
 
     def _run_worker(self) -> None:
         file_path = self.config.media_input_payload.encode_file
