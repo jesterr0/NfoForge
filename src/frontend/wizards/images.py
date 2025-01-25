@@ -42,6 +42,7 @@ from src.packages.custom_types import (
 from src.backend.images import ImagesBackEnd
 from src.backend.utils.images import compare_resolutions, determine_sub_size
 from src.backend.utils.script_parser import ScriptParser
+from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.frontend.custom_widgets.dnd_factory import (
     DNDToolButton,
@@ -472,7 +473,7 @@ class ImagesPage(BaseWizardPage):
 
     def upload_images(self) -> None:
         self._reset_loading_state()
-        self.main_window.set_disabled.emit(True)
+        GSigs().main_window_set_disabled.emit(True)
         self.queued_worker_uploader = QueuedWorkerUploader(
             backend=self.backend,
             config=self.config,
@@ -491,7 +492,7 @@ class ImagesPage(BaseWizardPage):
     def _upload_images_finished(
         self, data: Optional[Dict[int, ImageUploadData]]
     ) -> None:
-        self.main_window.set_disabled.emit(False)
+        GSigs().main_window_set_disabled.emit(False)
         self._complete_loading()
         if data:
             self.url_organizer.load_data(data)
@@ -499,7 +500,7 @@ class ImagesPage(BaseWizardPage):
 
     @Slot(dict)
     def _upload_images_failed(self, e: str) -> None:
-        self.main_window.set_disabled.emit(False)
+        GSigs().main_window_set_disabled.emit(False)
         self._complete_loading()
         LOG.debug(LOG.LOG_SOURCE.FE, e)
         QMessageBox.critical(self, "Error", e)
@@ -583,7 +584,7 @@ class ImagesPage(BaseWizardPage):
         if self.queued_worker is not None and self.queued_worker.isRunning():
             return
 
-        self.main_window.set_disabled.emit(True)
+        GSigs().main_window_set_disabled.emit(True)
         self.text_box.clear()
         self.thumbnail_listbox.clear()
         self._disable_generate_images_button()
@@ -732,7 +733,7 @@ class ImagesPage(BaseWizardPage):
                 self,
             )
             self.image_viewer.show()
-            self.main_window.set_disabled.emit(False)
+            GSigs().main_window_set_disabled.emit(False)
             self.image_viewer.exit_viewer.connect(self._load_images)
             self.image_viewer.re_sync_images.connect(self._re_sync)
         else:
@@ -789,7 +790,7 @@ class ImagesPage(BaseWizardPage):
         )
 
     def _complete_loading(self) -> None:
-        self.main_window.set_disabled.emit(False)
+        GSigs().main_window_set_disabled.emit(False)
         self.generate_images.setEnabled(True)
         self.loading_complete = True
         self.completeChanged.emit()

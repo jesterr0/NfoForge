@@ -1,12 +1,13 @@
 from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QWizard, QPushButton
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
 
 from src.config.config import Config
 from src.enums.wizard import WizardPages
 from src.enums.profile import Profile
+from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import DummyWizardPage
 from src.frontend.wizards.media_input_basic import MediaInputBasic
 from src.frontend.wizards.media_input_advanced import MediaInputAdvanced
@@ -24,8 +25,6 @@ if TYPE_CHECKING:
 
 
 class MainWindowWizard(QWizard):
-    set_disabled = Signal(bool)
-
     def __init__(
         self,
         config: Config,
@@ -66,15 +65,9 @@ class MainWindowWizard(QWizard):
         self.next_button.setToolTip("Save & Continue")
         self.next_button.setToolTipDuration(1500)
         self.setButton(QWizard.WizardButton.CommitButton, self.next_button)
-        self.main_window.wizard_next_button_change_txt.connect(
-            self._change_next_button_text
-        )
-        self.main_window.wizard_next_button_reset_txt.connect(
-            self._reset_next_button_text
-        )
 
         self.settings_button = QPushButton("Settings", self)
-        self.settings_button.clicked.connect(self.main_window.settings_clicked.emit)
+        self.settings_button.clicked.connect(GSigs().settings_clicked.emit)
         self.setButton(QWizard.WizardButton.CustomButton1, self.settings_button)
 
         self.reset_button = QPushButton("Start Over", self)
@@ -83,11 +76,9 @@ class MainWindowWizard(QWizard):
         self.setOption(QWizard.WizardOption.HaveCustomButton2)
 
         self.process_button = QPushButton("Process (Dupe Check)", self)
-        self.process_button.clicked.connect(self.main_window.wizard_process_btn_clicked)
-        self.main_window.wizard_process_btn_change_txt.connect(
-            self._change_process_button_text
-        )
-        self.main_window.wizard_process_btn_set_hidden.connect(self.process_button.hide)
+        self.process_button.clicked.connect(GSigs().wizard_process_btn_clicked.emit)
+        GSigs().wizard_process_btn_change_txt.connect(self._change_process_button_text)
+        GSigs().wizard_process_btn_set_hidden.connect(self.process_button.hide)
         self.setButton(QWizard.WizardButton.CustomButton3, self.process_button)
         self.setOption(QWizard.WizardOption.HaveCustomButton3)
 
@@ -117,7 +108,11 @@ class MainWindowWizard(QWizard):
         self.setButtonLayout(self.starting_buttons)
 
         self._connect_current_id_changed()
-        self.set_disabled.connect(self._set_disabled)
+        GSigs().wizard_set_disabled.connect(self._set_disabled)
+        GSigs().wizard_next.connect(self.next)
+        GSigs().wizard_next_button_change_txt.connect(self._change_next_button_text)
+        GSigs().wizard_next_button_reset_txt.connect(self._reset_next_button_text)
+        GSigs().wizard_end_early.connect(self.end_early)
 
     def keyPressEvent(self, event: QKeyEvent):  # pyright: ignore [reportIncompatibleMethodOverride]
         # prevent enter/return key from pressing "Next" on the wizard
@@ -176,11 +171,11 @@ class MainWindowWizard(QWizard):
         profile = Profile(get_profile)
         if not get_profile or profile == Profile.BASIC:
             self.setStartId(WizardPages.BASIC_INPUT_PAGE.value)
-            self.main_window.update_status_bar_label.emit("Profile: Basic")
+            GSigs().main_window_update_status_bar_label.emit("Profile: Basic")
 
         elif profile == Profile.ADVANCED:
             self.setStartId(WizardPages.ADVANCED_INPUT_PAGE.value)
-            self.main_window.update_status_bar_label.emit("Profile: Advanced")
+            GSigs().main_window_update_status_bar_label.emit("Profile: Advanced")
 
         elif (
             profile == Profile.PLUGIN
@@ -188,7 +183,7 @@ class MainWindowWizard(QWizard):
             and self.config.loaded_plugins
         ):
             self.setStartId(WizardPages.PLUGIN_INPUT_PAGE.value)
-            self.main_window.update_status_bar_label.emit("Profile: Plugin")
+            GSigs().main_window_update_status_bar_label.emit("Profile: Plugin")
 
     @Slot(int)
     def _handle_page_change(self, idx: int) -> None:
@@ -200,6 +195,7 @@ class MainWindowWizard(QWizard):
             else:
                 self.setButtonLayout(self.ending_buttons)
 
+    @Slot(bool)
     def _set_disabled(self, value: bool) -> None:
         self.settings_button.setDisabled(value)
         self.next_button.setDisabled(value)

@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.version import __version__
+from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, build_auto_theme_icon_buttons
@@ -148,7 +149,7 @@ class AboutTab(BaseSettings):
     def _copy_to_clipboard(self, txt: str) -> None:
         clipboard = QClipboard(self)
         clipboard.setText(txt)
-        self.main_window.update_status_bar.emit("Copied to clipboard!", 2000)
+        GSigs().main_window_update_status_tip.emit("Copied to clipboard!", 2000)
 
     def _build_h_layout(self, entry: MaskedQLineEdit, btn: QToolButton) -> QHBoxLayout:
         layout = QHBoxLayout()
