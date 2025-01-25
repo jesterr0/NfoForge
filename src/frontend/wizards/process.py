@@ -22,6 +22,7 @@ from src.enums.upload_process import UploadProcessMode
 from src.enums.media_mode import MediaMode
 from src.enums.token_replacer import ColonReplace
 from src.exceptions import ProcessError
+from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
 from src.frontend.custom_widgets.sortable_qtreewidget import SortableQTreeWidget
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -164,7 +165,7 @@ class ProcessPage(BaseWizardPage):
         self.save_config = False
         self.backend = ProcessBackEnd(self.config)
         self.main_window = parent
-        self.main_window.wizard_process_btn_clicked.connect(self.process_jobs)
+        GSigs().wizard_process_btn_clicked.connect(self.process_jobs)
 
         self.processing_mode = UploadProcessMode.DUPE_CHECK
         self.dupe_worker: DupeWorker | None = None
@@ -216,7 +217,7 @@ class ProcessPage(BaseWizardPage):
         if not tracker_paths:
             raise AttributeError("Could not determine tracker paths")
 
-        self.main_window.set_disabled.emit(True)
+        GSigs().main_window_set_disabled.emit(True)
         if self.processing_mode == UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
                 backend=self.backend,
@@ -276,14 +277,12 @@ class ProcessPage(BaseWizardPage):
 
         self.processing_mode = UploadProcessMode.UPLOAD
         self._job_ended()
-        self.main_window.wizard_process_btn_change_txt.emit(
-            "Process (Generate and Upload)"
-        )
+        GSigs().wizard_process_btn_change_txt.emit("Process (Generate and Upload)")
 
     @Slot()
     def _on_finished(self) -> None:
         self._job_ended()
-        self.main_window.wizard_process_btn_set_hidden.emit()
+        GSigs().wizard_process_btn_set_hidden.emit()
 
     # TODO: will we reset everything or start over?
     @Slot(str, str)
@@ -295,7 +294,7 @@ class ProcessPage(BaseWizardPage):
     def _job_ended(self) -> None:
         self.dupe_worker = None
         self.process_worker = None
-        self.main_window.set_disabled.emit(False)
+        GSigs().main_window_set_disabled.emit(False)
 
     @Slot(str, str)
     def _on_status_update(self, index: str, txt: str) -> None:
