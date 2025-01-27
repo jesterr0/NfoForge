@@ -272,7 +272,11 @@ class ProcessBackEnd:
                         token_replacer_plugin
                     ].token_replacer
                     if nfo_plugin and callable(nfo_plugin):
-                        replace_tokens = nfo_plugin(config=self.config, input_str=nfo)
+                        replace_tokens = nfo_plugin(
+                            config=self.config,
+                            input_str=nfo,
+                            tracker_s=(TrackerSelection(tracker_name),),
+                        )
                         nfo = replace_tokens if replace_tokens else nfo
 
             # write nfo to disk beside the torrent if the nfo exists
