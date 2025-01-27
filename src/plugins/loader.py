@@ -1,7 +1,7 @@
 import importlib
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from pymediainfo import MediaInfo
 from typing import Any
@@ -149,6 +149,7 @@ class PluginLoader:
                 "token_replacer": {
                     "config": Config,
                     "input_str": str,
+                    "tracker_s": Sequence[TrackerSelection],
                 },
                 "pre_upload": {
                     "config": Config,

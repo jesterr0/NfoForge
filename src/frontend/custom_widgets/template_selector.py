@@ -381,10 +381,20 @@ class TemplateSelector(QWidget):
                         token_replacer_plugin
                     ].token_replacer
                     if plugin and callable(plugin):
-                        replace_tokens = plugin(config=self.config, input_str=nfo)
+                        selected_template = self.template_combo.currentText()
+                        tracker_s = [
+                            tracker
+                            for tracker, tracker_settings in self.config.tracker_map.items()
+                            if tracker_settings.nfo_template == selected_template
+                        ]
+                        replace_tokens = plugin(
+                            config=self.config, input_str=nfo, tracker_s=tracker_s
+                        )
                         nfo = replace_tokens if replace_tokens else nfo
             except Exception:
                 if not self.sandbox:
+                    self.preview_btn.setChecked(False)
+                    self.text_edit.setReadOnly(False)
                     raise
 
             self.text_edit.setPlainText(nfo)

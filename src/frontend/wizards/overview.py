@@ -185,7 +185,9 @@ class Overview(BaseWizardPage):
                             token_replacer_plugin
                         ].token_replacer
                         if plugin and callable(plugin):
-                            replace_tokens = plugin(config=self.config, input_str=nfo)
+                            replace_tokens = plugin(
+                                config=self.config, input_str=nfo, tracker_s=(tracker,)
+                            )
                             nfo = replace_tokens if replace_tokens else nfo
 
                     nfo_widget = self._build_nfo_widget()
