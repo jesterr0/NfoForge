@@ -225,6 +225,7 @@ class ClientListWidget(QWidget):
         self.tree.setHeaderHidden(True)
         self.tree.setVerticalScrollMode(QTreeWidget.ScrollMode.ScrollPerPixel)
         self.tree.verticalScrollBar().setSingleStep(20)
+        self.tree.setAutoScroll(False)
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
         self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tree.setFrameShape(QFrame.Shape.Box)
