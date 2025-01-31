@@ -46,6 +46,8 @@ class SortableQTreeWidget(QTreeWidget):
         self.setDragDropMode(QTreeWidget.DragDropMode.InternalMove)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        self.verticalScrollBar().setSingleStep(20)
+        self.setAutoScroll(False)
         self.setRootIsDecorated(False)
         self.header_len = self._add_headers(headers)
         self.add_rows(rows)
