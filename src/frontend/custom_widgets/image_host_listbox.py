@@ -1,3 +1,4 @@
+from typing_extensions import override
 from PySide6.QtWidgets import (
     QFrame,
     QLayout,
@@ -38,10 +39,13 @@ class ImageHostEditBase(QWidget):
         self.add_pair_to_layout(self.base_url_lbl, self.base_url)
 
     def load_settings(self) -> None:
-        raise NotImplementedError("Must be implemented this per tracker")
+        raise NotImplementedError("Must be implemented this per image host")
 
     def save_settings(self) -> None:
-        raise NotImplementedError("Must be implemented this per tracker")
+        raise NotImplementedError("Must be implemented this per image host")
+
+    def validate_data(self) -> None:
+        raise NotImplementedError("Must be implemented this per image host")
 
     def add_pair_to_layout(self, label: QLabel, widget: QWidget) -> QFormLayout:
         layout = self.build_form_layout(label, widget)
@@ -78,16 +82,28 @@ class CheveretoV3Edit(ImageHostEditBase):
         self.add_pair_to_layout(self.username_lbl, self.username)
         self.add_pair_to_layout(self.password_lbl, self.password)
 
+    @override
     def load_settings(self) -> None:
         host = self.config.cfg_payload.chevereto_v3
         self.base_url.setText(host.base_url if host.base_url else "")
         self.username.setText(host.user if host.user else "")
         self.password.setText(host.password if host.password else "")
 
+    @override
     def save_settings(self) -> None:
         self.config.cfg_payload.chevereto_v3.base_url = self.base_url.text().strip()
         self.config.cfg_payload.chevereto_v3.user = self.username.text().strip()
         self.config.cfg_payload.chevereto_v3.password = self.password.text().strip()
+
+    @override
+    def validate_data(self) -> None:
+        for item in (
+            self.base_url,
+            self.username,
+            self.password,
+        ):
+            if not item.text().strip():
+                raise AttributeError("Missing required input for host Chevereto v3")
 
 
 class CheveretoV4Edit(ImageHostEditBase):
@@ -100,14 +116,22 @@ class CheveretoV4Edit(ImageHostEditBase):
         self.add_pair_to_layout(self.base_url_lbl, self.base_url)
         self.add_pair_to_layout(self.api_key_lbl, self.api_key)
 
+    @override
     def load_settings(self) -> None:
         host = self.config.cfg_payload.chevereto_v4
         self.base_url.setText(host.base_url if host.base_url else "")
         self.api_key.setText(host.api_key if host.api_key else "")
 
+    @override
     def save_settings(self) -> None:
         self.config.cfg_payload.chevereto_v4.base_url = self.base_url.text().strip()
         self.config.cfg_payload.chevereto_v4.api_key = self.api_key.text().strip()
+
+    @override
+    def validate_data(self) -> None:
+        for item in (self.base_url, self.api_key):
+            if not item.text().strip():
+                raise AttributeError("Missing required input for host Chevereto v4")
 
 
 class ImageBBEdit(ImageHostEditBase):
@@ -121,14 +145,22 @@ class ImageBBEdit(ImageHostEditBase):
 
         self.add_pair_to_layout(self.api_key_lbl, self.api_key)
 
+    @override
     def load_settings(self) -> None:
         host = self.config.cfg_payload.image_bb
         self.base_url.setText(host.base_url if host.base_url else "")
         self.api_key.setText(host.api_key if host.api_key else "")
 
+    @override
     def save_settings(self) -> None:
         self.config.cfg_payload.image_bb.base_url = self.base_url.text().strip()
         self.config.cfg_payload.image_bb.api_key = self.api_key.text().strip()
+
+    @override
+    def validate_data(self) -> None:
+        for item in (self.base_url, self.api_key):
+            if not item.text().strip():
+                raise AttributeError("Missing required input for host ImageBB")
 
 
 class ImageBoxEdit(ImageHostEditBase):
@@ -137,12 +169,19 @@ class ImageBoxEdit(ImageHostEditBase):
 
         self.base_url.setDisabled(True)
 
+    @override
     def load_settings(self) -> None:
         host = self.config.cfg_payload.image_box
         self.base_url.setText(host.base_url if host.base_url else "")
 
+    @override
     def save_settings(self) -> None:
         self.config.cfg_payload.image_box.base_url = self.base_url.text().strip()
+
+    @override
+    def validate_data(self) -> None:
+        if not self.base_url.text().strip():
+            raise AttributeError("Missing required input for host ImageBox")
 
 
 class ImageHostListBox(QWidget):
@@ -204,6 +243,17 @@ class ImageHostListBox(QWidget):
             image_widget.load_data.emit()
             child_item = QTreeWidgetItem(parent_item)
             self.tree.setItemWidget(child_item, 0, image_widget)
+
+    def validate_settings(self) -> None:
+        """If host is checked, we'll call the `validate_data()` method"""
+        for i in range(self.tree.topLevelItemCount()):
+            parent = self.tree.topLevelItem(i)
+            if parent.checkState(0) == Qt.CheckState.Checked:
+                for j in range(parent.childCount()):
+                    child = parent.child(j)
+                    image_edit = self.tree.itemWidget(child, 0)
+                    if image_edit and isinstance(image_edit, ImageHostEditBase):
+                        image_edit.validate_data()
 
     def _open_context_menu(self, position) -> None:
         """Opens the right-click context menu for expanding and collapsing all trackers"""
