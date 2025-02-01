@@ -13,7 +13,6 @@ from PySide6.QtGui import QColor, QPalette
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.cropping import Cropping
 from src.enums.indexer import Indexer
-from src.enums.image_host import ImageHost
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.settings_window import SettingsTabs
@@ -21,7 +20,6 @@ from src.frontend.utils import build_h_line
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
 from src.frontend.custom_widgets.image_host_listbox import ImageHostListBox
-from src.frontend.custom_widgets.sortable_listbox import SortableListBox
 from src.frontend.stacked_windows.settings.base import BaseSettings
 
 
@@ -154,13 +152,6 @@ class ScreenShotSettings(BaseSettings):
         self.image_host_config = ImageHostListBox(self.config, self)
         self.image_host_config.setMinimumHeight(180)
 
-        image_host_priority_label = QLabel(
-            "During processing the order below will be prioritized", self
-        )
-        self.image_host_priority = SortableListBox(self)
-        self.image_host_priority.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.image_host_priority.setMinimumHeight(130)
-
         self.add_layout(self.create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
         self.add_layout(self.create_form_layout(ss_count_lbl, self.ss_count_spinbox))
         self.add_layout(self.create_form_layout(ss_mode_lbl, self.ss_mode_combo))
@@ -210,9 +201,6 @@ class ScreenShotSettings(BaseSettings):
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
             self.create_form_layout(image_host_config_label, self.image_host_config)
-        )
-        self.add_layout(
-            self.create_form_layout(image_host_priority_label, self.image_host_priority)
         )
         self.add_layout(self.reset_layout)
 
@@ -302,9 +290,6 @@ class ScreenShotSettings(BaseSettings):
             self.sub_alignment_combo, SubtitleAlignment, payload.subtitle_alignment
         )
         self.image_host_config.add_items(self.config.image_host_map)
-        self.image_host_priority.load_items(
-            [str(x) for x in self.config.cfg_payload.image_host_priority_order]
-        )
 
     @Slot()
     def _save_settings(self) -> None:
@@ -344,9 +329,6 @@ class ScreenShotSettings(BaseSettings):
             QMessageBox.warning(self, "Warning", str(attr_error))
             return
         self.image_host_config.save_host_info()
-        self.config.cfg_payload.image_host_priority_order = [
-            ImageHost(x) for x in self.image_host_priority.get_items()
-        ]
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
@@ -367,7 +349,6 @@ class ScreenShotSettings(BaseSettings):
         self.sub_color_picker.update_color(QColor("#f5c70a"))
         self._update_sub_entry_color(self.sub_color_picker.get_color())
         self.image_host_config.add_items(self.config.image_host_map, reset=True)
-        self.image_host_priority.load_items([str(x) for x in ImageHost])
         self.sub_alignment_combo.setCurrentIndex(0)
 
     def _build_spinbox(
