@@ -30,7 +30,12 @@ class ImageHostEditBase(QWidget):
         self.load_data.connect(self.load_settings)
         self.save_data.connect(self.save_settings)
 
+        self.base_url_lbl = QLabel("Base URL", self)
+        self.base_url = MaskedQLineEdit(parent=self)
+
         self.main_layout = QVBoxLayout(self)
+
+        self.add_pair_to_layout(self.base_url_lbl, self.base_url)
 
     def load_settings(self) -> None:
         raise NotImplementedError("Must be implemented this per tracker")
@@ -64,16 +69,12 @@ class CheveretoV3Edit(ImageHostEditBase):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(config, parent)
 
-        self.base_url_lbl = QLabel("Base URL", self)
-        self.base_url = MaskedQLineEdit(parent=self)
-
         self.username_lbl = QLabel("Username", self)
         self.username = MaskedQLineEdit(parent=self)
 
         self.password_lbl = QLabel("Password", self)
         self.password = MaskedQLineEdit(parent=self, masked=True)
 
-        self.add_pair_to_layout(self.base_url_lbl, self.base_url)
         self.add_pair_to_layout(self.username_lbl, self.username)
         self.add_pair_to_layout(self.password_lbl, self.password)
 
@@ -84,7 +85,6 @@ class CheveretoV3Edit(ImageHostEditBase):
         self.password.setText(host.password if host.password else "")
 
     def save_settings(self) -> None:
-        # self.config.cfg_payload.chevereto_v3.enabled = self.
         self.config.cfg_payload.chevereto_v3.base_url = self.base_url.text().strip()
         self.config.cfg_payload.chevereto_v3.user = self.username.text().strip()
         self.config.cfg_payload.chevereto_v3.password = self.password.text().strip()
@@ -93,9 +93,6 @@ class CheveretoV3Edit(ImageHostEditBase):
 class CheveretoV4Edit(ImageHostEditBase):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(config, parent)
-
-        self.base_url_lbl = QLabel("Base URL", self)
-        self.base_url = MaskedQLineEdit(parent=self)
 
         self.api_key_lbl = QLabel("API Key", self)
         self.api_key = MaskedQLineEdit(parent=self, masked=True)
@@ -117,6 +114,8 @@ class ImageBBEdit(ImageHostEditBase):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(config, parent)
 
+        self.base_url.setDisabled(True)
+
         self.api_key_lbl = QLabel("API Key", self)
         self.api_key = MaskedQLineEdit(parent=self, masked=True)
 
@@ -124,9 +123,11 @@ class ImageBBEdit(ImageHostEditBase):
 
     def load_settings(self) -> None:
         host = self.config.cfg_payload.image_bb
+        self.base_url.setText(host.base_url if host.base_url else "")
         self.api_key.setText(host.api_key if host.api_key else "")
 
     def save_settings(self) -> None:
+        self.config.cfg_payload.image_bb.base_url = self.base_url.text().strip()
         self.config.cfg_payload.image_bb.api_key = self.api_key.text().strip()
 
 
@@ -134,14 +135,14 @@ class ImageBoxEdit(ImageHostEditBase):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(config, parent)
 
-        self.info_label = QLabel("No customization available")
-        self.add_widget_to_layout(self.info_label)
+        self.base_url.setDisabled(True)
 
     def load_settings(self) -> None:
-        pass
+        host = self.config.cfg_payload.image_box
+        self.base_url.setText(host.base_url if host.base_url else "")
 
     def save_settings(self) -> None:
-        pass
+        self.config.cfg_payload.image_box.base_url = self.base_url.text().strip()
 
 
 class ImageHostListBox(QWidget):
