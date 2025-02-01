@@ -14,6 +14,7 @@ class GlobalSignals(QObject):
     main_window_hide = Signal(bool)
     main_window_update_status_bar_label = Signal(str)
     main_window_open_log_dir = Signal()
+    main_window_open_log_file = Signal()
 
     # settings
     settings_clicked = Signal()
