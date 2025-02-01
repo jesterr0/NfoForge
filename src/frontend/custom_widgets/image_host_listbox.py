@@ -207,7 +207,9 @@ class ImageHostListBox(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.tree)
 
-    def add_items(self, items: dict[ImageHost, ImagePayloadBase]) -> None:
+    def add_items(
+        self, items: dict[ImageHost, ImagePayloadBase], reset: bool = False
+    ) -> None:
         self.tree.blockSignals(True)
         self.tree.clear()
 
@@ -220,7 +222,7 @@ class ImageHostListBox(QWidget):
                 parent_item.setCheckState(
                     0,
                     Qt.CheckState.Checked
-                    if image_host_info.enabled
+                    if (image_host_info.enabled and not reset)
                     else Qt.CheckState.Unchecked,
                 )
 
