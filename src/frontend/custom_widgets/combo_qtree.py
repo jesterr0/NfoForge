@@ -10,7 +10,9 @@ from PySide6.QtWidgets import (
     QFrame,
     QComboBox,
     QWidget,
+    QMenu,
 )
+from PySide6.QtGui import QAction, Qt
 
 
 class ComboBoxTreeWidget(QTreeWidget):
@@ -23,6 +25,7 @@ class ComboBoxTreeWidget(QTreeWidget):
     ):
         super().__init__(parent)
         self.combo_box_map: dict[tuple[QTreeWidgetItem, int], QComboBox] = {}
+        self.combo_options: list[set] = []
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
         self.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
@@ -31,6 +34,9 @@ class ComboBoxTreeWidget(QTreeWidget):
         self.setRootIsDecorated(False)
         self.header_len = self._add_headers(headers)
         self.add_rows(rows)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._open_context_menu)
+        self.setToolTip("Right click anywhere to set all menus to the same item")
 
     def update_value(self, key: str, col: int, new_value: str) -> str | None:
         """
@@ -109,51 +115,62 @@ class ComboBoxTreeWidget(QTreeWidget):
         layout.addWidget(combo_box, stretch=3)
         layout.addStretch(2)
 
+        option_set = set()
         for txt, data in combo_items:
             combo_box.addItem(txt, data)
+            option_set.add(txt)
 
-        # Store reference to the combobox for later retrieval
+        self.combo_options.append(option_set)
         self.combo_box_map[(item, col_index)] = combo_box
-
         self.setItemWidget(item, col_index, widget)
 
-    def get_item_values(self) -> list[tuple[str, str, tuple[str, Any]]]:
-        values = []
-        for idx in range(self.topLevelItemCount()):
-            item = self.topLevelItem(idx)
-            row_values: list[Any] = []
+    def get_common_options(self) -> set[str]:
+        """Finds options that exist in **every** combo box in the widget."""
+        if not self.combo_options:
+            return set()
+        return set.intersection(*self.combo_options)
 
-            for col_index in range(self.header_len):
-                # Check if a combo box exists in this column
-                if (item, col_index) in self.combo_box_map:
-                    combo_box = self.combo_box_map[(item, col_index)]
-                    row_values.append(
-                        (combo_box.currentText(), combo_box.currentData())
-                    )
-                else:
-                    row_values.append(item.text(col_index))
+    def set_all_comboboxes(self, value: str) -> None:
+        for (_item, _idx), combo_box in self.combo_box_map.items():
+            index = combo_box.findText(value)
+            if index != -1:
+                combo_box.setCurrentIndex(index)
 
-            values.append(tuple(row_values))
-        return values
+    def _open_context_menu(self, position) -> None:
+        """Opens the right-click context menu for setting all combo boxes in a column"""
+        common_options = self.get_common_options()
+        if common_options:
+            menu = QMenu(self)
+            for value in sorted(common_options):
+                action = QAction(f"Set all to '{value}'", self)
+                action.triggered.connect(lambda _, v=value: self.set_all_comboboxes(v))
+                menu.addAction(action)
+            menu.exec(self.mapToGlobal(position))
 
     @override
     def clear(self) -> None:
         super().clear()
         self.combo_box_map.clear()
+        self.combo_options.clear()
 
 
 if __name__ == "__main__":
     app = QApplication([])
+    app.setStyle("Fusion")
 
     tree = ComboBoxTreeWidget(
         headers=("Tracker", "Image Host", "Status"),
         rows=[
-            (["MTV", "", "Queued"], [(1, [("Option1", 1), ("Option2", 2)])]),
-            (["TL", "", "Queued"], [(1, [("OptionA", "A"), ("OptionB", "B")])]),
+            (
+                ["MTV", "", "Queued"],
+                [(1, [("Option1", 1), ("Option2", 2), ("OptionC", "data")])],
+            ),
+            (
+                ["TL", "", "Queued"],
+                [(1, [("OptionA", "A"), ("OptionB", "B"), ("OptionC", "data")])],
+            ),
         ],
     )
     tree.show()
-
-    print(tree.get_item_values())
 
     app.exec()
