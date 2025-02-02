@@ -136,6 +136,23 @@ class ComboBoxTreeWidget(QTreeWidget):
             if index != -1:
                 combo_box.setCurrentIndex(index)
 
+    def get_item_values(self) -> list[tuple[str, str, tuple[str, Any]]]:
+        values = []
+        for idx in range(self.topLevelItemCount()):
+            item = self.topLevelItem(idx)
+            row_values: list[Any] = []
+            for col_index in range(self.header_len):
+                # check if a combo box exists in this column
+                if (item, col_index) in self.combo_box_map:
+                    combo_box = self.combo_box_map[(item, col_index)]
+                    row_values.append(
+                        (combo_box.currentText(), combo_box.currentData())
+                    )
+                else:
+                    row_values.append(item.text(col_index))
+            values.append(tuple(row_values))
+        return values
+
     def _open_context_menu(self, position) -> None:
         """Opens the right-click context menu for setting all combo boxes in a column"""
         common_options = self.get_common_options()
