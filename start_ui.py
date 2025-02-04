@@ -171,7 +171,7 @@ def arg_parse() -> tuple[str | None, str | None]:
         )
     elif length == 3 and args[1] in ("--config", "-c", "config", "c"):
         config_arg = args[2]
-        if config_arg.endswith(".toml"):
+        if config_arg.lower().endswith(".toml"):
             config_arg = config_arg[:-5]
     return config_arg, message_arg
 
