@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence, Awaitable
 from os import PathLike
 from pathlib import Path
 
+from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.packages.custom_types import ImageUploadData
 from src.exceptions import ImageUploadError
 
@@ -53,7 +54,7 @@ async def imgbb_upload(
     api_key: str,
     filepaths: Sequence[Path],
     batch_size: int = 4,
-    cb: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     if not api_key:
         raise ImageUploadError("You are required to have an API key")
@@ -66,7 +67,9 @@ async def imgbb_upload(
     tasks = []
     for i in range(0, len(filepaths), batch_size):
         batch = filepaths[i : i + batch_size]
-        task = asyncio.create_task(_imgbb_upload_batch(api_key, batch, i, cb))
+        task = asyncio.create_task(
+            _imgbb_upload_batch(api_key, batch, i, progress_callback)
+        )
         tasks.append(task)
 
     batch_results_list = await asyncio.gather(*tasks)
@@ -74,3 +77,26 @@ async def imgbb_upload(
         results.update(batch_results)
 
     return results
+
+
+class ImageBBUploader(BaseImageHostUploader):
+    """Uploader for ImageBB."""
+
+    __slots__ = ("api_key",)
+
+    def __init__(self, api_key: str, url: str) -> None:
+        self.api_key = api_key
+
+    async def upload(
+        self,
+        filepaths: Sequence[Path],
+        batch_size: int = 4,
+        progress_callback: Callable[[int], Awaitable] | None = None,
+    ) -> dict[int, ImageUploadData] | None:
+        """Upload images to ImageBB."""
+        return await imgbb_upload(
+            api_key=self.api_key,
+            filepaths=filepaths,
+            batch_size=4,
+            progress_callback=progress_callback,
+        )

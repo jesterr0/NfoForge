@@ -4,6 +4,7 @@ import base64
 from collections.abc import Sequence, Callable, Awaitable
 from pathlib import Path
 
+from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.packages.custom_types import ImageUploadData
 from src.exceptions import ImageUploadError
 
@@ -58,7 +59,7 @@ async def chevereto_v4_upload(
     url: str,
     filepaths: Sequence[Path],
     batch_size: int = 4,
-    cb: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     """Upload images to Chevereto V4 in batches."""
     if not api_key:
@@ -75,7 +76,7 @@ async def chevereto_v4_upload(
     tasks = []
     for i in range(0, total_files, batch_size):
         batch = filepaths[i : i + batch_size]
-        task = _chevereto_V4_upload_batch(api_key, url, batch, i, cb)
+        task = _chevereto_V4_upload_batch(api_key, url, batch, i, progress_callback)
         tasks.append(task)
 
     batch_results_list = await asyncio.gather(*tasks)
@@ -84,3 +85,27 @@ async def chevereto_v4_upload(
         results.update(batch_results)
 
     return results
+
+
+class CheveretoV4Uploader(BaseImageHostUploader):
+    """Uploader for Chevereto V4."""
+
+    __slots__ = ("api_key", "url")
+
+    def __init__(self, api_key: str, url: str) -> None:
+        self.api_key = api_key
+        self.url = url
+
+    async def upload(
+        self,
+        filepaths: Sequence[Path],
+        progress_callback: Callable[[int], Awaitable] | None = None,
+    ) -> dict[int, ImageUploadData] | None:
+        """Upload images to Chevereto V4."""
+        return await chevereto_v4_upload(
+            api_key=self.api_key,
+            url=self.url,
+            filepaths=filepaths,
+            batch_size=4,
+            progress_callback=progress_callback,
+        )

@@ -3,6 +3,7 @@ from collections.abc import Sequence, Callable, Awaitable
 from pathlib import Path
 from pyimgbox import Gallery as ImgBoxGallery, Submission
 
+from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.packages.custom_types import ImageUploadData
 
 
@@ -55,7 +56,7 @@ async def image_box_upload(
     adult: bool = False,
     comments_enabled: bool = False,
     batch_size: int = 4,
-    cb: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     """
     Uploads images to a gallery in batches and returns the upload results.
@@ -68,7 +69,7 @@ async def image_box_upload(
         adult (bool, optional): Whether the gallery contains adult content. Defaults to False.
         comments_enabled (bool, optional): Whether comments are enabled for the gallery. Defaults to False.
         batch_size (int, optional): Number of images to upload in each batch. Defaults to 5.
-        cb (Callable[[int], None]): Callback to print progress.
+        progress_callback (Callable[[int], None]): Callback to print progress.
 
     Returns:
         Optional[Dict[int, ImageUploadData]]: A dictionary with indices as keys and ImageUploadData objects as values.
@@ -87,7 +88,38 @@ async def image_box_upload(
     ) as gallery:
         for i in range(0, len(filepaths), batch_size):
             batch = filepaths[i : i + batch_size]
-            batch_results = await _img_box_upload_batch(gallery, batch, i, cb)
+            batch_results = await _img_box_upload_batch(
+                gallery, batch, i, progress_callback
+            )
             image_data.update({i + j: batch_results[j] for j in batch_results})
 
     return image_data
+
+
+class ImageBoxUploader(BaseImageHostUploader):
+    """Uploader for ImageBox."""
+
+    __slots__ = ()
+
+    async def upload(
+        self,
+        filepaths: Sequence[Path],
+        title: str | None = None,
+        thumb_width: int = 350,
+        square_thumbs: bool = False,
+        adult: bool = False,
+        comments_enabled: bool = False,
+        batch_size: int = 4,
+        progress_callback: Callable[[int], Awaitable] | None = None,
+    ) -> dict[int, ImageUploadData] | None:
+        """Upload images to ImageBox."""
+        return await image_box_upload(
+            filepaths=filepaths,
+            title=title,
+            thumb_width=thumb_width,
+            square_thumbs=square_thumbs,
+            adult=adult,
+            comments_enabled=comments_enabled,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+        )
