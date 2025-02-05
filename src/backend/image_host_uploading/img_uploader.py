@@ -1,146 +1,98 @@
 import asyncio
-from collections.abc import Sequence
-from os import PathLike
+import uuid
+from collections.abc import Sequence, Callable
 from pathlib import Path
 
-from PySide6.QtCore import SignalInstance
-
-from src.config.config import Config
-from src.exceptions import ImageUploadError
-from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
-from src.backend.image_host_uploading.chevereto_v3 import chevereto_v3_upload
-from src.backend.image_host_uploading.chevereto_v4 import chevereto_v4_upload
-from src.backend.image_host_uploading.img_box import image_box_upload
-from src.backend.image_host_uploading.imgbb import imgbb_upload
+from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 
 
 class ImageUploader:
-    def __init__(self, config: Config, progress_signal: SignalInstance) -> None:
-        """Initialize the ImageUploader with the given configuration"""
-        self.config = config
+    """Manages image uploads across multiple hosts with progress tracking."""
+
+    def __init__(self, progress_signal: Callable[[str, int, int], None]) -> None:
         self.progress_signal = progress_signal
-        self._total_files = 0
-        self._remaining = 0
         self._lock = asyncio.Lock()
-        LOG.debug(LOG.LOG_SOURCE.BE, "Initiating ImageUploader")
+        self._jobs = {}  # stores (uploader, filepaths)
+        self._progress_trackers = {}
+        self._uploaders = {}
 
-    def chevereto_v3(
-        self,
-        filepaths: Sequence[PathLike[str] | Path | str],
-        batch_size: int = 4,
-        album_name: str | None = None,
-    ) -> dict[int, ImageUploadData] | None:
-        """Upload images to Chevereto V3"""
-        LOG.info(LOG.LOG_SOURCE.BE, "Utilizing Chevereto V3")
+    def register_uploader(
+        self, host_name: str, uploader: BaseImageHostUploader
+    ) -> None:
+        """Register a specific image host uploader."""
+        self._uploaders[host_name] = uploader
 
-        self._total_files = self._remaining = len(filepaths)
+    def add_job(
+        self, host_name: str, filepaths: Sequence[Path], *args, **kwargs
+    ) -> str:
+        """Queue an upload job for a specific image host."""
+        if host_name not in self._uploaders:
+            raise ValueError(f"No uploader registered for host: {host_name}")
 
-        base_url = self.config.cfg_payload.chevereto_v3.base_url
-        user = self.config.cfg_payload.chevereto_v3.user
-        password = self.config.cfg_payload.chevereto_v3.password
-        if not base_url or not user or not password:
-            raise ImageUploadError("Base URL, user, and password is required")
+        job_id = str(uuid.uuid4())
+        total_files = len(filepaths)
 
-        results = asyncio.run(
-            chevereto_v3_upload(
-                base_url=base_url,
-                user=user,
-                password=password,
-                filepaths=[Path(x) for x in filepaths if x],
-                batch_size=batch_size,
-                album_name=album_name,
-                cb=self.upload_progress,
-            )
-        )
-        return results
+        self._progress_trackers[job_id] = {
+            "total": total_files,
+            "remaining": total_files,
+        }
 
-    def chevereto_v4(
-        self, filepaths: Sequence[PathLike[str] | Path | str], batch_size: int = 4
-    ) -> dict[int, ImageUploadData] | None:
-        """Upload images to Chevereto V4"""
-        LOG.info(LOG.LOG_SOURCE.BE, "Utilizing Chevereto V4")
+        # store uploader + filepaths (delayed execution)
+        self._jobs[job_id] = (self._uploaders[host_name], filepaths, args, kwargs)
 
-        api_key = self.config.cfg_payload.chevereto_v4.api_key
-        url = self.config.cfg_payload.chevereto_v4.base_url
-        if not api_key or not url:
-            raise ImageUploadError("API key and URL is required")
+        return job_id
 
-        self._total_files = self._remaining = len(filepaths)
-        results = asyncio.run(
-            chevereto_v4_upload(
-                api_key=api_key,
-                url=url,
-                filepaths=[Path(x) for x in filepaths if x],
-                batch_size=batch_size,
-                cb=self.upload_progress,
-            )
-        )
-        return results
-
-    def img_box(
-        self,
-        filepaths: Sequence[PathLike[str] | Path | str],
-        title: str | None = None,
-        thumb_width: int = 350,
-        square_thumbs: bool = False,
-        adult: bool = False,
-        comments_enabled: bool = False,
-        batch_size: int = 4,
-    ) -> dict[int, ImageUploadData] | None:
-        """Upload images to ImageBox"""
-        LOG.info(LOG.LOG_SOURCE.BE, "Utilizing ImageBox")
-
-        self._total_files = self._remaining = len(filepaths)
-        results = asyncio.run(
-            image_box_upload(
-                filepaths=[Path(x) for x in filepaths if x],
-                title=title,
-                thumb_width=thumb_width,
-                square_thumbs=square_thumbs,
-                adult=adult,
-                comments_enabled=comments_enabled,
-                batch_size=batch_size,
-                cb=self.upload_progress,
-            )
-        )
-        return results
-
-    def imgbb(
-        self,
-        filepaths: Sequence[PathLike[str] | Path | str],
-        batch_size: int = 4,
-    ) -> dict[int, ImageUploadData] | None:
-        """Upload images to ImageBB"""
-        LOG.info(LOG.LOG_SOURCE.BE, "Utilizing ImageBB")
-
-        self._total_files = self._remaining = len(filepaths)
-
-        api_key = self.config.cfg_payload.image_bb.api_key
-        if not api_key:
-            raise ImageUploadError("API key is required")
-
-        results = asyncio.run(
-            imgbb_upload(
-                api_key=api_key,
-                filepaths=[Path(x) for x in filepaths if x],
-                batch_size=batch_size,
-                cb=self.upload_progress,
-            )
-        )
-        return results
-
-    async def upload_progress(self, idx: int) -> None:
-        """Callback function to track the progress of image uploads"""
+    async def upload_progress(self, job_id: str) -> None:
+        """Updates progress for each job and emits a signal."""
         async with self._lock:
-            self._remaining -= 1
-            if self.progress_signal:
-                image_progress = f"IDX={idx} Total Files={self._total_files} Remaining={self._remaining}"
-                LOG.debug(LOG.LOG_SOURCE.BE, image_progress)
-                self.progress_signal.emit(
-                    image_progress,
-                    int(
-                        ((self._total_files - self._remaining) / self._total_files)
-                        * 100
-                    ),
-                )
+            if job_id not in self._progress_trackers:
+                return
+
+            tracker = self._progress_trackers[job_id]
+            tracker["remaining"] -= 1
+            total = tracker["total"]
+            remaining = tracker["remaining"]
+
+            individual_progress = int(((total - remaining) / total) * 100)
+
+            # compute overall progress
+            total_files_overall = sum(
+                tr["total"] for tr in self._progress_trackers.values()
+            )
+            remaining_overall = sum(
+                tr["remaining"] for tr in self._progress_trackers.values()
+            )
+            overall_progress = int(
+                ((total_files_overall - remaining_overall) / total_files_overall) * 100
+            )
+
+            self.progress_signal(job_id, individual_progress, overall_progress)
+
+            if remaining == 0:
+                del self._progress_trackers[job_id]
+
+    async def start_jobs(self) -> dict[str, dict[int, ImageUploadData]]:
+        """Starts all registered jobs and collects results."""
+        results = {}
+
+        tasks = [
+            self._run_job(job_id, uploader, filepaths, args, kwargs, results)
+            for job_id, (uploader, filepaths, args, kwargs) in self._jobs.items()
+        ]
+
+        await asyncio.gather(*tasks)
+        return results
+
+    async def _run_job(
+        self, job_id: str, uploader, filepaths, args, kwargs, results: dict
+    ):
+        """Runs a single job and stores its results."""
+
+        async def progress_callback(_idx: int) -> None:
+            await self.upload_progress(job_id)
+
+        upload_results = await uploader.upload(
+            filepaths, progress_callback=progress_callback, *args, **kwargs
+        )
+        results[job_id] = upload_results
