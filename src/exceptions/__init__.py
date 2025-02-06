@@ -64,3 +64,7 @@ class PluginError(NfoForgeError):
 
 class MediaSearchError(NfoForgeError):
     """Custom exception for media search related errors"""
+
+
+class ImageHostError(NfoForgeError):
+    """Custom exception for image host related errors"""
