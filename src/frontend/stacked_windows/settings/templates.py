@@ -470,7 +470,7 @@ class TemplatesSettings(BaseSettings):
                         if (
                             QMessageBox.question(
                                 self,
-                                "warning",
+                                "Warning",
                                 f"{cur_tracker} requires at least three screenshots in BBCode format. You "
                                 "should assign a template with {{ screen_shots }} and ensure you utilize "
                                 "the screenshot feature.\n\nWould you like to fix this now?",
