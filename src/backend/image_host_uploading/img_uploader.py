@@ -10,8 +10,13 @@ from src.backend.image_host_uploading.base_image_host import BaseImageHostUpload
 class ImageUploader:
     """Manages image uploads across multiple hosts with progress tracking."""
 
-    def __init__(self, progress_signal: Callable[[str, int, int], None]) -> None:
+    def __init__(
+        self,
+        progress_signal: Callable[[str, int, int], None] | None = None,
+        delete_job_as_completed: bool = False,
+    ) -> None:
         self.progress_signal = progress_signal
+        self.delete_job_as_completed = delete_job_as_completed
         self._lock = asyncio.Lock()
         self._jobs = {}  # stores (uploader, filepaths)
         self._progress_trackers = {}
@@ -67,9 +72,10 @@ class ImageUploader:
                 ((total_files_overall - remaining_overall) / total_files_overall) * 100
             )
 
-            self.progress_signal(job_id, individual_progress, overall_progress)
+            if self.progress_signal:
+                self.progress_signal(job_id, individual_progress, overall_progress)
 
-            if remaining == 0:
+            if self.delete_job_as_completed and remaining == 0:
                 del self._progress_trackers[job_id]
 
     async def start_jobs(self) -> dict[str, dict[int, ImageUploadData]]:
