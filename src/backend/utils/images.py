@@ -1,10 +1,11 @@
+import re
 import shutil
 from pathlib import Path
 from pymediainfo import MediaInfo
 from typing import Tuple, Union
 from src.exceptions import MediaFrameCountError
 from src.logger.nfo_forge_logger import LOG
-from src.packages.custom_types import CropValues
+from src.packages.custom_types import CropValues, ImageUploadData
 
 
 # def calculate_start_time(total_frames: int, start_percentage: int, fps: float) -> str:
@@ -171,3 +172,61 @@ def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int | 
         return h1080
     elif height <= 2160:
         return h2160
+
+
+def extract_images_from_str(
+    img_str: str,
+) -> tuple[list[str], list[str], list[ImageUploadData]]:
+    """
+    Extracts images from a string in two categories:
+    - Full/linked images (tuple of full image URL and optional link URL)
+    - Standalone images (just the image URL)
+
+    Returns:
+    - A tuple containing:
+        - List of tuples [(full_image, link)] for linked images
+        - List of standalone image URLs
+        - List of ImageUploadData objects
+    """
+    # extract linked images (HTML format)
+    linked_images = re.findall(
+        r'<a href="(https?://[^\s"]+\.(?:png|jpg|jpeg)?[^"\s]*)".*?<img src="(https?://[^\s"]+\.(?:png|jpg|jpeg))"',
+        img_str,
+        re.IGNORECASE | re.DOTALL,
+    )
+
+    # extract linked images from BBCode [url=...] containing [img]...[/img]
+    linked_images += re.findall(
+        r"\[url=(https?://[^\s\[\]]+\.(?:png|jpg|jpeg)?[^\s\[\]]*)\]\s*\[img.*?\](https?://[^\s\[\]]+\.(?:png|jpg|jpeg))\[/img\]\s*\[/url\]",
+        img_str,
+        re.IGNORECASE,
+    )
+
+    # extract standalone BBCode images
+    standalone_images = re.findall(
+        r"\[img.*?\](https?://[^\s\[\]]+\.(?:png|jpg|jpeg))\[/img\]",
+        img_str,
+        re.IGNORECASE,
+    )
+
+    # extract direct image URLs outside of BBCode or HTML anchor tags
+    standalone_images += re.findall(
+        r'(?<!href=")(?<!src=")(?<!\[url=)(?<!\[img\])'
+        r'(https?://[^\s\[\]<>"]+\.(?:png|jpg|jpeg))',
+        img_str,
+        re.IGNORECASE,
+    )
+
+    # remove duplicates and maintain order for standalone images
+    standalone_images = list(dict.fromkeys(standalone_images))
+
+    # load ImageUploadData objects
+    img_url_data_objs = []
+    for full_img, thumb_img in linked_images:
+        img_url_data_objs.append(ImageUploadData(url=full_img, medium_url=thumb_img))
+
+    if not img_url_data_objs:
+        for single_img in standalone_images:
+            img_url_data_objs.append(ImageUploadData(url=single_img, medium_url=None))
+
+    return linked_images, standalone_images, img_url_data_objs
