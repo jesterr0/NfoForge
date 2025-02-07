@@ -29,7 +29,11 @@ class ImageDownloader:
 
     def download_images(self) -> list[Path]:
         """Public method to start the image download"""
-        return asyncio.run(self._download_images())
+        async_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(async_loop)
+        images = async_loop.run_until_complete(self._download_images())
+        async_loop.close()
+        return images
 
     async def _download_images(self) -> list[Path]:
         """Async method that handles downloading images in batches"""

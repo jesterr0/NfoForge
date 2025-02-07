@@ -83,8 +83,10 @@ class IDParseWorker(QThread):
         self.tvdb_api_key = tvdb_api_key
 
     def run(self) -> None:
+        async_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(async_loop)
         try:
-            parse_other_ids = asyncio.run(
+            parse_other_ids = async_loop.run_until_complete(
                 self.backend.parse_other_ids(
                     self.imdb_id,
                     self.tmdb_title,
@@ -99,6 +101,8 @@ class IDParseWorker(QThread):
             self.job_failed.emit(
                 f"Failed to parse ID data: ({e})\n{traceback.format_exc()}"
             )
+        finally:
+            async_loop.close()
 
 
 class MediaSearch(BaseWizardPage):
