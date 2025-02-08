@@ -7,7 +7,6 @@ source_media_ext_filter = [".mkv", ".mp4"]
 encode_media_ext_filter = [".mkv", ".mp4"]
 media_input_dir = false
 releasers_name = ""
-image_host = 1
 timeout = 60
 log_level = 20
 log_total = 50

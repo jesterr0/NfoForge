@@ -275,7 +275,6 @@ class Config:
             )
             general_data["media_input_dir"] = self.cfg_payload.media_input_dir
             general_data["releasers_name"] = self.cfg_payload.releasers_name
-            general_data["image_host"] = ImageHost(self.cfg_payload.image_host).value
             general_data["timeout"] = self.cfg_payload.timeout
             general_data["log_level"] = LogLevel(self.cfg_payload.log_level).value
             general_data["log_total"] = self.cfg_payload.log_total
@@ -970,7 +969,6 @@ class Config:
                 ),
                 media_input_dir=general_data.get("media_input_dir"),
                 releasers_name=general_data.get("releasers_name", ""),
-                image_host=ImageHost(general_data.get("image_host", 1)),
                 timeout=general_data.get("timeout", 60),
                 log_level=LogLevel(general_data.get("log_level", 20)),
                 log_total=general_data.get("log_total", 50),
