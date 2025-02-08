@@ -5,7 +5,6 @@ from src.logger.nfo_forge_logger import LogLevel
 from src.enums.theme import NfoForgeTheme
 from src.enums.profile import Profile
 from src.enums.media_mode import MediaMode
-from src.enums.image_host import ImageHost
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.image_plugin import ImagePlugin
@@ -51,7 +50,6 @@ class ConfigPayload:
     encode_media_ext_filter: list[str]
     media_input_dir: bool
     releasers_name: str
-    image_host: ImageHost
     timeout: int
     log_level: LogLevel
     log_total: int
