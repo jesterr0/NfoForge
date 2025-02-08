@@ -237,6 +237,11 @@ class ProcessBackEnd:
             queued_status_update(tracker_name, "Processing")
             queued_text_update(f"\nStarting work for '{tracker_name}':")
 
+            # screenshots stuff, updated below for each tracker in the loop
+            tracker_images = None
+            format_images_to_str = None
+            formatted_screens = None
+
             # get tracker object and tracker info
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.tracker_map[cur_tracker]
@@ -280,7 +285,7 @@ class ProcessBackEnd:
                         tracker_info.column_space,
                         tracker_info.row_space,
                     )
-                    update_tracker_img_tags = format_image_tag(
+                    formatted_screens = format_image_tag(
                         cur_tracker,
                         format_images_to_str,
                         getattr(tracker_info, "image_width", 350),
@@ -297,7 +302,7 @@ class ProcessBackEnd:
                         media_info_obj=mediainfo_obj,
                         unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                         releasers_name=releasers_name,
-                        screen_shots=update_tracker_img_tags,
+                        screen_shots=formatted_screens,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),
@@ -316,6 +321,9 @@ class ProcessBackEnd:
                             config=self.config,
                             input_str=nfo,
                             tracker_s=(cur_tracker,),
+                            tracker_images=tracker_images,
+                            format_images_to_str=format_images_to_str,
+                            formatted_screens=formatted_screens,
                         )
                         nfo = replace_tokens if replace_tokens else nfo
 
