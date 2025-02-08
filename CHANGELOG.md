@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Can now open log file directory or current log file from the general settings page via two new icon buttons.
 - Added the ability to set your subtitle color via an interactive subtitle picker.
 - Add a Reset icon button to movie_clean_token table widget.
+- Now passes a new arg to plugin `token_replacer_plugin` of **formatted_screens**.
+- Now passes a new arg to plugin `token_replacer_plugin` of **format_images_to_str**.
+- Now passes a new arg to plugin `token_replacer_plugin` of **tracker_images**.
 
 ### Changed
 
@@ -46,7 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trackers are now displayed in the order the user sets as the priority in the overview page.
 - Can no longer manually type the hex color code for subtitle color, you must use the new subtitle picker now.
 - Prevent errors when launching the program with _.TOML from the command line for --config _.TOML.
-- **movie_clean_token** has some new default rules to handle comma/dash
+- **movie_clean_token** has some new default rules to handle comma/dash.
+- Aither/reelFliX image width can only go as low as 300.
 
 ### Fixed
 
