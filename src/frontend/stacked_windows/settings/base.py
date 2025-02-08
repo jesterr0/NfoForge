@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QSpacerItem,
     QScrollArea,
     QFrame,
-    QFormLayout,
     QLayout,
     QToolButton,
     QHBoxLayout,
@@ -130,17 +129,3 @@ class BaseSettings(QWidget):
         current_index = widget.findText(str(enum(saved_data)))
         if current_index >= 0:
             widget.setCurrentIndex(current_index)
-
-    @staticmethod
-    def create_form_layout(
-        widget1: QWidget,
-        widget2: QWidget | None = None,
-        margins: tuple[int, int, int, int] | None = None,
-    ):
-        form_layout = QFormLayout()
-        if margins:
-            form_layout.setContentsMargins(*margins)
-        form_layout.addWidget(widget1)
-        if widget2:
-            form_layout.addWidget(widget2)
-        return form_layout

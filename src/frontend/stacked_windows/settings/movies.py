@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.stacked_windows.settings.base import BaseSettings
+from src.frontend.utils import create_form_layout
 from src.backend.tokens import Tokens, FileToken
 from src.backend.token_replacer import TokenReplacer, ColonReplace, UnfilledTokenRemoval
 
@@ -59,7 +60,7 @@ class MoviesSettings(BaseSettings):
         )
         for colon_enum in ColonReplace:
             self.colon_replacement_combo.addItem(str(colon_enum), colon_enum.value)
-        colon_replacement = self.create_form_layout(
+        colon_replacement = create_form_layout(
             colon_replacement_lbl, self.colon_replacement_combo
         )
         self.colon_replacement_combo.currentIndexChanged.connect(
@@ -85,7 +86,7 @@ class MoviesSettings(BaseSettings):
         title_example_label.setToolTip("An example of the title output")
         self.title_example_entry = QLineEdit()
         self.title_example_entry.setDisabled(True)
-        title_example_form = self.create_form_layout(
+        title_example_form = create_form_layout(
             title_example_label, self.title_example_entry
         )
         title_example_form.setContentsMargins(5, 0, 0, 0)
@@ -94,7 +95,7 @@ class MoviesSettings(BaseSettings):
         file_example_label.setToolTip("An example of the file output")
         self.file_example_entry = QLineEdit()
         self.file_example_entry.setDisabled(True)
-        file_example_form = self.create_form_layout(
+        file_example_form = create_form_layout(
             file_example_label, self.file_example_entry
         )
         file_example_form.setContentsMargins(5, 0, 0, 0)
@@ -105,7 +106,7 @@ class MoviesSettings(BaseSettings):
         movie_format_layout.addWidget(self.movie_format_entry)
         movie_format_layout.addLayout(title_example_form)
         movie_format_layout.addLayout(file_example_form)
-        movie_format = self.create_form_layout(movie_format_lbl, movie_format_widget)
+        movie_format = create_form_layout(movie_format_lbl, movie_format_widget)
 
         movie_token_lbl = QLabel("Movie Tokens")
         movie_token_lbl.setToolTip(
@@ -115,7 +116,7 @@ class MoviesSettings(BaseSettings):
             sorted(Tokens().get_token_objects(FileToken)),
             allow_edits=True,
         )
-        token_table_layout = self.create_form_layout(movie_token_lbl, self.token_table)
+        token_table_layout = create_form_layout(movie_token_lbl, self.token_table)
 
         self.add_layout(check_button_layout)
         self.add_layout(check_mi_layout)

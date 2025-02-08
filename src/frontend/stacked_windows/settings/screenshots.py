@@ -16,7 +16,7 @@ from src.enums.indexer import Indexer
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.settings_window import SettingsTabs
-from src.frontend.utils import build_h_line
+from src.frontend.utils import build_h_line, create_form_layout
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
 from src.frontend.custom_widgets.image_host_listbox import ImageHostListBox
@@ -152,55 +152,45 @@ class ScreenShotSettings(BaseSettings):
         self.image_host_config = ImageHostListBox(self.config, self)
         self.image_host_config.setMinimumHeight(180)
 
-        self.add_layout(self.create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
-        self.add_layout(self.create_form_layout(ss_count_lbl, self.ss_count_spinbox))
-        self.add_layout(self.create_form_layout(ss_mode_lbl, self.ss_mode_combo))
+        self.add_layout(create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
+        self.add_layout(create_form_layout(ss_count_lbl, self.ss_count_spinbox))
+        self.add_layout(create_form_layout(ss_mode_lbl, self.ss_mode_combo))
+        self.add_layout(create_form_layout(ss_compression_lbl, self.ss_compression_btn))
+        self.add_layout(create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
+        self.add_layout(create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
         self.add_layout(
-            self.create_form_layout(ss_compression_lbl, self.ss_compression_btn)
+            create_form_layout(ss_required_count_lbl, self.ss_required_count_spinbox)
         )
-        self.add_layout(self.create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
-        self.add_layout(self.create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
-        self.add_layout(
-            self.create_form_layout(
-                ss_required_count_lbl, self.ss_required_count_spinbox
-            )
-        )
-        self.add_layout(self.create_form_layout(crop_mode_lbl, self.crop_mode_combo))
-        self.add_layout(self.create_form_layout(indexer_lbl, self.indexer_combo))
-        self.add_layout(
-            self.create_form_layout(image_plugin_lbl, self.image_plugin_combo)
-        )
+        self.add_layout(create_form_layout(crop_mode_lbl, self.crop_mode_combo))
+        self.add_layout(create_form_layout(indexer_lbl, self.indexer_combo))
+        self.add_layout(create_form_layout(image_plugin_lbl, self.image_plugin_combo))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
-            self.create_form_layout(
+            create_form_layout(
                 ss_comparison_subtitle_lbl, self.ss_comparison_subtitle_btn
             )
         )
         self.add_layout(
-            self.create_form_layout(ss_comp_source_lbl, self.ss_comp_source_entry)
+            create_form_layout(ss_comp_source_lbl, self.ss_comp_source_entry)
         )
         self.add_layout(
-            self.create_form_layout(ss_comp_encode_lbl, self.ss_comp_encode_entry)
-        )
-        self.add_widget(build_h_line((10, 1, 10, 1)))
-        self.add_layout(
-            self.create_form_layout(sub_720p_size_lbl, self.sub_720p_size_spinbox)
-        )
-        self.add_layout(
-            self.create_form_layout(sub_1080p_size_lbl, self.sub_1080p_size_spinbox)
-        )
-        self.add_layout(
-            self.create_form_layout(sub_2160p_size_lbl, self.sub_2160p_size_spinbox)
-        )
-        self.add_layout(
-            self.create_form_layout(sub_lbl_color_widget, self.sub_color_entry)
-        )
-        self.add_layout(
-            self.create_form_layout(sub_alignment_lbl, self.sub_alignment_combo)
+            create_form_layout(ss_comp_encode_lbl, self.ss_comp_encode_entry)
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
-            self.create_form_layout(image_host_config_label, self.image_host_config)
+            create_form_layout(sub_720p_size_lbl, self.sub_720p_size_spinbox)
+        )
+        self.add_layout(
+            create_form_layout(sub_1080p_size_lbl, self.sub_1080p_size_spinbox)
+        )
+        self.add_layout(
+            create_form_layout(sub_2160p_size_lbl, self.sub_2160p_size_spinbox)
+        )
+        self.add_layout(create_form_layout(sub_lbl_color_widget, self.sub_color_entry))
+        self.add_layout(create_form_layout(sub_alignment_lbl, self.sub_alignment_combo))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(
+            create_form_layout(image_host_config_label, self.image_host_config)
         )
         self.add_layout(self.reset_layout)
 

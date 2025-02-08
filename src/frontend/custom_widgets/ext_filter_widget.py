@@ -1,9 +1,10 @@
 from collections.abc import Iterable
 
-from PySide6.QtWidgets import QWidget, QLabel, QLineEdit, QHBoxLayout, QFormLayout
+from PySide6.QtWidgets import QWidget, QLabel, QLineEdit, QHBoxLayout
 from PySide6.QtCore import Slot
 
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
+from src.frontend.utils import create_form_layout
 
 
 class ExtFilterWidget(QWidget):
@@ -38,8 +39,8 @@ class ExtFilterWidget(QWidget):
         filtered_ext_basic_layout.addWidget(self.filtered_ext_basic_menu)
         filtered_ext_basic_layout.addWidget(self.filtered_ext_basic_display)
 
-        self.form_layout = self._create_form_layout(
-            filtered_ext_basic_lbl, filtered_ext_basic_widget
+        self.form_layout = create_form_layout(
+            filtered_ext_basic_lbl, filtered_ext_basic_widget, (0, 0, 0, 0)
         )
         self.setLayout(self.form_layout)
 
@@ -72,11 +73,3 @@ class ExtFilterWidget(QWidget):
 
         self.filtered_ext_basic_display.clear()
         self.filtered_ext_basic_display.setText(", ".join(files_list))
-
-    @staticmethod
-    def _create_form_layout(widget1: QWidget, widget2: QWidget):
-        form_layout = QFormLayout()
-        form_layout.setContentsMargins(0, 0, 0, 0)
-        form_layout.addWidget(widget1)
-        form_layout.addWidget(widget2)
-        return form_layout

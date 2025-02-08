@@ -23,7 +23,7 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils import build_auto_theme_icon_buttons, create_form_layout
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -74,7 +74,7 @@ class GeneralSettings(BaseSettings):
         self.plugin_wizard_page_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
-        plugin_wizard_page_layout = self.create_form_layout(
+        plugin_wizard_page_layout = create_form_layout(
             plugin_wizard_page_lbl, self.plugin_wizard_page_combo, (12, 0, 0, 0)
         )
 
@@ -85,7 +85,7 @@ class GeneralSettings(BaseSettings):
         self.plugin_token_replacer_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
-        plugin_token_replacer_layout = self.create_form_layout(
+        plugin_token_replacer_layout = create_form_layout(
             plugin_wizard_token_replacer_lbl,
             self.plugin_token_replacer_combo,
             (12, 0, 0, 0),
@@ -98,7 +98,7 @@ class GeneralSettings(BaseSettings):
         self.plugin_pre_upload_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
-        pre_upload_processing_layout = self.create_form_layout(
+        pre_upload_processing_layout = create_form_layout(
             plugin_pre_upload_lbl,
             self.plugin_pre_upload_combo,
             (12, 0, 0, 0),
@@ -193,28 +193,28 @@ class GeneralSettings(BaseSettings):
             )
         )
 
-        self.add_layout(self.create_form_layout(config_lbl, config_widget))
-        self.add_layout(self.create_form_layout(suffix_lbl, self.ui_suffix))
-        self.add_layout(self.create_form_layout(theme_lbl, self.theme_combo))
-        self.add_layout(self.create_form_layout(profile_lbl, self.profile_combo))
+        self.add_layout(create_form_layout(config_lbl, config_widget))
+        self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
+        self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
+        self.add_layout(create_form_layout(profile_lbl, self.profile_combo))
         self.add_layout(plugin_wizard_page_layout)
         self.add_layout(plugin_token_replacer_layout)
         self.add_layout(pre_upload_processing_layout)
-        self.add_layout(self.create_form_layout(media_mode_lbl, self.media_mode_combo))
+        self.add_layout(create_form_layout(media_mode_lbl, self.media_mode_combo))
         self.add_widget(self.source_ext_filter)
         self.add_widget(self.encode_ext_filter)
-        self.add_layout(self.create_form_layout(dir_toggle_lbl, self.dir_toggle_btn))
+        self.add_layout(create_form_layout(dir_toggle_lbl, self.dir_toggle_btn))
         self.add_layout(
-            self.create_form_layout(releasers_name_lbl, self.releasers_name_entry)
+            create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
         self.add_layout(
-            self.create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
+            create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
         )
-        self.add_layout(self.create_form_layout(log_level_lbl, self.log_level_combo))
+        self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
-            self.create_form_layout(max_log_files_lbl, self.max_log_files_spinbox)
+            create_form_layout(max_log_files_lbl, self.max_log_files_spinbox)
         )
-        self.add_layout(self.create_form_layout(open_logs_lbl, log_btn_widget))
+        self.add_layout(create_form_layout(open_logs_lbl, log_btn_widget))
         self.add_layout(self.reset_layout)
 
         self._load_saved_settings()
