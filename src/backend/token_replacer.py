@@ -48,6 +48,7 @@ class TokenReplacer:
         "unfilled_token_mode",
         "releasers_name",
         "screen_shots",
+        "dummy_screen_shots",
         "edition_override",
         "movie_clean_title_rules",
         "token_data",
@@ -70,6 +71,7 @@ class TokenReplacer:
         edition_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
         screen_shots: str | None = "",
+        dummy_screen_shots: bool = False,
     ):
         """
         Takes an input string with tokens and outputs a new string with formatted data based
@@ -94,6 +96,8 @@ class TokenReplacer:
             edition_override (Optional[str]): Edition override.
             movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate for 'movie_clean_title' token.
             screen_shots (Optional[str]): Screenshots.
+            dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
+            screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
         """
         self.media_input = Path(media_input)
         self.jinja_engine = jinja_engine
@@ -117,6 +121,7 @@ class TokenReplacer:
         self.edition_override = edition_override
         self.movie_clean_title_rules = movie_clean_title_rules
         self.screen_shots = screen_shots
+        self.dummy_screen_shots = dummy_screen_shots
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
         if not self.flatten and not self.jinja_engine:
@@ -1024,6 +1029,12 @@ class TokenReplacer:
         return self._optional_user_input(repack_reason, token_data)
 
     def _screen_shots(self, token_data: TokenData) -> str:
+        if self.dummy_screen_shots:
+            return (
+                "#### DUMMY SCREENSHOTS #### \n"
+                "(Real screenshots will be generated on the process page in the appropriate format for the tracker)"
+                "\nScreen1 Screen2\nScreen3 Screen4\n#### DUMMY SCREENSHOTS ####"
+            )
         return self._optional_user_input(self.screen_shots, token_data)
 
     def _file_size_bytes(self, token_data: TokenData) -> str:
