@@ -395,10 +395,9 @@ class TemplateSelector(QWidget):
                         )
                         nfo = replace_tokens if replace_tokens else nfo
             except Exception:
-                if not self.sandbox:
-                    self.preview_btn.setChecked(False)
-                    self.text_edit.setReadOnly(False)
-                    raise
+                # we attempt to execute the plugin, but since some data is filled in process step
+                # it might not be available.
+                pass
 
             self.text_edit.setPlainText(nfo)
         else:
