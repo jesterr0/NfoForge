@@ -193,16 +193,23 @@ class Overview(BaseWizardPage):
                         if not isinstance(nfo, str):
                             raise ValueError("NFO should be a string")
 
-                    token_replacer_plugin = self.config.cfg_payload.token_replacer
-                    if token_replacer_plugin:
-                        plugin = self.config.loaded_plugins[
-                            token_replacer_plugin
-                        ].token_replacer
-                        if plugin and callable(plugin):
-                            replace_tokens = plugin(
-                                config=self.config, input_str=nfo, tracker_s=(tracker,)
-                            )
-                            nfo = replace_tokens if replace_tokens else nfo
+                    try:
+                        token_replacer_plugin = self.config.cfg_payload.token_replacer
+                        if token_replacer_plugin:
+                            plugin = self.config.loaded_plugins[
+                                token_replacer_plugin
+                            ].token_replacer
+                            if plugin and callable(plugin):
+                                replace_tokens = plugin(
+                                    config=self.config,
+                                    input_str=nfo,
+                                    tracker_s=(tracker,),
+                                )
+                                nfo = replace_tokens if replace_tokens else nfo
+                    except Exception:
+                        # we attempt to execute the plugin, but since some data is filled in process step
+                        # it might not be available.
+                        pass
 
                     nfo_widget = self._build_nfo_widget()
                     nfo_widget.setPlainText(nfo)
