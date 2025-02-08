@@ -31,7 +31,7 @@ class MovieCleanTitleReplacementWidget(QWidget):
         # replace commas after words with a period
         (r"(?<=\w),(?=\s\w)", r"[space]"),
         # replace space dash space with nothing
-        (r"\s*-\s*", r"[remove]"),
+        (r"\s*-\s*", r"."),
         (
             r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
             r"('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|"
