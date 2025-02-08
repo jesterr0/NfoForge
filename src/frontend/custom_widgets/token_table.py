@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QWidget,
     QSpacerItem,
+    QMessageBox,
 )
 
 from src.frontend.utils import build_auto_theme_icon_buttons
@@ -73,6 +74,17 @@ class MovieCleanTitleReplacementWidget(QWidget):
         )
         self.delete_row_btn.setToolTip("Remove currently selected row")
 
+        self.reset_table_btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "reset.svg",
+            "resetTableBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.reset_table_btn.clicked.connect(self.reset_table)
+        self.reset_table_btn.setToolTip("Reset table to defaults")
+
         self.row_up_btn: QToolButton = build_auto_theme_icon_buttons(
             QToolButton,
             "arrow_upward.svg",
@@ -98,6 +110,7 @@ class MovieCleanTitleReplacementWidget(QWidget):
         self.button_layout = QVBoxLayout()
         self.button_layout.addWidget(self.add_row_btn)
         self.button_layout.addWidget(self.delete_row_btn)
+        self.button_layout.addWidget(self.reset_table_btn)
         self.button_layout.addSpacerItem(
             QSpacerItem(
                 1, 1, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
@@ -117,6 +130,19 @@ class MovieCleanTitleReplacementWidget(QWidget):
 
     def apply_defaults(self) -> None:
         self.replacement_list_widget.add_rows(self.DEFAULT_RULES)
+
+    @Slot()
+    def reset_table(self) -> None:
+        if (
+            QMessageBox.question(
+                self,
+                "Defaults",
+                "Would you like to set this back to the default configuration?",
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
+            self.reset()
+            self.apply_defaults()
 
 
 class TokenTable(QWidget):
