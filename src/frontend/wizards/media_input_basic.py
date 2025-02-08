@@ -124,7 +124,7 @@ class MediaInputBasic(BaseWizardPage):
         if not file_path:
             raise FileNotFoundError("Failed to detect input path")
         self.worker = MediaInputWorker(
-            func=self.backend.get_media_info, file_input=file_path
+            func=self.backend.get_media_info, file_input=file_path, parent=self
         )
         self.worker.job_failed.connect(self._worker_failed)
         self.worker.job_finished.connect(self._worker_finished)

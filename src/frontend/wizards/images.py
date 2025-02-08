@@ -80,6 +80,7 @@ class QueuedWorker(QThread):
         progress_signal: Signal,
         source_file: Path | None = None,
         source_file_mi_obj: MediaInfo | None = None,
+        parent=None,
     ) -> None:
         """
         Generate images and emit progress signals.
@@ -108,7 +109,7 @@ class QueuedWorker(QThread):
             source_file (Optional[Path]): The input file path for the source.
             source_file_mi_obj (Optional[Path]): MediaInfo object of the input file.
         """
-        super().__init__()
+        super().__init__(parent=parent)
         self.backend = backend
         self.ss_mode = ss_mode
         self.media_file = media_file

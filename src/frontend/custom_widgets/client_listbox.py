@@ -82,7 +82,9 @@ class ClientEditBase(QFrame):
 
     @Slot(object)
     def _test_client(self, test_payload: TorrentClient) -> None:
-        self.client_test_worker = ClientTestWorker(self.test_class, (test_payload,))
+        self.client_test_worker = ClientTestWorker(
+            self.test_class, (test_payload,), parent=self
+        )
         self.client_test_worker.job_finished.connect(self._test_worker_finished)
         self.client_test_worker.job_failed.connect(self._test_worker_failed)
         self.client_test_worker.start()
