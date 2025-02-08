@@ -44,8 +44,8 @@ class QueuedWorker(QThread):
     job_finished = Signal(OrderedDict)
     job_failed = Signal(str)
 
-    def __init__(self, backend, query) -> None:
-        super().__init__()
+    def __init__(self, backend, query, parent=None) -> None:
+        super().__init__(parent=parent)
         self.backend = backend
         self.query = query
 
@@ -72,8 +72,9 @@ class IDParseWorker(QThread):
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
         tvdb_api_key: str,
+        parent=None,
     ) -> None:
-        super().__init__()
+        super().__init__(parent=parent)
         self.backend = backend
         self.imdb_id = imdb_id
         self.tmdb_title = tmdb_title
@@ -317,6 +318,7 @@ class MediaSearch(BaseWizardPage):
                 ),
                 tmdb_genres=item_data.get("genre_ids", []),
                 tvdb_api_key=self.config.cfg_payload.tvdb_api_key,
+                parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
             self.id_parse_worker.job_failed.connect(self._failed_search)
@@ -490,7 +492,9 @@ class MediaSearch(BaseWizardPage):
             if self.queued_worker is not None and self.queued_worker.isRunning():
                 self.queued_worker.terminate()
 
-            self.queued_worker = QueuedWorker(self.backend, self.search_entry.text())
+            self.queued_worker = QueuedWorker(
+                self.backend, self.search_entry.text(), parent=self
+            )
             self.queued_worker.job_finished.connect(self._handle_search_result)
             self.queued_worker.job_failed.connect(self._failed_search)
             self.queued_worker.start()
