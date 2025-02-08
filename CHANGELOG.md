@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Numerous optimizations and improvements.
 - Can now open log file directory or current log file from the general settings page via two new icon buttons.
 - Added the ability to set your subtitle color via an interactive subtitle picker.
+- Add a Reset icon button to movie_clean_token table widget.
 
 ### Changed
 
