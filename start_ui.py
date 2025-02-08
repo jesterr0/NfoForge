@@ -93,7 +93,7 @@ class NfoForge:
 
         # setup loader
         self.splash_screen_loader = SplashScreenLoader(
-            self.config, self.splash_screen.update_message_box
+            self.config, self.splash_screen.update_message_box, parent=self.app
         )
         self.splash_screen_loader.error_message.connect(self._error_on_splash)
         self.splash_screen_loader.success.connect(self._load_main_window)
