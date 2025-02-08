@@ -12,18 +12,21 @@ from PySide6.QtWidgets import (
     QTreeWidget,
     QTreeWidgetItem,
     QMenu,
+    QSpinBox,
 )
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Qt, Signal, Slot, QEvent
 from PySide6.QtGui import QAction
 
-from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
+from src.enums.trackers.morethantv import MTVSourceOrigin
+from src.enums.url_type import URLType
 from src.enums.tracker_selection import TrackerSelection
 from src.payloads.trackers import TrackerInfo
 from src.config.config import Config
 from src.frontend.utils import build_h_line
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.url_organizer import URLOrganizer
 
 
 class TrackerEditBase(QFrame):
@@ -52,6 +55,8 @@ class TrackerEditBase(QFrame):
         self.source_lbl = QLabel("Torrent Source", self)
         self.source = QLineEdit(self)
 
+        self.screen_shot_settings: URLOrganizer | None = None
+
         self.settings_layout = QVBoxLayout()
         self.settings_layout.addLayout(
             self.build_form_layout(self.upload_enabled_lbl, self.upload_enabled)
@@ -78,6 +83,25 @@ class TrackerEditBase(QFrame):
 
     def add_widget_to_layout(self, widget: QWidget, **kwargs) -> None:
         self.settings_layout.addWidget(widget, **kwargs)
+
+    def add_screen_shot_settings(self) -> None:
+        """Convenient method to put this under 'specific' tracker settings"""
+        img_url_settings_lbl = QLabel("Image URL Settings", self)
+        font = img_url_settings_lbl.font()
+        font.setWeight(font.Weight.Bold)
+        img_url_settings_lbl.setFont(font)
+        self.screen_shot_settings = URLOrganizer(self)
+        self.screen_shot_settings.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        ss_settings_widget = QWidget()
+        ss_settings_layout = QVBoxLayout(ss_settings_widget)
+        ss_settings_layout.setContentsMargins(6, 0, 0, 0)
+        ss_settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
+        ss_settings_layout.addWidget(
+            img_url_settings_lbl, alignment=Qt.AlignmentFlag.AlignCenter
+        )
+        ss_settings_layout.addWidget(self.screen_shot_settings)
+        self.add_widget_to_layout(ss_settings_widget)
 
     def load_settings(self) -> None:
         raise NotImplementedError("Must be implemented this per tracker")
@@ -106,6 +130,10 @@ class TrackerEditBase(QFrame):
         current_index = widget.findText(str(enum(saved_data)))
         if current_index >= 0:
             widget.setCurrentIndex(current_index)
+
+    @staticmethod
+    def _disable_scrollwheel_spinbox(event: QEvent) -> None:
+        event.ignore()
 
 
 class MTVTrackerEdit(TrackerEditBase):
@@ -138,6 +166,11 @@ class MTVTrackerEdit(TrackerEditBase):
             completer=True, disable_mouse_wheel=True, parent=self
         )
 
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(100, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(username_lbl, self.username)
@@ -146,6 +179,8 @@ class MTVTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(group_description_lbl, self.group_description)
         self.add_pair_to_layout(additional_tags_lbl, self.additional_tags)
         self.add_pair_to_layout(source_origin_lbl, self.source_origin)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
         tracker_data = self.config.cfg_payload.mtv_tracker
@@ -169,6 +204,14 @@ class MTVTrackerEdit(TrackerEditBase):
         self.load_combo_box(
             self.source_origin, MTVSourceOrigin, tracker_data.source_origin
         )
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
 
     def save_settings(self) -> None:
         self.config.cfg_payload.mtv_tracker.upload_enabled = (
@@ -193,6 +236,12 @@ class MTVTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.mtv_tracker.source_origin = MTVSourceOrigin(
             self.source_origin.currentData()
         )
+        self.config.cfg_payload.mtv_tracker.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.mtv_tracker.column_s = col_s
+            self.config.cfg_payload.mtv_tracker.column_space = col_space
+            self.config.cfg_payload.mtv_tracker.row_space = row_space
 
 
 class TLTrackerEdit(TrackerEditBase):
@@ -215,6 +264,7 @@ class TLTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(password_lbl, self.password)
         self.add_pair_to_layout(torrent_passkey_lbl, self.torrent_passkey)
         self.add_pair_to_layout(alt_2_fa_token_lbl, self.alt_2_fa_token)
+        self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
         tracker_data = self.config.cfg_payload.tl_tracker
@@ -232,6 +282,13 @@ class TLTrackerEdit(TrackerEditBase):
         self.alt_2_fa_token.setText(
             tracker_data.alt_2_fa_token if tracker_data.alt_2_fa_token else ""
         )
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
 
     def save_settings(self) -> None:
         self.config.cfg_payload.tl_tracker.upload_enabled = (
@@ -250,6 +307,11 @@ class TLTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.tl_tracker.alt_2_fa_token = (
             self.alt_2_fa_token.text().strip()
         )
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.tl_tracker.column_s = col_s
+            self.config.cfg_payload.tl_tracker.column_space = col_space
+            self.config.cfg_payload.tl_tracker.row_space = row_space
 
 
 class BHDTrackerEdit(TrackerEditBase):
@@ -278,12 +340,19 @@ class BHDTrackerEdit(TrackerEditBase):
         internal_lbl = QLabel("Internal", self)
         self.internal = QCheckBox(self)
 
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(100, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(rss_key_lbl, self.rss_key)
         self.add_pair_to_layout(promo_lbl, self.promo)
         self.add_pair_to_layout(live_release_lbl, self.live_release)
         self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
         tracker_data = self.config.cfg_payload.bhd_tracker
@@ -301,6 +370,14 @@ class BHDTrackerEdit(TrackerEditBase):
             self.live_release, BHDLiveRelease, tracker_data.live_release
         )
         self.internal.setChecked(bool(tracker_data.internal))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
 
     def save_settings(self) -> None:
         self.config.cfg_payload.bhd_tracker.upload_enabled = (
@@ -319,6 +396,12 @@ class BHDTrackerEdit(TrackerEditBase):
             self.live_release.currentData()
         )
         self.config.cfg_payload.bhd_tracker.internal = int(self.internal.isChecked())
+        self.config.cfg_payload.bhd_tracker.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.bhd_tracker.column_s = col_s
+            self.config.cfg_payload.bhd_tracker.column_space = col_space
+            self.config.cfg_payload.bhd_tracker.row_space = row_space
 
 
 class PTPTrackerEdit(TrackerEditBase):
@@ -355,6 +438,7 @@ class PTPTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(
             reupload_images_to_ptp_img_lbl, self.reupload_images_to_ptp_img
         )
+        self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
         tracker_data = self.config.cfg_payload.ptp_tracker
@@ -375,6 +459,13 @@ class PTPTrackerEdit(TrackerEditBase):
         self.reupload_images_to_ptp_img.setChecked(
             bool(tracker_data.reupload_images_to_ptp_img)
         )
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
 
     def save_settings(self) -> None:
         self.config.cfg_payload.ptp_tracker.upload_enabled = (
@@ -396,6 +487,11 @@ class PTPTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.ptp_tracker.reupload_images_to_ptp_img = (
             self.reupload_images_to_ptp_img.isChecked()
         )
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.ptp_tracker.column_s = col_s
+            self.config.cfg_payload.ptp_tracker.column_space = col_space
+            self.config.cfg_payload.ptp_tracker.row_space = row_space
 
 
 class RFTrackerEdit(TrackerEditBase):
@@ -417,6 +513,11 @@ class RFTrackerEdit(TrackerEditBase):
         stream_optimized_lbl = QLabel("Stream Optimized", self)
         self.stream_optimized = QCheckBox(self)
 
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(100, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
             "All items below are available for staff and internal users", self
@@ -442,6 +543,7 @@ class RFTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(internal_lbl, self.internal)
         self.add_pair_to_layout(personal_release_lbl, self.personal_release)
         self.add_pair_to_layout(stream_optimized_lbl, self.stream_optimized)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
         self.add_widget_to_layout(
             staff_and_internal_lbl,
             alignment=Qt.AlignmentFlag.AlignCenter,
@@ -451,6 +553,7 @@ class RFTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(free_lbl, self.free)
         self.add_pair_to_layout(double_up_lbl, self.double_up)
         self.add_pair_to_layout(sticky_lbl, self.sticky)
+        self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
         tracker_data = self.config.cfg_payload.rf_tracker
@@ -465,10 +568,18 @@ class RFTrackerEdit(TrackerEditBase):
         self.internal.setChecked(bool(tracker_data.internal))
         self.personal_release.setChecked(bool(tracker_data.personal_release))
         self.stream_optimized.setChecked(bool(tracker_data.stream_optimized))
+        self.image_width.setValue(tracker_data.image_width)
         self.featured.setChecked(bool(tracker_data.featured))
         self.free.setChecked(bool(tracker_data.free))
         self.double_up.setChecked(bool(tracker_data.double_up))
         self.sticky.setChecked(bool(tracker_data.sticky))
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
 
     def save_settings(self) -> None:
         self.config.cfg_payload.rf_tracker.upload_enabled = (
@@ -488,10 +599,16 @@ class RFTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.rf_tracker.stream_optimized = int(
             self.stream_optimized.isChecked()
         )
+        self.config.cfg_payload.rf_tracker.image_width = self.image_width.value()
         self.config.cfg_payload.rf_tracker.featured = int(self.featured.isChecked())
         self.config.cfg_payload.rf_tracker.free = int(self.free.isChecked())
         self.config.cfg_payload.rf_tracker.double_up = int(self.double_up.isChecked())
         self.config.cfg_payload.rf_tracker.sticky = int(self.sticky.isChecked())
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.rf_tracker.column_s = col_s
+            self.config.cfg_payload.rf_tracker.column_space = col_space
+            self.config.cfg_payload.rf_tracker.row_space = row_space
 
 
 class AitherTrackerEdit(TrackerEditBase):
@@ -513,6 +630,11 @@ class AitherTrackerEdit(TrackerEditBase):
         stream_optimized_lbl = QLabel("Stream Optimized", self)
         self.stream_optimized = QCheckBox(self)
 
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(100, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
             "All items below are available for staff and internal users", self
@@ -537,7 +659,8 @@ class AitherTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
         self.add_pair_to_layout(internal_lbl, self.internal)
         self.add_pair_to_layout(personal_release_lbl, self.personal_release)
-        self.add_pair_to_layout(stream_optimized_lbl, self.stream_optimized)
+        self.add_pair_to_layout(stream_optimized_lbl, self.image_width)
+        self.add_pair_to_layout(image_width_lbl, self.stream_optimized)
         self.add_widget_to_layout(
             staff_and_internal_lbl,
             alignment=Qt.AlignmentFlag.AlignCenter,
@@ -547,6 +670,7 @@ class AitherTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(free_lbl, self.free)
         self.add_pair_to_layout(double_up_lbl, self.double_up)
         self.add_pair_to_layout(sticky_lbl, self.sticky)
+        self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
         tracker_data = self.config.cfg_payload.aither_tracker
@@ -561,10 +685,18 @@ class AitherTrackerEdit(TrackerEditBase):
         self.internal.setChecked(bool(tracker_data.internal))
         self.personal_release.setChecked(bool(tracker_data.personal_release))
         self.stream_optimized.setChecked(bool(tracker_data.stream_optimized))
+        self.image_width.setValue(tracker_data.image_width)
         self.featured.setChecked(bool(tracker_data.featured))
         self.free.setChecked(bool(tracker_data.free))
         self.double_up.setChecked(bool(tracker_data.double_up))
         self.sticky.setChecked(bool(tracker_data.sticky))
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
 
     def save_settings(self) -> None:
         self.config.cfg_payload.aither_tracker.upload_enabled = (
@@ -586,12 +718,18 @@ class AitherTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.aither_tracker.stream_optimized = int(
             self.stream_optimized.isChecked()
         )
+        self.config.cfg_payload.aither_tracker.image_width = self.image_width.value()
         self.config.cfg_payload.aither_tracker.featured = int(self.featured.isChecked())
         self.config.cfg_payload.aither_tracker.free = int(self.free.isChecked())
         self.config.cfg_payload.aither_tracker.double_up = int(
             self.double_up.isChecked()
         )
         self.config.cfg_payload.aither_tracker.sticky = int(self.sticky.isChecked())
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.aither_tracker.column_s = col_s
+            self.config.cfg_payload.aither_tracker.column_space = col_space
+            self.config.cfg_payload.aither_tracker.row_space = row_space
 
 
 class TrackerListWidget(QWidget):
@@ -605,7 +743,8 @@ class TrackerListWidget(QWidget):
         self.tree.setFrameShadow(QFrame.Shadow.Sunken)
         self.tree.setHeaderHidden(True)
         self.tree.setVerticalScrollMode(QTreeWidget.ScrollMode.ScrollPerPixel)
-        self.tree.verticalScrollBar().setSingleStep(5)
+        self.tree.verticalScrollBar().setSingleStep(20)
+        self.tree.setAutoScroll(False)
         self.tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
         self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -692,7 +831,6 @@ class TrackerListWidget(QWidget):
             True if item.checkState(column) == Qt.CheckState.Checked else False
         )
 
-    @Slot(object)
     def save_tracker_info(self) -> None:
         for i in range(self.tree.topLevelItemCount()):
             parent = self.tree.topLevelItem(i)
