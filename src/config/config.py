@@ -37,9 +37,11 @@ from src.payloads.trackers import (
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
 from src.payloads.image_hosts import (
+    ImagePayloadBase,
     CheveretoV3Payload,
     CheveretoV4Payload,
     ImageBBPayload,
+    ImageBoxPayload,
 )
 from src.exceptions import ConfigError
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -92,9 +94,6 @@ class Config:
         self._program_conf_toml_data = None
         self.load_program_conf(config_file)
 
-        # variables we don't want to re-calculate in the methods, we'll define these before anything else
-        self.default_tracker_order = [*range(len(TrackerSelection))]
-
         # variables that are assigned during init
         self.cfg_payload: ConfigPayload = None
         self._toml_data = None
@@ -114,7 +113,6 @@ class Config:
 
         # maps
         self.tracker_map = self._tracker_map()
-        self.order_tracker_map()
         self.client_map = self._client_map()
         self.image_host_map = self._image_host_map()
 
@@ -301,7 +299,9 @@ class Config:
 
             # tracker settings
             tracker_settings = tracker_data["settings"]
-            tracker_settings["order"] = self.cfg_payload.tracker_order
+            tracker_settings["tracker_order"] = [
+                str(x) for x in self.cfg_payload.tracker_order
+            ]
 
             # more_than_tv tracker
             if "more_than_tv" not in tracker_data:
@@ -314,6 +314,10 @@ class Config:
             mtv_data["comments"] = self.cfg_payload.mtv_tracker.comments
             mtv_data["nfo_template"] = self.cfg_payload.mtv_tracker.nfo_template
             mtv_data["max_piece_size"] = self.cfg_payload.mtv_tracker.max_piece_size
+            mtv_data["url_type"] = URLType(self.cfg_payload.mtv_tracker.url_type).value
+            mtv_data["column_s"] = self.cfg_payload.mtv_tracker.column_s
+            mtv_data["column_space"] = self.cfg_payload.mtv_tracker.column_space
+            mtv_data["row_space"] = self.cfg_payload.mtv_tracker.row_space
             mtv_data["anonymous"] = self.cfg_payload.mtv_tracker.anonymous
             mtv_data["api_key"] = self.cfg_payload.mtv_tracker.api_key
             mtv_data["username"] = self.cfg_payload.mtv_tracker.username
@@ -326,6 +330,7 @@ class Config:
             mtv_data["source_origin"] = MTVSourceOrigin(
                 self.cfg_payload.mtv_tracker.source_origin
             ).value
+            mtv_data["image_width"] = self.cfg_payload.mtv_tracker.image_width
 
             # torrent_leech tracker
             if "torrent_leech" not in tracker_data:
@@ -338,6 +343,10 @@ class Config:
             tl_data["comments"] = self.cfg_payload.tl_tracker.comments
             tl_data["nfo_template"] = self.cfg_payload.tl_tracker.nfo_template
             tl_data["max_piece_size"] = self.cfg_payload.tl_tracker.max_piece_size
+            tl_data["url_type"] = URLType(self.cfg_payload.tl_tracker.url_type).value
+            tl_data["column_s"] = self.cfg_payload.tl_tracker.column_s
+            tl_data["column_space"] = self.cfg_payload.tl_tracker.column_space
+            tl_data["row_space"] = self.cfg_payload.tl_tracker.row_space
             tl_data["username"] = self.cfg_payload.tl_tracker.username
             tl_data["password"] = self.cfg_payload.tl_tracker.password
             tl_data["torrent_passkey"] = self.cfg_payload.tl_tracker.torrent_passkey
@@ -354,6 +363,10 @@ class Config:
             bhd_data["comments"] = self.cfg_payload.bhd_tracker.comments
             bhd_data["nfo_template"] = self.cfg_payload.bhd_tracker.nfo_template
             bhd_data["max_piece_size"] = self.cfg_payload.bhd_tracker.max_piece_size
+            bhd_data["url_type"] = URLType(self.cfg_payload.bhd_tracker.url_type).value
+            bhd_data["column_s"] = self.cfg_payload.bhd_tracker.column_s
+            bhd_data["column_space"] = self.cfg_payload.bhd_tracker.column_space
+            bhd_data["row_space"] = self.cfg_payload.bhd_tracker.row_space
             bhd_data["anonymous"] = self.cfg_payload.bhd_tracker.anonymous
             bhd_data["api_key"] = self.cfg_payload.bhd_tracker.api_key
             bhd_data["rss_key"] = self.cfg_payload.bhd_tracker.rss_key
@@ -362,6 +375,7 @@ class Config:
                 self.cfg_payload.bhd_tracker.live_release
             ).value
             bhd_data["internal"] = self.cfg_payload.bhd_tracker.internal
+            bhd_data["image_width"] = self.cfg_payload.bhd_tracker.image_width
 
             # PassThePopcorn tracker
             if "pass_the_popcorn" not in tracker_data:
@@ -374,6 +388,10 @@ class Config:
             ptp_data["comments"] = self.cfg_payload.ptp_tracker.comments
             ptp_data["nfo_template"] = self.cfg_payload.ptp_tracker.nfo_template
             ptp_data["max_piece_size"] = self.cfg_payload.ptp_tracker.max_piece_size
+            ptp_data["url_type"] = URLType(self.cfg_payload.ptp_tracker.url_type).value
+            ptp_data["column_s"] = self.cfg_payload.ptp_tracker.column_s
+            ptp_data["column_space"] = self.cfg_payload.ptp_tracker.column_space
+            ptp_data["row_space"] = self.cfg_payload.ptp_tracker.row_space
             ptp_data["api_user"] = self.cfg_payload.ptp_tracker.api_user
             ptp_data["api_key"] = self.cfg_payload.ptp_tracker.api_key
             ptp_data["username"] = self.cfg_payload.ptp_tracker.username
@@ -395,6 +413,10 @@ class Config:
             rf_data["comments"] = self.cfg_payload.rf_tracker.comments
             rf_data["nfo_template"] = self.cfg_payload.rf_tracker.nfo_template
             rf_data["max_piece_size"] = self.cfg_payload.rf_tracker.max_piece_size
+            rf_data["url_type"] = URLType(self.cfg_payload.rf_tracker.url_type).value
+            rf_data["column_s"] = self.cfg_payload.rf_tracker.column_s
+            rf_data["column_space"] = self.cfg_payload.rf_tracker.column_space
+            rf_data["row_space"] = self.cfg_payload.rf_tracker.row_space
             rf_data["api_key"] = self.cfg_payload.rf_tracker.api_key
             rf_data["anonymous"] = self.cfg_payload.rf_tracker.anonymous
             rf_data["internal"] = self.cfg_payload.rf_tracker.internal
@@ -407,6 +429,7 @@ class Config:
             rf_data["free"] = self.cfg_payload.rf_tracker.free
             rf_data["double_up"] = self.cfg_payload.rf_tracker.double_up
             rf_data["sticky"] = self.cfg_payload.rf_tracker.sticky
+            rf_data["image_width"] = self.cfg_payload.rf_tracker.image_width
 
             # Aither tracker
             if "aither" not in tracker_data:
@@ -423,6 +446,12 @@ class Config:
             aither_data["max_piece_size"] = (
                 self.cfg_payload.aither_tracker.max_piece_size
             )
+            aither_data["url_type"] = URLType(
+                self.cfg_payload.aither_tracker.url_type
+            ).value
+            aither_data["column_s"] = self.cfg_payload.aither_tracker.column_s
+            aither_data["column_space"] = self.cfg_payload.aither_tracker.column_space
+            aither_data["row_space"] = self.cfg_payload.aither_tracker.row_space
             aither_data["api_key"] = self.cfg_payload.aither_tracker.api_key
             aither_data["anonymous"] = self.cfg_payload.aither_tracker.anonymous
             aither_data["internal"] = self.cfg_payload.aither_tracker.internal
@@ -439,6 +468,7 @@ class Config:
             aither_data["free"] = self.cfg_payload.aither_tracker.free
             aither_data["double_up"] = self.cfg_payload.aither_tracker.double_up
             aither_data["sticky"] = self.cfg_payload.aither_tracker.sticky
+            aither_data["image_width"] = self.cfg_payload.aither_tracker.image_width
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -571,6 +601,7 @@ class Config:
             if "chevereto_v3" not in image_hosts:
                 chevereto_v3_data = tomlkit.table()
             chevereto_v3_data = image_hosts["chevereto_v3"]
+            chevereto_v3_data["enabled"] = self.cfg_payload.chevereto_v3.enabled
             chevereto_v3_data["base_url"] = self.cfg_payload.chevereto_v3.base_url
             chevereto_v3_data["user"] = self.cfg_payload.chevereto_v3.user
             chevereto_v3_data["password"] = self.cfg_payload.chevereto_v3.password
@@ -579,6 +610,7 @@ class Config:
             if "chevereto_v4" not in image_hosts:
                 chevereto_v4_data = tomlkit.table()
             chevereto_v4_data = image_hosts["chevereto_v4"]
+            chevereto_v4_data["enabled"] = self.cfg_payload.chevereto_v4.enabled
             chevereto_v4_data["base_url"] = self.cfg_payload.chevereto_v4.base_url
             chevereto_v4_data["api_key"] = self.cfg_payload.chevereto_v4.api_key
 
@@ -586,7 +618,16 @@ class Config:
             if "image_bb" not in image_hosts:
                 img_bb_data = tomlkit.table()
             img_bb_data = image_hosts["image_bb"]
+            img_bb_data["enabled"] = self.cfg_payload.image_bb.enabled
+            img_bb_data["base_url"] = self.cfg_payload.image_bb.base_url
             img_bb_data["api_key"] = self.cfg_payload.image_bb.api_key
+
+            # image box
+            if "image_box" not in image_hosts:
+                img_box_data = tomlkit.table()
+            img_box_data = image_hosts["image_box"]
+            img_box_data["enabled"] = self.cfg_payload.image_box.enabled
+            img_box_data["base_url"] = self.cfg_payload.image_box.base_url
 
             # urls
             urls_settings = self._toml_data["urls"]
@@ -712,17 +753,15 @@ class Config:
             # tracker settings
             tracker_settings = tracker_data["settings"]
 
-            # updates of None or len of saved tracker order is less than newly added trackers.
-            # TODO: this may need to be handled differently at some point, this will currently wipe out the users saved trackers
-            # as we update new ones.
-            tracker_order = tracker_settings.get("order")
-            tracker_settings_order = tracker_order
-            if not tracker_settings_order or (
-                len(tracker_settings_order) < len(self.default_tracker_order)
-            ):
-                tracker_settings_order = self.default_tracker_order
+            # tracker order
+            tracker_order = [
+                TrackerSelection(x)
+                for x in tracker_settings.get("tracker_order", [])
+                if x in TrackerSelection._value2member_map_
+            ]
+            tracker_order.extend(e for e in TrackerSelection if e not in tracker_order)
 
-            # trackers
+            # tracker data
             mtv_tracker_data = tracker_data["more_than_tv"]
             mtv_tracker = MoreThanTVInfo(
                 upload_enabled=mtv_tracker_data["upload_enabled"],
@@ -732,6 +771,10 @@ class Config:
                 comments=mtv_tracker_data["comments"],
                 nfo_template=mtv_tracker_data["nfo_template"],
                 max_piece_size=mtv_tracker_data["max_piece_size"],
+                url_type=URLType(mtv_tracker_data["url_type"]),
+                column_s=mtv_tracker_data["column_s"],
+                column_space=mtv_tracker_data["column_space"],
+                row_space=mtv_tracker_data["row_space"],
                 anonymous=mtv_tracker_data["anonymous"],
                 api_key=mtv_tracker_data["api_key"],
                 username=mtv_tracker_data["username"],
@@ -740,6 +783,7 @@ class Config:
                 group_description=mtv_tracker_data["group_description"],
                 additional_tags=mtv_tracker_data["additional_tags"],
                 source_origin=MTVSourceOrigin(mtv_tracker_data["source_origin"]),
+                image_width=mtv_tracker_data["image_width"],
             )
 
             tl_tracker_data = tracker_data["torrent_leech"]
@@ -751,6 +795,10 @@ class Config:
                 comments=tl_tracker_data["comments"],
                 nfo_template=tl_tracker_data["nfo_template"],
                 max_piece_size=tl_tracker_data["max_piece_size"],
+                url_type=URLType(tl_tracker_data["url_type"]),
+                column_s=tl_tracker_data["column_s"],
+                column_space=tl_tracker_data["column_space"],
+                row_space=tl_tracker_data["row_space"],
                 username=tl_tracker_data["username"],
                 password=tl_tracker_data["password"],
                 torrent_passkey=tl_tracker_data["torrent_passkey"],
@@ -766,12 +814,17 @@ class Config:
                 comments=bhd_tracker_data["comments"],
                 nfo_template=bhd_tracker_data["nfo_template"],
                 max_piece_size=bhd_tracker_data["max_piece_size"],
+                url_type=URLType(bhd_tracker_data["url_type"]),
+                column_s=bhd_tracker_data["column_s"],
+                column_space=bhd_tracker_data["column_space"],
+                row_space=bhd_tracker_data["row_space"],
                 anonymous=bhd_tracker_data["anonymous"],
                 api_key=bhd_tracker_data["api_key"],
                 rss_key=bhd_tracker_data["rss_key"],
                 promo=BHDPromo(bhd_tracker_data["promo"]),
                 live_release=BHDLiveRelease(bhd_tracker_data["live_release"]),
                 internal=bhd_tracker_data["internal"],
+                image_width=bhd_tracker_data["image_width"],
             )
 
             ptp_tracker_data = tracker_data["pass_the_popcorn"]
@@ -783,6 +836,10 @@ class Config:
                 comments=ptp_tracker_data["comments"],
                 nfo_template=ptp_tracker_data["nfo_template"],
                 max_piece_size=ptp_tracker_data["max_piece_size"],
+                url_type=URLType(ptp_tracker_data["url_type"]),
+                column_s=ptp_tracker_data["column_s"],
+                column_space=ptp_tracker_data["column_space"],
+                row_space=ptp_tracker_data["row_space"],
                 api_user=ptp_tracker_data["api_user"],
                 api_key=ptp_tracker_data["api_key"],
                 username=ptp_tracker_data["username"],
@@ -803,6 +860,10 @@ class Config:
                 comments=rf_tracker_data["comments"],
                 nfo_template=rf_tracker_data["nfo_template"],
                 max_piece_size=rf_tracker_data["max_piece_size"],
+                url_type=URLType(rf_tracker_data["url_type"]),
+                column_s=rf_tracker_data["column_s"],
+                column_space=rf_tracker_data["column_space"],
+                row_space=rf_tracker_data["row_space"],
                 api_key=rf_tracker_data["api_key"],
                 anonymous=rf_tracker_data["anonymous"],
                 internal=rf_tracker_data["internal"],
@@ -813,6 +874,7 @@ class Config:
                 free=rf_tracker_data["free"],
                 double_up=rf_tracker_data["double_up"],
                 sticky=rf_tracker_data["sticky"],
+                image_width=rf_tracker_data["image_width"],
             )
 
             aither_tracker_data = tracker_data["aither"]
@@ -824,6 +886,10 @@ class Config:
                 comments=aither_tracker_data["comments"],
                 nfo_template=aither_tracker_data["nfo_template"],
                 max_piece_size=aither_tracker_data["max_piece_size"],
+                url_type=URLType(aither_tracker_data["url_type"]),
+                column_s=aither_tracker_data["column_s"],
+                column_space=aither_tracker_data["column_space"],
+                row_space=aither_tracker_data["row_space"],
                 api_key=aither_tracker_data["api_key"],
                 anonymous=aither_tracker_data["anonymous"],
                 internal=aither_tracker_data["internal"],
@@ -834,6 +900,7 @@ class Config:
                 free=aither_tracker_data["free"],
                 double_up=aither_tracker_data["double_up"],
                 sticky=aither_tracker_data["sticky"],
+                image_width=aither_tracker_data["image_width"],
             )
 
             # torrent clients
@@ -874,9 +941,12 @@ class Config:
 
             # image hosts
             image_hosts = toml_data["image_hosts"]
+
+            # hosts
             chevereto_v3 = CheveretoV3Payload(**image_hosts["chevereto_v3"])
             chevereto_v4 = CheveretoV4Payload(**image_hosts["chevereto_v4"])
             image_bb = ImageBBPayload(**image_hosts["image_bb"])
+            image_box = ImageBoxPayload(**image_hosts["image_box"])
 
             # urls
             urls_settings = toml_data["urls"]
@@ -908,7 +978,7 @@ class Config:
                 frame_forge=frame_forge,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
                 tvdb_api_key=api_keys_data.get("tvdb_api_key", ""),
-                tracker_order=tracker_settings_order,
+                tracker_order=tracker_order,
                 mtv_tracker=mtv_tracker,
                 tl_tracker=tl_tracker,
                 bhd_tracker=bhd_tracker,
@@ -972,6 +1042,7 @@ class Config:
                 chevereto_v3=chevereto_v3,
                 chevereto_v4=chevereto_v4,
                 image_bb=image_bb,
+                image_box=image_box,
                 urls_alt=urls_settings.get("alt", ""),
                 urls_columns=urls_settings.get("columns", 1),
                 urls_vertical=urls_settings.get("vertical", 1),
@@ -1037,42 +1108,8 @@ class Config:
             TrackerSelection.AITHER: self.cfg_payload.aither_tracker,
         }
 
-    # TODO: call this from SETTINGS later
-    def order_tracker_map(
-        self, order: list[int] | None = None
-    ) -> dict[TrackerSelection, TrackerInfo]:
-        """
-        Public method that can be utilized to update the `tracker_map` order based on an input iterable.
-        If `order` is provided we'll update the map based on the provided order, otherwise we'll default
-        back to reading it from the saved config.
-
-        This does not update the saved config on disk, this needs to be called separately.
-
-        Note: We're subtracting `-1` since our enum starts at `1`, this keeps things inline.
-
-        Args:
-            order (list[int], None): List of ints. Defaults to None.
-
-        Returns:
-            dict[TrackerSelection, TrackerInfo]
-        """
-        if order:
-            mapped_order = order
-            self.cfg_payload.tracker_order = mapped_order
-        else:
-            mapped_order = self.cfg_payload.tracker_order
-        self.tracker_map = dict(
-            sorted(
-                self.tracker_map.items(),
-                key=lambda item: mapped_order[item[0].value - 1],
-            )
-        )
-        return self.tracker_map
-
     def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:
-        """
-        Map all of the torrent clients to their Enum for easy usage through out the program.
-        """
+        """Map all of the torrent clients to their Enum for easy usage through out the program"""
         return {
             TorrentClientSelection.QBITTORRENT: self.cfg_payload.qbittorrent,
             TorrentClientSelection.DELUGE: self.cfg_payload.deluge,
@@ -1083,19 +1120,13 @@ class Config:
 
     def _image_host_map(
         self,
-    ) -> dict[
-        ImageHost,
-        CheveretoV3Payload | CheveretoV4Payload | ImageBBPayload | None,
-    ]:
-        """
-        Map all of the image hosts to their enum/payloads for easy usage through out the program.
-        """
+    ) -> dict[ImageHost, ImagePayloadBase]:
+        """Map all of the image hosts to their enum/payloads for easy usage through out the program"""
         return {
-            ImageHost.DISABLED: None,
             ImageHost.CHEVERETO_V3: self.cfg_payload.chevereto_v3,
             ImageHost.CHEVERETO_V4: self.cfg_payload.chevereto_v4,
-            ImageHost.IMAGE_BOX: None,
             ImageHost.IMAGE_BB: self.cfg_payload.image_bb,
+            ImageHost.IMAGE_BOX: self.cfg_payload.image_box,
         }
 
     def _init_dependencies(self) -> None:
