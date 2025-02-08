@@ -7,6 +7,7 @@ from src.enums.profile import Profile
 from src.enums.media_mode import MediaMode
 from src.enums.image_host import ImageHost
 from src.enums.screen_shot_mode import ScreenShotMode
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.cropping import Cropping
@@ -27,6 +28,7 @@ from src.payloads.image_hosts import (
     CheveretoV3Payload,
     CheveretoV4Payload,
     ImageBBPayload,
+    ImageBoxPayload,
 )
 
 # TODO: add nfo enable_disable flag or something?
@@ -63,7 +65,7 @@ class ConfigPayload:
     tvdb_api_key: str
 
     # trackers
-    tracker_order: list[int]
+    tracker_order: list[TrackerSelection]
     mtv_tracker: MoreThanTVInfo
     tl_tracker: TorrentLeechInfo
     bhd_tracker: BeyondHDInfo
@@ -114,6 +116,7 @@ class ConfigPayload:
     chevereto_v3: CheveretoV3Payload
     chevereto_v4: CheveretoV4Payload
     image_bb: ImageBBPayload
+    image_box: ImageBoxPayload
 
     # urls
     urls_alt: str
