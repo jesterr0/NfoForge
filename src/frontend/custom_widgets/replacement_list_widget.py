@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QHeaderView,
 )
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, Slot
 from PySide6.QtGui import QColor, QPalette
 
 
@@ -54,6 +54,7 @@ class ReplacementListWidget(QTableWidget):
         for row in rows:
             self.add_row(row[0], row[1])
 
+    @Slot()
     def add_row(self, txt1: str = "", txt2: str = "") -> None:
         """Add a new row to the table with default empty text."""
         current_rows = self.rowCount()
@@ -69,6 +70,7 @@ class ReplacementListWidget(QTableWidget):
         self.setItem(current_rows, 1, with_item)
         self.rows_changed.emit(self.get_replacements())
 
+    @Slot()
     def remove_selected_row(self) -> None:
         """Remove the currently selected row."""
         current_row = self.currentRow()
@@ -87,6 +89,7 @@ class ReplacementListWidget(QTableWidget):
             ):
                 self.set_defaults.emit()
 
+    @Slot()
     def move_down(self) -> None:
         row = self.currentRow()
         if row < self.rowCount() - 1:
@@ -98,6 +101,7 @@ class ReplacementListWidget(QTableWidget):
             self.setCurrentCell(row + 1, 0)
             self.rows_changed.emit(self.get_replacements())
 
+    @Slot()
     def move_up(self) -> None:
         row = self.currentRow()
         if row > 0:
