@@ -1,4 +1,5 @@
 from enum import Enum, auto as auto_enum
+from typing_extensions import override
 from src.enums import CaseInsensitiveEnum
 
 
@@ -63,6 +64,7 @@ class MTVSourceOrigin(CaseInsensitiveEnum):
     MIXED = auto_enum()
     OTHER = auto_enum()
 
+    @override
     def __str__(self) -> str:
         str_map = {
             MTVSourceOrigin.UNDEFINED: "Undefined",

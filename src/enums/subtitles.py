@@ -1,4 +1,5 @@
 from src.enums import CaseInsensitiveEnum
+from typing_extensions import override
 
 
 class SubtitleAlignment(CaseInsensitiveEnum):
@@ -12,22 +13,17 @@ class SubtitleAlignment(CaseInsensitiveEnum):
     TOP_CENTER = 8
     TOP_RIGHT = 9
 
+    @override
     def __str__(self) -> str:
-        if self == SubtitleAlignment.BOTTOM_LEFT:
-            return "Bottom Left"
-        elif self == SubtitleAlignment.BOTTOM_CENTER:
-            return "Bottom Center"
-        elif self == SubtitleAlignment.BOTTOM_RIGHT:
-            return "Bottom Right"
-        elif self == SubtitleAlignment.CENTER_LEFT:
-            return "Center Left"
-        elif self == SubtitleAlignment.CENTER_CENTER:
-            return "Center"
-        elif self == SubtitleAlignment.CENTER_RIGHT:
-            return "Center Right"
-        elif self == SubtitleAlignment.TOP_LEFT:
-            return "Top Left"
-        elif self == SubtitleAlignment.TOP_CENTER:
-            return "Top Center"
-        elif self == SubtitleAlignment.TOP_RIGHT:
-            return "Top Right"
+        mapping = {
+            SubtitleAlignment.BOTTOM_LEFT: "Bottom Left",
+            SubtitleAlignment.BOTTOM_CENTER: "Bottom Center",
+            SubtitleAlignment.BOTTOM_RIGHT: "Bottom Right",
+            SubtitleAlignment.CENTER_LEFT: "Center Left",
+            SubtitleAlignment.CENTER_CENTER: "Center",
+            SubtitleAlignment.CENTER_RIGHT: "Center Right",
+            SubtitleAlignment.TOP_LEFT: "Top Left",
+            SubtitleAlignment.TOP_CENTER: "Top Center",
+            SubtitleAlignment.TOP_RIGHT: "Top Right",
+        }
+        return mapping[self]

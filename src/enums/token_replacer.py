@@ -1,4 +1,5 @@
 from enum import auto as auto_enum
+from typing_extensions import override
 from src.enums import CaseInsensitiveEnum
 
 
@@ -9,6 +10,7 @@ class ColonReplace(CaseInsensitiveEnum):
     REPLACE_WITH_SPACE_DASH = auto_enum()
     REPLACE_WITH_SPACE_DASH_SPACE = auto_enum()
 
+    @override
     def __str__(self) -> str:
         str_map = {
             ColonReplace.KEEP: "Keep",
@@ -25,6 +27,7 @@ class UnfilledTokenRemoval(CaseInsensitiveEnum):
     TOKEN_ONLY = auto_enum()
     ENTIRE_LINE = auto_enum()
 
+    @override
     def __str__(self) -> str:
         str_map = {
             UnfilledTokenRemoval.KEEP: "Keep",
@@ -39,6 +42,7 @@ class SharedWithType(CaseInsensitiveEnum):
     BBCODE = auto_enum()
     HTML = auto_enum()
 
+    @override
     def __str__(self) -> str:
         str_map = {
             SharedWithType.BASIC: "Basic",

@@ -1,4 +1,5 @@
 from enum import Enum
+from typing_extensions import override
 
 
 class DebugDataType(Enum):
@@ -17,6 +18,7 @@ class LogLevel(Enum):
     ERROR = 40
     CRITICAL = 50
 
+    @override
     def __str__(self) -> str:
         level_map = {
             LogLevel.DEBUG: "Debug",

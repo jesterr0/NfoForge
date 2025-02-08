@@ -1,4 +1,5 @@
 from enum import auto as auto_enum
+from typing_extensions import override
 from src.enums import CaseInsensitiveEnum
 
 from PySide6.QtGui import Qt
@@ -18,6 +19,7 @@ class NfoForgeTheme(CaseInsensitiveEnum):
         }
         return theme_map[self]
 
+    @override
     def __str__(self) -> str:
         str_map = {
             NfoForgeTheme.AUTOMATIC: "Automatic",

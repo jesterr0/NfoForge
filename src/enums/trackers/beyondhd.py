@@ -1,4 +1,5 @@
 from enum import Enum
+from typing_extensions import override
 
 
 class BHDCategoryID(Enum):
@@ -43,6 +44,7 @@ class BHDPromo(Enum):
     FREELEECH = 4
     FREELEECH_LIMITED_UL = 5
 
+    @override
     def __str__(self) -> str:
         str_map = {
             BHDPromo.NO_PROMO: "No Promo",
@@ -59,6 +61,7 @@ class BHDLiveRelease(Enum):
     DRAFT = 0
     LIVE = 1
 
+    @override
     def __str__(self) -> str:
         str_map = {
             BHDLiveRelease.DRAFT: "Draft",
