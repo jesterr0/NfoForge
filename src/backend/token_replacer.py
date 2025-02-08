@@ -809,7 +809,7 @@ class TokenReplacer:
                     replace_with = replace_with.replace("[remove]", "").replace(
                         "[space]", " "
                     )
-                    title = re.sub(re.escape(replace), re.escape(replace_with), title)
+                    title = re.sub(rf"{replace}", rf"{replace_with}", title)
         return self._optional_user_input(title, token_data)
 
     def _movie_imdb_id(self, token_data: TokenData) -> str:

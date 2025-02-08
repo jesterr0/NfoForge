@@ -22,17 +22,23 @@ from src.frontend.custom_widgets.replacement_list_widget import ReplacementListW
 
 class MovieCleanTitleReplacementWidget(QWidget):
     DEFAULT_RULES = [
-        ("", "[unidecode]"),
-        (r"&", "and"),
-        (r"/", "\\"),
-        (r"'", "[remove]"),
+        (r"", r"[unidecode]"),
+        (r"&", r"and"),
+        (r"/", r"\\"),
+        (r"'", r"[remove]"),
+        # remove commas within numbers (50,000 -> 50000)
+        (r"(?<=\d),(?=\d)", r"[remove]"),
+        # replace commas after words with a period
+        (r"(?<=\w),(?=\s\w)", r"[space]"),
+        # replace space dash space with nothing
+        (r"\s*-\s*", r"[remove]"),
         (
             r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
             r"('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|"
             r"(\(|\)|\[|\]|\{|\})",
-            "[space]",
+            r"[space]",
         ),
-        (r"\s{2,}", "[space]"),
+        (r"\s{2,}", r"[space]"),
     ]
 
     def __init__(self, parent=None) -> None:
