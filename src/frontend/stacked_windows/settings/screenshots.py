@@ -1,5 +1,14 @@
-from PySide6.QtCore import Slot, QEvent
-from PySide6.QtWidgets import QLabel, QLineEdit, QCheckBox, QSpinBox, QMessageBox
+from PySide6.QtCore import Slot, QEvent, Qt
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QCheckBox,
+    QSpinBox,
+    QMessageBox,
+    QWidget,
+)
+from PySide6.QtGui import QColor, QPalette
 
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.cropping import Cropping
@@ -7,8 +16,10 @@ from src.enums.indexer import Indexer
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.settings_window import SettingsTabs
-from src.frontend.utils import build_h_line
+from src.frontend.utils import build_h_line, create_form_layout
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
+from src.frontend.custom_widgets.image_host_listbox import ImageHostListBox
 from src.frontend.stacked_windows.settings.base import BaseSettings
 
 
@@ -38,9 +49,7 @@ class ScreenShotSettings(BaseSettings):
         self.ss_mode_combo.activated.connect(self._ss_mode_changed)
 
         ss_compression_lbl = QLabel("Compress Images")
-        ss_compression_lbl.setToolTip(
-            "Compresses generated images (recommended)"
-        )
+        ss_compression_lbl.setToolTip("Compresses generated images (recommended)")
         self.ss_compression_btn = QCheckBox(self)
 
         ss_trim_start_lbl = QLabel("Video Start %", self)
@@ -117,7 +126,21 @@ class ScreenShotSettings(BaseSettings):
 
         sub_color_lbl = QLabel("Subtitle Color (hex: #f5c70a)", self)
         sub_color_lbl.setToolTip("Subtitle color (must be specified as a hex value)")
+
+        self.sub_color_picker = ColorSelectionShape(width=14, height=14, parent=self)
+        self.sub_color_picker.setToolTip("Set subtitle color")
+        self.sub_color_picker.color_changed.connect(self._update_sub_entry_color)
+
         self.sub_color_entry = QLineEdit(self)
+        self.sub_color_entry.setReadOnly(True)
+
+        sub_lbl_color_widget = QWidget()
+        sub_lbl_color_layout = QHBoxLayout(sub_lbl_color_widget)
+        sub_lbl_color_layout.setContentsMargins(0, 0, 0, 0)
+        sub_lbl_color_layout.addWidget(sub_color_lbl)
+        sub_lbl_color_layout.addWidget(
+            self.sub_color_picker, alignment=Qt.AlignmentFlag.AlignRight
+        )
 
         sub_alignment_lbl = QLabel("Subtitle Alignment", self)
         sub_alignment_lbl.setToolTip("Adjust subtitle position")
@@ -125,49 +148,49 @@ class ScreenShotSettings(BaseSettings):
             completer=True, disable_mouse_wheel=True, parent=self
         )
 
-        self.add_layout(self.create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
-        self.add_layout(self.create_form_layout(ss_count_lbl, self.ss_count_spinbox))
-        self.add_layout(self.create_form_layout(ss_mode_lbl, self.ss_mode_combo))
+        image_host_config_label = QLabel("Image Hosts Configuration", self)
+        self.image_host_config = ImageHostListBox(self.config, self)
+        self.image_host_config.setMinimumHeight(180)
+
+        self.add_layout(create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
+        self.add_layout(create_form_layout(ss_count_lbl, self.ss_count_spinbox))
+        self.add_layout(create_form_layout(ss_mode_lbl, self.ss_mode_combo))
+        self.add_layout(create_form_layout(ss_compression_lbl, self.ss_compression_btn))
+        self.add_layout(create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
+        self.add_layout(create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
         self.add_layout(
-            self.create_form_layout(ss_compression_lbl, self.ss_compression_btn)
+            create_form_layout(ss_required_count_lbl, self.ss_required_count_spinbox)
         )
-        self.add_layout(self.create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
-        self.add_layout(self.create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
-        self.add_layout(
-            self.create_form_layout(
-                ss_required_count_lbl, self.ss_required_count_spinbox
-            )
-        )
-        self.add_layout(self.create_form_layout(crop_mode_lbl, self.crop_mode_combo))
-        self.add_layout(self.create_form_layout(indexer_lbl, self.indexer_combo))
-        self.add_layout(
-            self.create_form_layout(image_plugin_lbl, self.image_plugin_combo)
-        )
+        self.add_layout(create_form_layout(crop_mode_lbl, self.crop_mode_combo))
+        self.add_layout(create_form_layout(indexer_lbl, self.indexer_combo))
+        self.add_layout(create_form_layout(image_plugin_lbl, self.image_plugin_combo))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
-            self.create_form_layout(
+            create_form_layout(
                 ss_comparison_subtitle_lbl, self.ss_comparison_subtitle_btn
             )
         )
         self.add_layout(
-            self.create_form_layout(ss_comp_source_lbl, self.ss_comp_source_entry)
+            create_form_layout(ss_comp_source_lbl, self.ss_comp_source_entry)
         )
         self.add_layout(
-            self.create_form_layout(ss_comp_encode_lbl, self.ss_comp_encode_entry)
+            create_form_layout(ss_comp_encode_lbl, self.ss_comp_encode_entry)
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
-            self.create_form_layout(sub_720p_size_lbl, self.sub_720p_size_spinbox)
+            create_form_layout(sub_720p_size_lbl, self.sub_720p_size_spinbox)
         )
         self.add_layout(
-            self.create_form_layout(sub_1080p_size_lbl, self.sub_1080p_size_spinbox)
+            create_form_layout(sub_1080p_size_lbl, self.sub_1080p_size_spinbox)
         )
         self.add_layout(
-            self.create_form_layout(sub_2160p_size_lbl, self.sub_2160p_size_spinbox)
+            create_form_layout(sub_2160p_size_lbl, self.sub_2160p_size_spinbox)
         )
-        self.add_layout(self.create_form_layout(sub_color_lbl, self.sub_color_entry))
+        self.add_layout(create_form_layout(sub_lbl_color_widget, self.sub_color_entry))
+        self.add_layout(create_form_layout(sub_alignment_lbl, self.sub_alignment_combo))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
-            self.create_form_layout(sub_alignment_lbl, self.sub_alignment_combo)
+            create_form_layout(image_host_config_label, self.image_host_config)
         )
         self.add_layout(self.reset_layout)
 
@@ -221,6 +244,13 @@ class ScreenShotSettings(BaseSettings):
         if idx > -1:
             self._ss_toggle_check(self.ss_mode_combo.currentData())
 
+    @Slot(object)
+    def _update_sub_entry_color(self, color: QColor) -> None:
+        palette = self.sub_color_entry.palette()
+        palette.setColor(QPalette.ColorRole.Text, color)
+        self.sub_color_entry.setPalette(palette)
+        self.sub_color_entry.setText(self.sub_color_picker.get_hex_color())
+
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
@@ -242,9 +272,14 @@ class ScreenShotSettings(BaseSettings):
         self.sub_1080p_size_spinbox.setValue(payload.sub_size_height_1080)
         self.sub_2160p_size_spinbox.setValue(payload.sub_size_height_2160)
         self.sub_color_entry.setText(payload.subtitle_color)
+        self.sub_color_picker.update_color(
+            QColor(self.config.cfg_payload.subtitle_color)
+        )
+        self._update_sub_entry_color(self.sub_color_picker.get_color())
         self.load_combo_box(
             self.sub_alignment_combo, SubtitleAlignment, payload.subtitle_alignment
         )
+        self.image_host_config.add_items(self.config.image_host_map)
 
     @Slot()
     def _save_settings(self) -> None:
@@ -278,6 +313,12 @@ class ScreenShotSettings(BaseSettings):
         self.config.cfg_payload.subtitle_alignment = (
             self.sub_alignment_combo.currentData()
         )
+        try:
+            self.image_host_config.validate_settings()
+        except AttributeError as attr_error:
+            QMessageBox.warning(self, "Warning", str(attr_error))
+            return
+        self.image_host_config.save_host_info()
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
@@ -295,7 +336,9 @@ class ScreenShotSettings(BaseSettings):
         self.sub_720p_size_spinbox.setValue(12)
         self.sub_1080p_size_spinbox.setValue(16)
         self.sub_2160p_size_spinbox.setValue(32)
-        self.sub_color_entry.setText("#f5c70a")
+        self.sub_color_picker.update_color(QColor("#f5c70a"))
+        self._update_sub_entry_color(self.sub_color_picker.get_color())
+        self.image_host_config.add_items(self.config.image_host_map, reset=True)
         self.sub_alignment_combo.setCurrentIndex(0)
 
     def _build_spinbox(

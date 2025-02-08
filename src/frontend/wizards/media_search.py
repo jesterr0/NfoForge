@@ -44,8 +44,8 @@ class QueuedWorker(QThread):
     job_finished = Signal(OrderedDict)
     job_failed = Signal(str)
 
-    def __init__(self, backend, query) -> None:
-        super().__init__()
+    def __init__(self, backend, query, parent=None) -> None:
+        super().__init__(parent=parent)
         self.backend = backend
         self.query = query
 
@@ -72,8 +72,9 @@ class IDParseWorker(QThread):
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
         tvdb_api_key: str,
+        parent=None,
     ) -> None:
-        super().__init__()
+        super().__init__(parent=parent)
         self.backend = backend
         self.imdb_id = imdb_id
         self.tmdb_title = tmdb_title
@@ -83,8 +84,10 @@ class IDParseWorker(QThread):
         self.tvdb_api_key = tvdb_api_key
 
     def run(self) -> None:
+        async_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(async_loop)
         try:
-            parse_other_ids = asyncio.run(
+            parse_other_ids = async_loop.run_until_complete(
                 self.backend.parse_other_ids(
                     self.imdb_id,
                     self.tmdb_title,
@@ -99,6 +102,8 @@ class IDParseWorker(QThread):
             self.job_failed.emit(
                 f"Failed to parse ID data: ({e})\n{traceback.format_exc()}"
             )
+        finally:
+            async_loop.close()
 
 
 class MediaSearch(BaseWizardPage):
@@ -313,6 +318,7 @@ class MediaSearch(BaseWizardPage):
                 ),
                 tmdb_genres=item_data.get("genre_ids", []),
                 tvdb_api_key=self.config.cfg_payload.tvdb_api_key,
+                parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
             self.id_parse_worker.job_failed.connect(self._failed_search)
@@ -486,7 +492,9 @@ class MediaSearch(BaseWizardPage):
             if self.queued_worker is not None and self.queued_worker.isRunning():
                 self.queued_worker.terminate()
 
-            self.queued_worker = QueuedWorker(self.backend, self.search_entry.text())
+            self.queued_worker = QueuedWorker(
+                self.backend, self.search_entry.text(), parent=self
+            )
             self.queued_worker.job_finished.connect(self._handle_search_result)
             self.queued_worker.job_failed.connect(self._failed_search)
             self.queued_worker.start()

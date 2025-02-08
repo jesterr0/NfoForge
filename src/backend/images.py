@@ -3,22 +3,16 @@ import platform
 import oslex2
 import subprocess
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
-from os import PathLike
 from pathlib import Path
 from random import randint
 from multiprocessing import cpu_count
 from pymediainfo import MediaInfo
-
 from PySide6.QtCore import SignalInstance
 
 from src.logger.nfo_forge_logger import LOG
-from src.config.config import Config
 from src.enums.indexer import Indexer
-from src.enums.image_host import ImageHost
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
-from src.backend.image_host_uploading.img_uploader import ImageUploader
 from src.backend.utils.images import (
     determine_ffmpeg_trimmed_frames,
     generate_progress,
@@ -30,12 +24,7 @@ from src.backend.utils.images import (
 )
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.backend.utils.images import compare_resolutions, compare_res
-from src.packages.custom_types import (
-    AdvancedResize,
-    CropValues,
-    SubNames,
-    ImageUploadData,
-)
+from src.packages.custom_types import AdvancedResize, CropValues, SubNames
 from src.packages.crop_detect import CropDetect
 
 
@@ -552,44 +541,6 @@ class FrameForgeImageGeneration(ImageGeneration):
 
 
 class ImagesBackEnd:
-    @staticmethod
-    def upload_images(
-        config: Config,
-        filepaths: Sequence[PathLike[str] | Path | str],
-        signal: SignalInstance,
-    ) -> dict[int, ImageUploadData] | None:
-        """
-        Handles uploading images to image hosts.
-
-        Parameters:
-            config (Config): Config class.
-            filepaths (Sequence[Union[PathLike[str], Path]]): Sequence object of filepaths.
-            signal (SignalInstance[str, float]): The signal used to emit progress updates.
-
-        Returns:
-            Dictionary object numbered with ImageUploadData.
-        """
-        image_uploader = ImageUploader(config, signal)
-        image_host = config.cfg_payload.image_host
-
-        if image_host == ImageHost.CHEVERETO_V3:
-            get_config = config.media_input_payload
-            album_name = (
-                get_config.renamed_file
-                if get_config.renamed_file
-                else get_config.encode_file
-            )
-            return image_uploader.chevereto_v3(
-                filepaths=filepaths,
-                album_name=Path(album_name).stem if album_name else None,
-            )
-        elif image_host == ImageHost.CHEVERETO_V4:
-            return image_uploader.chevereto_v4(filepaths=filepaths)
-        elif image_host == ImageHost.IMAGE_BOX:
-            return image_uploader.img_box(filepaths=filepaths)
-        elif image_host == ImageHost.IMAGE_BB:
-            return image_uploader.imgbb(filepaths=filepaths)
-
     @staticmethod
     def basic_image_generation(
         media_input: Path,

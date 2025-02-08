@@ -21,7 +21,7 @@ tmdb_api_key = ""
 tvdb_api_key = ""
 
 [tracker.settings]
-order = []
+tracker_order = []
 
 [tracker.more_than_tv]
 upload_enabled = true
@@ -31,6 +31,10 @@ source = "MTV"
 comments = ""
 nfo_template = ""
 max_piece_size = 8000000
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
 anonymous = 0
 api_key = ""
 username = ""
@@ -39,6 +43,7 @@ totp = ""
 group_description = ""
 additional_tags = ""
 source_origin = 1
+image_width = 350
 
 [tracker.torrent_leech]
 upload_enabled = true
@@ -48,6 +53,10 @@ source = "TorrentLeech.org"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
+url_type = 2
+column_s = 1
+column_space = 1
+row_space = 0
 username = ""
 password = ""
 torrent_passkey = ""
@@ -61,12 +70,17 @@ source = "BHD"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
 anonymous = 0
 api_key = ""
 rss_key = ""
 promo = 0
 live_release = 1
 internal = 0
+image_width = 350
 
 [tracker.pass_the_popcorn]
 upload_enabled = true
@@ -76,6 +90,10 @@ source = "PTP"
 comments = ""
 nfo_template = ""
 max_piece_size = 16777216
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
 api_user = ""
 api_key = ""
 username = ""
@@ -92,6 +110,10 @@ source = "ReelFliX"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
 api_key = ""
 anonymous = 0
 internal = 0
@@ -102,6 +124,7 @@ featured = 0
 free = 0
 double_up = 0
 sticky = 0
+image_width = 350
 
 [tracker.aither]
 upload_enabled = true
@@ -111,6 +134,10 @@ source = "Aither"
 comments = ""
 nfo_template = ""
 max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
 api_key = ""
 anonymous = 0
 internal = 0
@@ -121,6 +148,7 @@ featured = 0
 free = 0
 double_up = 0
 sticky = 0
+image_width = 350
 
 [torrent_client]
 
@@ -216,16 +244,24 @@ indexer = 1
 image_plugin = 1
 
 [image_hosts.chevereto_v3]
+enabled = false
 base_url = ""
 user = ""
 password = ""
 
 [image_hosts.chevereto_v4]
+enabled = false
 base_url = ""
 api_key = ""
 
 [image_hosts.image_bb]
+enabled = false
+base_url = "https://api.imgbb.com/"
 api_key = ""
+
+[image_hosts.image_box]
+enabled = false
+base_url = "https://imgbox.com/"
 
 [urls]
 alt = ""

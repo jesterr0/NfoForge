@@ -20,7 +20,11 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
 from src.frontend.custom_widgets.template_selector import TemplateSelector
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_h_line, build_auto_theme_svg_widget
+from src.frontend.utils import (
+    build_h_line,
+    build_auto_theme_svg_widget,
+    create_form_layout,
+)
 
 
 class TemplatesSettings(BaseSettings):
@@ -223,10 +227,10 @@ class TemplatesSettings(BaseSettings):
         self.add_layout(jinja_header_layout)
         self.add_layout(
             self.combine_forms(
-                self.create_form_layout(
+                create_form_layout(
                     self.block_start_str_lbl, self.block_start_str_entry
                 ),
-                self.create_form_layout(
+                create_form_layout(
                     self.combine_lbl_color_selection(
                         self.block_end_str_lbl, self.block_syntax_color
                     ),
@@ -237,10 +241,10 @@ class TemplatesSettings(BaseSettings):
 
         self.add_layout(
             self.combine_forms(
-                self.create_form_layout(
+                create_form_layout(
                     self.variable_start_str_lbl, self.variable_start_str_entry
                 ),
-                self.create_form_layout(
+                create_form_layout(
                     self.combine_lbl_color_selection(
                         self.variable_end_str_lbl, self.variable_syntax_color
                     ),
@@ -251,10 +255,10 @@ class TemplatesSettings(BaseSettings):
 
         self.add_layout(
             self.combine_forms(
-                self.create_form_layout(
+                create_form_layout(
                     self.comment_start_str_lbl, self.comment_start_str_entry
                 ),
-                self.create_form_layout(
+                create_form_layout(
                     self.combine_lbl_color_selection(
                         self.comment_end_str_lbl, self.comment_syntax_color
                     ),
@@ -265,13 +269,13 @@ class TemplatesSettings(BaseSettings):
 
         self.add_layout(
             self.combine_forms(
-                self.create_form_layout(
+                create_form_layout(
                     self.combine_lbl_color_selection(
                         self.line_statement_prefix_lbl, self.line_statement_syntax_color
                     ),
                     self.line_statement_prefix_entry,
                 ),
-                self.create_form_layout(
+                create_form_layout(
                     self.combine_lbl_color_selection(
                         self.line_comment_prefix_lbl, self.line_comment_syntax_color
                     ),
@@ -282,7 +286,7 @@ class TemplatesSettings(BaseSettings):
 
         self.add_layout(toggle_layout)
         self.add_layout(
-            self.create_form_layout(self.newline_sequence_lbl, self.newline_sequence)
+            create_form_layout(self.newline_sequence_lbl, self.newline_sequence)
         )
 
         self.add_widget(build_h_line((6, 1, 6, 1)))
@@ -470,7 +474,7 @@ class TemplatesSettings(BaseSettings):
                         if (
                             QMessageBox.question(
                                 self,
-                                "warning",
+                                "Warning",
                                 f"{cur_tracker} requires at least three screenshots in BBCode format. You "
                                 "should assign a template with {{ screen_shots }} and ensure you utilize "
                                 "the screenshot feature.\n\nWould you like to fix this now?",

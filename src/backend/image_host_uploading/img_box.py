@@ -1,8 +1,9 @@
-from asyncio import create_task, gather
+from asyncio import create_task, gather, sleep as async_sleep
 from collections.abc import Sequence, Callable, Awaitable
 from pathlib import Path
 from pyimgbox import Gallery as ImgBoxGallery, Submission
 
+from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.packages.custom_types import ImageUploadData
 
 
@@ -11,7 +12,7 @@ async def _img_box_upload_batch(
     filepaths: Sequence[Path],
     start_index: int,
     cb: Callable[[int], Awaitable] | None = None,
-) -> dict[int, Submission]:
+) -> dict[int, ImageUploadData]:
     """
     Example Output (before converting to ImageUploadData):
         >>> {
@@ -29,22 +30,35 @@ async def _img_box_upload_batch(
         ... }
     """
 
-    async def upload_image(filepath: Path, index: int):
-        submission = await gallery.upload(filepath)
-        image_data[index] = ImageUploadData(
-            submission.get("image_url", ""), submission.get("thumbnail_url", {})
-        )
-        if cb:
-            await cb(index + 1)
+    async def upload_single_image(
+        filepath: Path, index: int
+    ) -> tuple[int, ImageUploadData]:
+        for _ in range(2):
+            try:
+                submission: Submission = await gallery.upload(filepath)
+                if not submission or not submission.get("image_url"):
+                    raise ValueError(f"Upload failed for {filepath}")
 
-    tasks = []
-    image_data = {}
-    for i, filepath in enumerate(filepaths):
-        task = create_task(upload_image(filepath, start_index + i))
-        tasks.append(task)
+                image_data = ImageUploadData(
+                    submission.get("image_url", ""), submission.get("thumbnail_url", "")
+                )
 
-    await gather(*tasks)
-    return image_data
+                if cb:
+                    await cb(index + 1)
+
+                return index, image_data
+            except Exception:
+                await async_sleep(1)
+
+        return index, ImageUploadData(None, None)
+
+    tasks = [
+        create_task(upload_single_image(filepath, start_index + i))
+        for i, filepath in enumerate(filepaths)
+    ]
+
+    batch_results = await gather(*tasks)
+    return {index: result for index, result in batch_results}
 
 
 async def image_box_upload(
@@ -55,7 +69,7 @@ async def image_box_upload(
     adult: bool = False,
     comments_enabled: bool = False,
     batch_size: int = 4,
-    cb: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     """
     Uploads images to a gallery in batches and returns the upload results.
@@ -68,16 +82,18 @@ async def image_box_upload(
         adult (bool, optional): Whether the gallery contains adult content. Defaults to False.
         comments_enabled (bool, optional): Whether comments are enabled for the gallery. Defaults to False.
         batch_size (int, optional): Number of images to upload in each batch. Defaults to 5.
-        cb (Callable[[int], None]): Callback to print progress.
+        progress_callback (Callable[[int], None]): Callback to print progress.
 
     Returns:
         Optional[Dict[int, ImageUploadData]]: A dictionary with indices as keys and ImageUploadData objects as values.
     """
     if not filepaths:
         return {}
-    filepaths = sorted(filepaths)
 
+    filepaths = sorted(filepaths)
     image_data = {}
+    start_index = 0
+
     async with ImgBoxGallery(
         title=title if title else None,
         thumb_width=thumb_width,
@@ -87,7 +103,39 @@ async def image_box_upload(
     ) as gallery:
         for i in range(0, len(filepaths), batch_size):
             batch = filepaths[i : i + batch_size]
-            batch_results = await _img_box_upload_batch(gallery, batch, i, cb)
-            image_data.update({i + j: batch_results[j] for j in batch_results})
+            batch_results = await _img_box_upload_batch(
+                gallery, batch, start_index, progress_callback
+            )
+            image_data.update(batch_results)
+            start_index += len(batch)
 
     return image_data
+
+
+class ImageBoxUploader(BaseImageHostUploader):
+    """Uploader for ImageBox."""
+
+    __slots__ = ()
+
+    async def upload(
+        self,
+        filepaths: Sequence[Path],
+        title: str | None = None,
+        thumb_width: int = 350,
+        square_thumbs: bool = False,
+        adult: bool = False,
+        comments_enabled: bool = False,
+        batch_size: int = 4,
+        progress_callback: Callable[[int], Awaitable] | None = None,
+    ) -> dict[int, ImageUploadData] | None:
+        """Upload images to ImageBox."""
+        return await image_box_upload(
+            filepaths=filepaths,
+            title=title,
+            thumb_width=thumb_width,
+            square_thumbs=square_thumbs,
+            adult=adult,
+            comments_enabled=comments_enabled,
+            batch_size=batch_size,
+            progress_callback=progress_callback,
+        )

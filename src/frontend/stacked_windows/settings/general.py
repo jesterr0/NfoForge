@@ -1,5 +1,3 @@
-from dataclasses import fields
-
 from PySide6.QtCore import Slot, QTimer
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
@@ -10,20 +8,22 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QSpinBox,
     QWidget,
+    QToolButton,
 )
 
 from src.enums.theme import NfoForgeTheme
 from src.enums.profile import Profile
 from src.enums.media_mode import MediaMode
-from src.enums.image_host import ImageHost
 from src.enums.logging_settings import LogLevel
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.custom_widgets.image_hosts import ImageHostStackedWidget
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
+from src.frontend.utils import build_auto_theme_icon_buttons, create_form_layout
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -74,7 +74,7 @@ class GeneralSettings(BaseSettings):
         self.plugin_wizard_page_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
-        plugin_wizard_page_layout = self.create_form_layout(
+        plugin_wizard_page_layout = create_form_layout(
             plugin_wizard_page_lbl, self.plugin_wizard_page_combo, (12, 0, 0, 0)
         )
 
@@ -85,7 +85,7 @@ class GeneralSettings(BaseSettings):
         self.plugin_token_replacer_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
-        plugin_token_replacer_layout = self.create_form_layout(
+        plugin_token_replacer_layout = create_form_layout(
             plugin_wizard_token_replacer_lbl,
             self.plugin_token_replacer_combo,
             (12, 0, 0, 0),
@@ -98,7 +98,7 @@ class GeneralSettings(BaseSettings):
         self.plugin_pre_upload_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
-        pre_upload_processing_layout = self.create_form_layout(
+        pre_upload_processing_layout = create_form_layout(
             plugin_pre_upload_lbl,
             self.plugin_pre_upload_combo,
             (12, 0, 0, 0),
@@ -145,12 +145,6 @@ class GeneralSettings(BaseSettings):
         releasers_name_lbl.setToolTip("Sets the releaser's name. As displayed in NFOs")
         self.releasers_name_entry = QLineEdit(self)
 
-        image_host_selection_lbl = QLabel("Image Host", self)
-        image_host_selection_lbl.setToolTip(
-            "Sets desired image host to upload screenshots to"
-        )
-        self.image_host_selection = ImageHostStackedWidget(self.config, self)
-
         global_timeout_lbl = QLabel("Global Timeout", self)
         global_timeout_lbl.setToolTip("Sets global timeout for network requests")
         self.global_timeout_spinbox = QSpinBox(self)
@@ -159,6 +153,7 @@ class GeneralSettings(BaseSettings):
 
         log_level_lbl = QLabel("Log Level", self)
         log_level_lbl.setToolTip("Sets minimum log level")
+
         self.log_level_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
@@ -167,38 +162,59 @@ class GeneralSettings(BaseSettings):
         max_log_files_lbl.setToolTip(
             "Maximum number of log files to keep (clean up runs after NfoForge is launched)"
         )
+
         self.max_log_files_spinbox = QSpinBox(self)
         self.max_log_files_spinbox.setRange(10, 500)
         self.max_log_files_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
 
-        view_log_files_btn = QPushButton("View Log Files", self)
-        view_log_files_btn.clicked.connect(GSigs().main_window_open_log_dir.emit)
+        open_logs_lbl = QLabel("View Logs", self)
+        self.open_log_directory: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton, "files.svg", "openLogDirectory", 20, 20
+        )
+        self.open_log_directory.setToolTip("Open log directory")
+        self.open_log_directory.clicked.connect(GSigs().main_window_open_log_dir.emit)
 
-        self.add_layout(self.create_form_layout(config_lbl, config_widget))
-        self.add_layout(self.create_form_layout(suffix_lbl, self.ui_suffix))
-        self.add_layout(self.create_form_layout(theme_lbl, self.theme_combo))
-        self.add_layout(self.create_form_layout(profile_lbl, self.profile_combo))
+        self.open_log_file: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton, "file.svg", "openLogFile", 20, 20
+        )
+        self.open_log_file.setToolTip(
+            "Open log file if exists otherwise will open the log directory"
+        )
+        self.open_log_file.clicked.connect(GSigs().main_window_open_log_file.emit)
+
+        log_btn_widget = QWidget()
+        log_btn_layout = QHBoxLayout(log_btn_widget)
+        log_btn_layout.setContentsMargins(0, 0, 0, 0)
+        log_btn_layout.addWidget(self.open_log_directory)
+        log_btn_layout.addWidget(self.open_log_file)
+        log_btn_layout.addSpacerItem(
+            QSpacerItem(
+                1, 1, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+            )
+        )
+
+        self.add_layout(create_form_layout(config_lbl, config_widget))
+        self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
+        self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
+        self.add_layout(create_form_layout(profile_lbl, self.profile_combo))
         self.add_layout(plugin_wizard_page_layout)
         self.add_layout(plugin_token_replacer_layout)
         self.add_layout(pre_upload_processing_layout)
-        self.add_layout(self.create_form_layout(media_mode_lbl, self.media_mode_combo))
+        self.add_layout(create_form_layout(media_mode_lbl, self.media_mode_combo))
         self.add_widget(self.source_ext_filter)
         self.add_widget(self.encode_ext_filter)
-        self.add_layout(self.create_form_layout(dir_toggle_lbl, self.dir_toggle_btn))
+        self.add_layout(create_form_layout(dir_toggle_lbl, self.dir_toggle_btn))
         self.add_layout(
-            self.create_form_layout(releasers_name_lbl, self.releasers_name_entry)
+            create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
         self.add_layout(
-            self.create_form_layout(image_host_selection_lbl, self.image_host_selection)
+            create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
         )
+        self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
-            self.create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
+            create_form_layout(max_log_files_lbl, self.max_log_files_spinbox)
         )
-        self.add_layout(self.create_form_layout(log_level_lbl, self.log_level_combo))
-        self.add_layout(
-            self.create_form_layout(max_log_files_lbl, self.max_log_files_spinbox)
-        )
-        self.add_layout(self.create_form_layout(view_log_files_btn))
+        self.add_layout(create_form_layout(open_logs_lbl, log_btn_widget))
         self.add_layout(self.reset_layout)
 
         self._load_saved_settings()
@@ -224,7 +240,6 @@ class GeneralSettings(BaseSettings):
         )
         self.dir_toggle_btn.setChecked(payload.media_input_dir)
         self.releasers_name_entry.setText(payload.releasers_name)
-        self.image_host_selection.build_image_host_config_widgets()
         self.global_timeout_spinbox.setValue(payload.timeout)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
         self.max_log_files_spinbox.setValue(payload.log_total)
@@ -410,15 +425,6 @@ class GeneralSettings(BaseSettings):
         self.config.cfg_payload.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
-        self.config.cfg_payload.image_host = ImageHost(
-            self.image_host_selection.image_host_selector.currentData()
-        )
-        for image_host, payload_obj in self.image_host_selection.get_all_data():
-            cur_host = self.config.image_host_map[ImageHost(image_host)]
-            for field_info in fields(payload_obj):
-                field_name = field_info.name
-                field_value = getattr(payload_obj, field_name)
-                setattr(cur_host, field_name, field_value)
         self.config.cfg_payload.timeout = self.global_timeout_spinbox.value()
         self.config.cfg_payload.log_level = LogLevel(self.log_level_combo.currentData())
         LOG.set_log_level(self.config.cfg_payload.log_level)
@@ -441,7 +447,6 @@ class GeneralSettings(BaseSettings):
         )
         self.dir_toggle_btn.setChecked(False)
         self.releasers_name_entry.clear()
-        self.image_host_selection.reset()
         self.global_timeout_spinbox.setValue(60)
 
     @staticmethod

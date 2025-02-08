@@ -52,6 +52,7 @@ class Overview(BaseWizardPage):
         self.tracker_list_box.setFrameShape(QFrame.Shape.Box)
         self.tracker_list_box.setFrameShadow(QFrame.Shadow.Sunken)
         self.tracker_list_box.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.tracker_list_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         trackers_box = self.build_group_box("Tracker(s)", self.tracker_list_box)
 
         self.file_tree_view = FileSystemTreeView()
@@ -102,9 +103,19 @@ class Overview(BaseWizardPage):
         media_info_obj = payload.encode_file_mi_obj
         source_file_mi_obj = payload.source_file_mi_obj
 
-        self.tracker_list_box.addItems(
-            str(tracker) for tracker in self.config.shared_data.selected_trackers
-        )
+        # sort the trackers in the users desired order before displaying them
+        if self.config.shared_data.selected_trackers:
+            self.tracker_list_box.addItems(
+                [
+                    str(x)
+                    for x in sorted(
+                        self.config.shared_data.selected_trackers,
+                        key=lambda tracker: self.config.cfg_payload.tracker_order.index(
+                            tracker
+                        ),
+                    )
+                ]
+            )
 
         self.media_input_box.setText(str(media_in))
 
@@ -168,7 +179,10 @@ class Overview(BaseWizardPage):
                         media_info_obj=media_info_obj,
                         source_file_mi_obj=source_file_mi_obj,
                         releasers_name=self.config.cfg_payload.releasers_name,
-                        screen_shots=self.config.shared_data.url_data,
+                        dummy_screen_shots=True
+                        if self.config.shared_data.url_data
+                        or self.config.shared_data.loaded_images
+                        else False,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),

@@ -1,6 +1,7 @@
 import platform
 
 from src.version import program_name, __version__
+from src.enums.tracker_selection import TrackerSelection
 
 TRACKER_HEADERS = {
     "User-Agent": f"{program_name} v{__version__} ({platform.system()} {platform.release()})"
@@ -43,3 +44,42 @@ def tracker_string_replace_map() -> dict[str, str]:
             )
 
     return str_replace_map
+
+
+def _basic_bbcode_formatting(url: str, image_size: int) -> str:
+    return url.replace("[img]", f"[img={image_size}]")
+
+
+def _beyond_hd_formatting(url: str, image_size: int) -> str:
+    return url.replace("[img]", f"[img width={image_size}]")
+
+
+_TRACKER_MAP = {
+    TrackerSelection.MORE_THAN_TV: _basic_bbcode_formatting,
+    # TrackerSelection.TORRENT_LEECH: "", # doesn't support image resizing
+    TrackerSelection.BEYOND_HD: _beyond_hd_formatting,
+    # TrackerSelection.PASS_THE_POPCORN: "", # doesn't support image resizing
+    TrackerSelection.REELFLIX: _basic_bbcode_formatting,
+    TrackerSelection.AITHER: _basic_bbcode_formatting,
+}
+
+
+def format_image_tag(
+    tracker: TrackerSelection, url_str: str, image_size: int = 350
+) -> str:
+    """
+    Formats an image tag based on tracker-specific requirements.
+
+    Args:
+        tracker (TrackerSelection): The tracker that requires special formatting.
+        url_str (str): The input URL string containing an image tag.
+        image_size (int): Image size to set for the tags.
+
+    Returns:
+        str: The formatted URL string with the correct image tag size.
+    """
+    return (
+        _TRACKER_MAP[tracker](url_str, image_size)
+        if tracker in _TRACKER_MAP
+        else url_str
+    )

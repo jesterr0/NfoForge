@@ -53,7 +53,8 @@ class MainWindow(QMainWindow):
         GSigs().settings_clicked.connect(self._open_settings_window)
         GSigs().main_window_set_disabled.connect(self._toggle_state)
         GSigs().main_window_hide.connect(self.hide_window)
-        GSigs().main_window_open_log_dir.connect(self.open_logs)
+        GSigs().main_window_open_log_dir.connect(self.open_log_directory)
+        GSigs().main_window_open_log_file.connect(self.open_log)
 
         # wizard (main stacked widget)
         self.wizard = MainWindowWizard(self.config, self)
@@ -70,7 +71,7 @@ class MainWindow(QMainWindow):
 
         # key binds
         self.open_log_dir_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
-        self.open_log_dir_shortcut.activated.connect(self.open_logs)
+        self.open_log_dir_shortcut.activated.connect(self.open_log)
 
     @Slot()
     def _close_settings(self) -> None:
@@ -164,10 +165,15 @@ class MainWindow(QMainWindow):
         self.status_profile_label.setText(data)
 
     @Slot()
-    def open_logs(self) -> None:
+    def open_log(self) -> None:
         if LOG.log_file.exists():
             webbrowser.open(str(LOG.log_file))
         elif LOG.log_file.parent.exists():
+            webbrowser.open(str(LOG.log_file.parent))
+
+    @Slot()
+    def open_log_directory(self) -> None:
+        if LOG.log_file.parent.exists():
             webbrowser.open(str(LOG.log_file.parent))
 
     @Slot(object)
