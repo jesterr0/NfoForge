@@ -68,3 +68,7 @@ class MediaSearchError(NfoForgeError):
 
 class ImageHostError(NfoForgeError):
     """Custom exception for image host related errors"""
+
+
+class URLFormattingError(NfoForgeError):
+    """Custom exception for URL formatting related errors"""
