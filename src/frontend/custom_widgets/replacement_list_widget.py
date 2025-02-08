@@ -76,7 +76,8 @@ class ReplacementListWidget(QTableWidget):
             self.removeRow(current_row)
             self.rows_changed.emit(self.get_replacements())
             if (
-                current_row == 0
+                (self.rowCount() <= 0)
+                and current_row == 0
                 and QMessageBox.question(
                     self,
                     "Defaults",
@@ -184,7 +185,8 @@ class ReplacementListWidget(QTableWidget):
             with_text = self.item(row, 1).text()
 
             if replace_text or with_text:
-                replacements.append((replace_text, with_text))
+                # we need to use raw text here since we're messing with regex
+                replacements.append((rf"{replace_text}", rf"{with_text}"))
         return replacements
 
 
