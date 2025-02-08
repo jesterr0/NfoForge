@@ -7,7 +7,8 @@ class URLType(CaseInsensitiveEnum):
     HTML = auto_enum()
 
     def __str__(self) -> str:
-        if self == URLType.HTML:
-            return "HTML"
-        elif self == URLType.BBCODE:
-            return "BBCode"
+        str_map = {
+            URLType.HTML: "HTML",
+            URLType.BBCODE: "BBCode",
+        }
+        return str_map[self]
