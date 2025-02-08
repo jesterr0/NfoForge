@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trackers are now displayed in the order the user sets as the priority in the overview page.
 - Can no longer manually type the hex color code for subtitle color, you must use the new subtitle picker now.
 - Prevent errors when launching the program with _.TOML from the command line for --config _.TOML.
+- **movie_clean_token** has some new default rules to handle comma/dash
 
 ### Fixed
 
@@ -55,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ImageBox returning improperly ordered images.
 - ImageBox not returning all images after uploading.
 - Capitalization of warning prompt in Template settings.
+- **movie_clean_token** rules was not updating for the programs new defaults upon loading.
+- **movie_clean_token** UI widget had a bug when selecting/deleting the top most item would result in a prompt
+  to ask the user if they'd like to reset to default over and over again.
 
 ### Removed
 
