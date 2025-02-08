@@ -3,7 +3,8 @@ import shutil
 from pathlib import Path
 from pymediainfo import MediaInfo
 from typing import Tuple, Union
-from src.exceptions import MediaFrameCountError
+from src.enums.url_type import URLType
+from src.exceptions import MediaFrameCountError, URLFormattingError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import CropValues, ImageUploadData
 
@@ -230,3 +231,64 @@ def extract_images_from_str(
             img_url_data_objs.append(ImageUploadData(url=single_img, medium_url=None))
 
     return linked_images, standalone_images, img_url_data_objs
+
+
+def format_image_data_to_str(
+    data: dict[int, ImageUploadData],
+    url_type: URLType,
+    columns: int,
+    column_space: int,
+    row_space: int,
+    strict: bool = False,
+) -> str:
+    """
+    Formats a dictionary of image upload data into a structured string using BBCode or HTML.
+
+    If both `url` and `medium_url` are available, the image is wrapped in a clickable link.
+    Otherwise, only the available URL is used.
+
+    Args:
+        data (dict[int, ImageUploadData]): Dictionary mapping indices to ImageUploadData objects.
+        url_type (URLType): The format type (BBCode or HTML).
+        columns (int): Number of images per row.
+        column_space (int): Number of spaces between columns.
+        row_space (int): Number of newlines between rows.
+        strict (bool): Throws an error if no URL data when set to True.
+
+    Returns:
+        str: The formatted string containing the images in the requested format.
+
+    Raises:
+        AttributeError: If no valid URLs are found.
+    """
+    urls = []
+
+    for item in data.values():
+        if item.url and item.medium_url:
+            # use full URL as image, wrapped in link
+            if url_type == URLType.BBCODE:
+                urls.append(f"[url={item.url}][img]{item.medium_url}[/img][/url]")
+            elif url_type == URLType.HTML:
+                urls.append(f'<a href="{item.url}"><img src="{item.medium_url}"></a>')
+        else:
+            # use short URL alone
+            if url_type == URLType.BBCODE:
+                urls.append(f"[img]{item.url}[/img]")
+            elif url_type == URLType.HTML:
+                urls.append(f'<img src="{item.url}">')
+
+    if not urls:
+        if strict:
+            raise URLFormattingError("Invalid URL data")
+        return ""
+
+    column_spacing = " " * column_space
+    row_spacing = "\n" * (row_space + 1)
+
+    formatted_rows = []
+    for i in range(0, len(urls), columns):
+        row = column_spacing.join(urls[i : i + columns])
+        formatted_rows.append(row)
+
+    formatted_text = row_spacing.join(formatted_rows)
+    return formatted_text
