@@ -515,7 +515,7 @@ class RFTrackerEdit(TrackerEditBase):
 
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
-        self.image_width.setRange(100, 2000)
+        self.image_width.setRange(300, 2000)
         self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
 
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
@@ -632,7 +632,7 @@ class AitherTrackerEdit(TrackerEditBase):
 
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
-        self.image_width.setRange(100, 2000)
+        self.image_width.setRange(300, 2000)
         self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
 
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
