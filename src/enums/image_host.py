@@ -8,6 +8,18 @@ class ImageHost(CaseInsensitiveEnum):
     IMAGE_BOX = "ImageBox"
     IMAGE_BB = "ImageBB"
 
+    # used outside of the UI
+    DISABLED = "Disabled"
+
+    @override
+    def __str__(self) -> str:
+        return self.value
+
+
+class ImageSource(CaseInsensitiveEnum):
+    IMAGES = "IMGs"
+    URLS = "URLs"
+
     @override
     def __str__(self) -> str:
         return self.value
