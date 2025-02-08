@@ -1,5 +1,5 @@
-from enum import auto as auto_enum
-from enum import Enum
+from enum import Enum, auto as auto_enum
+from typing_extensions import override
 
 
 class TypeHierarchy(Enum):
@@ -8,6 +8,7 @@ class TypeHierarchy(Enum):
     LOCALIZATION = auto_enum()
     RE_RELEASE = auto_enum()
 
+    @override
     def __str__(self) -> str:
         str_map = {
             TypeHierarchy.EXTRAS: "Extras",

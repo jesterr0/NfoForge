@@ -1,4 +1,5 @@
 from enum import auto as auto_enum
+from typing_extensions import override
 from src.enums import CaseInsensitiveEnum
 
 
@@ -13,6 +14,7 @@ class ScreenShotMode(CaseInsensitiveEnum):
     SIMPLE_SS_COMP = auto_enum()
     ADV_SS_COMP = auto_enum()
 
+    @override
     def __str__(self) -> str:
         enum_map = {
             ScreenShotMode.BASIC_SS_GEN: "Basic Generation",
