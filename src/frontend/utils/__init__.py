@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QLayout,
     QFrame,
     QStackedWidget,
+    QFormLayout,
 )
 from PySide6.QtGui import QIcon, QCursor
 from PySide6.QtCore import Qt, QSize, Slot
@@ -164,6 +165,19 @@ def build_h_line(values: tuple[int, int, int, int]) -> QFrame:
     return h_line
 
 
+def build_v_line(values: tuple[int, int, int, int]) -> QFrame:
+    """
+    Accepts a tuple of int to control the margins.
+
+    (left, top, right, bottom)
+    """
+    h_line = QFrame()
+    h_line.setFrameShape(QFrame.Shape.VLine)
+    h_line.setFrameShadow(QFrame.Shadow.Sunken)
+    h_line.setContentsMargins(*values)
+    return h_line
+
+
 def recursively_clear_layout(layout: QLayout) -> None:
     """Recursively clears layouts and deletes widgets as needed"""
     while layout.count():
@@ -182,3 +196,18 @@ def clear_stacked_widget(stacked_widget: QStackedWidget) -> None:
         widget = stacked_widget.widget(0)
         stacked_widget.removeWidget(widget)
         widget.deleteLater()
+
+
+def create_form_layout(
+    widget1: QWidget,
+    widget2: QWidget | None = None,
+    margins: tuple[int, int, int, int] | None = None,
+):
+    """margins (tuple[int, int, int, int] | None, optional): Left, top, right, bottom"""
+    form_layout = QFormLayout()
+    if margins:
+        form_layout.setContentsMargins(*margins)
+    form_layout.addWidget(widget1)
+    if widget2:
+        form_layout.addWidget(widget2)
+    return form_layout
