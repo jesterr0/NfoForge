@@ -347,7 +347,10 @@ class TemplateSelector(QWidget):
                     media_info_obj=self.config.media_input_payload.encode_file_mi_obj,
                     source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
                     releasers_name=self.config.cfg_payload.releasers_name,
-                    screen_shots=self.config.shared_data.url_data,
+                    dummy_screen_shots=True
+                    if self.config.shared_data.url_data
+                    or self.config.shared_data.loaded_images
+                    else False,
                     edition_override=self.config.shared_data.dynamic_data.get(
                         "edition_override"
                     ),

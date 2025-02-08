@@ -5,14 +5,15 @@ from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
 from pymediainfo import MediaInfo
-from torf import Torrent
-
 from PySide6.QtCore import SignalInstance
+from torf import Torrent
+from typing import Any, Sequence
 
 from src.config.config import Config
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.media_mode import MediaMode
+from src.exceptions import ImageHostError
 from src.backend.trackers import (
     MTVSearch,
     mtv_uploader,
@@ -29,11 +30,26 @@ from src.backend.trackers import (
 )
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.torrents import generate_torrent, write_torrent, clone_torrent
+from src.backend.trackers.utils import format_image_tag
 from src.backend.token_replacer import TokenReplacer, ColonReplace, UnfilledTokenRemoval
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
 from src.backend.torrent_clients.transmission import TransmissionClient
+from src.backend.image_host_uploading.img_downloader import ImageDownloader
+from src.backend.image_host_uploading.img_uploader import ImageUploader
+from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
+from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
+from src.backend.image_host_uploading.img_box import ImageBoxUploader
+from src.backend.image_host_uploading.imgbb import ImageBBUploader
+from src.backend.utils.images import format_image_data_to_str
+from src.packages.custom_types import (
+    ImageUploadData,
+    ImageUploadFromTo,
+    ImageHost,
+    ImageSource,
+)
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -46,7 +62,7 @@ class ProcessBackEnd:
         self.template_selector_be.load_templates()
 
         # callables for progress
-        self.torrent_gen_progress: Callable[[float], None] = None
+        self.progress_bar_cb: Callable[[float], None] = None
 
         # clients
         self.qbit_client: QBittorrentClient = None
@@ -59,14 +75,14 @@ class ProcessBackEnd:
     async def dupe_checks(
         self,
         file_input: Path,
-        process_dict: dict[str, Path],
+        processing_queue: list[str],
         queued_text_update: Callable[[str], None],
         media_search_payload: MediaSearchPayload,
     ) -> dict[str, Path]:
         queued_text_update("Checking for dupes")
 
         tasks = []
-        for tracker_name in process_dict.keys():
+        for tracker_name in processing_queue:
             if TrackerSelection(tracker_name) == TrackerSelection.MORE_THAN_TV:
                 tasks.append(
                     self._dupe_mtv(
@@ -190,11 +206,11 @@ class ProcessBackEnd:
         media_input: Path,
         jinja_engine: Jinja2TemplateEngine,
         source_file: Path | None,
-        process_dict: dict[str, Path],
+        process_dict: dict[str, Any],
         queued_status_update: Callable[[str, str], None],
         queued_text_update: Callable[[str], None],
         queued_text_update_replace_last_line: Callable[[str], None],
-        torrent_gen_progress: Callable[[float], None],
+        progress_bar_cb: Callable[[float], None],
         caught_error: SignalInstance,
         mediainfo_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
@@ -202,9 +218,13 @@ class ProcessBackEnd:
         media_search_payload: MediaSearchPayload,
         colon_replacement: ColonReplace,
         releasers_name: str,
-        screen_shots: str | None,
     ) -> None:
-        self.torrent_gen_progress = torrent_gen_progress
+        # handle image uploading
+        images = self.handle_images_for_trackers(
+            media_input, process_dict, queued_text_update, progress_bar_cb
+        )
+
+        self.progress_bar_cb = progress_bar_cb
         base_torrent_file: Path | None = None
 
         # determine maximum piece size for the current tracker(s)
@@ -213,11 +233,16 @@ class ProcessBackEnd:
             queued_text_update(f"Detected maximum piece size: {max_piece_size} (bytes)")
 
         # process
-        for idx, (tracker_name, torrent_path) in enumerate(process_dict.items()):
+        for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
             queued_status_update(tracker_name, "Processing")
             queued_text_update(f"\nStarting work for '{tracker_name}':")
 
-            tracker_info = self.config.tracker_map[TrackerSelection(tracker_name)]
+            # get tracker object and tracker info
+            cur_tracker = TrackerSelection(tracker_name)
+            tracker_info = self.config.tracker_map[cur_tracker]
+
+            # torrent path
+            torrent_path: Path = path_data["path"]
 
             # torrent file
             if idx == 0:
@@ -246,6 +271,21 @@ class ProcessBackEnd:
                     name=tracker_info.nfo_template
                 )
                 if nfo_template:
+                    # convert images for the NFO
+                    tracker_images = images[cur_tracker]
+                    format_images_to_str = format_image_data_to_str(
+                        tracker_images,
+                        tracker_info.url_type,
+                        tracker_info.column_s,
+                        tracker_info.column_space,
+                        tracker_info.row_space,
+                    )
+                    update_tracker_img_tags = format_image_tag(
+                        cur_tracker,
+                        format_images_to_str,
+                        getattr(tracker_info, "image_width", 350),
+                    )
+
                     nfo = TokenReplacer(
                         media_input=media_input,
                         jinja_engine=jinja_engine,
@@ -257,7 +297,7 @@ class ProcessBackEnd:
                         media_info_obj=mediainfo_obj,
                         unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                         releasers_name=releasers_name,
-                        screen_shots=screen_shots,
+                        screen_shots=update_tracker_img_tags,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),
@@ -275,7 +315,7 @@ class ProcessBackEnd:
                         replace_tokens = nfo_plugin(
                             config=self.config,
                             input_str=nfo,
-                            tracker_s=(TrackerSelection(tracker_name),),
+                            tracker_s=(cur_tracker,),
                         )
                         nfo = replace_tokens if replace_tokens else nfo
 
@@ -296,7 +336,7 @@ class ProcessBackEnd:
                 if get_pre_upload_plugin and callable(get_pre_upload_plugin):
                     pre_upload_processing = get_pre_upload_plugin(
                         config=self.config,
-                        tracker=TrackerSelection(tracker_name),
+                        tracker=cur_tracker,
                         torrent_file=torrent_path,
                         media_file=media_input,
                         mi_obj=mediainfo_obj,
@@ -360,6 +400,281 @@ class ProcessBackEnd:
 
         # disconnect from clients and reset related variables after use
         self.disconnect_from_clients()
+
+    def handle_images_for_trackers(
+        self,
+        media_input: Path,
+        process_dict: dict[str, Any],
+        queued_text_update: Callable[[str], None],
+        progress_bar_cb: Callable[[float], None],
+    ) -> dict[TrackerSelection, dict[int, ImageUploadData]]:
+        """
+        Handles the uploading of images for various trackers based on the provided process dictionary.
+
+        This function determines the image sources and destinations, downloads images if necessary,
+        and uploads them to the specified image hosts.
+
+        Args:
+            media_input (Path): The path to the media file associated with the images.
+            process_dict (dict[str, Any]): A dictionary containing tracker-specific data,
+                including image hosting information.
+            queued_text_update (Callable[[str], None]): A callback function to update the UI
+                or log messages related to the upload process.
+            progress_bar_cb (Callable[[float], None]): A callback function to track
+                the progress of the torrent generation.
+
+        Returns:
+            dict[TrackerSelection, dict[int, ImageUploadData]]: A dictionary mapping trackers to their
+            corresponding uploaded image data.
+        """
+        to_image_hosts: set[ImageHost] = set()
+        to_url = False
+        tracker_to_host_map = {}
+        img_from = None
+        files_to_upload = None
+
+        url_data = {}
+
+        # build tracker_to_host_map and determine where the images are from/to
+        for tracker, data in process_dict.items():
+            image_host_data = data["image_host_data"]
+
+            if isinstance(image_host_data, ImageUploadFromTo):
+                if not img_from:
+                    img_from = image_host_data.img_from
+                img_to = image_host_data.img_to
+
+                # track the image host to be used for each tracker
+                if isinstance(img_to, ImageHost) and img_to is not ImageHost.DISABLED:
+                    to_image_hosts.add(img_to)
+                elif not to_url and img_to is ImageSource.URLS:
+                    to_url = True
+
+                tracker_to_host_map[TrackerSelection(tracker)] = img_to
+
+        # handle image host uploads
+        if to_image_hosts:
+            if img_from is ImageSource.URLS:
+                queued_text_update(
+                    f"\nAttempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)"
+                )
+
+                img_output_path = (
+                    media_input.parent / f"{media_input.stem}_nf" / "dl_imgs"
+                )
+                img_downloader = ImageDownloader(
+                    self.config.shared_data.url_data,
+                    img_output_path,
+                    progress_bar_cb,
+                )
+                files_to_upload = img_downloader.download_images()
+
+                queued_text_update(
+                    f"Successfully downloaded {len(files_to_upload)} user-provided URL(s)"
+                )
+            else:
+                files_to_upload = self.config.shared_data.loaded_images
+
+            if files_to_upload:
+                queued_text_update(
+                    f"\nUploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)"
+                )
+                async_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(async_loop)
+                upload_results: dict[ImageHost, dict[int, ImageUploadData]] = (
+                    async_loop.run_until_complete(
+                        self.handle_image_upload(
+                            to_image_hosts, files_to_upload, progress_bar_cb
+                        )
+                    )
+                )
+                async_loop.close()
+
+                # map the uploaded image hosts to the appropriate trackers
+                for tracker, img_host in tracker_to_host_map.items():
+                    if img_host in upload_results:
+                        url_data[tracker] = upload_results[img_host]
+
+        # using URLs as is
+        if to_url:
+            url_host_count = 0
+            for tracker, img_host in tracker_to_host_map.items():
+                if img_host is ImageSource.URLS:
+                    url_data[tracker] = {
+                        i: img_data
+                        for i, img_data in enumerate(self.config.shared_data.url_data)
+                    }
+                    url_host_count += 1
+
+            queued_text_update(
+                f"\nUsing {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)"
+            )
+
+        return url_data
+
+    async def handle_image_upload(
+        self,
+        to_image_hosts: set[ImageHost],
+        filepaths: Sequence[Path],
+        progress_bar_cb: Callable[[float], None],
+    ) -> dict[ImageHost, dict[int, ImageUploadData]]:
+        """
+        Handles the image upload process to multiple image hosts asynchronously.
+
+        Args:
+            to_image_hosts (set[ImageHost]): The set of image hosts to upload to.
+            filepaths (Sequence[Path]): The file paths of the images to be uploaded.
+            progress_bar_cb (Callable[[float], None]): Callback function to track upload progress.
+
+        Returns:
+            dict[ImageHost, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
+        """
+
+        def progress_callback(_job: str, _ind: float, overall: float):
+            progress_bar_cb(overall)
+
+        image_uploader = ImageUploader(progress_signal=progress_callback)
+
+        jobs = {}
+        host_to_job = {}
+
+        # register image hosts and their corresponding uploaders
+        self._register_image_hosts(
+            to_image_hosts, filepaths, image_uploader, jobs, host_to_job
+        )
+
+        # start all jobs and wait for results
+        results = await image_uploader.start_jobs()
+
+        # map uploaded URLs back to each tracker
+        uploaded_urls = self._map_uploaded_urls(host_to_job, results)
+
+        return uploaded_urls
+
+    def _register_image_hosts(
+        self,
+        to_image_hosts: set[ImageHost],
+        filepaths: Sequence[Path],
+        image_uploader: ImageUploader,
+        jobs: dict,
+        host_to_job: dict,
+    ) -> None:
+        """
+        Registers image hosts and associates them with upload jobs.
+
+        Args:
+            to_image_hosts (set[ImageHost]): The set of image hosts to register.
+            filepaths (Sequence[Path]): The file paths of images to be uploaded.
+            image_uploader (ImageUploader): The image uploader instance.
+            jobs (dict): Dictionary mapping job IDs to image hosts.
+            host_to_job (dict): Dictionary mapping image hosts to job IDs.
+        """
+        for img_host in to_image_hosts:
+            if img_host in host_to_job:
+                continue
+
+            uploader = self._get_uploader_for_host(img_host)
+            image_uploader.register_uploader(str(img_host), uploader)
+
+            job_id = image_uploader.add_job(str(img_host), filepaths)
+            jobs[job_id] = img_host
+            host_to_job[img_host] = job_id
+
+    def _get_uploader_for_host(self, img_host: ImageHost) -> BaseImageHostUploader:
+        """
+        Retrieves the appropriate uploader instance for a given image host.
+
+        Args:
+            img_host (ImageHost): The image host.
+
+        Returns:
+            BaseImageHostUploader: The corresponding uploader instance.
+
+        Raises:
+            ImageHostError: If the image host is unsupported.
+        """
+        if img_host is ImageHost.CHEVERETO_V4:
+            return self._create_chevereto_v4_uploader()
+        elif img_host is ImageHost.CHEVERETO_V3:
+            return self._create_chevereto_v3_uploader()
+        elif img_host is ImageHost.IMAGE_BOX:
+            return ImageBoxUploader()
+        elif img_host is ImageHost.IMAGE_BB:
+            return self._create_imgbb_uploader()
+        else:
+            raise ImageHostError(f"Unsupported image host: {img_host}")
+
+    def _create_chevereto_v4_uploader(self) -> CheveretoV4Uploader:
+        """
+        Creates an uploader instance for Chevereto V4.
+
+        Returns:
+            CheveretoV4Uploader: The uploader instance.
+
+        Raises:
+            ImageHostError: If required credentials are missing.
+        """
+        chv4_payload = self.config.cfg_payload.chevereto_v4
+        if not chv4_payload.api_key or not chv4_payload.base_url:
+            raise ImageHostError("Missing 'API Key' or 'Base URL' for CheveretoV4.")
+        return CheveretoV4Uploader(
+            api_key=chv4_payload.api_key, url=chv4_payload.base_url
+        )
+
+    def _create_chevereto_v3_uploader(self) -> CheveretoV3Uploader:
+        """
+        Creates an uploader instance for Chevereto V3.
+
+        Returns:
+            CheveretoV3Uploader: The uploader instance.
+
+        Raises:
+            ImageHostError: If required credentials are missing.
+        """
+        chv3_payload = self.config.cfg_payload.chevereto_v3
+        if (
+            not chv3_payload.base_url
+            or not chv3_payload.user
+            or not chv3_payload.password
+        ):
+            raise ImageHostError("Missing credentials for CheveretoV3.")
+        return CheveretoV3Uploader(
+            base_url=chv3_payload.base_url,
+            user=chv3_payload.user,
+            password=chv3_payload.password,
+        )
+
+    def _create_imgbb_uploader(self) -> ImageBBUploader:
+        """
+        Creates an uploader instance for ImageBB.
+
+        Returns:
+            ImageBBUploader: The uploader instance.
+
+        Raises:
+            ImageHostError: If required credentials are missing.
+        """
+        imgbb_payload = self.config.cfg_payload.image_bb
+        if not imgbb_payload.api_key or not imgbb_payload.base_url:
+            raise ImageHostError("Missing 'API Key' or 'Base URL' for ImageBB.")
+        return ImageBBUploader(
+            api_key=imgbb_payload.api_key, url=imgbb_payload.base_url
+        )
+
+    def _map_uploaded_urls(
+        self, host_to_job: dict, results: dict[str, dict[int, ImageUploadData]]
+    ) -> dict[ImageHost, dict[int, ImageUploadData]]:
+        """
+        Maps uploaded URLs to their respective image hosts.
+
+        Args:
+            host_to_job (dict): Mapping of image hosts to job IDs.
+            results (dict[str, dict[int, ImageUploadData]]): The upload results.
+
+        Returns:
+            dict[ImageHost, dict[int, ImageUploadData]]: The mapped results.
+        """
+        return {tracker: results[job_id] for tracker, job_id in host_to_job.items()}
 
     def determine_max_piece_size(self, process_dict: dict[str, Path]) -> int | None:
         """
@@ -507,8 +822,8 @@ class ProcessBackEnd:
         pieces_done: int,
         pieces_total: int,
     ) -> None:
-        if self.torrent_gen_progress:
-            self.torrent_gen_progress(round(pieces_done / pieces_total * 100, 2))
+        if self.progress_bar_cb:
+            self.progress_bar_cb(round(pieces_done / pieces_total * 100, 2))
 
     def _handle_injection(
         self,

@@ -93,7 +93,7 @@ class NfoForge:
 
         # setup loader
         self.splash_screen_loader = SplashScreenLoader(
-            self.config, self.splash_screen.update_message_box
+            self.config, self.splash_screen.update_message_box, parent=self.app
         )
         self.splash_screen_loader.error_message.connect(self._error_on_splash)
         self.splash_screen_loader.success.connect(self._load_main_window)
@@ -171,7 +171,7 @@ def arg_parse() -> tuple[str | None, str | None]:
         )
     elif length == 3 and args[1] in ("--config", "-c", "config", "c"):
         config_arg = args[2]
-        if config_arg.endswith(".toml"):
+        if config_arg.lower().endswith(".toml"):
             config_arg = config_arg[:-5]
     return config_arg, message_arg
 

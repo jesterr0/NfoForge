@@ -1,9 +1,10 @@
 import re
 import asyncio
 import traceback
-from typing import TYPE_CHECKING, Optional
-from pathlib import Path
 
+from dataclasses import fields
+from typing import TYPE_CHECKING, Any
+from pathlib import Path
 from pymediainfo import MediaInfo
 from PySide6.QtCore import QObject, Slot, QThread, Signal
 from PySide6.QtGui import QTextCursor, Qt
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from src.config.config import Config
 from src.backend.process import ProcessBackEnd
+from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
 from src.enums.media_mode import MediaMode
@@ -24,8 +26,9 @@ from src.enums.token_replacer import ColonReplace
 from src.exceptions import ProcessError
 from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
-from src.frontend.custom_widgets.sortable_qtreewidget import SortableQTreeWidget
+from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.packages.custom_types import ImageUploadFromTo
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.media_search import MediaSearchPayload
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -61,7 +64,7 @@ class DupeWorker(BaseWorker):
         self,
         backend: ProcessBackEnd,
         file_input: Path,
-        processing_queue: dict[str, Path],
+        processing_queue: list[str],
         media_search_payload: MediaSearchPayload,
         parent: QObject | None = None,
     ) -> None:
@@ -72,11 +75,13 @@ class DupeWorker(BaseWorker):
         self.media_search_payload = media_search_payload
 
     def run(self) -> None:
+        async_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(async_loop)
         try:
-            dupes = asyncio.run(
+            dupes = async_loop.run_until_complete(
                 self.backend.dupe_checks(
                     file_input=self.file_input,
-                    process_dict=self.processing_queue,
+                    processing_queue=self.processing_queue,
                     queued_text_update=self._queued_text_update_cb,
                     media_search_payload=self.media_search_payload,
                 )
@@ -84,11 +89,13 @@ class DupeWorker(BaseWorker):
             self.dupes_found.emit(dupes)
         except Exception as e:
             self.job_failed.emit(str(e), traceback.format_exc())
+        finally:
+            async_loop.close()
 
 
 class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
-    torrent_gen_progress = Signal(int)
+    progress_signal = Signal(int)
 
     def __init__(
         self,
@@ -96,14 +103,13 @@ class ProcessWorker(BaseWorker):
         media_input: Path,
         jinja_engine: Jinja2TemplateEngine,
         source_file: Path | None,
-        processing_queue: dict[str, Path],
+        tracker_data: dict[str, Any],
         mediainfo_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
         colon_replacement: ColonReplace,
         releasers_name: str,
-        screen_shots: str | None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -111,14 +117,13 @@ class ProcessWorker(BaseWorker):
         self.media_input = media_input
         self.jinja_engine = jinja_engine
         self.source_file = source_file
-        self.processing_queue = processing_queue
+        self.tracker_data = tracker_data
         self.mediainfo_obj = mediainfo_obj
         self.source_file_mi_obj = source_file_mi_obj
         self.media_mode = media_mode
         self.media_search_payload = media_search_payload
         self.colon_replacement = colon_replacement
         self.releasers_name = releasers_name
-        self.screen_shots = screen_shots
 
     def run(self) -> None:
         try:
@@ -126,11 +131,11 @@ class ProcessWorker(BaseWorker):
                 media_input=self.media_input,
                 jinja_engine=self.jinja_engine,
                 source_file=self.source_file,
-                process_dict=self.processing_queue,
+                process_dict=self.tracker_data,
                 queued_status_update=self._queued_status_update_cb,
                 queued_text_update=self._queued_text_update_cb,
                 queued_text_update_replace_last_line=self._queued_text_update_replace_last_line_cb,
-                torrent_gen_progress=self._torrent_gen_progress_cb,
+                progress_bar_cb=self._progress_cb,
                 caught_error=self.caught_error,
                 mediainfo_obj=self.mediainfo_obj,
                 source_file_mi_obj=self.source_file_mi_obj,
@@ -138,7 +143,6 @@ class ProcessWorker(BaseWorker):
                 media_search_payload=self.media_search_payload,
                 colon_replacement=self.colon_replacement,
                 releasers_name=self.releasers_name,
-                screen_shots=self.screen_shots,
             )
             self.job_finished.emit()
         except Exception as e:
@@ -150,9 +154,9 @@ class ProcessWorker(BaseWorker):
         if tracker and status:
             self.queued_status_update.emit(tracker, status)
 
-    def _torrent_gen_progress_cb(self, progress: float) -> None:
+    def _progress_cb(self, progress: float) -> None:
         if progress:
-            self.torrent_gen_progress.emit(progress)
+            self.progress_signal.emit(progress)
 
 
 class ProcessPage(BaseWizardPage):
@@ -171,10 +175,13 @@ class ProcessPage(BaseWizardPage):
         self.dupe_worker: DupeWorker | None = None
         self.process_worker: ProcessWorker | None = None
 
-        self.tree_widget = SortableQTreeWidget(
-            headers=("Tracker", "Status"), parent=self
+        self.tracker_process_tree = ComboBoxTreeWidget(
+            headers=("Tracker", "Image Host", "Status"), parent=self
         )
-        self.tree_widget.items_re_arranged.connect(self._adjust_tracker_order)
+        self.tracker_process_tree.setSelectionMode(
+            self.tracker_process_tree.SelectionMode.NoSelection
+        )
+        self.tracker_process_tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         text_widget_label = QLabel("Log", self)
         self.text_widget = CodeEditor(
@@ -187,9 +194,9 @@ class ProcessPage(BaseWizardPage):
         self.progress_bar.hide()
 
         main_layout = QVBoxLayout(self)
-        main_layout.addWidget(self.tree_widget, stretch=2)
+        main_layout.addWidget(self.tracker_process_tree, stretch=3)
         main_layout.addWidget(text_widget_label, alignment=Qt.AlignmentFlag.AlignBottom)
-        main_layout.addWidget(self.text_widget, stretch=7)
+        main_layout.addWidget(self.text_widget, stretch=5)
         main_layout.addWidget(self.progress_bar, stretch=1)
         self.setLayout(main_layout)
 
@@ -212,18 +219,19 @@ class ProcessPage(BaseWizardPage):
         # get paths and other things from the media input payload
         torrent_dir, detected_input, mediainfo_obj = self._handle_files()
 
-        # get tracker paths and check for existing torrent files
-        tracker_paths = self._handle_tracker_paths(torrent_dir, detected_input)
-        if not tracker_paths:
-            raise AttributeError("Could not determine tracker paths")
+        # get tracker data and check for existing torrent files
+        tracker_data = self._gather_tracker_data(torrent_dir, detected_input)
+        if not tracker_data:
+            raise AttributeError("Could not determine tracker data")
 
         GSigs().main_window_set_disabled.emit(True)
         if self.processing_mode == UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
                 backend=self.backend,
                 file_input=detected_input,
-                processing_queue=tracker_paths,
+                processing_queue=list(tracker_data.keys()),
                 media_search_payload=self.config.media_search_payload,
+                parent=self,
             )
             self.dupe_worker.dupes_found.connect(self._on_dupes_found)
             self.dupe_worker.job_failed.connect(self._on_failed)
@@ -239,21 +247,19 @@ class ProcessPage(BaseWizardPage):
                 media_input=detected_input,
                 jinja_engine=self.config.jinja_engine,
                 source_file=self.config.media_input_payload.source_file,
-                processing_queue=tracker_paths,
+                tracker_data=tracker_data,
                 mediainfo_obj=mediainfo_obj,
                 source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
                 media_mode=self.config.cfg_payload.media_mode,
                 media_search_payload=self.config.media_search_payload,
                 colon_replacement=self.config.cfg_payload.mvr_colon_replacement,
                 releasers_name=self.config.cfg_payload.releasers_name,
-                screen_shots=self.config.shared_data.url_data,
+                parent=self,
             )
             self.process_worker.caught_error.connect(self._log_caught_error)
             self.process_worker.job_finished.connect(self._on_finished)
             self.process_worker.queued_status_update.connect(self._on_status_update)
-            self.process_worker.torrent_gen_progress.connect(
-                self._on_torrent_gen_progress_update
-            )
+            self.process_worker.progress_signal.connect(self._on_progress_update)
             self.process_worker.job_failed.connect(self._on_failed)
             self.process_worker.queued_text_update.connect(self._on_text_update)
             self.process_worker.queued_text_update_replace_last_line.connect(
@@ -284,7 +290,6 @@ class ProcessPage(BaseWizardPage):
         self._job_ended()
         GSigs().wizard_process_btn_set_hidden.emit()
 
-    # TODO: will we reset everything or start over?
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
@@ -299,7 +304,7 @@ class ProcessPage(BaseWizardPage):
     @Slot(str, str)
     def _on_status_update(self, index: str, txt: str) -> None:
         """Used to update the `QLabel` associated with the tracker."""
-        self.tree_widget.update_value(index, 1, txt)
+        self.tracker_process_tree.update_value(index, 2, txt)
 
     @Slot(str)
     def _on_text_update(self, txt: str) -> None:
@@ -325,7 +330,7 @@ class ProcessPage(BaseWizardPage):
         LOG.critical(LOG.LOG_SOURCE.BE, txt)
 
     @Slot(float)
-    def _on_torrent_gen_progress_update(self, progress: float) -> None:
+    def _on_progress_update(self, progress: float) -> None:
         if progress:
             if not self.progress_bar.isVisible():
                 self.progress_bar.show()
@@ -334,24 +339,64 @@ class ProcessPage(BaseWizardPage):
                 self.progress_bar.reset()
                 self.progress_bar.hide()
 
-    @Slot(list)
-    def _adjust_tracker_order(self, data: list) -> None:
-        if data:
-            self.config.order_tracker_map(
-                [TrackerSelection(t).value for (t, _) in data]
-            )
-            self.save_config = True
-
     def add_tracker_items(self) -> None:
+        # sort the trackers in the users desired order before displaying them
         if self.config.shared_data.selected_trackers:
-            self.tree_widget.add_rows(
-                [
-                    (str(item), "Queued")
-                    for item in self.config.shared_data.selected_trackers
-                ]
-            )
+            upload_type = ImageSource.IMAGES
+            enabled_img_hosts = {ImageHost.DISABLED: False}
 
-    def get_inputs(self) -> tuple[Path, Optional[Path] | None, MediaInfo]:
+            # if url data is detected add that to the potential options
+            if self.config.shared_data.url_data:
+                upload_type = ImageSource.URLS
+                enabled_img_hosts = enabled_img_hosts | {
+                    upload_type: self.config.shared_data.url_data
+                }
+
+            # we'll filter all image hosts that are enabled and have all required values filled
+            enabled_img_hosts = enabled_img_hosts | {
+                key: value
+                for key, value in self.config.image_host_map.items()
+                if value.enabled
+                and all(
+                    getattr(value, field.name)
+                    for field in fields(value)
+                    if field.name != "enabled"
+                )
+            }
+
+            # TODO: load/save last used for tracker and set it in these loops somewhere
+
+            ordered_trackers = [
+                x
+                for x in sorted(
+                    self.config.shared_data.selected_trackers,
+                    key=lambda tracker: self.config.cfg_payload.tracker_order.index(
+                        tracker
+                    ),
+                )
+            ]
+
+            for tracker in ordered_trackers:
+                self.tracker_process_tree.add_row(
+                    headers=(str(tracker), "", "Queued"),
+                    combo_data=[
+                        (
+                            1,
+                            [
+                                (
+                                    f"{upload_type} ➔ {img_host}"
+                                    if img_host
+                                    not in {ImageHost.DISABLED, ImageSource.URLS}
+                                    else str(img_host),
+                                    ImageUploadFromTo(upload_type, img_host),
+                                )
+                                for img_host in enabled_img_hosts.keys()
+                            ],
+                        )
+                    ],
+                )
+
+    def get_inputs(self) -> tuple[Path, Path | None, MediaInfo]:
         payload = self.config.media_input_payload
         media_in = payload.encode_file
         if not media_in:
@@ -404,11 +449,14 @@ class ProcessPage(BaseWizardPage):
 
         return torrent_dir, detected_input, mediainfo_obj
 
-    def _handle_tracker_paths(
+    def _gather_tracker_data(
         self, torrent_dir: Path, detected_input: Path
-    ) -> dict[str, Path] | None:
-        tracker_paths = {}
-        for tracker, _ in self.tree_widget.get_item_values():
+    ) -> dict[str, Any] | None:
+        tracker_data = {}
+        for tracker, (
+            combo_text,
+            combo_data,
+        ), _ in self.tracker_process_tree.get_item_values():
             torrent_dir_out = torrent_dir / tracker.lower()
             torrent_dir_out.mkdir(parents=True, exist_ok=True)
             torrent_out = Path(torrent_dir_out / f"{detected_input.stem}.torrent")
@@ -433,14 +481,18 @@ class ProcessPage(BaseWizardPage):
                         if not new_torrent_out:
                             return
                         torrent_out = Path(new_torrent_out)
-            tracker_paths[tracker] = torrent_out
+            tracker_data[tracker] = {
+                "path": torrent_out,
+                "image_host": combo_text,
+                "image_host_data": combo_data,
+            }
 
-        if not tracker_paths:
-            tracker_paths_error_msg = "Failed to generate trackers to upload to"
+        if not tracker_data:
+            tracker_paths_error_msg = "Failed to generate tracker data"
             LOG.error(LOG.LOG_SOURCE.FE, tracker_paths_error_msg)
             raise ProcessError(tracker_paths_error_msg)
 
-        return tracker_paths
+        return tracker_data
 
     def initializePage(self) -> None:
         self.add_tracker_items()
@@ -450,6 +502,6 @@ class ProcessPage(BaseWizardPage):
         self.processing_mode = UploadProcessMode.DUPE_CHECK
         self.dupe_worker = None
         self.process_worker = None
-        self.tree_widget.clear()
+        self.tracker_process_tree.clear()
         self.text_widget.clear()
         self.progress_bar.reset()

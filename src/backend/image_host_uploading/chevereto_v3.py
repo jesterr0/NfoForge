@@ -6,6 +6,7 @@ from collections.abc import Sequence, Callable, Awaitable
 from os import PathLike
 from pathlib import Path
 
+from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.packages.custom_types import ImageUploadData
 from src.exceptions import ImageUploadError
 
@@ -170,7 +171,7 @@ async def chevereto_v3_upload(
     filepaths: Sequence[Path],
     batch_size: int = 4,
     album_name: str | None = None,
-    cb: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable] | None = None,
 ) -> dict[int, ImageUploadData]:
     base_url = _clean_url(base_url)
     filepaths = sorted(filepaths)
@@ -190,6 +191,41 @@ async def chevereto_v3_upload(
             raise ImageUploadError("Failed to create album in Chevereto v3")
 
         uploaded_images = await _upload_images(
-            session, base_url, auth_code, album_id, filepaths, batch_size, cb
+            session,
+            base_url,
+            auth_code,
+            album_id,
+            filepaths,
+            batch_size,
+            progress_callback,
         )
         return uploaded_images
+
+
+class CheveretoV3Uploader(BaseImageHostUploader):
+    """Uploader for Chevereto V3."""
+
+    __slots__ = ("base_url", "user", "password")
+
+    def __init__(self, base_url: str, user: str, password: str) -> None:
+        self.base_url = base_url
+        self.user = user
+        self.password = password
+
+    async def upload(
+        self,
+        filepaths: Sequence[Path],
+        batch_size: int = 4,
+        album_name: str | None = None,
+        progress_callback: Callable[[int], Awaitable] | None = None,
+    ) -> dict[int, ImageUploadData] | None:
+        """Upload images to Chevereto V3."""
+        return await chevereto_v3_upload(
+            base_url=self.base_url,
+            user=self.user,
+            password=self.password,
+            filepaths=filepaths,
+            batch_size=batch_size,
+            album_name=album_name,
+            progress_callback=progress_callback,
+        )

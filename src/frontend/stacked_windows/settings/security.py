@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QLabel
 
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.stacked_windows.settings.base import BaseSettings
+from src.frontend.utils import create_form_layout
 
 
 class SecuritySettings(BaseSettings):
@@ -25,12 +26,8 @@ class SecuritySettings(BaseSettings):
         )
         self.tvdb_api_key_entry = MaskedQLineEdit(self, masked=True)
 
-        self.add_layout(
-            self.create_form_layout(tmdb_api_key_lbl, self.tmdb_api_key_entry)
-        )
-        self.add_layout(
-            self.create_form_layout(tvdb_api_key_lbl, self.tvdb_api_key_entry)
-        )
+        self.add_layout(create_form_layout(tmdb_api_key_lbl, self.tmdb_api_key_entry))
+        self.add_layout(create_form_layout(tvdb_api_key_lbl, self.tvdb_api_key_entry))
         self.add_layout(self.reset_layout)
 
         self._load_saved_settings()

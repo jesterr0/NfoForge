@@ -11,8 +11,8 @@ class MediaInputWorker(QThread):
     job_finished = Signal(object)
     job_failed = Signal(str)
 
-    def __init__(self, func: Callable, *func_args, **func_kwargs) -> None:
-        super().__init__()
+    def __init__(self, func: Callable, parent=None, *func_args, **func_kwargs) -> None:
+        super().__init__(parent=parent)
         self.func = func
         self.func_args = func_args
         self.func_kwargs = func_kwargs
