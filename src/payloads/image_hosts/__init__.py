@@ -2,6 +2,7 @@ from src.payloads.image_hosts.base import ImagePayloadBase
 from src.payloads.image_hosts.chevereto_v3 import CheveretoV3Payload
 from src.payloads.image_hosts.chevereto_v4 import CheveretoV4Payload
 from src.payloads.image_hosts.image_bb import ImageBBPayload
+from src.payloads.image_hosts.image_box import ImageBoxPayload
 
 
 __all__ = (
@@ -9,4 +10,5 @@ __all__ = (
     "CheveretoV3Payload",
     "CheveretoV4Payload",
     "ImageBBPayload",
+    "ImageBoxPayload",
 )
