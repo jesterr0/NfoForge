@@ -181,6 +181,7 @@ class MoviesSettings(BaseSettings):
         self.token_table.load_replacement_rules(
             self.config.cfg_payload.mvr_clean_title_rules
         )
+        self._mvr_default_update_check()
 
         # unblock signals
         self.movie_format_entry.blockSignals(False)
@@ -202,6 +203,19 @@ class MoviesSettings(BaseSettings):
         self.config.cfg_payload.mvr_token = self.movie_format_entry.text()
         self._mvr_clean_title_rules_change()
         self.updated_settings_applied.emit()
+
+    def _mvr_default_update_check(self) -> None:
+        """
+        Checks to see if defaults have been changed on the program level and updates users config if their
+        config was not modified before.
+        """
+        if not self.config.cfg_payload.mvr_clean_title_rules_modified:
+            replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
+            defaults = self.token_table.replacement_list_widget.DEFAULT_RULES
+            if set(replacements) != set(defaults):
+                self.config.cfg_payload.mvr_clean_title_rules = defaults
+                self.token_table.reset()
+                self.config.save_config()
 
     def _mvr_clean_title_rules_change(self) -> None:
         replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
