@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - You can organize your URL formatting in "Tracker" settings PER tracker.
 - Image generation Log widget now tells the user what "Mode" they are generating images in.
 - Image page now supports opening .jpg/.jpeg.
+- Image page can now accept raw urls in any format, html, bbcode, raw urls etc. It'll attempt to parse them
+  and convert them automatically to a format the backend needs for processing.
+- Can now download images from existing URLs and re-host as needed to image hosts of the users selection.
 - Screenshots subtitle color can now be selected via the color chooser widget to the right of the label.
 - Add basic ui validation to avoid saving image host data if there is missing data detected.
 - You can now select which image host you'd like to upload to for which tracker on the process page.
@@ -20,9 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ImageBox now retries with a delay if there is networking issues.
 - Added support to set **{ screen_shots }** columns, column space, and row space PER tracker.
 - Can now set desired order you'd like your tracker(s) to process in.
-- Can now choose desired image host per tracker on the process page.
+- Can now choose desired image host per tracker on the process page. (Can use right click to set ALL trackers
+  to a specific image host)
 - Now uploads to multiple image hosts asynchronous.
 - Numerous optimizations and improvements.
+- Can now open log file directory or current log file from the general settings page via two new icon buttons.
+- Added the ability to set your subtitle color via an interactive subtitle picker.
 
 ### Changed
 
@@ -37,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the final process step.
 - Removed the ability to highlight items in the tracker list box on the overview page.
 - Trackers are now displayed in the order the user sets as the priority in the overview page.
+- Can no longer manually type the hex color code for subtitle color, you must use the new subtitle picker now.
+- Prevent errors when launching the program with _.TOML from the command line for --config _.TOML.
 
 ### Fixed
 
