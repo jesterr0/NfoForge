@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from src.config.config import Config
 from src.enums.settings_window import SettingsTabs
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.stacked_windows.settings.general import GeneralSettings
 from src.frontend.stacked_windows.settings.movies import MoviesSettings
@@ -44,6 +45,7 @@ class Settings(QWidget):
         self.config = config
         self.main_window = parent
         self.re_load_settings.connect(self._reload_settings)
+        GSigs().settings_refresh.connect(self._reload_settings)
         self.swap_tab.connect(self._swap_tab)
 
         self._save_approved_counter = 0
