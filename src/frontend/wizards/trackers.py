@@ -4,6 +4,7 @@ from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QVBoxLayout, QMessageBox
 
 from src.config.config import Config
+from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
@@ -43,6 +44,7 @@ class TrackersPage(BaseWizardPage):
         self.tracker_selection.save_tracker_info()
 
         self.config.save_config()
+        GSigs().settings_refresh.emit()
         return True
 
     @Slot()

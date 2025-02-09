@@ -18,6 +18,7 @@ class GlobalSignals(QObject):
 
     # settings
     settings_clicked = Signal()
+    settings_refresh = Signal()
 
     # wizard
     wizard_next = Signal()
