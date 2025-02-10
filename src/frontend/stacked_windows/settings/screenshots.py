@@ -158,8 +158,8 @@ class ScreenShotSettings(BaseSettings):
         )
         self.dl_provided_images_optimize = QCheckBox(self)
 
-        optimize_cpu_cores_percent_lbl = QLabel("Optimize Images CPU Percent", self)
-        optimize_cpu_cores_percent_lbl.setToolTip(
+        self.optimize_cpu_cores_percent_lbl = QLabel(self)
+        self.optimize_cpu_cores_percent_lbl.setToolTip(
             "Will calculate percentage of CPUs to use based on a percentage (8 threads at 0.5% = 4 threads)"
         )
         self.optimize_cpu_cores_percent = QDoubleSpinBox(self)
@@ -168,6 +168,8 @@ class ScreenShotSettings(BaseSettings):
         )
         self.optimize_cpu_cores_percent.setSingleStep(0.1)
         self.optimize_cpu_cores_percent.setRange(0.1, 1.0)
+        self.optimize_cpu_cores_percent.wheelEvent = self._disable_scrollwheel_spinbox
+        self.optimize_cpu_cores_percent.valueChanged.connect(self._optimize_cpu_changed)
 
         image_host_config_label = QLabel("Image Hosts Configuration", self)
         self.image_host_config = ImageHostListBox(self.config, self)
@@ -221,7 +223,7 @@ class ScreenShotSettings(BaseSettings):
         )
         self.add_layout(
             create_form_layout(
-                optimize_cpu_cores_percent_lbl, self.optimize_cpu_cores_percent
+                self.optimize_cpu_cores_percent_lbl, self.optimize_cpu_cores_percent
             )
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
@@ -286,6 +288,13 @@ class ScreenShotSettings(BaseSettings):
         palette.setColor(QPalette.ColorRole.Text, color)
         self.sub_color_entry.setPalette(palette)
         self.sub_color_entry.setText(self.sub_color_picker.get_hex_color())
+
+    @Slot(float)
+    def _optimize_cpu_changed(self, value: float) -> None:
+        """When optimize spinbox is changed the label is automatically populated"""
+        self.optimize_cpu_cores_percent_lbl.setText(
+            f"Optimize Images CPU Percent ({value:.0%})"
+        )
 
     @Slot()
     def _load_saved_settings(self) -> None:
