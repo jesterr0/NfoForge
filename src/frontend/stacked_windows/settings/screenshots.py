@@ -49,7 +49,7 @@ class ScreenShotSettings(BaseSettings):
         )
         self.ss_mode_combo.activated.connect(self._ss_mode_changed)
 
-        ss_optimize_generated_lbl = QLabel("Optimize Generated Images")
+        ss_optimize_generated_lbl = QLabel("Optimize Generated Images", self)
         ss_optimize_generated_lbl.setToolTip("Optimize generated images (recommended)")
         self.ss_optimize_generated_btn = QCheckBox(self)
 
@@ -388,7 +388,7 @@ class ScreenShotSettings(BaseSettings):
         self.sub_2160p_size_spinbox.setValue(32)
         self.sub_color_picker.update_color(QColor("#f5c70a"))
         self._update_sub_entry_color(self.sub_color_picker.get_color())
-        self.dl_provided_images_optimize.setChecked(False)
+        self.dl_provided_images_optimize.setChecked(True)
         self.optimize_cpu_cores_percent.setValue(0.25)
         self.image_host_config.add_items(self.config.image_host_map, reset=True)
         self.sub_alignment_combo.setCurrentIndex(0)
