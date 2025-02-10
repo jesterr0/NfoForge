@@ -1042,7 +1042,7 @@ class Config:
                 ),
                 compress_images=screen_shot_data.get("compress_images", True),
                 optimize_dl_url_images=screen_shot_data.get(
-                    "optimize_dl_url_images", False
+                    "optimize_dl_url_images", True
                 ),
                 optimize_dl_url_images_percentage=screen_shot_data.get(
                     "optimize_dl_url_images_percentage", 0.25
