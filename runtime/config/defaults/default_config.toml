@@ -251,6 +251,8 @@ comparison_subtitles = true
 comparison_subtitle_source_name = "Source"
 comparison_subtitle_encode_name = "Encode"
 compress_images = true
+optimize_dl_url_images = false
+optimize_dl_url_images_percentage = 0.25
 indexer = 1
 image_plugin = 1
 
