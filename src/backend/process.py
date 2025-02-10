@@ -44,6 +44,7 @@ from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.utils.images import format_image_data_to_str
+from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.packages.custom_types import (
     ImageUploadData,
     ImageUploadFromTo,
@@ -230,7 +231,9 @@ class ProcessBackEnd:
         # determine maximum piece size for the current tracker(s)
         max_piece_size = self.determine_max_piece_size(process_dict)
         if max_piece_size:
-            queued_text_update(f"Detected maximum piece size: {max_piece_size} (bytes)")
+            queued_text_update(
+                f"\nDetected maximum piece size: {max_piece_size} (bytes)"
+            )
 
         # process
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
@@ -440,6 +443,7 @@ class ProcessBackEnd:
         tracker_to_host_map = {}
         img_from = None
         files_to_upload = None
+        files_loaded_by_user = True if self.config.shared_data.loaded_images else False
 
         url_data = {}
 
@@ -464,7 +468,7 @@ class ProcessBackEnd:
         if to_image_hosts:
             if img_from is ImageSource.URLS:
                 queued_text_update(
-                    f"\nAttempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)"
+                    f"Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)"
                 )
 
                 img_output_path = (
@@ -484,8 +488,23 @@ class ProcessBackEnd:
                 files_to_upload = self.config.shared_data.loaded_images
 
             if files_to_upload:
+                # optimize images if enabled
+                if (
+                    self.config.cfg_payload.optimize_dl_url_images
+                    and files_loaded_by_user
+                    or img_from is ImageSource.URLS
+                ):
+                    queued_text_update(f"Optimizing {len(files_to_upload)} image(s)")
+                    try:
+                        files_to_upload = self._optimize_images(
+                            progress_bar_cb, files_to_upload
+                        )
+                    except Exception as opt_e:
+                        queued_text_update(f"Failed to optimize image(s) ({opt_e})")
+
+                # upload images
                 queued_text_update(
-                    f"\nUploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)"
+                    f"Uploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)"
                 )
                 async_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(async_loop)
@@ -515,10 +534,35 @@ class ProcessBackEnd:
                     url_host_count += 1
 
             queued_text_update(
-                f"\nUsing {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)"
+                f"Using {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)"
             )
 
         return url_data
+
+    def _optimize_images(
+        self, progress_bar_cb: Callable[[float], None], files_to_upload: Sequence[Path]
+    ) -> Sequence[Path]:
+        """Optimizes images and returns the optimized images in a list"""
+
+        def img_optimizer_job_done_callback(
+            _png_path: Path, completed: int, total: int
+        ):
+            progress_bar_cb(completed / total * 100)
+
+        image_optimizer = MultiProcessImageOptimizer(
+            on_job_done=img_optimizer_job_done_callback,
+            cpu_fraction=self.config.cfg_payload.optimize_dl_url_images_percentage,
+        )
+        img_opt_output_dir = files_to_upload[0].parent / "optimized"
+        try:
+            optimized_files = image_optimizer.process_jobs(
+                files_to_upload, img_opt_output_dir
+            )
+        except:
+            # clean up extra images if failed
+            shutil.rmtree(img_opt_output_dir)
+            raise
+        return optimized_files
 
     async def handle_image_upload(
         self,
@@ -772,7 +816,7 @@ class ProcessBackEnd:
                 announce_url=tracker_payload.announce_url,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                url_data=self.config.shared_data.url_data,
+                url_data=self.config.shared_data.url_data,  # TODO: this is broken atm
                 nfo=nfo,
                 re_upload_images_to_ptp=tracker_payload.reupload_images_to_ptp_img,
                 mediainfo_obj=mediainfo_obj,
