@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QCheckBox,
     QSpinBox,
+    QDoubleSpinBox,
     QMessageBox,
     QWidget,
 )
@@ -48,9 +49,9 @@ class ScreenShotSettings(BaseSettings):
         )
         self.ss_mode_combo.activated.connect(self._ss_mode_changed)
 
-        ss_compression_lbl = QLabel("Compress Images")
-        ss_compression_lbl.setToolTip("Compresses generated images (recommended)")
-        self.ss_compression_btn = QCheckBox(self)
+        ss_optimize_generated_lbl = QLabel("Optimize Generated Images")
+        ss_optimize_generated_lbl.setToolTip("Optimize generated images (recommended)")
+        self.ss_optimize_generated_btn = QCheckBox(self)
 
         ss_trim_start_lbl = QLabel("Video Start %", self)
         ss_trim_start_lbl.setToolTip(
@@ -148,6 +149,26 @@ class ScreenShotSettings(BaseSettings):
             completer=True, disable_mouse_wheel=True, parent=self
         )
 
+        dl_provided_images_optimize_lbl = QLabel(
+            "Convert downloaded and opened images to optimized PNG format", self
+        )
+        dl_provided_images_optimize_lbl.setToolTip(
+            "Converts images from downloaded URLs and opened files to PNG format, "
+            "optimizing them for re-uploading to another image host."
+        )
+        self.dl_provided_images_optimize = QCheckBox(self)
+
+        optimize_cpu_cores_percent_lbl = QLabel("Optimize Images CPU Percent", self)
+        optimize_cpu_cores_percent_lbl.setToolTip(
+            "Will calculate percentage of CPUs to use based on a percentage (8 threads at 0.5% = 4 threads)"
+        )
+        self.optimize_cpu_cores_percent = QDoubleSpinBox(self)
+        self.optimize_cpu_cores_percent.setStepType(
+            QDoubleSpinBox.StepType.AdaptiveDecimalStepType
+        )
+        self.optimize_cpu_cores_percent.setSingleStep(0.1)
+        self.optimize_cpu_cores_percent.setRange(0.1, 1.0)
+
         image_host_config_label = QLabel("Image Hosts Configuration", self)
         self.image_host_config = ImageHostListBox(self.config, self)
         self.image_host_config.setMinimumHeight(180)
@@ -155,7 +176,11 @@ class ScreenShotSettings(BaseSettings):
         self.add_layout(create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
         self.add_layout(create_form_layout(ss_count_lbl, self.ss_count_spinbox))
         self.add_layout(create_form_layout(ss_mode_lbl, self.ss_mode_combo))
-        self.add_layout(create_form_layout(ss_compression_lbl, self.ss_compression_btn))
+        self.add_layout(
+            create_form_layout(
+                ss_optimize_generated_lbl, self.ss_optimize_generated_btn
+            )
+        )
         self.add_layout(create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
         self.add_layout(create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
         self.add_layout(
@@ -188,6 +213,17 @@ class ScreenShotSettings(BaseSettings):
         )
         self.add_layout(create_form_layout(sub_lbl_color_widget, self.sub_color_entry))
         self.add_layout(create_form_layout(sub_alignment_lbl, self.sub_alignment_combo))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(
+            create_form_layout(
+                dl_provided_images_optimize_lbl, self.dl_provided_images_optimize
+            )
+        )
+        self.add_layout(
+            create_form_layout(
+                optimize_cpu_cores_percent_lbl, self.optimize_cpu_cores_percent
+            )
+        )
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
             create_form_layout(image_host_config_label, self.image_host_config)
@@ -258,7 +294,7 @@ class ScreenShotSettings(BaseSettings):
         self.ss_enabled_btn.setChecked(payload.screenshots_enabled)
         self.ss_count_spinbox.setValue(payload.screen_shot_count)
         self.load_combo_box(self.ss_mode_combo, ScreenShotMode, payload.ss_mode)
-        self.ss_compression_btn.setChecked(payload.compress_images)
+        self.ss_optimize_generated_btn.setChecked(payload.compress_images)
         self.ss_trim_start.setValue(payload.trim_start)
         self.ss_trim_end.setValue(payload.trim_end)
         self.ss_required_count_spinbox.setValue(payload.required_selected_screens)
@@ -279,6 +315,12 @@ class ScreenShotSettings(BaseSettings):
         self.load_combo_box(
             self.sub_alignment_combo, SubtitleAlignment, payload.subtitle_alignment
         )
+        self.dl_provided_images_optimize.setChecked(
+            self.config.cfg_payload.optimize_dl_url_images
+        )
+        self.optimize_cpu_cores_percent.setValue(
+            self.config.cfg_payload.optimize_dl_url_images_percentage
+        )
         self.image_host_config.add_items(self.config.image_host_map)
 
     @Slot()
@@ -286,7 +328,9 @@ class ScreenShotSettings(BaseSettings):
         self.config.cfg_payload.screenshots_enabled = self.ss_enabled_btn.isChecked()
         self.config.cfg_payload.screen_shot_count = self.ss_count_spinbox.value()
         self.config.cfg_payload.ss_mode = self.ss_mode_combo.currentData()
-        self.config.cfg_payload.compress_images = self.ss_compression_btn.isChecked()
+        self.config.cfg_payload.compress_images = (
+            self.ss_optimize_generated_btn.isChecked()
+        )
         self.config.cfg_payload.required_selected_screens = (
             self.ss_required_count_spinbox.value()
         )
@@ -313,6 +357,12 @@ class ScreenShotSettings(BaseSettings):
         self.config.cfg_payload.subtitle_alignment = (
             self.sub_alignment_combo.currentData()
         )
+        self.config.cfg_payload.optimize_dl_url_images = (
+            self.dl_provided_images_optimize.isChecked()
+        )
+        self.config.cfg_payload.optimize_dl_url_images_percentage = (
+            self.optimize_cpu_cores_percent.value()
+        )
         try:
             self.image_host_config.validate_settings()
         except AttributeError as attr_error:
@@ -325,7 +375,7 @@ class ScreenShotSettings(BaseSettings):
         self.ss_enabled_btn.setChecked(True)
         self.ss_count_spinbox.setValue(20)
         self.ss_mode_combo.setCurrentIndex(0)
-        self.ss_compression_btn.setChecked(True)
+        self.ss_optimize_generated_btn.setChecked(True)
         self.ss_required_count_spinbox.setValue(0)
         self.crop_mode_combo.setCurrentIndex(0)
         self.indexer_combo.setCurrentIndex(0)
@@ -338,6 +388,8 @@ class ScreenShotSettings(BaseSettings):
         self.sub_2160p_size_spinbox.setValue(32)
         self.sub_color_picker.update_color(QColor("#f5c70a"))
         self._update_sub_entry_color(self.sub_color_picker.get_color())
+        self.dl_provided_images_optimize.setChecked(False)
+        self.optimize_cpu_cores_percent.setValue(0.25)
         self.image_host_config.add_items(self.config.image_host_map, reset=True)
         self.sub_alignment_combo.setCurrentIndex(0)
 
