@@ -588,6 +588,12 @@ class Config:
                 self.cfg_payload.comparison_subtitle_encode_name
             )
             screen_shot_data["compress_images"] = self.cfg_payload.compress_images
+            screen_shot_data["optimize_dl_url_images"] = (
+                self.cfg_payload.optimize_dl_url_images
+            )
+            screen_shot_data["optimize_dl_url_images_percentage"] = (
+                self.cfg_payload.optimize_dl_url_images_percentage
+            )
             screen_shot_data["indexer"] = Indexer(self.cfg_payload.indexer).value
             screen_shot_data["image_plugin"] = ImagePlugin(
                 self.cfg_payload.image_plugin
@@ -1035,6 +1041,12 @@ class Config:
                     "comparison_subtitle_encode_name", "Encode"
                 ),
                 compress_images=screen_shot_data.get("compress_images", True),
+                optimize_dl_url_images=screen_shot_data.get(
+                    "optimize_dl_url_images", False
+                ),
+                optimize_dl_url_images_percentage=screen_shot_data.get(
+                    "optimize_dl_url_images_percentage", 0.25
+                ),
                 indexer=Indexer(screen_shot_data.get("indexer", 1)),
                 image_plugin=ImagePlugin(screen_shot_data.get("image_plugin", 1)),
                 chevereto_v3=chevereto_v3,
