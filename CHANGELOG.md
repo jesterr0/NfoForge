@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Now passes a new arg to plugin `token_replacer_plugin` of **formatted_screens**.
 - Now passes a new arg to plugin `token_replacer_plugin` of **format_images_to_str**.
 - Now passes a new arg to plugin `token_replacer_plugin` of **tracker_images**.
+- Added a checkbox in the **Screenshot** settings tab called **Convert download and opened images to optimized PNG format**. This checkbox is on by default, if enabled any provided URLs (going to an image host) or any loaded images will automatically be optimized/converted to PNG.
+- **Optimize Images CPU Percent** spinbox, the user can select how many **threads** they'd like to allocate to optimizing images (default is 25%).
 
 ### Changed
 
@@ -51,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevent errors when launching the program with _.TOML from the command line for --config _.TOML.
 - **movie_clean_token** has some new default rules to handle comma/dash.
 - Aither/reelFliX image width can only go as low as 300.
+- **Compress Images** checkbox in **Screenshot settings** has been renamed to **Optimize Generated Images**.
 
 ### Fixed
 
