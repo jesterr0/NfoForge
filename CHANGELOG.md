@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **movie_clean_token** has some new default rules to handle comma/dash.
 - Aither/reelFliX image width can only go as low as 300.
 - **Compress Images** checkbox in **Screenshot settings** has been renamed to **Optimize Generated Images**.
+- Images wizard page now displays a descriptive subtitle.
 
 ### Fixed
 
