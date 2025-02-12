@@ -13,8 +13,9 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QMenu,
     QSpinBox,
+    QInputDialog,
 )
-from PySide6.QtCore import Qt, Signal, Slot, QEvent
+from PySide6.QtCore import Qt, Signal, Slot, QEvent, QTimer
 from PySide6.QtGui import QAction
 
 from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
@@ -27,6 +28,7 @@ from src.frontend.utils import build_h_line
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.url_organizer import URLOrganizer
+from src.frontend.global_signals import GSigs
 
 
 class TrackerEditBase(QFrame):
@@ -423,22 +425,17 @@ class PTPTrackerEdit(TrackerEditBase):
         totp_lbl = QLabel("TOTP", self)
         self.totp = MaskedQLineEdit(parent=self, masked=True)
 
-        ptpimg_api_key_lbl = QLabel("PTPIMG Api Key", self)
-        self.ptpimg_api_key = MaskedQLineEdit(parent=self, masked=True)
-
-        reupload_images_to_ptp_img_lbl = QLabel("Reupload all images to PTPIMG", self)
-        self.reupload_images_to_ptp_img = QCheckBox(self)
-
         self.add_pair_to_layout(api_user_lbl, self.api_user)
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(username_lbl, self.username)
         self.add_pair_to_layout(password_lbl, self.password)
         self.add_pair_to_layout(totp_lbl, self.totp)
-        self.add_pair_to_layout(ptpimg_api_key_lbl, self.ptpimg_api_key)
-        self.add_pair_to_layout(
-            reupload_images_to_ptp_img_lbl, self.reupload_images_to_ptp_img
-        )
         self.add_screen_shot_settings()
+
+        # disable columns and column space, PTP doesn't support these
+        if self.screen_shot_settings:
+            self.screen_shot_settings.column_count_spinbox.setDisabled(True)
+            self.screen_shot_settings.column_space_spinbox.setDisabled(True)
 
     def load_settings(self) -> None:
         tracker_data = self.config.cfg_payload.ptp_tracker
@@ -453,12 +450,6 @@ class PTPTrackerEdit(TrackerEditBase):
         self.username.setText(tracker_data.username if tracker_data.username else "")
         self.password.setText(tracker_data.password if tracker_data.password else "")
         self.totp.setText(tracker_data.totp if tracker_data.totp else "")
-        self.ptpimg_api_key.setText(
-            tracker_data.ptpimg_api_key if tracker_data.ptpimg_api_key else ""
-        )
-        self.reupload_images_to_ptp_img.setChecked(
-            bool(tracker_data.reupload_images_to_ptp_img)
-        )
         if self.screen_shot_settings:
             self.screen_shot_settings.load_settings(
                 url_type=URLType(tracker_data.url_type),
@@ -481,12 +472,6 @@ class PTPTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.ptp_tracker.username = self.username.text().strip()
         self.config.cfg_payload.ptp_tracker.password = self.password.text().strip()
         self.config.cfg_payload.ptp_tracker.totp = self.totp.text().strip()
-        self.config.cfg_payload.ptp_tracker.ptpimg_api_key = (
-            self.ptpimg_api_key.text().strip()
-        )
-        self.config.cfg_payload.ptp_tracker.reupload_images_to_ptp_img = (
-            self.reupload_images_to_ptp_img.isChecked()
-        )
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
             self.config.cfg_payload.ptp_tracker.column_s = col_s
@@ -824,12 +809,39 @@ class TrackerListWidget(QWidget):
 
     @Slot(object, int)
     def _toggle_tracker(self, item: QTreeWidgetItem, column: int) -> None:
-        tracker_attributes: TrackerInfo = self.config.tracker_map[
-            TrackerSelection(item.text(column))
-        ]
+        curr_tracker = TrackerSelection(item.text(column))
+        tracker_attributes: TrackerInfo = self.config.tracker_map[curr_tracker]
+        if curr_tracker is TrackerSelection.PASS_THE_POPCORN:
+            if not self._validate_ptp():
+                self._update_check_no_signals(item, column, Qt.CheckState.Unchecked)
+                return
         tracker_attributes.enabled = (
             True if item.checkState(column) == Qt.CheckState.Checked else False
         )
+
+    def _validate_ptp(self) -> bool:
+        if not self.config.cfg_payload.ptpimg.api_key:
+            text, ok = QInputDialog.getText(
+                self,
+                "PTPIMG",
+                "PassThePopcorn requires PTPIMG key, please add this now.",
+            )
+            if ok and text:
+                text = text.strip()
+                self.config.cfg_payload.ptpimg.api_key = text
+                self.config.save_config()
+                QTimer.singleShot(1, GSigs().settings_refresh.emit)
+            else:
+                return False
+        return True
+
+    def _update_check_no_signals(
+        self, item: QTreeWidgetItem, column: int, check_state: Qt.CheckState
+    ) -> None:
+        """Modify check state with out invoking signals"""
+        self.tree.blockSignals(True)
+        item.setCheckState(column, check_state)
+        self.tree.blockSignals(False)
 
     def save_tracker_info(self) -> None:
         for i in range(self.tree.topLevelItemCount()):
