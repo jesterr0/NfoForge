@@ -46,6 +46,7 @@ from src.frontend.custom_widgets.dnd_factory import (
 )
 from src.frontend.stacked_windows.cropping import CropWidget
 from src.frontend.windows.image_viewer import ImageViewer
+from src.frontend.wizards.media_input_basic import MediaInputBasic
 from src.frontend.utils import build_auto_theme_icon_buttons, build_v_line
 
 if TYPE_CHECKING:
@@ -374,11 +375,15 @@ class ImagesPage(BaseWizardPage):
         profile = self.config.cfg_payload.profile
         ss_mode = self.config.cfg_payload.ss_mode
         crop_mode = self.config.cfg_payload.crop_mode
-        # TODO: have a bug here when we choose the plugin + basic (or adv) this doesn't know which profile
-        # is selected so it runs the wrong job. Likely will need to match the string version of the profile for (Built -In)
-        # so we can directly check the Profile enum and figure out what we're on easily. ATM this could be problematic.
-        # print(profile)
-        # print(self.config.cfg_payload.wizard_page)
+
+        # over ride profile if the user is using the Basic (Built-in) plugin
+        if profile == Profile.PLUGIN:
+            if self.config.cfg_payload.wizard_page:
+                wizard_plugin = self.config.loaded_plugins[
+                    self.config.cfg_payload.wizard_page
+                ].wizard
+                if wizard_plugin == MediaInputBasic:
+                    self.config.cfg_payload.profile = profile = Profile.BASIC
 
         if profile == Profile.BASIC:
             self._execute_image_generation()
