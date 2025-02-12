@@ -244,9 +244,6 @@ def format_image_data_to_str(
     """
     Formats a dictionary of image upload data into a structured string using BBCode or HTML.
 
-    If both `url` and `medium_url` are available, the image is wrapped in a clickable link.
-    Otherwise, only the available URL is used.
-
     Args:
         data (dict[int, ImageUploadData]): Dictionary mapping indices to ImageUploadData objects.
         url_type (URLType): The format type (BBCode or HTML).
@@ -264,18 +261,13 @@ def format_image_data_to_str(
     urls = []
 
     for item in data.values():
-        if item.url and item.medium_url:
-            # use full URL as image, wrapped in link
+        if item.url:
+            img_url = item.medium_url if item.medium_url else item.url
+
             if url_type == URLType.BBCODE:
-                urls.append(f"[url={item.url}][img]{item.medium_url}[/img][/url]")
+                urls.append(f"[url={item.url}][img]{img_url}[/img][/url]")
             elif url_type == URLType.HTML:
-                urls.append(f'<a href="{item.url}"><img src="{item.medium_url}"></a>')
-        else:
-            # use short URL alone
-            if url_type == URLType.BBCODE:
-                urls.append(f"[img]{item.url}[/img]")
-            elif url_type == URLType.HTML:
-                urls.append(f'<img src="{item.url}">')
+                urls.append(f'<a href="{item.url}"><img src="{img_url}"></a>')
 
     if not urls:
         if strict:

@@ -33,7 +33,11 @@ class PluginLoader:
             p for p in self.plugin_dir.glob("*/*") if p.is_dir()
         )
         for item in directories:
-            if item.is_dir() and item.name.startswith("plugin_"):
+            if (
+                item.is_dir()
+                and item.name.startswith("plugin_")
+                or item.name.startswith("plugin-")
+            ):
                 sys.path.append(str(item.parent))
                 self._handle_dir(item)
         if self.plugins:

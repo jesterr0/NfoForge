@@ -35,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Now passes a new arg to plugin `token_replacer_plugin` of **tracker_images**.
 - Added a checkbox in the **Screenshot** settings tab called **Convert download and opened images to optimized PNG format**. This checkbox is on by default, if enabled any provided URLs (going to an image host) or any loaded images will automatically be optimized/converted to PNG.
 - **Optimize Images CPU Percent** spinbox, the user can select how many **threads** they'd like to allocate to optimizing images (default is 25%).
+- Add support for plugins with the prefix of `plugin-`.
+- PTPIMG support added.
 
 ### Changed
 
@@ -54,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **movie_clean_token** has some new default rules to handle comma/dash.
 - Aither/reelFliX image width can only go as low as 300.
 - **Compress Images** checkbox in **Screenshot settings** has been renamed to **Optimize Generated Images**.
+- Images wizard page now displays a descriptive subtitle.
+- Now automatically creates linked versions of images even if there is no medium/thumbnail urls.
+- Locked columns/column space for PTP, they should stay at 1 since PTP doesn't support anything else.
+- Checks PTPIMG is configured when enabling PassThePopcorn tracker, prompts the user to add PTPIMG API key.
 
 ### Fixed
 

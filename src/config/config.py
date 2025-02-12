@@ -42,6 +42,7 @@ from src.payloads.image_hosts import (
     CheveretoV4Payload,
     ImageBBPayload,
     ImageBoxPayload,
+    PTPIMGPayload,
 )
 from src.exceptions import ConfigError
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -396,10 +397,6 @@ class Config:
             ptp_data["username"] = self.cfg_payload.ptp_tracker.username
             ptp_data["password"] = self.cfg_payload.ptp_tracker.password
             ptp_data["totp"] = self.cfg_payload.ptp_tracker.totp
-            ptp_data["ptpimg_api_key"] = self.cfg_payload.ptp_tracker.ptpimg_api_key
-            ptp_data["reupload_images_to_ptp_img"] = (
-                self.cfg_payload.ptp_tracker.reupload_images_to_ptp_img
-            )
 
             # ReelFliX tracker
             if "reelflix" not in tracker_data:
@@ -634,6 +631,14 @@ class Config:
             img_box_data["enabled"] = self.cfg_payload.image_box.enabled
             img_box_data["base_url"] = self.cfg_payload.image_box.base_url
 
+            # ptpimg
+            if "ptpimg" not in image_hosts:
+                ptpimg_data = tomlkit.table()
+            ptpimg_data = image_hosts["ptpimg"]
+            ptpimg_data["enabled"] = self.cfg_payload.ptpimg.enabled
+            ptpimg_data["base_url"] = self.cfg_payload.ptpimg.base_url
+            ptpimg_data["api_key"] = self.cfg_payload.ptpimg.api_key
+
             # urls
             urls_settings = self._toml_data["urls"]
             urls_settings["alt"] = self.cfg_payload.urls_alt
@@ -850,10 +855,6 @@ class Config:
                 username=ptp_tracker_data["username"],
                 password=ptp_tracker_data["password"],
                 totp=ptp_tracker_data["totp"],
-                ptpimg_api_key=ptp_tracker_data["ptpimg_api_key"],
-                reupload_images_to_ptp_img=ptp_tracker_data[
-                    "reupload_images_to_ptp_img"
-                ],
             )
 
             rf_tracker_data = tracker_data["reelflix"]
@@ -952,6 +953,7 @@ class Config:
             chevereto_v4 = CheveretoV4Payload(**image_hosts["chevereto_v4"])
             image_bb = ImageBBPayload(**image_hosts["image_bb"])
             image_box = ImageBoxPayload(**image_hosts["image_box"])
+            ptpimg = PTPIMGPayload(**image_hosts["ptpimg"])
 
             # urls
             urls_settings = toml_data["urls"]
@@ -1053,6 +1055,7 @@ class Config:
                 chevereto_v4=chevereto_v4,
                 image_bb=image_bb,
                 image_box=image_box,
+                ptpimg=ptpimg,
                 urls_alt=urls_settings.get("alt", ""),
                 urls_columns=urls_settings.get("columns", 1),
                 urls_vertical=urls_settings.get("vertical", 1),
@@ -1137,6 +1140,7 @@ class Config:
             ImageHost.CHEVERETO_V4: self.cfg_payload.chevereto_v4,
             ImageHost.IMAGE_BB: self.cfg_payload.image_bb,
             ImageHost.IMAGE_BOX: self.cfg_payload.image_box,
+            ImageHost.PTPIMG: self.cfg_payload.ptpimg,
         }
 
     def _init_dependencies(self) -> None:
