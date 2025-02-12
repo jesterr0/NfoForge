@@ -7,6 +7,7 @@ class ImageHost(CaseInsensitiveEnum):
     CHEVERETO_V4 = "Chevereto v4"
     IMAGE_BOX = "ImageBox"
     IMAGE_BB = "ImageBB"
+    PTPIMG = "PTPIMG"
 
     # used outside of the UI
     DISABLED = "Disabled"
