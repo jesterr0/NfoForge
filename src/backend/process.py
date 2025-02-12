@@ -43,6 +43,7 @@ from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
 from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
+from src.backend.image_host_uploading.ptpimg import PTPIMGUploader
 from src.backend.utils.images import format_image_data_to_str
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.packages.custom_types import (
@@ -249,7 +250,9 @@ class ProcessBackEnd:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.tracker_map[cur_tracker]
 
-            # torrent path
+            # get just the torrent path (there is other data that we currently aren't using)
+            # >>> {'path': WindowsPath('path.torrent'), 'image_host': 'URLs',
+            # 'image_host_data': ImageUploadFromTo(img_from=<ImageSource.URLS: 'URLs'>, img_to=<ImageSource.URLS: 'URLs'>)}
             torrent_path: Path = path_data["path"]
 
             # torrent file
@@ -480,6 +483,7 @@ class ProcessBackEnd:
                     progress_bar_cb,
                 )
                 files_to_upload = img_downloader.download_images()
+                self.config.shared_data.loaded_images = files_to_upload
 
                 queued_text_update(
                     f"Successfully downloaded {len(files_to_upload)} user-provided URL(s)"
@@ -653,6 +657,8 @@ class ProcessBackEnd:
             return ImageBoxUploader()
         elif img_host is ImageHost.IMAGE_BB:
             return self._create_imgbb_uploader()
+        elif img_host is ImageHost.PTPIMG:
+            return self._create_ptpimg_uploader()
         else:
             raise ImageHostError(f"Unsupported image host: {img_host}")
 
@@ -708,10 +714,23 @@ class ProcessBackEnd:
         """
         imgbb_payload = self.config.cfg_payload.image_bb
         if not imgbb_payload.api_key or not imgbb_payload.base_url:
-            raise ImageHostError("Missing 'API Key' or 'Base URL' for ImageBB.")
-        return ImageBBUploader(
-            api_key=imgbb_payload.api_key, url=imgbb_payload.base_url
-        )
+            raise ImageHostError("Missing 'API Key' for ImageBB.")
+        return ImageBBUploader(api_key=imgbb_payload.api_key)
+
+    def _create_ptpimg_uploader(self) -> PTPIMGUploader:
+        """
+        Creates an uploader instance for PTPIMG.
+
+        Returns:
+            PTPIMGUploader: The uploader instance.
+
+        Raises:
+            ImageHostError: If required credentials are missing.
+        """
+        ptpimg_payload = self.config.cfg_payload.ptpimg
+        if not ptpimg_payload.api_key or not ptpimg_payload.base_url:
+            raise ImageHostError("Missing 'API Key' for PTPIMG.")
+        return PTPIMGUploader(api_key=ptpimg_payload.api_key)
 
     def _map_uploaded_urls(
         self, host_to_job: dict, results: dict[str, dict[int, ImageUploadData]]
@@ -816,12 +835,10 @@ class ProcessBackEnd:
                 announce_url=tracker_payload.announce_url,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                url_data=self.config.shared_data.url_data,  # TODO: this is broken atm
                 nfo=nfo,
-                re_upload_images_to_ptp=tracker_payload.reupload_images_to_ptp_img,
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_payload,
-                ptp_img_api_key=tracker_payload.ptpimg_api_key,
+                ptp_img_api_key=self.config.cfg_payload.ptp_tracker.api_key,
                 cookie_dir=self.config.TRACKER_COOKIE_PATH,
                 totp=tracker_payload.totp,
                 timeout=self.config.cfg_payload.timeout,
