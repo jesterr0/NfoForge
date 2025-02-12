@@ -402,10 +402,12 @@ class ProcessBackEnd:
                     queued_status_update(tracker_name, "Failed")
             elif not tracker_info.upload_enabled and pre_upload_processing is None:
                 queued_text_update("Skipping upload & injection, upload is disabled")
+                queued_status_update(tracker_name, "Complete")
             elif tracker_info.upload_enabled and pre_upload_processing is False:
                 queued_text_update(
                     "Skipping upload & injection, upload is disabled via plugin"
                 )
+                queued_status_update(tracker_name, "Complete")
 
             nfo_generated_str = "NFO & " if nfo else ""
             queued_text_update(
