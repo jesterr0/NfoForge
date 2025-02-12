@@ -36,7 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a checkbox in the **Screenshot** settings tab called **Convert download and opened images to optimized PNG format**. This checkbox is on by default, if enabled any provided URLs (going to an image host) or any loaded images will automatically be optimized/converted to PNG.
 - **Optimize Images CPU Percent** spinbox, the user can select how many **threads** they'd like to allocate to optimizing images (default is 25%).
 - Add support for plugins with the prefix of `plugin-`.
-- PTPIMG support added.
+- **PTPIMG** support added.
+- Added support to remember last used image host per tracker.
 
 ### Changed
 
@@ -75,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to ask the user if they'd like to reset to default over and over again.
 - Modifying tracker settings in the Tracker widget page will now update the Tracker widget in the Tracker settings tab.
 - Bug when utilizing Plugin mode utilizing the built in Basic profile, could result in incorrect image generation being done.
+- Wasn't updating tracker status to complete when we skipped upload but still processed the tracker in the backend.
 
 ### Removed
 
