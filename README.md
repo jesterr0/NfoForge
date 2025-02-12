@@ -46,6 +46,7 @@ _Supported trackers will be added overtime_
 - Chevereto v3/v4
 - ImageBox
 - ImageBB
+- PTPIMG
 
 ## Requirements
 
