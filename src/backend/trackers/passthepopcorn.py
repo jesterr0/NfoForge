@@ -31,12 +31,10 @@ def ptp_uploader(
     announce_url: str,
     torrent_file: Path,
     file_input: Path,
-    url_data: str,
     nfo: str,
-    re_upload_images_to_ptp: bool,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
-    ptp_img_api_key: str,
+    ptp_img_api_key: str | None,
     cookie_dir: Path,
     totp: str | None = None,
     timeout: int = 60,
@@ -68,9 +66,7 @@ def ptp_uploader(
         media_search_payload=media_search_payload,
         torrent_file=torrent_file,
         file_input=file_input,
-        url_data=url_data,
         nfo=nfo,
-        re_upload_images_to_ptp=re_upload_images_to_ptp,
         ptp_img_api_key=ptp_img_api_key,
         group_id=group_id,
     )
@@ -246,16 +242,16 @@ class PTPUploader:
         media_search_payload: MediaSearchPayload,
         torrent_file: Path,
         file_input: Path,
-        url_data: str,
         nfo: str,
-        re_upload_images_to_ptp: bool,
-        ptp_img_api_key: str,
+        ptp_img_api_key: str | None,
         group_id: str | None = None,
     ) -> bool | None:
         if not media_search_payload.imdb_data:
             raise TrackerError("Missing IMDb data")
         if not media_search_payload.tmdb_data:
             raise TrackerError("Missing TMDB data")
+        if not ptp_img_api_key:
+            raise TrackerError("Missing PTPIMG API key")
 
         data = {
             "submit": "true",
@@ -277,16 +273,6 @@ class PTPUploader:
             # "trumpable[]": ptp_trumpable, # TODO: implement this eventually?
             "AntiCsrfToken": auth_token,
         }
-
-        # update nfo with PTP formatted images
-        get_image_urls = self._extract_image_urls(url_data)
-        if not len(get_image_urls) >= 3:
-            raise TrackerError("You must have 3 or more images for PassThePopcorn")
-        if re_upload_images_to_ptp:
-            get_image_urls = self._upload_images_to_ptp(get_image_urls, ptp_img_api_key)
-        data["release_desc"] = data["release_desc"].replace(
-            url_data, "\n".join(f"[img]{img}[/img]" for img in get_image_urls)
-        )
 
         # determine url
         if group_id:
