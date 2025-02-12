@@ -21,6 +21,7 @@ tvdb_api_key = ""
 
 [tracker.settings]
 tracker_order = []
+last_used_img_host = { }
 
 [tracker.more_than_tv]
 upload_enabled = true

@@ -8,6 +8,7 @@ from src.enums.media_mode import MediaMode
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.image_plugin import ImagePlugin
+from src.enums.image_host import ImageHost
 from src.enums.indexer import Indexer
 from src.enums.cropping import Cropping
 from src.enums.subtitles import SubtitleAlignment
@@ -65,6 +66,7 @@ class ConfigPayload:
 
     # trackers
     tracker_order: list[TrackerSelection]
+    last_used_img_host: dict[TrackerSelection, ImageHost]
     mtv_tracker: MoreThanTVInfo
     tl_tracker: TorrentLeechInfo
     bhd_tracker: BeyondHDInfo

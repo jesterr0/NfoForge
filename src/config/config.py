@@ -302,6 +302,10 @@ class Config:
             tracker_settings["tracker_order"] = [
                 str(x) for x in self.cfg_payload.tracker_order
             ]
+            last_used_img_host = tomlkit.inline_table()
+            for tracker, image_host in self.cfg_payload.last_used_img_host.items():
+                last_used_img_host[str(tracker)] = str(image_host)
+            tracker_settings["last_used_img_host"] = last_used_img_host
 
             # more_than_tv tracker
             if "more_than_tv" not in tracker_data:
@@ -770,6 +774,12 @@ class Config:
                 if x in TrackerSelection._value2member_map_
             ]
             tracker_order.extend(e for e in TrackerSelection if e not in tracker_order)
+            last_used_img_host = {
+                TrackerSelection(tracker): ImageHost(image_host)
+                for tracker, image_host in tracker_settings[
+                    "last_used_img_host"
+                ].items()
+            }
 
             # tracker data
             mtv_tracker_data = tracker_data["more_than_tv"]
@@ -985,6 +995,7 @@ class Config:
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
                 tvdb_api_key=api_keys_data.get("tvdb_api_key", ""),
                 tracker_order=tracker_order,
+                last_used_img_host=last_used_img_host,
                 mtv_tracker=mtv_tracker,
                 tl_tracker=tl_tracker,
                 bhd_tracker=bhd_tracker,
