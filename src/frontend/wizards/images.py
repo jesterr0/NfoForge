@@ -220,7 +220,7 @@ class ImagesPage(BaseWizardPage):
         self.setObjectName("imagesPage")
         self.setTitle("""<h4>Images</h4><span style="font-size: 9pt; font-weight: normal;">
                         Built-in image generation produces 
-                        <span style="font-weight: 500;">high-quality PNG</span> images. This is a 
+                        <span style="font-weight: 500;">high-quality optimized PNG</span> images. This is a 
                         <span style="font-weight: 500; text-decoration: underline;">requirement</span> 
                         for some trackers. You can open existing images or URLs, but you should 
                         ensure that user-provided images and URLs meet the tracker's specifications.</span>""")
