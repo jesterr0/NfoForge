@@ -9,6 +9,7 @@ from pymediainfo import MediaInfo
 from PySide6.QtCore import QObject, Slot, QThread, Signal
 from PySide6.QtGui import QTextCursor, Qt
 from PySide6.QtWidgets import (
+    QComboBox,
     QLabel,
     QVBoxLayout,
     QMessageBox,
@@ -242,6 +243,10 @@ class ProcessPage(BaseWizardPage):
             self.dupe_worker.start()
 
         elif self.processing_mode == UploadProcessMode.UPLOAD:
+            if self.save_config:
+                self.save_config = False
+                self._update_last_used_host()
+
             self.process_worker = ProcessWorker(
                 backend=self.backend,
                 media_input=detected_input,
@@ -339,6 +344,16 @@ class ProcessPage(BaseWizardPage):
                 self.progress_bar.reset()
                 self.progress_bar.hide()
 
+    def _update_last_used_host(self) -> None:
+        data = {}
+        for _, (
+            _,
+            (_, (tracker, img_host)),
+        ), _ in self.tracker_process_tree.get_item_values():
+            data[TrackerSelection(tracker)] = ImageHost(img_host)
+        self.config.cfg_payload.last_used_img_host = data
+        self.config.save_config()
+
     def add_tracker_items(self) -> None:
         # sort the trackers in the users desired order before displaying them
         if self.config.shared_data.selected_trackers:
@@ -364,8 +379,6 @@ class ProcessPage(BaseWizardPage):
                 )
             }
 
-            # TODO: load/save last used for tracker and set it in these loops somewhere
-
             ordered_trackers = [
                 x
                 for x in sorted(
@@ -377,9 +390,9 @@ class ProcessPage(BaseWizardPage):
             ]
 
             for tracker in ordered_trackers:
-                self.tracker_process_tree.add_row(
+                combo_box = self.tracker_process_tree.add_row(
                     headers=(str(tracker), "", "Queued"),
-                    combo_data=[
+                    combo_data=[  # [int, [(str, (ImageUploadFromTo, (TrackerSelection, ImageHost)))]]
                         (
                             1,
                             [
@@ -388,13 +401,29 @@ class ProcessPage(BaseWizardPage):
                                     if img_host
                                     not in {ImageHost.DISABLED, ImageSource.URLS}
                                     else str(img_host),
-                                    ImageUploadFromTo(upload_type, img_host),
+                                    (
+                                        ImageUploadFromTo(upload_type, img_host),
+                                        (tracker, img_host),
+                                    ),
                                 )
                                 for img_host in enabled_img_hosts.keys()
                             ],
                         )
                     ],
                 )
+                last_used_host = self.config.cfg_payload.last_used_img_host.get(tracker)
+                if combo_box and last_used_host:
+                    get_last = combo_box.findText(
+                        str(last_used_host), flags=Qt.MatchFlag.MatchContains
+                    )
+                    if get_last != -1:
+                        combo_box.setCurrentIndex(get_last)
+
+        self.tracker_process_tree.combo_changed.connect(self._tree_combo_changed)
+
+    @Slot(QComboBox, int)
+    def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
+        self.save_config = True
 
     def get_inputs(self) -> tuple[Path, Path | None, MediaInfo]:
         payload = self.config.media_input_payload
@@ -455,7 +484,7 @@ class ProcessPage(BaseWizardPage):
         tracker_data = {}
         for tracker, (
             combo_text,
-            combo_data,
+            (image_host_data, _),
         ), _ in self.tracker_process_tree.get_item_values():
             torrent_dir_out = torrent_dir / tracker.lower()
             torrent_dir_out.mkdir(parents=True, exist_ok=True)
@@ -484,7 +513,7 @@ class ProcessPage(BaseWizardPage):
             tracker_data[tracker] = {
                 "path": torrent_out,
                 "image_host": combo_text,
-                "image_host_data": combo_data,
+                "image_host_data": image_host_data,
             }
 
         if not tracker_data:
@@ -499,6 +528,7 @@ class ProcessPage(BaseWizardPage):
 
     @Slot()
     def reset_page(self) -> None:
+        self.save_config = False
         self.processing_mode = UploadProcessMode.DUPE_CHECK
         self.dupe_worker = None
         self.process_worker = None
