@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 from typing_extensions import override
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -16,6 +17,8 @@ from PySide6.QtGui import QAction, Qt
 
 
 class ComboBoxTreeWidget(QTreeWidget):
+    combo_changed = Signal(QComboBox, int)  # combobox widget, idx
+
     def __init__(
         self,
         headers: Sequence[str],
@@ -86,29 +89,32 @@ class ComboBoxTreeWidget(QTreeWidget):
         self,
         headers: Sequence[str],
         combo_data: list[tuple[int, list[tuple[str, Any]]]] | None = None,
-    ) -> None:
+    ) -> QComboBox | None:
         if len(headers) != self.header_len:
             raise ValueError(
                 f"Error adding row (Input={len(headers)} Required={self.header_len})"
             )
-        self._add_row(headers, combo_data)
+        return self._add_row(headers, combo_data)
 
     def _add_row(
         self,
         headers: Sequence[str],
         combo_data: list[tuple[int, list[tuple[str, Any]]]] | None,
-    ) -> None:
+    ) -> QComboBox | None:
         item = QTreeWidgetItem(headers)
         self.addTopLevelItem(item)
 
         if combo_data:
             for col_index, combo_items in combo_data:
-                self.add_combobox_to_row(item, col_index, combo_items)
+                return self.add_combobox_to_row(item, col_index, combo_items)
 
     def add_combobox_to_row(
         self, item: QTreeWidgetItem, col_index: int, combo_items: list[tuple[str, Any]]
-    ) -> None:
+    ) -> QComboBox:
         combo_box = QComboBox()
+        combo_box.currentIndexChanged.connect(
+            lambda idx: self.combo_changed.emit(combo_box, idx)
+        )
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -123,6 +129,7 @@ class ComboBoxTreeWidget(QTreeWidget):
         self.combo_options.append(option_set)
         self.combo_box_map[(item, col_index)] = combo_box
         self.setItemWidget(item, col_index, widget)
+        return combo_box
 
     def get_common_options(self) -> set[str]:
         """Finds options that exist in **every** combo box in the widget."""
