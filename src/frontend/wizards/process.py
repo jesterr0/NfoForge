@@ -183,6 +183,7 @@ class ProcessPage(BaseWizardPage):
             self.tracker_process_tree.SelectionMode.NoSelection
         )
         self.tracker_process_tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.tracker_process_tree.combo_changed.connect(self._tree_combo_changed)
 
         text_widget_label = QLabel("Log", self)
         self.text_widget = CodeEditor(
@@ -418,8 +419,6 @@ class ProcessPage(BaseWizardPage):
                     )
                     if get_last != -1:
                         combo_box.setCurrentIndex(get_last)
-
-        self.tracker_process_tree.combo_changed.connect(self._tree_combo_changed)
 
     @Slot(QComboBox, int)
     def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
