@@ -98,8 +98,6 @@ api_key = ""
 username = ""
 password = ""
 totp = ""
-ptpimg_api_key = ""
-reupload_images_to_ptp_img = false
 
 [tracker.reelflix]
 upload_enabled = true
@@ -275,6 +273,11 @@ api_key = ""
 [image_hosts.image_box]
 enabled = false
 base_url = "https://imgbox.com/"
+
+[image_hosts.ptpimg]
+enabled = false
+base_url = "https://ptpimg.me/"
+api_key = ""
 
 [urls]
 alt = ""

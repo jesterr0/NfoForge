@@ -66,8 +66,6 @@ class PassThePopcornInfo(TrackerInfo):
     username: str | None = None
     password: str | None = None
     totp: str | None = None
-    ptpimg_api_key: str | None = None
-    reupload_images_to_ptp_img: bool = False
 
 
 @dataclass(slots=True)

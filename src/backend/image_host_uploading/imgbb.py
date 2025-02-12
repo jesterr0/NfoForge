@@ -84,7 +84,7 @@ class ImageBBUploader(BaseImageHostUploader):
 
     __slots__ = ("api_key",)
 
-    def __init__(self, api_key: str, url: str) -> None:
+    def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
     async def upload(

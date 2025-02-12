@@ -28,6 +28,7 @@ from src.payloads.image_hosts import (
     CheveretoV4Payload,
     ImageBBPayload,
     ImageBoxPayload,
+    PTPIMGPayload,
 )
 
 # TODO: add nfo enable_disable flag or something?
@@ -117,6 +118,7 @@ class ConfigPayload:
     chevereto_v4: CheveretoV4Payload
     image_bb: ImageBBPayload
     image_box: ImageBoxPayload
+    ptpimg: PTPIMGPayload
 
     # urls
     urls_alt: str
