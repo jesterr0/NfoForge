@@ -368,17 +368,21 @@ class ProcessPage(BaseWizardPage):
                     upload_type: self.config.shared_data.url_data
                 }
 
-            # we'll filter all image hosts that are enabled and have all required values filled
-            enabled_img_hosts = enabled_img_hosts | {
-                key: value
-                for key, value in self.config.image_host_map.items()
-                if value.enabled
-                and all(
-                    getattr(value, field.name)
-                    for field in fields(value)
-                    if field.name != "enabled"
-                )
-            }
+            # if we have any image data, filter all image hosts that are enabled and have all required values filled
+            if (
+                self.config.shared_data.loaded_images
+                or self.config.shared_data.url_data
+            ):
+                enabled_img_hosts = enabled_img_hosts | {
+                    key: value
+                    for key, value in self.config.image_host_map.items()
+                    if value.enabled
+                    and all(
+                        getattr(value, field.name)
+                        for field in fields(value)
+                        if field.name != "enabled"
+                    )
+                }
 
             ordered_trackers = [
                 x
