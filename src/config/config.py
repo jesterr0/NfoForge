@@ -10,7 +10,7 @@ from src.enums.cropping import Cropping
 from src.enums.indexer import Indexer
 from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
-from src.enums.image_host import ImageHost
+from src.enums.image_host import ImageHost, ImageSource
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
@@ -800,12 +800,16 @@ class Config:
                 if x in TrackerSelection._value2member_map_
             ]
             tracker_order.extend(e for e in TrackerSelection if e not in tracker_order)
-            last_used_img_host = {
-                TrackerSelection(tracker): ImageHost(image_host)
-                for tracker, image_host in tracker_settings[
-                    "last_used_img_host"
-                ].items()
-            }
+            last_used_img_host = {}
+            for tracker, image_dest in tracker_settings["last_used_img_host"].items():
+                try:
+                    last_used_img_host[TrackerSelection(tracker)] = ImageHost(
+                        image_dest
+                    )
+                except ValueError:
+                    last_used_img_host[TrackerSelection(tracker)] = ImageSource(
+                        image_dest
+                    )
 
             # tracker data
             mtv_tracker_data = tracker_data["more_than_tv"]
