@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add support for plugins with the prefix of `plugin-`.
 - **PTPIMG** support added.
 - Added support to remember last used image host per tracker.
+- Added support for tracker **HUNO**.
 
 ### Changed
 
@@ -78,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modifying tracker settings in the Tracker widget page will now update the Tracker widget in the Tracker settings tab.
 - Bug when utilizing Plugin mode utilizing the built in Basic profile, could result in incorrect image generation being done.
 - Wasn't updating tracker status to complete when we skipped upload but still processed the tracker in the backend.
+- **Aither** tracker settings widget was displaying the wrong label for image width.
 
 ### Removed
 
