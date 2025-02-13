@@ -61,6 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Now automatically creates linked versions of images even if there is no medium/thumbnail urls.
 - Locked columns/column space for PTP, they should stay at 1 since PTP doesn't support anything else.
 - Checks PTPIMG is configured when enabling PassThePopcorn tracker, prompts the user to add PTPIMG API key.
+- All image hosts now will attempt to retry uploads 3 times per image before failing.
 
 ### Fixed
 
