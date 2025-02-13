@@ -92,7 +92,7 @@ async def _create_album(
     form_data.add_field("action", "create-album")
     form_data.add_field("type", "album")
     form_data.add_field("album[name]", album_name)
-    form_data.add_field("album[description]", "FrameForge")
+    form_data.add_field("album[description]", "NfoForge")
     form_data.add_field("album[password]", "")
     form_data.add_field("album[new]", "true")
 
@@ -115,29 +115,45 @@ async def _upload_image(
     img: Path,
     cb: Callable[[int], Awaitable] | None,
     idx: int,
+    retries: int = 3,
 ) -> ImageUploadData:
-    with open(img, "rb") as image_file:
-        form_data = aiohttp.FormData()
-        form_data.add_field("source", image_file, filename=Path(img).name)
-        form_data.add_field("type", "file")
-        form_data.add_field("action", "upload")
-        form_data.add_field("auth_token", auth_code)
-        form_data.add_field("album_id", album_id)
-        form_data.add_field("nsfw", "0")
+    """Uploads an image with retries and proper error handling."""
+    for attempt in range(retries):
+        try:
+            form_data = aiohttp.FormData()
+            with open(img, "rb") as image_file:
+                form_data.add_field("source", image_file, filename=img.name)
+                form_data.add_field("type", "file")
+                form_data.add_field("action", "upload")
+                form_data.add_field("auth_token", auth_code)
+                form_data.add_field("album_id", album_id)
+                form_data.add_field("nsfw", "0")
 
-        async with session.post(f"{base_url}/json", data=form_data) as img_upload:
-            response_data = (
-                await img_upload.json() if img_upload.status == 200 else None
-            )
-            if not response_data:
-                raise ImageUploadError("Failed to get response data from client")
-            image_data = response_data.get("image", {})
-            full_url = image_data.get("url", "")
-            medium_url = image_data.get("medium", {}).get("url", "")
-            response_data = ImageUploadData(full_url, medium_url)
-            if cb:
-                await cb(idx)
-            return response_data
+                async with session.post(
+                    f"{base_url}/json", data=form_data
+                ) as img_upload:
+                    if img_upload.status == 200:
+                        response_data = await img_upload.json()
+                    elif img_upload.status in {429, 500, 502, 503, 504}:
+                        await asyncio.sleep(2**attempt)
+                        continue
+                    else:
+                        return ImageUploadData(None, None)
+
+                    image_data = response_data.get("image", {})
+                    full_url = image_data.get("url", "")
+                    medium_url = image_data.get("medium", {}).get("url", "")
+                    if cb:
+                        await cb(idx)
+                    return ImageUploadData(full_url, medium_url)
+
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt < retries - 1:
+                await asyncio.sleep(2**attempt)
+            else:
+                print(f"Upload failed after {retries} attempts: {e}")
+
+    return ImageUploadData(None, None)
 
 
 async def _upload_images(
