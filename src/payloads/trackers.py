@@ -100,3 +100,12 @@ class AitherInfo(TrackerInfo):
     free: int = 0
     double_up: int = 0
     sticky: int = 0
+
+
+@dataclass(slots=True)
+class HunoInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: int = 0
+    internal: int = 0
+    stream_optimized: int = 0
+    image_width: int = 350
