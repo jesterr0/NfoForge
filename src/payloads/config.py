@@ -21,6 +21,7 @@ from src.payloads.trackers import (
     PassThePopcornInfo,
     ReelFlixInfo,
     AitherInfo,
+    HunoInfo,
 )
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
@@ -73,6 +74,7 @@ class ConfigPayload:
     ptp_tracker: PassThePopcornInfo
     rf_tracker: ReelFlixInfo
     aither_tracker: AitherInfo
+    huno_tracker: HunoInfo
 
     # torrent client settings
     qbittorrent: TorrentClient

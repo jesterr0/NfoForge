@@ -148,6 +148,24 @@ double_up = 0
 sticky = 0
 image_width = 350
 
+[tracker.huno]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "HUNO"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+api_key = ""
+anonymous = 0
+internal = 0
+stream_optimized = 0
+image_width = 350
+
 [torrent_client]
 
 [torrent_client.qbittorrent]
