@@ -26,6 +26,7 @@ from src.payloads.shared_data import SharedPayload
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.trackers import (
+    HunoInfo,
     TrackerInfo,
     MoreThanTVInfo,
     TorrentLeechInfo,
@@ -469,6 +470,31 @@ class Config:
             aither_data["double_up"] = self.cfg_payload.aither_tracker.double_up
             aither_data["sticky"] = self.cfg_payload.aither_tracker.sticky
             aither_data["image_width"] = self.cfg_payload.aither_tracker.image_width
+
+            # HUNO tracker
+            if "huno" not in tracker_data:
+                tracker_data["huno"] = tomlkit.table()
+            huno_data = tracker_data["huno"]
+            huno_data["upload_enabled"] = self.cfg_payload.huno_tracker.upload_enabled
+            huno_data["announce_url"] = self.cfg_payload.huno_tracker.announce_url
+            huno_data["enabled"] = self.cfg_payload.huno_tracker.enabled
+            huno_data["source"] = self.cfg_payload.huno_tracker.source
+            huno_data["comments"] = self.cfg_payload.huno_tracker.comments
+            huno_data["nfo_template"] = self.cfg_payload.huno_tracker.nfo_template
+            huno_data["max_piece_size"] = self.cfg_payload.huno_tracker.max_piece_size
+            huno_data["url_type"] = URLType(
+                self.cfg_payload.huno_tracker.url_type
+            ).value
+            huno_data["column_s"] = self.cfg_payload.huno_tracker.column_s
+            huno_data["column_space"] = self.cfg_payload.huno_tracker.column_space
+            huno_data["row_space"] = self.cfg_payload.huno_tracker.row_space
+            huno_data["api_key"] = self.cfg_payload.huno_tracker.api_key
+            huno_data["anonymous"] = self.cfg_payload.huno_tracker.anonymous
+            huno_data["internal"] = self.cfg_payload.huno_tracker.internal
+            huno_data["stream_optimized"] = (
+                self.cfg_payload.huno_tracker.stream_optimized
+            )
+            huno_data["image_width"] = self.cfg_payload.huno_tracker.image_width
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -919,6 +945,26 @@ class Config:
                 image_width=aither_tracker_data["image_width"],
             )
 
+            huno_tracker_data = tracker_data["huno"]
+            huno_tracker = HunoInfo(
+                upload_enabled=huno_tracker_data["upload_enabled"],
+                announce_url=huno_tracker_data["announce_url"],
+                enabled=huno_tracker_data["enabled"],
+                source=huno_tracker_data["source"],
+                comments=huno_tracker_data["comments"],
+                nfo_template=huno_tracker_data["nfo_template"],
+                max_piece_size=huno_tracker_data["max_piece_size"],
+                url_type=URLType(huno_tracker_data["url_type"]),
+                column_s=huno_tracker_data["column_s"],
+                column_space=huno_tracker_data["column_space"],
+                row_space=huno_tracker_data["row_space"],
+                api_key=huno_tracker_data["api_key"],
+                anonymous=huno_tracker_data["anonymous"],
+                internal=huno_tracker_data["internal"],
+                stream_optimized=huno_tracker_data["stream_optimized"],
+                image_width=huno_tracker_data["image_width"],
+            )
+
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]
 
@@ -1002,6 +1048,7 @@ class Config:
                 ptp_tracker=ptp_tracker,
                 rf_tracker=rf_tracker,
                 aither_tracker=aither_tracker,
+                huno_tracker=huno_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
@@ -1130,6 +1177,7 @@ class Config:
             TrackerSelection.PASS_THE_POPCORN: self.cfg_payload.ptp_tracker,
             TrackerSelection.REELFLIX: self.cfg_payload.rf_tracker,
             TrackerSelection.AITHER: self.cfg_payload.aither_tracker,
+            TrackerSelection.HUNO: self.cfg_payload.huno_tracker,
         }
 
     def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:

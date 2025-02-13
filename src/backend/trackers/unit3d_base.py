@@ -14,6 +14,7 @@ from src.enums.trackers.reelflix import (
     ReelFlixType,
 )
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
+from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.exceptions import TrackerError
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
@@ -22,9 +23,9 @@ from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
-CategoryEnums = ReelFlixCategory | AitherCategory
-ResolutionEnums = ReelFlixResolution | AitherResolution
-TypeEnums = ReelFlixType | AitherType
+CategoryEnums = ReelFlixCategory | AitherCategory | HunoCategory
+ResolutionEnums = ReelFlixResolution | AitherResolution | HunoResolution
+TypeEnums = ReelFlixType | AitherType | HunoType
 
 
 class Unit3dBaseUploader:
@@ -86,13 +87,13 @@ class Unit3dBaseUploader:
         nfo: str | None = None,
         internal: bool = False,
         anonymous: bool = False,
-        personal_release: bool = True,
+        personal_release: bool | None = True,
         stream_optimized: bool = False,
-        opt_in_to_mod_queue: bool = False,
-        featured: bool = False,
-        free: bool = False,
-        double_up: bool = False,
-        sticky: bool = False,
+        opt_in_to_mod_queue: bool | None = False,
+        featured: bool | None = False,
+        free: bool | None = False,
+        double_up: bool | None = False,
+        sticky: bool | None = False,
     ) -> bool | None:
         params = {"api_token": self.api_key}
         upload_payload = {
@@ -109,17 +110,14 @@ class Unit3dBaseUploader:
             "sd": int(self._standard_definition()),
             # 'keywords': meta['keywords'],
             "internal": int(internal),
-            "personal_release": int(personal_release),
             "stream": int(stream_optimized),
-            "opt_in_to_mod_queue": int(opt_in_to_mod_queue),
             "igdb": 0,
             "mal": 0,
-            # internal/staff only below
-            "featured": int(featured),
-            "free": int(free),
-            "doubleup": int(double_up),
-            "sticky": int(sticky),
         }
+        if personal_release is not None:
+            upload_payload["personal_release"] = int(personal_release)
+        if opt_in_to_mod_queue is not None:
+            upload_payload["opt_in_to_mod_queue"] = int(opt_in_to_mod_queue)
         if imdb_id:
             upload_payload["imdb"] = imdb_id.replace("t", "")
         if tmdb_id:
@@ -128,6 +126,16 @@ class Unit3dBaseUploader:
             upload_payload["tvdb"] = tvdb_id
         if mal_id:
             upload_payload["mal"] = mal_id
+
+        # internal/staff only below for UNIT3D (except for HUNO)
+        if featured is not None:
+            upload_payload["featured"] = int(featured)
+        if free is not None:
+            upload_payload["free"] = int(free)
+        if double_up is not None:
+            upload_payload["doubleup"] = int(double_up)
+        if sticky is not None:
+            upload_payload["sticky"] = int(sticky)
 
         LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
 
@@ -178,7 +186,7 @@ class Unit3dBaseUploader:
             return self.type_enum.REMUX.value
 
         # disc
-        elif regex.search(
+        if regex.search(
             (
                 r"^(?!.*\b((?<!HD[._ -]|HD)DVD|BDRip|720p|MKV|XviD"
                 r"|WMV|d3g|(BD)?REMUX|^(?=.*1080p)(?=.*HEVC)|[xh][-_. ]"
@@ -195,18 +203,20 @@ class Unit3dBaseUploader:
             return self.type_enum.DISC.value
 
         # web
-        elif "web" in title_lowered:
+        if "web" in title_lowered:
             if re.match(r"web.?dl", title_lowered):
                 return self.type_enum.WEBDL.value
             elif re.match(r"web.?rip", title_lowered):
                 return self.type_enum.WEBRIP.value
 
         # hdtv
-        elif "hdtv" in title_lowered or "hd-tv" in title_lowered:
-            return self.type_enum.HDTV.value
+        if "hdtv" in title_lowered or "hd-tv" in title_lowered:
+            hdtv_value = getattr(self.type_enum, "HDTV", None)
+            if hdtv_value:
+                return hdtv_value.value
 
         # encodes
-        elif any(
+        if any(
             codec in title_lowered_strip_periods
             for codec in (
                 "h264",
