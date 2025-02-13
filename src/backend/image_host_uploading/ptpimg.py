@@ -1,7 +1,6 @@
 import aiohttp
 import asyncio
 from collections.abc import Callable, Sequence, Awaitable
-from os import PathLike
 from pathlib import Path
 
 from src.exceptions import ImageUploadError
@@ -12,26 +11,48 @@ PTPIMG_BASE_URL = "https://ptpimg.me"
 
 
 async def upload_image(
-    session,
+    session: aiohttp.ClientSession,
     url: str,
     headers: dict[str, str],
     data: dict[str, str],
-    file_path: PathLike,
+    file_path: Path,
+    retries: int = 3,
 ) -> dict | str:
-    with open(file_path, "rb") as image_file:
-        form_data = aiohttp.FormData()
-        form_data.add_field("file-upload[0]", image_file, filename=Path(file_path).name)
-        form_data.add_field("format", "json")
-        form_data.add_field("api_key", data["api_key"])
+    """Uploads an image using aiohttp with retries and proper error handling."""
+    for attempt in range(retries):
+        try:
+            form_data = aiohttp.FormData()
+            with open(file_path, "rb") as image_file:
+                form_data.add_field(
+                    "file-upload[0]", image_file, filename=file_path.name
+                )
+                form_data.add_field("format", "json")
+                form_data.add_field("api_key", data["api_key"])
 
-        async with session.post(url, headers=headers, data=form_data) as response:
-            if response.status == 200:
-                response_json = await response.json()
-                result = response_json[0]
-                img_url = f"{PTPIMG_BASE_URL}/{result['code']}.{result['ext']}"
-                return img_url
+                async with session.post(
+                    url, headers=headers, data=form_data
+                ) as response:
+                    if response.status == 200:
+                        response_json = await response.json()
+                        result = response_json[0]
+                        return f"{PTPIMG_BASE_URL}/{result['code']}.{result['ext']}"
+
+                    if response.status in {429, 500, 502, 503, 504}:
+                        await asyncio.sleep(2**attempt)
+                        continue
+                    else:
+                        return {
+                            "status": response.status,
+                            "reason": response.reason,
+                        }
+
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt < retries - 1:
+                await asyncio.sleep(2**attempt)
             else:
-                return {"status": response.status, "reason": response.reason}
+                print(f"Upload failed after {retries} attempts: {e}")
+
+    return {"status": "Failed", "reason": "Failure on retry"}
 
 
 async def _ptpimg_upload_batch(
@@ -40,7 +61,7 @@ async def _ptpimg_upload_batch(
     start_index: int,
     cb: Callable[[int], Awaitable] | None = None,
 ) -> dict[int, ImageUploadData]:
-    async def upload_single_image(filepath: PathLike, index: int):
+    async def upload_single_image(filepath: Path, index: int):
         response = await upload_image(session, url, headers, payload, filepath)
         if not isinstance(response, str):
             raise ImageUploadError(

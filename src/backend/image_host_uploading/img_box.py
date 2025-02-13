@@ -1,4 +1,4 @@
-from asyncio import create_task, gather, sleep as async_sleep
+import asyncio
 from collections.abc import Sequence, Callable, Awaitable
 from pathlib import Path
 from pyimgbox import Gallery as ImgBoxGallery, Submission
@@ -14,6 +14,8 @@ async def _img_box_upload_batch(
     cb: Callable[[int], Awaitable] | None = None,
 ) -> dict[int, ImageUploadData]:
     """
+    Uploads a batch of images to ImgBox.
+
     Example Output (before converting to ImageUploadData):
         >>> {
         ...     0: Submission(
@@ -28,12 +30,18 @@ async def _img_box_upload_batch(
         ...     ),
         ...     1: Submission(...)
         ... }
+
     """
 
     async def upload_single_image(
-        filepath: Path, index: int
+        gallery: ImgBoxGallery,
+        cb: Callable[[int], Awaitable] | None,
+        filepath: Path,
+        index: int,
+        retries: int = 3,
     ) -> tuple[int, ImageUploadData]:
-        for _ in range(2):
+        """Uploads a single image with retries and exponential backoff."""
+        for attempt in range(retries):
             try:
                 submission: Submission = await gallery.upload(filepath)
                 if not submission or not submission.get("image_url"):
@@ -47,17 +55,20 @@ async def _img_box_upload_batch(
                     await cb(index + 1)
 
                 return index, image_data
+
             except Exception:
-                await async_sleep(1)
+                if attempt < retries - 1:
+                    wait_time = 2**attempt
+                    await asyncio.sleep(wait_time)
 
         return index, ImageUploadData(None, None)
 
     tasks = [
-        create_task(upload_single_image(filepath, start_index + i))
+        asyncio.create_task(upload_single_image(gallery, cb, filepath, start_index + i))
         for i, filepath in enumerate(filepaths)
     ]
 
-    batch_results = await gather(*tasks)
+    batch_results = await asyncio.gather(*tasks)
     return {index: result for index, result in batch_results}
 
 
