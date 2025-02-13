@@ -10,13 +10,33 @@ from src.packages.custom_types import ImageUploadData
 from src.exceptions import ImageUploadError
 
 
-async def upload_image(url: str, api_key: str, image_data: str) -> dict:
+async def upload_image(
+    url: str, api_key: str, image_data: str, retries: int = 3
+) -> dict:
+    """Uploads an image using aiohttp with retries and proper error handling."""
+
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            url, data={"key": api_key, "image": image_data}
-        ) as response:
-            response_json = await response.json()
-            return response_json
+        for attempt in range(retries):
+            try:
+                async with session.post(
+                    url, data={"key": api_key, "image": image_data}
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+
+                    if response.status in {429, 500, 502, 503, 504}:
+                        await asyncio.sleep(2**attempt)
+                        continue
+                    else:
+                        return {"status": response.status, "reason": response.reason}
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2**attempt)
+                else:
+                    print(f"Upload failed after {retries} attempts: {e}")
+
+    return {"status": "Failed", "reason": "Failure on retry"}
 
 
 async def _imgbb_upload_batch(

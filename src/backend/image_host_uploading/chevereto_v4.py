@@ -20,14 +20,29 @@ def _create_api_url(image_url: str) -> str:
     return image_url
 
 
-async def upload_image(url: str, api_key: str, image_data: str) -> dict:
-    """Upload a single image to the specified URL using the provided API key."""
+async def upload_image(
+    url: str, api_key: str, image_data: str, retries: int = 3
+) -> dict:
+    """Upload a single image to the specified URL using the provided API key with retries."""
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            url, data={"key": api_key, "image": image_data}
-        ) as response:
-            response_json = await response.json()
-            return response_json
+        for attempt in range(retries):
+            try:
+                async with session.post(
+                    url, data={"key": api_key, "image": image_data}
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    elif response.status in {429, 500, 502, 503, 504}:
+                        await asyncio.sleep(2**attempt)
+                    else:
+                        break
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2**attempt)
+                else:
+                    print(f"Upload failed after {retries} attempts: {e}")
+
+    return {}
 
 
 async def _chevereto_V4_upload_batch(
