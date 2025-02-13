@@ -2,6 +2,7 @@ import re
 import asyncio
 import traceback
 
+from copy import deepcopy
 from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 from pathlib import Path
@@ -346,14 +347,21 @@ class ProcessPage(BaseWizardPage):
                 self.progress_bar.hide()
 
     def _update_last_used_host(self) -> None:
-        data = {}
+        start_data = deepcopy(self.config.cfg_payload.last_used_img_host)
         for _, (
             _,
-            (_, (tracker, img_host)),
+            (_, (tracker, img_dest)),
         ), _ in self.tracker_process_tree.get_item_values():
-            data[TrackerSelection(tracker)] = ImageHost(img_host)
-        self.config.cfg_payload.last_used_img_host = data
-        self.config.save_config()
+            try:
+                self.config.cfg_payload.last_used_img_host[
+                    TrackerSelection(tracker)
+                ] = ImageHost(img_dest)
+            except ValueError:
+                self.config.cfg_payload.last_used_img_host[
+                    TrackerSelection(tracker)
+                ] = ImageSource(img_dest)
+        if self.config.cfg_payload.last_used_img_host != start_data:
+            self.config.save_config()
 
     def add_tracker_items(self) -> None:
         # sort the trackers in the users desired order before displaying them
