@@ -33,6 +33,7 @@ Comprehensive documentation is on the way and will be available soon.
 - PassThePopcorn
 - ReelFliX
 - Aither
+- HUNO
 
 _Supported trackers will be added overtime_
 
