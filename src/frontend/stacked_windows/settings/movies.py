@@ -1,7 +1,9 @@
 from pathlib import Path
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import QLine, Slot, Qt
 from PySide6.QtWidgets import (
+    QComboBox,
+    QGroupBox,
     QWidget,
     QLabel,
     QSizePolicy,
@@ -12,11 +14,25 @@ from PySide6.QtWidgets import (
 )
 
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+
+# from src.frontend.custom_widgets.title_token_edit import TitleTokenEdit
+# from src.frontend.custom_widgets.title_token_override import TitleTokenEdit
+
+# from src.frontend.custom_widgets.title_override_edit import TitleOverrideEdit
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import create_form_layout
+from src.frontend.utils import create_form_layout, build_h_line
+from src.frontend.custom_widgets.replacement_list_widget import (
+    ReplacementListWidget,
+    LoadedReplacementListWidget,
+)
 from src.backend.tokens import Tokens, FileToken
 from src.backend.token_replacer import TokenReplacer, ColonReplace, UnfilledTokenRemoval
+from src.backend.utils.example_parsed_file_data import (
+    EXAMPLE_MEDIAINFO_OBJ,
+    EXAMPLE_FILE_NAME,
+    EXAMPLE_SEARCH_PAYLOAD,
+)
 
 
 class MoviesSettings(BaseSettings):
@@ -26,167 +42,288 @@ class MoviesSettings(BaseSettings):
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("movieSettings")
 
+        # hook up signals
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
 
-        self.rename_check_box = QCheckBox("Rename Movies")
+        # controls
+        # rename
+        self.rename_check_box = QCheckBox("Rename Movies", self)
         self.rename_check_box.setToolTip(
             "Will use the existing file name if renaming is disabled"
         )
 
-        self.replace_illegal_chars = QCheckBox("Replace Illegal Characters")
+        # replace illegal chars
+        self.replace_illegal_chars = QCheckBox("Replace Illegal Characters", self)
         self.replace_illegal_chars.setToolTip(
             "Replace illegal characters. If unchecked, NfoForge will remove them instead"
         )
 
-        check_button_layout = QFormLayout()
-        check_button_layout.addWidget(self.rename_check_box)
-        check_button_layout.addWidget(self.replace_illegal_chars)
+        # layout
+        self.controls_box = QGroupBox("Controls")
+        self.controls_layout = QVBoxLayout(self.controls_box)
+        self.controls_layout.addWidget(self.rename_check_box)
+        self.controls_layout.addWidget(self.replace_illegal_chars)
 
-        self.check_media_info = QCheckBox("Parse With MediaInfo")
-        self.check_media_info.setToolTip(
-            "If checked, title information will be confirmed with MediaInfo"
+        # format file name
+        # colon replace for file name
+        fn_colon_replace_lbl, self.fn_colon_replace = self._build_colon_replace_combo(
+            "Colon Replacement", self
         )
-        check_mi_layout = QFormLayout()
-        check_mi_layout.addWidget(self.check_media_info)
-
-        colon_replacement_lbl = QLabel("Colon Replacement")
-        colon_replacement_lbl.setToolTip(
-            "Select how NfoForge handles colon replacement"
-        )
-        self.colon_replacement_combo = CustomComboBox()
-        self.colon_replacement_combo.setSizePolicy(
-            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
-        )
-        for colon_enum in ColonReplace:
-            self.colon_replacement_combo.addItem(str(colon_enum), colon_enum.value)
-        colon_replacement = create_form_layout(
-            colon_replacement_lbl, self.colon_replacement_combo
-        )
-        self.colon_replacement_combo.currentIndexChanged.connect(
-            self._update_movie_token_example_lbl
+        self.fn_colon_replace.currentIndexChanged.connect(
+            self._update_file_token_example
         )
 
-        movie_format_lbl = QLabel("Movie Format")
-        movie_format_lbl.setToolTip(
+        # format file name
+        format_file_name_lbl = QLabel("Token", self)
+        format_file_name_lbl.setToolTip(
             "Select which tokens are used to generate the renamed file name"
         )
-        self.default_user_token = (
-            "{movie_title} {release_year} {re_release} "
-            "{source} {resolution} {mi_audio_codec} "
-            "{mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
-        )
-        self.movie_format_entry = QLineEdit(self.default_user_token)
-        self.movie_format_entry.setCursorPosition(0)
-        self.movie_format_entry.textChanged.connect(
-            self._update_movie_token_example_lbl
+        self.format_file_name_token_input = QLineEdit(self)
+        self.format_file_name_token_input.textChanged.connect(
+            self._update_file_token_example
         )
 
-        title_example_label = QLabel("Title Example")
-        title_example_label.setToolTip("An example of the title output")
-        self.title_example_entry = QLineEdit()
-        self.title_example_entry.setDisabled(True)
-        title_example_form = create_form_layout(
-            title_example_label, self.title_example_entry
+        format_file_name_token_example_lbl = QLabel("Example", self)
+        self.format_file_name_token_example = self._build_disabled_example_qline_edit(
+            self
         )
-        title_example_form.setContentsMargins(5, 0, 0, 0)
 
-        file_example_label = QLabel("File Example")
-        file_example_label.setToolTip("An example of the file output")
-        self.file_example_entry = QLineEdit()
-        self.file_example_entry.setDisabled(True)
-        file_example_form = create_form_layout(
-            file_example_label, self.file_example_entry
+        # layout
+        filename_box_lbl = QLabel(
+            """<span>Format <span style="font-weight: bold;">Filename</span> Token</span>""",
+            self,
         )
-        file_example_form.setContentsMargins(5, 0, 0, 0)
-
-        movie_format_widget = QWidget()
-        movie_format_layout = QVBoxLayout(movie_format_widget)
-        movie_format_layout.setContentsMargins(0, 0, 0, 0)
-        movie_format_layout.addWidget(self.movie_format_entry)
-        movie_format_layout.addLayout(title_example_form)
-        movie_format_layout.addLayout(file_example_form)
-        movie_format = create_form_layout(movie_format_lbl, movie_format_widget)
-
-        movie_token_lbl = QLabel("Movie Tokens")
-        movie_token_lbl.setToolTip(
-            "Table of available movie tokens with short descriptions"
+        self.filename_box = QGroupBox()
+        self.format_file_name_layout = self._build_token_layout(
+            fn_colon_replace_lbl,
+            self.fn_colon_replace,
+            format_file_name_lbl,
+            self.format_file_name_token_input,
+            format_file_name_token_example_lbl,
+            self.format_file_name_token_example,
         )
+        self.filename_box.setLayout(self.format_file_name_layout)
+        self.filename_nested_layout = self._build_nested_groupbox_layout(
+            filename_box_lbl, self.filename_box
+        )
+
+        # format release title
+        # colon replace for title
+        title_colon_replace_lbl, self.title_colon_replace = (
+            self._build_colon_replace_combo("Colon Replacement", self)
+        )
+        self.title_colon_replace.currentIndexChanged.connect(
+            self._update_title_token_example
+        )
+
+        format_release_title_lbl = QLabel("Token", self)
+        format_release_title_lbl.setToolTip(
+            "Select which tokens are used to generate the renamed file name"
+        )
+        self.format_release_title_input = QLineEdit(self)
+        self.format_release_title_input.textChanged.connect(
+            self._update_title_token_example
+        )
+
+        format_release_title_example_lbl = QLabel("Example", self)
+        self.format_release_title_example = self._build_disabled_example_qline_edit(
+            self
+        )
+
+        title_box_lbl = QLabel(
+            """<span>Format <span style="font-weight: bold;">Title</span> Token</span>""",
+            self,
+        )
+        self.title_box = QGroupBox()
+        self.format_release_title_layout = self._build_token_layout(
+            title_colon_replace_lbl,
+            self.title_colon_replace,
+            format_release_title_lbl,
+            self.format_release_title_input,
+            format_release_title_example_lbl,
+            self.format_release_title_example,
+        )
+        self.title_box.setLayout(self.format_release_title_layout)
+        self.title_nested_layout = self._build_nested_groupbox_layout(
+            title_box_lbl, self.title_box
+        )
+        
+        
+        
+        
+        
+        
+
+        # # tracker overrides ###########################
+        # desc_lbl = QLabel("""<h4>Tracker Overrides</h4>""", self)
+
+        # tracker_lbl = QLabel("Tracker", self)
+        # self.tracker_selection = CustomComboBox(disable_mouse_wheel=True, parent=self)
+
+        # format_title_lbl = QLabel("Release Title", self)
+        # format_title_lbl.setToolTip("Select which tokens are used to generate the renamed file name")
+        # self.format_title_token_input = QLineEdit(self)
+        # self.format_title_token_input.setCursorPosition(0)
+
+        # format_file_name_token_example_lbl = QLabel("Example", self)
+        # self.format_file_name_token_example = QLineEdit(self)
+        # self.format_file_name_token_example.setDisabled(True)
+
+        # replacement_table_str = """<br>\
+        #     <span>This table functions the same as the one below, but for the
+        #     <span style="font-weight: bold;">Release Title</span> for each tracker.
+        #     <br><br>
+        #     <span style="font-style: italic; font-size: small;">See description on
+        #     the <span style="font-weight: bold;">Character Map</span> table below.</span>"""
+
+        # self.replacement_table_lbl = QLabel(replacement_table_str, self)
+        # self.replacement_table_lbl.setWordWrap(True)
+        # self.replacement_table = LoadedReplacementListWidget(parent=self)
+        # self.replacement_table.main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # self.inner_layout_2 = QVBoxLayout()
+        # self.inner_layout_2.setContentsMargins(6, 0, 0, 0)
+        # self.inner_layout_2.addWidget(format_title_lbl)
+        # self.inner_layout_2.addWidget(self.format_title_token_input)
+        # self.inner_layout_2.addWidget(format_file_name_token_example_lbl)
+        # self.inner_layout_2.addWidget(self.format_file_name_token_example)
+        # self.inner_layout_2.addWidget(self.replacement_table_lbl)
+        # self.inner_layout_2.addWidget(self.replacement_table)
+
+        # format_box_2 = QGroupBox("Token Format (tracker overrides)")
+        # self.main_layout_2 = QVBoxLayout(format_box_2)
+        # self.main_layout_2.setContentsMargins(0, 0, 0, 0)
+        # self.main_layout_2.addWidget(desc_lbl, alignment=Qt.AlignmentFlag.AlignCenter)
+        # self.main_layout_2.addWidget(tracker_lbl)
+        # self.main_layout_2.addWidget(self.tracker_selection)
+        # self.main_layout_2.addLayout(self.inner_layout_2)
+        # #
+        
+        
+        
+        
+        
+        
+        
+        
+        
+
+        # token table
         self.token_table = TokenTable(
-            sorted(Tokens().get_token_objects(FileToken)),
-            allow_edits=True,
+            sorted(Tokens().get_token_objects(FileToken)), allow_edits=True, parent=self
         )
-        token_table_layout = create_form_layout(movie_token_lbl, self.token_table)
+        self.token_table.main_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.add_layout(check_button_layout)
-        self.add_layout(check_mi_layout)
-        self.add_layout(colon_replacement)
-        self.add_layout(movie_format)
-        self.add_layout(token_table_layout)
+        self.token_table_box = QGroupBox("Tokens")
+        self.token_table_layout = QVBoxLayout(self.token_table_box)
+        self.token_table_layout.addWidget(self.token_table)
+
+        # final layout
+        # self.add_layout(check_button_layout)
+        # self.add_layout(check_mi_layout)
+        # self.add_layout(colon_replacement)
+        self.add_widget(self.controls_box)
+        self.add_layout(self.filename_nested_layout)
+        self.add_layout(self.title_nested_layout)
+        # self.add_layout(self.main_layout_2)
+        # self.add_widget(format_box_2)
+        # self.add_layout(movie_format)
+        # self.add_widget(self.title_token_edit)
+        # self.add_layout(token_table_layout)
+        self.add_widget(self.token_table_box)
         self.add_layout(self.reset_layout)
 
         self._load_saved_settings()
 
-    def _update_movie_token_example_lbl(self) -> None:
-        # TODO get an actual dump of a file to actually parse the data in real time as well
-        example_str = (
-            "The Matrix 1999 UHD BluRay 2160p DTS-X.7.1 DV HEVC REMUX-ExampleGroup.mkv"
+    @Slot()
+    def _update_file_token_example(self) -> None:
+        self._update_example(
+            self.format_file_name_token_input.text(),
+            self.format_file_name_token_example,
+            True,
         )
-        # TODO make sure to update this when we update media renamer
+
+    @Slot()
+    def _update_title_token_example(self) -> None:
+        self._update_example(
+            self.format_release_title_input.text(),
+            self.format_release_title_example,
+            False,
+        )
+
+    def _update_example(
+        self, token_str: str, qline: QLineEdit, file_name_mode: bool
+    ) -> None:
         format_str = TokenReplacer(
-            media_input=Path(example_str),
+            media_input=Path(EXAMPLE_FILE_NAME),
             jinja_engine=None,
             source_file=None,
-            token_string=self.movie_format_entry.text(),
-            colon_replace=ColonReplace(self.colon_replacement_combo.currentData()),
+            token_string=token_str,
+            colon_replace=ColonReplace(self.title_colon_replace.currentData()),
+            media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+            media_info_obj=EXAMPLE_MEDIAINFO_OBJ,
             flatten=True,
+            file_name_mode=file_name_mode,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
         )
-        example_title_text = self.title_example_entry.text()
-        example_file_text = self.file_example_entry.text()
+        example_txt = qline.text()
         output = format_str.get_output()
         if output:
-            example_title_text, example_file_text = output
-        self.title_example_entry.setText(example_title_text)
-        self.title_example_entry.setCursorPosition(0)
-        self.file_example_entry.setText(example_file_text)
-        self.file_example_entry.setCursorPosition(0)
+            example_txt = output
+        self._update_qline_cursor_0(qline, example_txt)
+
+    def _update_all_examples(self) -> None:
+        self._update_file_token_example()
+        self._update_title_token_example()
 
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
         # temporarily block signals until data is loaded
-        self.movie_format_entry.blockSignals(True)
-        self.colon_replacement_combo.blockSignals(True)
+        self.format_file_name_token_input.blockSignals(True)
+        self.fn_colon_replace.blockSignals(True)
+        self.format_release_title_input.blockSignals(True)
+        self.title_colon_replace.blockSignals(True)
 
+        # load settings
         self.rename_check_box.setChecked(self.config.cfg_payload.mvr_enabled)
         self.replace_illegal_chars.setChecked(
             self.config.cfg_payload.mvr_replace_illegal_chars
         )
-        self.check_media_info.setChecked(
-            self.config.cfg_payload.mvr_parse_with_media_info
+        self.load_combo_box(
+            self.fn_colon_replace,
+            ColonReplace,
+            self.config.cfg_payload.mvr_colon_replace_filename,
         )
         self.load_combo_box(
-            self.colon_replacement_combo,
+            self.title_colon_replace,
             ColonReplace,
-            self.config.cfg_payload.mvr_colon_replacement,
+            self.config.cfg_payload.mvr_colon_replace_title,
         )
-
         if self.config.cfg_payload.mvr_token.strip():
-            self.movie_format_entry.setText(self.config.cfg_payload.mvr_token)
-            self.movie_format_entry.setCursorPosition(0)
-
+            self._update_qline_cursor_0(
+                self.format_file_name_token_input,
+                self.config.cfg_payload.mvr_default_token,
+            )
+        if self.config.cfg_payload.mvr_title_token.strip():
+            self._update_qline_cursor_0(
+                self.format_release_title_input,
+                self.config.cfg_payload.mvr_title_token,
+            )
         self.token_table.load_replacement_rules(
             self.config.cfg_payload.mvr_clean_title_rules
         )
         self._mvr_default_update_check()
 
         # unblock signals
-        self.movie_format_entry.blockSignals(False)
-        self.colon_replacement_combo.blockSignals(False)
-        self._update_movie_token_example_lbl()
+        self.format_file_name_token_input.blockSignals(False)
+        self.fn_colon_replace.blockSignals(False)
+        self.format_release_title_input.blockSignals(False)
+        self.title_colon_replace.blockSignals(False)
+        self._update_all_examples()
 
     @Slot()
     def _save_settings(self) -> None:
@@ -194,13 +331,14 @@ class MoviesSettings(BaseSettings):
         self.config.cfg_payload.mvr_replace_illegal_chars = (
             self.replace_illegal_chars.isChecked()
         )
-        self.config.cfg_payload.mvr_parse_with_media_info = (
-            self.check_media_info.isChecked()
+        self.config.cfg_payload.mvr_colon_replace_filename = ColonReplace(
+            self.fn_colon_replace.currentData()
         )
-        self.config.cfg_payload.mvr_colon_replacement = ColonReplace(
-            self.colon_replacement_combo.currentData()
+        self.config.cfg_payload.mvr_colon_replace_title = ColonReplace(
+            self.title_colon_replace.currentData()
         )
-        self.config.cfg_payload.mvr_token = self.movie_format_entry.text()
+        self.config.cfg_payload.mvr_token = self.format_file_name_token_input.text()
+        self.config.cfg_payload.mvr_title_token = self.format_release_title_input.text()
         self._mvr_clean_title_rules_change()
         self.updated_settings_applied.emit()
 
@@ -211,7 +349,7 @@ class MoviesSettings(BaseSettings):
         """
         if not self.config.cfg_payload.mvr_clean_title_rules_modified:
             replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
-            defaults = self.token_table.replacement_list_widget.DEFAULT_RULES
+            defaults = self.token_table.replacement_list_widget.default_rules
             if set(replacements) != set(defaults):
                 self.config.cfg_payload.mvr_clean_title_rules = defaults
                 self.token_table.reset()
@@ -219,7 +357,7 @@ class MoviesSettings(BaseSettings):
 
     def _mvr_clean_title_rules_change(self) -> None:
         replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
-        defaults = self.token_table.replacement_list_widget.DEFAULT_RULES
+        defaults = self.token_table.replacement_list_widget.default_rules
         if not self.config.cfg_payload.mvr_clean_title_rules_modified:
             self.config.cfg_payload.mvr_clean_title_rules = defaults
         else:
@@ -233,8 +371,75 @@ class MoviesSettings(BaseSettings):
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(False)
         self.replace_illegal_chars.setChecked(True)
-        self.check_media_info.setChecked(True)
-        self.colon_replacement_combo.setCurrentIndex(0)
-        self.movie_format_entry.setText(self.default_user_token)
+        self.fn_colon_replace.setCurrentIndex(0)
+        self.title_colon_replace.setCurrentIndex(0)
+        self.format_file_name_token_input.setText(
+            self.config.cfg_payload.mvr_default_token
+        )
+        self.format_release_title_input.setText(
+            self.config.cfg_payload.mvr_default_token
+        )
         self.token_table.reset()
         self.config.cfg_payload.mvr_clean_title_rules_modified = False
+
+    @staticmethod
+    def _build_colon_replace_combo(
+        lbl_txt: str,
+        parent: QWidget,
+    ) -> tuple[QLabel, CustomComboBox]:
+        colon_replacement_lbl = QLabel(lbl_txt, parent)
+        colon_replacement_lbl.setToolTip(
+            "Select how NfoForge handles colon replacement"
+        )
+        colon_replacement_combo = CustomComboBox(
+            disable_mouse_wheel=True, parent=parent
+        )
+        colon_replacement_combo.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+        )
+        for colon_enum in ColonReplace:
+            colon_replacement_combo.addItem(str(colon_enum), colon_enum.value)
+        return colon_replacement_lbl, colon_replacement_combo
+
+    @staticmethod
+    def _build_token_layout(
+        colon_replace_lbl: QLabel,
+        colon_replace: QComboBox,
+        widget_1: QWidget,
+        widget_2: QWidget,
+        widget_t1: QWidget,
+        widget_t2: QWidget,
+        margins: tuple[int, int, int, int] | None = None,
+    ) -> QVBoxLayout:
+        """margins (tuple[int, int, int, int] | None, optional): Left, top, right, bottom"""
+        layout = QVBoxLayout()
+        if margins:
+            layout.setContentsMargins(*margins)
+        layout.addWidget(colon_replace_lbl)
+        layout.addWidget(colon_replace)
+        layout.addWidget(widget_1)
+        layout.addWidget(widget_2)
+        layout.addLayout(create_form_layout(widget_t1, widget_t2))
+        return layout
+
+    @staticmethod
+    def _build_disabled_example_qline_edit(parent=None) -> QLineEdit:
+        """Builds a disabled qline edit and returns it"""
+        line_edit = QLineEdit(parent)
+        line_edit.setDisabled(True)
+        return line_edit
+
+    @staticmethod
+    def _update_qline_cursor_0(widget: QLineEdit, txt: str) -> None:
+        widget.setText(txt)
+        widget.setCursorPosition(0)
+
+    @staticmethod
+    def _build_nested_groupbox_layout(widget1: QWidget, box: QGroupBox) -> QVBoxLayout:
+        """Builds a nested layout for the group box and another widget to be very close"""
+        nested_layout = QVBoxLayout()
+        nested_layout.setContentsMargins(0, 0, 0, 0)
+        nested_layout.setSpacing(0)
+        nested_layout.addWidget(widget1)
+        nested_layout.addWidget(box)
+        return nested_layout
