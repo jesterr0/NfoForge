@@ -1,6 +1,7 @@
+from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QLine, Slot, Qt
+from PySide6.QtCore import Slot, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
@@ -9,23 +10,16 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QVBoxLayout,
     QCheckBox,
-    QFormLayout,
     QLineEdit,
 )
 
+from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-
-# from src.frontend.custom_widgets.title_token_edit import TitleTokenEdit
-# from src.frontend.custom_widgets.title_token_override import TitleTokenEdit
-
-# from src.frontend.custom_widgets.title_override_edit import TitleOverrideEdit
 from src.frontend.custom_widgets.token_table import TokenTable
+from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
+from src.frontend.custom_widgets.resizable_stacked_widget import ResizableStackedWidget
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import create_form_layout, build_h_line
-from src.frontend.custom_widgets.replacement_list_widget import (
-    ReplacementListWidget,
-    LoadedReplacementListWidget,
-)
 from src.backend.tokens import Tokens, FileToken
 from src.backend.token_replacer import TokenReplacer, ColonReplace, UnfilledTokenRemoval
 from src.backend.utils.example_parsed_file_data import (
@@ -148,66 +142,35 @@ class MoviesSettings(BaseSettings):
         self.title_nested_layout = self._build_nested_groupbox_layout(
             title_box_lbl, self.title_box
         )
-        
-        
-        
-        
-        
-        
 
-        # # tracker overrides ###########################
-        # desc_lbl = QLabel("""<h4>Tracker Overrides</h4>""", self)
+        # tracker overrides
+        # tracker override selection
+        tracker_lbl = QLabel("Tracker", self)
+        self.tracker_selection = CustomComboBox(disable_mouse_wheel=True, parent=self)
 
-        # tracker_lbl = QLabel("Tracker", self)
-        # self.tracker_selection = CustomComboBox(disable_mouse_wheel=True, parent=self)
+        # tracker override map
+        self.tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
+        self.tracker_over_ride_stacked_widget = ResizableStackedWidget(self)
+        for tracker in self.config.tracker_map.keys():
+            tracker_format_override = TrackerFormatOverride(self)
+            tracker_format_override.setting_changed.connect(
+                partial(self._update_tracker_override_example, tracker_format_override)
+            )
+            self.tracker_selection.addItem(str(tracker), tracker)
+            self.tracker_over_ride_stacked_widget.addWidget(tracker_format_override)
+            self.tracker_override_map[tracker] = tracker_format_override
 
-        # format_title_lbl = QLabel("Release Title", self)
-        # format_title_lbl.setToolTip("Select which tokens are used to generate the renamed file name")
-        # self.format_title_token_input = QLineEdit(self)
-        # self.format_title_token_input.setCursorPosition(0)
+        # connect to signal to swap stacked widget
+        self.tracker_selection.currentIndexChanged.connect(
+            self._change_over_ride_tracker
+        )
 
-        # format_file_name_token_example_lbl = QLabel("Example", self)
-        # self.format_file_name_token_example = QLineEdit(self)
-        # self.format_file_name_token_example.setDisabled(True)
-
-        # replacement_table_str = """<br>\
-        #     <span>This table functions the same as the one below, but for the
-        #     <span style="font-weight: bold;">Release Title</span> for each tracker.
-        #     <br><br>
-        #     <span style="font-style: italic; font-size: small;">See description on
-        #     the <span style="font-weight: bold;">Character Map</span> table below.</span>"""
-
-        # self.replacement_table_lbl = QLabel(replacement_table_str, self)
-        # self.replacement_table_lbl.setWordWrap(True)
-        # self.replacement_table = LoadedReplacementListWidget(parent=self)
-        # self.replacement_table.main_layout.setContentsMargins(0, 0, 0, 0)
-
-        # self.inner_layout_2 = QVBoxLayout()
-        # self.inner_layout_2.setContentsMargins(6, 0, 0, 0)
-        # self.inner_layout_2.addWidget(format_title_lbl)
-        # self.inner_layout_2.addWidget(self.format_title_token_input)
-        # self.inner_layout_2.addWidget(format_file_name_token_example_lbl)
-        # self.inner_layout_2.addWidget(self.format_file_name_token_example)
-        # self.inner_layout_2.addWidget(self.replacement_table_lbl)
-        # self.inner_layout_2.addWidget(self.replacement_table)
-
-        # format_box_2 = QGroupBox("Token Format (tracker overrides)")
-        # self.main_layout_2 = QVBoxLayout(format_box_2)
-        # self.main_layout_2.setContentsMargins(0, 0, 0, 0)
-        # self.main_layout_2.addWidget(desc_lbl, alignment=Qt.AlignmentFlag.AlignCenter)
-        # self.main_layout_2.addWidget(tracker_lbl)
-        # self.main_layout_2.addWidget(self.tracker_selection)
-        # self.main_layout_2.addLayout(self.inner_layout_2)
-        # #
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        self.over_ride_box = QGroupBox("Format Title Tracker Overrides")
+        self.over_ride_inner_layout = QVBoxLayout(self.over_ride_box)
+        self.over_ride_inner_layout.addWidget(tracker_lbl)
+        self.over_ride_inner_layout.addWidget(self.tracker_selection)
+        self.over_ride_inner_layout.addWidget(build_h_line((6, 1, 6, 1)))
+        self.over_ride_inner_layout.addWidget(self.tracker_over_ride_stacked_widget)
 
         # token table
         self.token_table = TokenTable(
@@ -220,17 +183,10 @@ class MoviesSettings(BaseSettings):
         self.token_table_layout.addWidget(self.token_table)
 
         # final layout
-        # self.add_layout(check_button_layout)
-        # self.add_layout(check_mi_layout)
-        # self.add_layout(colon_replacement)
         self.add_widget(self.controls_box)
         self.add_layout(self.filename_nested_layout)
         self.add_layout(self.title_nested_layout)
-        # self.add_layout(self.main_layout_2)
-        # self.add_widget(format_box_2)
-        # self.add_layout(movie_format)
-        # self.add_widget(self.title_token_edit)
-        # self.add_layout(token_table_layout)
+        self.add_widget(self.over_ride_box)
         self.add_widget(self.token_table_box)
         self.add_layout(self.reset_layout)
 
@@ -239,28 +195,46 @@ class MoviesSettings(BaseSettings):
     @Slot()
     def _update_file_token_example(self) -> None:
         self._update_example(
-            self.format_file_name_token_input.text(),
-            self.format_file_name_token_example,
-            True,
+            token_str=self.format_file_name_token_input.text(),
+            colon_replace=ColonReplace(self.title_colon_replace.currentData()),
+            file_name_mode=True,
+            qline=self.format_file_name_token_example,
         )
 
     @Slot()
     def _update_title_token_example(self) -> None:
-        self._update_example(
-            self.format_release_title_input.text(),
-            self.format_release_title_example,
-            False,
+        txt_data = self._update_example(
+            token_str=self.format_release_title_input.text(),
+            colon_replace=ColonReplace(self.title_colon_replace.currentData()),
+            file_name_mode=False,
+            qline=self.format_release_title_example,
         )
 
+        # if override widget is enabled we'll update the title portion of it's widget if
+        # there is no token for that widget
+        override_widget: TrackerFormatOverride = (
+            self.tracker_over_ride_stacked_widget.currentWidget()
+        )  # pyright: ignore [reportAssignmentType]
+        if (
+            override_widget.enabled_checkbox.isChecked()
+            and not override_widget.over_ride_format_title.text()
+        ):
+            override_widget.over_ride_format_file_name_token_example.setText(txt_data)
+
     def _update_example(
-        self, token_str: str, qline: QLineEdit, file_name_mode: bool
-    ) -> None:
+        self,
+        token_str: str,
+        colon_replace: ColonReplace,
+        file_name_mode: bool,
+        qline: QLineEdit,
+        override_title_rules: list[tuple[str, str]] | None = None,
+    ) -> str:
         format_str = TokenReplacer(
             media_input=Path(EXAMPLE_FILE_NAME),
             jinja_engine=None,
             source_file=None,
             token_string=token_str,
-            colon_replace=ColonReplace(self.title_colon_replace.currentData()),
+            colon_replace=colon_replace,
             media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
             media_info_obj=EXAMPLE_MEDIAINFO_OBJ,
             flatten=True,
@@ -268,16 +242,50 @@ class MoviesSettings(BaseSettings):
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            override_title_rules=override_title_rules,
         )
         example_txt = qline.text()
         output = format_str.get_output()
         if output:
             example_txt = output
         self._update_qline_cursor_0(qline, example_txt)
+        return example_txt
 
     def _update_all_examples(self) -> None:
         self._update_file_token_example()
         self._update_title_token_example()
+
+    @Slot(int)
+    def _change_over_ride_tracker(self, idx: int) -> None:
+        curr_tracker = self.tracker_selection.itemData(idx)
+        if curr_tracker:
+            tracker_override_widget = self.tracker_override_map[curr_tracker]
+            self.tracker_over_ride_stacked_widget.setCurrentWidget(
+                tracker_override_widget
+            )
+            self._update_tracker_override_example(tracker_override_widget)
+
+    @Slot(TrackerFormatOverride)
+    def _update_tracker_override_example(
+        self, tracker_format_override: TrackerFormatOverride
+    ) -> None:
+        token_str = tracker_format_override.over_ride_format_title.text()
+        qline = tracker_format_override.over_ride_format_file_name_token_example
+        colon_replace = ColonReplace(
+            tracker_format_override.title_colon_replace.currentData()
+        )
+        over_ride_rules = (
+            tracker_format_override.over_ride_replacement_table.get_replacements()
+        )
+        self._update_example(
+            token_str=token_str
+            if token_str
+            else self.format_release_title_input.text(),
+            colon_replace=colon_replace,
+            file_name_mode=False,
+            qline=qline,
+            override_title_rules=over_ride_rules,
+        )
 
     @Slot()
     def _load_saved_settings(self) -> None:
@@ -287,6 +295,8 @@ class MoviesSettings(BaseSettings):
         self.fn_colon_replace.blockSignals(True)
         self.format_release_title_input.blockSignals(True)
         self.title_colon_replace.blockSignals(True)
+        for over_ride_widget in self.tracker_override_map.values():
+            over_ride_widget.blockSignals(True)
 
         # load settings
         self.rename_check_box.setChecked(self.config.cfg_payload.mvr_enabled)
@@ -313,6 +323,31 @@ class MoviesSettings(BaseSettings):
                 self.format_release_title_input,
                 self.config.cfg_payload.mvr_title_token,
             )
+        # load saved tracker overrides
+        for idx, (tracker, tracker_info) in enumerate(self.config.tracker_map.items()):
+            over_ride_widget = self.tracker_override_map[tracker]
+            over_ride_widget.enabled_checkbox.setChecked(
+                tracker_info.mvr_title_override_enabled
+            )
+            over_ride_widget.set_colon_replace(
+                str(tracker_info.mvr_title_colon_replace)
+            )
+            self._update_qline_cursor_0(
+                over_ride_widget.over_ride_format_title,
+                tracker_info.mvr_title_token_override,
+            )
+            over_ride_widget.over_ride_replacement_table.set_default_rules(
+                tracker_info.mvr_title_default_replace_map
+            )
+            over_ride_widget.over_ride_replacement_table.reset()
+            if tracker_info.mvr_title_replace_map:
+                over_ride_widget.over_ride_replacement_table.add_rows(
+                    tracker_info.mvr_title_replace_map
+                )
+            # we only want to pay the cost of running the token engine on the currently visible tracker
+            # override the others will be updated as they are clicked through
+            if idx == 0:
+                self._update_tracker_override_example(over_ride_widget)
         self.token_table.load_replacement_rules(
             self.config.cfg_payload.mvr_clean_title_rules
         )
@@ -324,6 +359,15 @@ class MoviesSettings(BaseSettings):
         self.format_release_title_input.blockSignals(False)
         self.title_colon_replace.blockSignals(False)
         self._update_all_examples()
+        QTimer.singleShot(1, self._delayed_unblock_override_widgets)
+
+    def _delayed_unblock_override_widgets(self):
+        """
+        This prevents un-needed calls that are slightly 'expensive' that can happen when
+        loading data into the override UI elements.
+        """
+        for over_ride_widget in self.tracker_override_map.values():
+            over_ride_widget.blockSignals(False)
 
     @Slot()
     def _save_settings(self) -> None:
@@ -339,6 +383,25 @@ class MoviesSettings(BaseSettings):
         )
         self.config.cfg_payload.mvr_token = self.format_file_name_token_input.text()
         self.config.cfg_payload.mvr_title_token = self.format_release_title_input.text()
+        # save tracker overrides
+        for tracker in self.config.tracker_map.keys():
+            over_ride_widget = self.tracker_override_map[tracker]
+            self.config.tracker_map[
+                tracker
+            ].mvr_title_override_enabled = over_ride_widget.enabled_checkbox.isChecked()
+            self.config.tracker_map[
+                tracker
+            ].mvr_title_colon_replace = (
+                over_ride_widget.title_colon_replace.currentData()
+            )
+            self.config.tracker_map[
+                tracker
+            ].mvr_title_token_override = over_ride_widget.over_ride_format_title.text()
+            self.config.tracker_map[
+                tracker
+            ].mvr_title_replace_map = (
+                over_ride_widget.over_ride_replacement_table.get_replacements()
+            )
         self._mvr_clean_title_rules_change()
         self.updated_settings_applied.emit()
 
