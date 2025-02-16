@@ -44,6 +44,7 @@ class TokenReplacer:
         "media_info_obj",
         "source_file_mi_obj",
         "flatten",
+        "file_name_mode",
         "token_type",
         "unfilled_token_mode",
         "releasers_name",
@@ -51,6 +52,7 @@ class TokenReplacer:
         "dummy_screen_shots",
         "edition_override",
         "movie_clean_title_rules",
+        "override_title_rules",
         "token_data",
     )
 
@@ -65,11 +67,13 @@ class TokenReplacer:
         media_info_obj: MediaInfo | None = None,
         source_file_mi_obj: MediaInfo | None = None,
         flatten: bool | None = False,
+        file_name_mode: bool = True,
         token_type: Iterable[TokenType] | Type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
         edition_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
+        override_title_rules: list[tuple[str, str]] | None = None,
         screen_shots: str | None = "",
         dummy_screen_shots: bool = False,
     ):
@@ -87,6 +91,7 @@ class TokenReplacer:
             media_info_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
             source_file_mi_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
             flatten (Optional[bool]): Rather or not to flatten the data to a single string
+            file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
             with no newlines or extra white space (used for filenames). `colon_replace` is ignored
             when this is used.
             token_type (Optional[Iterable[TokenType]]): Specific `TokenType`'s to use, or None for all.
@@ -94,7 +99,8 @@ class TokenReplacer:
             eg. (TokenType, TokenType).
             releasers_name (Optional[str]): Releasers name.
             edition_override (Optional[str]): Edition override.
-            movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate for 'movie_clean_title' token.
+            movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
+            override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
             screen_shots (Optional[str]): Screenshots.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
             screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
@@ -115,11 +121,13 @@ class TokenReplacer:
         self.media_info_obj = media_info_obj
         self.source_file_mi_obj = source_file_mi_obj
         self.flatten = flatten
+        self.file_name_mode = file_name_mode
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
         self.releasers_name = releasers_name
         self.edition_override = edition_override
         self.movie_clean_title_rules = movie_clean_title_rules
+        self.override_title_rules = override_title_rules
         self.screen_shots = screen_shots
         self.dummy_screen_shots = dummy_screen_shots
         self.token_data = Tokens.generate_token_dataclass(token_type)
@@ -129,7 +137,7 @@ class TokenReplacer:
                 "You must pass in 'jinja_engine' if you are not flattening your output string"
             )
 
-    def get_output(self) -> tuple[str, str] | str | None:
+    def get_output(self) -> str | None:
         """
         if flatten:
             `Index 0`: Formatted str.
@@ -315,6 +323,12 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MOVIE_TMDB_ID.token:
             return self._movie_tmdb_id(token_data)
 
+        elif token_data.bracket_token == Tokens.MOVIE_TVDB_ID.token:
+            return self._movie_tvdb_id(token_data)
+
+        elif token_data.bracket_token == Tokens.MOVIE_MAL_ID.token:
+            return self._movie_mal_id(token_data)
+
         elif token_data.bracket_token == Tokens.ORIGINAL_FILENAME.token:
             return self._original_filename(token_data)
 
@@ -443,7 +457,7 @@ class TokenReplacer:
 
         return ""
 
-    def _format_token_string(self, filled_tokens):
+    def _format_token_string(self, filled_tokens) -> str | None:
         try:
             formatted_title = self.token_string
             for key, value in filled_tokens.items():
@@ -463,15 +477,29 @@ class TokenReplacer:
             formatted_title = self._remove_unfilled_tokens(formatted_title)
 
             # apply final formatting
-            formatted_title = re.sub(r"\s{1,}", " ", formatted_title)
-            formatted_title = re.sub(r"\.{2,}", ".", formatted_title)
-            formatted_file_name = re.sub(r"\s{1,}", ".", formatted_title)
-            formatted_file_name = re.sub(r"\.{2,}", ".", formatted_file_name)
-            formatted_file_name = re.sub(r":\.", ".", formatted_file_name)
-            formatted_file_name = re.sub(r"\.-\.|\.-|-\.", "-", formatted_file_name)
-
-            # return the formatted title and file name
-            return formatted_title, formatted_file_name + self.media_input.suffix
+            # if filename mode
+            if self.file_name_mode:
+                formatted_file_name = re.sub(r"\s{1,}", ".", formatted_title)
+                formatted_file_name = re.sub(r"\.{2,}", ".", formatted_file_name)
+                formatted_file_name = re.sub(r":\.", ".", formatted_file_name)
+                formatted_file_name = re.sub(r"\.-\.|\.-|-\.", "-", formatted_file_name)
+                return formatted_file_name + self.media_input.suffix
+            # if title mode
+            else:
+                formatted_title = re.sub(r"\s{1,}", " ", formatted_title)
+                formatted_title = re.sub(r"\.{2,}", ".", formatted_title)
+                if self.override_title_rules:
+                    for replace, replace_with in self.override_title_rules:
+                        if replace_with == "[unidecode]":
+                            formatted_title = unidecode.unidecode(formatted_title)
+                        else:
+                            replace_with = replace_with.replace("[remove]", "").replace(
+                                "[space]", " "
+                            )
+                            formatted_title = re.sub(
+                                rf"{replace}", rf"{replace_with}", formatted_title
+                            )
+                return formatted_title
         except (ValueError, KeyError):
             return None
 
@@ -819,6 +847,14 @@ class TokenReplacer:
     def _movie_tmdb_id(self, token_data: TokenData) -> str:
         tmdb_id = self.media_search_obj.tmdb_id if self.media_search_obj.tmdb_id else ""
         return self._optional_user_input(tmdb_id, token_data)
+
+    def _movie_tvdb_id(self, token_data: TokenData) -> str:
+        tvdb_id = self.media_search_obj.tvdb_id if self.media_search_obj.tvdb_id else ""
+        return self._optional_user_input(tvdb_id, token_data)
+
+    def _movie_mal_id(self, token_data: TokenData) -> str:
+        mal_id = self.media_search_obj.mal_id if self.media_search_obj.mal_id else ""
+        return self._optional_user_input(mal_id, token_data)
 
     def _original_filename(self, token_data: TokenData) -> str:
         return self._optional_user_input(self.media_input.stem, token_data)
