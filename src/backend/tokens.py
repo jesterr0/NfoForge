@@ -3,6 +3,27 @@ from dataclasses import field, make_dataclass, asdict
 from typing import NamedTuple, Type, Any
 
 
+MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
+    (r"", r"[unidecode]"),
+    (r"&", r"and"),
+    (r"/", r"\\"),
+    (r"'", r"[remove]"),
+    # remove commas within numbers (50,000 -> 50000)
+    (r"(?<=\d),(?=\d)", r"[remove]"),
+    # replace commas after words with a period
+    (r"(?<=\w),(?=\s\w)", r"[space]"),
+    # replace space dash space with nothing
+    (r"\s*-\s*", r"."),
+    (
+        r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
+        r"('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|"
+        r"(\(|\)|\[|\]|\{|\})",
+        r"[space]",
+    ),
+    (r"\s{2,}", r"[space]"),
+]
+
+
 class TokenData(NamedTuple):
     """Holds the data for tokens"""
 
@@ -96,6 +117,8 @@ class Tokens:
     )
     MOVIE_IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
     MOVIE_TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
+    MOVIE_TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
+    MOVIE_MAL_ID = FileToken("{mal_id}", "MAL ID")
     ORIGINAL_FILENAME = FileToken("{original_filename}", "Original filename")
     RELEASE_GROUP = FileToken("{release_group}", "Release group")
     RELEASE_YEAR = FileToken("{release_year}", "Release year")
