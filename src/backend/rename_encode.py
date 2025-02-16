@@ -32,9 +32,10 @@ class RenameEncodeBackEnd:
             media_info_obj=media_info_obj,
             source_file_mi_obj=source_file_mi_obj,
             flatten=True,
+            file_name_mode=True,
             movie_clean_title_rules=movie_clean_title_rules,
         )
         data = token_replacer.get_output()
         if data:
-            _, output = data
+            output = data
         return Path(output) if output else None
