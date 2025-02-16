@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
 from src.enums.trackers.morethantv import MTVSourceOrigin
+from src.enums.token_replacer import ColonReplace
 from src.enums.url_type import URLType
 
 
@@ -22,6 +23,13 @@ class TrackerInfo:
     column_s: int = 1
     column_space: int = 1
     row_space: int = 1
+
+    # title token override
+    mvr_title_override_enabled: bool = False
+    mvr_title_colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH
+    mvr_title_token_override: str = ""
+    mvr_title_replace_map: list[tuple[str, str]] | None = None
+    mvr_title_default_replace_map: list[tuple[str, str]] | None = None
 
 
 @dataclass(slots=True)
