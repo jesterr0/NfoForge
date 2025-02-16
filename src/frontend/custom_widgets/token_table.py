@@ -2,147 +2,22 @@ from PySide6.QtCore import Slot, QTimer
 from PySide6.QtGui import Qt, QCursor, QColor
 from PySide6.QtWidgets import (
     QApplication,
-    QHBoxLayout,
     QLabel,
     QSizePolicy,
     QTableWidgetItem,
     QTableWidget,
     QAbstractItemView,
     QHeaderView,
-    QToolButton,
     QVBoxLayout,
     QLineEdit,
     QWidget,
     QSpacerItem,
-    QMessageBox,
 )
 
-from src.frontend.utils import build_auto_theme_icon_buttons
-from src.frontend.custom_widgets.replacement_list_widget import ReplacementListWidget
-
-
-class MovieCleanTitleReplacementWidget(QWidget):
-    DEFAULT_RULES = [
-        (r"", r"[unidecode]"),
-        (r"&", r"and"),
-        (r"/", r"\\"),
-        (r"'", r"[remove]"),
-        # remove commas within numbers (50,000 -> 50000)
-        (r"(?<=\d),(?=\d)", r"[remove]"),
-        # replace commas after words with a period
-        (r"(?<=\w),(?=\s\w)", r"[space]"),
-        # replace space dash space with nothing
-        (r"\s*-\s*", r"."),
-        (
-            r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
-            r"('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|"
-            r"(\(|\)|\[|\]|\{|\})",
-            r"[space]",
-        ),
-        (r"\s{2,}", r"[space]"),
-    ]
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setObjectName("movieCleanTitleReplacementWidget")
-
-        self.replacement_list_widget = ReplacementListWidget(self)
-        self.replacement_list_widget.set_defaults.connect(self.apply_defaults)
-        self.replacement_list_widget.setMinimumHeight(180)
-
-        self.add_row_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "add_circle.svg",
-            "addRowBtn",
-            20,
-            20,
-            parent=self,
-        )
-        self.add_row_btn.clicked.connect(self.replacement_list_widget.add_row)
-        self.add_row_btn.setToolTip("Add a row")
-
-        self.delete_row_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "delete.svg",
-            "deleteRowBtn",
-            20,
-            20,
-            parent=self,
-        )
-        self.delete_row_btn.clicked.connect(
-            self.replacement_list_widget.remove_selected_row
-        )
-        self.delete_row_btn.setToolTip("Remove currently selected row")
-
-        self.reset_table_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "reset.svg",
-            "resetTableBtn",
-            20,
-            20,
-            parent=self,
-        )
-        self.reset_table_btn.clicked.connect(self.reset_table)
-        self.reset_table_btn.setToolTip("Reset table to defaults")
-
-        self.row_up_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "arrow_upward.svg",
-            "rowUpBtn",
-            20,
-            20,
-            parent=self,
-        )
-        self.row_up_btn.clicked.connect(self.replacement_list_widget.move_up)
-        self.row_up_btn.setToolTip("Move currently selected row up")
-
-        self.row_down_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "arrow_downward.svg",
-            "rowDownBtn",
-            20,
-            20,
-            parent=self,
-        )
-        self.row_down_btn.clicked.connect(self.replacement_list_widget.move_down)
-        self.row_down_btn.setToolTip("Move currently selected row down")
-
-        self.button_layout = QVBoxLayout()
-        self.button_layout.addWidget(self.add_row_btn)
-        self.button_layout.addWidget(self.delete_row_btn)
-        self.button_layout.addWidget(self.reset_table_btn)
-        self.button_layout.addSpacerItem(
-            QSpacerItem(
-                1, 1, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
-            )
-        )
-        self.button_layout.addWidget(self.row_up_btn)
-        self.button_layout.addWidget(self.row_down_btn)
-
-        self.main_layout = QHBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.addWidget(self.replacement_list_widget)
-        self.main_layout.addLayout(self.button_layout)
-
-    def reset(self) -> None:
-        self.replacement_list_widget.clearContents()
-        self.replacement_list_widget.setRowCount(0)
-
-    def apply_defaults(self) -> None:
-        self.replacement_list_widget.add_rows(self.DEFAULT_RULES)
-
-    @Slot()
-    def reset_table(self) -> None:
-        if (
-            QMessageBox.question(
-                self,
-                "Defaults",
-                "Would you like to set this back to the default configuration?",
-            )
-            == QMessageBox.StandardButton.Yes
-        ):
-            self.reset()
-            self.apply_defaults()
+from src.frontend.custom_widgets.replacement_list_widget import (
+    LoadedReplacementListWidget,
+)
+from src.backend.tokens import MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS
 
 
 class TokenTable(QWidget):
@@ -193,7 +68,9 @@ class TokenTable(QWidget):
             replacement_list_widget_lbl = QLabel(movie_clean_title_custom_str)
             replacement_list_widget_lbl.setWordWrap(True)
 
-            self.replacement_list_widget = MovieCleanTitleReplacementWidget(self)
+            self.replacement_list_widget = LoadedReplacementListWidget(
+                MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS, self
+            )
             self.main_layout.addSpacerItem(
                 QSpacerItem(
                     1, 12, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
