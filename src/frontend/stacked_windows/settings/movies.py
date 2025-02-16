@@ -413,6 +413,10 @@ class MoviesSettings(BaseSettings):
         if not self.config.cfg_payload.mvr_clean_title_rules_modified:
             replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
             defaults = self.token_table.replacement_list_widget.default_rules
+            if not defaults:
+                raise ValueError(
+                    "Cannot detect 'replacement_list_widget' default rules"
+                )
             if set(replacements) != set(defaults):
                 self.config.cfg_payload.mvr_clean_title_rules = defaults
                 self.token_table.reset()
@@ -421,6 +425,8 @@ class MoviesSettings(BaseSettings):
     def _mvr_clean_title_rules_change(self) -> None:
         replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
         defaults = self.token_table.replacement_list_widget.default_rules
+        if not defaults:
+            raise ValueError("Cannot detect 'replacement_list_widget' default rules")
         if not self.config.cfg_payload.mvr_clean_title_rules_modified:
             self.config.cfg_payload.mvr_clean_title_rules = defaults
         else:
