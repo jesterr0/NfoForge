@@ -35,6 +35,11 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_colon_replace = 3
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_default_replace_map = []
 anonymous = 0
 api_key = ""
 username = ""
@@ -57,6 +62,11 @@ url_type = 2
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+mvr_title_default_replace_map = []
 username = ""
 password = ""
 torrent_passkey = ""
@@ -74,6 +84,11 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+mvr_title_default_replace_map = []
 anonymous = 0
 api_key = ""
 rss_key = ""
@@ -94,6 +109,11 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+mvr_title_default_replace_map = []
 api_user = ""
 api_key = ""
 username = ""
@@ -112,6 +132,11 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+mvr_title_default_replace_map = []
 api_key = ""
 anonymous = 0
 internal = 0
@@ -136,6 +161,11 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true # TODO: modify to naming standards
+mvr_title_token_override = ""
+mvr_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_title_colon_replace = 3
+mvr_title_default_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
 api_key = ""
 anonymous = 0
 internal = 0
@@ -160,6 +190,11 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true # TODO: modify to naming standards
+mvr_title_token_override = ""
+mvr_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_title_colon_replace = 3
+mvr_title_default_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
 api_key = ""
 anonymous = 0
 internal = 0
@@ -207,9 +242,11 @@ path = ""
 [movie_rename]
 mvr_enabled = true
 mvr_replace_illegal_chars = true
-mvr_parse_with_media_info = true
-mvr_colon_replacement = 2
+mvr_colon_replace_filename = 3
+mvr_colon_replace_title = 3
 mvr_token = "{movie_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token = "{movie_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
+mvr_default_token = "{movie_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
 mvr_clean_title_rules = [
     [
         "",
