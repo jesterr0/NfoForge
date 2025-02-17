@@ -24,6 +24,7 @@ def bhd_uploader(
     api_key: str,
     torrent_file: PathLike[str] | Path,
     file_input: PathLike[str] | Path,
+    tracker_title: str | None,
     media_mode: MediaMode,
     imdb_id: str,
     tmdb_id: str,
@@ -42,6 +43,7 @@ def bhd_uploader(
         timeout=timeout,
     )
     return uploader.upload(
+        tracker_title=tracker_title,
         imdb_id=imdb_id,
         tmdb_id=tmdb_id,
         nfo=nfo,
@@ -71,6 +73,7 @@ class BHDUploader:
 
     def upload(
         self,
+        tracker_title: str | None,
         imdb_id: str | None = None,
         tmdb_id: str | None = None,
         nfo: str | None = None,
@@ -80,7 +83,7 @@ class BHDUploader:
         promo: BHDPromo | None = None,
     ) -> TrackerError | str | None:
         upload_payload = {
-            "name": self._generate_name(),
+            "name": tracker_title if tracker_title else self._generate_name(),
             "category_id": self._category_id(),
             "type": self._type(),
             "source": self._source(),
