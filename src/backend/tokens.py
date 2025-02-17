@@ -121,6 +121,7 @@ class Tokens:
     MOVIE_MAL_ID = FileToken("{mal_id}", "MAL ID")
     ORIGINAL_FILENAME = FileToken("{original_filename}", "Original filename")
     RELEASE_GROUP = FileToken("{release_group}", "Release group")
+    RELEASERS_NAME = FileToken("{releasers_name}", "Releaser's name (Anonymous)")
     RELEASE_YEAR = FileToken("{release_year}", "Release year")
     RELEASE_YEAR_PARENTHESES = FileToken(
         "{release_year_parentheses}", "Release year with parentheses"
@@ -156,7 +157,6 @@ class Tokens:
         "{mi_video_bit_rate_num_only}",
         "Average video bit-rate in kbps, numbers only (9975)",
     )
-    RELEASERS_NAME = NfoToken("{releasers_name}", "Releaser's name (Anonymous)")
     REPACK = NfoToken("{repack}", "Returns 'REPACK' if repack was detected")
     REPACK_N = NfoToken("{repack_n}", "Repack and repack number if exists (REPACK2)")
     REPACK_REASON = NfoToken("{repack_reason}", "Reason for REPACK if provided")
