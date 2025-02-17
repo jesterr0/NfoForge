@@ -52,6 +52,7 @@ class Tokens:
 
     # File Tokens
     EDITION = FileToken("{edition}", "Edition")
+    FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
     MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels")
     MI_AUDIO_CODEC = FileToken("{mi_audio_codec}", "Audio codec")
     MI_AUDIO_LANGUAGE_1_ISO_639_1 = FileToken(
