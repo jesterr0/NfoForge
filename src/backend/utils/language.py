@@ -1,17 +1,13 @@
-from typing import Union
-
 from iso639 import Lang
 from iso639.exceptions import InvalidLanguageValue
-from pymediainfo import MediaInfo
+from pymediainfo import Track
 
 
-def get_language_mi(
-    media_track: MediaInfo.parse, char_code: int = 1
-) -> Union[None, str]:
+def get_language_mi(media_track: Track, char_code: int = 1) -> str | None:
     """Used to properly detect the input language from pymediainfo track
 
     Args:
-        media_track (MediaInfo.parse): pymediainfo track
+        media_track (Track): pymediainfo track
         char_code (int, optional): 1 or 2, if set to 2 it returns 'en' else if 3 it returns 'eng'
     """
     if char_code not in {1, 2}:
@@ -42,7 +38,7 @@ def get_language_mi(
     return None
 
 
-def get_language_str(language_str: str, char_code: int = 1) -> Union[None, str]:
+def get_language_str(language_str: str, char_code: int = 1) -> str | None:
     """Used to properly detect the input language from input string
 
     Args:
@@ -58,6 +54,20 @@ def get_language_str(language_str: str, char_code: int = 1) -> Union[None, str]:
                 return str(Lang(language_str).pt1).upper()
             elif char_code == 2:
                 return str(Lang(language_str).pt2b).upper()
+        except InvalidLanguageValue:
+            return None
+    return None
+
+
+def get_full_language_str(language_str: str) -> str | None:
+    """Used to properly detect the input language from input string
+
+    Args:
+        language_str (str): Language input string
+    """
+    if language_str:
+        try:
+            return str(Lang(language_str.lower()).name)
         except InvalidLanguageValue:
             return None
     return None
