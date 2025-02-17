@@ -24,7 +24,6 @@ from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
 from src.enums.media_mode import MediaMode
-from src.enums.token_replacer import ColonReplace
 from src.exceptions import ProcessError
 from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
@@ -110,7 +109,6 @@ class ProcessWorker(BaseWorker):
         source_file_mi_obj: MediaInfo | None,
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
-        colon_replacement: ColonReplace,
         releasers_name: str,
         parent: QObject | None = None,
     ) -> None:
@@ -124,7 +122,6 @@ class ProcessWorker(BaseWorker):
         self.source_file_mi_obj = source_file_mi_obj
         self.media_mode = media_mode
         self.media_search_payload = media_search_payload
-        self.colon_replacement = colon_replacement
         self.releasers_name = releasers_name
 
     def run(self) -> None:
@@ -143,7 +140,6 @@ class ProcessWorker(BaseWorker):
                 source_file_mi_obj=self.source_file_mi_obj,
                 media_mode=self.media_mode,
                 media_search_payload=self.media_search_payload,
-                colon_replacement=self.colon_replacement,
                 releasers_name=self.releasers_name,
             )
             self.job_finished.emit()
@@ -259,7 +255,6 @@ class ProcessPage(BaseWizardPage):
                 source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
                 media_mode=self.config.cfg_payload.media_mode,
                 media_search_payload=self.config.media_search_payload,
-                colon_replacement=self.config.cfg_payload.mvr_colon_replacement,
                 releasers_name=self.config.cfg_payload.releasers_name,
                 parent=self,
             )
