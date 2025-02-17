@@ -32,6 +32,8 @@ from src.backend.utils.example_parsed_file_data import (
 class MoviesSettings(BaseSettings):
     """Movie specific settings"""
 
+    TRACKERS_OVERRIDE_NOT_SUPPORTED = (TrackerSelection.PASS_THE_POPCORN,)
+
     def __init__(self, config, main_window, parent) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("movieSettings")
@@ -152,6 +154,8 @@ class MoviesSettings(BaseSettings):
         self.tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
         self.tracker_over_ride_stacked_widget = ResizableStackedWidget(self)
         for tracker in self.config.tracker_map.keys():
+            if tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED:
+                continue
             tracker_format_override = TrackerFormatOverride(self)
             tracker_format_override.setting_changed.connect(
                 partial(self._update_tracker_override_example, tracker_format_override)
@@ -241,6 +245,7 @@ class MoviesSettings(BaseSettings):
             file_name_mode=file_name_mode,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+            releasers_name=self.config.cfg_payload.releasers_name,
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
             override_title_rules=override_title_rules,
         )
@@ -324,7 +329,8 @@ class MoviesSettings(BaseSettings):
                 self.config.cfg_payload.mvr_title_token,
             )
         # load saved tracker overrides
-        for idx, (tracker, tracker_info) in enumerate(self.config.tracker_map.items()):
+        for idx, tracker in enumerate(self.tracker_override_map.keys()):
+            tracker_info = self.config.tracker_map[tracker]
             over_ride_widget = self.tracker_override_map[tracker]
             over_ride_widget.enabled_checkbox.setChecked(
                 tracker_info.mvr_title_override_enabled
@@ -384,7 +390,7 @@ class MoviesSettings(BaseSettings):
         self.config.cfg_payload.mvr_token = self.format_file_name_token_input.text()
         self.config.cfg_payload.mvr_title_token = self.format_release_title_input.text()
         # save tracker overrides
-        for tracker in self.config.tracker_map.keys():
+        for tracker in self.tracker_override_map.keys():
             over_ride_widget = self.tracker_override_map[tracker]
             self.config.tracker_map[
                 tracker
@@ -502,6 +508,7 @@ class MoviesSettings(BaseSettings):
     def _update_qline_cursor_0(widget: QLineEdit, txt: str) -> None:
         widget.setText(txt)
         widget.setCursorPosition(0)
+        widget.setToolTip(txt)
 
     @staticmethod
     def _build_nested_groupbox_layout(widget1: QWidget, box: QGroupBox) -> QVBoxLayout:
