@@ -80,6 +80,7 @@ class Unit3dBaseUploader:
 
     def upload(
         self,
+        tracker_title: str | None,
         imdb_id: str | None = None,
         tmdb_id: str | None = None,
         tvdb_id: str | None = None,
@@ -97,7 +98,7 @@ class Unit3dBaseUploader:
     ) -> bool | None:
         params = {"api_token": self.api_key}
         upload_payload = {
-            "name": self._generate_name(),
+            "name": tracker_title if tracker_title else self._generate_name(),
             "description": nfo,
             "mediainfo": MinimalMediaInfo(self.file_input).get_full_mi_str(
                 cleansed=True
