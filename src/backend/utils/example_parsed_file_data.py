@@ -2,7 +2,7 @@ from pymediainfo import MediaInfo
 from src.payloads.media_search import MediaSearchPayload
 
 EXAMPLE_FILE_NAME = (
-    "Free.Guy.2021.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-SomeGroup.mkv"
+    "Free.Guy.2021.Directors.Cut.IMAX.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-SomeGroup.mkv"
 )
 
 _EXAMPLE_MEDIAINFO_XML_DATA = """\
