@@ -335,6 +335,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.RELEASE_GROUP.token:
             return self._release_group(token_data)
 
+        elif token_data.bracket_token == Tokens.RELEASERS_NAME.token:
+            return self._releasers_name(token_data)
+
         elif token_data.bracket_token == Tokens.RELEASE_YEAR.token:
             return self._release_year(token_data)
 
@@ -385,9 +388,6 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.MI_VIDEO_BIT_RATE_NUM_ONLY.token:
             return self._mi_video_bit_rate(token_data, True)
-
-        elif token_data.bracket_token == Tokens.RELEASERS_NAME.token:
-            return self._releasers_name(token_data)
 
         elif token_data.bracket_token == Tokens.REPACK.token:
             return self._repack(token_data)
@@ -863,6 +863,9 @@ class TokenReplacer:
         release_group = self.guess_name.get("release_group", "")
         return self._optional_user_input(release_group, token_data)
 
+    def _releasers_name(self, token_data: TokenData) -> str:
+        return self._optional_user_input(self.releasers_name, token_data)
+
     def _release_year(self, token_data: TokenData) -> str:
         year = (
             str(self.media_search_obj.year)
@@ -1021,9 +1024,6 @@ class TokenReplacer:
             else:
                 mi_bit_rate = f"{mi_bit_rate} kbps"
         return self._optional_user_input(str(mi_bit_rate), token_data)
-
-    def _releasers_name(self, token_data: TokenData) -> str:
-        return self._optional_user_input(self.releasers_name, token_data)
 
     def _repack(self, token_data: TokenData) -> str:
         repack = ""
