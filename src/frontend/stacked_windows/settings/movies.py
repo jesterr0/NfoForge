@@ -321,7 +321,7 @@ class MoviesSettings(BaseSettings):
         if self.config.cfg_payload.mvr_token.strip():
             self._update_qline_cursor_0(
                 self.format_file_name_token_input,
-                self.config.cfg_payload.mvr_default_token,
+                self.config.cfg_payload.mvr_token,
             )
         if self.config.cfg_payload.mvr_title_token.strip():
             self._update_qline_cursor_0(
