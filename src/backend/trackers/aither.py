@@ -11,6 +11,7 @@ def aither_uploader(
     api_key: str,
     torrent_file: Path,
     file_input: Path,
+    tracker_title: str | None,
     nfo: str,
     internal: bool,
     anonymous: bool,
@@ -35,6 +36,7 @@ def aither_uploader(
         timeout=timeout,
     )
     upload = uploader.upload(
+        tracker_title=tracker_title,
         imdb_id=media_search_payload.imdb_id,
         tmdb_id=media_search_payload.tmdb_id,
         tvdb_id=media_search_payload.tvdb_id,

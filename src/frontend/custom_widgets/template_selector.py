@@ -23,7 +23,6 @@ from PySide6.QtWidgets import (
 
 from src.config.config import Config
 from src.enums.tracker_selection import TrackerSelection
-from src.enums.token_replacer import ColonReplace
 from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
@@ -342,7 +341,6 @@ class TemplateSelector(QWidget):
                     jinja_engine=self.config.jinja_engine,
                     source_file=self.config.media_input_payload.source_file,
                     token_string=self.old_text,
-                    colon_replace=ColonReplace.KEEP,
                     media_search_obj=self.config.media_search_payload,
                     media_info_obj=self.config.media_input_payload.encode_file_mi_obj,
                     source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
@@ -353,6 +351,9 @@ class TemplateSelector(QWidget):
                     else False,
                     edition_override=self.config.shared_data.dynamic_data.get(
                         "edition_override"
+                    ),
+                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                        "frame_size_override"
                     ),
                     movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
                 )

@@ -380,13 +380,11 @@ class MediaSearch(BaseWizardPage):
                 tvdb_data_result = tvdb_data.get("result")
                 tvdb_data_result_movie = tvdb_data_result.get("movie")
                 self.config.media_search_payload.tvdb_data = tvdb_data_result
-                self.config.media_search_payload.tvdb_id = tvdb_data_result_movie.get(
-                    "id"
+                self.config.media_search_payload.tvdb_id = str(
+                    tvdb_data_result_movie.get("id")
                 )
                 if self.config.media_search_payload.tvdb_id:
-                    self.tvdb_id_entry.setText(
-                        str(self.config.media_search_payload.tvdb_id)
-                    )
+                    self.tvdb_id_entry.setText(self.config.media_search_payload.tvdb_id)
 
             # anilist data
             if ani_list_data and ani_list_data.get("success") is True:

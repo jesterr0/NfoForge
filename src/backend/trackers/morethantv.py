@@ -38,6 +38,7 @@ def mtv_uploader(
     group_desc: str,
     torrent_file: Path | PathLike[str],
     file_input: Path | str,
+    tracker_title: str | None,
     mediainfo_obj: MediaInfo,
     genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
     media_mode: MediaMode,
@@ -62,6 +63,7 @@ def mtv_uploader(
         auth_token=auth_token,
         torrent_file=torrent_file,
         file_input=file_input,
+        tracker_title=tracker_title,
         nfo=nfo,
         group_desc=group_desc,
         genre_ids=genre_ids,
@@ -231,6 +233,7 @@ class MTVUploader:
         auth_token: str,
         torrent_file: Path,
         file_input: Path,
+        tracker_title: str | None,
         nfo: str,
         group_desc: str,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
@@ -240,7 +243,7 @@ class MTVUploader:
     ) -> Path:
         data = {
             # "image": "",
-            "title": file_input.stem,
+            "title": tracker_title if tracker_title else file_input.stem,
             "category": self._get_cat_id(torrent_file.name),
             "source": self._get_source_id(file_input),
             "desc": nfo,

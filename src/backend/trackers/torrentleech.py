@@ -17,13 +17,17 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 def tl_upload(
     announce_key: str,
     nfo: str,
+    tracker_title: str | None,
     torrent_file: Path,
     mediainfo_obj: MediaInfo,
     timeout: int,
 ) -> str | None:
     uploader = TLUploader(announce_key=announce_key, timeout=timeout)
     return uploader.upload(
-        nfo=nfo, torrent_file=torrent_file, mediainfo_obj=mediainfo_obj
+        nfo=nfo,
+        tracker_title=tracker_title,
+        torrent_file=torrent_file,
+        mediainfo_obj=mediainfo_obj,
     )
 
 
@@ -38,10 +42,18 @@ class TLUploader:
         self.announce_key = announce_key
         self.timeout = timeout
 
-    def upload(self, nfo: str, torrent_file: Path, mediainfo_obj: MediaInfo) -> str:
+    def upload(
+        self,
+        nfo: str,
+        tracker_title: str | None,
+        torrent_file: Path,
+        mediainfo_obj: MediaInfo,
+    ) -> str:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
         data = self._get_data(get_resolution)
+        if tracker_title:
+            data["name"] = tracker_title
 
         LOG.info(LOG.LOG_SOURCE.BE, "Uploading torrent to TorrentLeech")
         LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {data}")

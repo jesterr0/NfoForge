@@ -323,6 +323,18 @@ class Config:
             mtv_data["column_s"] = self.cfg_payload.mtv_tracker.column_s
             mtv_data["column_space"] = self.cfg_payload.mtv_tracker.column_space
             mtv_data["row_space"] = self.cfg_payload.mtv_tracker.row_space
+            mtv_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.mtv_tracker.mvr_title_override_enabled
+            )
+            mtv_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.mtv_tracker.mvr_title_colon_replace
+            ).value
+            mtv_data["mvr_title_token_override"] = (
+                self.cfg_payload.mtv_tracker.mvr_title_token_override
+            )
+            mtv_data["mvr_title_replace_map"] = (
+                self.cfg_payload.mtv_tracker.mvr_title_replace_map
+            )
             mtv_data["anonymous"] = self.cfg_payload.mtv_tracker.anonymous
             mtv_data["api_key"] = self.cfg_payload.mtv_tracker.api_key
             mtv_data["username"] = self.cfg_payload.mtv_tracker.username
@@ -352,6 +364,18 @@ class Config:
             tl_data["column_s"] = self.cfg_payload.tl_tracker.column_s
             tl_data["column_space"] = self.cfg_payload.tl_tracker.column_space
             tl_data["row_space"] = self.cfg_payload.tl_tracker.row_space
+            tl_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.tl_tracker.mvr_title_override_enabled
+            )
+            tl_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.tl_tracker.mvr_title_colon_replace
+            ).value
+            tl_data["mvr_title_token_override"] = (
+                self.cfg_payload.tl_tracker.mvr_title_token_override
+            )
+            tl_data["mvr_title_replace_map"] = (
+                self.cfg_payload.tl_tracker.mvr_title_replace_map
+            )
             tl_data["username"] = self.cfg_payload.tl_tracker.username
             tl_data["password"] = self.cfg_payload.tl_tracker.password
             tl_data["torrent_passkey"] = self.cfg_payload.tl_tracker.torrent_passkey
@@ -372,6 +396,18 @@ class Config:
             bhd_data["column_s"] = self.cfg_payload.bhd_tracker.column_s
             bhd_data["column_space"] = self.cfg_payload.bhd_tracker.column_space
             bhd_data["row_space"] = self.cfg_payload.bhd_tracker.row_space
+            bhd_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.bhd_tracker.mvr_title_override_enabled
+            )
+            bhd_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.bhd_tracker.mvr_title_colon_replace
+            ).value
+            bhd_data["mvr_title_token_override"] = (
+                self.cfg_payload.bhd_tracker.mvr_title_token_override
+            )
+            bhd_data["mvr_title_replace_map"] = (
+                self.cfg_payload.bhd_tracker.mvr_title_replace_map
+            )
             bhd_data["anonymous"] = self.cfg_payload.bhd_tracker.anonymous
             bhd_data["api_key"] = self.cfg_payload.bhd_tracker.api_key
             bhd_data["rss_key"] = self.cfg_payload.bhd_tracker.rss_key
@@ -397,6 +433,18 @@ class Config:
             ptp_data["column_s"] = self.cfg_payload.ptp_tracker.column_s
             ptp_data["column_space"] = self.cfg_payload.ptp_tracker.column_space
             ptp_data["row_space"] = self.cfg_payload.ptp_tracker.row_space
+            ptp_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.ptp_tracker.mvr_title_override_enabled
+            )
+            ptp_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.ptp_tracker.mvr_title_colon_replace
+            ).value
+            ptp_data["mvr_title_token_override"] = (
+                self.cfg_payload.ptp_tracker.mvr_title_token_override
+            )
+            ptp_data["mvr_title_replace_map"] = (
+                self.cfg_payload.ptp_tracker.mvr_title_replace_map
+            )
             ptp_data["api_user"] = self.cfg_payload.ptp_tracker.api_user
             ptp_data["api_key"] = self.cfg_payload.ptp_tracker.api_key
             ptp_data["username"] = self.cfg_payload.ptp_tracker.username
@@ -418,6 +466,18 @@ class Config:
             rf_data["column_s"] = self.cfg_payload.rf_tracker.column_s
             rf_data["column_space"] = self.cfg_payload.rf_tracker.column_space
             rf_data["row_space"] = self.cfg_payload.rf_tracker.row_space
+            rf_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.rf_tracker.mvr_title_override_enabled
+            )
+            rf_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.rf_tracker.mvr_title_colon_replace
+            ).value
+            rf_data["mvr_title_token_override"] = (
+                self.cfg_payload.rf_tracker.mvr_title_token_override
+            )
+            rf_data["mvr_title_replace_map"] = (
+                self.cfg_payload.rf_tracker.mvr_title_replace_map
+            )
             rf_data["api_key"] = self.cfg_payload.rf_tracker.api_key
             rf_data["anonymous"] = self.cfg_payload.rf_tracker.anonymous
             rf_data["internal"] = self.cfg_payload.rf_tracker.internal
@@ -453,6 +513,18 @@ class Config:
             aither_data["column_s"] = self.cfg_payload.aither_tracker.column_s
             aither_data["column_space"] = self.cfg_payload.aither_tracker.column_space
             aither_data["row_space"] = self.cfg_payload.aither_tracker.row_space
+            aither_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.aither_tracker.mvr_title_override_enabled
+            )
+            aither_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.aither_tracker.mvr_title_colon_replace
+            ).value
+            aither_data["mvr_title_token_override"] = (
+                self.cfg_payload.aither_tracker.mvr_title_token_override
+            )
+            aither_data["mvr_title_replace_map"] = (
+                self.cfg_payload.aither_tracker.mvr_title_replace_map
+            )
             aither_data["api_key"] = self.cfg_payload.aither_tracker.api_key
             aither_data["anonymous"] = self.cfg_payload.aither_tracker.anonymous
             aither_data["internal"] = self.cfg_payload.aither_tracker.internal
@@ -488,6 +560,18 @@ class Config:
             huno_data["column_s"] = self.cfg_payload.huno_tracker.column_s
             huno_data["column_space"] = self.cfg_payload.huno_tracker.column_space
             huno_data["row_space"] = self.cfg_payload.huno_tracker.row_space
+            huno_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.huno_tracker.mvr_title_override_enabled
+            )
+            huno_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.huno_tracker.mvr_title_colon_replace
+            ).value
+            huno_data["mvr_title_token_override"] = (
+                self.cfg_payload.huno_tracker.mvr_title_token_override
+            )
+            huno_data["mvr_title_replace_map"] = (
+                self.cfg_payload.huno_tracker.mvr_title_replace_map
+            )
             huno_data["api_key"] = self.cfg_payload.huno_tracker.api_key
             huno_data["anonymous"] = self.cfg_payload.huno_tracker.anonymous
             huno_data["internal"] = self.cfg_payload.huno_tracker.internal
@@ -564,13 +648,15 @@ class Config:
             movie_rename["mvr_replace_illegal_chars"] = (
                 self.cfg_payload.mvr_replace_illegal_chars
             )
-            movie_rename["mvr_parse_with_media_info"] = (
-                self.cfg_payload.mvr_parse_with_media_info
-            )
-            movie_rename["mvr_colon_replacement"] = ColonReplace(
-                self.cfg_payload.mvr_colon_replacement
+            movie_rename["mvr_colon_replace_filename"] = ColonReplace(
+                self.cfg_payload.mvr_colon_replace_filename
+            ).value
+            movie_rename["mvr_colon_replace_title"] = ColonReplace(
+                self.cfg_payload.mvr_colon_replace_title
             ).value
             movie_rename["mvr_token"] = self.cfg_payload.mvr_token
+            movie_rename["mvr_title_token"] = self.cfg_payload.mvr_title_token
+            movie_rename["mvr_default_token"] = self.cfg_payload.mvr_default_token
             movie_rename["mvr_clean_title_rules"] = (
                 self.cfg_payload.mvr_clean_title_rules
             )
@@ -825,6 +911,14 @@ class Config:
                 column_s=mtv_tracker_data["column_s"],
                 column_space=mtv_tracker_data["column_space"],
                 row_space=mtv_tracker_data["row_space"],
+                mvr_title_override_enabled=mtv_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    mtv_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=mtv_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=mtv_tracker_data["mvr_title_replace_map"],
                 anonymous=mtv_tracker_data["anonymous"],
                 api_key=mtv_tracker_data["api_key"],
                 username=mtv_tracker_data["username"],
@@ -849,6 +943,14 @@ class Config:
                 column_s=tl_tracker_data["column_s"],
                 column_space=tl_tracker_data["column_space"],
                 row_space=tl_tracker_data["row_space"],
+                mvr_title_override_enabled=tl_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    tl_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=tl_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=tl_tracker_data["mvr_title_replace_map"],
                 username=tl_tracker_data["username"],
                 password=tl_tracker_data["password"],
                 torrent_passkey=tl_tracker_data["torrent_passkey"],
@@ -868,6 +970,14 @@ class Config:
                 column_s=bhd_tracker_data["column_s"],
                 column_space=bhd_tracker_data["column_space"],
                 row_space=bhd_tracker_data["row_space"],
+                mvr_title_override_enabled=bhd_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    bhd_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=bhd_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=bhd_tracker_data["mvr_title_replace_map"],
                 anonymous=bhd_tracker_data["anonymous"],
                 api_key=bhd_tracker_data["api_key"],
                 rss_key=bhd_tracker_data["rss_key"],
@@ -890,6 +1000,14 @@ class Config:
                 column_s=ptp_tracker_data["column_s"],
                 column_space=ptp_tracker_data["column_space"],
                 row_space=ptp_tracker_data["row_space"],
+                mvr_title_override_enabled=ptp_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    ptp_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=ptp_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=ptp_tracker_data["mvr_title_replace_map"],
                 api_user=ptp_tracker_data["api_user"],
                 api_key=ptp_tracker_data["api_key"],
                 username=ptp_tracker_data["username"],
@@ -910,6 +1028,14 @@ class Config:
                 column_s=rf_tracker_data["column_s"],
                 column_space=rf_tracker_data["column_space"],
                 row_space=rf_tracker_data["row_space"],
+                mvr_title_override_enabled=rf_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    rf_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=rf_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=rf_tracker_data["mvr_title_replace_map"],
                 api_key=rf_tracker_data["api_key"],
                 anonymous=rf_tracker_data["anonymous"],
                 internal=rf_tracker_data["internal"],
@@ -936,6 +1062,16 @@ class Config:
                 column_s=aither_tracker_data["column_s"],
                 column_space=aither_tracker_data["column_space"],
                 row_space=aither_tracker_data["row_space"],
+                mvr_title_override_enabled=aither_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    aither_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=aither_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=aither_tracker_data["mvr_title_replace_map"],
                 api_key=aither_tracker_data["api_key"],
                 anonymous=aither_tracker_data["anonymous"],
                 internal=aither_tracker_data["internal"],
@@ -947,6 +1083,15 @@ class Config:
                 double_up=aither_tracker_data["double_up"],
                 sticky=aither_tracker_data["sticky"],
                 image_width=aither_tracker_data["image_width"],
+                mvr_default_title_override_enabled=aither_tracker_data[
+                    "mvr_default_title_override_enabled"
+                ],
+                mvr_default_title_token_override=aither_tracker_data[
+                    "mvr_default_title_token_override"
+                ],
+                mvr_default_title_replace_map=aither_tracker_data[
+                    "mvr_default_title_replace_map"
+                ],
             )
 
             huno_tracker_data = tracker_data["huno"]
@@ -962,11 +1107,28 @@ class Config:
                 column_s=huno_tracker_data["column_s"],
                 column_space=huno_tracker_data["column_space"],
                 row_space=huno_tracker_data["row_space"],
+                mvr_title_override_enabled=huno_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    huno_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=huno_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=huno_tracker_data["mvr_title_replace_map"],
                 api_key=huno_tracker_data["api_key"],
                 anonymous=huno_tracker_data["anonymous"],
                 internal=huno_tracker_data["internal"],
                 stream_optimized=huno_tracker_data["stream_optimized"],
                 image_width=huno_tracker_data["image_width"],
+                mvr_default_title_override_enabled=huno_tracker_data[
+                    "mvr_default_title_override_enabled"
+                ],
+                mvr_default_title_token_override=huno_tracker_data[
+                    "mvr_default_title_token_override"
+                ],
+                mvr_default_title_replace_map=huno_tracker_data[
+                    "mvr_default_title_replace_map"
+                ],
             )
 
             # torrent clients
@@ -1062,24 +1224,19 @@ class Config:
                 mvr_replace_illegal_chars=movie_rename.get(
                     "mvr_replace_illegal_chars", True
                 ),
-                mvr_parse_with_media_info=movie_rename.get(
-                    "mvr_parse_with_media_info", True
+                mvr_colon_replace_filename=ColonReplace(
+                    movie_rename.get("mvr_colon_replace_filename", 3)
                 ),
-                mvr_colon_replacement=ColonReplace(
-                    movie_rename.get("mvr_colon_replacement", 2)
+                mvr_colon_replace_title=ColonReplace(
+                    movie_rename.get("mvr_colon_replace_title", 3)
                 ),
                 mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
                 mvr_clean_title_rules_modified=movie_rename[
                     "mvr_clean_title_rules_modified"
                 ],
-                mvr_token=movie_rename.get(
-                    "mvr_token",
-                    (
-                        "{movie_title} {release_year} {re_release} {source} "
-                        "{resolution} {mi_audio_codec} {mi_audio_channel_s} "
-                        "{mi_video_codec}{:opt=-:release_group}"
-                    ),
-                ),
+                mvr_token=movie_rename.get("mvr_token"),
+                mvr_title_token=movie_rename.get("mvr_title_token"),
+                mvr_default_token=movie_rename.get("mvr_default_token"),
                 mvr_release_group=movie_rename.get("mvr_release_group", ""),
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),

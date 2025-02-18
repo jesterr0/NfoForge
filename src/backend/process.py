@@ -10,6 +10,7 @@ from torf import Torrent
 from typing import Any, Sequence
 
 from src.config.config import Config
+from src.backend.tokens import FileToken
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.media_mode import MediaMode
@@ -33,7 +34,7 @@ from src.backend.trackers import (
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.torrents import generate_torrent, write_torrent, clone_torrent
 from src.backend.trackers.utils import format_image_tag
-from src.backend.token_replacer import TokenReplacer, ColonReplace, UnfilledTokenRemoval
+from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
@@ -55,6 +56,7 @@ from src.packages.custom_types import (
     ImageSource,
 )
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.trackers import TrackerInfo
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.nf_jinja2 import Jinja2TemplateEngine
 
@@ -233,7 +235,6 @@ class ProcessBackEnd:
         source_file_mi_obj: MediaInfo | None,
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
-        colon_replacement: ColonReplace,
         releasers_name: str,
     ) -> None:
         # handle image uploading
@@ -317,7 +318,6 @@ class ProcessBackEnd:
                         jinja_engine=jinja_engine,
                         source_file=source_file,
                         token_string=nfo_template,
-                        colon_replace=colon_replacement,
                         media_search_obj=media_search_payload,
                         source_file_mi_obj=source_file_mi_obj,
                         media_info_obj=mediainfo_obj,
@@ -326,6 +326,9 @@ class ProcessBackEnd:
                         screen_shots=formatted_screens,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
+                        ),
+                        frame_size_override=self.config.shared_data.dynamic_data.get(
+                            "frame_size_override"
                         ),
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
                     ).get_output()
@@ -379,13 +382,15 @@ class ProcessBackEnd:
                 execute_upload = None
                 try:
                     execute_upload = self.upload(
-                        tracker=tracker_name,
+                        tracker=cur_tracker,
+                        tracker_info=tracker_info,
                         torrent_file=torrent_path,
-                        file_input=media_input,
+                        file_input=Path(media_input),
                         mediainfo_obj=mediainfo_obj,
                         media_mode=media_mode,
                         media_search_payload=media_search_payload,
                         nfo=nfo,
+                        queued_text_update=queued_text_update,
                     )
                 except Exception as upload_error:
                     queued_text_update(
@@ -791,15 +796,16 @@ class ProcessBackEnd:
 
     def upload(
         self,
-        tracker: str,
+        tracker: TrackerSelection,
+        tracker_info: TrackerInfo,
         torrent_file: Path,
         file_input: Path,
         mediainfo_obj: MediaInfo,
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
         nfo: str,
+        queued_text_update: Callable[[str], None],
     ) -> Path | bool | None:
-        tracker = TrackerSelection(tracker)
         if tracker == TrackerSelection.MORE_THAN_TV:
             tracker_payload = self.config.cfg_payload.mtv_tracker
             return mtv_uploader(
@@ -809,7 +815,10 @@ class ProcessBackEnd:
                 nfo=nfo,
                 group_desc=tracker_payload.group_description,
                 torrent_file=Path(torrent_file),
-                file_input=Path(file_input),
+                file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
                 mediainfo_obj=mediainfo_obj,
                 genre_ids=media_search_payload.genres,
                 media_mode=media_mode,
@@ -822,6 +831,9 @@ class ProcessBackEnd:
             return tl_upload(
                 announce_key=self.config.cfg_payload.tl_tracker.torrent_passkey,
                 nfo=nfo,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
                 torrent_file=torrent_file,
                 mediainfo_obj=mediainfo_obj,
                 timeout=self.config.cfg_payload.timeout,
@@ -832,6 +844,9 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
                 media_mode=media_mode,
                 imdb_id=media_search_payload.imdb_id,
                 tmdb_id=media_search_payload.tmdb_id,
@@ -866,6 +881,9 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -886,6 +904,9 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -906,6 +927,9 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -914,6 +938,53 @@ class ProcessBackEnd:
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
             )
+
+    def generate_tracker_title(
+        self,
+        file_name: Path,
+        tracker_info: TrackerInfo,
+        queued_text_update: Callable[[str], None],
+    ) -> str | None:
+        token_string = (
+            tracker_info.mvr_title_token_override
+            if tracker_info.mvr_title_token_override
+            else self.config.cfg_payload.mvr_title_token
+        )
+        colon_replace = (
+            tracker_info.mvr_title_colon_replace
+            if tracker_info.mvr_title_colon_replace
+            else self.config.cfg_payload.mvr_colon_replace_title
+        )
+        override_title_rules = (
+            tracker_info.mvr_title_replace_map
+            if tracker_info.mvr_title_replace_map
+            else None
+        )
+        format_str = TokenReplacer(
+            media_input=file_name,
+            jinja_engine=None,
+            source_file=None,
+            token_string=token_string,
+            colon_replace=colon_replace,
+            media_search_obj=self.config.media_search_payload,
+            media_info_obj=self.config.media_input_payload.encode_file_mi_obj,
+            flatten=True,
+            file_name_mode=False,
+            token_type=FileToken,
+            unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+            edition_override=self.config.shared_data.dynamic_data.get(
+                "edition_override"
+            ),
+            frame_size_override=self.config.shared_data.dynamic_data.get(
+                "frame_size_override"
+            ),
+            movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            override_title_rules=override_title_rules,
+        )
+        output = format_str.get_output()
+        if output:
+            queued_text_update(f"Release title: {output}")
+        return output if output else None
 
     def torrent_gen_cb(
         self,

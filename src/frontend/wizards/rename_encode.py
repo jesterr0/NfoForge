@@ -244,7 +244,7 @@ class RenameEncode(BaseWizardPage):
             media_file=media_file,
             source_file=source_file,
             mvr_token=self.config.cfg_payload.mvr_token,
-            mvr_colon_replacement=self.config.cfg_payload.mvr_colon_replacement,
+            mvr_colon_replacement=self.config.cfg_payload.mvr_colon_replace_filename,
             media_search_payload=self.config.media_search_payload,
             media_info_obj=media_info_obj,
             source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
@@ -283,7 +283,14 @@ class RenameEncode(BaseWizardPage):
             edition_combo_text = self.edition_combo.currentText()
             if edition_combo_text:
                 self.config.shared_data.dynamic_data["edition_override"] = (
-                    self.edition_combo.currentText()
+                    edition_combo_text
+                )
+
+            # update config shared data with frame size
+            frame_size_text = self.frame_size_combo.currentText()
+            if frame_size_text:
+                self.config.shared_data.dynamic_data["frame_size_override"] = (
+                    frame_size_text
                 )
 
             # update re release tokens
