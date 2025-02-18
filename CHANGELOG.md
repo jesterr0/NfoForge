@@ -39,9 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **PTPIMG** support added.
 - Added support to remember last used image host per tracker.
 - Added support for tracker **HUNO**.
+- Add new tokens `{tvdb_id}` and `{mal_id}`.
+- Support to easily control the title token, colon replace, and a string replace (via regex) map system PER tracker.
+- Added a new token `{frame_size}` for IMAX/Open Matte.
+- Add token `{mi_audio_language_1_full}`.
 
 ### Changed
 
+- **Breaking config changes**, ensure you check all of your saved settings.
 - Tracker settings (and all QTreeWidgets) no longer auto scrolls.
 - During image generation the "Log" box now automatically scrolls to newest text.
 - Image page has been completely re-worked.
@@ -63,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Locked columns/column space for PTP, they should stay at 1 since PTP doesn't support anything else.
 - Checks PTPIMG is configured when enabling PassThePopcorn tracker, prompts the user to add PTPIMG API key.
 - All image hosts now will attempt to retry uploads 3 times per image before failing.
+- **Movies** settings tab has been completely reworked.
+- **Movies** now supports separate filename and title tokens.
+- **Movies** now supports separate colon replacement options for filename and title tokens.
+- **Movies** examples are now built from real data (mediainfo, imdb/tmdb/tvdb).
+- **TorrentLeech** uploader now supports including a title.
+- **{releasers_name}** is now available as a **FileToken** now.
+- **{edition}** token no longer includes IMAX and Open Matte (this is handled via the new token **{frame_size}**).
+- Rename page now stores `frame_size_override` in the shared dynamic data payload.
 
 ### Fixed
 
@@ -80,8 +93,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bug when utilizing Plugin mode utilizing the built in Basic profile, could result in incorrect image generation being done.
 - Wasn't updating tracker status to complete when we skipped upload but still processed the tracker in the backend.
 - **Aither** tracker settings widget was displaying the wrong label for image width.
+- Prevent colon replace combo boxes from scrolling with the mouse scroll wheel.
+- Fixed a bug when trying to access data from the replace table widget that was empty.
 
 ### Removed
 
 - Image host selection is no longer in the General settings page.
 - Image uploading is not done in the Image wizard page anymore.
+- **Parse with MediaInfo** in **Movies** settings (this will always be done).

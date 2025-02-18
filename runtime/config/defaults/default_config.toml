@@ -21,7 +21,7 @@ tvdb_api_key = ""
 
 [tracker.settings]
 tracker_order = []
-last_used_img_host = { }
+last_used_img_host = {}
 
 [tracker.more_than_tv]
 upload_enabled = true
@@ -35,6 +35,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_colon_replace = 3
+mvr_title_token_override = ""
+mvr_title_replace_map = []
 anonymous = 0
 api_key = ""
 username = ""
@@ -57,6 +61,10 @@ url_type = 2
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 username = ""
 password = ""
 torrent_passkey = ""
@@ -74,6 +82,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 anonymous = 0
 api_key = ""
 rss_key = ""
@@ -94,6 +106,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_user = ""
 api_key = ""
 username = ""
@@ -112,6 +128,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = 0
 internal = 0
@@ -136,6 +156,13 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+mvr_default_title_override_enabled = true
+mvr_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_default_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_default_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = 0
 internal = 0
@@ -160,6 +187,13 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+mvr_default_title_override_enabled = true
+mvr_title_token_override = "{movie_clean_title} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {mi_video_codec} {mi_video_dynamic_range} {mi_audio_codec} {mi_audio_channel_s} {mi_audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
+mvr_default_title_token_override = "{movie_clean_title} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {mi_video_codec} {mi_video_dynamic_range} {mi_audio_codec} {mi_audio_channel_s} {mi_audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
+mvr_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_default_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = 0
 internal = 0
@@ -207,9 +241,11 @@ path = ""
 [movie_rename]
 mvr_enabled = true
 mvr_replace_illegal_chars = true
-mvr_parse_with_media_info = true
-mvr_colon_replacement = 2
+mvr_colon_replace_filename = 3
+mvr_colon_replace_title = 3
 mvr_token = "{movie_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token = "{movie_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
+mvr_default_token = "{movie_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
 mvr_clean_title_rules = [
     [
         "",

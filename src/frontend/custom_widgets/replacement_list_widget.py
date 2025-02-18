@@ -10,9 +10,156 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QPushButton,
     QHeaderView,
+    QSizePolicy,
+    QToolButton,
+    QSpacerItem,
 )
 from PySide6.QtCore import Qt, Signal, QTimer, Slot
 from PySide6.QtGui import QColor, QPalette
+
+from src.frontend.utils import build_auto_theme_icon_buttons
+
+
+class LoadedReplacementListWidget(QWidget):
+    """ReplacementListWidget with button controls built in"""
+
+    rows_changed = Signal(list)
+    cell_changed = Signal(int, int)
+
+    def __init__(
+        self, default_rules: list[tuple[str, str]] | None = None, parent=None
+    ) -> None:
+        """
+        Args:
+            default_rules Optional[(list[tuple[str, str]])]: [(r"", r"[unidecode]")]
+        """
+        super().__init__(parent)
+        self.setObjectName("loadedReplacementListWidget")
+        self.default_rules = default_rules
+
+        self.replacement_list_widget = ReplacementListWidget(self.default_rules, self)
+        self.replacement_list_widget.rows_changed.connect(self.rows_changed)
+        self.replacement_list_widget.cellChanged.connect(self.cell_changed)
+        # self.replacement_list_widget.chan
+        self.replacement_list_widget.set_defaults.connect(self.apply_defaults)
+        self.replacement_list_widget.setMinimumHeight(180)
+
+        self.add_row_btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "add_circle.svg",
+            "addRowBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.add_row_btn.clicked.connect(self.replacement_list_widget.add_row)
+        self.add_row_btn.setToolTip("Add a row")
+
+        self.delete_row_btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "delete.svg",
+            "deleteRowBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.delete_row_btn.clicked.connect(
+            self.replacement_list_widget.remove_selected_row
+        )
+        self.delete_row_btn.setToolTip("Remove currently selected row")
+
+        self.reset_table_btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "reset.svg",
+            "resetTableBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.reset_table_btn.clicked.connect(self.reset_table)
+        self.reset_table_btn.setToolTip("Reset table to defaults")
+
+        self.row_up_btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "arrow_upward.svg",
+            "rowUpBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.row_up_btn.clicked.connect(self.replacement_list_widget.move_up)
+        self.row_up_btn.setToolTip("Move currently selected row up")
+
+        self.row_down_btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "arrow_downward.svg",
+            "rowDownBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.row_down_btn.clicked.connect(self.replacement_list_widget.move_down)
+        self.row_down_btn.setToolTip("Move currently selected row down")
+
+        self.button_layout = QVBoxLayout()
+        self.button_layout.addWidget(self.add_row_btn)
+        self.button_layout.addWidget(self.delete_row_btn)
+        self.button_layout.addWidget(self.reset_table_btn)
+        self.button_layout.addSpacerItem(
+            QSpacerItem(
+                1, 1, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+            )
+        )
+        self.button_layout.addWidget(self.row_up_btn)
+        self.button_layout.addWidget(self.row_down_btn)
+
+        self.main_layout = QHBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.addWidget(self.replacement_list_widget)
+        self.main_layout.addLayout(self.button_layout)
+
+    def add_row(self, txt1: str = "", txt2: str = "") -> None:
+        """Add a new row to the table with default empty text."""
+        self.add_row(txt1, txt2)
+
+    def add_rows(self, rows: Sequence[tuple[str, str]]) -> None:
+        """Convenient method to easily add more than one row at a time."""
+        self.replacement_list_widget.add_rows(rows)
+
+    def set_default_rules(self, rules: list[tuple[str, str]] | None) -> None:
+        if rules:
+            self.default_rules = rules
+            self.replacement_list_widget.default_rules = rules
+
+    def reset(self) -> None:
+        self.replacement_list_widget.clearContents()
+        self.replacement_list_widget.setRowCount(0)
+
+    def apply_defaults(self) -> None:
+        if self.default_rules:
+            self.replacement_list_widget.add_rows(self.default_rules)
+
+    def get_replacements(self) -> list[tuple[str, str]]:
+        """
+        Retrieve all replacements from the table.
+
+        Returns:
+            list of tuples: [(replace, with), ...]
+        """
+        return self.replacement_list_widget.get_replacements()
+
+    @Slot()
+    def reset_table(self) -> None:
+        if (
+            QMessageBox.question(
+                self,
+                "Defaults",
+                "Would you like to set this back to the default configuration?",
+            )
+            == QMessageBox.StandardButton.Yes
+        ):
+            self.reset()
+            self.apply_defaults()
 
 
 class ReplacementListWidget(QTableWidget):
@@ -23,7 +170,9 @@ class ReplacementListWidget(QTableWidget):
     rows_changed = Signal(list)
     set_defaults = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self, default_rules: list[tuple[str, str]] | None = None, parent=None
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("replacementListWidget")
         self.setColumnCount(2)
@@ -35,6 +184,7 @@ class ReplacementListWidget(QTableWidget):
         self.setHorizontalScrollMode(QTableWidget.ScrollMode.ScrollPerPixel)
         self.setAutoScroll(False)
         self._customize_highlight_color()
+        self.default_rules = default_rules
 
         self._validation_active = True
         self._all_valid = True
@@ -78,7 +228,8 @@ class ReplacementListWidget(QTableWidget):
             self.removeRow(current_row)
             self.rows_changed.emit(self.get_replacements())
             if (
-                (self.rowCount() <= 0)
+                self.default_rules
+                and (self.rowCount() <= 0)
                 and current_row == 0
                 and QMessageBox.question(
                     self,
@@ -185,8 +336,11 @@ class ReplacementListWidget(QTableWidget):
         """
         replacements = []
         for row in range(self.rowCount()):
-            replace_text = self.item(row, 0).text()
-            with_text = self.item(row, 1).text()
+            replace_item = self.item(row, 0)
+            with_item = self.item(row, 1)
+
+            replace_text = replace_item.text() if replace_item else ""
+            with_text = with_item.text() if with_item else ""
 
             if replace_text or with_text:
                 # we need to use raw text here since we're messing with regex

@@ -23,7 +23,11 @@ from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
 from src.backend.utils.video_codecs import VideoCodecs
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.backend.utils.language import get_language_mi, get_language_str
+from src.backend.utils.language import (
+    get_language_mi,
+    get_language_str,
+    get_full_language_str,
+)
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.payloads.media_search import MediaSearchPayload
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -44,13 +48,16 @@ class TokenReplacer:
         "media_info_obj",
         "source_file_mi_obj",
         "flatten",
+        "file_name_mode",
         "token_type",
         "unfilled_token_mode",
         "releasers_name",
         "screen_shots",
         "dummy_screen_shots",
         "edition_override",
+        "frame_size_override",
         "movie_clean_title_rules",
+        "override_title_rules",
         "token_data",
     )
 
@@ -65,11 +72,14 @@ class TokenReplacer:
         media_info_obj: MediaInfo | None = None,
         source_file_mi_obj: MediaInfo | None = None,
         flatten: bool | None = False,
+        file_name_mode: bool = True,
         token_type: Iterable[TokenType] | Type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
         edition_override: str | None = None,
+        frame_size_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
+        override_title_rules: list[tuple[str, str]] | None = None,
         screen_shots: str | None = "",
         dummy_screen_shots: bool = False,
     ):
@@ -87,6 +97,7 @@ class TokenReplacer:
             media_info_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
             source_file_mi_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
             flatten (Optional[bool]): Rather or not to flatten the data to a single string
+            file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
             with no newlines or extra white space (used for filenames). `colon_replace` is ignored
             when this is used.
             token_type (Optional[Iterable[TokenType]]): Specific `TokenType`'s to use, or None for all.
@@ -94,7 +105,9 @@ class TokenReplacer:
             eg. (TokenType, TokenType).
             releasers_name (Optional[str]): Releasers name.
             edition_override (Optional[str]): Edition override.
-            movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate for 'movie_clean_title' token.
+            frame_size_override (Optional[str]): Frame size override.
+            movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
+            override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
             screen_shots (Optional[str]): Screenshots.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
             screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
@@ -115,11 +128,14 @@ class TokenReplacer:
         self.media_info_obj = media_info_obj
         self.source_file_mi_obj = source_file_mi_obj
         self.flatten = flatten
+        self.file_name_mode = file_name_mode
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
         self.releasers_name = releasers_name
         self.edition_override = edition_override
+        self.frame_size_override = frame_size_override
         self.movie_clean_title_rules = movie_clean_title_rules
+        self.override_title_rules = override_title_rules
         self.screen_shots = screen_shots
         self.dummy_screen_shots = dummy_screen_shots
         self.token_data = Tokens.generate_token_dataclass(token_type)
@@ -129,7 +145,7 @@ class TokenReplacer:
                 "You must pass in 'jinja_engine' if you are not flattening your output string"
             )
 
-    def get_output(self) -> tuple[str, str] | str | None:
+    def get_output(self) -> str | None:
         """
         if flatten:
             `Index 0`: Formatted str.
@@ -236,11 +252,17 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.EDITION.token:
             return self._edition(token_data)
 
+        if token_data.bracket_token == Tokens.FRAME_SIZE.token:
+            return self._frame_size(token_data)
+
         elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S.token:
             return self._mi_audio_channel_s(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_CODEC.token:
             return self._mi_audio_codec(token_data)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_FULL.token:
+            return self._mi_audio_language_1_full(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_ISO_639_1.token:
             return self._mi_audio_language_1_iso_639_x(1, token_data)
@@ -315,11 +337,20 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MOVIE_TMDB_ID.token:
             return self._movie_tmdb_id(token_data)
 
+        elif token_data.bracket_token == Tokens.MOVIE_TVDB_ID.token:
+            return self._movie_tvdb_id(token_data)
+
+        elif token_data.bracket_token == Tokens.MOVIE_MAL_ID.token:
+            return self._movie_mal_id(token_data)
+
         elif token_data.bracket_token == Tokens.ORIGINAL_FILENAME.token:
             return self._original_filename(token_data)
 
         elif token_data.bracket_token == Tokens.RELEASE_GROUP.token:
             return self._release_group(token_data)
+
+        elif token_data.bracket_token == Tokens.RELEASERS_NAME.token:
+            return self._releasers_name(token_data)
 
         elif token_data.bracket_token == Tokens.RELEASE_YEAR.token:
             return self._release_year(token_data)
@@ -371,9 +402,6 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.MI_VIDEO_BIT_RATE_NUM_ONLY.token:
             return self._mi_video_bit_rate(token_data, True)
-
-        elif token_data.bracket_token == Tokens.RELEASERS_NAME.token:
-            return self._releasers_name(token_data)
 
         elif token_data.bracket_token == Tokens.REPACK.token:
             return self._repack(token_data)
@@ -443,7 +471,7 @@ class TokenReplacer:
 
         return ""
 
-    def _format_token_string(self, filled_tokens):
+    def _format_token_string(self, filled_tokens) -> str | None:
         try:
             formatted_title = self.token_string
             for key, value in filled_tokens.items():
@@ -463,15 +491,29 @@ class TokenReplacer:
             formatted_title = self._remove_unfilled_tokens(formatted_title)
 
             # apply final formatting
-            formatted_title = re.sub(r"\s{1,}", " ", formatted_title)
-            formatted_title = re.sub(r"\.{2,}", ".", formatted_title)
-            formatted_file_name = re.sub(r"\s{1,}", ".", formatted_title)
-            formatted_file_name = re.sub(r"\.{2,}", ".", formatted_file_name)
-            formatted_file_name = re.sub(r":\.", ".", formatted_file_name)
-            formatted_file_name = re.sub(r"\.-\.|\.-|-\.", "-", formatted_file_name)
-
-            # return the formatted title and file name
-            return formatted_title, formatted_file_name + self.media_input.suffix
+            # if filename mode
+            if self.file_name_mode:
+                formatted_file_name = re.sub(r"\s{1,}", ".", formatted_title)
+                formatted_file_name = re.sub(r"\.{2,}", ".", formatted_file_name)
+                formatted_file_name = re.sub(r":\.", ".", formatted_file_name)
+                formatted_file_name = re.sub(r"\.-\.|\.-|-\.", "-", formatted_file_name)
+                return formatted_file_name + self.media_input.suffix
+            # if title mode
+            else:
+                formatted_title = re.sub(r"\s{1,}", " ", formatted_title)
+                formatted_title = re.sub(r"\.{2,}", ".", formatted_title)
+                if self.override_title_rules:
+                    for replace, replace_with in self.override_title_rules:
+                        if replace_with == "[unidecode]":
+                            formatted_title = unidecode.unidecode(formatted_title)
+                        else:
+                            replace_with = replace_with.replace("[remove]", "").replace(
+                                "[space]", " "
+                            )
+                            formatted_title = re.sub(
+                                rf"{replace}", rf"{replace_with}", formatted_title
+                            )
+                return formatted_title
         except (ValueError, KeyError):
             return None
 
@@ -504,6 +546,45 @@ class TokenReplacer:
         if self.guess_source_name:
             edition_set.update(collect_editions(self.guess_source_name, "edition"))
 
+        # normalize some editions
+        if edition_set:
+            normalized_edition_set = set()
+            for item in edition_set:
+                item_lowered = str(item).lower()
+                if "director" in item_lowered:
+                    normalized_edition_set.add("Directors Cut")
+                elif "extended" in item_lowered:
+                    normalized_edition_set.add("Extended Cut")
+                elif "theatrical" in item_lowered:
+                    normalized_edition_set.add("Theatrical Cut")
+                elif "imax" in item_lowered:
+                    continue
+                else:
+                    normalized_edition_set.add(item)
+            edition_set = normalized_edition_set
+
+        # convert the set back to a string, joining with spaces
+        return self._optional_user_input(" ".join(edition_set), token_data)
+
+    def _frame_size(self, token_data: TokenData) -> str:
+        if self.frame_size_override:
+            return self._optional_user_input(self.frame_size_override, token_data)
+
+        def collect_editions(source, key):
+            """Helper function to collect edition data from a source."""
+            values = source.get(key, [])
+            return values if isinstance(values, list) else [values]
+
+        # ensure we have unique editions
+        edition_set = set()
+
+        # collect editions from `guess_name`
+        edition_set.update(collect_editions(self.guess_name, "edition"))
+
+        # collect editions from `guess_source_name` if it exists
+        if self.guess_source_name:
+            edition_set.update(collect_editions(self.guess_source_name, "edition"))
+
         # check for "Open Matte" in `other` fields of `guess_name` and `guess_source_name`
         for source in [self.guess_name, self.guess_source_name]:
             if source:
@@ -518,14 +599,9 @@ class TokenReplacer:
             normalized_edition_set = set()
             for item in edition_set:
                 item_lowered = str(item).lower()
-                if "director" in item_lowered:
-                    normalized_edition_set.add("Directors Cut")
-                elif "extended" in item_lowered:
-                    normalized_edition_set.add("Extended Cut")
-                elif "theatrical" in item_lowered:
-                    normalized_edition_set.add("Theatrical Cut")
-                else:
-                    normalized_edition_set.add(item)
+                if "imax" in item_lowered:
+                    normalized_edition_set.add("IMAX")
+                    break
             edition_set = normalized_edition_set
 
         # convert the set back to a string, joining with spaces
@@ -557,6 +633,17 @@ class TokenReplacer:
             )
 
         return self._optional_user_input(audio_codec, token_data)
+
+    def _mi_audio_language_1_full(self, token_data: TokenData) -> str:
+        language = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            detect_language_code = get_language_mi(self.media_info_obj.audio_tracks[0])
+            if detect_language_code:
+                detect_language = get_full_language_str(detect_language_code)
+                if detect_language:
+                    language = detect_language
+
+        return self._optional_user_input(language, token_data)
 
     def _mi_audio_language_1_iso_639_x(
         self, char_code: int, token_data: TokenData
@@ -820,12 +907,23 @@ class TokenReplacer:
         tmdb_id = self.media_search_obj.tmdb_id if self.media_search_obj.tmdb_id else ""
         return self._optional_user_input(tmdb_id, token_data)
 
+    def _movie_tvdb_id(self, token_data: TokenData) -> str:
+        tvdb_id = self.media_search_obj.tvdb_id if self.media_search_obj.tvdb_id else ""
+        return self._optional_user_input(tvdb_id, token_data)
+
+    def _movie_mal_id(self, token_data: TokenData) -> str:
+        mal_id = self.media_search_obj.mal_id if self.media_search_obj.mal_id else ""
+        return self._optional_user_input(mal_id, token_data)
+
     def _original_filename(self, token_data: TokenData) -> str:
         return self._optional_user_input(self.media_input.stem, token_data)
 
     def _release_group(self, token_data: TokenData) -> str:
         release_group = self.guess_name.get("release_group", "")
         return self._optional_user_input(release_group, token_data)
+
+    def _releasers_name(self, token_data: TokenData) -> str:
+        return self._optional_user_input(self.releasers_name, token_data)
 
     def _release_year(self, token_data: TokenData) -> str:
         year = (
@@ -985,9 +1083,6 @@ class TokenReplacer:
             else:
                 mi_bit_rate = f"{mi_bit_rate} kbps"
         return self._optional_user_input(str(mi_bit_rate), token_data)
-
-    def _releasers_name(self, token_data: TokenData) -> str:
-        return self._optional_user_input(self.releasers_name, token_data)
 
     def _repack(self, token_data: TokenData) -> str:
         repack = ""

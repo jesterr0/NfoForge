@@ -88,9 +88,11 @@ class ConfigPayload:
     # movie renamer settings
     mvr_enabled: bool
     mvr_replace_illegal_chars: bool
-    mvr_parse_with_media_info: bool
-    mvr_colon_replacement: ColonReplace
+    mvr_colon_replace_filename: ColonReplace
+    mvr_colon_replace_title: ColonReplace
     mvr_token: str
+    mvr_title_token: str
+    mvr_default_token: str
     mvr_clean_title_rules: list[tuple[str, str]]
     mvr_clean_title_rules_modified: bool
     mvr_release_group: str

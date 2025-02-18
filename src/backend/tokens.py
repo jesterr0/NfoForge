@@ -3,6 +3,27 @@ from dataclasses import field, make_dataclass, asdict
 from typing import NamedTuple, Type, Any
 
 
+MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
+    (r"", r"[unidecode]"),
+    (r"&", r"and"),
+    (r"/", r"\\"),
+    (r"'", r"[remove]"),
+    # remove commas within numbers (50,000 -> 50000)
+    (r"(?<=\d),(?=\d)", r"[remove]"),
+    # replace commas after words with a period
+    (r"(?<=\w),(?=\s\w)", r"[space]"),
+    # replace space dash space with nothing
+    (r"\s*-\s*", r"."),
+    (
+        r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
+        r"('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|"
+        r"(\(|\)|\[|\]|\{|\})",
+        r"[space]",
+    ),
+    (r"\s{2,}", r"[space]"),
+]
+
+
 class TokenData(NamedTuple):
     """Holds the data for tokens"""
 
@@ -31,8 +52,12 @@ class Tokens:
 
     # File Tokens
     EDITION = FileToken("{edition}", "Edition")
+    FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
     MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels")
     MI_AUDIO_CODEC = FileToken("{mi_audio_codec}", "Audio codec")
+    MI_AUDIO_LANGUAGE_1_FULL = FileToken(
+        "{mi_audio_language_1_full}", "Audio language (first track 'English')"
+    )
     MI_AUDIO_LANGUAGE_1_ISO_639_1 = FileToken(
         "{mi_audio_language_1_iso_639_1}", "Audio language (first track 'EN')"
     )
@@ -96,8 +121,11 @@ class Tokens:
     )
     MOVIE_IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
     MOVIE_TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
+    MOVIE_TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
+    MOVIE_MAL_ID = FileToken("{mal_id}", "MAL ID")
     ORIGINAL_FILENAME = FileToken("{original_filename}", "Original filename")
     RELEASE_GROUP = FileToken("{release_group}", "Release group")
+    RELEASERS_NAME = FileToken("{releasers_name}", "Releaser's name (Anonymous)")
     RELEASE_YEAR = FileToken("{release_year}", "Release year")
     RELEASE_YEAR_PARENTHESES = FileToken(
         "{release_year_parentheses}", "Release year with parentheses"
@@ -133,7 +161,6 @@ class Tokens:
         "{mi_video_bit_rate_num_only}",
         "Average video bit-rate in kbps, numbers only (9975)",
     )
-    RELEASERS_NAME = NfoToken("{releasers_name}", "Releaser's name (Anonymous)")
     REPACK = NfoToken("{repack}", "Returns 'REPACK' if repack was detected")
     REPACK_N = NfoToken("{repack_n}", "Repack and repack number if exists (REPACK2)")
     REPACK_REASON = NfoToken("{repack_reason}", "Reason for REPACK if provided")
