@@ -174,7 +174,6 @@ class Overview(BaseWizardPage):
                         jinja_engine=self.config.jinja_engine,
                         source_file=source_file,
                         token_string=nfo_template,
-                        colon_replace=self.config.cfg_payload.mvr_colon_replacement,
                         media_search_obj=self.config.media_search_payload,
                         media_info_obj=media_info_obj,
                         source_file_mi_obj=source_file_mi_obj,
@@ -185,6 +184,9 @@ class Overview(BaseWizardPage):
                         else False,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
+                        ),
+                        frame_size_override=self.config.shared_data.dynamic_data.get(
+                            "frame_size_override"
                         ),
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
                     ).get_output()
