@@ -335,9 +335,6 @@ class Config:
             mtv_data["mvr_title_replace_map"] = (
                 self.cfg_payload.mtv_tracker.mvr_title_replace_map
             )
-            mtv_data["mvr_title_default_replace_map"] = (
-                self.cfg_payload.mtv_tracker.mvr_title_default_replace_map
-            )
             mtv_data["anonymous"] = self.cfg_payload.mtv_tracker.anonymous
             mtv_data["api_key"] = self.cfg_payload.mtv_tracker.api_key
             mtv_data["username"] = self.cfg_payload.mtv_tracker.username
@@ -379,9 +376,6 @@ class Config:
             tl_data["mvr_title_replace_map"] = (
                 self.cfg_payload.tl_tracker.mvr_title_replace_map
             )
-            tl_data["mvr_title_default_replace_map"] = (
-                self.cfg_payload.tl_tracker.mvr_title_default_replace_map
-            )
             tl_data["username"] = self.cfg_payload.tl_tracker.username
             tl_data["password"] = self.cfg_payload.tl_tracker.password
             tl_data["torrent_passkey"] = self.cfg_payload.tl_tracker.torrent_passkey
@@ -413,9 +407,6 @@ class Config:
             )
             bhd_data["mvr_title_replace_map"] = (
                 self.cfg_payload.bhd_tracker.mvr_title_replace_map
-            )
-            bhd_data["mvr_title_default_replace_map"] = (
-                self.cfg_payload.bhd_tracker.mvr_title_default_replace_map
             )
             bhd_data["anonymous"] = self.cfg_payload.bhd_tracker.anonymous
             bhd_data["api_key"] = self.cfg_payload.bhd_tracker.api_key
@@ -454,9 +445,6 @@ class Config:
             ptp_data["mvr_title_replace_map"] = (
                 self.cfg_payload.ptp_tracker.mvr_title_replace_map
             )
-            ptp_data["mvr_title_default_replace_map"] = (
-                self.cfg_payload.ptp_tracker.mvr_title_default_replace_map
-            )
             ptp_data["api_user"] = self.cfg_payload.ptp_tracker.api_user
             ptp_data["api_key"] = self.cfg_payload.ptp_tracker.api_key
             ptp_data["username"] = self.cfg_payload.ptp_tracker.username
@@ -489,9 +477,6 @@ class Config:
             )
             rf_data["mvr_title_replace_map"] = (
                 self.cfg_payload.rf_tracker.mvr_title_replace_map
-            )
-            rf_data["mvr_title_default_replace_map"] = (
-                self.cfg_payload.rf_tracker.mvr_title_default_replace_map
             )
             rf_data["api_key"] = self.cfg_payload.rf_tracker.api_key
             rf_data["anonymous"] = self.cfg_payload.rf_tracker.anonymous
@@ -540,9 +525,6 @@ class Config:
             aither_data["mvr_title_replace_map"] = (
                 self.cfg_payload.aither_tracker.mvr_title_replace_map
             )
-            aither_data["mvr_title_default_replace_map"] = (
-                self.cfg_payload.aither_tracker.mvr_title_default_replace_map
-            )
             aither_data["api_key"] = self.cfg_payload.aither_tracker.api_key
             aither_data["anonymous"] = self.cfg_payload.aither_tracker.anonymous
             aither_data["internal"] = self.cfg_payload.aither_tracker.internal
@@ -589,9 +571,6 @@ class Config:
             )
             huno_data["mvr_title_replace_map"] = (
                 self.cfg_payload.huno_tracker.mvr_title_replace_map
-            )
-            huno_data["mvr_title_default_replace_map"] = (
-                self.cfg_payload.huno_tracker.mvr_title_default_replace_map
             )
             huno_data["api_key"] = self.cfg_payload.huno_tracker.api_key
             huno_data["anonymous"] = self.cfg_payload.huno_tracker.anonymous
@@ -940,9 +919,6 @@ class Config:
                 ),
                 mvr_title_token_override=mtv_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=mtv_tracker_data["mvr_title_replace_map"],
-                mvr_title_default_replace_map=mtv_tracker_data[
-                    "mvr_title_default_replace_map"
-                ],
                 anonymous=mtv_tracker_data["anonymous"],
                 api_key=mtv_tracker_data["api_key"],
                 username=mtv_tracker_data["username"],
@@ -975,9 +951,6 @@ class Config:
                 ),
                 mvr_title_token_override=tl_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=tl_tracker_data["mvr_title_replace_map"],
-                mvr_title_default_replace_map=tl_tracker_data[
-                    "mvr_title_default_replace_map"
-                ],
                 username=tl_tracker_data["username"],
                 password=tl_tracker_data["password"],
                 torrent_passkey=tl_tracker_data["torrent_passkey"],
@@ -1005,9 +978,6 @@ class Config:
                 ),
                 mvr_title_token_override=bhd_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=bhd_tracker_data["mvr_title_replace_map"],
-                mvr_title_default_replace_map=bhd_tracker_data[
-                    "mvr_title_default_replace_map"
-                ],
                 anonymous=bhd_tracker_data["anonymous"],
                 api_key=bhd_tracker_data["api_key"],
                 rss_key=bhd_tracker_data["rss_key"],
@@ -1038,9 +1008,6 @@ class Config:
                 ),
                 mvr_title_token_override=ptp_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=ptp_tracker_data["mvr_title_replace_map"],
-                mvr_title_default_replace_map=ptp_tracker_data[
-                    "mvr_title_default_replace_map"
-                ],
                 api_user=ptp_tracker_data["api_user"],
                 api_key=ptp_tracker_data["api_key"],
                 username=ptp_tracker_data["username"],
@@ -1069,9 +1036,6 @@ class Config:
                 ),
                 mvr_title_token_override=rf_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=rf_tracker_data["mvr_title_replace_map"],
-                mvr_title_default_replace_map=rf_tracker_data[
-                    "mvr_title_default_replace_map"
-                ],
                 api_key=rf_tracker_data["api_key"],
                 anonymous=rf_tracker_data["anonymous"],
                 internal=rf_tracker_data["internal"],
@@ -1108,9 +1072,6 @@ class Config:
                     "mvr_title_token_override"
                 ],
                 mvr_title_replace_map=aither_tracker_data["mvr_title_replace_map"],
-                mvr_title_default_replace_map=aither_tracker_data[
-                    "mvr_title_default_replace_map"
-                ],
                 api_key=aither_tracker_data["api_key"],
                 anonymous=aither_tracker_data["anonymous"],
                 internal=aither_tracker_data["internal"],
@@ -1122,6 +1083,15 @@ class Config:
                 double_up=aither_tracker_data["double_up"],
                 sticky=aither_tracker_data["sticky"],
                 image_width=aither_tracker_data["image_width"],
+                mvr_default_title_override_enabled=aither_tracker_data[
+                    "mvr_default_title_override_enabled"
+                ],
+                mvr_default_title_token_override=aither_tracker_data[
+                    "mvr_default_title_token_override"
+                ],
+                mvr_default_title_replace_map=aither_tracker_data[
+                    "mvr_default_title_replace_map"
+                ],
             )
 
             huno_tracker_data = tracker_data["huno"]
@@ -1145,14 +1115,20 @@ class Config:
                 ),
                 mvr_title_token_override=huno_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=huno_tracker_data["mvr_title_replace_map"],
-                mvr_title_default_replace_map=huno_tracker_data[
-                    "mvr_title_default_replace_map"
-                ],
                 api_key=huno_tracker_data["api_key"],
                 anonymous=huno_tracker_data["anonymous"],
                 internal=huno_tracker_data["internal"],
                 stream_optimized=huno_tracker_data["stream_optimized"],
                 image_width=huno_tracker_data["image_width"],
+                mvr_default_title_override_enabled=huno_tracker_data[
+                    "mvr_default_title_override_enabled"
+                ],
+                mvr_default_title_token_override=huno_tracker_data[
+                    "mvr_default_title_token_override"
+                ],
+                mvr_default_title_replace_map=huno_tracker_data[
+                    "mvr_default_title_replace_map"
+                ],
             )
 
             # torrent clients
