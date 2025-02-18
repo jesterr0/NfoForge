@@ -33,8 +33,6 @@ from src.payloads.image_hosts import (
     PTPIMGPayload,
 )
 
-# TODO: add nfo enable_disable flag or something?
-
 
 @dataclass(slots=True)
 class ProgramConfigPayload:
