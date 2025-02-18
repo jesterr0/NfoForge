@@ -39,12 +39,12 @@ oslex2 = "^0.1.5"
 pillow = "^11.1.0"
 
 [tool.poetry.group.dev.dependencies]
-# pyinstaller = { path = "custom-pyinstaller" } # this is nice for windows to prevent false positive viruses (https://github.com/jessielw/Custom-Pyinstaller)
-pyinstaller-hooks-contrib = "^2024.1"
 ruff = "^0.6.9"
 cython = "^3.0.11"
-pyinstaller = "^6.11.1"
 
+[tool.poetry.group.build.dependencies]
+pyinstaller-hooks-contrib = ">=2025.1"
+pyinstaller = "^6.12.0"
 
 [tool.ruff]
 line-length = 88
