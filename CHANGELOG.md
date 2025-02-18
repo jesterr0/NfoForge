@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- You can organize your URL formatting in "Tracker" settings PER tracker.
+- You can organize your image URL formatting in "Tracker" settings PER tracker.
 - Image generation Log widget now tells the user what "Mode" they are generating images in.
 - Image page now supports opening .jpg/.jpeg.
 - Image page can now accept raw urls in any format, html, bbcode, raw urls etc. It'll attempt to parse them
