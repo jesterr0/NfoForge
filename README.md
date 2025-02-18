@@ -13,7 +13,7 @@ Comprehensive documentation is on the way and will be available soon.
 ## Key Features
 
 - Token system for advanced media file renaming.
-- Integration with TMDB and IMDb for title parsing.
+- Integration with TMDB, IMDb, TVDB, and MAL for title parsing.
 - Flexible Jinja-based template system for .NFO file generation.
 - Screenshot generation and upload, including comparisons.
 - Output file organization, saving .torrent and .NFO files to disk.
@@ -22,7 +22,7 @@ Comprehensive documentation is on the way and will be available soon.
 - Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.
 - Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require the same Python version as NfoForge).
 - Support for movie files in MKV and MP4 format.
-- Automatic detection for light/dark mode (with a manual override if desired).
+- Automatic detection for light/dark mode (with a manual override if desired) _Windows only_.
 - Additional format support and features coming soon!
 
 ## Supported Trackers
