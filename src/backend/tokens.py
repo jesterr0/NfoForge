@@ -115,9 +115,15 @@ class Tokens:
     MI_VIDEO_LANGUAGE_ISO_639_2 = FileToken(
         "{mi_video_language_iso_639_2}", "Video language (ENG)"
     )
-    MOVIE_TITLE = FileToken("{movie_title}", "Movie's title parsed from TMDB/IMDb")
+    MOVIE_TITLE = FileToken(
+        "{movie_title}", "Movie's title parsed from TMDB/IMDb with minimal formatting"
+    )
     MOVIE_CLEAN_TITLE = FileToken(
         "{movie_clean_title}", "Movie's clean title parsed from TMDB/IMDb"
+    )
+    MOVIE_EXACT_TITLE = FileToken(
+        "{movie_exact_title}",
+        "Movie's title parsed from TMDB/IMDb with no modifications",
     )
     MOVIE_IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
     MOVIE_TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")

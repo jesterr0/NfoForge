@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support to easily control the title token, colon replace, and a string replace (via regex) map system PER tracker.
 - Added a new token `{frame_size}` for IMAX/Open Matte.
 - Add token `{mi_audio_language_1_full}`.
+- Add token `{movie_exact_title}`.
 
 ### Changed
 

@@ -331,6 +331,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MOVIE_CLEAN_TITLE.token:
             return self._movie_clean_title(token_data)
 
+        elif token_data.bracket_token == Tokens.MOVIE_EXACT_TITLE.token:
+            return self._movie_exact_title(token_data)
+
         elif token_data.bracket_token == Tokens.MOVIE_IMDB_ID.token:
             return self._movie_imdb_id(token_data)
 
@@ -897,6 +900,14 @@ class TokenReplacer:
                         "[space]", " "
                     )
                     title = re.sub(rf"{replace}", rf"{replace_with}", title)
+        return self._optional_user_input(title, token_data)
+
+    def _movie_exact_title(self, token_data: TokenData) -> str:
+        title = (
+            self.media_search_obj.title
+            if self.media_search_obj.title
+            else self.guess_name.get("title", "")
+        )
         return self._optional_user_input(title, token_data)
 
     def _movie_imdb_id(self, token_data: TokenData) -> str:
