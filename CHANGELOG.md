@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **{releasers_name}** is now available as a **FileToken** now.
 - **{edition}** token no longer includes IMAX and Open Matte (this is handled via the new token **{frame_size}**).
 - Rename page now stores `frame_size_override` in the shared dynamic data payload.
+- Releasers name if left blank defaults to Anonymous.
 
 ### Fixed
 
