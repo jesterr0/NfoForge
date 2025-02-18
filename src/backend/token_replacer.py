@@ -23,7 +23,11 @@ from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
 from src.backend.utils.video_codecs import VideoCodecs
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.backend.utils.language import get_language_mi, get_language_str
+from src.backend.utils.language import (
+    get_language_mi,
+    get_language_str,
+    get_full_language_str,
+)
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.payloads.media_search import MediaSearchPayload
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -51,6 +55,7 @@ class TokenReplacer:
         "screen_shots",
         "dummy_screen_shots",
         "edition_override",
+        "frame_size_override",
         "movie_clean_title_rules",
         "override_title_rules",
         "token_data",
@@ -72,6 +77,7 @@ class TokenReplacer:
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
         edition_override: str | None = None,
+        frame_size_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
         screen_shots: str | None = "",
@@ -99,6 +105,7 @@ class TokenReplacer:
             eg. (TokenType, TokenType).
             releasers_name (Optional[str]): Releasers name.
             edition_override (Optional[str]): Edition override.
+            frame_size_override (Optional[str]): Frame size override.
             movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
             screen_shots (Optional[str]): Screenshots.
@@ -126,6 +133,7 @@ class TokenReplacer:
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
         self.releasers_name = releasers_name
         self.edition_override = edition_override
+        self.frame_size_override = frame_size_override
         self.movie_clean_title_rules = movie_clean_title_rules
         self.override_title_rules = override_title_rules
         self.screen_shots = screen_shots
@@ -244,11 +252,17 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.EDITION.token:
             return self._edition(token_data)
 
+        if token_data.bracket_token == Tokens.FRAME_SIZE.token:
+            return self._frame_size(token_data)
+
         elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S.token:
             return self._mi_audio_channel_s(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_CODEC.token:
             return self._mi_audio_codec(token_data)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_FULL.token:
+            return self._mi_audio_language_1_full(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_ISO_639_1.token:
             return self._mi_audio_language_1_iso_639_x(1, token_data)
@@ -532,6 +546,45 @@ class TokenReplacer:
         if self.guess_source_name:
             edition_set.update(collect_editions(self.guess_source_name, "edition"))
 
+        # normalize some editions
+        if edition_set:
+            normalized_edition_set = set()
+            for item in edition_set:
+                item_lowered = str(item).lower()
+                if "director" in item_lowered:
+                    normalized_edition_set.add("Directors Cut")
+                elif "extended" in item_lowered:
+                    normalized_edition_set.add("Extended Cut")
+                elif "theatrical" in item_lowered:
+                    normalized_edition_set.add("Theatrical Cut")
+                elif "imax" in item_lowered:
+                    continue
+                else:
+                    normalized_edition_set.add(item)
+            edition_set = normalized_edition_set
+
+        # convert the set back to a string, joining with spaces
+        return self._optional_user_input(" ".join(edition_set), token_data)
+
+    def _frame_size(self, token_data: TokenData) -> str:
+        if self.frame_size_override:
+            return self._optional_user_input(self.frame_size_override, token_data)
+
+        def collect_editions(source, key):
+            """Helper function to collect edition data from a source."""
+            values = source.get(key, [])
+            return values if isinstance(values, list) else [values]
+
+        # ensure we have unique editions
+        edition_set = set()
+
+        # collect editions from `guess_name`
+        edition_set.update(collect_editions(self.guess_name, "edition"))
+
+        # collect editions from `guess_source_name` if it exists
+        if self.guess_source_name:
+            edition_set.update(collect_editions(self.guess_source_name, "edition"))
+
         # check for "Open Matte" in `other` fields of `guess_name` and `guess_source_name`
         for source in [self.guess_name, self.guess_source_name]:
             if source:
@@ -546,14 +599,9 @@ class TokenReplacer:
             normalized_edition_set = set()
             for item in edition_set:
                 item_lowered = str(item).lower()
-                if "director" in item_lowered:
-                    normalized_edition_set.add("Directors Cut")
-                elif "extended" in item_lowered:
-                    normalized_edition_set.add("Extended Cut")
-                elif "theatrical" in item_lowered:
-                    normalized_edition_set.add("Theatrical Cut")
-                else:
-                    normalized_edition_set.add(item)
+                if "imax" in item_lowered:
+                    normalized_edition_set.add("IMAX")
+                    break
             edition_set = normalized_edition_set
 
         # convert the set back to a string, joining with spaces
@@ -585,6 +633,17 @@ class TokenReplacer:
             )
 
         return self._optional_user_input(audio_codec, token_data)
+
+    def _mi_audio_language_1_full(self, token_data: TokenData) -> str:
+        language = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            detect_language_code = get_language_mi(self.media_info_obj.audio_tracks[0])
+            if detect_language_code:
+                detect_language = get_full_language_str(detect_language_code)
+                if detect_language:
+                    language = detect_language
+
+        return self._optional_user_input(language, token_data)
 
     def _mi_audio_language_1_iso_639_x(
         self, char_code: int, token_data: TokenData
