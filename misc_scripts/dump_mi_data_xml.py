@@ -1,5 +1,5 @@
-import json
 import asyncio
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from pymediainfo import MediaInfo
 
@@ -26,15 +26,17 @@ class MediaInfoProcessor:
                 file_name_set.add(item)
         return file_name_set
 
-    async def get_mi_dict(self, file_path: Path) -> dict | None:
-        mi_parse = MediaInfo.parse(file_path)
-        if isinstance(mi_parse, MediaInfo):
-            return mi_parse.to_data()
+    async def get_xml_str(self, file_path: Path) -> str | None:
+        xml_parse = MediaInfo.parse(file_path, output="OLDXML")
+        if isinstance(xml_parse, str):
+            xml_root = ET.fromstring(xml_parse)
+            minified_xml = ET.tostring(xml_root, encoding="unicode", method="xml")
+            return minified_xml
 
-    async def write_json_data(self, file_path: Path, data: dict) -> None:
-        output = self.output_dir / (file_path.stem + ".json")
-        with open(output, "w") as json_out:
-            json_out.write(json.dumps(data, indent=2))
+    async def write_xml_data(self, file_path: Path, data: str) -> None:
+        output = self.output_dir / (file_path.stem + ".xml")
+        with open(output, "w", encoding="utf-8") as xml_out:
+            xml_out.write(data)
 
     async def process_files(self) -> None:
         tasks = []
@@ -49,9 +51,9 @@ class MediaInfoProcessor:
     async def process_file(self, file_path: Path) -> None:
         try:
             async with self.semaphore:
-                data = await self.get_mi_dict(file_path)
+                data = await self.get_xml_str(file_path)
                 if data:
-                    await self.write_json_data(file_path, data)
+                    await self.write_xml_data(file_path, data)
                     self.processed_files += 1
                     print(f"Processed file ({self.processed_files}/{self.total_files})")
         except Exception as parse_error:
@@ -64,12 +66,12 @@ if __name__ == "__main__":
         r"",
     ]
     extensions = {".mkv", ".avi", ".mp4", ".mov", ".m4v"}
-    json_output_dir = Path(r"")
+    xml_output_dir = Path(r"")
     max_concurrent_tasks = 2
     # change
 
     # logic
     processor = MediaInfoProcessor(
-        json_output_dir, directories, extensions, max_concurrent_tasks
+        xml_output_dir, directories, extensions, max_concurrent_tasks
     )
     asyncio.run(processor.process_files())
