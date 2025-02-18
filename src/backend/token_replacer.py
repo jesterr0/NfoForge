@@ -934,7 +934,10 @@ class TokenReplacer:
         return self._optional_user_input(release_group, token_data)
 
     def _releasers_name(self, token_data: TokenData) -> str:
-        return self._optional_user_input(self.releasers_name, token_data)
+        releasers_name = "Anonymous"
+        if self.releasers_name:
+            releasers_name = self.releasers_name
+        return self._optional_user_input(releasers_name, token_data)
 
     def _release_year(self, token_data: TokenData) -> str:
         year = (
