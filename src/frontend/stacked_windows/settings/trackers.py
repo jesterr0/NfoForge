@@ -22,9 +22,10 @@ class TrackersSettings(BaseSettings):
         self.tracker_order.main_layout.setContentsMargins(0, 0, 0, 0)
         self.tracker_order.setMinimumHeight(130)
 
-        self.inner_layout.addWidget(self.tracker_widget)
-        self.inner_layout.addWidget(tracker_order_lbl)
-        self.inner_layout.addWidget(self.tracker_order)
+        self.add_widget(self.tracker_widget, stretch=5)
+        self.add_widget(tracker_order_lbl)
+        self.add_widget(self.tracker_order, stretch=2)
+        self.inner_layout.removeItem(self._spacer_item)
 
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)

@@ -97,6 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Aither** tracker settings widget was displaying the wrong label for image width.
 - Prevent colon replace combo boxes from scrolling with the mouse scroll wheel.
 - Fixed a bug when trying to access data from the replace table widget that was empty.
+- Tracker settings tab that prevented the widgets from expanding fully.
 
 ### Removed
 
