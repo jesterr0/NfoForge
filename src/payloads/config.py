@@ -90,7 +90,6 @@ class ConfigPayload:
     mvr_colon_replace_title: ColonReplace
     mvr_token: str
     mvr_title_token: str
-    mvr_default_token: str
     mvr_clean_title_rules: list[tuple[str, str]]
     mvr_clean_title_rules_modified: bool
     mvr_release_group: str

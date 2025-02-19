@@ -381,26 +381,62 @@ class ScreenShotSettings(BaseSettings):
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
-        self.ss_enabled_btn.setChecked(True)
-        self.ss_count_spinbox.setValue(20)
-        self.ss_mode_combo.setCurrentIndex(0)
-        self.ss_optimize_generated_btn.setChecked(True)
-        self.ss_required_count_spinbox.setValue(0)
-        self.crop_mode_combo.setCurrentIndex(0)
-        self.indexer_combo.setCurrentIndex(0)
-        self.image_plugin_combo.setCurrentIndex(0)
-        self.ss_comparison_subtitle_btn.setChecked(True)
-        self.ss_comp_source_entry.setText("Source")
-        self.ss_comp_encode_entry.setText("Encode")
-        self.sub_720p_size_spinbox.setValue(12)
-        self.sub_1080p_size_spinbox.setValue(16)
-        self.sub_2160p_size_spinbox.setValue(32)
-        self.sub_color_picker.update_color(QColor("#f5c70a"))
+        self.ss_enabled_btn.setChecked(
+            self.config.cfg_payload_defaults.screenshots_enabled
+        )
+        self.ss_count_spinbox.setValue(
+            self.config.cfg_payload_defaults.screen_shot_count
+        )
+        self.ss_mode_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.ss_mode.value - 1
+        )
+        self.ss_optimize_generated_btn.setChecked(
+            self.config.cfg_payload_defaults.compress_images
+        )
+        self.ss_required_count_spinbox.setValue(
+            self.config.cfg_payload_defaults.required_selected_screens
+        )
+        self.crop_mode_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.crop_mode.value - 1
+        )
+        self.indexer_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.indexer.value - 1
+        )
+        self.image_plugin_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.image_plugin.value - 1
+        )
+        self.ss_comparison_subtitle_btn.setChecked(
+            self.config.cfg_payload_defaults.comparison_subtitles
+        )
+        self.ss_comp_source_entry.setText(
+            self.config.cfg_payload_defaults.comparison_subtitle_source_name
+        )
+        self.ss_comp_encode_entry.setText(
+            self.config.cfg_payload_defaults.comparison_subtitle_encode_name
+        )
+        self.sub_720p_size_spinbox.setValue(
+            self.config.cfg_payload_defaults.sub_size_height_720
+        )
+        self.sub_1080p_size_spinbox.setValue(
+            self.config.cfg_payload_defaults.sub_size_height_1080
+        )
+        self.sub_2160p_size_spinbox.setValue(
+            self.config.cfg_payload_defaults.sub_size_height_2160
+        )
+        self.sub_color_picker.update_color(
+            QColor(self.config.cfg_payload_defaults.subtitle_color)
+        )
         self._update_sub_entry_color(self.sub_color_picker.get_color())
-        self.dl_provided_images_optimize.setChecked(True)
-        self.optimize_cpu_cores_percent.setValue(0.25)
+        self.dl_provided_images_optimize.setChecked(
+            self.config.cfg_payload_defaults.optimize_dl_url_images
+        )
+        self.optimize_cpu_cores_percent.setValue(
+            self.config.cfg_payload_defaults.optimize_dl_url_images_percentage
+        )
         self.image_host_config.add_items(self.config.image_host_map, reset=True)
-        self.sub_alignment_combo.setCurrentIndex(0)
+        self.sub_alignment_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.subtitle_alignment.value - 1
+        )
 
     def _build_spinbox(
         self, step: int, min_max_range: tuple[int, int], parent=None
