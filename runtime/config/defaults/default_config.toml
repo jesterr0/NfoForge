@@ -245,7 +245,6 @@ mvr_colon_replace_filename = 3
 mvr_colon_replace_title = 3
 mvr_token = "{movie_clean_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
 mvr_title_token = "{movie_clean_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
-mvr_default_token = "{movie_clean_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
 mvr_clean_title_rules = [
     [
         "",
