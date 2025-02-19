@@ -434,11 +434,18 @@ class GeneralSettings(BaseSettings):
     def apply_defaults(self) -> None:
         self.selected_config.setCurrentIndex(0)
         self.ui_suffix.clear()
-        self.theme_combo.setCurrentIndex(0)
-        self.profile_combo.setCurrentIndex(0)
+        self.theme_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.nfo_forge_theme.value - 1
+        )
+        self.profile_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.profile.value - 1
+        )
+        self._change_profile()
         self.plugin_wizard_page_combo.clear()
         self.plugin_token_replacer_combo.clear()
-        self.media_mode_combo.setCurrentIndex(0)
+        self.media_mode_combo.setCurrentIndex(
+            self.config.cfg_payload_defaults.media_mode.value - 1
+        )
         self._load_filter_widget(
             user_settings=None, filter_widget=self.source_ext_filter, defaults=True
         )
@@ -447,7 +454,7 @@ class GeneralSettings(BaseSettings):
         )
         self.dir_toggle_btn.setChecked(False)
         self.releasers_name_entry.clear()
-        self.global_timeout_spinbox.setValue(60)
+        self.global_timeout_spinbox.setValue(self.config.cfg_payload_defaults.timeout)
 
     @staticmethod
     def _disable_scrollwheel_spinbox(event: QWheelEvent) -> None:

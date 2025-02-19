@@ -444,19 +444,27 @@ class MoviesSettings(BaseSettings):
             self.config.cfg_payload.mvr_clean_title_rules_modified = False
 
     def apply_defaults(self) -> None:
-        self.rename_check_box.setChecked(True)
-        self.replace_illegal_chars.setChecked(True)
-        self.fn_colon_replace.setCurrentIndex(2)
-        self.format_file_name_token_input.setText(
-            self.config.cfg_payload.mvr_default_token
+        self.rename_check_box.setChecked(self.config.cfg_payload_defaults.mvr_enabled)
+        self.replace_illegal_chars.setChecked(
+            self.config.cfg_payload_defaults.mvr_replace_illegal_chars
         )
-        self.title_colon_replace.setCurrentIndex(2)
+        self.fn_colon_replace.setCurrentIndex(
+            self.config.cfg_payload_defaults.mvr_colon_replace_filename.value - 1
+        )
+        self.format_file_name_token_input.setText(
+            self.config.cfg_payload_defaults.mvr_token
+        )
+        self.title_colon_replace.setCurrentIndex(
+            self.config.cfg_payload_defaults.mvr_colon_replace_title.value - 1
+        )
         self.format_release_title_input.setText(
-            self.config.cfg_payload.mvr_default_token
+            self.config.cfg_payload_defaults.mvr_title_token
         )
         self._apply_override_defaults()
         self.token_table.reset()
-        self.config.cfg_payload.mvr_clean_title_rules_modified = False
+        self.config.cfg_payload.mvr_clean_title_rules_modified = (
+            self.config.cfg_payload_defaults.mvr_clean_title_rules_modified
+        )
 
     def _apply_override_defaults(self) -> None:
         """
@@ -465,7 +473,7 @@ class MoviesSettings(BaseSettings):
         """
         for tracker in self.tracker_override_map.keys():
             over_ride_widget = self.tracker_override_map[tracker]
-            tracker_info = self.config.tracker_map[tracker]
+            tracker_info = self.config.tracker_map_defaults[tracker]
             over_ride_widget.enabled_checkbox.setChecked(
                 bool(getattr(tracker_info, "mvr_default_title_override_enabled", False))
             )

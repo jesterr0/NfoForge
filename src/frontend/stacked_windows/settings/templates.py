@@ -504,38 +504,64 @@ class TemplatesSettings(BaseSettings):
         return True
 
     def apply_defaults(self) -> None:
-        self.block_start_str_entry.setText("{%")
-        self.block_end_str_entry.setText("%}")
-        block_color = QColor("#A4036F")
+        self.block_start_str_entry.setText(
+            self.config.cfg_payload_defaults.block_start_string
+        )
+        self.block_end_str_entry.setText(
+            self.config.cfg_payload_defaults.block_end_string
+        )
+        block_color = QColor(self.config.cfg_payload_defaults.block_syntax_color)
         self._update_block_entry_text_color(block_color)
         self.block_syntax_color.update_color(block_color)
 
-        self.variable_start_str_entry.setText("{{")
-        self.variable_end_str_entry.setText("}}")
-        variable_color = QColor("#048BA8")
+        self.variable_start_str_entry.setText(
+            self.config.cfg_payload_defaults.variable_start_string
+        )
+        self.variable_end_str_entry.setText(
+            self.config.cfg_payload_defaults.variable_end_string
+        )
+        variable_color = QColor(self.config.cfg_payload_defaults.variable_syntax_color)
         self._update_variable_entry_text_color(variable_color)
         self.variable_syntax_color.update_color(variable_color)
 
-        self.comment_start_str_entry.setText("{#")
-        self.comment_end_str_entry.setText("#}")
-        comment_color = QColor("#16DB93")
+        self.comment_start_str_entry.setText(
+            self.config.cfg_payload_defaults.comment_start_string
+        )
+        self.comment_end_str_entry.setText(
+            self.config.cfg_payload_defaults.comment_end_string
+        )
+        comment_color = QColor(self.config.cfg_payload_defaults.comment_syntax_color)
         self._update_comment_entry_text_color(comment_color)
         self.comment_syntax_color.update_color(comment_color)
 
         self.line_statement_prefix_entry.clear()
-        line_statement_color = QColor("#ff0000")
+        line_statement_color = QColor(
+            self.config.cfg_payload_defaults.line_statement_syntax_color
+        )
         self._update_line_statement_entry_text_color(line_statement_color)
         self.line_statement_syntax_color.update_color(line_statement_color)
 
         self.line_comment_prefix_entry.clear()
-        line_comment_color = QColor("#00aaff")
+        line_comment_color = QColor(
+            self.config.cfg_payload_defaults.line_comment_syntax_color
+        )
         self._update_line_comment_entry_text_color(line_comment_color)
         self.line_comment_syntax_color.update_color(line_comment_color)
 
-        self.trim_blocks_toggle.setChecked(True)
-        self.lstrip_blocks_toggle.setChecked(True)
-        self.newline_sequence.setCurrentIndex(1)
-        self.keep_trailing_newline_toggle.setChecked(False)
+        self.trim_blocks_toggle.setChecked(self.config.cfg_payload_defaults.trim_blocks)
+        self.lstrip_blocks_toggle.setChecked(
+            self.config.cfg_payload_defaults.lstrip_blocks
+        )
+        new_line_idx = self.newline_sequence.findText(
+            self.config.cfg_payload_defaults.newline_sequence
+        )
+        if new_line_idx > -1:
+            self.newline_sequence.setCurrentIndex(new_line_idx)
+        else:
+            self.newline_sequence.setCurrentIndex(1)
+        self.keep_trailing_newline_toggle.setChecked(
+            self.config.cfg_payload_defaults.keep_trailing_newline
+        )
         self.update_jinja_engine_settings()
 
     @Slot(object)
