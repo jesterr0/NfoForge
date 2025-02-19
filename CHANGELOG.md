@@ -79,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rename page now stores `frame_size_override` in the shared dynamic data payload.
 - Releasers name if left blank defaults to Anonymous.
 - Compiled NfoForge (Windows) FrameForge is now updated to v1.3.5.
+- Updated dependencies requests, lxml, torf, psutil, aiohttp, semver, qbittorrent-api, regex, stdlib-list, jinja2, beautifulsoup4, rapidfuzz, ruff, and cython.
 
 ### Fixed
 
