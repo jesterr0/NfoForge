@@ -160,8 +160,8 @@ mvr_title_override_enabled = true
 mvr_default_title_override_enabled = true
 mvr_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
 mvr_default_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
-mvr_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
-mvr_default_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_title_replace_map = [['''(?<=\s)DDP(?=\s\d)''', "DD+"], ['''(?i)hdr10plus''', "HDR10+"]]
+mvr_default_title_replace_map = [['''(?<=\s)DDP(?=\s\d)''', "DD+"], ['''(?i)hdr10plus''', "HDR10+"]]
 mvr_title_colon_replace = 3
 api_key = ""
 anonymous = 0
@@ -191,8 +191,8 @@ mvr_title_override_enabled = true
 mvr_default_title_override_enabled = true
 mvr_title_token_override = "{movie_clean_title} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {mi_video_codec} {mi_video_dynamic_range} {mi_audio_codec} {mi_audio_channel_s} {mi_audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
 mvr_default_title_token_override = "{movie_clean_title} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {mi_video_codec} {mi_video_dynamic_range} {mi_audio_codec} {mi_audio_channel_s} {mi_audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
-mvr_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
-mvr_default_title_replace_map = [['''\sDDP(?=\s\d)''', "DD+"]]
+mvr_title_replace_map = [['''(?<=\s)DDP(?=\s\d)''', "DD+"], ['''(?i)hdr10plus''', "HDR10+"]]
+mvr_default_title_replace_map = [['''(?<=\s)DDP(?=\s\d)''', "DD+"], ['''(?i)hdr10plus''', "HDR10+"]]
 mvr_title_colon_replace = 3
 api_key = ""
 anonymous = 0
