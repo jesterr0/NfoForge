@@ -98,6 +98,7 @@ class Config:
 
         # variables that are assigned during init
         self.cfg_payload: ConfigPayload = None
+        self.cfg_payload_defaults: ConfigPayload = None
         self._toml_data = None
         self.load_config(config_file)
 
@@ -115,6 +116,7 @@ class Config:
 
         # maps
         self.tracker_map = self._tracker_map()
+        self.tracker_map_defaults = self._tracker_map(defaults=True)
         self.client_map = self._client_map()
         self.image_host_map = self._image_host_map()
 
@@ -190,25 +192,6 @@ class Config:
         except Exception as e:
             raise ConfigError(f"Error saving program conf file: {str(e)}")
 
-        """
-            if (
-                self._config_data_last
-                or (self._config_data_last != self._toml_data)
-                and not save_path
-            ):
-                if not save_path and self.program_conf.current_config:
-                    save_path = self.USER_CONFIG_DIR / str(
-                        self.program_conf.current_config + ".toml"
-                    )
-
-                if not save_path:
-                    raise ConfigError("Failed to determine save path")
-
-                with open(save_path, "w") as toml_file:
-                    self._config_data_last = self._toml_data
-                    toml_file.write(tomlkit.dumps(self._toml_data))        
-        """
-
     def load_config(self, config_file: str | None = None):
         """Loads config file, if missing automatically creates one from the example template."""
         if config_file:
@@ -222,11 +205,19 @@ class Config:
                 self.program_conf.current_config + ".toml"
             )
 
+        # read default toml file
+        default_toml = self.CONFIG_DEFAULT.read_text()
+
+        # update default config if not updated
+        if not self.cfg_payload_defaults:
+            default_toml_data = tomlkit.parse(default_toml)
+            self.update_config_payload(default_toml_data, build_defaults=True)
+
         if config_path.exists():
             with open(config_path, "r") as toml_file:
                 self._toml_data = self.check_toml_updates(
                     tomlkit.parse(toml_file.read()),
-                    tomlkit.parse(self.CONFIG_DEFAULT.read_text()),
+                    tomlkit.parse(default_toml),
                 )
                 self._config_data_last = self._toml_data
                 self.update_config_payload(self._toml_data)
@@ -234,7 +225,7 @@ class Config:
         else:
             config_path.parent.mkdir(exist_ok=True, parents=True)
             with open(config_path, "w") as toml_file:
-                toml_file.write(self.CONFIG_DEFAULT.read_text())
+                toml_file.write(default_toml)
             self.load_config()
 
     def check_toml_updates(
@@ -656,7 +647,6 @@ class Config:
             ).value
             movie_rename["mvr_token"] = self.cfg_payload.mvr_token
             movie_rename["mvr_title_token"] = self.cfg_payload.mvr_title_token
-            movie_rename["mvr_default_token"] = self.cfg_payload.mvr_default_token
             movie_rename["mvr_clean_title_rules"] = (
                 self.cfg_payload.mvr_clean_title_rules
             )
@@ -848,7 +838,9 @@ class Config:
         except Exception as e:
             raise ConfigError(f"Error saving config file: {str(e)}")
 
-    def update_config_payload(self, toml_data: TOMLDocument) -> None:
+    def update_config_payload(
+        self, toml_data: TOMLDocument, build_defaults: bool = False
+    ) -> None:
         """Assigns config payload attributes from a given toml document"""
         try:
             # general
@@ -1186,7 +1178,8 @@ class Config:
             # template settings
             template_settings = toml_data["template_settings"]
 
-            self.cfg_payload = ConfigPayload(
+            # build payload
+            config_payload = ConfigPayload(
                 ui_suffix=general_data.get("ui_suffix", ""),
                 nfo_forge_theme=nfo_forge_theme,
                 profile=profile,
@@ -1236,7 +1229,6 @@ class Config:
                 ],
                 mvr_token=movie_rename.get("mvr_token"),
                 mvr_title_token=movie_rename.get("mvr_title_token"),
-                mvr_default_token=movie_rename.get("mvr_default_token"),
                 mvr_release_group=movie_rename.get("mvr_release_group", ""),
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
@@ -1322,23 +1314,46 @@ class Config:
                     template_settings.get("keep_trailing_newline", 0)
                 ),
             )
+
+            # check where to store the built payload
+            if build_defaults:
+                self.cfg_payload_defaults = config_payload
+            else:
+                self.cfg_payload = config_payload
+
         except Exception as e:
             raise ConfigError(f"Error parsing config file: {str(e)}")
 
-    def _tracker_map(self) -> dict[TrackerSelection, TrackerInfo]:
+    def _tracker_map(
+        self, defaults: bool = False
+    ) -> dict[TrackerSelection, TrackerInfo]:
         """
         As more trackers are added, this needs to be updated with each one. This is the default map
         that is ordered based on the saved config or the TrackerSelection enum class if no saved
         config exists.
         """
         return {
-            TrackerSelection.MORE_THAN_TV: self.cfg_payload.mtv_tracker,
-            TrackerSelection.TORRENT_LEECH: self.cfg_payload.tl_tracker,
-            TrackerSelection.BEYOND_HD: self.cfg_payload.bhd_tracker,
-            TrackerSelection.PASS_THE_POPCORN: self.cfg_payload.ptp_tracker,
-            TrackerSelection.REELFLIX: self.cfg_payload.rf_tracker,
-            TrackerSelection.AITHER: self.cfg_payload.aither_tracker,
-            TrackerSelection.HUNO: self.cfg_payload.huno_tracker,
+            TrackerSelection.MORE_THAN_TV: self.cfg_payload.mtv_tracker
+            if not defaults
+            else self.cfg_payload_defaults.mtv_tracker,
+            TrackerSelection.TORRENT_LEECH: self.cfg_payload.tl_tracker
+            if not defaults
+            else self.cfg_payload_defaults.tl_tracker,
+            TrackerSelection.BEYOND_HD: self.cfg_payload.bhd_tracker
+            if not defaults
+            else self.cfg_payload_defaults.bhd_tracker,
+            TrackerSelection.PASS_THE_POPCORN: self.cfg_payload.ptp_tracker
+            if not defaults
+            else self.cfg_payload_defaults.ptp_tracker,
+            TrackerSelection.REELFLIX: self.cfg_payload.rf_tracker
+            if not defaults
+            else self.cfg_payload_defaults.rf_tracker,
+            TrackerSelection.AITHER: self.cfg_payload.aither_tracker
+            if not defaults
+            else self.cfg_payload_defaults.aither_tracker,
+            TrackerSelection.HUNO: self.cfg_payload.huno_tracker
+            if not defaults
+            else self.cfg_payload_defaults.huno_tracker,
         }
 
     def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:
