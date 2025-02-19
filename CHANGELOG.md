@@ -78,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **{edition}** token no longer includes IMAX and Open Matte (this is handled via the new token **{frame_size}**).
 - Rename page now stores `frame_size_override` in the shared dynamic data payload.
 - Releasers name if left blank defaults to Anonymous.
+- Compiled NfoForge (Windows) FrameForge is now updated to v1.3.5.
 
 ### Fixed
 
