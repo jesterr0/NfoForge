@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "NfoForge"
-version = "0.6.0"
+version = "0.6.1"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
