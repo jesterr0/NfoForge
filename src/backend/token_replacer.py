@@ -148,13 +148,12 @@ class TokenReplacer:
     def get_output(self) -> str | None:
         """
         if flatten:
-            `Index 0`: Formatted str.
-            `Index 1`: Formatted str with input extension.
+            str: Formatted str (filename).
         else:
-            str: Formatted str.
+            str: Formatted str (multi-line template).
 
         Returns:
-            Union[Tuple[str, str], str, None]: Tuple consisting of 2 indexes if flatten is True else a string.
+            Optional[str]: Formatted string.
         """
         if self.flatten:
             tokens = self._parse_user_input()
