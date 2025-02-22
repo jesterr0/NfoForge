@@ -9,19 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- 
+-
 
 ### Changed
 
 - Updated pymediainfo to v7.0.1.
+- **Generated** in **Optimize Generated Images** is now bold.
+- **Convert downloaded and opened images to optimized PNG format** has been renamed to **Optimize Opened Images** with bold.
 
 ### Fixed
 
-- 
+-
 
 ### Removed
 
-- 
+-
 
 ## [0.6.1] - 2025-02-21
 
