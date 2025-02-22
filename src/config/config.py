@@ -1075,15 +1075,6 @@ class Config:
                 double_up=aither_tracker_data["double_up"],
                 sticky=aither_tracker_data["sticky"],
                 image_width=aither_tracker_data["image_width"],
-                mvr_default_title_override_enabled=aither_tracker_data[
-                    "mvr_default_title_override_enabled"
-                ],
-                mvr_default_title_token_override=aither_tracker_data[
-                    "mvr_default_title_token_override"
-                ],
-                mvr_default_title_replace_map=aither_tracker_data[
-                    "mvr_default_title_replace_map"
-                ],
             )
 
             huno_tracker_data = tracker_data["huno"]
@@ -1112,15 +1103,6 @@ class Config:
                 internal=huno_tracker_data["internal"],
                 stream_optimized=huno_tracker_data["stream_optimized"],
                 image_width=huno_tracker_data["image_width"],
-                mvr_default_title_override_enabled=huno_tracker_data[
-                    "mvr_default_title_override_enabled"
-                ],
-                mvr_default_title_token_override=huno_tracker_data[
-                    "mvr_default_title_token_override"
-                ],
-                mvr_default_title_replace_map=huno_tracker_data[
-                    "mvr_default_title_replace_map"
-                ],
             )
 
             # torrent clients

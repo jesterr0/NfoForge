@@ -253,7 +253,6 @@ class MinimalMediaInfo:
         """cleanse media-info string removing Unique ID and full path name"""
         # removing non unix style \r\n to cross platform \n
         mi = "\n".join(mi.splitlines())
-        mi = re.sub(r"Unique\sID\s+:\s.+\n", "", mi, flags=re.MULTILINE)
         search = re.search(r"Complete\sname\s+?:\s(.+?)\n", mi, flags=re.MULTILINE)
         if search:
             file_name = Path(search.group(1))

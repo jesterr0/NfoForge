@@ -68,6 +68,7 @@ class TemplateSelectorBackEnd:
     def create_template(self, path: PathLike[str] | str) -> Path:
         with open(path, "w", encoding="utf-8") as new_template:
             new_template.write(self.get_default_template())
+        self.load_templates()
         return Path(path)
 
     def save_template(self, path: PathLike[str] | str, text: str) -> None:
@@ -76,6 +77,7 @@ class TemplateSelectorBackEnd:
 
     def delete_template(self, path: PathLike[str] | str) -> None:
         Path(path).unlink()
+        self.load_templates()
 
     def get_default_template(self) -> str:
         return DEFAULT_TEMPLATE

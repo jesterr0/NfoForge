@@ -343,7 +343,7 @@ class MoviesSettings(BaseSettings):
                 tracker_info.mvr_title_token_override,
             )
             over_ride_widget.over_ride_replacement_table.set_default_rules(
-                getattr(tracker_info, "mvr_default_title_replace_map", [])
+                self.config.tracker_map_defaults[tracker].mvr_title_replace_map
             )
             over_ride_widget.over_ride_replacement_table.reset()
             if tracker_info.mvr_title_replace_map:
@@ -467,25 +467,22 @@ class MoviesSettings(BaseSettings):
         )
 
     def _apply_override_defaults(self) -> None:
-        """
-        Reset tracker over ride, using getattr due to the dynamic nature of some trackers having
-        defaults and others not having defaults.
-        """
         for tracker in self.tracker_override_map.keys():
             over_ride_widget = self.tracker_override_map[tracker]
             tracker_info = self.config.tracker_map_defaults[tracker]
             over_ride_widget.enabled_checkbox.setChecked(
-                bool(getattr(tracker_info, "mvr_default_title_override_enabled", False))
+                tracker_info.mvr_title_override_enabled
             )
             over_ride_widget.title_colon_replace.setCurrentIndex(2)
             self._update_qline_cursor_0(
                 over_ride_widget.over_ride_format_title,
-                str(getattr(tracker_info, "mvr_default_title_token_override", "")),
+                tracker_info.mvr_title_token_override,
             )
             over_ride_widget.over_ride_replacement_table.reset()
-            over_ride_widget.over_ride_replacement_table.add_rows(
-                getattr(tracker_info, "mvr_default_title_replace_map", [])
-            )
+            if tracker_info.mvr_title_replace_map:
+                over_ride_widget.over_ride_replacement_table.add_rows(
+                    tracker_info.mvr_title_replace_map
+                )
 
     @staticmethod
     def _build_colon_replace_combo(
