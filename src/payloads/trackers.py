@@ -108,11 +108,6 @@ class AitherInfo(TrackerInfo):
     double_up: int = 0
     sticky: int = 0
 
-    # default mvr overrides
-    mvr_default_title_override_enabled: bool = True
-    mvr_default_title_token_override: str | None = None
-    mvr_default_title_replace_map: list[tuple[str, str]] | None = None
-
 
 @dataclass(slots=True)
 class HunoInfo(TrackerInfo):
@@ -121,8 +116,3 @@ class HunoInfo(TrackerInfo):
     internal: int = 0
     stream_optimized: int = 0
     image_width: int = 350
-
-    # default mvr overrides
-    mvr_default_title_override_enabled: bool = True
-    mvr_default_title_token_override: str | None = None
-    mvr_default_title_replace_map: list[tuple[str, str]] | None = None
