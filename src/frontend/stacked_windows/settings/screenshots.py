@@ -49,7 +49,10 @@ class ScreenShotSettings(BaseSettings):
         )
         self.ss_mode_combo.activated.connect(self._ss_mode_changed)
 
-        ss_optimize_generated_lbl = QLabel("Optimize Generated Images", self)
+        ss_optimize_generated_lbl = QLabel(
+            '<span>Optimize <span style="font-weight: bold;">Generated</span> Images<span>',
+            self,
+        )
         ss_optimize_generated_lbl.setToolTip("Optimize generated images (recommended)")
         self.ss_optimize_generated_btn = QCheckBox(self)
 
@@ -150,7 +153,8 @@ class ScreenShotSettings(BaseSettings):
         )
 
         dl_provided_images_optimize_lbl = QLabel(
-            "Convert downloaded and opened images to optimized PNG format", self
+            '<span>Optimize <span style="font-weight: bold;">Opened</span> Images</span>',
+            self,
         )
         dl_provided_images_optimize_lbl.setToolTip(
             "Converts images from downloaded URLs and opened files to PNG format, "
