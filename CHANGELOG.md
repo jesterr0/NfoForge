@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- 
+- Un-needed string conversions in unit3d backend.
 
 ## [0.6.0] - 2025-02-19
 

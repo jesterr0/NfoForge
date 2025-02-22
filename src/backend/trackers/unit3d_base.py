@@ -31,11 +31,6 @@ TypeEnums = ReelFlixType | AitherType | HunoType
 class Unit3dBaseUploader:
     """API: https://github.com/HDInnovations/UNIT3D-Community-Edition/wiki/Torrent-API-(UNIT3D-v8.3.4)"""
 
-    UNIT3D_STR_CONVERSIONS = {
-        r"DDP\s(\d)\.(\d)": r"DD+ \1.\2",
-        r"HDR10Plus": r"HDR10+",
-    }
-
     __slots__ = (
         "tracker_name",
         "upload_url",
@@ -171,8 +166,6 @@ class Unit3dBaseUploader:
         name = re.sub(r"\s{2,}", " ", name)
         for replace_key, replace_val in tracker_string_replace_map().items():
             name = name.replace(replace_key, replace_val)
-        for regex_key, regex_val in self.UNIT3D_STR_CONVERSIONS.items():
-            name = re.sub(regex_key, regex_val, name)
         return name
 
     def _get_category_id(self) -> str:
