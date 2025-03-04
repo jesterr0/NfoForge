@@ -73,7 +73,6 @@ class QueuedWorker(QThread):
         crop_values: CropValues | None,
         advanced_resize: AdvancedResize | None,
         re_sync: int,
-        compression: bool,
         indexer: Indexer | None,
         image_plugin: ImagePlugin | None,
         ffmpeg_path: Path,
@@ -101,7 +100,6 @@ class QueuedWorker(QThread):
             crop_values (Optional[CropValues]): Crop values.
             advanced_resize (Optional[AdvancedResize]): Crop values.
             re_sync (int): Re_sync value.
-            compression (bool): If we want to compress the images.
             indexer (Optional[Indexer]): Indexer used for FrameForge.
             image_plugin (Optional[ImagePlugin]): Plugin used for image generation in FrameForge.
             ffmpeg_path (Path): Path to FFMPEG executable.
@@ -125,7 +123,6 @@ class QueuedWorker(QThread):
         self.crop_values = crop_values
         self.advanced_resize = advanced_resize
         self.re_sync = re_sync
-        self.compression = compression
         self.indexer = indexer
         self.image_plugin = image_plugin
         self.ffmpeg_path = ffmpeg_path
@@ -159,7 +156,6 @@ class QueuedWorker(QThread):
             self.media_file_mi_obj,
             self.total_images,
             self.trim,
-            self.compression,
             self.ffmpeg_path,
             self.progress_signal,
         )
@@ -178,7 +174,6 @@ class QueuedWorker(QThread):
             self.sub_names,
             self.sub_size,
             self.crop_values,
-            self.compression,
             self.ffmpeg_path,
             self.progress_signal,
         )
@@ -200,7 +195,6 @@ class QueuedWorker(QThread):
             self.crop_values,
             self.advanced_resize,
             self.re_sync,
-            self.compression,
             self.indexer,
             self.image_plugin,
             self.frame_forge_path,
@@ -593,7 +587,6 @@ class ImagesPage(BaseWizardPage):
             crop_values=crop_values,
             advanced_resize=advanced_resize,
             re_sync=re_sync,
-            compression=self.config.cfg_payload.compress_images,
             indexer=self.config.cfg_payload.indexer,
             image_plugin=self.config.cfg_payload.image_plugin,
             source_file=self.source_file,
@@ -618,7 +611,7 @@ class ImagesPage(BaseWizardPage):
             )
             self.image_viewer.show()
             GSigs().main_window_set_disabled.emit(False)
-            self.image_viewer.exit_viewer.connect(self._load_images)
+            self.image_viewer.exit_viewer.connect(lambda i: self._load_images(i, True))
             self.image_viewer.re_sync_images.connect(self._re_sync)
         else:
             QMessageBox.warning(
@@ -655,7 +648,7 @@ class ImagesPage(BaseWizardPage):
             caption="Open Image File(s)", filter="*.png *.jpg *.jpeg"
         )
         if files:
-            self._load_images([Path(x) for x in files])
+            self._load_images([Path(x) for x in files], False)
 
     @Slot(list)
     def _handle_image_drop(self, image_s: list[Path]) -> None:
@@ -666,16 +659,17 @@ class ImagesPage(BaseWizardPage):
             sub_img for img in image_s if img.is_dir() for sub_img in img.glob("*.png")
         ]
 
-        self._load_images(images_only)
+        self._load_images(images_only, False)
 
-    @Slot(list)
-    def _load_images(self, images: list[Path]) -> None:
+    @Slot(list, bool)
+    def _load_images(self, images: list[Path], generated: bool) -> None:
         self.generate_images.setEnabled(True)
         self.thumbnail_listbox.clear()
         if images:
             for img in images:
                 self.thumbnail_listbox.add_thumbnail(img)
             self.config.shared_data.loaded_images = images
+            self.config.shared_data.generated_images = generated
         self._complete_loading()
 
     @Slot(int)
