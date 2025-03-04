@@ -9,17 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
--
+- Added required title override map (`\s` -> `.`) for **MTV**.
 
 ### Changed
 
 - Updated pymediainfo to v7.0.1.
 - **Generated** in **Optimize Generated Images** is now bold.
 - **Convert downloaded and opened images to optimized PNG format** has been renamed to **Optimize Opened Images** with bold.
+- **MoreThanTV** tracker over ride should now be **Enabled** by default (if this doesn't update your current config you should enable this yourself).
+- Generated images from now on are automatically compressed.
+- Adjusted the position of checkbox Optimize Generated Images` in the UI.
 
 ### Fixed
 
 - Issue when optimizing images opened via **local files** or **URLs** _(not generated)_ where multiprocessing would hang during image optimization when the program was bundled into an executable.
+- A bug that was always **optimizing** users images even if they had configured the program differently.
 
 ### Removed
 
