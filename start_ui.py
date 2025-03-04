@@ -1,6 +1,7 @@
 import os
 import traceback
 import sys
+from multiprocessing import freeze_support as mp_freeze_support
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -11,7 +12,7 @@ from src.config.config import Config
 from src.logger.nfo_forge_logger import LOG
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
 from src.frontend.windows.main_window import MainWindow
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import RUNTIME_DIR, IS_FROZEN
 
 DEV_MODE = False
 if DEV_MODE:
@@ -177,6 +178,9 @@ def arg_parse() -> tuple[str | None, str | None]:
 
 
 if __name__ == "__main__":
+    if IS_FROZEN:
+        # required for multiprocessing support when the app is frozen (exe)
+        mp_freeze_support()
     NfoForge(arg_parse())
 
 

@@ -134,7 +134,6 @@ class BasicImageGeneration(ImageGeneration):
         mi_object: MediaInfo,
         total_images: int,
         trim: tuple[int, int],
-        compression: bool,
         ffmpeg_path: Path,
         signal: SignalInstance,
     ) -> int:
@@ -177,8 +176,10 @@ class BasicImageGeneration(ImageGeneration):
             str(total_images),
             "-fps_mode",
             "vfr",
+            # "-compression_level",
+            # "9" if compression else "0",
             "-compression_level",
-            "9" if compression else "0",
+            "9",
             "-an",
             "-threads",
             thread_count,
@@ -209,7 +210,6 @@ class ComparisonImageGeneration(ImageGeneration):
         sub_names: SubNames | None,
         sub_size: int,
         crop_values: CropValues | None,
-        compression: bool,
         ffmpeg_path: Path,
         signal: SignalInstance,
     ) -> int:
@@ -296,7 +296,6 @@ class ComparisonImageGeneration(ImageGeneration):
             random_offset=random_offset,
             frame_rate=frame_rate,
             subtitle_color=subtitle_color,
-            compression=compression,
             ffmpeg=ffmpeg_path,
             signal=signal,
         )
@@ -315,7 +314,6 @@ class ComparisonImageGeneration(ImageGeneration):
             random_offset=random_offset,
             frame_rate=frame_rate,
             subtitle_color=subtitle_color,
-            compression=compression,
             ffmpeg=ffmpeg_path,
             signal=signal,
             ffmpeg_crop=detect_crop,
@@ -340,7 +338,6 @@ class ComparisonImageGeneration(ImageGeneration):
         random_offset: int,
         frame_rate: float,
         subtitle_color: str,
-        compression: bool,
         ffmpeg: Path,
         signal: SignalInstance,
         ffmpeg_crop: str | None = None,
@@ -414,8 +411,10 @@ class ComparisonImageGeneration(ImageGeneration):
             str(total_images),
             "-fps_mode",
             "vfr",
+            # "-compression_level",
+            # "9" if compression else "0",
             "-compression_level",
-            "9" if compression else "0",
+            "9",
             "-an",
             "-threads",
             thread_count,
@@ -463,7 +462,6 @@ class FrameForgeImageGeneration(ImageGeneration):
         crop_values: CropValues,
         advanced_resize: AdvancedResize | None,
         re_sync: int,
-        compression: bool,
         indexer: Indexer,
         image_plugin: ImagePlugin,
         frame_forge_path: Path,
@@ -526,7 +524,7 @@ class FrameForgeImageGeneration(ImageGeneration):
         #     generate_args.extend(["--frames", existing_frames])
 
         # TODO: remove print
-        print(generate_args)
+        # print(generate_args)
 
         return self.run_frame_forge_command(generate_args, signal)
 
@@ -548,7 +546,6 @@ class ImagesBackEnd:
         mi_object: MediaInfo,
         total_images: int,
         trim: tuple[int, int],
-        compression: bool,
         ffmpeg_path: Path,
         signal: SignalInstance,
     ) -> int:
@@ -561,7 +558,6 @@ class ImagesBackEnd:
             mi_object (MediaInfo): MediaInfo object of the input file.
             total_images (int): The total number of images to generate.
             trim (tuple[int, int]): The percentage of the file to trim from start and end.
-            compression (bool): If we want to compress the images.
             ffmpeg_path (Path): Path to FFMPEG executable.
             signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
 
@@ -572,7 +568,6 @@ class ImagesBackEnd:
             mi_object=mi_object,
             total_images=total_images,
             trim=trim,
-            compression=compression,
             ffmpeg_path=ffmpeg_path,
             signal=signal,
         )
@@ -590,7 +585,6 @@ class ImagesBackEnd:
         sub_names: SubNames | None,
         sub_size: int,
         crop_values: CropValues | None,
-        compression: bool,
         ffmpeg_path: Path,
         signal: SignalInstance,
     ) -> int:
@@ -609,7 +603,6 @@ class ImagesBackEnd:
             sub_names (Optional[SubNames]): Subtitle names.
             sub_size (int): Subtitle size.
             crop_values (Optional[CropValues]): Crop values.
-            compression (bool): If we want to compress the images.
             ffmpeg_path (Path): Path to FFMPEG executable.
             signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
 
@@ -626,7 +619,6 @@ class ImagesBackEnd:
             sub_names=sub_names,
             sub_size=sub_size,
             crop_values=crop_values,
-            compression=compression,
             ffmpeg_path=ffmpeg_path,
             signal=signal,
         )
@@ -647,7 +639,6 @@ class ImagesBackEnd:
         crop_values: CropValues,
         advanced_resize: AdvancedResize | None,
         re_sync: int,
-        compression: bool,
         indexer: Indexer,
         image_plugin: ImagePlugin,
         frame_forge_path: Path,
@@ -671,7 +662,6 @@ class ImagesBackEnd:
             crop_values (CropValues): Crop values.
             advanced_resize (Optional[AdvancedResize]): Crop values.
             re_sync (int): Re_sync value.
-            compression (bool): If we want to compress the images.
             indexer (Optional[Indexer]): Indexer used for FrameForge.
             image_plugin (Optional[ImagePlugin]): Plugin used for image generation in FrameForge.
             frame_forge_path (Path): Path to FrameForge executable.
@@ -693,7 +683,6 @@ class ImagesBackEnd:
             crop_values=crop_values,
             advanced_resize=advanced_resize,
             re_sync=re_sync,
-            compression=compression,
             indexer=indexer,
             image_plugin=image_plugin,
             frame_forge_path=frame_forge_path,
