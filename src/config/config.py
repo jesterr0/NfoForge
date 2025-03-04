@@ -690,7 +690,9 @@ class Config:
             screen_shot_data["comparison_subtitle_encode_name"] = (
                 self.cfg_payload.comparison_subtitle_encode_name
             )
-            screen_shot_data["compress_images"] = self.cfg_payload.compress_images
+            screen_shot_data["optimize_generated_images"] = (
+                self.cfg_payload.optimize_generated_images
+            )
             screen_shot_data["optimize_dl_url_images"] = (
                 self.cfg_payload.optimize_dl_url_images
             )
@@ -1235,7 +1237,9 @@ class Config:
                 comparison_subtitle_encode_name=screen_shot_data.get(
                     "comparison_subtitle_encode_name", "Encode"
                 ),
-                compress_images=screen_shot_data.get("compress_images", True),
+                optimize_generated_images=screen_shot_data.get(
+                    "optimize_generated_images", True
+                ),
                 optimize_dl_url_images=screen_shot_data.get(
                     "optimize_dl_url_images", True
                 ),

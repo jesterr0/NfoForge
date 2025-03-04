@@ -110,7 +110,7 @@ class ConfigPayload:
     comparison_subtitles: bool
     comparison_subtitle_source_name: str
     comparison_subtitle_encode_name: str
-    compress_images: bool
+    optimize_generated_images: bool
     optimize_dl_url_images: bool
     optimize_dl_url_images_percentage: float
     indexer: Indexer
