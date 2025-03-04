@@ -468,7 +468,6 @@ class ProcessBackEnd:
         tracker_to_host_map = {}
         img_from = None
         files_to_upload = None
-        files_loaded_by_user = True if self.config.shared_data.loaded_images else False
 
         url_data = {}
 
@@ -515,9 +514,16 @@ class ProcessBackEnd:
 
             if files_to_upload:
                 # optimize images if enabled
+                # if we have generated images and optimization for generated images is enabled
+                # or
+                # if we don't have user generated images and optimize download/url images is enabled or images
+                # are downloaded from URLs
                 if (
-                    self.config.cfg_payload.optimize_dl_url_images
-                    and files_loaded_by_user
+                    self.config.shared_data.generated_images
+                    and self.config.cfg_payload.optimize_generated_images
+                ) or (
+                    not self.config.shared_data.generated_images
+                    and self.config.cfg_payload.optimize_dl_url_images
                     or img_from is ImageSource.URLS
                 ):
                     queued_text_update(f"Optimizing {len(files_to_upload)} image(s)")
