@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [unreleased]
+## [0.6.2] - 2025-03-03
 
 ### Added
 
@@ -24,10 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Issue when optimizing images opened via **local files** or **URLs** _(not generated)_ where multiprocessing would hang during image optimization when the program was bundled into an executable.
 - A bug that was always **optimizing** users images even if they had configured the program differently.
-
-### Removed
-
--
 
 ## [0.6.1] - 2025-02-21
 
