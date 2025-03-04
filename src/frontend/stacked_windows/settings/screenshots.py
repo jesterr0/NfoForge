@@ -49,13 +49,6 @@ class ScreenShotSettings(BaseSettings):
         )
         self.ss_mode_combo.activated.connect(self._ss_mode_changed)
 
-        ss_optimize_generated_lbl = QLabel(
-            '<span>Optimize <span style="font-weight: bold;">Generated</span> Images<span>',
-            self,
-        )
-        ss_optimize_generated_lbl.setToolTip("Optimize generated images (recommended)")
-        self.ss_optimize_generated_btn = QCheckBox(self)
-
         ss_trim_start_lbl = QLabel("Video Start %", self)
         ss_trim_start_lbl.setToolTip(
             "Percentage of video file to trim from start for screenshot generation (max 30%)"
@@ -152,6 +145,13 @@ class ScreenShotSettings(BaseSettings):
             completer=True, disable_mouse_wheel=True, parent=self
         )
 
+        ss_optimize_generated_lbl = QLabel(
+            '<span>Optimize <span style="font-weight: bold;">Generated</span> Images<span>',
+            self,
+        )
+        ss_optimize_generated_lbl.setToolTip("Optimize generated images (recommended)")
+        self.ss_optimize_generated_btn = QCheckBox(self)
+
         dl_provided_images_optimize_lbl = QLabel(
             '<span>Optimize <span style="font-weight: bold;">Opened</span> Images</span>',
             self,
@@ -182,11 +182,6 @@ class ScreenShotSettings(BaseSettings):
         self.add_layout(create_form_layout(ss_enabled_lbl, self.ss_enabled_btn))
         self.add_layout(create_form_layout(ss_count_lbl, self.ss_count_spinbox))
         self.add_layout(create_form_layout(ss_mode_lbl, self.ss_mode_combo))
-        self.add_layout(
-            create_form_layout(
-                ss_optimize_generated_lbl, self.ss_optimize_generated_btn
-            )
-        )
         self.add_layout(create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
         self.add_layout(create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
         self.add_layout(
@@ -220,6 +215,11 @@ class ScreenShotSettings(BaseSettings):
         self.add_layout(create_form_layout(sub_lbl_color_widget, self.sub_color_entry))
         self.add_layout(create_form_layout(sub_alignment_lbl, self.sub_alignment_combo))
         self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(
+            create_form_layout(
+                ss_optimize_generated_lbl, self.ss_optimize_generated_btn
+            )
+        )
         self.add_layout(
             create_form_layout(
                 dl_provided_images_optimize_lbl, self.dl_provided_images_optimize
@@ -307,7 +307,6 @@ class ScreenShotSettings(BaseSettings):
         self.ss_enabled_btn.setChecked(payload.screenshots_enabled)
         self.ss_count_spinbox.setValue(payload.screen_shot_count)
         self.load_combo_box(self.ss_mode_combo, ScreenShotMode, payload.ss_mode)
-        self.ss_optimize_generated_btn.setChecked(payload.compress_images)
         self.ss_trim_start.setValue(payload.trim_start)
         self.ss_trim_end.setValue(payload.trim_end)
         self.ss_required_count_spinbox.setValue(payload.required_selected_screens)
@@ -328,6 +327,7 @@ class ScreenShotSettings(BaseSettings):
         self.load_combo_box(
             self.sub_alignment_combo, SubtitleAlignment, payload.subtitle_alignment
         )
+        self.ss_optimize_generated_btn.setChecked(payload.optimize_generated_images)
         self.dl_provided_images_optimize.setChecked(
             self.config.cfg_payload.optimize_dl_url_images
         )
@@ -341,9 +341,6 @@ class ScreenShotSettings(BaseSettings):
         self.config.cfg_payload.screenshots_enabled = self.ss_enabled_btn.isChecked()
         self.config.cfg_payload.screen_shot_count = self.ss_count_spinbox.value()
         self.config.cfg_payload.ss_mode = self.ss_mode_combo.currentData()
-        self.config.cfg_payload.compress_images = (
-            self.ss_optimize_generated_btn.isChecked()
-        )
         self.config.cfg_payload.required_selected_screens = (
             self.ss_required_count_spinbox.value()
         )
@@ -370,6 +367,9 @@ class ScreenShotSettings(BaseSettings):
         self.config.cfg_payload.subtitle_alignment = (
             self.sub_alignment_combo.currentData()
         )
+        self.config.cfg_payload.optimize_generated_images = (
+            self.ss_optimize_generated_btn.isChecked()
+        )
         self.config.cfg_payload.optimize_dl_url_images = (
             self.dl_provided_images_optimize.isChecked()
         )
@@ -393,9 +393,6 @@ class ScreenShotSettings(BaseSettings):
         )
         self.ss_mode_combo.setCurrentIndex(
             self.config.cfg_payload_defaults.ss_mode.value - 1
-        )
-        self.ss_optimize_generated_btn.setChecked(
-            self.config.cfg_payload_defaults.compress_images
         )
         self.ss_required_count_spinbox.setValue(
             self.config.cfg_payload_defaults.required_selected_screens
@@ -431,6 +428,9 @@ class ScreenShotSettings(BaseSettings):
             QColor(self.config.cfg_payload_defaults.subtitle_color)
         )
         self._update_sub_entry_color(self.sub_color_picker.get_color())
+        self.ss_optimize_generated_btn.setChecked(
+            self.config.cfg_payload_defaults.optimize_generated_images
+        )
         self.dl_provided_images_optimize.setChecked(
             self.config.cfg_payload_defaults.optimize_dl_url_images
         )
