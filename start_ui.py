@@ -1,3 +1,5 @@
+# relevant documentation
+# https://doc.qt.io/qtforpython-6/index.html#
 import os
 import traceback
 import sys
@@ -182,9 +184,3 @@ if __name__ == "__main__":
         # required for multiprocessing support when the app is frozen (exe)
         mp_freeze_support()
     NfoForge(arg_parse())
-
-
-# TODO's
-# TODO: Setup a configuration that can increase the scale of the entire program by a %.
-# TODO: Remember last used path globally for all file dialogues
-# TODO: Check to ensure long path is enabled on Windows
