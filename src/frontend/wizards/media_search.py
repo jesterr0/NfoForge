@@ -329,11 +329,15 @@ class MediaSearch(BaseWizardPage):
 
     @Slot(object)
     def _detected_id_data(self, media_data: dict | None) -> None:
-        self._update_payload_data(media_data)
-        self.other_ids_parsed = True
-        GSigs().main_window_set_disabled.emit(False)
-        GSigs().wizard_next.emit()
-        GSigs().main_window_clear_status_tip.emit()
+        try:
+            self._update_payload_data(media_data)
+            self.other_ids_parsed = True
+            GSigs().wizard_next.emit()
+        except Exception:
+            raise
+        finally:
+            GSigs().main_window_set_disabled.emit(False)
+            GSigs().main_window_clear_status_tip.emit()
 
     def _update_payload_data(self, media_data: dict | None = None):
         current_item = self.listbox.currentItem().text()
@@ -389,6 +393,20 @@ class MediaSearch(BaseWizardPage):
             # anilist data
             if ani_list_data and ani_list_data.get("success") is True:
                 ani_list_data_result = ani_list_data.get("result")
+                if not ani_list_data_result:
+                    mal_value = 0
+                    ask_user_mal_value, ask_user_ok = QInputDialog.getInt(
+                        self,
+                        "MAL ID",
+                        "Could not detect MAL ID, please enter this now.\n(If not "
+                        "value is provided a default value of 0 will be added)",
+                    )
+                    if ask_user_ok and ask_user_mal_value:
+                        mal_value = ask_user_mal_value
+                    ani_list_data_result = {
+                        "id": str(mal_value),
+                        "idMal": str(mal_value),
+                    }
                 self.config.media_search_payload.anilist_data = ani_list_data_result
                 self.config.media_search_payload.anilist_id = ani_list_data_result.get(
                     "id"
