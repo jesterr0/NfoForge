@@ -12,7 +12,7 @@ class MediaSearchPayload:
     tvdb_id: str | None = None
     tvdb_data: dict | None = None
     anilist_id: str | None = None
-    anilist_data: str | None = None
+    anilist_data: dict | None = None
     mal_id: str | None = None
     title: str | None = None
     year: int | None = None
