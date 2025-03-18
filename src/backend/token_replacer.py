@@ -544,10 +544,6 @@ class TokenReplacer:
         # collect editions from `guess_name`
         edition_set.update(collect_editions(self.guess_name, "edition"))
 
-        # collect editions from `guess_source_name` if it exists
-        if self.guess_source_name:
-            edition_set.update(collect_editions(self.guess_source_name, "edition"))
-
         # normalize some editions
         if edition_set:
             normalized_edition_set = set()
