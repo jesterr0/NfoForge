@@ -383,6 +383,9 @@ class MediaSearch(BaseWizardPage):
             if tvdb_data and tvdb_data.get("success") is True:
                 tvdb_data_result = tvdb_data.get("result")
                 tvdb_data_result_movie = tvdb_data_result.get("movie")
+                if not tvdb_data_result_movie:
+                    tvdb_value = self._ask_user_for_id("TVDB")
+                    tvdb_data_result_movie = {"id": tvdb_value}
                 self.config.media_search_payload.tvdb_data = tvdb_data_result
                 self.config.media_search_payload.tvdb_id = str(
                     tvdb_data_result_movie.get("id")
@@ -394,15 +397,7 @@ class MediaSearch(BaseWizardPage):
             if ani_list_data and ani_list_data.get("success") is True:
                 ani_list_data_result = ani_list_data.get("result")
                 if not ani_list_data_result:
-                    mal_value = 0
-                    ask_user_mal_value, ask_user_ok = QInputDialog.getInt(
-                        self,
-                        "MAL ID",
-                        "Could not detect MAL ID, please enter this now.\n(If not "
-                        "value is provided a default value of 0 will be added)",
-                    )
-                    if ask_user_ok and ask_user_mal_value:
-                        mal_value = ask_user_mal_value
+                    mal_value = self._ask_user_for_id("MAL")
                     ani_list_data_result = {
                         "id": str(mal_value),
                         "idMal": str(mal_value),
@@ -418,6 +413,18 @@ class MediaSearch(BaseWizardPage):
                     self.mal_id_entry.setText(
                         str(self.config.media_search_payload.mal_id)
                     )
+
+    def _ask_user_for_id(self, id_source: str) -> int:
+        value = 0
+        ask_user_id, ask_user_ok = QInputDialog.getInt(
+            self,
+            f"{id_source} ID",
+            f"Could not detect {id_source} ID, please enter this now.\n(If no "
+            "value is provided a default value of 0 will be added)",
+        )
+        if ask_user_ok and ask_user_id:
+            value = ask_user_id
+        return value
 
     def isComplete(self):
         """Overrides isComplete method to control the next button"""
