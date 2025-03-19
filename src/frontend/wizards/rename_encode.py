@@ -1,4 +1,5 @@
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,68 +16,23 @@ from PySide6.QtWidgets import (
 
 from src.config.config import Config
 from src.exceptions import MediaParsingError
-from src.enums.rename import TypeHierarchy
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.frontend.utils import build_h_line
 from src.backend.rename_encode import RenameEncodeBackEnd
+from src.backend.utils.rename_normalizations import (
+    EDITION_INFO,
+    FRAME_SIZE_INFO,
+    LOCALIZATION_INFO,
+    RE_RELEASE_INFO,
+)
+from src.packages.custom_types import RenameNormalization
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
 class RenameEncode(BaseWizardPage):
-    EDITION_INFO = (
-        (
-            "Directors Cut",
-            (r"(?:director's|directors)[\s|\.]*cut",),
-            "Directors.Cut.",
-            TypeHierarchy.CUT,
-        ),
-        (
-            "Extended Cut",
-            (r"extended(?:[\s|\.]*cut)?",),
-            "Extended.Cut.",
-            TypeHierarchy.CUT,
-        ),
-        (
-            "Theatrical Cut",
-            (r"theatrical(?:[\s|\.]*cut)?",),
-            "Theatrical.Cut.",
-            TypeHierarchy.CUT,
-        ),
-        ("Unrated", (r"unrated",), "Unrated.", TypeHierarchy.CUT),
-        ("Uncut", (r"uncut",), "Uncut.", TypeHierarchy.CUT),
-    )
-
-    FRAME_SIZE_INFO = (
-        ("IMAX", (r"imax",), "IMAX.", TypeHierarchy.EXTRAS),
-        (
-            "Open Matte",
-            (r"open[\s|\.]*matte",),
-            "Open.Matte.",
-            TypeHierarchy.EXTRAS,
-        ),
-    )
-
-    LOCALIZATION_INFO = (
-        ("Dubbed", (r"dubbed",), "Dubbed.", TypeHierarchy.LOCALIZATION),
-        ("Subbed", (r"subbed",), "Subbed.", TypeHierarchy.LOCALIZATION),
-    )
-
-    RE_RELEASE_INFO = (
-        ("PROPER", (r"proper(?![2345])",), "PROPER.", TypeHierarchy.RE_RELEASE),
-        ("PROPER2", (r"proper2",), "PROPER2.", TypeHierarchy.RE_RELEASE),
-        ("PROPER3", (r"proper3",), "PROPER3.", TypeHierarchy.RE_RELEASE),
-        ("PROPER4", (r"proper4",), "PROPER4.", TypeHierarchy.RE_RELEASE),
-        ("PROPER5", (r"proper5",), "PROPER5.", TypeHierarchy.RE_RELEASE),
-        ("REPACK", (r"repack(?![2345])",), "REPACK.", TypeHierarchy.RE_RELEASE),
-        ("REPACK2", (r"repack2",), "REPACK2.", TypeHierarchy.RE_RELEASE),
-        ("REPACK3", (r"repack3",), "REPACK3.", TypeHierarchy.RE_RELEASE),
-        ("REPACK4", (r"repack4",), "REPACK4.", TypeHierarchy.RE_RELEASE),
-        ("REPACK5", (r"repack5",), "REPACK5.", TypeHierarchy.RE_RELEASE),
-    )
-
     REPACK_REASONS = (
         "",
         "Repacked to correct filename",
@@ -130,24 +86,24 @@ class RenameEncode(BaseWizardPage):
         self.edition_combo = CustomComboBox(
             completer=True, completer_strict=False, parent=self
         )
-        self._update_combo_box(self.edition_combo, self.EDITION_INFO)
+        self._update_combo_box(self.edition_combo, EDITION_INFO)
         self.edition_combo.currentIndexChanged.connect(self.update_generated_name)
         self.edition_combo.lineEdit().editingFinished.connect(self.manual_edition_edit)
         self.edition_combo_line_edit_last_text: str | None = None
 
         frame_size_lbl = QLabel("Frame Size", self)
         self.frame_size_combo = CustomComboBox(parent=self)
-        self._update_combo_box(self.frame_size_combo, self.FRAME_SIZE_INFO)
+        self._update_combo_box(self.frame_size_combo, FRAME_SIZE_INFO)
         self.frame_size_combo.currentIndexChanged.connect(self.update_generated_name)
 
         localization_lbl = QLabel("Localization", self)
         self.localization_combo = CustomComboBox(parent=self)
-        self._update_combo_box(self.localization_combo, self.LOCALIZATION_INFO)
+        self._update_combo_box(self.localization_combo, LOCALIZATION_INFO)
         self.localization_combo.currentIndexChanged.connect(self.update_generated_name)
 
         re_release_lbl = QLabel("Rerelease", self)
         self.re_release_combo = CustomComboBox(parent=self)
-        self._update_combo_box(self.re_release_combo, self.RE_RELEASE_INFO)
+        self._update_combo_box(self.re_release_combo, RE_RELEASE_INFO)
         self.re_release_combo.currentIndexChanged.connect(self.update_generated_name)
         self.re_release_combo_last_index = 0
 
@@ -176,10 +132,10 @@ class RenameEncode(BaseWizardPage):
         self.proper_reason_combo.hide()
 
         self.combo_info_pairs = (
-            (self.edition_combo, self.EDITION_INFO),
-            (self.frame_size_combo, self.FRAME_SIZE_INFO),
-            (self.localization_combo, self.LOCALIZATION_INFO),
-            (self.re_release_combo, self.RE_RELEASE_INFO),
+            (self.edition_combo, EDITION_INFO),
+            (self.frame_size_combo, FRAME_SIZE_INFO),
+            (self.localization_combo, LOCALIZATION_INFO),
+            (self.re_release_combo, RE_RELEASE_INFO),
         )
 
         release_group_lbl = QLabel("Release Group", self)
@@ -307,7 +263,7 @@ class RenameEncode(BaseWizardPage):
             )
             return False
         if "imax" in renamed_output_lowered and re.search(
-            r"open[\s|\.]*matte", renamed_output_lowered, flags=re.IGNORECASE
+            r"open[\s|\.]*matte", renamed_output_lowered, flags=re.I
         ):
             QMessageBox.warning(
                 self,
@@ -377,7 +333,7 @@ class RenameEncode(BaseWizardPage):
         for global_name, (combo_text, pattern) in combo_to_global_map.items():
             if combo_text:
                 self.config.jinja_engine.add_global(global_name, combo_text)
-                match = re.search(pattern, final_output_text, flags=re.IGNORECASE)
+                match = re.search(pattern, final_output_text, flags=re.I)
                 if match:
                     self.config.jinja_engine.add_global(
                         global_name.replace("_reason", "_n"), match.group(1)
@@ -419,14 +375,14 @@ class RenameEncode(BaseWizardPage):
             for entry in info:
                 formatting = entry[2]
                 current_name = re.sub(
-                    re.escape(formatting), "", current_name, flags=re.IGNORECASE
+                    re.escape(formatting), "", current_name, flags=re.I
                 )
 
             # remove existing formatting for the currently selected index
             if index > 0:
-                formatting = info[index - 1][2]
+                formatting = info[index - 1].period_formatted
                 current_name = re.sub(
-                    re.escape(formatting), "", current_name, flags=re.IGNORECASE
+                    re.escape(formatting), "", current_name, flags=re.I
                 )
                 selected_formatting.append(formatting)
 
@@ -437,7 +393,7 @@ class RenameEncode(BaseWizardPage):
         formatted_section = ".".join(selected_formatting)
         new_name = f"{current_name[:inject_index]}{formatted_section}{current_name[inject_index:]}"
 
-        # remove extra dots if present
+        # remove extra periods if present
         new_name = re.sub(r"\.{2,}", ".", new_name).strip(".")
 
         # update the output entry
@@ -457,10 +413,8 @@ class RenameEncode(BaseWizardPage):
 
         # remove any existing edition formatting if the combo box index is not 0 (i.e., it's not the default)
         if edition_idx > 0:
-            formatting = self.EDITION_INFO[edition_idx - 1][2]
-            current_name = re.sub(
-                re.escape(formatting), "", current_name, flags=re.IGNORECASE
-            )
+            formatting = EDITION_INFO[edition_idx - 1].period_formatted
+            current_name = re.sub(re.escape(formatting), "", current_name, flags=re.I)
 
         # find the correct injection point (this is where we insert the manual data)
         inject_index = self.injection_point()
@@ -505,7 +459,7 @@ class RenameEncode(BaseWizardPage):
             for idx, entry in enumerate(info, start=1):
                 patterns = entry[1]
                 for pattern in patterns:
-                    if re.search(pattern, current_text, flags=re.IGNORECASE):
+                    if re.search(pattern, current_text, flags=re.I):
                         matched_index = idx
                         break
                 if matched_index > 0:
@@ -562,7 +516,7 @@ class RenameEncode(BaseWizardPage):
     @staticmethod
     def _update_combo_box(
         combobox: CustomComboBox,
-        items: tuple,
+        items: Sequence[RenameNormalization],
     ) -> None:
         combobox.addItem("")
         for item in items:
