@@ -23,6 +23,7 @@ from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
 from src.backend.utils.video_codecs import VideoCodecs
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.backend.utils.rename_normalizations import EDITION_INFO, EDITION_STRINGS_ONLY
 from src.backend.utils.language import (
     get_language_mi,
     get_language_str,
@@ -549,14 +550,20 @@ class TokenReplacer:
             normalized_edition_set = set()
             for item in edition_set:
                 item_lowered = str(item).lower()
-                if "director" in item_lowered:
-                    normalized_edition_set.add("Directors Cut")
-                elif "extended" in item_lowered:
-                    normalized_edition_set.add("Extended Cut")
-                elif "theatrical" in item_lowered:
-                    normalized_edition_set.add("Theatrical Cut")
-                elif "imax" in item_lowered:
+                # skip IMAX since guessit considers this an edition
+                if "imax" in item_lowered:
                     continue
+                # normalize all supported edition strings
+                elif item_lowered in EDITION_STRINGS_ONLY:
+                    for rename_normalize in EDITION_INFO:
+                        for regex_str in rename_normalize.re_gex:
+                            match_edition = re.search(
+                                regex_str, item_lowered, flags=re.I
+                            )
+                            if match_edition:
+                                normalized_edition_set.add(rename_normalize.normalized)
+                                break  # be sure we only match one
+                # add any other editions that are not supported
                 else:
                     normalized_edition_set.add(item)
             edition_set = normalized_edition_set
