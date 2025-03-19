@@ -107,7 +107,7 @@ class IDParseWorker(QThread):
 
 
 class MediaSearch(BaseWizardPage):
-    def __init__(self, config: Config, parent: "MainWindow | Any"):
+    def __init__(self, config: Config, parent: "MainWindow | Any") -> None:
         super().__init__(config, parent)
         self.setTitle("Search")
         self.setObjectName("mediaSearch")
@@ -187,7 +187,7 @@ class MediaSearch(BaseWizardPage):
         mal_label = QLabel()
         mal_label.setPixmap(mal_image)
         mal_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        tvdb_label.mousePressEvent = self._open_mal_link
+        mal_label.mousePressEvent = self._open_mal_link
         self.mal_id_entry = QLineEdit()
         self.mal_id_entry.setPlaceholderText("Automatic")
 
@@ -329,13 +329,17 @@ class MediaSearch(BaseWizardPage):
 
     @Slot(object)
     def _detected_id_data(self, media_data: dict | None) -> None:
-        self._update_payload_data(media_data)
-        self.other_ids_parsed = True
-        GSigs().main_window_set_disabled.emit(False)
-        GSigs().wizard_next.emit()
-        GSigs().main_window_clear_status_tip.emit()
+        try:
+            self._update_payload_data(media_data)
+            self.other_ids_parsed = True
+            GSigs().wizard_next.emit()
+        except Exception:
+            raise
+        finally:
+            GSigs().main_window_set_disabled.emit(False)
+            GSigs().main_window_clear_status_tip.emit()
 
-    def _update_payload_data(self, media_data: dict | None = None):
+    def _update_payload_data(self, media_data: dict | None = None) -> None:
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
         if not item_data:
@@ -379,6 +383,9 @@ class MediaSearch(BaseWizardPage):
             if tvdb_data and tvdb_data.get("success") is True:
                 tvdb_data_result = tvdb_data.get("result")
                 tvdb_data_result_movie = tvdb_data_result.get("movie")
+                if not tvdb_data_result_movie:
+                    tvdb_value = self._ask_user_for_id("TVDB")
+                    tvdb_data_result_movie = {"id": tvdb_value}
                 self.config.media_search_payload.tvdb_data = tvdb_data_result
                 self.config.media_search_payload.tvdb_id = str(
                     tvdb_data_result_movie.get("id")
@@ -389,6 +396,12 @@ class MediaSearch(BaseWizardPage):
             # anilist data
             if ani_list_data and ani_list_data.get("success") is True:
                 ani_list_data_result = ani_list_data.get("result")
+                if not ani_list_data_result:
+                    mal_value = self._ask_user_for_id("MAL")
+                    ani_list_data_result = {
+                        "id": str(mal_value),
+                        "idMal": str(mal_value),
+                    }
                 self.config.media_search_payload.anilist_data = ani_list_data_result
                 self.config.media_search_payload.anilist_id = ani_list_data_result.get(
                     "id"
@@ -401,11 +414,23 @@ class MediaSearch(BaseWizardPage):
                         str(self.config.media_search_payload.mal_id)
                     )
 
-    def isComplete(self):
+    def _ask_user_for_id(self, id_source: str) -> int:
+        value = 0
+        ask_user_id, ask_user_ok = QInputDialog.getInt(
+            self,
+            f"{id_source} ID",
+            f"Could not detect {id_source} ID, please enter this now.\n(If no "
+            "value is provided a default value of 0 will be added)",
+        )
+        if ask_user_ok and ask_user_id:
+            value = ask_user_id
+        return value
+
+    def isComplete(self) -> bool:
         """Overrides isComplete method to control the next button"""
         return self.loading_complete
 
-    def initializePage(self):
+    def initializePage(self) -> None:
         if not self._check_media_api_keys():
             if self.main_window.wizard:
                 QTimer.singleShot(1, self.main_window.wizard.reset_wizard)
@@ -479,7 +504,7 @@ class MediaSearch(BaseWizardPage):
         return True
 
     @Slot()
-    def _search_tmdb_api(self):
+    def _search_tmdb_api(self) -> None:
         # disable the next button
         self.loading_complete = False
         self.completeChanged.emit()
@@ -498,7 +523,7 @@ class MediaSearch(BaseWizardPage):
             self.queued_worker.start()
 
     @Slot(OrderedDict)
-    def _handle_search_result(self, result):
+    def _handle_search_result(self, result) -> None:
         self.listbox.clear()
         if result:
             self.listbox.addItems(result)
@@ -512,7 +537,7 @@ class MediaSearch(BaseWizardPage):
         self.completeChanged.emit()
 
     @Slot(str)
-    def _failed_search(self, error_str: str):
+    def _failed_search(self, error_str: str) -> None:
         self.listbox.clear()
         self.listbox.addItem(f"No results, {error_str}")
         self.search_entry.clear()
@@ -521,7 +546,7 @@ class MediaSearch(BaseWizardPage):
         GSigs().main_window_clear_status_tip.emit()
 
     @Slot()
-    def _select_media(self):
+    def _select_media(self) -> None:
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
         if item_data:
@@ -533,7 +558,7 @@ class MediaSearch(BaseWizardPage):
             self.media_type_label.setText(item_data.get("media_type"))
 
     @Slot()
-    def _open_imdb_link(self, _):
+    def _open_imdb_link(self, _) -> None:
         imdb = self.imdb_id_entry.text().strip()
         if imdb != "":
             webbrowser.open(f"https://imdb.com/title/{imdb}/")
@@ -541,7 +566,7 @@ class MediaSearch(BaseWizardPage):
             webbrowser.open("https://www.imdb.com/")
 
     @Slot()
-    def _open_tmdb_link(self, _):
+    def _open_tmdb_link(self, _) -> None:
         tmdb_id = self.tmdb_id_entry.text().strip()
         if tmdb_id != "":
             webbrowser.open(f"https://www.themoviedb.org/movie/{tmdb_id}/")
@@ -549,7 +574,7 @@ class MediaSearch(BaseWizardPage):
             webbrowser.open("https://www.themoviedb.org/movie/")
 
     @Slot()
-    def _open_tvdb_link(self, _):
+    def _open_tvdb_link(self, _) -> None:
         tvdb_id = self.tvdb_id_entry.text().strip()
         if tvdb_id != "":
             webbrowser.open(f"https://thetvdb.com/search?query={tvdb_id}")
@@ -557,7 +582,7 @@ class MediaSearch(BaseWizardPage):
             webbrowser.open("https://thetvdb.com/search?query=")
 
     @Slot()
-    def _open_mal_link(self, _):
+    def _open_mal_link(self, _) -> None:
         mal_id = self.mal_id_entry.text().strip()
         if mal_id != "":
             webbrowser.open(f"https://myanimelist.net/anime/{mal_id}")
@@ -565,7 +590,7 @@ class MediaSearch(BaseWizardPage):
             webbrowser.open("https://myanimelist.net/")
 
     @Slot()
-    def reset_page(self, all_widgets: bool = True):
+    def reset_page(self, all_widgets: bool = True) -> None:
         self.listbox.clear()
         self.listbox.setDisabled(False)
         self.imdb_id_entry.clear()

@@ -35,7 +35,7 @@ Comprehensive documentation is on the way and will be available soon.
 - Aither
 - HUNO
 
-_Supported trackers will be added overtime_
+_Supported trackers will be added overtime, if you'd like a tracker added open an [issue](https://github.com/jesterr0/NfoForge/issues/new) and it will be considered_
 
 ## Supported Operating Systems
 

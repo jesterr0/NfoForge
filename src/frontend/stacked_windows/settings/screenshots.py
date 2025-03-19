@@ -32,8 +32,10 @@ class ScreenShotSettings(BaseSettings):
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
 
-        ss_enabled_lbl = QLabel("Generate Screenshots")
-        ss_enabled_lbl.setToolTip("Toggles image generation")
+        ss_enabled_lbl = QLabel("Enable Image Handling")
+        ss_enabled_lbl.setToolTip(
+            "Enable image handling (enables image wizard page as well as logic to handle screenshots)"
+        )
         self.ss_enabled_btn = QCheckBox(self)
         self.ss_enabled_btn.clicked.connect(self._ss_enable_toggle_check)
 
