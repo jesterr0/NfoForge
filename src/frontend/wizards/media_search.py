@@ -187,7 +187,7 @@ class MediaSearch(BaseWizardPage):
         mal_label = QLabel()
         mal_label.setPixmap(mal_image)
         mal_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        tvdb_label.mousePressEvent = self._open_mal_link
+        mal_label.mousePressEvent = self._open_mal_link
         self.mal_id_entry = QLineEdit()
         self.mal_id_entry.setPlaceholderText("Automatic")
 

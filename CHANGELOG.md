@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Prevent error when unable to detect MAL ID when media type is Animation.
 - Prevent error when unable to detect TVDB ID.
+- MAL/TVDB links we're broken when clicking their icons.
 
 ### Removed
 
