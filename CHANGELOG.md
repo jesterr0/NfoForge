@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-xx-xx
+## [0.6.3] - 2025-3-18
 
 ### Added
 
@@ -25,10 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevent error when unable to detect MAL ID when media type is Animation.
 - Prevent error when unable to detect TVDB ID.
 - MAL/TVDB links we're broken when clicking their icons.
-
-### Removed
-
--
 
 ## [0.6.2] - 2025-03-03
 
