@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2025-xx-xx
+
+### Added
+
+- Support for numerous other **Edition** types.
+- Now normalizes all editions to properly formatted edition types (Director's -> Directors Cut).
+
+### Changed
+
+- Renamed **Generate Screenshots** to **Enable Image Handling** in the screenshot settings.
+- Now asks the user for manual MAL ID input if unable to detect and defaults to 0.
+- Now asks the user for manual TVDB ID input if unable to detect and defaults to 0.
+- **Edition** is no longer pulled from the **Source** if using a multi input profile.
+- Improved **Edition** detection in the backend.
+
+### Fixed
+
+- Prevent error when unable to detect MAL ID when media type is Animation.
+- Prevent error when unable to detect TVDB ID.
+
+### Removed
+
+-
+
 ## [0.6.2] - 2025-03-03
 
 ### Added
