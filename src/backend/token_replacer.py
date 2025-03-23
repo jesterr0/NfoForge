@@ -255,6 +255,12 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.FRAME_SIZE.token:
             return self._frame_size(token_data)
 
+        if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE.token:
+            return self._mi_audio_bitrate(token_data, False)
+
+        if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE_FORMATTED.token:
+            return self._mi_audio_bitrate(token_data, True)
+
         elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S.token:
             return self._mi_audio_channel_s(token_data, True)
 
@@ -617,6 +623,17 @@ class TokenReplacer:
 
         # convert the set back to a string, joining with spaces
         return self._optional_user_input(" ".join(edition_set), token_data)
+
+    def _mi_audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
+        bitrate = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            a_track = self.media_info_obj.audio_tracks[0]
+            if a_track and not formatted:
+                bitrate = str(a_track.bitrate) if a_track.bitrate else ""
+            elif a_track and formatted:
+                bitrate = a_track.other_bit_rate[0] if a_track.other_bit_rate else ""
+
+        return self._optional_user_input(bitrate, token_data)
 
     def _mi_audio_channel_s(
         self, token_data: TokenData, convert_to_layout: bool
