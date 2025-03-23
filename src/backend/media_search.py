@@ -13,6 +13,7 @@ from rapidfuzz import fuzz
 from unidecode import unidecode
 
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from src.backend.utils.super_sub import normalize_super_sub
 from src.exceptions import MediaParsingError
 
 
@@ -92,7 +93,7 @@ class MediaSearchBackEnd:
                                 "vote_average": mv_vote_average,
                                 "full_release_date": mv_full_release_date,
                                 "year": mv_year,
-                                "title": mv_title,
+                                "title": normalize_super_sub(mv_title),
                                 "original_title": mv_original_title,
                                 "poster_path": mv_poster_path,
                                 "genre_ids": mv_genre_ids,
@@ -144,7 +145,7 @@ class MediaSearchBackEnd:
                                 "vote_average": tv_vote_average,
                                 "full_release_date": tv_full_release_date,
                                 "year": tv_year,
-                                "title": tv_title,
+                                "title": normalize_super_sub(tv_title),
                                 "original_title": tv_original_title,
                                 "poster_path": tv_poster_path,
                                 "genre_ids": tv_genre_ids,
