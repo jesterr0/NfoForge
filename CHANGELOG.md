@@ -47,10 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevent error when unable to detect TVDB ID.
 - MAL/TVDB links we're broken when clicking their icons.
 
-### Removed
-
--
-
 ## [0.6.2] - 2025-03-03
 
 ### Added
