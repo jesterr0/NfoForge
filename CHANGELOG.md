@@ -5,7 +5,25 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-xx-xx
+## [UNRELEASED] - 2025-x-xx
+
+### Added
+
+- Added new token **{mi_audio_channel_s_i}**, this token will provide raw channel output (6).
+
+### Changed
+
+- Modify the description of **{mi_audio_channel_s}**.
+
+### Fixed
+
+- 
+
+### Removed
+
+- 
+
+## [0.6.3] - 2025-3-18
 
 ### Added
 

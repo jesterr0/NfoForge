@@ -256,7 +256,10 @@ class TokenReplacer:
             return self._frame_size(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S.token:
-            return self._mi_audio_channel_s(token_data)
+            return self._mi_audio_channel_s(token_data, True)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S_I.token:
+            return self._mi_audio_channel_s(token_data, False)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_CODEC.token:
             return self._mi_audio_codec(token_data)
@@ -612,15 +615,20 @@ class TokenReplacer:
         # convert the set back to a string, joining with spaces
         return self._optional_user_input(" ".join(edition_set), token_data)
 
-    def _mi_audio_channel_s(self, token_data: TokenData) -> str:
+    def _mi_audio_channel_s(
+        self, token_data: TokenData, convert_to_layout: bool
+    ) -> str:
         # TODO: might need to handle multiple audio tracks instead of just 0
         audio_channel_s = self.guess_name.get("audio_channels", "")
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_audio_channels = self.media_info_obj.audio_tracks[0].channel_s
             if mi_audio_channels:
-                audio_channel_s = ParseAudioChannels.get_channel_layout(
-                    self.media_info_obj.audio_tracks[0]
-                )
+                if convert_to_layout:
+                    audio_channel_s = ParseAudioChannels.get_channel_layout(
+                        self.media_info_obj.audio_tracks[0]
+                    )
+                else:
+                    audio_channel_s = str(mi_audio_channels)
 
         return self._optional_user_input(audio_channel_s, token_data)
 
