@@ -291,6 +291,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_MULTI.token:
             return self._mi_audio_language_multi(token_data)
 
+        elif token_data.bracket_token == Tokens.MI_AUDIO_SAMPLE_RATE.token:
+            return self._mi_audio_sample_rate(token_data)
+
         elif token_data.bracket_token == Tokens.MI_VIDEO_3D.token:
             return self._3d(token_data)
 
@@ -750,6 +753,15 @@ class TokenReplacer:
                 multi = "Multi"
 
         return self._optional_user_input(multi, token_data)
+
+    def _mi_audio_sample_rate(self, token_data: TokenData) -> str:
+        sample_rate = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_sample_rate = self.media_info_obj.audio_tracks[0].other_sampling_rate
+            if mi_sample_rate:
+                sample_rate = mi_sample_rate[0]
+
+        return self._optional_user_input(sample_rate, token_data)
 
     def _3d(self, token_data: TokenData) -> str:
         three_dimension = (

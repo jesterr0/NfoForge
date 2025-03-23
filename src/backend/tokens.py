@@ -87,6 +87,9 @@ class Tokens:
         "{mi_audio_language_multi}",
         "Audio languages ('Multi' will be returned if there are 3 or more tracks with unique languages)",
     )
+    MI_AUDIO_SAMPLE_RATE = FileToken(
+        "{mi_audio_sample_rate}", "Audio sample rate (48.0 kHz)"
+    )
     MI_VIDEO_3D = FileToken("{mi_video_3d}", "Video 3D")
     MI_VIDEO_BIT_DEPTH_SPACE = FileToken(
         "{mi_video_bit_depth_space}", "Video bit depth (8 Bit)"
