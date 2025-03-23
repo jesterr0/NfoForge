@@ -20,5 +20,6 @@ beyondhd-parser/
 plugins/*
 !plugins/jinja2_plugin_example/
 !plugins/jinja2_plugin_example/**
+plugins/**/__pycache__/*
 !src/plugins/
 *.spec
