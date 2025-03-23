@@ -377,6 +377,10 @@ class TemplateSelector(QWidget):
                 self.preview_btn.setChecked(False)
                 self.text_edit.setReadOnly(False)
                 return
+            except Exception:
+                self.preview_btn.setChecked(False)
+                self.text_edit.setReadOnly(False)
+                raise
 
             try:
                 token_replacer_plugin = self.config.cfg_payload.token_replacer
