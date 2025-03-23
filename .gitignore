@@ -18,6 +18,8 @@ runtime/templates/
 runtime/user_packages/
 beyondhd-parser/
 plugins/
+!plugins/jinja2_plugin_example/
+!plugins/jinja2_plugin_example/**
 !src/plugins/
 *.spec
 
