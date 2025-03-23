@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added new token **{mi_audio_channel_s_i}**, this token will provide raw channel output (6).
 - Added new token **{mi_audio_sample_rate}**, this token will provide audio track #1's sampling rate (48 kHz).
+- Added new token **{mi_audio_bitrate}**, this will provide audio track #1's bitrate (640000).
+- Added new token **{mi_audio_bitrate_formatted}**, this will provide audio track #1's bitrate (640 kb/s).
 
 ### Changed
 

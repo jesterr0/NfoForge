@@ -53,6 +53,10 @@ class Tokens:
     # File Tokens
     EDITION = FileToken("{edition}", "Edition")
     FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
+    MI_AUDIO_BITRATE = FileToken("{mi_audio_bitrate}", "Audio bitrate (640000)")
+    MI_AUDIO_BITRATE_FORMATTED = FileToken(
+        "{mi_audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
+    )
     MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels (5.1)")
     MI_AUDIO_CHANNEL_S_I = FileToken("{mi_audio_channel_s_i}", "Audio channels (6)")
     MI_AUDIO_CODEC = FileToken("{mi_audio_codec}", "Audio codec")
