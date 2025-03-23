@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added new token **{mi_audio_bitrate_formatted}**, this will provide audio track #1's bitrate (640 kb/s).
 - Added new token **{mi_video_width}**, this will provide video track #1's width (1940).
 - Added new token **{mi_video_height}**, this will provide video track #1's height (1080).
+- Added support for custom **jinja2 functions** and **filters**. You can take a look at the included example plugin on how to use them.
 
 ### Changed
 
