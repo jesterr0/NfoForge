@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Normalize super script (Title⁹ -> Title 9)
+- Catch unexpected errors during template preview and reset the button preview button.
 
 ### Removed
 
