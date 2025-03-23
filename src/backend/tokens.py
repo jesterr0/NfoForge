@@ -117,12 +117,14 @@ class Tokens:
         "{mi_video_dynamic_range_type_inc_sdr_over_1080}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
     )
+    MI_VIDEO_HEIGHT = FileToken("{mi_video_height}", "Video height (1040)")
     MI_VIDEO_LANGUAGE_ISO_639_1 = FileToken(
         "{mi_video_language_iso_639_1}", "Video language (EN)"
     )
     MI_VIDEO_LANGUAGE_ISO_639_2 = FileToken(
         "{mi_video_language_iso_639_2}", "Video language (ENG)"
     )
+    MI_VIDEO_WIDTH = FileToken("{mi_video_width}", "Video width (1920)")
     MOVIE_TITLE = FileToken(
         "{movie_title}", "Movie's title parsed from TMDB/IMDb with minimal formatting"
     )

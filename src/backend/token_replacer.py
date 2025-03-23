@@ -331,11 +331,17 @@ class TokenReplacer:
                 token_data, include_sdr=True, uhd_only=True
             )
 
+        elif token_data.bracket_token == Tokens.MI_VIDEO_HEIGHT.token:
+            return self._mi_video_height(token_data)
+
         elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_ISO_639_1.token:
             return self._mi_video_language_iso_639_x(1, token_data)
 
         elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_ISO_639_2.token:
             return self._mi_video_language_iso_639_x(2, token_data)
+
+        elif token_data.bracket_token == Tokens.MI_VIDEO_WIDTH.token:
+            return self._mi_video_width(token_data)
 
         elif token_data.bracket_token == Tokens.MOVIE_TITLE.token:
             return self._movie_title(token_data)
@@ -902,6 +908,14 @@ class TokenReplacer:
 
         return self._optional_user_input(dynamic_range_type, token_data)
 
+    def _mi_video_height(self, token_data: TokenData) -> str:
+        height = ""
+        if self.media_info_obj and self.media_info_obj.video_tracks:
+            track = self.media_info_obj.video_tracks[0]
+            height = str(track.height) if track.height else ""
+
+        return self._optional_user_input(height, token_data)
+
     def _mi_video_language_iso_639_x(
         self, char_code: int, token_data: TokenData
     ) -> str:
@@ -911,6 +925,14 @@ class TokenReplacer:
             detect_language = get_language_mi(track, char_code)
 
         return self._optional_user_input(detect_language, token_data)
+
+    def _mi_video_width(self, token_data: TokenData) -> str:
+        width = ""
+        if self.media_info_obj and self.media_info_obj.video_tracks:
+            track = self.media_info_obj.video_tracks[0]
+            width = str(track.width) if track.width else ""
+
+        return self._optional_user_input(width, token_data)
 
     def _movie_title(self, token_data: TokenData) -> str:
         title = (
