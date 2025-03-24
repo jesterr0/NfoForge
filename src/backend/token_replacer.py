@@ -273,6 +273,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MI_AUDIO_COMMERCIAL_NAME.token:
             return self._mi_audio_commercial_name(token_data)
 
+        elif token_data.bracket_token == Tokens.MI_AUDIO_COMPRESSION.token:
+            return self._mi_audio_compression(token_data)
+
         elif token_data.bracket_token == Tokens.MI_AUDIO_FORMAT_INFO.token:
             return self._mi_audio_format_info(token_data)
 
@@ -690,6 +693,15 @@ class TokenReplacer:
                 commercial_name = mi_commercial_name
 
         return self._optional_user_input(commercial_name, token_data)
+
+    def _mi_audio_compression(self, token_data: TokenData) -> str:
+        compression = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_compression = self.media_info_obj.audio_tracks[0].compression_mode
+            if mi_compression:
+                compression = mi_compression
+
+        return self._optional_user_input(compression, token_data)
 
     def _mi_audio_format_info(self, token_data: TokenData) -> str:
         format_info = ""
