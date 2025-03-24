@@ -142,6 +142,13 @@ def build_app(folder_name: str, include_std_lib: bool):
     plugin_folder = Path(exe_path.parent / "plugins")
     plugin_folder.mkdir(parents=True)
 
+    # copy example jinja2 plugin to the release
+    shutil.copytree(
+        project_root / "plugins" / "jinja2_plugin_example",
+        plugin_folder / "jinja2_plugin_example",
+        ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
+    )
+
     # remove dev files
     bundled_runtime = Path(exe_path.parent / "bundle" / "runtime")
 
