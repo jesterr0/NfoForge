@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added new token **{mi_audio_bitrate}**, this will provide audio track #1's bitrate (640000).
 - Added new token **{mi_audio_bitrate_formatted}**, this will provide audio track #1's bitrate (640 kb/s).
 - Added new token **{mi_audio_format_info}**, this will provide audio track #1's format info if available (Enhanced AC-3).
+- Added new token **{mi_audio_commercial_name}**, this will provide audio track #1's commercial name if available (Dolby Digital Plus).
 - Added new token **{mi_video_width}**, this will provide video track #1's width (1940).
 - Added new token **{mi_video_height}**, this will provide video track #1's height (1080).
 - Added new token **{mi_video_language_full}**, this will provide video track full language if available (English).
