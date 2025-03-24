@@ -63,6 +63,9 @@ class Tokens:
     MI_AUDIO_COMMERCIAL_NAME = FileToken(
         "{mi_audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
     )
+    MI_AUDIO_COMPRESSION = FileToken(
+        "{mi_audio_compression}", "Audio compression (Lossy)"
+    )
     MI_AUDIO_FORMAT_INFO = FileToken(
         "{mi_audio_format_info}", "Audio format info (Enhanced AC-3)"
     )
