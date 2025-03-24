@@ -10,12 +10,12 @@ MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
     (r"'", r"[remove]"),
     # remove commas within numbers (50,000 -> 50000)
     (r"(?<=\d),(?=\d)", r"[remove]"),
-    # replace commas after words with a period
+    # replace commas after words with a space
     (r"(?<=\w),(?=\s\w)", r"[space]"),
-    # replace space dash space with nothing
-    (r"\s*-\s*", r"."),
+    # replace space dash space with a period
+    (r"\s+-\s+", r"."),
     (
-        r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
+        r"(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|"
         r"('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|"
         r"(\(|\)|\[|\]|\{|\})",
         r"[space]",
