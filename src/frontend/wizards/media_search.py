@@ -35,6 +35,7 @@ from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.filter_title import edition_and_title_extractor as extract_title
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.super_sub import normalize_super_sub
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -359,7 +360,7 @@ class MediaSearch(BaseWizardPage):
                 imdb_data_result = imdb_data.get("result")
                 self.config.media_search_payload.imdb_data = imdb_data_result
                 self.config.media_search_payload.title = (
-                    str(imdb_data_result.get("title"))
+                    normalize_super_sub(str(imdb_data_result.get("title")))
                     if imdb_data_result.get("title")
                     else None
                 )
@@ -370,7 +371,7 @@ class MediaSearch(BaseWizardPage):
                 except ValueError:
                     pass
                 self.config.media_search_payload.original_title = (
-                    str(media_data.get("original title"))
+                    normalize_super_sub(str(media_data.get("original title")))
                     if media_data.get("original title")
                     else None
                 )

@@ -17,3 +17,5 @@ class PluginPayload:
     wizard: Type[BaseWizardPage] | None = None
     token_replacer: Callable[..., str | None] | bool | None = None
     pre_upload: Callable[..., bool] | bool | None = None
+    jinja2_filters: dict[str, Callable[..., str]] | None = None
+    jinja2_functions: dict[str, Callable[..., str]] | None = None

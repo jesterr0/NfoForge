@@ -255,11 +255,32 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.FRAME_SIZE.token:
             return self._frame_size(token_data)
 
+        if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE.token:
+            return self._mi_audio_bitrate(token_data, False)
+
+        if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE_FORMATTED.token:
+            return self._mi_audio_bitrate(token_data, True)
+
         elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S.token:
-            return self._mi_audio_channel_s(token_data)
+            return self._mi_audio_channel_s(token_data, True)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S_I.token:
+            return self._mi_audio_channel_s(token_data, False)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S_LAYOUT.token:
+            return self._mi_audio_channel_s_layout(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_CODEC.token:
             return self._mi_audio_codec(token_data)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_COMMERCIAL_NAME.token:
+            return self._mi_audio_commercial_name(token_data)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_COMPRESSION.token:
+            return self._mi_audio_compression(token_data)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_FORMAT_INFO.token:
+            return self._mi_audio_format_info(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_FULL.token:
             return self._mi_audio_language_1_full(token_data)
@@ -287,6 +308,9 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_MULTI.token:
             return self._mi_audio_language_multi(token_data)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_SAMPLE_RATE.token:
+            return self._mi_audio_sample_rate(token_data)
 
         elif token_data.bracket_token == Tokens.MI_VIDEO_3D.token:
             return self._3d(token_data)
@@ -319,11 +343,20 @@ class TokenReplacer:
                 token_data, include_sdr=True, uhd_only=True
             )
 
+        elif token_data.bracket_token == Tokens.MI_VIDEO_HEIGHT.token:
+            return self._mi_video_height(token_data)
+
+        elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_FULL.token:
+            return self._mi_video_language_full(token_data)
+
         elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_ISO_639_1.token:
             return self._mi_video_language_iso_639_x(1, token_data)
 
         elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_ISO_639_2.token:
             return self._mi_video_language_iso_639_x(2, token_data)
+
+        elif token_data.bracket_token == Tokens.MI_VIDEO_WIDTH.token:
+            return self._mi_video_width(token_data)
 
         elif token_data.bracket_token == Tokens.MOVIE_TITLE.token:
             return self._movie_title(token_data)
@@ -612,17 +645,42 @@ class TokenReplacer:
         # convert the set back to a string, joining with spaces
         return self._optional_user_input(" ".join(edition_set), token_data)
 
-    def _mi_audio_channel_s(self, token_data: TokenData) -> str:
+    def _mi_audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
+        bitrate = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            a_track = self.media_info_obj.audio_tracks[0]
+            if a_track and not formatted:
+                bitrate = str(a_track.bitrate) if a_track.bitrate else ""
+            elif a_track and formatted:
+                bitrate = a_track.other_bit_rate[0] if a_track.other_bit_rate else ""
+
+        return self._optional_user_input(bitrate, token_data)
+
+    def _mi_audio_channel_s(
+        self, token_data: TokenData, convert_to_layout: bool
+    ) -> str:
         # TODO: might need to handle multiple audio tracks instead of just 0
         audio_channel_s = self.guess_name.get("audio_channels", "")
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_audio_channels = self.media_info_obj.audio_tracks[0].channel_s
             if mi_audio_channels:
-                audio_channel_s = ParseAudioChannels.get_channel_layout(
-                    self.media_info_obj.audio_tracks[0]
-                )
+                if convert_to_layout:
+                    audio_channel_s = ParseAudioChannels.get_channel_layout(
+                        self.media_info_obj.audio_tracks[0]
+                    )
+                else:
+                    audio_channel_s = str(mi_audio_channels)
 
         return self._optional_user_input(audio_channel_s, token_data)
+
+    def _mi_audio_channel_s_layout(self, token_data: TokenData) -> str:
+        layout = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_channel_layout = self.media_info_obj.audio_tracks[0].channel_layout
+            if mi_channel_layout:
+                layout = mi_channel_layout
+
+        return self._optional_user_input(layout, token_data)
 
     def _mi_audio_codec(self, token_data: TokenData) -> str:
         audio_codec = self.guess_name.get("audio_codec", "")
@@ -638,6 +696,33 @@ class TokenReplacer:
             )
 
         return self._optional_user_input(audio_codec, token_data)
+
+    def _mi_audio_commercial_name(self, token_data: TokenData) -> str:
+        commercial_name = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_commercial_name = self.media_info_obj.audio_tracks[0].commercial_name
+            if mi_commercial_name:
+                commercial_name = mi_commercial_name
+
+        return self._optional_user_input(commercial_name, token_data)
+
+    def _mi_audio_compression(self, token_data: TokenData) -> str:
+        compression = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_compression = self.media_info_obj.audio_tracks[0].compression_mode
+            if mi_compression:
+                compression = mi_compression
+
+        return self._optional_user_input(compression, token_data)
+
+    def _mi_audio_format_info(self, token_data: TokenData) -> str:
+        format_info = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_format_info = self.media_info_obj.audio_tracks[0].channel_s
+            if mi_format_info:
+                format_info = mi_format_info
+
+        return self._optional_user_input(format_info, token_data)
 
     def _mi_audio_language_1_full(self, token_data: TokenData) -> str:
         language = ""
@@ -742,6 +827,15 @@ class TokenReplacer:
                 multi = "Multi"
 
         return self._optional_user_input(multi, token_data)
+
+    def _mi_audio_sample_rate(self, token_data: TokenData) -> str:
+        sample_rate = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_sample_rate = self.media_info_obj.audio_tracks[0].other_sampling_rate
+            if mi_sample_rate:
+                sample_rate = mi_sample_rate[0]
+
+        return self._optional_user_input(sample_rate, token_data)
 
     def _3d(self, token_data: TokenData) -> str:
         three_dimension = (
@@ -865,6 +959,25 @@ class TokenReplacer:
 
         return self._optional_user_input(dynamic_range_type, token_data)
 
+    def _mi_video_height(self, token_data: TokenData) -> str:
+        height = ""
+        if self.media_info_obj and self.media_info_obj.video_tracks:
+            track = self.media_info_obj.video_tracks[0]
+            height = str(track.height) if track.height else ""
+
+        return self._optional_user_input(height, token_data)
+
+    def _mi_video_language_full(self, token_data: TokenData) -> str:
+        language = ""
+        if self.media_info_obj and self.media_info_obj.video_tracks:
+            detect_language_code = get_language_mi(self.media_info_obj.video_tracks[0])
+            if detect_language_code:
+                detect_language = get_full_language_str(detect_language_code)
+                if detect_language:
+                    language = detect_language
+
+        return self._optional_user_input(language, token_data)
+
     def _mi_video_language_iso_639_x(
         self, char_code: int, token_data: TokenData
     ) -> str:
@@ -874,6 +987,14 @@ class TokenReplacer:
             detect_language = get_language_mi(track, char_code)
 
         return self._optional_user_input(detect_language, token_data)
+
+    def _mi_video_width(self, token_data: TokenData) -> str:
+        width = ""
+        if self.media_info_obj and self.media_info_obj.video_tracks:
+            track = self.media_info_obj.video_tracks[0]
+            width = str(track.width) if track.width else ""
+
+        return self._optional_user_input(width, token_data)
 
     def _movie_title(self, token_data: TokenData) -> str:
         title = (
