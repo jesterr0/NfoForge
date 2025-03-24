@@ -267,6 +267,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S_I.token:
             return self._mi_audio_channel_s(token_data, False)
 
+        elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S_LAYOUT.token:
+            return self._mi_audio_channel_s_layout(token_data)
+
         elif token_data.bracket_token == Tokens.MI_AUDIO_CODEC.token:
             return self._mi_audio_codec(token_data)
 
@@ -669,6 +672,15 @@ class TokenReplacer:
                     audio_channel_s = str(mi_audio_channels)
 
         return self._optional_user_input(audio_channel_s, token_data)
+
+    def _mi_audio_channel_s_layout(self, token_data: TokenData) -> str:
+        layout = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_channel_layout = self.media_info_obj.audio_tracks[0].channel_layout
+            if mi_channel_layout:
+                layout = mi_channel_layout
+
+        return self._optional_user_input(layout, token_data)
 
     def _mi_audio_codec(self, token_data: TokenData) -> str:
         audio_codec = self.guess_name.get("audio_codec", "")
