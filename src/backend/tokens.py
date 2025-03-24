@@ -53,8 +53,25 @@ class Tokens:
     # File Tokens
     EDITION = FileToken("{edition}", "Edition")
     FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
-    MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels")
+    MI_AUDIO_BITRATE = FileToken("{mi_audio_bitrate}", "Audio bitrate (640000)")
+    MI_AUDIO_BITRATE_FORMATTED = FileToken(
+        "{mi_audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
+    )
+    MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels (5.1)")
+    MI_AUDIO_CHANNEL_S_I = FileToken("{mi_audio_channel_s_i}", "Audio channels (6)")
+    MI_AUDIO_CHANNEL_S_LAYOUT = FileToken(
+        "{mi_audio_channel_s_layout}", "Audio channel layout (L R C LFE Ls Rs Lb Rb)"
+    )
     MI_AUDIO_CODEC = FileToken("{mi_audio_codec}", "Audio codec")
+    MI_AUDIO_COMMERCIAL_NAME = FileToken(
+        "{mi_audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
+    )
+    MI_AUDIO_COMPRESSION = FileToken(
+        "{mi_audio_compression}", "Audio compression (Lossy)"
+    )
+    MI_AUDIO_FORMAT_INFO = FileToken(
+        "{mi_audio_format_info}", "Audio format info (Enhanced AC-3)"
+    )
     MI_AUDIO_LANGUAGE_1_FULL = FileToken(
         "{mi_audio_language_1_full}", "Audio language (first track 'English')"
     )
@@ -86,6 +103,9 @@ class Tokens:
         "{mi_audio_language_multi}",
         "Audio languages ('Multi' will be returned if there are 3 or more tracks with unique languages)",
     )
+    MI_AUDIO_SAMPLE_RATE = FileToken(
+        "{mi_audio_sample_rate}", "Audio sample rate (48.0 kHz)"
+    )
     MI_VIDEO_3D = FileToken("{mi_video_3d}", "Video 3D")
     MI_VIDEO_BIT_DEPTH_SPACE = FileToken(
         "{mi_video_bit_depth_space}", "Video bit depth (8 Bit)"
@@ -109,12 +129,17 @@ class Tokens:
         "{mi_video_dynamic_range_type_inc_sdr_over_1080}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
     )
+    MI_VIDEO_HEIGHT = FileToken("{mi_video_height}", "Video height (1040)")
+    MI_VIDEO_LANGUAGE_FULL = FileToken(
+        "{mi_video_language_full}", "Video language (English)"
+    )
     MI_VIDEO_LANGUAGE_ISO_639_1 = FileToken(
         "{mi_video_language_iso_639_1}", "Video language (EN)"
     )
     MI_VIDEO_LANGUAGE_ISO_639_2 = FileToken(
         "{mi_video_language_iso_639_2}", "Video language (ENG)"
     )
+    MI_VIDEO_WIDTH = FileToken("{mi_video_width}", "Video width (1920)")
     MOVIE_TITLE = FileToken(
         "{movie_title}", "Movie's title parsed from TMDB/IMDb with minimal formatting"
     )

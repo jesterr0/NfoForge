@@ -147,6 +147,18 @@ class PluginLoader:
                 "'PluginPayload.wizard' should be a subclass of 'WizardPluginBase'"
             )
 
+        if plugin_payload.jinja2_filters:
+            if not isinstance(plugin_payload.jinja2_filters, dict):
+                raise PluginError(
+                    "'PluginPayload.jinja2_filters' should be a dictionary of {str: Callable}"
+                )
+
+        if plugin_payload.jinja2_functions:
+            if not isinstance(plugin_payload.jinja2_functions, dict):
+                raise PluginError(
+                    "'PluginPayload.jinja2_functions' should be a dictionary of {str: Callable}"
+                )
+
         self._validate_plugin_functions(
             plugin_payload,
             {

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [UNRELEASED] - 2025-x-xx
+
+### Added
+
+- Added new token **{mi_audio_channel_s_i}**, this token will provide raw channel output (6).
+- Added new token **{mi_audio_sample_rate}**, this token will provide audio track #1's sampling rate (48 kHz).
+- Added new token **{mi_audio_bitrate}**, this will provide audio track #1's bitrate (640000).
+- Added new token **{mi_audio_bitrate_formatted}**, this will provide audio track #1's bitrate (640 kb/s).
+- Added new token **{mi_audio_format_info}**, this will provide audio track #1's format info if available (Enhanced AC-3).
+- Added new token **{mi_audio_commercial_name}**, this will provide audio track #1's commercial name if available (Dolby Digital Plus).
+- Added new token **{mi_audio_compression}**, this will provide audio track #1's compression mode if available (Lossy).
+- Added new token **{mi_audio_channel_s_layout}**, this will provide audio track #1's channel layout if available (L R C LFE Ls Rs Lb Rb).
+- Added new token **{mi_video_width}**, this will provide video track #1's width (1940).
+- Added new token **{mi_video_height}**, this will provide video track #1's height (1080).
+- Added new token **{mi_video_language_full}**, this will provide video track full language if available (English).
+- Added support for custom **jinja2 functions** and **filters**. You can take a look at the included example plugin on how to use them.
+
+### Changed
+
+- Modify the description of **{mi_audio_channel_s}**.
+
+### Fixed
+
+- Normalize super script (Title⁹ -> Title 9)
+- Catch unexpected errors during template preview and reset the button preview button.
+
+### Removed
+
+-
+
 ## [0.6.3] - 2025-3-18
 
 ### Added
