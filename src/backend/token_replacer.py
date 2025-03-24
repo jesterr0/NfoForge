@@ -270,6 +270,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MI_AUDIO_CODEC.token:
             return self._mi_audio_codec(token_data)
 
+        elif token_data.bracket_token == Tokens.MI_AUDIO_FORMAT_INFO.token:
+            return self._mi_audio_format_info(token_data)
+
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_FULL.token:
             return self._mi_audio_language_1_full(token_data)
 
@@ -675,6 +678,15 @@ class TokenReplacer:
             )
 
         return self._optional_user_input(audio_codec, token_data)
+
+    def _mi_audio_format_info(self, token_data: TokenData) -> str:
+        format_info = ""
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            mi_format_info = self.media_info_obj.audio_tracks[0].channel_s
+            if mi_format_info:
+                format_info = mi_format_info
+
+        return self._optional_user_input(format_info, token_data)
 
     def _mi_audio_language_1_full(self, token_data: TokenData) -> str:
         language = ""
