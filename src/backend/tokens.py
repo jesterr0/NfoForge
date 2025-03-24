@@ -60,6 +60,9 @@ class Tokens:
     MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels (5.1)")
     MI_AUDIO_CHANNEL_S_I = FileToken("{mi_audio_channel_s_i}", "Audio channels (6)")
     MI_AUDIO_CODEC = FileToken("{mi_audio_codec}", "Audio codec")
+    MI_AUDIO_COMMERCIAL_NAME = FileToken(
+        "{mi_audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
+    )
     MI_AUDIO_FORMAT_INFO = FileToken(
         "{mi_audio_format_info}", "Audio format info (Enhanced AC-3)"
     )
