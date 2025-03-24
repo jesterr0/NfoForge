@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added new token **{mi_audio_format_info}**, this will provide audio track #1's format info if available (Enhanced AC-3).
 - Added new token **{mi_audio_commercial_name}**, this will provide audio track #1's commercial name if available (Dolby Digital Plus).
 - Added new token **{mi_audio_compression}**, this will provide audio track #1's compression mode if available (Lossy).
+- Added new token **{mi_audio_channel_s_layout}**, this will provide audio track #1's channel layout if available (L R C LFE Ls Rs Lb Rb).
 - Added new token **{mi_video_width}**, this will provide video track #1's width (1940).
 - Added new token **{mi_video_height}**, this will provide video track #1's height (1080).
 - Added new token **{mi_video_language_full}**, this will provide video track full language if available (English).
