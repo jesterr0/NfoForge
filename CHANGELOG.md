@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [UNRELEASED] - 2025-x-xx
+## [0.6.4] - 2025-3-23
 
 ### Added
 
@@ -28,12 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Normalize super script (Title⁹ -> Title 9)
+- Normalize super script (Title⁹ -> Title 9).
 - Catch unexpected errors during template preview and reset the button preview button.
-
-### Removed
-
--
 
 ## [0.6.3] - 2025-3-18
 
