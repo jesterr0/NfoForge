@@ -334,6 +334,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MI_VIDEO_HEIGHT.token:
             return self._mi_video_height(token_data)
 
+        elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_FULL.token:
+            return self._mi_video_language_full(token_data)
+
         elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_ISO_639_1.token:
             return self._mi_video_language_iso_639_x(1, token_data)
 
@@ -915,6 +918,17 @@ class TokenReplacer:
             height = str(track.height) if track.height else ""
 
         return self._optional_user_input(height, token_data)
+
+    def _mi_video_language_full(self, token_data: TokenData) -> str:
+        language = ""
+        if self.media_info_obj and self.media_info_obj.video_tracks:
+            detect_language_code = get_language_mi(self.media_info_obj.video_tracks[0])
+            if detect_language_code:
+                detect_language = get_full_language_str(detect_language_code)
+                if detect_language:
+                    language = detect_language
+
+        return self._optional_user_input(language, token_data)
 
     def _mi_video_language_iso_639_x(
         self, char_code: int, token_data: TokenData
