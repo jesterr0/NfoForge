@@ -181,6 +181,13 @@ class MoviesSettings(BaseSettings):
             sorted(Tokens().get_token_objects(FileToken)), allow_edits=True, parent=self
         )
         self.token_table.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.mvr_clean_title_rules_modified = False
+        self.token_table.replacement_list_widget.rows_changed.connect(
+            self._mvr_clean_title_rules_user_change
+        )
+        self.token_table.replacement_list_widget.defaults_applied.connect(
+            self._mvr_clean_title_rules_defaults_applied
+        )
 
         self.token_table_box = QGroupBox("Tokens")
         self.token_table_layout = QVBoxLayout(self.token_table_box)
@@ -302,6 +309,10 @@ class MoviesSettings(BaseSettings):
         self.title_colon_replace.blockSignals(True)
         for over_ride_widget in self.tracker_override_map.values():
             over_ride_widget.blockSignals(True)
+        self.mvr_clean_title_rules_modified = (
+            self.config.cfg_payload.mvr_clean_title_rules_modified
+        )
+        self.token_table.replacement_list_widget.blockSignals(True)
 
         # load settings
         self.rename_check_box.setChecked(self.config.cfg_payload.mvr_enabled)
@@ -366,6 +377,7 @@ class MoviesSettings(BaseSettings):
         self.title_colon_replace.blockSignals(False)
         self._update_all_examples()
         QTimer.singleShot(1, self._delayed_unblock_override_widgets)
+        self.token_table.replacement_list_widget.blockSignals(False)
 
     def _delayed_unblock_override_widgets(self):
         """
@@ -374,6 +386,14 @@ class MoviesSettings(BaseSettings):
         """
         for over_ride_widget in self.tracker_override_map.values():
             over_ride_widget.blockSignals(False)
+
+    @Slot(list)
+    def _mvr_clean_title_rules_user_change(self, _data: list) -> None:
+        self.mvr_clean_title_rules_modified = True
+
+    @Slot()
+    def _mvr_clean_title_rules_defaults_applied(self) -> None:
+        self.mvr_clean_title_rules_modified = False
 
     @Slot()
     def _save_settings(self) -> None:
@@ -408,7 +428,10 @@ class MoviesSettings(BaseSettings):
             ].mvr_title_replace_map = (
                 over_ride_widget.over_ride_replacement_table.get_replacements()
             )
-        self._mvr_clean_title_rules_change()
+        self.config.cfg_payload.mvr_clean_title_rules_modified = (
+            self.mvr_clean_title_rules_modified
+        )
+        self._mvr_clean_title_rules_save()
         self.updated_settings_applied.emit()
 
     def _mvr_default_update_check(self) -> None:
@@ -428,7 +451,7 @@ class MoviesSettings(BaseSettings):
                 self.token_table.reset()
                 self.config.save_config()
 
-    def _mvr_clean_title_rules_change(self) -> None:
+    def _mvr_clean_title_rules_save(self) -> None:
         replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
         defaults = self.token_table.replacement_list_widget.default_rules
         if not defaults:
@@ -465,6 +488,7 @@ class MoviesSettings(BaseSettings):
         self.config.cfg_payload.mvr_clean_title_rules_modified = (
             self.config.cfg_payload_defaults.mvr_clean_title_rules_modified
         )
+        self.mvr_clean_title_rules_modified = False
 
     def _apply_override_defaults(self) -> None:
         for tracker in self.tracker_override_map.keys():
