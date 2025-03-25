@@ -1,4 +1,5 @@
 import importlib
+import platform
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -63,11 +64,12 @@ class PluginLoader:
             plugin_payload = main_module.plugin_payload
             self._check_plugin(plugin_payload)
             self.plugins[plugin_payload.name] = plugin_payload
+            LOG.debug(LOG.LOG_SOURCE.FE, f"Plugin loaded: {plugin_payload.name}")
         except AttributeError:
             raise PluginError(f"Failed to load plugin package: {package_name}")
 
     def _pip_packages(self, requirements_txt: Path) -> None:
-        if requirements_txt.exists():
+        if requirements_txt.exists() and requirements_txt.is_file():
             pip_dir = RUNTIME_DIR / "user_packages"
             pip_dir.mkdir(exist_ok=True)
             if str(pip_dir) not in sys.path:
@@ -79,7 +81,11 @@ class PluginLoader:
                 check=True,
                 text=True,
                 capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+                if platform.system() == "Windows"
+                else 0,
             )
+            LOG.debug(LOG.LOG_SOURCE.FE, f"PIP task output: {get_installed_packages}")
 
             # parse the output into a dictionary of installed packages
             installed_packages = {}
@@ -113,6 +119,9 @@ class PluginLoader:
 
             # install missing or outdated packages
             if packages_to_install:
+                LOG.debug(
+                    LOG.LOG_SOURCE.FE, f"PIP task output: {get_installed_packages}"
+                )
                 pip_cmd = [
                     "pip",
                     "install",
@@ -124,7 +133,15 @@ class PluginLoader:
                 LOG.debug(
                     LOG.LOG_SOURCE.FE, f"Installing missing user packages: {pip_cmd}"
                 )
-                subprocess.run(pip_cmd, check=True, text=True)
+                pip_job = subprocess.run(
+                    pip_cmd,
+                    check=True,
+                    text=True,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                    if platform.system() == "Windows"
+                    else 0,
+                )
+                LOG.debug(LOG.LOG_SOURCE.FE, f"Package install status: {pip_job}")
 
     def _load_package_module(self, package_name: str):
         """Dynamically import the main module within a plugin package."""
