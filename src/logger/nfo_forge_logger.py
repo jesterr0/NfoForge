@@ -1,3 +1,4 @@
+import sys
 import logging
 import json
 import shortuuid
@@ -19,19 +20,26 @@ class Logger:
     def __init__(
         self,
         log_file: Path,
-        log_level: LogLevel = LogLevel.INFO,
+        log_level: LogLevel = LogLevel.DEBUG,
+        to_console: bool = False,
     ) -> None:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(log_level.value)
         self.log_file = log_file
         self.log_level = log_level
         self.file_handler = None
+        self.console_handler = None
+        self.to_console = to_console
         self.dumps = log_file.parent / "dumps"
 
         log_file.parent.mkdir(parents=True, exist_ok=True)
         self.dumps.mkdir(parents=True, exist_ok=True)
 
     def _initialize_file_handler(self) -> None:
+        # if none we can assume we're initiating this for the first time
+        log_program_info = True if not self.file_handler else False
+
+        # file handler
         if self.file_handler is None:
             self.file_handler = RotatingFileHandler(
                 self.log_file,
@@ -43,6 +51,17 @@ class Logger:
                 logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             )
             self.logger.addHandler(self.file_handler)
+
+        # console handler (print to console)
+        if self.console_handler is None and self.to_console:
+            self.console_handler = logging.StreamHandler()
+            self.console_handler.setFormatter(
+                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+            )
+            self.logger.addHandler(self.console_handler)
+
+        # log initial program info
+        if log_program_info:
             self.info(self.LOG_SOURCE.FE, f"{program_name} v{__version__}")
 
     def debug(self, source: LogSource, message: str) -> None:
@@ -145,4 +164,4 @@ class Logger:
 _date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _short_uuid = shortuuid.uuid()[:7]
 _log_path = RUNTIME_DIR / "logs" / f"nfoforge_{_date_time_str}_{_short_uuid}.log"
-LOG = Logger(_log_path)
+LOG = Logger(_log_path, to_console=True if "debug" in sys.executable.lower() else False)

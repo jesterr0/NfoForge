@@ -10,11 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Built a new widget that can scroll for very long error messages to replace the default unhandled error box.
+- Logger will now log output to console if debug executable is executed.
 
 ### Changed
 
 - Improve logging in the plugin loader.
 - Use new error window widget to display unhandled errors.
+- Now uses UV instead of Poetry.
+- Logger starts in debug mode and is configured on first message via the users settings.
 
 ### Fixed
 
@@ -24,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
--
+- NfoForge **no longer** looks for and installs requirement text files for packages. This is a breaking change but is required to properly ensure this works across multiple configurations.
 
 ## [0.6.4] - 2025-3-23
 
