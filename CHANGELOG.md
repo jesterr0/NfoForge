@@ -9,16 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
--
+- Built a new widget that can scroll for very long error messages to replace the default unhandled error box.
 
 ### Changed
 
 - Improve logging in the plugin loader.
+- Use new error window widget to display unhandled errors.
 
 ### Fixed
 
 - Movie clean title table would not properly save/update user settings or defaults after being modified once.
 - Subprocess windows executing in a new window on Windows.
+- 'None' being added to each unhandled error exception output.
 
 ### Removed
 

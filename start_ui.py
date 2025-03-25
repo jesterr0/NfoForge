@@ -12,6 +12,7 @@ from PySide6.QtCore import QTimer, QtMsgType, qInstallMessageHandler, Slot
 
 from src.config.config import Config
 from src.logger.nfo_forge_logger import LOG
+from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
 from src.frontend.windows.main_window import MainWindow
 from src.backend.utils.working_dir import RUNTIME_DIR, IS_FROZEN
@@ -157,7 +158,12 @@ class NfoForge:
         if detect_parent:
             if traceback:
                 traceback = f"\n{traceback}"
-            QMessageBox.critical(detect_parent, title, f"{message}{traceback}")
+            err_msg_box = ScrollableErrorDialog(
+                f"{message}{traceback if traceback else ''}",
+                title=title,
+                parent=detect_parent,
+            )
+            err_msg_box.exec()
             if self.splash_screen.isVisible():
                 self.app.quit()
 
