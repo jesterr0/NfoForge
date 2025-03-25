@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
--
+- NfoForge **no longer** looks for and installs requirement text files for packages. This is a breaking change but is required to properly ensure this works across multiple configurations.
 
 ## [0.6.4] - 2025-3-23
 
