@@ -44,9 +44,49 @@ def modify_spec_file(spec_file_path: Path, hiddenimports: list):
         spec_file.write(spec_content)
 
 
+def modify_spec_file_for_dual_exe(spec_file_path: Path):
+    """Modify the PyInstaller spec file to create two executables from a single bundle."""
+    with open(spec_file_path, "r") as spec_file:
+        spec_content = spec_file.read()
+
+    # regex pattern to match multi-line EXE definitions
+    exe_pattern = re.compile(r"(exe\s*=\s*EXE\s*\(\s*\n(?:[^)]*\n)*?\))", re.MULTILINE)
+
+    matches = list(exe_pattern.finditer(spec_content))
+    if not matches:
+        raise ValueError("Could not find EXE definition in the spec file.")
+
+    # extract original EXE block
+    original_exe = matches[0].group(1)
+
+    # modify the original EXE block to create a debug version
+    debug_exe = (
+        original_exe.replace("exe = ", "exe_debug = ")
+        .replace("console=False", "console=True")
+        .replace("name='NfoForge'", "name='NfoForge-debug'")
+    )
+
+    # insert the debug EXE definition after the original
+    modified_spec_content = spec_content.replace(
+        original_exe, f"{original_exe}\n{debug_exe}"
+    )
+
+    # regex pattern to find COLLECT and insert exe_debug
+    collect_pattern = re.compile(r"(coll\s*=\s*COLLECT\s*\(\s*\n\s*exe,)", re.MULTILINE)
+
+    # modify COLLECT to include exe_debug
+    modified_spec_content = collect_pattern.sub(
+        r"\1\n    exe_debug,", modified_spec_content
+    )
+
+    # write back the modified spec file
+    with open(spec_file_path, "w") as spec_file:
+        spec_file.write(modified_spec_content)
+
+
 def get_site_packages() -> Path:
     output = run(
-        ["pip", "show", "babelfish"],
+        ["uv", "pip", "show", "babelfish"],
         check=True,
         capture_output=True,
         text=True,
@@ -57,7 +97,7 @@ def get_site_packages() -> Path:
     return Path(get_location.group(1))
 
 
-def build_app(folder_name: str, include_std_lib: bool):
+def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # change directory to the project's root directory
     project_root = Path(__file__).parent
     os.chdir(project_root)
@@ -66,7 +106,9 @@ def build_app(folder_name: str, include_std_lib: bool):
     if sys.prefix == sys.base_prefix:
         raise Exception("You must activate your virtual environment first")
     else:
-        run(["poetry", "install"])
+        check_packages = run(["uv", "sync", "--inexact"], check=True, text=True)
+        if check_packages.returncode != 0:
+            raise Exception("Failed to sync packages with UV")
 
     # pyinstaller build folder
     pyinstaller_folder = project_root / folder_name
@@ -93,11 +135,11 @@ def build_app(folder_name: str, include_std_lib: bool):
     # run PyInstaller makespec to generate the spec file
     run(
         [
-            "poetry",
+            "uv",
             "run",
             "pyi-makespec",
             # "--onefile",
-            "-w",
+            "-w" if not debug else "-c",
             f"--icon={icon_path}",
             f"--add-data={dev_runtime}:runtime",
             f"--add-data={babel_fish}:./babelfish",
@@ -118,9 +160,12 @@ def build_app(folder_name: str, include_std_lib: bool):
         hiddenimports = get_std_lib()
         modify_spec_file(spec_file_path, hiddenimports)
 
-    # run PyInstaller using the modified spec file
+    # modify the generated spec file to include two executables
+    modify_spec_file_for_dual_exe(spec_file_path)
+
+    # run pyinstaller
     build_job = run(
-        ["poetry", "run", "pyinstaller", "--noconfirm", str(spec_file_path)],
+        ["uv", "run", "pyinstaller", "--noconfirm", str(spec_file_path)],
     )
 
     # ensure the output of the executable
@@ -147,6 +192,7 @@ def build_app(folder_name: str, include_std_lib: bool):
         project_root / "plugins" / "jinja2_plugin_example",
         plugin_folder / "jinja2_plugin_example",
         ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
+        copy_function=shutil.copy,
     )
 
     # remove dev files
@@ -175,5 +221,6 @@ def build_app(folder_name: str, include_std_lib: bool):
 
 
 if __name__ == "__main__":
+    print("Building release...")
     build_full = build_app("pyinstaller_build_full", True)
     print(build_full)

@@ -1,6 +1,4 @@
 import importlib
-import platform
-import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -17,7 +15,6 @@ from src.enums.tracker_selection import TrackerSelection
 from src.logger.nfo_forge_logger import LOG
 from src.plugins.plugin_wizard_base import WizardPluginBase
 from src.plugins.plugin_payload import PluginPayload
-from src.backend.utils.working_dir import RUNTIME_DIR
 
 
 class PluginLoader:
@@ -55,9 +52,6 @@ class PluginLoader:
         if not init_file.exists() and not init_file_pyd.exists():
             raise PluginError("You must have a properly structured __init__ file")
 
-        # check for requirements file and pip dependencies if needed
-        self._pip_packages(item_dir / "requirements.txt")
-
         # load plugin_payload
         try:
             main_module = self._load_package_module(package_name)
@@ -67,81 +61,6 @@ class PluginLoader:
             LOG.debug(LOG.LOG_SOURCE.FE, f"Plugin loaded: {plugin_payload.name}")
         except AttributeError:
             raise PluginError(f"Failed to load plugin package: {package_name}")
-
-    def _pip_packages(self, requirements_txt: Path) -> None:
-        if requirements_txt.exists() and requirements_txt.is_file():
-            pip_dir = RUNTIME_DIR / "user_packages"
-            pip_dir.mkdir(exist_ok=True)
-            if str(pip_dir) not in sys.path:
-                sys.path.append(str(pip_dir))
-
-            # run `pip list` to get installed packages and parse the output into a dictionary
-            get_installed_packages = subprocess.run(
-                ["pip", "list", "--path", str(pip_dir), "--format=freeze"],
-                check=True,
-                text=True,
-                capture_output=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
-                if platform.system() == "Windows"
-                else 0,
-            )
-            LOG.debug(LOG.LOG_SOURCE.FE, f"PIP task output: {get_installed_packages}")
-
-            # parse the output into a dictionary of installed packages
-            installed_packages = {}
-            for line in get_installed_packages.stdout.splitlines():
-                pkg, version = line.split("==")
-                installed_packages[pkg] = version
-
-            # read the requirements.txt
-            with open(requirements_txt, "r") as f:
-                requirements = f.readlines()
-
-            # filter out already installed or outdated packages
-            packages_to_install = []
-            for req in requirements:
-                req = req.strip()
-                if req:
-                    # parse the required package name and version
-                    if "==" in req:
-                        package, required_version = req.split("==")
-                    else:
-                        package = req
-                        required_version = None
-
-                    installed_version = installed_packages.get(package)
-
-                    # if package is not installed, we'll install it
-                    if not installed_version:
-                        packages_to_install.append(req)
-                    elif required_version and installed_version != required_version:
-                        packages_to_install.append(req)
-
-            # install missing or outdated packages
-            if packages_to_install:
-                LOG.debug(
-                    LOG.LOG_SOURCE.FE, f"PIP task output: {get_installed_packages}"
-                )
-                pip_cmd = [
-                    "pip",
-                    "install",
-                    "--no-cache-dir",
-                    "--target",
-                    str(pip_dir),
-                ] + packages_to_install
-                self.update_splash_msg.emit("Installing needed user packages")
-                LOG.debug(
-                    LOG.LOG_SOURCE.FE, f"Installing missing user packages: {pip_cmd}"
-                )
-                pip_job = subprocess.run(
-                    pip_cmd,
-                    check=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                    if platform.system() == "Windows"
-                    else 0,
-                )
-                LOG.debug(LOG.LOG_SOURCE.FE, f"Package install status: {pip_job}")
 
     def _load_package_module(self, package_name: str):
         """Dynamically import the main module within a plugin package."""
