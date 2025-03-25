@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Improve logging in the plugin loader.
 - Use new error window widget to display unhandled errors.
+- Now uses UV instead of Poetry.
 
 ### Fixed
 
