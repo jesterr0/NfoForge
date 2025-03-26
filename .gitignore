@@ -24,3 +24,5 @@ plugins/**/__pycache__/*
 !src/plugins/
 *.spec
 docs/_build
+Makefile
+make.bat
