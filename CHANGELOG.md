@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2025-x-xx
+## [0.7.0] - 2025-3-25
 
 ### Added
 
@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Movie clean title table would not properly save/update user settings or defaults after being modified once.
 - Subprocess windows executing in a new window on Windows.
 - 'None' being added to each unhandled error exception output.
+- Major bug when attempting to use **requirements.txt** on a system that didn't have Python installed.
 
 ### Removed
 
