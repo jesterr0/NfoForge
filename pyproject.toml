@@ -40,7 +40,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff>=0.9.6", "cython>=3.0.12"]
 build = ["pyinstaller-hooks-contrib>=2025.1", "pyinstaller>=6.9.0"]
-docs = ["sphinx==7.4.7", "furo==2024.8.6"]
+docs = ["sphinx==8.2.3", "furo==2024.8.6"]
 
 [tool.ruff]
 line-length = 88
