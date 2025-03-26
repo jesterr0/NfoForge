@@ -25,6 +25,7 @@ class LoadedReplacementListWidget(QWidget):
 
     rows_changed = Signal(list)
     cell_changed = Signal(int, int)
+    defaults_applied = Signal()
 
     def __init__(
         self, default_rules: list[tuple[str, str]] | None = None, parent=None
@@ -158,8 +159,11 @@ class LoadedReplacementListWidget(QWidget):
             )
             == QMessageBox.StandardButton.Yes
         ):
+            self.blockSignals(True)
             self.reset()
             self.apply_defaults()
+            self.blockSignals(False)
+            self.defaults_applied.emit()
 
 
 class ReplacementListWidget(QTableWidget):

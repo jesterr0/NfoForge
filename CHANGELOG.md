@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2025-x-xx
+
+### Added
+
+- Built a new widget that can scroll for very long error messages to replace the default unhandled error box.
+- Logger will now log output to console if debug executable is executed.
+
+### Changed
+
+- Improve logging in the plugin loader.
+- Use new error window widget to display unhandled errors.
+- Now uses UV instead of Poetry.
+- Logger starts in debug mode and is configured on first message via the users settings.
+
+### Fixed
+
+- Movie clean title table would not properly save/update user settings or defaults after being modified once.
+- Subprocess windows executing in a new window on Windows.
+- 'None' being added to each unhandled error exception output.
+
+### Removed
+
+- NfoForge **no longer** looks for and installs requirement text files for packages. This is a breaking change but is required to properly ensure this works across multiple configurations.
+
 ## [0.6.4] - 2025-3-23
 
 ### Added

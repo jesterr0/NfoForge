@@ -1,4 +1,5 @@
 import re
+import platform
 import subprocess
 from collections import Counter
 from os import PathLike
@@ -43,7 +44,14 @@ class CropDetect:
             "-hide_banner",
         )
 
-        result = subprocess.run(command, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(
+            command,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW
+            if platform.system() == "Windows"
+            else 0,
+        )
         output = result.stderr
 
         matches = re.findall(r"x1:(\d+) x2:(\d+) y1:(\d+) y2:(\d+)", output)
