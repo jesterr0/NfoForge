@@ -1,8 +1,8 @@
-
 .. include:: templates/introduction.rst
 
 .. toctree::
-   :hidden:
    :maxdepth: 1
+   :caption: Contents
 
    Introduction <templates/introduction.rst>
+   Installation <templates/installation.rst>
