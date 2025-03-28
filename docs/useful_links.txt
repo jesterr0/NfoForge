@@ -1,0 +1,5 @@
+https://canonical-documentation-with-sphinx-and-readthedocscom.readthedocs-hosted.com/style-guide/
+
+https://www.sphinx-doc.org/en/master/usage/quickstart.html
+
+https://docutils.sourceforge.io/docs/user/rst/quickstart.html#top
