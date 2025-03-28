@@ -26,3 +26,65 @@ Key Features
 - Support for movie files in MKV and MP4 format.
 - Automatic detection for light/dark mode (with a manual override if desired) *Windows only*.
 - Additional format support and features coming soon!
+
+Supported Trackers
+==================
+
+- BeyondHD
+- MoreThanTV
+- TorrentLeech
+- PassThePopcorn
+- ReelFliX
+- Aither
+- HUNO
+
+*Supported trackers will be added over time. If you'd like a tracker added, open an* `issue <https://github.com/jesterr0/NfoForge/issues/new>`_ *and it will be considered*.
+
+Supported Operating Systems
+===========================
+
+- Windows 8.1+
+- Linux (tested on Ubuntu 24.04.1 LTS)
+
+Supported Image Hosts
+=====================
+
+- Chevereto v3/v4
+- ImageBox
+- ImageBB
+- PTPIMG
+
+Requirements
+============
+
+- TMDB Api `key (v3) <https://www.themoviedb.org/settings/api>`_
+- TVDB Api `key <https://thetvdb.com/api-information>`_
+- FFMPEG and/or `FrameForge <https://github.com/jessielw/FrameForge/>`_ depending on your preferred image generation type
+
+Support
+=======
+
+`Github <https://github.com/jesterr0/NfoForge>`_
+
+Donations
+=========
+
+NfoForge is a free application. Donations of any size are greatly appreciated and will support NfoForge's active development. Thank you!
+
+Bitcoin
+^^^^^^^
+
+.. image:: https://github.com/user-attachments/assets/88b7643f-8567-4d6d-ade4-13d725490062
+   :alt: bitcoin:bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc
+   :width: 140px
+
+BTC: ``bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc``
+
+Ethereum
+^^^^^^^^
+
+.. image:: https://github.com/user-attachments/assets/e34fa9d4-531f-4586-9deb-47413861279a
+   :alt: ethereum:0x86a726C7158b852C8001Fb6762f3a263742529e6
+   :width: 140px
+
+ETH: ``0x86a726C7158b852C8001Fb6762f3a263742529e6``
