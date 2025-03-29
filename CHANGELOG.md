@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed an issue where in some resolutions/crops NfoForge would fail to determine the correct automatic crop.
+- Issue where in some resolutions/crops NfoForge would fail to determine the correct automatic crop.
 
 ### Removed
 
