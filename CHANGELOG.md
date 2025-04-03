@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Massively improved the automatic crop detection for comparison image modes.
+- **Windows** updated included **FrameForge** to **1.4.0**.
+- Minimum FrameForge version is now 1.4.0 for advanced image generation.
 
 ### Fixed
 
