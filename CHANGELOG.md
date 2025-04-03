@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Issue where in some resolutions/crops NfoForge would fail to determine the correct automatic crop.
 - Issue when passing manual crops to Advanced image generation could result in picture being out of frame.
 - Issue with Automatic Crop would not work for basic comparison mode.
+- Disabled crop would still crop for Comparison Mode.
+- Crop correction in comparison mode was not working correctly.
 
 ### Removed
 

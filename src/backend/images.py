@@ -232,7 +232,7 @@ class ComparisonImageGeneration(ImageGeneration):
         )
 
         detect_crop = ""
-        if crop_values:  # TODO: check for disabled here
+        if crop_values and crop_mode != Cropping.DISABLED:
             user_crop_msg = (
                 "Applying user defined crops "
                 f"({', '.join(f'{field}={value}' for field, value in zip(crop_values._fields, crop_values))})."
@@ -242,7 +242,7 @@ class ComparisonImageGeneration(ImageGeneration):
             detect_crop = vapoursynth_to_ffmpeg_crop(
                 crop_values, source_width, source_height
             )
-        elif not crop_values:  # TODO: check if crop mode is AUTO
+        elif not crop_values and crop_mode == Cropping.AUTO:
             if not compare_resolutions(media_file_mi_obj, source_file_mi_obj):
                 auto_crop_detect_msg = "Automatically detecting crop, please wait."
                 LOG.info(LOG.LOG_SOURCE.BE, auto_crop_detect_msg)
@@ -257,10 +257,12 @@ class ComparisonImageGeneration(ImageGeneration):
                 LOG.info(LOG.LOG_SOURCE.BE, crop_detection_complete_msg)
                 signal.emit(crop_detection_complete_msg, 0)
 
-                split_crop = detect_crop.split("=")[1].split(":")  # TODO: fix
+                if not detect_crop:
+                    raise ValueError(f"Couldn't detect crop ({detect_crop})")
+
+                split_crop = detect_crop.split("=")[1].split(":")
                 detected_width = int(split_crop[0])
                 detected_height = int(split_crop[1])
-                # TODO: is this doing anything at all?
                 if not compare_res(
                     detected_width, detected_height, media_width, media_height
                 ):
@@ -280,6 +282,7 @@ class ComparisonImageGeneration(ImageGeneration):
                     )
                     LOG.info(LOG.LOG_SOURCE.BE, detect_crop_msg)
                     signal.emit(detect_crop_msg, 0)
+                    detect_crop = f"crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]}"
 
         generate_enc_img_msg = "\nGenerating encode images."
         LOG.info(LOG.LOG_SOURCE.BE, generate_enc_img_msg)
