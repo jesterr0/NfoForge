@@ -153,6 +153,29 @@ def vapoursynth_to_ffmpeg_crop(
     return f"crop={cropped_width}:{cropped_height}:{x}:{y}"
 
 
+def ffmpeg_crop_to_crop_values(ffmpeg_crop: str, source_width: int, source_height: int):
+    """
+    Converts an FFmpeg crop string (crop=width:height:x:y) to CropValues (top, bottom, left, right).
+
+    Args:
+        ffmpeg_crop (str): FFmpeg crop string in the format 'crop=width:height:x:y'.
+        source_width (int): Original video width.
+        source_height (int): Original video height.
+
+    Returns:
+        tuple: (top, bottom, left, right) crop values for VapourSynth.
+    """
+    _, params = ffmpeg_crop.split("=")
+    cropped_width, cropped_height, x, y = map(int, params.split(":"))
+
+    left = x
+    right = source_width - cropped_width - left
+    top = y
+    bottom = source_height - cropped_height - top
+
+    return CropValues(top=top, bottom=bottom, left=left, right=right)
+
+
 def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int | None:
     """
     Takes source height and compares it to pixels returning the first option

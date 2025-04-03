@@ -10,6 +10,7 @@ from pymediainfo import MediaInfo
 from PySide6.QtCore import SignalInstance
 
 from src.logger.nfo_forge_logger import LOG
+from src.enums.cropping import Cropping
 from src.enums.indexer import Indexer
 from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
@@ -21,6 +22,7 @@ from src.backend.utils.images import (
     get_frame_rate,
     create_directories,
     vapoursynth_to_ffmpeg_crop,
+    ffmpeg_crop_to_crop_values,
 )
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.backend.utils.images import compare_resolutions, compare_res
@@ -209,6 +211,7 @@ class ComparisonImageGeneration(ImageGeneration):
         subtitle_color: str,
         sub_names: SubNames | None,
         sub_size: int,
+        crop_mode: Cropping,
         crop_values: CropValues | None,
         ffmpeg_path: Path,
         signal: SignalInstance,
@@ -229,7 +232,7 @@ class ComparisonImageGeneration(ImageGeneration):
         )
 
         detect_crop = ""
-        if crop_values:
+        if crop_values:  # TODO: check for disabled here
             user_crop_msg = (
                 "Applying user defined crops "
                 f"({', '.join(f'{field}={value}' for field, value in zip(crop_values._fields, crop_values))})."
@@ -239,7 +242,7 @@ class ComparisonImageGeneration(ImageGeneration):
             detect_crop = vapoursynth_to_ffmpeg_crop(
                 crop_values, source_width, source_height
             )
-        elif not crop_values:
+        elif not crop_values:  # TODO: check if crop mode is AUTO
             if not compare_resolutions(media_file_mi_obj, source_file_mi_obj):
                 auto_crop_detect_msg = "Automatically detecting crop, please wait."
                 LOG.info(LOG.LOG_SOURCE.BE, auto_crop_detect_msg)
@@ -254,10 +257,10 @@ class ComparisonImageGeneration(ImageGeneration):
                 LOG.info(LOG.LOG_SOURCE.BE, crop_detection_complete_msg)
                 signal.emit(crop_detection_complete_msg, 0)
 
-                split_crop = detect_crop.split("=")[1].split(":")
+                split_crop = detect_crop.split("=")[1].split(":")  # TODO: fix
                 detected_width = int(split_crop[0])
                 detected_height = int(split_crop[1])
-
+                # TODO: is this doing anything at all?
                 if not compare_res(
                     detected_width, detected_height, media_width, media_height
                 ):
@@ -272,7 +275,7 @@ class ComparisonImageGeneration(ImageGeneration):
                     detected_width = media_width
                     detected_height = media_height
                     detect_crop_msg = (
-                        "Crop detection adjustment completed. "
+                        "Crop detection adjustment completed."
                         f"(crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]})."
                     )
                     LOG.info(LOG.LOG_SOURCE.BE, detect_crop_msg)
@@ -459,12 +462,14 @@ class FrameForgeImageGeneration(ImageGeneration):
         sub_names: SubNames | None,
         sub_size: int,
         subtitle_alignment: SubtitleAlignment,
-        crop_values: CropValues,
+        crop_mode: Cropping,
+        crop_values: CropValues | None,
         advanced_resize: AdvancedResize | None,
         re_sync: int,
         indexer: Indexer,
         image_plugin: ImagePlugin,
         frame_forge_path: Path,
+        ffmpeg_path: Path | None,
         signal: SignalInstance,
     ) -> int:
         generate_args = [
@@ -484,11 +489,86 @@ class FrameForgeImageGeneration(ImageGeneration):
         img_comparison = create_directories(output_directory, sync_dir=True)[0]
         generate_args.extend(["--image-dir", str(img_comparison.parent)])
 
-        if crop_values:
-            generate_args.extend(["--left-crop", str(crop_values.left)])
-            generate_args.extend(["--right-crop", str(crop_values.right)])
-            generate_args.extend(["--top-crop", str(crop_values.top)])
-            generate_args.extend(["--bottom-crop", str(crop_values.bottom)])
+        # if crop values are provided manually utilize them
+        if crop_values and crop_mode != Cropping.DISABLED:
+            # we're using ABS to prevent negative numbers being sent to VapourSynth
+            generate_args.extend(["--left-crop", str(abs(crop_values.left))])
+            generate_args.extend(["--right-crop", str(abs(crop_values.right))])
+            generate_args.extend(["--top-crop", str(abs(crop_values.top))])
+            generate_args.extend(["--bottom-crop", str(abs(crop_values.bottom))])
+
+        # if no manual crop values we're provided and cropping is set to AUTO
+        elif not crop_values and ffmpeg_path and crop_mode == Cropping.AUTO:
+            if not compare_resolutions(media_file_mi_obj, source_file_mi_obj):
+                auto_crop_detect_msg = "Automatically detecting crop, please wait."
+                LOG.info(LOG.LOG_SOURCE.BE, auto_crop_detect_msg)
+                signal.emit(
+                    auto_crop_detect_msg,
+                    0,
+                )
+                detect_crop = CropDetect(ffmpeg_path, source_input, 15, 4).get_result()
+                if detect_crop:
+                    crop_detection_complete_msg = (
+                        f"Crop detection complete ({detect_crop})."
+                    )
+                    LOG.info(LOG.LOG_SOURCE.BE, crop_detection_complete_msg)
+                    signal.emit(crop_detection_complete_msg, 0)
+
+                    split_crop = detect_crop.split("=")[1].split(":")
+                    detected_width = int(split_crop[0])
+                    detected_height = int(split_crop[1])
+
+                    media_width, media_height = (
+                        media_file_mi_obj.video_tracks[0].width,
+                        media_file_mi_obj.video_tracks[0].height,
+                    )
+
+                    auto_crop_values = ffmpeg_crop_to_crop_values(
+                        f"crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]}",
+                        media_width,
+                        media_height,
+                    )
+
+                    if not compare_res(
+                        detected_width, detected_height, media_width, media_height
+                    ):
+                        crop_miss_match_msg = "Crop detection correction needed for mismatched resolution."
+                        LOG.info(LOG.LOG_SOURCE.BE, crop_miss_match_msg)
+                        signal.emit(
+                            crop_miss_match_msg,
+                            0,
+                        )
+                        detected_width = media_width
+                        detected_height = media_height
+                        detect_crop_msg = (
+                            "Crop detection adjustment completed."
+                            f"(crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]})."
+                        )
+                        auto_crop_values = ffmpeg_crop_to_crop_values(
+                            f"crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]}",
+                            media_width,
+                            media_height,
+                        )
+                        LOG.info(LOG.LOG_SOURCE.BE, detect_crop_msg)
+                        signal.emit(detect_crop_msg, 0)
+                    if auto_crop_values:
+                        # we're using ABS to prevent negative numbers being sent to VapourSynth
+                        generate_args.extend(
+                            ["--left-crop", str(abs(auto_crop_values.left))]
+                        )
+                        generate_args.extend(
+                            ["--right-crop", str(abs(auto_crop_values.right))]
+                        )
+                        generate_args.extend(
+                            ["--top-crop", str(abs(auto_crop_values.top))]
+                        )
+                        generate_args.extend(
+                            ["--bottom-crop", str(abs(auto_crop_values.bottom))]
+                        )
+                else:
+                    crop_detection_failed_msg = f"Crop detection failed, could not determine crop ({detect_crop})..."
+                    LOG.warning(LOG.LOG_SOURCE.BE, crop_detection_failed_msg)
+                    signal.emit(crop_detection_failed_msg, 0)
 
         if advanced_resize:
             if advanced_resize.src_left:
@@ -517,14 +597,11 @@ class FrameForgeImageGeneration(ImageGeneration):
 
         if sub_names:
             # TODO: add support for source file release sub title when it's added for nfo forge
-            generate_args.extend(["--release-sub-title", sub_names[1]])
+            if sub_names.encode:
+                generate_args.extend(["--release-sub-title", sub_names.encode])
 
-        # TODO: add support for this later
-        # if existing_frames:
-        #     generate_args.extend(["--frames", existing_frames])
-
-        # TODO: remove print
-        # print(generate_args)
+        # log final args
+        LOG.debug(LOG.LOG_SOURCE.BE, str(generate_args))
 
         return self.run_frame_forge_command(generate_args, signal)
 
@@ -584,6 +661,7 @@ class ImagesBackEnd:
         subtitle_color: str,
         sub_names: SubNames | None,
         sub_size: int,
+        crop_mode: Cropping,
         crop_values: CropValues | None,
         ffmpeg_path: Path,
         signal: SignalInstance,
@@ -602,6 +680,7 @@ class ImagesBackEnd:
             subtitle_color (str): Hex color.
             sub_names (Optional[SubNames]): Subtitle names.
             sub_size (int): Subtitle size.
+            crop_mode (Cropping): Crop mode.
             crop_values (Optional[CropValues]): Crop values.
             ffmpeg_path (Path): Path to FFMPEG executable.
             signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
@@ -618,6 +697,7 @@ class ImagesBackEnd:
             subtitle_color=subtitle_color,
             sub_names=sub_names,
             sub_size=sub_size,
+            crop_mode=crop_mode,
             crop_values=crop_values,
             ffmpeg_path=ffmpeg_path,
             signal=signal,
@@ -636,12 +716,14 @@ class ImagesBackEnd:
         sub_names: SubNames | None,
         sub_size: int,
         subtitle_alignment: SubtitleAlignment,
+        crop_mode: Cropping,
         crop_values: CropValues,
         advanced_resize: AdvancedResize | None,
         re_sync: int,
         indexer: Indexer,
         image_plugin: ImagePlugin,
         frame_forge_path: Path,
+        ffmpeg_path: Path | None,
         signal: SignalInstance,
     ) -> int:
         """
@@ -659,12 +741,14 @@ class ImagesBackEnd:
             sub_names (Optional[SubNames]): Subtitle names.
             sub_size (int): Subtitle size.
             subtitle_alignment (SubtitleAlignment): Subtitle alignment (.ass).
+            crop_mode (Cropping): Crop mode.
             crop_values (CropValues): Crop values.
             advanced_resize (Optional[AdvancedResize]): Crop values.
             re_sync (int): Re_sync value.
             indexer (Optional[Indexer]): Indexer used for FrameForge.
             image_plugin (Optional[ImagePlugin]): Plugin used for image generation in FrameForge.
             frame_forge_path (Path): Path to FrameForge executable.
+            ffmpeg_path (Optional[Path]): Path to FFMPEG executable.
             signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
 
         """
@@ -680,11 +764,13 @@ class ImagesBackEnd:
             sub_names=sub_names,
             sub_size=sub_size,
             subtitle_alignment=subtitle_alignment,
+            crop_mode=crop_mode,
             crop_values=crop_values,
             advanced_resize=advanced_resize,
             re_sync=re_sync,
             indexer=indexer,
             image_plugin=image_plugin,
             frame_forge_path=frame_forge_path,
+            ffmpeg_path=ffmpeg_path,
             signal=signal,
         )
