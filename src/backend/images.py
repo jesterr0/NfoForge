@@ -482,7 +482,7 @@ class FrameForgeImageGeneration(ImageGeneration):
             "--encode",
             str(media_input),
         ]
-        generate_args.extend(["--subtitle-color", subtitle_color])
+        generate_args.extend(["--sub-color", subtitle_color])
         generate_args.extend(["--sub-size", str(sub_size)])
         generate_args.extend(["--sub-alignment", str(subtitle_alignment.value)])
 
@@ -599,9 +599,10 @@ class FrameForgeImageGeneration(ImageGeneration):
             generate_args.extend([f"--re-sync={sync_video[0]}{sync_video[1]}"])
 
         if sub_names:
-            # TODO: add support for source file release sub title when it's added for nfo forge
+            if sub_names.source:
+                generate_args.extend(["--source-sub-title", sub_names.source])
             if sub_names.encode:
-                generate_args.extend(["--release-sub-title", sub_names.encode])
+                generate_args.extend(["--encode-sub-title", sub_names.encode])
 
         # log final args
         LOG.debug(LOG.LOG_SOURCE.BE, str(generate_args))
