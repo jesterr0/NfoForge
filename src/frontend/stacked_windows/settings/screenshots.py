@@ -141,6 +141,30 @@ class ScreenShotSettings(BaseSettings):
             self.sub_color_picker, alignment=Qt.AlignmentFlag.AlignRight
         )
 
+        sub_outline_color_lbl = QLabel("Subtitle Outline Color (hex: #000000)", self)
+        sub_outline_color_lbl.setToolTip(
+            "Subtitle outline color (must be specified as a hex value)"
+        )
+
+        self.sub_outline_color_picker = ColorSelectionShape(
+            width=14, height=14, parent=self
+        )
+        self.sub_outline_color_picker.setToolTip("Set subtitle outline color")
+        self.sub_outline_color_picker.color_changed.connect(
+            self._update_sub_entry_outline_color
+        )
+
+        self.sub_outline_color_entry = QLineEdit(self)
+        self.sub_outline_color_entry.setReadOnly(True)
+
+        sub_lbl_outline_color_widget = QWidget()
+        sub_lbl_outline_color_layout = QHBoxLayout(sub_lbl_outline_color_widget)
+        sub_lbl_outline_color_layout.setContentsMargins(0, 0, 0, 0)
+        sub_lbl_outline_color_layout.addWidget(sub_outline_color_lbl)
+        sub_lbl_outline_color_layout.addWidget(
+            self.sub_outline_color_picker, alignment=Qt.AlignmentFlag.AlignRight
+        )
+
         sub_alignment_lbl = QLabel("Subtitle Alignment", self)
         sub_alignment_lbl.setToolTip("Adjust subtitle position")
         self.sub_alignment_combo = CustomComboBox(
@@ -215,6 +239,11 @@ class ScreenShotSettings(BaseSettings):
             create_form_layout(sub_2160p_size_lbl, self.sub_2160p_size_spinbox)
         )
         self.add_layout(create_form_layout(sub_lbl_color_widget, self.sub_color_entry))
+        self.add_layout(
+            create_form_layout(
+                sub_lbl_outline_color_widget, self.sub_outline_color_entry
+            )
+        )
         self.add_layout(create_form_layout(sub_alignment_lbl, self.sub_alignment_combo))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
@@ -295,6 +324,15 @@ class ScreenShotSettings(BaseSettings):
         self.sub_color_entry.setPalette(palette)
         self.sub_color_entry.setText(self.sub_color_picker.get_hex_color())
 
+    @Slot(object)
+    def _update_sub_entry_outline_color(self, color: QColor) -> None:
+        palette = self.sub_color_entry.palette()
+        palette.setColor(QPalette.ColorRole.Text, color)
+        self.sub_outline_color_entry.setPalette(palette)
+        self.sub_outline_color_entry.setText(
+            self.sub_outline_color_picker.get_hex_color()
+        )
+
     @Slot(float)
     def _optimize_cpu_changed(self, value: float) -> None:
         """When optimize spinbox is changed the label is automatically populated"""
@@ -324,6 +362,10 @@ class ScreenShotSettings(BaseSettings):
         self.sub_color_entry.setText(payload.subtitle_color)
         self.sub_color_picker.update_color(
             QColor(self.config.cfg_payload.subtitle_color)
+        )
+        self.sub_outline_color_entry.setText(payload.subtitle_outline_color)
+        self.sub_outline_color_picker.update_color(
+            QColor(self.config.cfg_payload.subtitle_outline_color)
         )
         self._update_sub_entry_color(self.sub_color_picker.get_color())
         self.load_combo_box(
@@ -366,6 +408,9 @@ class ScreenShotSettings(BaseSettings):
             self.sub_2160p_size_spinbox.value()
         )
         self.config.cfg_payload.subtitle_color = self.sub_color_entry.text().strip()
+        self.config.cfg_payload.subtitle_outline_color = (
+            self.sub_outline_color_entry.text().strip()
+        )
         self.config.cfg_payload.subtitle_alignment = (
             self.sub_alignment_combo.currentData()
         )
@@ -430,6 +475,10 @@ class ScreenShotSettings(BaseSettings):
             QColor(self.config.cfg_payload_defaults.subtitle_color)
         )
         self._update_sub_entry_color(self.sub_color_picker.get_color())
+        self.sub_outline_color_picker.update_color(
+            QColor(self.config.cfg_payload_defaults.subtitle_outline_color)
+        )
+        self._update_sub_entry_outline_color(self.sub_outline_color_picker.get_color())
         self.ss_optimize_generated_btn.setChecked(
             self.config.cfg_payload_defaults.optimize_generated_images
         )
