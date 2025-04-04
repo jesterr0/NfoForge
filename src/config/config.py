@@ -679,6 +679,9 @@ class Config:
                 self.cfg_payload.subtitle_alignment
             ).value
             screen_shot_data["subtitle_color"] = self.cfg_payload.subtitle_color
+            screen_shot_data["subtitle_outline_color"] = (
+                self.cfg_payload.subtitle_outline_color
+            )
             screen_shot_data["trim_start"] = self.cfg_payload.trim_start
             screen_shot_data["trim_end"] = self.cfg_payload.trim_end
             screen_shot_data["comparison_subtitles"] = (
@@ -1228,6 +1231,9 @@ class Config:
                     screen_shot_data.get("subtitle_alignment", 7)
                 ),
                 subtitle_color=screen_shot_data.get("subtitle_color", "#f5c70a"),
+                subtitle_outline_color=screen_shot_data.get(
+                    "subtitle_outline_color", "#000000"
+                ),
                 trim_start=screen_shot_data.get("trim_start", 20),
                 trim_end=screen_shot_data.get("trim_end", 20),
                 comparison_subtitles=screen_shot_data.get("comparison_subtitles", True),
