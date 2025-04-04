@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2025-x-xx
+
+### Added
+
+- Log final args for advanced image generation in DEBUG mode.
+- Added the ability to control the Source subtitles for advanced frame generation.
+- Added the ability to select the subtitle outline color for both comparison image generation modes.
+
+### Changed
+
+- Massively improved the automatic crop detection for comparison image modes.
+- **Windows** updated included **FrameForge** to **1.4.0**.
+- Minimum FrameForge version is now 1.4.0 for advanced image generation.
+- MoreThanTv release title rules will now be enforced during upload regardless if the user specifies a different format.
+
+### Fixed
+
+- Issue where in some resolutions/crops NfoForge would fail to determine the correct automatic crop.
+- Issue when passing manual crops to Advanced image generation could result in picture being out of frame.
+- Issue with Automatic Crop would not work for basic comparison mode.
+- Disabled crop would still crop for Comparison Mode.
+- Crop correction in comparison mode was not working correctly.
+- Potential None type error in MoreThanTv module.
+
+### Removed
+
+-
+
 ## [0.7.0] - 2025-3-25
 
 ### Added
