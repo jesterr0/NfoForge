@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Massively improved the automatic crop detection for comparison image modes.
 - **Windows** updated included **FrameForge** to **1.4.0**.
 - Minimum FrameForge version is now 1.4.0 for advanced image generation.
+- MoreThanTv release title rules will now be enforced during upload regardless if the user specifies a different format.
 
 ### Fixed
 
@@ -26,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Issue with Automatic Crop would not work for basic comparison mode.
 - Disabled crop would still crop for Comparison Mode.
 - Crop correction in comparison mode was not working correctly.
+- Potential None type error in MoreThanTv module.
 
 ### Removed
 

@@ -243,7 +243,9 @@ class MTVUploader:
     ) -> Path:
         data = {
             # "image": "",
-            "title": tracker_title if tracker_title else file_input.stem,
+            "title": self._generate_release_title(tracker_title)
+            if tracker_title
+            else self._generate_release_title(file_input.stem),
             "category": self._get_cat_id(torrent_file.name),
             "source": self._get_source_id(file_input),
             "desc": nfo,
@@ -280,7 +282,7 @@ class MTVUploader:
         get_source_origin = self._get_source_origin_id(source_origin)
         if get_source_origin:
             data["origin"] = get_source_origin[0]
-            data["taglist"] = f'{data["taglist"]} {get_source_origin[1]}'
+            data["taglist"] = f"{data['taglist']} {get_source_origin[1]}"
 
         # open file in binary
         files = {}
@@ -341,6 +343,23 @@ class MTVUploader:
             failed_error_msg = f"Failed to upload torrent: {failure_str if failure_str else upload_page.reason} ({upload_page.status_code})"
             LOG.error(LOG.LOG_SOURCE.BE, failed_error_msg)
             raise TrackerError(failed_error_msg)
+
+    @staticmethod
+    def _generate_release_title(release_title: str) -> str:
+        """Force release title to be in a format that MTV requires"""
+        if " " in release_title:
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                "Spaces found in MTV release title, automatically correcting.",
+            )
+            incoming_title = release_title
+            release_title = re.sub(r"\s", ".", release_title)
+            release_title = re.sub(r"\.{2,}", ".", release_title)
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                f"Spaces corrected in MTV release title ({incoming_title} -> {release_title}).",
+            )
+        return release_title
 
     @staticmethod
     def _get_cat_id(release_title: str) -> str:
@@ -658,37 +677,38 @@ class MTVSearch:
 
         nso_namespaces = {"ns0": "http://torznab.com/schemas/2015/feed"}
 
-        channel = root.find("channel")
-        if channel:
-            for item in channel.findall("item"):
-                tracker_result = TrackerSearchResult(
-                    name=self._get_value(item, "title"),
-                    url=self._get_value(item, "guid"),
-                    download_link=self._get_value(item, "link"),
-                    release_size=self.int_cast_fb(self._get_value(item, "size")),
-                    created_at=self._get_date(item, "pubDate"),
-                )
+        if root:
+            channel = root.find("channel")
+            if channel:
+                for item in channel.findall("item"):
+                    tracker_result = TrackerSearchResult(
+                        name=self._get_value(item, "title"),
+                        url=self._get_value(item, "guid"),
+                        download_link=self._get_value(item, "link"),
+                        release_size=self.int_cast_fb(self._get_value(item, "size")),
+                        created_at=self._get_date(item, "pubDate"),
+                    )
 
-                for attr in item.findall("ns0:attr", namespaces=nso_namespaces):
-                    name = attr.get("name")
-                    value = attr.get("value")
-                    if name and value:
-                        if name == "seeders":
-                            tracker_result.seeders = self.int_cast_fb(value)
-                        elif name == "leechers":
-                            tracker_result.leechers = self.int_cast_fb(value)
-                        elif name == "grabs":
-                            tracker_result.grabs = self.int_cast_fb(value)
-                        elif name == "files":
-                            tracker_result.files = self.int_cast_fb(value)
-                        elif "imdb" in name:
-                            tracker_result.imdb_id = f"tt{value}"
-                        elif name == "poster":
-                            tracker_result.uploader = value
-                        elif name == "infohash":
-                            tracker_result.info_hash = value
+                    for attr in item.findall("ns0:attr", namespaces=nso_namespaces):
+                        name = attr.get("name")
+                        value = attr.get("value")
+                        if name and value:
+                            if name == "seeders":
+                                tracker_result.seeders = self.int_cast_fb(value)
+                            elif name == "leechers":
+                                tracker_result.leechers = self.int_cast_fb(value)
+                            elif name == "grabs":
+                                tracker_result.grabs = self.int_cast_fb(value)
+                            elif name == "files":
+                                tracker_result.files = self.int_cast_fb(value)
+                            elif "imdb" in name:
+                                tracker_result.imdb_id = f"tt{value}"
+                            elif name == "poster":
+                                tracker_result.uploader = value
+                            elif name == "infohash":
+                                tracker_result.info_hash = value
 
-                results.append(tracker_result)
+                    results.append(tracker_result)
         return results
 
     @staticmethod
