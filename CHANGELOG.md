@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Log final args for advanced image generation in DEBUG mode.
 - Added the ability to control the Source subtitles for advanced frame generation.
+- Added the ability to select the subtitle outline color for both comparison image generation modes.
 
 ### Changed
 
