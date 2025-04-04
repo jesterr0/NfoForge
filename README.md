@@ -53,7 +53,7 @@ _Supported trackers will be added overtime, if you'd like a tracker added open a
 
 - TMDB Api [key (v3)](https://www.themoviedb.org/settings/api)
 - TVDB Api [key](https://thetvdb.com/api-information)
-- FFMPEG and/or [FrameForge](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
+- FFMPEG and/or [FrameForge **1.4.0**](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
 ## Thanks and Credits
 
