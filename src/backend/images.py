@@ -209,6 +209,7 @@ class ComparisonImageGeneration(ImageGeneration):
         total_images: int,
         trim: tuple[int, int],
         subtitle_color: str,
+        subtitle_outline_color: str,
         sub_names: SubNames | None,
         sub_size: int,
         crop_mode: Cropping,
@@ -302,6 +303,7 @@ class ComparisonImageGeneration(ImageGeneration):
             random_offset=random_offset,
             frame_rate=frame_rate,
             subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
             ffmpeg=ffmpeg_path,
             signal=signal,
         )
@@ -320,6 +322,7 @@ class ComparisonImageGeneration(ImageGeneration):
             random_offset=random_offset,
             frame_rate=frame_rate,
             subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
             ffmpeg=ffmpeg_path,
             signal=signal,
             ffmpeg_crop=detect_crop,
@@ -344,6 +347,7 @@ class ComparisonImageGeneration(ImageGeneration):
         random_offset: int,
         frame_rate: float,
         subtitle_color: str,
+        subtitle_outline_color: str,
         ffmpeg: Path,
         signal: SignalInstance,
         ffmpeg_crop: str | None = None,
@@ -382,11 +386,13 @@ class ComparisonImageGeneration(ImageGeneration):
             quoted_font_path = oslex2.quote(font_path)
             quoted_text_overlay = oslex2.quote(text_overlay)
             quoted_subtitle_color = oslex2.quote(subtitle_color)
+            quoted_subtitle_outline_color = oslex2.quote(subtitle_outline_color)
 
             subtitle = (
                 f",drawtext=fontfile={quoted_font_path}:"
                 f"text={quoted_text_overlay}:"
-                f"x=10:y=10:fontsize={sub_size}:fontcolor={quoted_subtitle_color}"
+                f"x=10:y=10:fontsize={sub_size}:fontcolor={quoted_subtitle_color}:"
+                f"borderw=1:bordercolor={quoted_subtitle_outline_color}"
             )
         elif text_overlay and not draw_text_support:
             LOG.warning(
@@ -462,6 +468,7 @@ class FrameForgeImageGeneration(ImageGeneration):
         total_images: int,
         trim: tuple[int, int],
         subtitle_color: str,
+        subtitle_outline_color: str,
         sub_names: SubNames | None,
         sub_size: int,
         subtitle_alignment: SubtitleAlignment,
@@ -483,6 +490,7 @@ class FrameForgeImageGeneration(ImageGeneration):
             str(media_input),
         ]
         generate_args.extend(["--sub-color", subtitle_color])
+        generate_args.extend(["--sub-outline-color", subtitle_outline_color])
         generate_args.extend(["--sub-size", str(sub_size)])
         generate_args.extend(["--sub-alignment", str(subtitle_alignment.value)])
 
@@ -663,6 +671,7 @@ class ImagesBackEnd:
         total_images: int,
         trim: tuple[int, int],
         subtitle_color: str,
+        subtitle_outline_color: str,
         sub_names: SubNames | None,
         sub_size: int,
         crop_mode: Cropping,
@@ -682,6 +691,7 @@ class ImagesBackEnd:
             total_images (int): The total number of images to generate.
             trim (tuple[int, int]): The percentage of the file to trim from start and end.
             subtitle_color (str): Hex color.
+            subtitle_outline_color (str): Hex color.
             sub_names (Optional[SubNames]): Subtitle names.
             sub_size (int): Subtitle size.
             crop_mode (Cropping): Crop mode.
@@ -699,6 +709,7 @@ class ImagesBackEnd:
             total_images=total_images,
             trim=trim,
             subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
             sub_names=sub_names,
             sub_size=sub_size,
             crop_mode=crop_mode,
@@ -717,6 +728,7 @@ class ImagesBackEnd:
         total_images: int,
         trim: tuple[int, int],
         subtitle_color: str,
+        subtitle_outline_color: str,
         sub_names: SubNames | None,
         sub_size: int,
         subtitle_alignment: SubtitleAlignment,
@@ -742,6 +754,7 @@ class ImagesBackEnd:
             total_images (int): The total number of images to generate.
             trim (tuple[int, int]): The percentage of the file to trim from start and end.
             subtitle_color (str): Hex color.
+            subtitle_outline_color (str): Hex color.
             sub_names (Optional[SubNames]): Subtitle names.
             sub_size (int): Subtitle size.
             subtitle_alignment (SubtitleAlignment): Subtitle alignment (.ass).
@@ -765,6 +778,7 @@ class ImagesBackEnd:
             total_images=total_images,
             trim=trim,
             subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
             sub_names=sub_names,
             sub_size=sub_size,
             subtitle_alignment=subtitle_alignment,
