@@ -67,9 +67,11 @@ class QueuedWorker(QThread):
         total_images: int,
         trim: tuple[int, int],
         subtitle_color: str,
+        subtitle_outline_color: str,
         sub_names: SubNames | None,
         sub_size: int,
         subtitle_alignment: SubtitleAlignment,
+        crop_mode: Cropping,
         crop_values: CropValues | None,
         advanced_resize: AdvancedResize | None,
         re_sync: int,
@@ -94,9 +96,11 @@ class QueuedWorker(QThread):
             total_images (int): The total number of images to generate.
             trim (tuple[int, int]): The percentage of the file to trim from start and end.
             subtitle_color (str): Hex color.
+            subtitle_outline_color (str): Hex color.
             sub_names (Optional[SubNames]): Subtitle names.
             sub_size (int): Subtitle size.
             subtitle_alignment (SubtitleAlignment): Subtitle alignment.
+            crop_mode (Cropping): Crop mode.
             crop_values (Optional[CropValues]): Crop values.
             advanced_resize (Optional[AdvancedResize]): Crop values.
             re_sync (int): Re_sync value.
@@ -117,9 +121,11 @@ class QueuedWorker(QThread):
         self.total_images = total_images
         self.trim = trim
         self.subtitle_color = subtitle_color
+        self.subtitle_outline_color = subtitle_outline_color
         self.sub_names = sub_names
         self.sub_size = sub_size
         self.subtitle_alignment = subtitle_alignment
+        self.crop_mode = crop_mode
         self.crop_values = crop_values
         self.advanced_resize = advanced_resize
         self.re_sync = re_sync
@@ -171,8 +177,10 @@ class QueuedWorker(QThread):
             self.total_images,
             self.trim,
             self.subtitle_color,
+            self.subtitle_outline_color,
             self.sub_names,
             self.sub_size,
+            self.crop_mode,
             self.crop_values,
             self.ffmpeg_path,
             self.progress_signal,
@@ -189,15 +197,18 @@ class QueuedWorker(QThread):
             self.total_images,
             self.trim,
             self.subtitle_color,
+            self.subtitle_outline_color,
             self.sub_names,
             self.sub_size,
             self.subtitle_alignment,
+            self.crop_mode,
             self.crop_values,
             self.advanced_resize,
             self.re_sync,
             self.indexer,
             self.image_plugin,
             self.frame_forge_path,
+            self.ffmpeg_path,
             self.progress_signal,
         )
         self.job_finished.emit(job)
@@ -432,6 +443,7 @@ class ImagesPage(BaseWizardPage):
         advanced_resize: AdvancedResize | None = None,
         re_sync: int = 0,
     ) -> None:
+        crop_mode = self.config.cfg_payload.crop_mode
         if crop_values:
             self.crop_values = crop_values
 
@@ -463,6 +475,7 @@ class ImagesPage(BaseWizardPage):
         self._set_image_directory()
 
         subtitle_color = self.config.cfg_payload.subtitle_color
+        subtitle_outline_color = self.config.cfg_payload.subtitle_outline_color
         sub_names = self._get_sub_names(comparison_subs)
         sub_size = determine_sub_size(
             media_file_mi_obj.video_tracks[0].height,
@@ -477,9 +490,11 @@ class ImagesPage(BaseWizardPage):
             media_file_mi_obj,
             source_file_mi_obj,
             subtitle_color,
+            subtitle_outline_color,
             sub_names,
             sub_size,
             subtitle_alignment,
+            crop_mode,
             crop_values,
             advanced_resize,
             re_sync,
@@ -562,9 +577,11 @@ class ImagesPage(BaseWizardPage):
         media_file_mi_obj,
         source_file_mi_obj,
         subtitle_color,
+        subtitle_outline_color,
         sub_names,
         sub_size,
         subtitle_alignment,
+        crop_mode: Cropping,
         crop_values: CropValues | None,
         advanced_resize: AdvancedResize | None,
         re_sync,
@@ -581,9 +598,11 @@ class ImagesPage(BaseWizardPage):
             frame_forge_path=self.config.cfg_payload.frame_forge,
             progress_signal=self.progress_signal_generation,
             subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
             sub_names=sub_names,
             sub_size=sub_size,
             subtitle_alignment=subtitle_alignment,
+            crop_mode=crop_mode,
             crop_values=crop_values,
             advanced_resize=advanced_resize,
             re_sync=re_sync,

@@ -308,6 +308,7 @@ sub_size_height_1080 = 16
 sub_size_height_2160 = 32
 subtitle_alignment = 7
 subtitle_color = "#f5c70a"
+subtitle_outline_color = "#000000"
 trim_start = 20
 trim_end = 20
 required_selected_screens = 0

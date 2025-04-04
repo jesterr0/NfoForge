@@ -104,6 +104,7 @@ class ConfigPayload:
     sub_size_height_2160: int
     subtitle_alignment: SubtitleAlignment
     subtitle_color: str
+    subtitle_outline_color: str
     trim_start: int
     trim_end: int
     required_selected_screens: int
