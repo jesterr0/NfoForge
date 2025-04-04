@@ -348,7 +348,7 @@ class MTVUploader:
     def _generate_release_title(release_title: str) -> str:
         """Force release title to be in a format that MTV requires"""
         if " " in release_title:
-            LOG.info(
+            LOG.warning(
                 LOG.LOG_SOURCE.BE,
                 "Spaces found in MTV release title, automatically correcting.",
             )
