@@ -92,7 +92,7 @@ class ImageGeneration(ABC):
             stderr=subprocess.STDOUT,
             creationflags=subprocess.CREATE_NO_WINDOW
             | subprocess.CREATE_NEW_PROCESS_GROUP
-            if platform.system == "Windows"
+            if platform.system() == "Windows"
             else 0,
             bufsize=1,
             text=True,
