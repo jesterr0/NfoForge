@@ -34,6 +34,7 @@ Comprehensive documentation is on the way and will be available soon.
 - ReelFliX
 - Aither
 - HUNO
+- LST
 
 _Supported trackers will be added overtime, if you'd like a tracker added open an [issue](https://github.com/jesterr0/NfoForge/issues/new) and it will be considered_
 

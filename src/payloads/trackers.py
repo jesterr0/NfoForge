@@ -116,3 +116,19 @@ class HunoInfo(TrackerInfo):
     internal: int = 0
     stream_optimized: int = 0
     image_width: int = 350
+
+@dataclass(slots=True)
+class LSTInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: int = 0
+    internal: int = 0
+    personal_release: int = 0
+    mod_queue_opt_in: int = 0
+    draft_queue_opt_in: int = 0
+    image_width: int = 500
+
+    # below is only available to staff and internal users
+    featured: int = 0
+    free: int = 0
+    double_up: int = 0
+    sticky: int = 0

@@ -37,6 +37,7 @@ Supported Trackers
 - ReelFliX
 - Aither
 - HUNO
+- LST
 
 *Supported trackers will be added over time. If you'd like a tracker added, open an* `issue <https://github.com/jesterr0/NfoForge/issues/new>`_ *and it will be considered*.
 

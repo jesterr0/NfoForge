@@ -61,6 +61,7 @@ _TRACKER_MAP = {
     # TrackerSelection.PASS_THE_POPCORN: "", # doesn't support image resizing
     TrackerSelection.REELFLIX: _basic_bbcode_formatting,
     TrackerSelection.AITHER: _basic_bbcode_formatting,
+    TrackerSelection.LST: _basic_bbcode_formatting,
 }
 
 

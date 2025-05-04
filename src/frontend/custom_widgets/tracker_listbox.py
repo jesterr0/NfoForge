@@ -788,6 +788,134 @@ class HunoTrackerEdit(TrackerEditBase):
             self.config.cfg_payload.huno_tracker.column_space = col_space
             self.config.cfg_payload.huno_tracker.row_space = row_space
 
+class LSTTrackerEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        mod_queue_opt_in_lbl = QLabel("Send to ModQ", self)
+        self.mod_queue_opt_in = QCheckBox(self)
+
+        draft_queue_opt_in_lbl = QLabel("Send to Draft", self)
+        self.draft_queue_opt_in = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
+        staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
+        staff_and_internal_lbl = QLabel(
+            "All items below are available for staff and internal users", self
+        )
+        bold_font = staff_and_internal_lbl.font()
+        bold_font.setWeight(bold_font.Weight.Bold)
+        staff_and_internal_lbl.setFont(bold_font)
+
+        featured_lbl = QLabel("Featured", self)
+        self.featured = QCheckBox(self)
+
+        free_lbl = QLabel("Free", self)
+        self.free = QCheckBox(self)
+
+        double_up_lbl = QLabel("Double Up", self)
+        self.double_up = QCheckBox(self)
+
+        sticky_lbl = QLabel("Sticky", self)
+        self.sticky = QCheckBox(self)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(mod_queue_opt_in_lbl, self.mod_queue_opt_in)
+        self.add_pair_to_layout(draft_queue_opt_in_lbl, self.draft_queue_opt_in)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_widget_to_layout(
+            staff_and_internal_lbl,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        self.add_widget_to_layout(staff_and_internal_h_line)
+        self.add_pair_to_layout(featured_lbl, self.featured)
+        self.add_pair_to_layout(free_lbl, self.free)
+        self.add_pair_to_layout(double_up_lbl, self.double_up)
+        self.add_pair_to_layout(sticky_lbl, self.sticky)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.lst_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.mod_queue_opt_in.setChecked(bool(tracker_data.mod_queue_opt_in))
+        self.draft_queue_opt_in.setChecked(bool(tracker_data.draft_queue_opt_in))
+        self.image_width.setValue(tracker_data.image_width)
+        self.featured.setChecked(bool(tracker_data.featured))
+        self.free.setChecked(bool(tracker_data.free))
+        self.double_up.setChecked(bool(tracker_data.double_up))
+        self.sticky.setChecked(bool(tracker_data.sticky))
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.lst_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.lst_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.lst_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.lst_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.lst_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.lst_tracker.anonymous = int(
+            self.anonymous.isChecked()
+        )
+        self.config.cfg_payload.lst_tracker.internal = int(self.internal.isChecked())
+        self.config.cfg_payload.lst_tracker.personal_release = int(
+            self.personal_release.isChecked()
+        )
+        self.config.cfg_payload.lst_tracker.mod_queue_opt_in = int(
+            self.mod_queue_opt_in.isChecked()
+        )
+        self.config.cfg_payload.lst_tracker.draft_queue_opt_in = int(
+            self.draft_queue_opt_in.isChecked()
+        )
+        self.config.cfg_payload.lst_tracker.image_width = self.image_width.value()
+        self.config.cfg_payload.lst_tracker.featured = int(self.featured.isChecked())
+        self.config.cfg_payload.lst_tracker.free = int(self.free.isChecked())
+        self.config.cfg_payload.lst_tracker.double_up = int(
+            self.double_up.isChecked()
+        )
+        self.config.cfg_payload.lst_tracker.sticky = int(self.sticky.isChecked())
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.lst_tracker.column_s = col_s
+            self.config.cfg_payload.lst_tracker.column_space = col_space
+            self.config.cfg_payload.lst_tracker.row_space = row_space
+
 
 class TrackerListWidget(QWidget):
     def __init__(self, config: Config, parent=None) -> None:
@@ -848,6 +976,8 @@ class TrackerListWidget(QWidget):
             tracker_widget = AitherTrackerEdit(self.config, self)
         elif tracker is TrackerSelection.HUNO:
             tracker_widget = HunoTrackerEdit(self.config, self)
+        elif tracker is TrackerSelection.LST:
+            tracker_widget = LSTTrackerEdit(self.config, self)
 
         if tracker_widget:
             tracker_widget.load_data.emit()
