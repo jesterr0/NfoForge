@@ -34,6 +34,7 @@ from src.payloads.trackers import (
     PassThePopcornInfo,
     ReelFlixInfo,
     AitherInfo,
+    LSTInfo,
 )
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
@@ -570,6 +571,57 @@ class Config:
                 self.cfg_payload.huno_tracker.stream_optimized
             )
             huno_data["image_width"] = self.cfg_payload.huno_tracker.image_width
+
+            # LST tracker
+            if "lst" not in tracker_data:
+                tracker_data["lst"] = tomlkit.table()
+            lst_data = tracker_data["lst"]
+            lst_data["upload_enabled"] = (
+                self.cfg_payload.lst_tracker.upload_enabled
+            )
+            lst_data["announce_url"] = self.cfg_payload.lst_tracker.announce_url
+            lst_data["enabled"] = self.cfg_payload.lst_tracker.enabled
+            lst_data["source"] = self.cfg_payload.lst_tracker.source
+            lst_data["comments"] = self.cfg_payload.lst_tracker.comments
+            lst_data["nfo_template"] = self.cfg_payload.lst_tracker.nfo_template
+            lst_data["max_piece_size"] = (
+                self.cfg_payload.lst_tracker.max_piece_size
+            )
+            lst_data["url_type"] = URLType(
+                self.cfg_payload.lst_tracker.url_type
+            ).value
+            lst_data["column_s"] = self.cfg_payload.lst_tracker.column_s
+            lst_data["column_space"] = self.cfg_payload.lst_tracker.column_space
+            lst_data["row_space"] = self.cfg_payload.lst_tracker.row_space
+            lst_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.lst_tracker.mvr_title_override_enabled
+            )
+            lst_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.lst_tracker.mvr_title_colon_replace
+            ).value
+            lst_data["mvr_title_token_override"] = (
+                self.cfg_payload.lst_tracker.mvr_title_token_override
+            )
+            lst_data["mvr_title_replace_map"] = (
+                self.cfg_payload.lst_tracker.mvr_title_replace_map
+            )
+            lst_data["api_key"] = self.cfg_payload.lst_tracker.api_key
+            lst_data["anonymous"] = self.cfg_payload.lst_tracker.anonymous
+            lst_data["internal"] = self.cfg_payload.lst_tracker.internal
+            lst_data["personal_release"] = (
+                self.cfg_payload.lst_tracker.personal_release
+            )
+            lst_data["mod_queue_opt_in"] = (
+                self.cfg_payload.lst_tracker.mod_queue_opt_in
+            )
+            lst_data["draft_queue_opt_in"] = (
+                self.cfg_payload.lst_tracker.draft_queue_opt_in
+            )
+            lst_data["featured"] = self.cfg_payload.lst_tracker.featured
+            lst_data["free"] = self.cfg_payload.lst_tracker.free
+            lst_data["double_up"] = self.cfg_payload.lst_tracker.double_up
+            lst_data["sticky"] = self.cfg_payload.lst_tracker.sticky
+            lst_data["image_width"] = self.cfg_payload.lst_tracker.image_width
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -1110,6 +1162,42 @@ class Config:
                 image_width=huno_tracker_data["image_width"],
             )
 
+            lst_tracker_data = tracker_data["lst"]
+            lst_tracker = LSTInfo(
+                upload_enabled=lst_tracker_data["upload_enabled"],
+                announce_url=lst_tracker_data["announce_url"],
+                enabled=lst_tracker_data["enabled"],
+                source=lst_tracker_data["source"],
+                comments=lst_tracker_data["comments"],
+                nfo_template=lst_tracker_data["nfo_template"],
+                max_piece_size=lst_tracker_data["max_piece_size"],
+                url_type=URLType(lst_tracker_data["url_type"]),
+                column_s=lst_tracker_data["column_s"],
+                column_space=lst_tracker_data["column_space"],
+                row_space=lst_tracker_data["row_space"],
+                mvr_title_override_enabled=lst_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    lst_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=lst_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=lst_tracker_data["mvr_title_replace_map"],
+                api_key=lst_tracker_data["api_key"],
+                anonymous=lst_tracker_data["anonymous"],
+                internal=lst_tracker_data["internal"],
+                personal_release=lst_tracker_data["personal_release"],
+                mod_queue_opt_in=lst_tracker_data["mod_queue_opt_in"],
+                draft_queue_opt_in=lst_tracker_data["draft_queue_opt_in"],
+                featured=lst_tracker_data["featured"],
+                free=lst_tracker_data["free"],
+                double_up=lst_tracker_data["double_up"],
+                sticky=lst_tracker_data["sticky"],
+                image_width=lst_tracker_data["image_width"],
+            )
+
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]
 
@@ -1195,6 +1283,7 @@ class Config:
                 rf_tracker=rf_tracker,
                 aither_tracker=aither_tracker,
                 huno_tracker=huno_tracker,
+                lst_tracker=lst_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
@@ -1346,6 +1435,9 @@ class Config:
             TrackerSelection.HUNO: self.cfg_payload.huno_tracker
             if not defaults
             else self.cfg_payload_defaults.huno_tracker,
+            TrackerSelection.LST: self.cfg_payload.lst_tracker
+            if not defaults
+            else self.cfg_payload_defaults.lst_tracker,
         }
 
     def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:

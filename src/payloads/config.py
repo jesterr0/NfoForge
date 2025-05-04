@@ -22,6 +22,7 @@ from src.payloads.trackers import (
     ReelFlixInfo,
     AitherInfo,
     HunoInfo,
+    LSTInfo,
 )
 from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
@@ -73,6 +74,7 @@ class ConfigPayload:
     rf_tracker: ReelFlixInfo
     aither_tracker: AitherInfo
     huno_tracker: HunoInfo
+    lst_tracker: LSTInfo
 
     # torrent client settings
     qbittorrent: TorrentClient
