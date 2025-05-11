@@ -10,6 +10,7 @@ class TrackerSelection(CaseInsensitiveEnum):
     REELFLIX = "ReelFliX"
     AITHER = "Aither"
     HUNO = "HUNO"
+    LST = "LST"
 
     @override
     def __str__(self) -> str:

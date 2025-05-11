@@ -15,6 +15,7 @@ from src.enums.trackers.reelflix import (
 )
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
+from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.exceptions import TrackerError
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
@@ -23,9 +24,9 @@ from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
-CategoryEnums = ReelFlixCategory | AitherCategory | HunoCategory
-ResolutionEnums = ReelFlixResolution | AitherResolution | HunoResolution
-TypeEnums = ReelFlixType | AitherType | HunoType
+CategoryEnums = ReelFlixCategory | AitherCategory | HunoCategory | LSTCategory
+ResolutionEnums = ReelFlixResolution | AitherResolution | HunoResolution | LSTResolution
+TypeEnums = ReelFlixType | AitherType | HunoType | LSTType
 
 
 class Unit3dBaseUploader:
@@ -86,6 +87,8 @@ class Unit3dBaseUploader:
         personal_release: bool | None = True,
         stream_optimized: bool = False,
         opt_in_to_mod_queue: bool | None = False,
+        mod_queue_opt_in: bool | None = False,
+        draft_queue_opt_in: bool | None = False,
         featured: bool | None = False,
         free: bool | None = False,
         double_up: bool | None = False,
@@ -122,6 +125,12 @@ class Unit3dBaseUploader:
             upload_payload["tvdb"] = tvdb_id
         if mal_id:
             upload_payload["mal"] = mal_id
+        
+        # lst only?
+        if mod_queue_opt_in is not None:
+            upload_payload["mod_queue_opt_in"] = int(mod_queue_opt_in)
+        if draft_queue_opt_in is not None:
+            upload_payload["draft_queue_opt_in"] = int(draft_queue_opt_in)
 
         # internal/staff only below for UNIT3D (except for HUNO)
         if featured is not None:
