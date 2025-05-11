@@ -1,22 +1,23 @@
-import re
-import regex
-import requests
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
+import re
 
-from src.logger.nfo_forge_logger import LOG
-from src.enums.trackers.beyondhd import (
-    BHDCategoryID,
-    BHDType,
-    BHDSource,
-    BHDPromo,
-    BHDLiveRelease,
-)
-from src.enums.media_mode import MediaMode
-from src.exceptions import TrackerError
+import regex
+import requests
+
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.media_info_utils import MinimalMediaInfo
+from src.enums.media_mode import MediaMode
+from src.enums.trackers.beyondhd import (
+    BHDCategoryID,
+    BHDLiveRelease,
+    BHDPromo,
+    BHDSource,
+    BHDType,
+)
+from src.exceptions import TrackerError
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
