@@ -41,7 +41,6 @@ def aither_uploader(
         tracker_title=tracker_title,
         imdb_id=media_search_payload.imdb_id,
         tmdb_id=media_search_payload.tmdb_id,
-        tvdb_id=media_search_payload.tvdb_id,
         mal_id=media_search_payload.mal_id,
         nfo=nfo,
         internal=internal,
