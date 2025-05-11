@@ -1,7 +1,9 @@
 from pathlib import Path
+
 from pymediainfo import MediaInfo
 
 from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
 from src.exceptions import TrackerError
 from src.payloads.media_search import MediaSearchPayload
@@ -39,7 +41,6 @@ def aither_uploader(
         tracker_title=tracker_title,
         imdb_id=media_search_payload.imdb_id,
         tmdb_id=media_search_payload.tmdb_id,
-        tvdb_id=media_search_payload.tvdb_id,
         mal_id=media_search_payload.mal_id,
         nfo=nfo,
         internal=internal,
@@ -69,7 +70,7 @@ class AitherUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name="Aither",
+            tracker_name=TrackerSelection.AITHER,
             base_url="https://aither.cc",
             api_key=api_key,
             torrent_file=torrent_file,
@@ -98,7 +99,7 @@ class AitherSearch(Unit3dBaseSearch):
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name="Aither",
+            tracker_name=TrackerSelection.AITHER,
             base_url="https://aither.cc",
             api_key=api_key,
             timeout=timeout,

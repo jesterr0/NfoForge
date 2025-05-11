@@ -1,7 +1,9 @@
 from pathlib import Path
+
 from pymediainfo import MediaInfo
 
 from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.reelflix import (
     ReelFlixCategory,
     ReelFlixResolution,
@@ -72,7 +74,7 @@ class ReelFlixUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name="ReelFliX",
+            tracker_name=TrackerSelection.REELFLIX,
             base_url="https://reelflix.xyz",
             api_key=api_key,
             torrent_file=torrent_file,
@@ -92,7 +94,7 @@ class ReelFlixSearch(Unit3dBaseSearch):
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name="ReelFliX",
+            tracker_name=TrackerSelection.REELFLIX,
             base_url="https://reelflix.xyz",
             api_key=api_key,
             timeout=timeout,

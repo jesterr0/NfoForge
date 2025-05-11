@@ -212,6 +212,43 @@ internal = 0
 stream_optimized = 0
 image_width = 350
 
+[tracker.lst]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "LST"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = 0
+internal = 0
+personal_release = 0
+mod_queue_opt_in = 0
+draft_queue_opt_in = 0
+featured = 0
+free = 0
+double_up = 0
+sticky = 0
+image_width = 500
+
 [torrent_client]
 
 [torrent_client.qbittorrent]
