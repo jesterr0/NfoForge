@@ -1,8 +1,10 @@
 from pathlib import Path
+
 from pymediainfo import MediaInfo
 
 from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
-from src.enums.trackers.huno import HunoResolution, HunoType, HunoCategory
+from src.enums.tracker_selection import TrackerSelection
+from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.payloads.media_search import MediaSearchPayload
 
 
@@ -62,7 +64,7 @@ class HunoUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name="HUNO",
+            tracker_name=TrackerSelection.HUNO,
             base_url="https://hawke.uno",
             api_key=api_key,
             torrent_file=torrent_file,
@@ -82,7 +84,7 @@ class HunoSearch(Unit3dBaseSearch):
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name="HUNO",
+            tracker_name=TrackerSelection.HUNO,
             base_url="https://hawke.uno",
             api_key=api_key,
             timeout=timeout,

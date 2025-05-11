@@ -1,7 +1,9 @@
 from pathlib import Path
+
 from pymediainfo import MediaInfo
 
 from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.exceptions import TrackerError
 from src.payloads.media_search import MediaSearchPayload
@@ -16,7 +18,7 @@ def lst_uploader(
     internal: bool,
     anonymous: bool,
     personal_release: bool,
-    mod_queue_opt_in: bool,
+    opt_in_to_mod_queue: bool,
     draft_queue_opt_in: bool,
     featured: bool,
     free: bool,
@@ -45,7 +47,7 @@ def lst_uploader(
         internal=internal,
         anonymous=anonymous,
         personal_release=personal_release,
-        mod_queue_opt_in=mod_queue_opt_in,
+        opt_in_to_mod_queue=opt_in_to_mod_queue,
         draft_queue_opt_in=draft_queue_opt_in,
         featured=featured,
         free=free,
@@ -69,7 +71,7 @@ class LSTUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name="LST",
+            tracker_name=TrackerSelection.LST,
             base_url="https://lst.gg",
             api_key=api_key,
             torrent_file=torrent_file,
@@ -98,7 +100,7 @@ class LSTSearch(Unit3dBaseSearch):
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name="LST",
+            tracker_name=TrackerSelection.LST,
             base_url="https://lst.gg",
             api_key=api_key,
             timeout=timeout,
