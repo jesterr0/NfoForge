@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2025-05-xx
+
+### Added
+
+- **LST** tracker support **thanks LostRager**!
+
+### Changed
+
+- In media search window each icon now will fall back to a text based search if the ID is missing.
+
+### Fixed
+
+- **Aither** uploading not working since adding TVDB support.
+
+### Removed
+
+- 
+
+
 ## [0.7.2] - 2025-4-07
 
 ### Fixed
