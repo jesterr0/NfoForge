@@ -1,4 +1,5 @@
 import asyncio
+from urllib import parse as url_parse
 import traceback
 import webbrowser
 from collections import OrderedDict
@@ -504,6 +505,25 @@ class MediaSearch(BaseWizardPage):
                     return False
         return True
 
+    def _get_current_item_data(self) -> dict[str, Any] | None:
+        current_item = self.listbox.currentItem().text()
+        item_data = self.backend.media_data.get(current_item)
+        if item_data:
+            return item_data
+
+    def _open_external_link(
+        self, id_entry: QLineEdit, id_url: str, search_url: str, fallback_url: str
+    ) -> None:
+        entry_id = id_entry.text().strip()
+        if entry_id:
+            webbrowser.open(id_url.format(entry_id))
+        else:
+            item_data = self._get_current_item_data()
+            if item_data and item_data.get("title"):
+                webbrowser.open(search_url.format(url_parse.quote(item_data["title"])))
+            else:
+                webbrowser.open(fallback_url)
+
     @Slot()
     def _search_tmdb_api(self) -> None:
         # disable the next button
@@ -548,47 +568,50 @@ class MediaSearch(BaseWizardPage):
 
     @Slot()
     def _select_media(self) -> None:
-        current_item = self.listbox.currentItem().text()
-        item_data = self.backend.media_data.get(current_item)
+        item_data = self._get_current_item_data()
         if item_data:
-            self.imdb_id_entry.setText(item_data.get("imdb_id"))
-            self.tmdb_id_entry.setText(item_data.get("tvdb_id"))
-            self.plot_text.setPlainText(item_data.get("plot"))
-            self.rating_label.setText(item_data.get("vote_average"))
-            self.release_date_label.setText(item_data.get("full_release_date"))
-            self.media_type_label.setText(item_data.get("media_type"))
+            self.imdb_id_entry.setText(item_data["imdb_id"])
+            self.tmdb_id_entry.setText(item_data["tvdb_id"])
+            self.plot_text.setPlainText(item_data["plot"])
+            self.rating_label.setText(item_data["vote_average"])
+            self.release_date_label.setText(item_data["full_release_date"])
+            self.media_type_label.setText(item_data["media_type"])
 
     @Slot()
-    def _open_imdb_link(self, _) -> None:
-        imdb = self.imdb_id_entry.text().strip()
-        if imdb != "":
-            webbrowser.open(f"https://imdb.com/title/{imdb}/")
-        else:
-            webbrowser.open("https://www.imdb.com/")
+    def _open_imdb_link(self, _):
+        self._open_external_link(
+            self.imdb_id_entry,
+            "https://imdb.com/title/{}/",
+            "https://www.imdb.com/find/?q={}",
+            "https://www.imdb.com/",
+        )
 
     @Slot()
-    def _open_tmdb_link(self, _) -> None:
-        tmdb_id = self.tmdb_id_entry.text().strip()
-        if tmdb_id != "":
-            webbrowser.open(f"https://www.themoviedb.org/movie/{tmdb_id}/")
-        else:
-            webbrowser.open("https://www.themoviedb.org/movie/")
+    def _open_tmdb_link(self, _):
+        self._open_external_link(
+            self.tmdb_id_entry,
+            "https://www.themoviedb.org/movie/{}/",
+            "https://www.themoviedb.org/search?query={}",
+            "https://www.themoviedb.org/",
+        )
 
     @Slot()
-    def _open_tvdb_link(self, _) -> None:
-        tvdb_id = self.tvdb_id_entry.text().strip()
-        if tvdb_id != "":
-            webbrowser.open(f"https://thetvdb.com/search?query={tvdb_id}")
-        else:
-            webbrowser.open("https://thetvdb.com/search?query=")
+    def _open_tvdb_link(self, _):
+        self._open_external_link(
+            self.tvdb_id_entry,
+            "https://thetvdb.com/search?query={}",
+            "https://thetvdb.com/search?query={}",
+            "https://thetvdb.com/",
+        )
 
     @Slot()
-    def _open_mal_link(self, _) -> None:
-        mal_id = self.mal_id_entry.text().strip()
-        if mal_id != "":
-            webbrowser.open(f"https://myanimelist.net/anime/{mal_id}")
-        else:
-            webbrowser.open("https://myanimelist.net/")
+    def _open_mal_link(self, _):
+        self._open_external_link(
+            self.mal_id_entry,
+            "https://myanimelist.net/anime/{}",
+            "https://myanimelist.net/search/all?q={}",
+            "https://myanimelist.net/",
+        )
 
     @Slot()
     def reset_page(self, all_widgets: bool = True) -> None:
