@@ -464,7 +464,7 @@ class TemplatesSettings(BaseSettings):
                             is QMessageBox.StandardButton.Yes
                         ):
                             return False
-            elif cur_tracker in (TrackerSelection.REELFLIX, TrackerSelection.AITHER):
+            elif cur_tracker in (TrackerSelection.REELFLIX, TrackerSelection.AITHER, TrackerSelection.LST):
                 rf_template = self.template_selector.backend.read_template(
                     self.config.cfg_payload.rf_tracker.nfo_template
                 )
