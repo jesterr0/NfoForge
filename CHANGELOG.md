@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - In media search window each icon now will fall back to a text based search if the ID is missing.
+- Updated aiohttp to 3.11.18.
 
 ### Fixed
 
