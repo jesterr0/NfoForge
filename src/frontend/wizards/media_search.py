@@ -1,42 +1,42 @@
 import asyncio
-from urllib import parse as url_parse
-import traceback
-import webbrowser
 from collections import OrderedDict
-from guessit import guessit
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+import traceback
+from typing import Any, TYPE_CHECKING
+from urllib import parse as url_parse
+import webbrowser
 
-from PySide6.QtCore import Qt, Signal, Slot, QThread, QTimer
+from PySide6.QtCore import QThread, QTimer, Qt, Signal, Slot
+from PySide6.QtGui import QCursor, QPixmap
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
-    QVBoxLayout,
-    QGridLayout,
-    QHBoxLayout,
-    QPlainTextEdit,
-    QFrame,
     QListWidget,
-    QGroupBox,
-    QToolButton,
-    QFormLayout,
-    QSizePolicy,
-    QInputDialog,
     QMessageBox,
+    QPlainTextEdit,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
 )
-from PySide6.QtGui import QCursor, QPixmap
+from guessit import guessit
 
+from src.backend.media_search import MediaSearchBackEnd
+from src.backend.utils.filter_title import edition_and_title_extractor as extract_title
+from src.backend.utils.super_sub import normalize_super_sub
+from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import Config
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.backend.media_search import MediaSearchBackEnd
-from src.backend.utils.filter_title import edition_and_title_extractor as extract_title
-from src.backend.utils.working_dir import RUNTIME_DIR
-from src.backend.utils.super_sub import normalize_super_sub
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
