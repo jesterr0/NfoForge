@@ -30,7 +30,7 @@ TypeEnums = ReelFlixType | AitherType | HunoType | LSTType
 
 
 class Unit3dBaseUploader:
-    """API: https://github.com/HDInnovations/UNIT3D-Community-Edition/wiki/Torrent-API-(UNIT3D-v8.3.4)"""
+    """API: https://github.com/HDInnovations/UNIT3D/blob/master/book/src/torrent_api.md"""
 
     __slots__ = (
         "tracker_name",
