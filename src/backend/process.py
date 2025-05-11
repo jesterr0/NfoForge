@@ -1,64 +1,67 @@
 import asyncio
-import shutil
-import traceback
 from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
-from pymediainfo import MediaInfo
-from PySide6.QtCore import SignalInstance
-from torf import Torrent
+import shutil
+import traceback
 from typing import Any, Sequence
 
-from src.config.config import Config
-from src.backend.tokens import FileToken
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.torrent_client import TorrentClientSelection
-from src.enums.media_mode import MediaMode
-from src.exceptions import ImageHostError
-from src.backend.trackers import (
-    MTVSearch,
-    mtv_uploader,
-    TLSearch,
-    tl_upload,
-    BHDSearch,
-    bhd_uploader,
-    ptp_uploader,
-    PTPSearch,
-    ReelFlixSearch,
-    rf_uploader,
-    AitherSearch,
-    aither_uploader,
-    HunoSearch,
-    huno_uploader,
-)
-from src.backend.template_selector import TemplateSelectorBackEnd
-from src.backend.torrents import generate_torrent, write_torrent, clone_torrent
-from src.backend.trackers.utils import format_image_tag
-from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
-from src.backend.torrent_clients.qbittorrent import QBittorrentClient
-from src.backend.torrent_clients.deluge import DelugeClient
-from src.backend.torrent_clients.rtorrent import RTorrentClient
-from src.backend.torrent_clients.transmission import TransmissionClient
-from src.backend.image_host_uploading.img_downloader import ImageDownloader
-from src.backend.image_host_uploading.img_uploader import ImageUploader
+from PySide6.QtCore import SignalInstance
+from pymediainfo import MediaInfo
+from torf import Torrent
+
 from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
 from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
+from src.backend.image_host_uploading.img_downloader import ImageDownloader
+from src.backend.image_host_uploading.img_uploader import ImageUploader
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.image_host_uploading.ptpimg import PTPIMGUploader
-from src.backend.utils.images import format_image_data_to_str
+from src.backend.template_selector import TemplateSelectorBackEnd
+from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
+from src.backend.tokens import FileToken
+from src.backend.torrent_clients.deluge import DelugeClient
+from src.backend.torrent_clients.qbittorrent import QBittorrentClient
+from src.backend.torrent_clients.rtorrent import RTorrentClient
+from src.backend.torrent_clients.transmission import TransmissionClient
+from src.backend.torrents import clone_torrent, generate_torrent, write_torrent
+from src.backend.trackers import (
+    AitherSearch,
+    BHDSearch,
+    HunoSearch,
+    LSTSearch,
+    MTVSearch,
+    PTPSearch,
+    ReelFlixSearch,
+    TLSearch,
+    aither_uploader,
+    bhd_uploader,
+    huno_uploader,
+    lst_uploader,
+    mtv_uploader,
+    ptp_uploader,
+    rf_uploader,
+    tl_upload,
+)
+from src.backend.trackers.utils import format_image_tag
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
+from src.backend.utils.images import format_image_data_to_str
+from src.config.config import Config
+from src.enums.media_mode import MediaMode
+from src.enums.torrent_client import TorrentClientSelection
+from src.enums.tracker_selection import TrackerSelection
+from src.exceptions import ImageHostError
+from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import (
-    ImageUploadData,
-    ImageUploadFromTo,
     ImageHost,
     ImageSource,
+    ImageUploadData,
+    ImageUploadFromTo,
 )
 from src.payloads.media_search import MediaSearchPayload
-from src.payloads.trackers import TrackerInfo
 from src.payloads.tracker_search_result import TrackerSearchResult
-from src.nf_jinja2 import Jinja2TemplateEngine
+from src.payloads.trackers import TrackerInfo
 
 
 class ProcessBackEnd:
@@ -120,6 +123,10 @@ class ProcessBackEnd:
             elif TrackerSelection(tracker_name) == TrackerSelection.HUNO:
                 tasks.append(
                     self._dupe_huno(tracker_name=tracker_name, file_input=file_input)
+                )
+            elif TrackerSelection(tracker_name) == TrackerSelection.LST:
+                tasks.append(
+                    self._dupe_lst(tracker_name=tracker_name, file_input=file_input)
                 )
 
         async_results = await asyncio.gather(*tasks)
@@ -219,6 +226,15 @@ class ProcessBackEnd:
         ).search(file_name=file_input)
         if aither_search:
             return TrackerSelection(tracker_name), aither_search
+        
+    async def _dupe_lst(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
+        lst_search = LSTSearch(
+            api_key=self.config.cfg_payload.lst_tracker.api_key,
+        ).search(file_name=file_input)
+        if lst_search:
+            return TrackerSelection(tracker_name), lst_search
 
     def process_trackers(
         self,
@@ -940,6 +956,29 @@ class ProcessBackEnd:
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
                 stream_optimized=bool(tracker_payload.stream_optimized),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_payload,
+                timeout=self.config.cfg_payload.timeout,
+            )
+        elif tracker == TrackerSelection.LST:
+            tracker_payload = self.config.cfg_payload.lst_tracker
+            return lst_uploader(
+                api_key=tracker_payload.api_key,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
+                nfo=nfo,
+                internal=bool(tracker_payload.internal),
+                anonymous=bool(tracker_payload.anonymous),
+                personal_release=bool(tracker_payload.personal_release),
+                opt_in_to_mod_queue=bool(tracker_payload.mod_queue_opt_in),
+                draft_queue_opt_in=bool(tracker_payload.draft_queue_opt_in),
+                featured=bool(tracker_payload.featured),
+                free=bool(tracker_payload.free),
+                double_up=bool(tracker_payload.double_up),
+                sticky=bool(tracker_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,

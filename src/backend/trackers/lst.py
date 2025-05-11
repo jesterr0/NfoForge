@@ -4,11 +4,12 @@ from pymediainfo import MediaInfo
 
 from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
 from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
+from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
+from src.exceptions import TrackerError
 from src.payloads.media_search import MediaSearchPayload
 
 
-def huno_uploader(
+def lst_uploader(
     api_key: str,
     torrent_file: Path,
     file_input: Path,
@@ -16,14 +17,20 @@ def huno_uploader(
     nfo: str,
     internal: bool,
     anonymous: bool,
-    stream_optimized: bool,
+    personal_release: bool,
+    opt_in_to_mod_queue: bool,
+    draft_queue_opt_in: bool,
+    featured: bool,
+    free: bool,
+    double_up: bool,
+    sticky: bool,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
 ) -> bool | None:
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
-    uploader = HunoUploader(
+    uploader = LSTUploader(
         api_key=api_key,
         torrent_file=torrent_file,
         file_input=file_input,
@@ -39,19 +46,19 @@ def huno_uploader(
         nfo=nfo,
         internal=internal,
         anonymous=anonymous,
-        personal_release=None,
-        stream_optimized=stream_optimized,
-        opt_in_to_mod_queue=None,
-        featured=None,
-        free=None,
-        double_up=None,
-        sticky=None,
+        personal_release=personal_release,
+        opt_in_to_mod_queue=opt_in_to_mod_queue,
+        draft_queue_opt_in=draft_queue_opt_in,
+        featured=featured,
+        free=free,
+        double_up=double_up,
+        sticky=sticky,
     )
     return upload
 
 
-class HunoUploader(Unit3dBaseUploader):
-    """Upload torrents to HUNO"""
+class LSTUploader(Unit3dBaseUploader):
+    """Upload torrents to LST"""
 
     __slots__ = ()
 
@@ -64,28 +71,37 @@ class HunoUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.HUNO,
-            base_url="https://hawke.uno",
+            tracker_name=TrackerSelection.LST,
+            base_url="https://lst.gg",
             api_key=api_key,
             torrent_file=torrent_file,
             file_input=file_input,
             mediainfo_obj=mediainfo_obj,
-            cat_enum=HunoCategory,
-            res_enum=HunoResolution,
-            type_enum=HunoType,
+            cat_enum=LSTCategory,
+            res_enum=LSTResolution,
+            type_enum=LSTType,
             timeout=timeout,
         )
 
+    # def _get_category_id(self) -> str:  # TODO: detect TV here when support is added
+    #     return super()._get_category_id()
 
-class HunoSearch(Unit3dBaseSearch):
-    """Search HUNO"""
+    def _get_resolution_id(self) -> str:
+        try:
+            return super()._get_resolution_id()
+        except TrackerError:
+            return LSTResolution.RES_OTHER.value
+
+
+class LSTSearch(Unit3dBaseSearch):
+    """Search LST"""
 
     __slots__ = ()
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.HUNO,
-            base_url="https://hawke.uno",
+            tracker_name=TrackerSelection.LST,
+            base_url="https://lst.gg",
             api_key=api_key,
             timeout=timeout,
         )
