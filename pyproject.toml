@@ -1,6 +1,6 @@
 [project]
 name = "NfoForge"
-version = "0.7.2"
+version = "0.7.3"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -21,7 +21,7 @@ dependencies = [
     "pyside6==6.8.0.2",
     "psutil>=7.0.0",
     "pyimgbox>=1.0.7",
-    "aiohttp>=3.11.12",
+    "aiohttp>=3.11.18",
     "semver>=3.0.4",
     "pyotp>=2.9.0",
     "qbittorrent-api>=2025.2.0",
