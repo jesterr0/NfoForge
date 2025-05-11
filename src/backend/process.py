@@ -1,66 +1,67 @@
 import asyncio
-import shutil
-import traceback
 from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
-from pymediainfo import MediaInfo
-from PySide6.QtCore import SignalInstance
-from torf import Torrent
+import shutil
+import traceback
 from typing import Any, Sequence
 
-from src.config.config import Config
-from src.backend.tokens import FileToken
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.torrent_client import TorrentClientSelection
-from src.enums.media_mode import MediaMode
-from src.exceptions import ImageHostError
-from src.backend.trackers import (
-    MTVSearch,
-    mtv_uploader,
-    TLSearch,
-    tl_upload,
-    BHDSearch,
-    bhd_uploader,
-    ptp_uploader,
-    PTPSearch,
-    ReelFlixSearch,
-    rf_uploader,
-    AitherSearch,
-    aither_uploader,
-    HunoSearch,
-    huno_uploader,
-    LSTSearch,
-    lst_uploader,
-)
-from src.backend.template_selector import TemplateSelectorBackEnd
-from src.backend.torrents import generate_torrent, write_torrent, clone_torrent
-from src.backend.trackers.utils import format_image_tag
-from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
-from src.backend.torrent_clients.qbittorrent import QBittorrentClient
-from src.backend.torrent_clients.deluge import DelugeClient
-from src.backend.torrent_clients.rtorrent import RTorrentClient
-from src.backend.torrent_clients.transmission import TransmissionClient
-from src.backend.image_host_uploading.img_downloader import ImageDownloader
-from src.backend.image_host_uploading.img_uploader import ImageUploader
+from PySide6.QtCore import SignalInstance
+from pymediainfo import MediaInfo
+from torf import Torrent
+
 from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
 from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
+from src.backend.image_host_uploading.img_downloader import ImageDownloader
+from src.backend.image_host_uploading.img_uploader import ImageUploader
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.image_host_uploading.ptpimg import PTPIMGUploader
-from src.backend.utils.images import format_image_data_to_str
+from src.backend.template_selector import TemplateSelectorBackEnd
+from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
+from src.backend.tokens import FileToken
+from src.backend.torrent_clients.deluge import DelugeClient
+from src.backend.torrent_clients.qbittorrent import QBittorrentClient
+from src.backend.torrent_clients.rtorrent import RTorrentClient
+from src.backend.torrent_clients.transmission import TransmissionClient
+from src.backend.torrents import clone_torrent, generate_torrent, write_torrent
+from src.backend.trackers import (
+    AitherSearch,
+    BHDSearch,
+    HunoSearch,
+    LSTSearch,
+    MTVSearch,
+    PTPSearch,
+    ReelFlixSearch,
+    TLSearch,
+    aither_uploader,
+    bhd_uploader,
+    huno_uploader,
+    lst_uploader,
+    mtv_uploader,
+    ptp_uploader,
+    rf_uploader,
+    tl_upload,
+)
+from src.backend.trackers.utils import format_image_tag
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
+from src.backend.utils.images import format_image_data_to_str
+from src.config.config import Config
+from src.enums.media_mode import MediaMode
+from src.enums.torrent_client import TorrentClientSelection
+from src.enums.tracker_selection import TrackerSelection
+from src.exceptions import ImageHostError
+from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import (
-    ImageUploadData,
-    ImageUploadFromTo,
     ImageHost,
     ImageSource,
+    ImageUploadData,
+    ImageUploadFromTo,
 )
 from src.payloads.media_search import MediaSearchPayload
-from src.payloads.trackers import TrackerInfo
 from src.payloads.tracker_search_result import TrackerSearchResult
-from src.nf_jinja2 import Jinja2TemplateEngine
+from src.payloads.trackers import TrackerInfo
 
 
 class ProcessBackEnd:
@@ -972,7 +973,7 @@ class ProcessBackEnd:
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
                 personal_release=bool(tracker_payload.personal_release),
-                mod_queue_opt_in=bool(tracker_payload.mod_queue_opt_in),
+                opt_in_to_mod_queue=bool(tracker_payload.mod_queue_opt_in),
                 draft_queue_opt_in=bool(tracker_payload.draft_queue_opt_in),
                 featured=bool(tracker_payload.featured),
                 free=bool(tracker_payload.free),
