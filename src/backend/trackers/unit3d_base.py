@@ -1,26 +1,26 @@
-import re
-import regex
-import requests
 from datetime import datetime
-
 from pathlib import Path
-from pymediainfo import MediaInfo
+import re
 from typing import Type
 
-from src.logger.nfo_forge_logger import LOG
+from pymediainfo import MediaInfo
+import regex
+import requests
+
+from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
+from src.backend.utils.media_info_utils import MinimalMediaInfo
+from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.tracker_selection import TrackerSelection
+from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
+from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
+from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.enums.trackers.reelflix import (
     ReelFlixCategory,
     ReelFlixResolution,
     ReelFlixType,
 )
-from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
-from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
-from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.exceptions import TrackerError
-from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
-
-from src.backend.utils.media_info_utils import MinimalMediaInfo
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
@@ -50,7 +50,7 @@ class Unit3dBaseUploader:
 
     def __init__(
         self,
-        tracker_name: str,
+        tracker_name: TrackerSelection,
         base_url: str,
         api_key: str,
         torrent_file: Path,
@@ -87,7 +87,6 @@ class Unit3dBaseUploader:
         personal_release: bool | None = True,
         stream_optimized: bool = False,
         opt_in_to_mod_queue: bool | None = False,
-        mod_queue_opt_in: bool | None = False,
         draft_queue_opt_in: bool | None = False,
         featured: bool | None = False,
         free: bool | None = False,
@@ -115,8 +114,6 @@ class Unit3dBaseUploader:
         }
         if personal_release is not None:
             upload_payload["personal_release"] = int(personal_release)
-        if opt_in_to_mod_queue is not None:
-            upload_payload["opt_in_to_mod_queue"] = int(opt_in_to_mod_queue)
         if imdb_id:
             upload_payload["imdb"] = imdb_id.replace("t", "")
         if tmdb_id:
@@ -125,12 +122,16 @@ class Unit3dBaseUploader:
             upload_payload["tvdb"] = tvdb_id
         if mal_id:
             upload_payload["mal"] = mal_id
-        
-        # lst only?
-        if mod_queue_opt_in is not None:
-            upload_payload["mod_queue_opt_in"] = int(mod_queue_opt_in)
-        if draft_queue_opt_in is not None:
-            upload_payload["draft_queue_opt_in"] = int(draft_queue_opt_in)
+
+        # some trackers have different keys for different features, we'll handle that here
+        if self.tracker_name in (TrackerSelection.AITHER, TrackerSelection.REELFLIX):
+            if opt_in_to_mod_queue is not None:
+                upload_payload["opt_in_to_mod_queue"] = int(opt_in_to_mod_queue)
+        elif self.tracker_name is TrackerSelection.LST:
+            if opt_in_to_mod_queue is not None:
+                upload_payload["mod_queue_opt_in"] = int(opt_in_to_mod_queue)
+            if draft_queue_opt_in is not None:
+                upload_payload["draft_queue_opt_in"] = int(draft_queue_opt_in)
 
         # internal/staff only below for UNIT3D (except for HUNO)
         if featured is not None:
@@ -277,7 +278,11 @@ class Unit3dBaseSearch:
     __slots__ = ("tracker_name", "search_url", "api_key", "timeout")
 
     def __init__(
-        self, tracker_name: str, base_url: str, api_key: str, timeout: int = 60
+        self,
+        tracker_name: TrackerSelection,
+        base_url: str,
+        api_key: str,
+        timeout: int = 60,
     ) -> None:
         self.tracker_name = tracker_name
         self.search_url = f"{cleanse_base_url(base_url)}/api/torrents/filter"
