@@ -1,20 +1,19 @@
 import asyncio
 import concurrent.futures
+from itertools import zip_longest
 import re
-import requests
-import tvdb_v4_official
+from typing import Any
 
 from guessit import guessit
-from itertools import zip_longest
 from imdb import Cinemagoer
 from imdb.Movie import Movie
-from typing import Any
 from rapidfuzz import fuzz
+import requests
+import tvdb_v4_official
 from unidecode import unidecode
 
-from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.backend.utils.super_sub import normalize_super_sub
-from src.exceptions import MediaParsingError
+from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 
 
 class MediaSearchBackEnd:
@@ -34,8 +33,13 @@ class MediaSearchBackEnd:
         media_title, media_year = self._guessit(media_str)
 
         # Create a list of URLs for movie and TV search
-        movie_url = f"https://api.themoviedb.org/3/search/movie?page=1&query={media_title}&year={media_year}"
-        tv_url = f"https://api.themoviedb.org/3/search/tv?page=1&query={media_title}&year={media_year}"
+        movie_url = (
+            f"https://api.themoviedb.org/3/search/movie?page=1&query={media_title}"
+        )
+        tv_url = f"https://api.themoviedb.org/3/search/tv?page=1&query={media_title}"
+        if media_year:
+            movie_url += f"&year={media_year}"
+            tv_url += f"&year={media_year}"
 
         # Execute requests concurrently
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
@@ -176,11 +180,11 @@ class MediaSearchBackEnd:
     def _guessit(input_string: str) -> tuple[str | None, str]:
         get_info = guessit(input_string)
         title = get_info.get("title")
-        if not title:
-            raise MediaParsingError(
-                f"There was an error parsing the title from input '{input_string}'"
-            )
         year = get_info.get("year", "")
+        if not title and year:
+            title = input_string.split(str(year))[0].strip()
+        elif not title and not year:
+            title = input_string
         return title, year
 
     async def parse_other_ids(

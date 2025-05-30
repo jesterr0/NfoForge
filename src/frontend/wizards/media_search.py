@@ -55,8 +55,6 @@ class QueuedWorker(QThread):
         try:
             result = self.backend._parse_tmdb_api(self.query)
             self.job_finished.emit(OrderedDict(result))
-        except MediaParsingError as mpe:
-            self.job_failed.emit(str(mpe))
         except Exception as e:
             self.job_failed.emit(f"Failed to parse TMDB: {e}\n{traceback.format_exc()}")
 
