@@ -7,7 +7,6 @@ import niquests
 from pymediainfo import MediaInfo
 import regex
 
-from enums import media_mode
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
