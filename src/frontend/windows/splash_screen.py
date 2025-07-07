@@ -80,19 +80,19 @@ class SplashScreenLoader(QThread):
 
     def _update_built_in_plugins(self) -> None:
         built_in_plugins = {
-            "Basic (built in)": PluginPayload(
-                name="Basic (built in)", wizard=MediaInputBasic
+            "Basic (built in, external plugin slot disabled)": PluginPayload(
+                name="Basic (built in, external plugin slot disabled)", wizard=MediaInputBasic
             ),
-            "Advanced (built in)": PluginPayload(
-                name="Advanced (built in)",
+            "Advanced (built in, external plugin slot disabled)": PluginPayload(
+                name="Advanced (built in, external plugin slot disabled)",
                 wizard=MediaInputAdvanced,
             ),
-            "Token Replacer (disabled)": PluginPayload(
-                name="Token Replacer (disabled)",
+            "Default Token Replacer (built in, external plugin slot disabled)": PluginPayload(
+                name="Token Replacer (built in, external plugin slot disabled)",
                 token_replacer=False,
             ),
-            "Pre Upload (disabled)": PluginPayload(
-                name="Pre Upload (disabled)",
+            "Default Pre Upload (built in, external plugin slot disabled)": PluginPayload(
+                name="Default Pre Upload (built in, external plugin slot disabled)",
                 pre_upload=False,
             ),
         }
