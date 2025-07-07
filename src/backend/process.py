@@ -315,19 +315,21 @@ class ProcessBackEnd:
                 )
                 if nfo_template:
                     # convert images for the NFO
-                    tracker_images = images[cur_tracker]
-                    format_images_to_str = format_image_data_to_str(
-                        tracker_images,
-                        tracker_info.url_type,
-                        tracker_info.column_s,
-                        tracker_info.column_space,
-                        tracker_info.row_space,
-                    )
-                    formatted_screens = format_image_tag(
-                        cur_tracker,
-                        format_images_to_str,
-                        getattr(tracker_info, "image_width", 350),
-                    )
+                    formatted_screens = None
+                    if cur_tracker in images:
+                        tracker_images = images[cur_tracker]
+                        format_images_to_str = format_image_data_to_str(
+                            tracker_images,
+                            tracker_info.url_type,
+                            tracker_info.column_s,
+                            tracker_info.column_space,
+                            tracker_info.row_space,
+                        )
+                        formatted_screens = format_image_tag(
+                            cur_tracker,
+                            format_images_to_str,
+                            getattr(tracker_info, "image_width", 350),
+                        )
 
                     nfo = TokenReplacer(
                         media_input=media_input,

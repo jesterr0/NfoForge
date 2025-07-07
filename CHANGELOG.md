@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Don't send TVDB ID to Unit3d trackers if media type is not series.
+- Error when image generation is disabled.
 
 ### Removed
 
