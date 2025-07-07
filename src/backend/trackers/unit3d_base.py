@@ -125,7 +125,7 @@ class Unit3dBaseUploader:
             upload_payload["imdb"] = int(imdb_id.replace("t", ""))
         if tmdb_id:
             upload_payload["tmdb"] = tmdb_id
-        if media_mode is MediaMode.SERIES and tvdb_id:
+        if self.media_mode is MediaMode.SERIES and tvdb_id:
             upload_payload["tvdb"] = tvdb_id
         if mal_id:
             upload_payload["mal"] = mal_id
