@@ -3,9 +3,9 @@ from pathlib import Path
 import re
 from typing import Type
 
+import niquests
 from pymediainfo import MediaInfo
 import regex
-import requests
 
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -147,7 +147,7 @@ class Unit3dBaseUploader:
 
         open_torrent = self.torrent_file.open(mode="rb")
         try:
-            with requests.post(
+            with niquests.post(
                 url=self.upload_url,
                 files={"torrent": open_torrent},
                 params=params,
@@ -164,7 +164,7 @@ class Unit3dBaseUploader:
                 else:
                     error_msg = f"Message='{message}' Context='{context}'"
                     raise TrackerError(error_msg)
-        except (requests.exceptions.RequestException, TrackerError) as error:
+        except (niquests.exceptions.RequestException, TrackerError) as error:
             requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
             raise TrackerError(requests_exc_error_msg)
@@ -302,7 +302,7 @@ class Unit3dBaseSearch:
                 LOG.LOG_SOURCE.BE,
                 f"Searching {self.tracker_name} for title: {file_name}",
             )
-            with requests.get(
+            with niquests.get(
                 self.search_url,
                 headers=TRACKER_HEADERS,
                 params=params,
@@ -311,7 +311,7 @@ class Unit3dBaseSearch:
                 if response.ok and response.status_code == 200:
                     response_json = response.json()
                     results = self._convert_response(response_json)
-        except requests.exceptions.RequestException as error_message:
+        except niquests.exceptions.RequestException as error_message:
             raise TrackerError(error_message)
 
         results = results if results else []

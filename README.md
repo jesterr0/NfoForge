@@ -70,7 +70,7 @@ _Supported trackers will be added overtime, if you'd like a tracker added open a
 - pyimgbox
 - PySide6
 - qbittorrent-api
-- requests
+- niquests
 - tomlkit
 - torf
 - transmission-rpc

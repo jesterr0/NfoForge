@@ -1,32 +1,33 @@
-import guessit
-import re
-import requests
-import pickle
-import pyotp
-from bs4 import BeautifulSoup, Tag as bs4Tag
 from collections.abc import Sequence
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
-from pymediainfo import MediaInfo
+import pickle
+import re
 from typing import Any
-from unidecode import unidecode
 from xml.etree import ElementTree as ET
 
-from src.logger.nfo_forge_logger import LOG
+from bs4 import BeautifulSoup, Tag as bs4Tag
+import guessit
+import niquests
+from pymediainfo import MediaInfo
+import pyotp
+from unidecode import unidecode
+
+from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.audio_formats import AudioFormats
+from src.enums.media_mode import MediaMode
+from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.trackers.morethantv import (
-    MTVCategories,
     MTVAudioTags,
+    MTVCategories,
     MTVResolutionIDs,
     MTVSourceIDs,
     MTVSourceOrigin,
 )
-from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
-from src.enums.media_mode import MediaMode
 from src.exceptions import TrackerError
-from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.backend.trackers.utils import TRACKER_HEADERS
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
@@ -93,7 +94,7 @@ class MTVUploader:
         self.cookie_path = cookie_dir / "mtv_cookie.pkl"
         self.timeout = timeout
 
-        self._session = requests.Session()
+        self._session = niquests.Session()
 
     def login(self, username: str, password: str, totp: str):
         if self._load_cookies():
@@ -151,7 +152,7 @@ class MTVUploader:
 
         # Handle 2FA if required
         final_response = self.handle_2fa(login_response, totp)
-        if "authkey=" in final_response.text:
+        if final_response.text and "authkey=" in final_response.text:
             LOG.info(
                 LOG.LOG_SOURCE.BE,
                 "Successfully logged into MoreThanTV",
@@ -169,9 +170,9 @@ class MTVUploader:
             raise TrackerError(auth_key_failed_msg)
 
     def handle_2fa(
-        self, login_response: requests.Response, totp: str
-    ) -> requests.Response:
-        if "twofactor/login" in login_response.url:
+        self, login_response: niquests.Response, totp: str
+    ) -> niquests.Response:
+        if login_response.url and "twofactor/login" in login_response.url:
             # Generate a 2FA code
             # TODO: get the below code manually OR prompt the user ahead of time if
             # it's missing or prompt the user or something, maybe later just add support
@@ -207,7 +208,7 @@ class MTVUploader:
         try:
             with self._session.get(self.UPLOAD_URL) as response:
                 return self.get_auth_key(response.text)
-        except requests.RequestException:
+        except niquests.RequestException:
             return None
 
     def _save_cookies(self) -> None:
@@ -219,7 +220,7 @@ class MTVUploader:
         if self.cookie_path.exists():
             with open(self.cookie_path, "rb") as file:
                 cookies = pickle.load(file)
-                self._session.cookies.update(cookies)
+                self._session.cookies = cookies
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"MoreThanTV cookies loaded from {self.cookie_path}",
@@ -311,7 +312,7 @@ class MTVUploader:
         )
 
         # dupe detected
-        if re.search(
+        if upload_page.text and re.search(
             "The torrent contained one or more possible dupes. Please check carefully!",
             upload_page.text,
         ):
@@ -320,8 +321,12 @@ class MTVUploader:
             raise TrackerError(dupe_error_msg)
 
         # success
-        if re.search(r"torrents\.php\?id=", upload_page.url) or re.search(
-            "Your torrent has been uploaded however", str(upload_page.text)
+        if (
+            upload_page.url
+            and re.search(r"torrents\.php\?id=", upload_page.url)
+            or re.search(
+                "Your torrent has been uploaded however", str(upload_page.text)
+            )
         ):
             LOG.info(LOG.LOG_SOURCE.BE, "Successfully uploaded to MoreThanTV")
             return torrent_file
@@ -330,10 +335,14 @@ class MTVUploader:
         else:
             # try to get error
             failure_str = None
-            get_failure = re.search(
-                r'(?s)<div id="messagebar.*?".+?<pre>(.+?)</pre>|<div id="messagebar.*?>.(.+?)</div>',
-                upload_page.text,
-                flags=re.MULTILINE,
+            get_failure = (
+                re.search(
+                    r'(?s)<div id="messagebar.*?".+?<pre>(.+?)</pre>|<div id="messagebar.*?>.(.+?)</div>',
+                    upload_page.text,
+                    flags=re.MULTILINE,
+                )
+                if upload_page.text
+                else None
             )
             if get_failure:
                 failure_str = next(
@@ -599,17 +608,18 @@ class MTVUploader:
         return has_subtitles
 
     @staticmethod
-    def get_token(html: str) -> str | None:
-        soup = BeautifulSoup(html, features="lxml")
-        input_token = soup.find("input", {"name": "token"})
-        if isinstance(input_token, bs4Tag):
-            value = input_token.get("value")
-            return value if isinstance(value, str) else None
+    def get_token(html: str | None) -> str | None:
+        if html:
+            soup = BeautifulSoup(html, features="lxml")
+            input_token = soup.find("input", {"name": "token"})
+            if isinstance(input_token, bs4Tag):
+                value = input_token.get("value")
+                return value if isinstance(value, str) else None
         return None
 
     @staticmethod
-    def get_auth_key(html: str) -> str | None:
-        auth_key = re.search(r"var authkey = \"([0-9a-z]+)", html)
+    def get_auth_key(html: str | None) -> str | None:
+        auth_key = re.search(r"var authkey = \"([0-9a-z]+)", html if html else "")
         return auth_key.group().split('"')[1] if auth_key else None
 
 
@@ -650,7 +660,7 @@ class MTVSearch:
         LOG.info(LOG.LOG_SOURCE.BE, f"Searching MoreThanTV for title: {params['q']}")
 
         try:
-            response = requests.get(
+            response = niquests.get(
                 MTVUploader.SEARCH_URL,
                 params=params,
                 headers=TRACKER_HEADERS,
@@ -665,13 +675,15 @@ class MTVSearch:
                 raise TrackerError(
                     f"Failed to reach server ({response.reason} - {response.status_code})"
                 )
-        except requests.RequestException as e:
+        except niquests.RequestException as e:
             raise TrackerError(f"Failed to reach server: {e}")
         except Exception as unhandled_error:
             raise TrackerError(f"Failed to parse XML: {unhandled_error}")
 
-    def handle_xml(self, xml_str: str) -> list[TrackerSearchResult]:
+    def handle_xml(self, xml_str: str | None) -> list[TrackerSearchResult]:
         results = []
+        if not xml_str:
+            return results
         tree = ET.ElementTree(ET.fromstring(xml_str))
         root = tree.getroot()
 

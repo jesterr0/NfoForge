@@ -47,7 +47,7 @@ about_txt = f"""\
     <li>pyimgbox</li>
     <li>PySide6</li>
     <li>qbittorrent-api</li>
-    <li>requests</li>
+    <li>niquests</li>
     <li>tomlkit</li>
     <li>torf</li>
     <li>transmission-rpc</li>

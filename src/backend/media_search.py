@@ -8,7 +8,7 @@ from guessit import guessit
 from imdb import Cinemagoer
 from imdb.Movie import Movie
 from rapidfuzz import fuzz
-import requests
+import niquests
 import tvdb_v4_official
 from unidecode import unidecode
 
@@ -19,7 +19,7 @@ from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 class MediaSearchBackEnd:
     def __init__(self, api_key: str | None = None):
         self.media_data = dict()
-        self.session = requests.Session()
+        self.session = niquests.Session()
         self.params = {
             "api_key": api_key,
             "language": "en-US",
@@ -168,7 +168,7 @@ class MediaSearchBackEnd:
             with self.session.get(url, params=self.params) as response:
                 response.raise_for_status()
                 return response.json()["results"]
-        except requests.exceptions.ConnectionError:
+        except niquests.exceptions.ConnectionError:
             return []
 
     def _fetch_tmdb_external_ids(self, media_id):
@@ -271,7 +271,7 @@ class MatchAnilistTitle:
         """
         variables = {"search": tmdb_title}
         response = await asyncio.to_thread(
-            requests.post,
+            niquests.post,
             "https://graphql.anilist.co",
             json={"query": query, "variables": variables},
         )

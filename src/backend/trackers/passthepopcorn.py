@@ -1,26 +1,27 @@
-import re
-import regex
-import requests
+from pathlib import Path
 import pickle
-import pyotp
+import re
+
 from guessit import guessit
 from imdb.Movie import Movie
-from pathlib import Path
+import niquests
 from pymediainfo import MediaInfo
+import pyotp
+import regex
 
-from src.logger.nfo_forge_logger import LOG
+from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.trackers.passthepopcorn import (
-    PTPResolution,
-    PTPType,
     PTPCodec,
     PTPContainer,
+    PTPResolution,
     PTPSource,
+    PTPType,
 )
 from src.exceptions import TrackerError
-from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.backend.trackers.utils import TRACKER_HEADERS
-from src.payloads.tracker_search_result import TrackerSearchResult
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.tracker_search_result import TrackerSearchResult
 
 
 def ptp_uploader(
@@ -234,7 +235,7 @@ class PTPUploader:
         self.totp = totp
         self.timeout = timeout
 
-        self._session = requests.Session()
+        self._session = niquests.Session()
 
     def upload(
         self,
@@ -283,7 +284,7 @@ class PTPUploader:
             get_poster = media_search_payload.imdb_data.get("full-size cover url")
             if not get_poster:
                 get_poster = (
-                    f'https://image.tmdb.org/t/p/original{media_search_payload.tmdb_data.get("poster_path")}'
+                    f"https://image.tmdb.org/t/p/original{media_search_payload.tmdb_data.get('poster_path')}"
                     if media_search_payload.tmdb_data.get("poster_path")
                     else None
                 )
@@ -324,19 +325,21 @@ class PTPUploader:
         with self._session as response:
             files = {}
             with open(torrent_file, "rb") as t_file:
-                files = {
-                    "file_input": (
-                        "placeholder.torrent",
-                        t_file.read(),
-                        "application/x-bittorent",
-                    )
-                }
+                files.update(
+                    {
+                        "file_input": (
+                            "placeholder.torrent",
+                            t_file.read(),
+                            "application/x-bittorent",
+                        )
+                    }
+                )
             upload = response.post(
                 url=url, headers=TRACKER_HEADERS, data=data, files=files
             )
 
             # if the response contains our announce URL, then we are on the upload page and the upload wasn't successful.
-            if upload.text.find(self.announce_url) != -1:
+            if upload.text and upload.text.find(self.announce_url) != -1:
                 error_message = ""
                 match = re.search(
                     r"""<div class="alert alert--error.*?>(.+?)</div>""", upload.text
@@ -348,9 +351,13 @@ class PTPUploader:
                 )
 
             # URL format in case of successful upload: https://passthepopcorn.me/torrents.php?id=9329&torrentid=91868
-            check_for_success = re.match(
-                r".*?passthepopcorn\.me/torrents\.php\?id=(\d+)&torrentid=(\d+)",
-                upload.url,
+            check_for_success = (
+                re.match(
+                    r".*?passthepopcorn\.me/torrents\.php\?id=(\d+)&torrentid=(\d+)",
+                    upload.url,
+                )
+                if upload.url
+                else None
             )
             if not check_for_success:
                 raise TrackerError(
@@ -368,7 +375,7 @@ class PTPUploader:
         headers = {"referer": "https://ptpimg.me/index.php"}
         url = "https://ptpimg.me/upload.php"
 
-        response = requests.post(url, headers=headers, data=payload)
+        response = niquests.post(url, headers=headers, data=payload)
         try:
             response_json = response.json()
             ptpimg_code = response_json[0]["code"]
@@ -663,7 +670,7 @@ class PTPUploader:
                     if token:
                         self._save_cookies()
                         return token
-        except requests.RequestException as e:
+        except niquests.RequestException as e:
             raise TrackerError(f"Server error: {e}")
         except Exception as unhandled_exception:
             raise TrackerError(f"Unhandled exception: {unhandled_exception}")
@@ -672,23 +679,31 @@ class PTPUploader:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
             with self._session.get(self.UPLOAD_URL) as response:
-                if response.text.find("""<a href="login.php?act=recover">""") != -1:
+                if (
+                    response.text
+                    and response.text.find("""<a href="login.php?act=recover">""") != -1
+                ):
                     raise TrackerError(
                         "Looks like you are not logged in to PTP. Probably due to the bad user name, password, or expired session"
                     )
                 elif (
-                    "Your popcorn quota has been reached, come back later!"
+                    response.text
+                    and "Your popcorn quota has been reached, come back later!"
                     in response.text
                 ):
                     raise TrackerError(
                         "Your PTP request/popcorn quota has been reached, try again later"
                     )
-                find_token = re.search(
-                    r'data-AntiCsrfToken="(.+)"', response.text, flags=re.MULTILINE
+                find_token = (
+                    re.search(
+                        r'data-AntiCsrfToken="(.+)"', response.text, flags=re.MULTILINE
+                    )
+                    if response.text
+                    else None
                 )
                 if find_token:
                     return find_token.group(1)
-        except requests.RequestException:
+        except niquests.RequestException:
             return None
 
     def _save_cookies(self) -> None:
@@ -702,7 +717,7 @@ class PTPUploader:
         if self.cookie_path.exists():
             with open(self.cookie_path, "rb") as file:
                 cookies = pickle.load(file)
-                self._session.cookies.update(cookies)
+                self._session.cookies = cookies
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"PassThePopcorn cookies loaded from {self.cookie_path}",
@@ -711,7 +726,7 @@ class PTPUploader:
         LOG.debug(LOG.LOG_SOURCE.BE, "PassThePopcorn cookies not found")
         return False
 
-    def _handle_2fa(self, data: dict[str, str], totp: str) -> requests.Response:
+    def _handle_2fa(self, data: dict[str, str], totp: str) -> niquests.Response:
         data["TfaCode"] = pyotp.TOTP(totp).now()
         data["TfaType"] = "normal"
         headers = {
@@ -770,7 +785,7 @@ class PTPSearch:
             f"Searching PassThePopcorn for title: {movie_title} ({movie_year})",
         )
         try:
-            response = requests.get(
+            response = niquests.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
             if response.ok and response.status_code == 200:
@@ -797,14 +812,14 @@ class PTPSearch:
                                     leechers=torrent.get("TotalLeechers"),
                                     grabs=torrent.get("TotalSnatched"),
                                     files=len(movie_file.get("FileList", [])),
-                                    imdb_id=f'tt{torrent.get("ImdbId")}'
+                                    imdb_id=f"tt{torrent.get('ImdbId')}"
                                     if torrent.get("ImdbId")
                                     else None,
                                 )
                                 results.append(result)
 
             return results
-        except requests.exceptions.RequestException as error_message:
+        except niquests.exceptions.RequestException as error_message:
             raise TrackerError(error_message)
 
     def get_group_id(self, imdb_id: str) -> str | None:
@@ -818,12 +833,12 @@ class PTPSearch:
         }
 
         try:
-            response = requests.get(
+            response = niquests.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
             if response.ok and response.status_code == 200:
                 response_json = response.json()
                 if response_json.get("Page", "") == "Details":
                     return response_json.get("GroupId")
-        except requests.exceptions.RequestException as error_message:
+        except niquests.exceptions.RequestException as error_message:
             raise TrackerError(error_message)
