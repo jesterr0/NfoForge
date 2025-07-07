@@ -1,4 +1,5 @@
 from typing import NamedTuple
+
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.rename import TypeHierarchy
 

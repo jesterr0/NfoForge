@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+
 from src.enums.rename import TypeHierarchy
 from src.packages.custom_types import RenameNormalization
 

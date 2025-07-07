@@ -1,38 +1,38 @@
+from collections.abc import Iterable
+from pathlib import Path
 import re
-import unidecode
+from typing import Any, Type
 
 from auto_qpf import ChapterGenerator
 from auto_qpf.enums import ChapterType
 from babelfish.language import Language as BabelLanguage
-from collections.abc import Iterable
 from guessit import guessit
 from iso639 import Lang
 from iso639.exceptions import InvalidLanguageValue
-from pathlib import Path
 from pymediainfo import MediaInfo, Track
-from typing import Type, Any
+import unidecode
 
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval, SharedWithType
-from src.exceptions import GuessitParsingError, InvalidTokenError
-from src.backend.tokens import Tokens, TokenData, TokenType, FileToken, NfoToken
-from src.backend.utils.media_info_utils import (
-    calculate_avg_video_bit_rate,
-    MinimalMediaInfo,
-)
+from src.backend.tokens import FileToken, NfoToken, TokenData, TokenType, Tokens
 from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
-from src.backend.utils.video_codecs import VideoCodecs
-from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.backend.utils.rename_normalizations import EDITION_INFO, EDITION_STRINGS_ONLY
 from src.backend.utils.language import (
+    get_full_language_str,
     get_language_mi,
     get_language_str,
-    get_full_language_str,
 )
+from src.backend.utils.media_info_utils import (
+    MinimalMediaInfo,
+    calculate_avg_video_bit_rate,
+)
+from src.backend.utils.rename_normalizations import EDITION_INFO, EDITION_STRINGS_ONLY
+from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.backend.utils.video_codecs import VideoCodecs
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.payloads.media_search import MediaSearchPayload
+from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
+from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
-from src.version import program_name, program_url, __version__
+from src.payloads.media_search import MediaSearchPayload
+from src.version import __version__, program_name, program_url
 
 
 class TokenReplacer:
