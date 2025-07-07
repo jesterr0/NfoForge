@@ -1,24 +1,19 @@
-import re
 from collections.abc import Sequence
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
+    QGridLayout,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QVBoxLayout,
-    QGridLayout,
-    QGroupBox,
     QSizePolicy,
+    QVBoxLayout,
 )
 
-from src.config.config import Config
-from src.exceptions import MediaParsingError
-from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.frontend.utils import build_h_line
 from src.backend.rename_encode import RenameEncodeBackEnd
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
@@ -26,6 +21,11 @@ from src.backend.utils.rename_normalizations import (
     LOCALIZATION_INFO,
     RE_RELEASE_INFO,
 )
+from src.config.config import Config
+from src.exceptions import MediaParsingError
+from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.utils import build_h_line
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
 
 if TYPE_CHECKING:
@@ -374,9 +374,14 @@ class RenameEncode(BaseWizardPage):
             # remove formatting
             for entry in info:
                 formatting = entry[2]
+                # remove the normalized formatting
                 current_name = re.sub(
                     re.escape(formatting), "", current_name, flags=re.I
                 )
+                # remove any variant that matches the regex patterns for this normalization
+                for pattern in entry[1]:
+                    # replace any match with a period (to avoid double periods later)
+                    current_name = re.sub(pattern, "", current_name, flags=re.I)
 
             # remove existing formatting for the currently selected index
             if index > 0:
