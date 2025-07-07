@@ -226,7 +226,7 @@ class ProcessBackEnd:
         ).search(file_name=file_input)
         if aither_search:
             return TrackerSelection(tracker_name), aither_search
-        
+
     async def _dupe_lst(
         self, tracker_name: str, file_input: Path
     ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
@@ -897,9 +897,11 @@ class ProcessBackEnd:
                 totp=tracker_payload.totp,
                 timeout=self.config.cfg_payload.timeout,
             )
+        # Unit3d trackers
         elif tracker == TrackerSelection.REELFLIX:
             tracker_payload = self.config.cfg_payload.rf_tracker
             return rf_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -923,6 +925,7 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.AITHER:
             tracker_payload = self.config.cfg_payload.aither_tracker
             return aither_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -946,6 +949,7 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.HUNO:
             tracker_payload = self.config.cfg_payload.huno_tracker
             return huno_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -963,6 +967,7 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.LST:
             tracker_payload = self.config.cfg_payload.lst_tracker
             return lst_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,

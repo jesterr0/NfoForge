@@ -3,12 +3,14 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
+from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.payloads.media_search import MediaSearchPayload
 
 
 def huno_uploader(
+    media_mode: MediaMode,
     api_key: str,
     torrent_file: Path,
     file_input: Path,
@@ -24,6 +26,7 @@ def huno_uploader(
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
     uploader = HunoUploader(
+        media_mode=media_mode,
         api_key=api_key,
         torrent_file=torrent_file,
         file_input=file_input,
@@ -57,6 +60,7 @@ class HunoUploader(Unit3dBaseUploader):
 
     def __init__(
         self,
+        media_mode: MediaMode,
         api_key: str,
         torrent_file: Path,
         file_input: Path,
@@ -66,6 +70,7 @@ class HunoUploader(Unit3dBaseUploader):
         super().__init__(
             tracker_name=TrackerSelection.HUNO,
             base_url="https://hawke.uno",
+            media_mode=media_mode,
             api_key=api_key,
             torrent_file=torrent_file,
             file_input=file_input,
