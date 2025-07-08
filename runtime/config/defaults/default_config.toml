@@ -5,11 +5,11 @@ profile = 1
 media_mode = 1
 source_media_ext_filter = [".mkv", ".mp4"]
 encode_media_ext_filter = [".mkv", ".mp4"]
-media_input_dir = false
 releasers_name = ""
 timeout = 60
 log_level = 20
 log_total = 50
+working_dir = ""
 
 [dependencies]
 ffmpeg = ""

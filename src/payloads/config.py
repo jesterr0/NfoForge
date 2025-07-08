@@ -50,11 +50,11 @@ class ConfigPayload:
     media_mode: MediaMode
     source_media_ext_filter: list[str]
     encode_media_ext_filter: list[str]
-    media_input_dir: bool
     releasers_name: str
     timeout: int
     log_level: LogLevel
     log_total: int
+    working_dir: Path
 
     # dependencies
     ffmpeg: Path | None

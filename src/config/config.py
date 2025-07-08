@@ -1,53 +1,55 @@
 from pathlib import Path
-import tomlkit
-from tomlkit import TOMLDocument
 from typing import TYPE_CHECKING
 
-from src.config.dependencies import FindDependencies
+from platformdirs import user_data_dir as pd_user_data_dir
+import tomlkit
+from tomlkit import TOMLDocument
+
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.enums.theme import NfoForgeTheme
+from src.config.dependencies import FindDependencies
 from src.enums.cropping import Cropping
+from src.enums.image_host import ImageHost, ImageSource
+from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
+from src.enums.logging_settings import LogLevel
 from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
-from src.enums.image_host import ImageHost, ImageSource
 from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
-from src.enums.trackers.morethantv import MTVSourceOrigin
-from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
-from src.enums.tracker_selection import TrackerSelection
+from src.enums.theme import NfoForgeTheme
 from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import TorrentClientSelection
+from src.enums.tracker_selection import TrackerSelection
+from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
+from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
-from src.enums.logging_settings import LogLevel
-from src.payloads.config import ConfigPayload, ProgramConfigPayload
-from src.payloads.shared_data import SharedPayload
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.trackers import (
-    HunoInfo,
-    TrackerInfo,
-    MoreThanTVInfo,
-    TorrentLeechInfo,
-    BeyondHDInfo,
-    PassThePopcornInfo,
-    ReelFlixInfo,
-    AitherInfo,
-    LSTInfo,
-)
+from src.exceptions import ConfigError
+from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.clients import TorrentClient
-from src.payloads.watch_folder import WatchFolder
+from src.payloads.config import ConfigPayload, ProgramConfigPayload
 from src.payloads.image_hosts import (
-    ImagePayloadBase,
     CheveretoV3Payload,
     CheveretoV4Payload,
     ImageBBPayload,
     ImageBoxPayload,
+    ImagePayloadBase,
     PTPIMGPayload,
 )
-from src.exceptions import ConfigError
-from src.nf_jinja2 import Jinja2TemplateEngine
+from src.payloads.media_inputs import MediaInputPayload
+from src.payloads.media_search import MediaSearchPayload
+from src.payloads.shared_data import SharedPayload
+from src.payloads.trackers import (
+    AitherInfo,
+    BeyondHDInfo,
+    HunoInfo,
+    LSTInfo,
+    MoreThanTVInfo,
+    PassThePopcornInfo,
+    ReelFlixInfo,
+    TorrentLeechInfo,
+    TrackerInfo,
+)
+from src.payloads.watch_folder import WatchFolder
 
 if TYPE_CHECKING:
     from src.plugins.plugin_payload import PluginPayload
@@ -267,11 +269,11 @@ class Config:
             general_data["encode_media_ext_filter"] = (
                 self.cfg_payload.encode_media_ext_filter
             )
-            general_data["media_input_dir"] = self.cfg_payload.media_input_dir
             general_data["releasers_name"] = self.cfg_payload.releasers_name
             general_data["timeout"] = self.cfg_payload.timeout
             general_data["log_level"] = LogLevel(self.cfg_payload.log_level).value
             general_data["log_total"] = self.cfg_payload.log_total
+            general_data["working_dir"] = str(self.cfg_payload.working_dir)
 
             # dependencies
             dependencies_data = self._toml_data["dependencies"]
@@ -576,20 +578,14 @@ class Config:
             if "lst" not in tracker_data:
                 tracker_data["lst"] = tomlkit.table()
             lst_data = tracker_data["lst"]
-            lst_data["upload_enabled"] = (
-                self.cfg_payload.lst_tracker.upload_enabled
-            )
+            lst_data["upload_enabled"] = self.cfg_payload.lst_tracker.upload_enabled
             lst_data["announce_url"] = self.cfg_payload.lst_tracker.announce_url
             lst_data["enabled"] = self.cfg_payload.lst_tracker.enabled
             lst_data["source"] = self.cfg_payload.lst_tracker.source
             lst_data["comments"] = self.cfg_payload.lst_tracker.comments
             lst_data["nfo_template"] = self.cfg_payload.lst_tracker.nfo_template
-            lst_data["max_piece_size"] = (
-                self.cfg_payload.lst_tracker.max_piece_size
-            )
-            lst_data["url_type"] = URLType(
-                self.cfg_payload.lst_tracker.url_type
-            ).value
+            lst_data["max_piece_size"] = self.cfg_payload.lst_tracker.max_piece_size
+            lst_data["url_type"] = URLType(self.cfg_payload.lst_tracker.url_type).value
             lst_data["column_s"] = self.cfg_payload.lst_tracker.column_s
             lst_data["column_space"] = self.cfg_payload.lst_tracker.column_space
             lst_data["row_space"] = self.cfg_payload.lst_tracker.row_space
@@ -608,12 +604,8 @@ class Config:
             lst_data["api_key"] = self.cfg_payload.lst_tracker.api_key
             lst_data["anonymous"] = self.cfg_payload.lst_tracker.anonymous
             lst_data["internal"] = self.cfg_payload.lst_tracker.internal
-            lst_data["personal_release"] = (
-                self.cfg_payload.lst_tracker.personal_release
-            )
-            lst_data["mod_queue_opt_in"] = (
-                self.cfg_payload.lst_tracker.mod_queue_opt_in
-            )
+            lst_data["personal_release"] = self.cfg_payload.lst_tracker.personal_release
+            lst_data["mod_queue_opt_in"] = self.cfg_payload.lst_tracker.mod_queue_opt_in
             lst_data["draft_queue_opt_in"] = (
                 self.cfg_payload.lst_tracker.draft_queue_opt_in
             )
@@ -1181,9 +1173,7 @@ class Config:
                 mvr_title_colon_replace=ColonReplace(
                     lst_tracker_data["mvr_title_colon_replace"]
                 ),
-                mvr_title_token_override=lst_tracker_data[
-                    "mvr_title_token_override"
-                ],
+                mvr_title_token_override=lst_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=lst_tracker_data["mvr_title_replace_map"],
                 api_key=lst_tracker_data["api_key"],
                 anonymous=lst_tracker_data["anonymous"],
@@ -1265,11 +1255,11 @@ class Config:
                 encode_media_ext_filter=general_data.get(
                     "encode_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
                 ),
-                media_input_dir=general_data.get("media_input_dir"),
                 releasers_name=general_data.get("releasers_name", ""),
                 timeout=general_data.get("timeout", 60),
                 log_level=LogLevel(general_data.get("log_level", 20)),
                 log_total=general_data.get("log_total", 50),
+                working_dir=Path(general_data["working_dir"]) if general_data.get("working_dir") else self.default_working_dir(ensure_exists=True),
                 ffmpeg=ffmpeg,
                 frame_forge=frame_forge,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
@@ -1493,6 +1483,13 @@ class Config:
             return str(Path(path_attr))
         else:
             return ""
+
+    @staticmethod
+    def default_working_dir(ensure_exists: bool = False) -> Path:
+        wd = Path(pd_user_data_dir(appname="nfoforge", appauthor=False))
+        if ensure_exists:
+            wd.mkdir(parents=True, exist_ok=True)
+        return wd
 
     # TODO: all these methods can be re activated when self.shared_data is needed IF they are needed
     # def set_shared_data(self, key, value):
