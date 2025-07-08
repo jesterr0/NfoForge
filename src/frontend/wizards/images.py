@@ -2,35 +2,24 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal, QThread, Slot
+from PySide6.QtCore import QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
+    QFrame,
     QGroupBox,
-    QVBoxLayout,
     QHBoxLayout,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QMessageBox,
-    QStackedWidget,
-    QWidget,
-    QFrame,
-    QFileDialog,
     QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-
 from pymediainfo import MediaInfo
 
-from src.config.config import Config
-from src.exceptions.utils import get_full_traceback
-from src.logger.nfo_forge_logger import LOG
-from src.enums.cropping import Cropping
-from src.enums.indexer import Indexer
-from src.enums.profile import Profile
-from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.subtitles import SubtitleAlignment
-from src.enums.image_plugin import ImagePlugin
-from src.packages.custom_types import CropValues, SubNames, AdvancedResize
 from src.backend.images import ImagesBackEnd
 from src.backend.utils.images import (
     compare_resolutions,
@@ -38,16 +27,26 @@ from src.backend.utils.images import (
     extract_images_from_str,
 )
 from src.backend.utils.script_parser import ScriptParser
-from src.frontend.global_signals import GSigs
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.config.config import Config
+from src.enums.cropping import Cropping
+from src.enums.image_plugin import ImagePlugin
+from src.enums.indexer import Indexer
+from src.enums.profile import Profile
+from src.enums.screen_shot_mode import ScreenShotMode
+from src.enums.subtitles import SubtitleAlignment
+from src.exceptions.utils import get_full_traceback
 from src.frontend.custom_widgets.dnd_factory import (
-    DNDToolButton,
     DNDThumbnailListWidget,
+    DNDToolButton,
 )
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.cropping import CropWidget
+from src.frontend.utils import build_auto_theme_icon_buttons, build_v_line
 from src.frontend.windows.image_viewer import ImageViewer
 from src.frontend.wizards.media_input_basic import MediaInputBasic
-from src.frontend.utils import build_auto_theme_icon_buttons, build_v_line
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.logger.nfo_forge_logger import LOG
+from src.packages.custom_types import AdvancedResize, CropValues, SubNames
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -559,9 +558,11 @@ class ImagesPage(BaseWizardPage):
         )
 
     def _set_image_directory(self) -> None:
-        if not self.media_file:
-            raise FileNotFoundError("Failed to locate path to 'media_file'")
-        self.image_dir = self.media_file.parent / f"{self.media_file.stem}_images"
+        if not self.config.media_input_payload.working_dir:
+            raise FileNotFoundError(
+                "Failed to locate path to 'working directory for media'"
+            )
+        self.image_dir = self.config.media_input_payload.working_dir / "images"
 
     def _get_sub_names(self, comparison_subs) -> SubNames | None:
         if comparison_subs:
