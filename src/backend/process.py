@@ -513,8 +513,10 @@ class ProcessBackEnd:
                     f"Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)"
                 )
 
+                if not self.config.media_input_payload.working_dir:
+                    raise FileNotFoundError("Working directory was not found")
                 img_output_path = (
-                    media_input.parent / f"{media_input.stem}_nf" / "dl_imgs"
+                    self.config.media_input_payload.working_dir / "dl_imgs"
                 )
                 img_downloader = ImageDownloader(
                     self.config.shared_data.url_data,
