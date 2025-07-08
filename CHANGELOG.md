@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Built in editions in rename window could be duplicated with specific formatting.
 - Wrong svg icon on advanced input for the buttons.
 - Fixed about tab copy to clip board buttons not working.
+- Token **mi_audio_bitrate** would return no results.
 
 ### Removed
 

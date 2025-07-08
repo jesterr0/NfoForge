@@ -650,7 +650,7 @@ class TokenReplacer:
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             a_track = self.media_info_obj.audio_tracks[0]
             if a_track and not formatted:
-                bitrate = str(a_track.bitrate) if a_track.bitrate else ""
+                bitrate = str(a_track.bit_rate) if a_track.bit_rate else ""
             elif a_track and formatted:
                 bitrate = a_track.other_bit_rate[0] if a_track.other_bit_rate else ""
 
