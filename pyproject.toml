@@ -17,6 +17,7 @@ dependencies = [
     "cinemagoer>=2023.5.1",
     "torf>=4.2.7",
     "pillow>=11.1.0",
+    "platformdirs>=4.3.8",
     "pyside6==6.9.1",
     "psutil>=7.0.0",
     "pyimgbox>=1.0.7",
