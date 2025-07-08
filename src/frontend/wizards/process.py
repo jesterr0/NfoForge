@@ -1,39 +1,39 @@
-import re
 import asyncio
-import traceback
-
 from copy import deepcopy
 from dataclasses import fields
-from typing import TYPE_CHECKING, Any
 from pathlib import Path
-from pymediainfo import MediaInfo
-from PySide6.QtCore import QObject, Slot, QThread, Signal
+import re
+import traceback
+from typing import Any, TYPE_CHECKING
+
+from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtGui import QTextCursor, Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QLabel,
-    QVBoxLayout,
-    QMessageBox,
     QFileDialog,
+    QLabel,
+    QMessageBox,
     QProgressBar,
+    QVBoxLayout,
 )
+from pymediainfo import MediaInfo
 
-from src.config.config import Config
 from src.backend.process import ProcessBackEnd
+from src.config.config import Config
 from src.enums.image_host import ImageHost, ImageSource
+from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
-from src.enums.media_mode import MediaMode
 from src.exceptions import ProcessError
-from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
+from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.packages.custom_types import ImageUploadFromTo
-from src.payloads.tracker_search_result import TrackerSearchResult
-from src.payloads.media_search import MediaSearchPayload
-from src.nf_jinja2 import Jinja2TemplateEngine
 from src.logger.nfo_forge_logger import LOG
+from src.nf_jinja2 import Jinja2TemplateEngine
+from src.packages.custom_types import ImageUploadFromTo
+from src.payloads.media_search import MediaSearchPayload
+from src.payloads.tracker_search_result import TrackerSearchResult
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -216,10 +216,14 @@ class ProcessPage(BaseWizardPage):
     @Slot()
     def process_jobs(self) -> None:
         # get paths and other things from the media input payload
-        torrent_dir, detected_input, mediainfo_obj = self._handle_files()
+        detected_input, mediainfo_obj = self._handle_files()
 
         # get tracker data and check for existing torrent files
-        tracker_data = self._gather_tracker_data(torrent_dir, detected_input)
+        if not self.config.media_input_payload.working_dir:
+            raise FileNotFoundError("Failed to detect MediaInputPayload.working_dir")
+        tracker_data = self._gather_tracker_data(
+            self.config.media_input_payload.working_dir, detected_input
+        )
         if not tracker_data:
             raise AttributeError("Could not determine tracker data")
 
@@ -446,14 +450,10 @@ class ProcessPage(BaseWizardPage):
             media_info_obj,
         )
 
-    def _handle_files(self) -> tuple[Path, Path, MediaInfo]:
+    def _handle_files(self) -> tuple[Path, MediaInfo]:
         # get paths and other things from the media input payload
         og_input, renamed_input, mediainfo_obj = self.get_inputs()
-        torrent_dir = (
-            renamed_input.parent / f"{renamed_input.stem}_nf"
-            if renamed_input
-            else og_input.parent / f"{og_input.stem}_nf"
-        )
+
         detected_input = renamed_input if renamed_input else og_input
         LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
 
@@ -482,19 +482,19 @@ class ProcessPage(BaseWizardPage):
                     )
                     raise
 
-        return torrent_dir, detected_input, mediainfo_obj
+        return detected_input, mediainfo_obj
 
     def _gather_tracker_data(
-        self, torrent_dir: Path, detected_input: Path
+        self, process_dir: Path, detected_input: Path
     ) -> dict[str, Any] | None:
         tracker_data = {}
         for tracker, (
             combo_text,
             (image_host_data, _),
         ), _ in self.tracker_process_tree.get_item_values():
-            torrent_dir_out = torrent_dir / tracker.lower()
-            torrent_dir_out.mkdir(parents=True, exist_ok=True)
-            torrent_out = Path(torrent_dir_out / f"{detected_input.stem}.torrent")
+            process_dir_out = process_dir / tracker.lower()
+            process_dir_out.mkdir(parents=True, exist_ok=True)
+            torrent_out = Path(process_dir_out / f"{detected_input.stem}.torrent")
 
             if self.processing_mode == UploadProcessMode.UPLOAD:
                 if torrent_out.exists():
@@ -511,7 +511,7 @@ class ProcessPage(BaseWizardPage):
                             parent=self,
                             caption="Select Save Output",
                             filter="*.torrent",
-                            dir=str(torrent_dir_out) if torrent_dir_out else "",
+                            dir=str(process_dir_out) if process_dir_out else "",
                         )
                         if not new_torrent_out:
                             return
