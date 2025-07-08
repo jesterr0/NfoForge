@@ -1,3 +1,4 @@
+from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from typing import Iterable
@@ -18,3 +19,10 @@ def find_largest_file_in_directory(
                 largest_file = item
 
     return largest_file
+
+
+def generate_unique_date_name(
+    file_name: str, max_len: int = 25, date_format: str = "%m.%d.%Y_%I.%M.%S"
+) -> str:
+    """Generate unique names based on file name and current date"""
+    return f"{file_name[: max_len + 1]}_{datetime.now().strftime(date_format)}"
