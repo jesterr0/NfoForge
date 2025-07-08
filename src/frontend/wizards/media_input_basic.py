@@ -1,27 +1,28 @@
 from collections.abc import Sequence
 from pathlib import Path
-from pymediainfo import MediaInfo
-from typing import TYPE_CHECKING, Any
+from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import Slot, Signal
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
-    QToolButton,
-    QLineEdit,
-    QLabel,
     QFileDialog,
-    QVBoxLayout,
+    QLabel,
+    QLineEdit,
     QMessageBox,
+    QToolButton,
+    QVBoxLayout,
 )
+from pymediainfo import MediaInfo
 
 from src.backend.media_input import MediaInputBackEnd
+from src.backend.utils.file_utilities import generate_unique_date_name
 from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.exceptions import MediaFileNotFoundError
-from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.frontend.global_signals import GSigs
 from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.utils.media_input_utils import MediaInputWorker
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -37,7 +38,6 @@ class MediaInputBasic(BaseWizardPage):
         self.setTitle("Input")
         self.setCommitPage(True)
 
-        self.config = config
         self.backend = MediaInputBackEnd()
         self.worker: MediaInputWorker | None = None
         self._loading_completed = False
@@ -48,6 +48,7 @@ class MediaInputBasic(BaseWizardPage):
         self.input_entry = DNDLineEdit(self)
         self.input_entry.setReadOnly(True)
         self.input_entry.set_extensions(self.extensions)
+        self.input_entry.set_accept_dir(True)
         self.input_entry.dropped.connect(
             lambda e: self.update_entries(e, self.input_entry)
         )
@@ -74,10 +75,10 @@ class MediaInputBasic(BaseWizardPage):
                 self.media_dir_button,
             )
         )
-        self._toggle_dir_input()
 
     def validatePage(self) -> bool:
         if self._loading_completed:
+            super().validatePage()
             return True
 
         required_entries = [
@@ -123,6 +124,10 @@ class MediaInputBasic(BaseWizardPage):
         file_path = self.config.media_input_payload.encode_file
         if not file_path:
             raise FileNotFoundError("Failed to detect input path")
+        self.set_working_dir(
+            self.config.cfg_payload.working_dir
+            / generate_unique_date_name(file_path.stem)
+        )
         self.worker = MediaInputWorker(
             func=self.backend.get_media_info, file_input=file_path, parent=self
         )
@@ -153,7 +158,7 @@ class MediaInputBasic(BaseWizardPage):
         self, entry_widget: QLineEdit, title: str, extension: list | set
     ) -> None:
         supported_extensions = (
-            f"{title} file " f"({' '.join(['*' + ext for ext in extension])})"
+            f"{title} file ({' '.join(['*' + ext for ext in extension])})"
         )
         open_file, _ = QFileDialog.getOpenFileName(
             parent=self,
@@ -190,14 +195,6 @@ class MediaInputBasic(BaseWizardPage):
             return accepted_inputs
         return self.config.ACCEPTED_EXTENSIONS
 
-    def _toggle_dir_input(self) -> None:
-        if self.config.cfg_payload.media_input_dir:
-            self.media_dir_button.show()
-            self.input_entry.set_accept_dir(True)
-        else:
-            self.media_dir_button.hide()
-            self.input_entry.set_accept_dir(False)
-
     def update_entries(self, event: Sequence, widget: QLineEdit) -> None:
         file_path = str(Path(event[0]))
         widget.setText(file_path)
@@ -207,6 +204,5 @@ class MediaInputBasic(BaseWizardPage):
     def reset_page(self) -> None:
         self.input_entry.clear()
         self.input_entry.setPlaceholderText("")
-        self._toggle_dir_input()
         self.worker = None
         self._loading_completed = False
