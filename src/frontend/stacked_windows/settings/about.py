@@ -1,18 +1,13 @@
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QClipboard, QPixmap
-from PySide6.QtWidgets import (
-    QLabel,
-    QHBoxLayout,
-    QToolButton,
-    QVBoxLayout,
-)
+from PySide6.QtGui import QGuiApplication, QPixmap
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout
 
-from src.version import __version__
-from src.frontend.global_signals import GSigs
-from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
-from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_h_line, build_auto_theme_icon_buttons
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
+from src.frontend.global_signals import GSigs
+from src.frontend.stacked_windows.settings.base import BaseSettings
+from src.frontend.utils import build_auto_theme_icon_buttons, build_h_line
+from src.version import __version__
 
 
 about_txt = f"""\
@@ -147,7 +142,7 @@ class AboutTab(BaseSettings):
         self._copy_to_clipboard(self.ethereum_hash.text())
 
     def _copy_to_clipboard(self, txt: str) -> None:
-        clipboard = QClipboard(self)
+        clipboard = QGuiApplication.clipboard()
         clipboard.setText(txt)
         GSigs().main_window_update_status_tip.emit("Copied to clipboard!", 2000)
 
