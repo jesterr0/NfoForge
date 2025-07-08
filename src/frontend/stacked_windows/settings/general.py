@@ -1,29 +1,35 @@
-from PySide6.QtCore import Slot, QTimer
+from pathlib import Path
+
+from PySide6.QtCore import QTimer, Slot
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QCheckBox,
     QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
-    QWidget,
     QToolButton,
+    QWidget,
 )
 
-from src.enums.theme import NfoForgeTheme
-from src.enums.profile import Profile
-from src.enums.media_mode import MediaMode
 from src.enums.logging_settings import LogLevel
+from src.enums.media_mode import MediaMode
+from src.enums.profile import Profile
+from src.enums.theme import NfoForgeTheme
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_auto_theme_icon_buttons, create_form_layout
+from src.frontend.utils import (
+    build_auto_theme_icon_buttons,
+    build_h_line,
+    create_form_layout,
+)
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -135,12 +141,6 @@ class GeneralSettings(BaseSettings):
             parent=self,
         )
 
-        dir_toggle_lbl = QLabel("Directory Input")
-        dir_toggle_lbl.setToolTip(
-            "Toggle if we're accepting a directory of file(s) or a single file"
-        )
-        self.dir_toggle_btn = QCheckBox(self)
-
         releasers_name_lbl = QLabel("Releasers Name")
         releasers_name_lbl.setToolTip("Sets the releaser's name. As displayed in NFOs")
         self.releasers_name_entry = QLineEdit(self)
@@ -193,6 +193,23 @@ class GeneralSettings(BaseSettings):
             )
         )
 
+        working_dir_lbl = QLabel("Working Directory", self)
+        self.working_dir_entry = QLineEdit(self)
+        self.working_dir_entry.setReadOnly(True)
+        self.working_dir_entry.setToolTip(
+            "Working files (torrents, images, etc.) will be placed inside of this folder for each job"
+        )
+        self.working_dir_btn = build_auto_theme_icon_buttons(
+            QToolButton, "open_folder.svg", "workingDirBtn", 20, 20
+        )
+        self.working_dir_btn.clicked.connect(self._handle_working_dir_click)
+
+        working_dir_widget = QWidget()
+        working_dir_layout = QHBoxLayout(working_dir_widget)
+        working_dir_layout.setContentsMargins(0, 0, 0, 0)
+        working_dir_layout.addWidget(self.working_dir_entry, stretch=1)
+        working_dir_layout.addWidget(self.working_dir_btn)
+
         self.add_layout(create_form_layout(config_lbl, config_widget))
         self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
         self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
@@ -203,18 +220,20 @@ class GeneralSettings(BaseSettings):
         self.add_layout(create_form_layout(media_mode_lbl, self.media_mode_combo))
         self.add_widget(self.source_ext_filter)
         self.add_widget(self.encode_ext_filter)
-        self.add_layout(create_form_layout(dir_toggle_lbl, self.dir_toggle_btn))
         self.add_layout(
             create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
         self.add_layout(
             create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
         )
+        self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
             create_form_layout(max_log_files_lbl, self.max_log_files_spinbox)
         )
         self.add_layout(create_form_layout(open_logs_lbl, log_btn_widget))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(create_form_layout(working_dir_lbl, working_dir_widget))
         self.add_layout(self.reset_layout)
 
         self._load_saved_settings()
@@ -238,11 +257,13 @@ class GeneralSettings(BaseSettings):
             user_settings=payload.encode_media_ext_filter,
             filter_widget=self.encode_ext_filter,
         )
-        self.dir_toggle_btn.setChecked(payload.media_input_dir)
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
         self.max_log_files_spinbox.setValue(payload.log_total)
+        self.working_dir_entry.setText(
+            str(payload.working_dir) if payload.working_dir else ""
+        )
 
     def load_selected_configs(self) -> None:
         self.selected_config.clear()
@@ -335,6 +356,20 @@ class GeneralSettings(BaseSettings):
             for widget in self._plugin_widgets:
                 widget.hide()
 
+    @Slot()
+    def _handle_working_dir_click(self) -> None:
+        wd = QFileDialog.getExistingDirectory(
+            parent=self,
+            caption="Select Directory",
+            dir=str(self.config.cfg_payload.working_dir)
+            if self.config.cfg_payload.working_dir
+            else "",
+        )
+        if wd:
+            wd = Path(wd)
+            self.working_dir_entry.setText(str(wd))
+            self.config.cfg_payload.working_dir = wd
+
     def _load_plugin_combos(self) -> None:
         if self.plugin_wizard_page_combo.count() == 0:
             if self.config.loaded_plugins:
@@ -421,7 +456,6 @@ class GeneralSettings(BaseSettings):
         self.config.cfg_payload.encode_media_ext_filter = (
             self.encode_ext_filter.get_accepted_items()
         )
-        self.config.cfg_payload.media_input_dir = self.dir_toggle_btn.isChecked()
         self.config.cfg_payload.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
@@ -429,6 +463,7 @@ class GeneralSettings(BaseSettings):
         self.config.cfg_payload.log_level = LogLevel(self.log_level_combo.currentData())
         LOG.set_log_level(self.config.cfg_payload.log_level)
         self.config.cfg_payload.log_total = self.max_log_files_spinbox.value()
+        self.config.cfg_payload.working_dir = Path(self.working_dir_entry.text())
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
@@ -452,9 +487,9 @@ class GeneralSettings(BaseSettings):
         self._load_filter_widget(
             user_settings=None, filter_widget=self.encode_ext_filter, defaults=True
         )
-        self.dir_toggle_btn.setChecked(False)
         self.releasers_name_entry.clear()
         self.global_timeout_spinbox.setValue(self.config.cfg_payload_defaults.timeout)
+        self.working_dir_entry.setText(str(self.config.default_working_dir()))
 
     @staticmethod
     def _disable_scrollwheel_spinbox(event: QWheelEvent) -> None:
