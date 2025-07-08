@@ -1,16 +1,16 @@
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any, TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
-    QWizardPage,
-    QToolButton,
     QPushButton,
+    QToolButton,
+    QWizardPage,
 )
 
 from src.backend.utils.file_utilities import find_largest_file_in_directory
@@ -27,6 +27,7 @@ class BaseWizardPage(QWizardPage):
     def __init__(self, config: Config, parent: "MainWindow | Any") -> None:
         super().__init__(parent)
         self._custom_abstract_method_check()
+        self.config = config
 
     def _custom_abstract_method_check(self) -> None:
         """This is a work around to avoid mixin with ABC"""
@@ -35,6 +36,22 @@ class BaseWizardPage(QWizardPage):
                 raise NotImplementedError(
                     f"You must implement the {method} method for {self.__class__.__name__}"
                 )
+
+    def validatePage(self) -> bool:
+        """
+        Overrides QWizardPage validatePage and should ALWAYS be called in children pages before
+        returning True.
+        """
+        if not self.config.media_input_payload.working_dir:
+            raise FileNotFoundError(
+                "Could not detect working directory that should be set from child wizard input "
+                "page using method set_working_dir"
+            )
+        return True
+
+    def set_working_dir(self, path: Path) -> None:
+        """Convenient method to set the working directory for MediaInputPayload"""
+        self.config.media_input_payload.working_dir = path
 
     @staticmethod
     def find_largest_media(directory: Path, extensions: Iterable) -> Path | None:
