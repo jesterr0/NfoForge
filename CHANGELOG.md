@@ -9,23 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- 
+- Added Working Directory input (general settings).
 
 ### Changed
 
 - Upgraded PySide6 to 6.9.1.
 - Upgraded from requests to niquests.
 - Built in plugin descriptions are more descriptive (thanks yammes).
+- Slightly organized general settings tab.
+- Basic/Advanced inputs now sets working directory sub folder name based on inputs for rest of programs control flow.
+- Basic input now always accepts a folder or a file without needing toggled in settings.
 
 ### Fixed
 
 - Don't send TVDB ID to Unit3d trackers if media type is not series.
 - Error when image generation is disabled.
 - Built in editions in rename window could be duplicated with specific formatting.
+- Wrong svg icon on advanced input for the buttons.
 
 ### Removed
 
-- 
+- Remove Directory Input toggle in general settings.
 
 
 ## [0.7.4] - 2025-05-30
