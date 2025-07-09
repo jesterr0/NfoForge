@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Upgraded PySide6 to 6.9.1.
+- Upgraded PySide6 to 6.8.3 (tried to go for latest version but there was some minor issues).
 - Upgraded from requests to niquests.
 - Built in plugin descriptions are more descriptive (thanks yammes).
 - Slightly organized general settings tab.
