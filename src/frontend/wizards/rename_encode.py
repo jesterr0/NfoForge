@@ -88,7 +88,10 @@ class RenameEncode(BaseWizardPage):
         )
         self._update_combo_box(self.edition_combo, EDITION_INFO)
         self.edition_combo.currentIndexChanged.connect(self.update_generated_name)
-        self.edition_combo.lineEdit().editingFinished.connect(self.manual_edition_edit)
+        edition_combo_line_edit = self.edition_combo.lineEdit()
+        if not edition_combo_line_edit:
+            raise AttributeError("Could not detect edition_combo.lineEdit()")
+        edition_combo_line_edit.editingFinished.connect(self.manual_edition_edit)
         self.edition_combo_line_edit_last_text: str | None = None
 
         frame_size_lbl = QLabel("Frame Size", self)
@@ -115,7 +118,10 @@ class RenameEncode(BaseWizardPage):
             CustomComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self.repack_reason_combo.addItems(self.REPACK_REASONS)
-        self.repack_reason_combo.lineEdit().setPlaceholderText("Select Reason")
+        repack_reason_combo_line_edit = self.repack_reason_combo.lineEdit()
+        if not repack_reason_combo_line_edit:
+            raise AttributeError("Could not detect repack_reason_combo.lineEdit()")
+        repack_reason_combo_line_edit.setPlaceholderText("Select Reason")
         self.repack_reason_lbl.hide()
         self.repack_reason_combo.hide()
 
@@ -127,7 +133,12 @@ class RenameEncode(BaseWizardPage):
             CustomComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self.proper_reason_combo.addItems(self.PROPER_REASONS)
-        self.proper_reason_combo.lineEdit().setPlaceholderText("Select Reason")
+        proper_reason_combo_line_edit = self.repack_reason_combo.lineEdit()
+        if not proper_reason_combo_line_edit:
+            raise AttributeError(
+                "Could not detect proper_reason_combo_line_edit.lineEdit()"
+            )
+        proper_reason_combo_line_edit.setPlaceholderText("Select Reason")
         self.proper_reason_lbl.hide()
         self.proper_reason_combo.hide()
 
