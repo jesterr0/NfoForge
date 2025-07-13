@@ -1,23 +1,25 @@
-from PySide6.QtCore import Slot, QTimer
-from PySide6.QtGui import Qt, QCursor, QColor
+import weakref
+
+from PySide6.QtCore import QTimer, Slot
+from PySide6.QtGui import QColor, QCursor, Qt
 from PySide6.QtWidgets import (
-    QApplication,
-    QLabel,
-    QSizePolicy,
-    QTableWidgetItem,
-    QTableWidget,
     QAbstractItemView,
+    QApplication,
     QHeaderView,
-    QVBoxLayout,
+    QLabel,
     QLineEdit,
-    QWidget,
+    QSizePolicy,
     QSpacerItem,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
+from src.backend.tokens import MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS
 from src.frontend.custom_widgets.replacement_list_widget import (
     LoadedReplacementListWidget,
 )
-from src.backend.tokens import MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS
 
 
 class TokenTable(QWidget):
@@ -119,15 +121,27 @@ class TokenTable(QWidget):
 
     @Slot(int, int)
     def copy_token_to_clipboard(self, row: int, _: int):
-        token = self.table.item(row, 0).text()
-        if token == "Copied!":
+        token = self.table.item(row, 0)
+        if not token:
+            return
+        token_text = token.text()
+        if token_text == "Copied!":
             return
         clipboard = QApplication.clipboard()
-        clipboard.setText(token)
+        clipboard.setText(token_text)
         table_item = QTableWidgetItem("Copied!")
         table_item.setForeground(QColor("#e1401d"))
         self.table.setItem(row, 0, table_item)
-        QTimer.singleShot(1000, lambda: self.copy_status(row, 0, token))
+
+        # use a weakref here to prevent runtime errors if the window is destroyed before the singleShot fires
+        self_ref = weakref.ref(self)
+
+        def restore():
+            self_obj = self_ref()
+            if self_obj and self_obj.table:
+                self_obj.copy_status(row, 0, token_text)
+
+        QTimer.singleShot(1000, restore)
 
     def copy_status(self, row: int, column: int, text: str):
         self.table.setItem(row, column, QTableWidgetItem(text))
