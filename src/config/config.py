@@ -689,6 +689,9 @@ class Config:
             movie_rename["mvr_colon_replace_title"] = ColonReplace(
                 self.cfg_payload.mvr_colon_replace_title
             ).value
+            movie_rename["mvr_parse_filename_attributes"] = (
+                self.cfg_payload.mvr_parse_filename_attributes
+            )
             movie_rename["mvr_token"] = self.cfg_payload.mvr_token
             movie_rename["mvr_title_token"] = self.cfg_payload.mvr_title_token
             movie_rename["mvr_clean_title_rules"] = (
@@ -1259,7 +1262,9 @@ class Config:
                 timeout=general_data.get("timeout", 60),
                 log_level=LogLevel(general_data.get("log_level", 20)),
                 log_total=general_data.get("log_total", 50),
-                working_dir=Path(general_data["working_dir"]) if general_data.get("working_dir") else self.default_working_dir(ensure_exists=True),
+                working_dir=Path(general_data["working_dir"])
+                if general_data.get("working_dir")
+                else self.default_working_dir(ensure_exists=True),
                 ffmpeg=ffmpeg,
                 frame_forge=frame_forge,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
@@ -1289,6 +1294,9 @@ class Config:
                 mvr_colon_replace_title=ColonReplace(
                     movie_rename.get("mvr_colon_replace_title", 3)
                 ),
+                mvr_parse_filename_attributes=movie_rename[
+                    "mvr_parse_filename_attributes"
+                ],
                 mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
                 mvr_clean_title_rules_modified=movie_rename[
                     "mvr_clean_title_rules_modified"

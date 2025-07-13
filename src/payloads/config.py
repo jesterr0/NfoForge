@@ -90,6 +90,7 @@ class ConfigPayload:
     mvr_replace_illegal_chars: bool
     mvr_colon_replace_filename: ColonReplace
     mvr_colon_replace_title: ColonReplace
+    mvr_parse_filename_attributes: bool
     mvr_token: str
     mvr_title_token: str
     mvr_clean_title_rules: list[tuple[str, str]]
