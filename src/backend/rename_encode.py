@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from pymediainfo import MediaInfo
 
 from src.backend.token_replacer import TokenReplacer
@@ -7,11 +8,14 @@ from src.payloads.media_search import MediaSearchPayload
 
 
 class RenameEncodeBackEnd:
-    # def __init__(self):
-    #     pass
+    __slots__ = ("token_replacer", "override_tokens")
 
-    @staticmethod
+    def __init__(self):
+        self.token_replacer = TokenReplacer | None
+        self.override_tokens = {}
+
     def media_renamer(
+        self,
         media_file: Path,
         source_file: Path | None,
         mvr_token: str,
@@ -21,8 +25,7 @@ class RenameEncodeBackEnd:
         source_file_mi_obj: MediaInfo | None,
         movie_clean_title_rules: list[tuple[str, str]] | None,
     ) -> Path | None:
-        output = None
-        token_replacer = TokenReplacer(
+        self.token_replacer = TokenReplacer(
             media_input=media_file,
             jinja_engine=None,
             source_file=source_file,
@@ -34,8 +37,12 @@ class RenameEncodeBackEnd:
             flatten=True,
             file_name_mode=True,
             movie_clean_title_rules=movie_clean_title_rules,
+            override_tokens=self.override_tokens,
         )
-        data = token_replacer.get_output()
+        data = self.token_replacer.get_output()
         if data:
-            output = data
-        return Path(output) if output else None
+            return Path(data)
+
+    def reset(self) -> None:
+        self.token_replacer = None
+        self.override_tokens.clear()
