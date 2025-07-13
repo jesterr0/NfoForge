@@ -501,12 +501,14 @@ class RenameEncode(BaseWizardPage):
             (self.repack_reason_lbl, self.repack_reason_combo),
             (self.proper_reason_lbl, self.proper_reason_combo),
         ]:
+            combo.blockSignals(True)
             lbl.hide()
             combo.hide()
             combo.setCurrentIndex(0)
             line_edit = combo.lineEdit()
             if line_edit:
                 line_edit.setPlaceholderText(self.REASON_STR)
+            combo.blockSignals(False)
 
     def _enable_re_release_widgets(self, combo: CustomComboBox) -> None:
         """Show the appropriate reason widgets based on rerelease combo selection."""
