@@ -53,6 +53,8 @@ class Tokens:
     # File Tokens
     EDITION = FileToken("{edition}", "Edition")
     FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
+    HYBRID = FileToken("{hybrid}", "HYBRID")
+    LOCALIZATION = FileToken("{localization}", "Subbed/Dubbed")
     MI_AUDIO_BITRATE = FileToken("{mi_audio_bitrate}", "Audio bitrate (640000)")
     MI_AUDIO_BITRATE_FORMATTED = FileToken(
         "{mi_audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
@@ -163,6 +165,7 @@ class Tokens:
     )
     RE_RELEASE = FileToken("{re_release}", "Repack/Proper")
     RESOLUTION = FileToken("{resolution}", "Resolution (1080p)")
+    REMUX = FileToken("{remux}", "REMUX")
     SOURCE = FileToken("{source}", "Source media (BluRay/DVD)")
 
     # NFO Tokens
