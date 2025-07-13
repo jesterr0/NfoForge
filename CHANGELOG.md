@@ -10,15 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added Working Directory input (general settings).
+- Added option to prevent parsing of input file attributes (REMUX, HYBRID, PROPER, and REPACK) in the movie settings tab.
+- Added example file input and mediainfo window in the movie settings tab to show the raw data of how the examples are being generated.
+- New tokens (**hybrid**, **localization**, and **remux**).
+- Rename window has been completely reworked.
+  - Now uses tokens instead of hierarchy, this is superior to the older method and allows greater user customization where they want this input.
+  - Added some new default **Repack Reasons** in the drop down menu.
+  - Updated default **Repack/Proper** reason placeholder.
+  - Added a new section to over ride the token string, toggled via a checkbox.
+  - Added a new button that opens a pop up window to show the user all the potential **FileTokens** they can use in their override string, where they can click to copy/search.
+  - Added a **REMUX** checkbox (if the token exists in the string it'll fill the remux token).
+  - Added a **HYBRID** checkbox (if the token exists in the string it'll fill the hybrid token).
+
 
 ### Changed
 
-- Upgraded PySide6 to 6.8.3 (tried to go for latest version but there was some minor issues).
+- Upgraded PySide6 to 6.8.3 (tried to go for latest version but there was some minor graphical issues with images).
 - Upgraded from requests to niquests.
 - Built in plugin descriptions are more descriptive (thanks yammes).
 - Slightly organized general settings tab.
 - Basic/Advanced inputs now sets working directory sub folder name based on inputs for rest of programs control flow.
 - Basic input now always accepts a folder or a file without needing toggled in settings.
+- Improved error handling of token replacer backend.
 
 ### Fixed
 
@@ -28,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Wrong svg icon on advanced input for the buttons.
 - Fixed about tab copy to clip board buttons not working.
 - Token **mi_audio_bitrate** would return no results.
+- Rare issue that could happen if the token when was closed after copying data from it.
 
 ### Removed
 
