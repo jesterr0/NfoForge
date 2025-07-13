@@ -34,8 +34,13 @@ from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_search import MediaSearchPayload
 from src.version import __version__, program_name, program_url
 
+# TODO: we need to handle unknown tokens (currently stops all generation if there is an unknown but valid formatted)
+# token in filemode (not using jinja2 engine)
+
 
 class TokenReplacer:
+    FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
+
     __slots__ = (
         "media_input",
         "token_string",
@@ -55,6 +60,8 @@ class TokenReplacer:
         "releasers_name",
         "screen_shots",
         "dummy_screen_shots",
+        "parse_filename_attributes",
+        "override_tokens",
         "edition_override",
         "frame_size_override",
         "movie_clean_title_rules",
@@ -77,12 +84,14 @@ class TokenReplacer:
         token_type: Iterable[TokenType] | Type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
+        override_tokens: dict[str, str] | None = None,
         edition_override: str | None = None,
         frame_size_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
         screen_shots: str | None = "",
         dummy_screen_shots: bool = False,
+        parse_filename_attributes: bool = False,
     ):
         """
         Takes an input string with tokens and outputs a new string with formatted data based
@@ -99,19 +108,22 @@ class TokenReplacer:
             source_file_mi_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
             flatten (Optional[bool]): Rather or not to flatten the data to a single string
             file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
-            with no newlines or extra white space (used for filenames). `colon_replace` is ignored
-            when this is used.
+              with no newlines or extra white space (used for filenames). `colon_replace` is ignored
+              when this is used.
             token_type (Optional[Iterable[TokenType]]): Specific `TokenType`'s to use, or None for all.
             unfilled_token_mode (UnfilledTokenRemoval): What to do with unused tokens.
             eg. (TokenType, TokenType).
             releasers_name (Optional[str]): Releasers name.
+            override_tokens (Optional[dict[str, str]]): Override tokens with a supplied value regardless of logic.
             edition_override (Optional[str]): Edition override.
             frame_size_override (Optional[str]): Frame size override.
             movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
             screen_shots (Optional[str]): Screenshots.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
-            screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
+              screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
+            parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
+              detected from the filename.
         """
         self.media_input = Path(media_input)
         self.jinja_engine = jinja_engine
@@ -139,6 +151,8 @@ class TokenReplacer:
         self.override_title_rules = override_title_rules
         self.screen_shots = screen_shots
         self.dummy_screen_shots = dummy_screen_shots
+        self.parse_filename_attributes = parse_filename_attributes
+        self.override_tokens = override_tokens
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
         if not self.flatten and not self.jinja_engine:
@@ -224,6 +238,11 @@ class TokenReplacer:
         return all_tokens
 
     def _get_token_value(self, token_data: TokenData) -> str:
+        if self.override_tokens and token_data.token in self.override_tokens:
+            return self._optional_user_input(
+                self.override_tokens[token_data.token], token_data
+            )
+
         if not self.token_type:
             get_media_token = self._media_tokens(token_data)
             if get_media_token:
@@ -239,6 +258,11 @@ class TokenReplacer:
             )
             for token_type in token_types:
                 if token_type == FileToken:
+                    if (
+                        not self.parse_filename_attributes
+                        and token_data.token in self.FILENAME_ATTRIBUTES
+                    ):
+                        continue
                     get_token = self._media_tokens(token_data)
                     if get_token:
                         return get_token
@@ -254,6 +278,12 @@ class TokenReplacer:
 
         if token_data.bracket_token == Tokens.FRAME_SIZE.token:
             return self._frame_size(token_data)
+
+        if token_data.bracket_token == Tokens.HYBRID.token:
+            return self._hybrid(token_data)
+
+        if token_data.bracket_token == Tokens.LOCALIZATION.token:
+            return self._localization(token_data)
 
         if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE.token:
             return self._mi_audio_bitrate(token_data, False)
@@ -396,6 +426,9 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.RESOLUTION.token:
             return self._resolution(token_data)
+
+        elif token_data.bracket_token == Tokens.REMUX.token:
+            return self._remux(token_data)
 
         elif token_data.bracket_token == Tokens.RE_RELEASE.token:
             return self._re_release(token_data)
@@ -550,7 +583,7 @@ class TokenReplacer:
                                 rf"{replace}", rf"{replace_with}", formatted_title
                             )
                 return formatted_title
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, IndexError):
             return None
 
     def _remove_unfilled_tokens(self, formatted_title: str) -> str:
@@ -644,6 +677,20 @@ class TokenReplacer:
 
         # convert the set back to a string, joining with spaces
         return self._optional_user_input(" ".join(edition_set), token_data)
+
+    def _hybrid(self, token_data: TokenData) -> str:
+        return self._optional_user_input(
+            "HYBRID" if "hybrid" in self.media_input.stem.lower() else "", token_data
+        )
+
+    def _localization(self, token_data: TokenData) -> str:
+        localization = ""
+        lowered_input = self.media_input.stem.lower()
+        if "subbed" in lowered_input:
+            localization = "Subbed"
+        elif "Dubbed" in lowered_input:
+            localization = "Dubbed"
+        return self._optional_user_input(localization, token_data)
 
     def _mi_audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
         bitrate = ""
@@ -1083,6 +1130,11 @@ class TokenReplacer:
     def _resolution(self, token_data: TokenData) -> str:
         return self._optional_user_input(
             self._detect_resolution(self.media_info_obj), token_data
+        )
+
+    def _remux(self, token_data: TokenData) -> str:
+        return self._optional_user_input(
+            "REMUX" if "remux" in self.media_input.stem.lower() else "", token_data
         )
 
     def _re_release(self, token_data: TokenData) -> str:
