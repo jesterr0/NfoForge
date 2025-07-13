@@ -348,6 +348,9 @@ class ProcessBackEnd:
                         frame_size_override=self.config.shared_data.dynamic_data.get(
                             "frame_size_override"
                         ),
+                        override_tokens=self.config.shared_data.dynamic_data.get(
+                            "override_tokens"
+                        ),
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
                     ).get_output()
                     if not isinstance(nfo, str):
@@ -1032,6 +1035,7 @@ class ProcessBackEnd:
             frame_size_override=self.config.shared_data.dynamic_data.get(
                 "frame_size_override"
             ),
+            override_tokens=self.config.shared_data.dynamic_data.get("override_tokens"),
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
             override_title_rules=override_title_rules,
         )
