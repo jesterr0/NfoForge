@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added a new button that opens a pop up window to show the user all the potential **FileTokens** they can use in their override string, where they can click to copy/search.
   - Added a **REMUX** checkbox (if the token exists in the string it'll fill the remux token).
   - Added a **HYBRID** checkbox (if the token exists in the string it'll fill the hybrid token).
+  - Options portion has been put in a scroll area to allow more widgets.
+  - All combo boxes (drop down menus) mouse wheel has been disabled as to not accidentally change while scrolling the new scroll window.
+  - **Output can no longer be edited directly, you must use the override token area above and edit each value as needed**.
+  - When the **Value** is edited in the **override** section, if the **same** token in a corresponding **title token** exists it will also be updated.
 
 
 ### Changed
