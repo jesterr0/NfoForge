@@ -1,6 +1,6 @@
 from collections.abc import Iterable
-from dataclasses import field, make_dataclass, asdict
-from typing import NamedTuple, Type, Any
+from dataclasses import asdict, field, make_dataclass
+from typing import Any, NamedTuple, Type
 
 
 MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
@@ -259,7 +259,7 @@ class Tokens:
         ]
 
         TokenDataClass = make_dataclass(
-            cls_name="TokenData",
+            cls_name="TokenInfo",
             fields=fields,
             namespace={"get_dict": lambda self: asdict(self)},
         )
