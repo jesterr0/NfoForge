@@ -2,6 +2,8 @@ from collections.abc import Iterable
 from dataclasses import asdict, field, make_dataclass
 from typing import Any, NamedTuple, Type
 
+from src.enums import CaseInsensitiveStrEnum
+
 
 MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
     (r"", r"[unidecode]"),
@@ -45,6 +47,18 @@ class FileToken(TokenType):
 
 class NfoToken(TokenType):
     pass
+
+
+class TokenSelection(CaseInsensitiveStrEnum):
+    FILE_TOKEN = "FileToken"
+    NFO_TOKEN = "NfoToken"
+
+    def get_token_obj(self) -> Type[TokenType]:
+        if self == TokenSelection.FILE_TOKEN:
+            return FileToken
+        elif self == TokenSelection.NFO_TOKEN:
+            return NfoToken
+        raise AttributeError("Failed to get token object")
 
 
 class Tokens:
