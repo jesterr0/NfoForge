@@ -34,9 +34,6 @@ from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_search import MediaSearchPayload
 from src.version import __version__, program_name, program_url
 
-# TODO: we need to handle unknown tokens (currently stops all generation if there is an unknown but valid formatted)
-# token in filemode (not using jinja2 engine)
-
 
 class TokenReplacer:
     FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
@@ -62,6 +59,7 @@ class TokenReplacer:
         "dummy_screen_shots",
         "parse_filename_attributes",
         "override_tokens",
+        "user_tokens",
         "edition_override",
         "frame_size_override",
         "movie_clean_title_rules",
@@ -85,6 +83,7 @@ class TokenReplacer:
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
         override_tokens: dict[str, str] | None = None,
+        user_tokens: dict[str, str] | None = None,
         edition_override: str | None = None,
         frame_size_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
@@ -115,6 +114,7 @@ class TokenReplacer:
             eg. (TokenType, TokenType).
             releasers_name (Optional[str]): Releasers name.
             override_tokens (Optional[dict[str, str]]): Override tokens with a supplied value regardless of logic.
+            user_tokens (Optional[dict[str, str]]): User tokens (must be prefixed with usr_).
             edition_override (Optional[str]): Edition override.
             frame_size_override (Optional[str]): Frame size override.
             movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
@@ -153,6 +153,7 @@ class TokenReplacer:
         self.dummy_screen_shots = dummy_screen_shots
         self.parse_filename_attributes = parse_filename_attributes
         self.override_tokens = override_tokens
+        self.user_tokens = user_tokens
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
         if not self.flatten and not self.jinja_engine:
@@ -186,7 +187,8 @@ class TokenReplacer:
             if not self.jinja_engine:
                 raise AttributeError("Could not detect 'jinja_engine'")
             jinja_output = self.jinja_engine.render_from_str(
-                self.token_string, filled_tokens
+                self.token_string,
+                filled_tokens | self.user_tokens if self.user_tokens else filled_tokens,
             )
             return jinja_output
 
@@ -195,7 +197,7 @@ class TokenReplacer:
             setattr(self.token_data, key, value)
 
     def _parse_user_input(self):
-        """Extract valid tokens from user input string"""
+        """Extract valid tokens from user input string, ignoring unknown tokens."""
         valid_tokens = Tokens.get_tokens()
 
         matches = re.finditer(
@@ -206,18 +208,16 @@ class TokenReplacer:
             pre = match.group(1) if match.group(1) else ""
             token_str = match.group(2)
             post = match.group(3) if match.group(3) else ""
-            if token_str in valid_tokens:
+            # accept built-in or user tokens only
+            if token_str in valid_tokens or (
+                token_str.startswith("usr_")
+                and self.user_tokens
+                and token_str in self.user_tokens
+            ):
                 string_token_data = TokenData(
                     pre, token_str, f"{{{token_str}}}", post, match.group()
                 )
                 parsed_tokens.add(string_token_data)
-
-        invalid_tokens = {
-            t.token for t in parsed_tokens if t.token is not None
-        } - valid_tokens
-        if invalid_tokens:
-            invalid_token_str = ", ".join(invalid_tokens)
-            raise InvalidTokenError(f"Invalid tokens found: {invalid_token_str}")
 
         return parsed_tokens
 
@@ -238,11 +238,23 @@ class TokenReplacer:
         return all_tokens
 
     def _get_token_value(self, token_data: TokenData) -> str:
+        # handle user tokens
+        if (
+            self.user_tokens
+            and token_data.token
+            and token_data.token.startswith("usr_")
+        ):
+            return self._optional_user_input(
+                self.user_tokens.get(token_data.token, ""), token_data
+            )
+
+        # handle over ride tokens
         if self.override_tokens and token_data.token in self.override_tokens:
             return self._optional_user_input(
                 self.override_tokens[token_data.token], token_data
             )
 
+        # default token handling
         if not self.token_type:
             get_media_token = self._media_tokens(token_data)
             if get_media_token:
@@ -552,8 +564,8 @@ class TokenReplacer:
 
             # apply specific formatting for 'movie_clean_title'
             if "movie_clean_title" in formatted_title and filled_tokens:
-                formatted_title = formatted_title.format(
-                    movie_clean_title=filled_tokens["movie_clean_title"]
+                formatted_title = formatted_title.replace(
+                    "{movie_clean_title}", filled_tokens["movie_clean_title"]
                 )
 
             # remove unfilled tokens if needed
@@ -590,7 +602,7 @@ class TokenReplacer:
         if self.unfilled_token_mode == UnfilledTokenRemoval.KEEP:
             return formatted_title
         elif self.unfilled_token_mode == UnfilledTokenRemoval.TOKEN_ONLY:
-            return re.sub(r"({.+})", "", formatted_title, flags=re.MULTILINE)
+            return re.sub(r"{[^{}]*}", "", formatted_title, flags=re.MULTILINE)
         elif self.unfilled_token_mode == UnfilledTokenRemoval.ENTIRE_LINE:
             return re.sub(r"(\b.*?{.+}*?\n)", "", formatted_title, flags=re.MULTILINE)
         else:
