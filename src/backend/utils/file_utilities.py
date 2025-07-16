@@ -32,13 +32,14 @@ def generate_unique_date_name(
 
 def open_explorer(path: Path) -> None:
     """Multi platform way to open explorer at X path"""
-    cur_platform = system()
-    # windows
-    if cur_platform == "Windows":
-        startfile(str(path))
-    # mac
-    elif cur_platform == "Darwin":
-        run(["open", str(path.as_posix())])
-    # Linux and others
-    else:
-        run(["xdg-open", str(path.as_posix())])
+    if path.exists() and path.is_dir():
+        cur_platform = system()
+        # windows
+        if cur_platform == "Windows":
+            startfile(str(path))
+        # mac
+        elif cur_platform == "Darwin":
+            run(["open", str(path.as_posix())])
+        # Linux and others
+        else:
+            run(["xdg-open", str(path.as_posix())])

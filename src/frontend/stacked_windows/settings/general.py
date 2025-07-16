@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.backend.utils.file_utilities import open_explorer
 from src.enums.logging_settings import LogLevel
 from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
@@ -199,16 +200,29 @@ class GeneralSettings(BaseSettings):
         self.working_dir_entry.setToolTip(
             "Working files (torrents, images, etc.) will be placed inside of this folder for each job"
         )
-        self.working_dir_btn = build_auto_theme_icon_buttons(
+        self.working_dir_btn: QToolButton = build_auto_theme_icon_buttons(
             QToolButton, "open_folder.svg", "workingDirBtn", 20, 20
         )
+        self.working_dir_btn.setToolTip("Set working directory")
         self.working_dir_btn.clicked.connect(self._handle_working_dir_click)
+
+        self.working_dir_open_btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "preview.svg",
+            "wdOpenDirBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.working_dir_open_btn.setToolTip("Open working directory")
+        self.working_dir_open_btn.clicked.connect(self._handle_open_working_dir_click)
 
         working_dir_widget = QWidget()
         working_dir_layout = QHBoxLayout(working_dir_widget)
         working_dir_layout.setContentsMargins(0, 0, 0, 0)
         working_dir_layout.addWidget(self.working_dir_entry, stretch=1)
         working_dir_layout.addWidget(self.working_dir_btn)
+        working_dir_layout.addWidget(self.working_dir_open_btn)
 
         self.add_layout(create_form_layout(config_lbl, config_widget))
         self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
@@ -369,6 +383,10 @@ class GeneralSettings(BaseSettings):
             wd = Path(wd)
             self.working_dir_entry.setText(str(wd))
             self.config.cfg_payload.working_dir = wd
+
+    @Slot()
+    def _handle_open_working_dir_click(self) -> None:
+        open_explorer(self.config.cfg_payload.working_dir)
 
     def _load_plugin_combos(self) -> None:
         if self.plugin_wizard_page_combo.count() == 0:
