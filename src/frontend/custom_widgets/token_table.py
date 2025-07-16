@@ -38,7 +38,6 @@ class TokenTable(QWidget):
         self.allow_edits = allow_edits
 
         self.table = QTableWidget(self)
-        self.table.setRowCount(len(tokens))
         self.table.setColumnCount(2)
         self.table.setMinimumHeight(180)
         self.table.setHorizontalHeaderLabels(("Token", "Description"))
@@ -82,6 +81,11 @@ class TokenTable(QWidget):
             self.main_layout.addWidget(self.replacement_list_widget)
 
     def populate_table(self, tokens: list, remove_brackets: bool) -> None:
+        self.table.setRowCount(0)
+        self.table.clearContents()
+
+        self.table.setRowCount(len(tokens))
+
         for i, token in enumerate(tokens):
             token_name = (
                 token.token
@@ -96,6 +100,8 @@ class TokenTable(QWidget):
             description_item = QTableWidgetItem(token.description)
             description_item.setToolTip(token.description)
             self.table.setItem(i, 1, description_item)
+
+        self.setup_table_properties()
 
     def setup_table_properties(self) -> None:
         self.table.resizeColumnsToContents()
