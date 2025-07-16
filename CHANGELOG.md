@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added Working Directory input (general settings).
+- Added button to open current working directory in file explorer across Win, Linux, and Mac.
 - Added option to prevent parsing of input file attributes (REMUX, HYBRID, PROPER, and REPACK) in the movie settings tab.
 - Added example file input and mediainfo window in the movie settings tab to show the raw data of how the examples are being generated.
 - New tokens (**hybrid**, **localization**, and **remux**).
@@ -25,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All combo boxes (drop down menus) mouse wheel has been disabled as to not accidentally change while scrolling the new scroll window.
   - **Output can no longer be edited directly, you must use the override token area above and edit each value as needed**.
   - When the **Value** is edited in the **override** section, if the **same** token in a corresponding **title token** exists it will also be updated.
+- Added support for **user tokens**.
+- Added new **Settings** tab **User Tokens**.
+  - Can now add **custom** user tokens for both **FileTokens** and **NfoTokens**. 
+  - Tokens must be **prefixed** with **usr_**, all **lowercase**, and **underscores**.
+  - **Duplicate** tokens are ignored, only the **last duplicate** token will be accepted.
+  - Includes a button to to expand the editor for longer/multi-line tokens.
+- **TokenReplacer** engine has been improved.
 
 
 ### Changed
@@ -36,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic/Advanced inputs now sets working directory sub folder name based on inputs for rest of programs control flow.
 - Basic input now always accepts a folder or a file without needing toggled in settings.
 - Improved error handling of token replacer backend.
+- **Template Settings** token child window will now automatically be closed when closing settings or navigating to a new settings tab.
 
 ### Fixed
 
@@ -46,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed about tab copy to clip board buttons not working.
 - Token **mi_audio_bitrate** would return no results.
 - Rare issue that could happen if the token when was closed after copying data from it.
+- Extra white space on some of the settings tab at the bottom of the window.
+- TokenReplacer engine not replacing tokens when there was an unknown or invalid token in the user input.
 
 ### Removed
 
