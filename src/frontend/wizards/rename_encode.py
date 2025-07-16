@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.rename_encode import RenameEncodeBackEnd
 from src.backend.tokens import FileToken, Tokens
+from src.backend.tokens import TokenSelection, TokenType
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
     FRAME_SIZE_INFO,
@@ -368,8 +369,14 @@ class RenameEncode(BaseWizardPage):
         self._token_window.resize(self.geometry().size())
         self._token_window.finished.connect(self._close_token_window)
 
+        user_tokens = [
+            TokenType(f"{{{k}}}", "User Token")
+            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        ]
+
         token_widget = TokenTable(
-            tokens=sorted(Tokens().get_token_objects(FileToken)),
+            tokens=sorted(Tokens().get_token_objects(FileToken)) + user_tokens,
             remove_brackets=False,
             parent=self._token_window,
         )
@@ -530,6 +537,12 @@ class RenameEncode(BaseWizardPage):
         if not media_info_obj:
             raise AttributeError("Failed to parse MediaInfo")
 
+        user_tokens = {
+            k: v
+            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        }
+
         get_file_name = self.backend.media_renamer(
             media_file=media_file,
             source_file=source_file,
@@ -539,6 +552,7 @@ class RenameEncode(BaseWizardPage):
             media_info_obj=media_info_obj,
             source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            user_tokens=user_tokens,
         )
 
         if get_file_name and self.backend.token_replacer:
@@ -651,6 +665,7 @@ class RenameTokenControl(QWidget):
 
     def populate_table(self, tokens: dict[str, Any]) -> None:
         self.table.blockSignals(True)
+        self.table.setRowCount(0)
         self.table.clearContents()
         self.table.setRowCount(len(tokens))
 
@@ -715,5 +730,6 @@ class RenameTokenControl(QWidget):
 
     def reset(self) -> None:
         self.table.blockSignals(True)
+        self.table.setRowCount(0)
         self.table.clearContents()
         self.table.setAutoScroll(False)

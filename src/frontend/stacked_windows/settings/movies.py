@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.token_replacer import ColonReplace, TokenReplacer, UnfilledTokenRemoval
-from src.backend.tokens import FileToken, Tokens
+from src.backend.tokens import FileToken, TokenSelection, TokenType, Tokens
 from src.backend.utils.example_parsed_file_data import (
     EXAMPLE_FILE_NAME,
     EXAMPLE_MEDIAINFO_OBJ,
@@ -32,6 +32,7 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.resizable_stacked_widget import ResizableStackedWidget
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import (
     build_auto_theme_icon_buttons,
@@ -52,6 +53,7 @@ class MoviesSettings(BaseSettings):
         # hook up signals
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
+        GSigs().token_state_changed.connect(self._token_state_changed)
 
         # controls
         # rename
@@ -203,7 +205,7 @@ class MoviesSettings(BaseSettings):
 
         # token table
         self.token_table = TokenTable(
-            sorted(Tokens().get_token_objects(FileToken)), allow_edits=True, parent=self
+            self._get_file_tokens(), allow_edits=True, parent=self
         )
         self.token_table.main_layout.setContentsMargins(0, 0, 0, 0)
         self.mvr_clean_title_rules_modified = False
@@ -265,6 +267,11 @@ class MoviesSettings(BaseSettings):
         qline: QLineEdit,
         override_title_rules: list[tuple[str, str]] | None = None,
     ) -> str:
+        user_tokens = {
+            k: v
+            for k, (v, ts) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(ts) is TokenSelection.FILE_TOKEN
+        }
         format_str = TokenReplacer(
             media_input=Path(EXAMPLE_FILE_NAME),
             jinja_engine=None,
@@ -280,6 +287,7 @@ class MoviesSettings(BaseSettings):
             releasers_name=self.config.cfg_payload.releasers_name,
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
             override_title_rules=override_title_rules,
+            user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
         )
         example_txt = qline.text()
@@ -589,6 +597,19 @@ class MoviesSettings(BaseSettings):
         btn.clicked.connect(btn_signal)
         layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
         return widget
+
+    @Slot()
+    def _token_state_changed(self) -> None:
+        self.token_table.populate_table(self._get_file_tokens(), False)
+        self._update_file_token_example()
+
+    def _get_file_tokens(self) -> list[TokenType]:
+        user_tokens = [
+            TokenType(f"{{{k}}}", "User Token")
+            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        ]
+        return sorted(Tokens().get_token_objects(FileToken)) + user_tokens
 
     @staticmethod
     def _build_colon_replace_combo(
