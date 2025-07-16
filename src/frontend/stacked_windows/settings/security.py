@@ -30,6 +30,10 @@ class SecuritySettings(BaseSettings):
         self.add_layout(create_form_layout(tvdb_api_key_lbl, self.tvdb_api_key_entry))
         self.add_layout(self.reset_layout)
 
+        # shift the spacer under neath the widgets
+        self.inner_layout.removeItem(self._spacer_item)
+        self.inner_layout.addSpacerItem(self._spacer_item)
+
         self._load_saved_settings()
 
     @Slot()
