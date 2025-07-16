@@ -1,5 +1,7 @@
 from enum import auto as auto_enum
+
 from typing_extensions import override
+
 from src.enums import CaseInsensitiveEnum
 
 
