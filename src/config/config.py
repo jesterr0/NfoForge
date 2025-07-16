@@ -702,6 +702,10 @@ class Config:
             )
             movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
 
+            # user tokens
+            user_token_data = self._toml_data["user_tokens"]
+            user_token_data["tokens"] = self.cfg_payload.user_tokens
+
             # screenshots
             screen_shot_data = self._toml_data["screenshots"]
             screen_shot_data["crop_mode"] = Cropping(self.cfg_payload.crop_mode).value
@@ -1224,6 +1228,9 @@ class Config:
             # movie rename
             movie_rename = toml_data["movie_rename"]
 
+            # user token data
+            user_token_data = toml_data["user_tokens"]
+
             # screenshots
             screen_shot_data = toml_data["screenshots"]
 
@@ -1304,6 +1311,7 @@ class Config:
                 mvr_token=movie_rename.get("mvr_token"),
                 mvr_title_token=movie_rename.get("mvr_title_token"),
                 mvr_release_group=movie_rename.get("mvr_release_group", ""),
+                user_tokens=user_token_data.get("tokens", {}),
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
                 screen_shot_count=screen_shot_data.get("screen_shot_count", 20),

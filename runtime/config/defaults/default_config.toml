@@ -336,6 +336,8 @@ mvr_clean_title_rules = [
 mvr_clean_title_rules_modified = false
 mvr_release_group = ""
 
+[user_tokens.tokens]
+
 [screenshots]
 crop_mode = 2
 screenshots_enabled = false
