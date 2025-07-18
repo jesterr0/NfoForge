@@ -8,8 +8,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
-    QSizePolicy,
-    QSpacerItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -17,9 +15,11 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.tokens import MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS
+from src.frontend.custom_widgets.dynamic_range_widget import DynamicRangeWidget
 from src.frontend.custom_widgets.replacement_list_widget import (
     LoadedReplacementListWidget,
 )
+from src.frontend.utils import build_h_line
 
 
 class TokenTable(QWidget):
@@ -66,19 +66,30 @@ class TokenTable(QWidget):
                 <br>
                 <span style="font-style: italic; font-size: small;">Rules are processed in row order from top to bottom. 
                 Use the arrow buttons to adjust row order.</span>"""
-            replacement_list_widget_lbl = QLabel(movie_clean_title_custom_str)
-            replacement_list_widget_lbl.setWordWrap(True)
-
+            replacement_list_widget_lbl = QLabel(
+                movie_clean_title_custom_str, parent=self, wordWrap=True
+            )
             self.replacement_list_widget = LoadedReplacementListWidget(
                 MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS, self
             )
-            self.main_layout.addSpacerItem(
-                QSpacerItem(
-                    1, 12, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
-                )
-            )
+            self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
             self.main_layout.addWidget(replacement_list_widget_lbl)
             self.main_layout.addWidget(self.replacement_list_widget)
+
+            mi_video_dynamic_range_lbl_str = """\
+                <h4 style="margin: 0; margin-bottom: 6px;">Dynamic Range Token</h4>
+                <span>
+                    Allows fine grain customization of what 
+                    <span style="font-weight: bold;">{mi_video_dynamic_range}</span> returns. 
+                </span>"""
+            mi_video_dynamic_range_lbl = QLabel(
+                mi_video_dynamic_range_lbl_str, parent=self, wordWrap=True
+            )
+            self.mi_video_dynamic_range = DynamicRangeWidget(parent=self)
+            self.mi_video_dynamic_range.main_layout.setContentsMargins(0, 0, 0, 0)
+            self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
+            self.main_layout.addWidget(mi_video_dynamic_range_lbl)
+            self.main_layout.addWidget(self.mi_video_dynamic_range)
 
     def populate_table(self, tokens: list, remove_brackets: bool) -> None:
         self.table.setRowCount(0)
