@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Basic input now always accepts a folder or a file without needing toggled in settings.
 - Improved error handling of token replacer backend.
 - **Template Settings** token child window will now automatically be closed when closing settings or navigating to a new settings tab.
+- **Major** token **mi_video_dynamic_range** changes (thanks yammes):
+  - Built a new widget in the **Movie Settings** tab that allows the user fine grained control over how it works.
+  - Set which resolutions this token will be active in (720p, 1080p, 2160p).
+  - You can set which HDR types will be returned.
+  - You can adjust custom strings that will be used when they are returned for each HDR type.
+- TokenTable in edit mode is not organized a bit better with h-lines.
 
 ### Fixed
 
