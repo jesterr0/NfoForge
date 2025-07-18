@@ -9,6 +9,7 @@ class WizardPages(Enum):
     RENAME_ENCODE_PAGE = auto_enum()
     IMAGES_PAGE = auto_enum()
     TRACKERS_PAGE = auto_enum()
+    RELEASE_NOTES_PAGE = auto_enum()
     NFO_TEMPLATE_PAGE = auto_enum()
     OVERVIEW_PAGE = auto_enum()
     PROCESS_PAGE = auto_enum()
