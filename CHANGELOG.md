@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Duplicate** tokens are ignored, only the **last duplicate** token will be accepted.
   - Includes a button to to expand the editor for longer/multi-line tokens.
 - **TokenReplacer** engine has been improved.
-- Added a new special NfoToken **ReleaseNotes**.
+- Added a new special NfoToken **release_notes**.
   - This token works similar to the other NfoTokens.
   - Added a new wizard page called **Release Notes**, this page allows you to add, delete, edit, manage as many **notes** as you want and label them what ever.
   - Each time you utilize the work flow, you can set the type of release notes you want sent to fill the token **release_notes**.
