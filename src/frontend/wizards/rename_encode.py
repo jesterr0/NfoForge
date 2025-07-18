@@ -689,7 +689,7 @@ class RenameEncode(BaseWizardPage):
     ) -> None:
         combobox.addItem("")
         for item in items:
-            combobox.addItem(item[0])
+            combobox.addItem(item.normalized)
 
 
 class RenameTokenControl(QWidget):
