@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from pymediainfo import MediaInfo
 
@@ -24,6 +25,7 @@ class RenameEncodeBackEnd:
         media_info_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
         movie_clean_title_rules: list[tuple[str, str]] | None,
+        mi_video_dynamic_range: dict[str, Any] | None,
         user_tokens: dict[str, str] | None,
     ) -> Path | None:
         self.token_replacer = TokenReplacer(
@@ -39,6 +41,7 @@ class RenameEncodeBackEnd:
             file_name_mode=True,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             movie_clean_title_rules=movie_clean_title_rules,
+            mi_video_dynamic_range=mi_video_dynamic_range,
             override_tokens=self.override_tokens,
             user_tokens=user_tokens,
         )

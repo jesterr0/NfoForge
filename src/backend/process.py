@@ -358,6 +358,7 @@ class ProcessBackEnd:
                         ),
                         user_tokens=user_tokens,
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
                     ).get_output()
                     if not isinstance(nfo, str):
                         raise ValueError("NFO should be a string")
@@ -1050,6 +1051,7 @@ class ProcessBackEnd:
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
+            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
         )
         output = format_str.get_output()
         if output:

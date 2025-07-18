@@ -363,6 +363,7 @@ class TemplateSelector(QWidget):
                         "frame_size_override"
                     ),
                     movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
                     user_tokens=user_tokens,
                 )
                 output = token_replacer.get_output()

@@ -199,6 +199,7 @@ class Overview(BaseWizardPage):
                         ),
                         user_tokens=user_tokens,
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
                     ).get_output()
                     if token_replacer:
                         nfo = token_replacer

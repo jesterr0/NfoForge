@@ -65,6 +65,7 @@ class TokenReplacer:
         "frame_size_override",
         "movie_clean_title_rules",
         "override_title_rules",
+        "mi_video_dynamic_range",
         "token_data",
     )
 
@@ -89,6 +90,7 @@ class TokenReplacer:
         frame_size_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
+        mi_video_dynamic_range: dict[str, Any] | None = None,
         screen_shots: str | None = "",
         release_notes: str | None = "",
         dummy_screen_shots: bool = False,
@@ -121,6 +123,7 @@ class TokenReplacer:
             frame_size_override (Optional[str]): Frame size override.
             movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
+            mi_video_dynamic_range: (Optional[dict[str, Any]]: Rules to control formatting of video dynamic range.
             screen_shots (Optional[str]): Screenshots.
             release_notes (Optional[str]): Release notes.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
@@ -152,6 +155,7 @@ class TokenReplacer:
         self.frame_size_override = frame_size_override
         self.movie_clean_title_rules = movie_clean_title_rules
         self.override_title_rules = override_title_rules
+        self.mi_video_dynamic_range = mi_video_dynamic_range
         self.screen_shots = screen_shots
         self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
@@ -945,25 +949,129 @@ class TokenReplacer:
         return self._optional_user_input(codec, token_data)
 
     def _mi_video_dynamic_range(self, token_data: TokenData) -> str:
-        dynamic_range = "HDR" if "HDR" in self.guess_name.get("other", "") else ""
+        hdr_string = ""
 
-        if self.media_info_obj and self.media_info_obj.video_tracks:
-            get_dynamic_range = self.media_info_obj.video_tracks[0].other_hdr_format
-            if get_dynamic_range:
-                try:
-                    if "HDR" in get_dynamic_range[0]:
-                        dynamic_range = "HDR"
+        if (
+            self.mi_video_dynamic_range
+            and self.media_info_obj
+            and self.media_info_obj.video_tracks
+        ):
+
+            def normalize(s: str) -> str:
+                return s.replace(" ", "").lower()
+
+            fallback_names = {
+                "SDR": "SDR",
+                "PQ": "PQ",
+                "HLG": "HLG",
+                "HDR10": "HDR10",
+                "HDR10+": "HDR10+",
+                "DV": "DV",
+                "DV HDR10": "DV HDR10",
+                "DV HDR10+": "DV HDR10+",
+            }
+
+            # resolution
+            resolution = int(
+                self._detect_resolution(self.media_info_obj)
+                .replace("p", "")
+                .replace("i", "")
+            )
+            res_map = {720: "720p", 1080: "1080p", 2160: "2160p"}
+            res_key = next(
+                (v for k, v in res_map.items() if abs(resolution - k) < 100), None
+            )
+
+            if not res_key or not self.mi_video_dynamic_range["resolutions"].get(
+                res_key, False
+            ):
+                return self._optional_user_input("", token_data)
+
+            # get data from dict
+            enabled_hdr_types = [
+                k for k, v in self.mi_video_dynamic_range["hdr_types"].items() if v
+            ]
+            custom_strings = self.mi_video_dynamic_range.get("custom_strings", {})
+            enabled_hdr_types_sorted = sorted(enabled_hdr_types, key=len, reverse=True)
+            norm_enabled_types = {normalize(k): k for k in enabled_hdr_types_sorted}
+
+            # extract HDR format and transfer characteristics
+            hdr_format = ""
+            transfer_characteristics = ""
+            try:
+                hdr_format = self.media_info_obj.video_tracks[0].other_hdr_format[0]
+            except (AttributeError, IndexError, TypeError):
+                pass
+            try:
+                transfer_characteristics = self.media_info_obj.video_tracks[
+                    0
+                ].transfer_characteristics
+            except (AttributeError, IndexError, TypeError):
+                pass
+
+            # detect mi candidates
+            mi_candidates = []
+            if hdr_format:
+                if "Dolby Vision" in hdr_format and "HDR10+" in hdr_format:
+                    mi_candidates.append("DV HDR10+")
+                if (
+                    "Dolby Vision" in hdr_format
+                    and "HDR10" in hdr_format
+                    and "HDR10+" not in hdr_format
+                ):
+                    mi_candidates.append("DV HDR10")
+                if (
+                    "Dolby Vision" in hdr_format
+                    and "HDR10" not in hdr_format
+                    and "HDR10+" not in hdr_format
+                ):
+                    mi_candidates.append("DV")
+                if "HDR10+" in hdr_format:
+                    mi_candidates.append("HDR10+")
+                if "HDR10" in hdr_format and "HDR10+" not in hdr_format:
+                    mi_candidates.append("HDR10")
+
+            # PQ/HLG from transfer characteristics
+            for t in ("PQ", "HLG"):
+                if transfer_characteristics == t:
+                    mi_candidates.append(t)
+
+            # try to match the most specific enabled HDR type
+            for candidate in mi_candidates:
+                norm_candidate = normalize(candidate)
+                if norm_candidate in norm_enabled_types:
+                    hdr_type = norm_enabled_types[norm_candidate]
+                    custom = custom_strings.get(hdr_type, "").strip()
+                    hdr_string = custom or fallback_names.get(hdr_type, hdr_type)
+                    break
+
+            # fallback: if nothing matched, check if SDR is enabled and present in candidates
+            if (
+                not hdr_string
+                and "SDR" in enabled_hdr_types
+                and (
+                    any(normalize(c) == "sdr" for c in mi_candidates)
+                    or not mi_candidates
+                )
+            ):
+                custom = custom_strings.get("SDR", "").strip()
+                hdr_string = custom or fallback_names.get("SDR", "SDR")
+
+            # append PQ/HLG if enabled, matches transfer_characteristics, and not already present
+            for t in ("PQ", "HLG"):
+                if (
+                    transfer_characteristics == t
+                    and t in enabled_hdr_types
+                    and normalize(t) not in normalize(str(hdr_string))
+                ):
+                    custom = custom_strings.get(t, "").strip()
+                    to_add = custom or fallback_names.get(t, t)
+                    if hdr_string:
+                        hdr_string += f" {to_add}"
                     else:
-                        dynamic_range = ""
-                except IndexError:
-                    dynamic_range = ""
+                        hdr_string = to_add
 
-            video_width = self.media_info_obj.video_tracks[0].width
-            if video_width and video_width > 1920 and video_width <= 3840:
-                if not dynamic_range:
-                    dynamic_range = "SDR"
-
-        return self._optional_user_input(dynamic_range, token_data)
+        return self._optional_user_input(hdr_string, token_data)
 
     def _mi_video_dynamic_range_type(
         self, token_data: TokenData, include_sdr: bool = False, uhd_only: bool = False
