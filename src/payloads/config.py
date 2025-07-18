@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from src.enums.cropping import Cropping
 from src.enums.image_host import ImageHost, ImageSource
@@ -96,6 +97,7 @@ class ConfigPayload:
     mvr_clean_title_rules: list[tuple[str, str]]
     mvr_clean_title_rules_modified: bool
     mvr_release_group: str
+    mvr_mi_video_dynamic_range: dict[str, Any]
 
     # user tokens
     user_tokens: dict[str, tuple[str, str]]

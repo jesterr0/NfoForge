@@ -336,6 +336,31 @@ mvr_clean_title_rules = [
 mvr_clean_title_rules_modified = false
 mvr_release_group = ""
 
+[movie_rename.mvr_mi_video_dynamic_range.resolutions]
+720p = false
+1080p = false
+2160p = true
+
+[movie_rename.mvr_mi_video_dynamic_range.hdr_types]
+SDR = true
+PQ = false
+HLG = false
+HDR10 = true
+"HDR10+" = true
+DV = true
+"DV HDR10" = true
+"DV HDR10+" = true
+
+[movie_rename.mvr_mi_video_dynamic_range.custom_strings]
+SDR = "SDR"
+PQ = ""
+HLG = ""
+HDR10 = "HDR"
+"HDR10+" = "HDR10Plus"
+DV = "DV"
+"DV HDR10" = "DV HDR"
+"DV HDR10+" = "DV HDR10Plus"
+
 [user_tokens.tokens]
 
 [screenshots]

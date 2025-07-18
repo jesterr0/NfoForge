@@ -701,6 +701,9 @@ class Config:
                 self.cfg_payload.mvr_clean_title_rules_modified
             )
             movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
+            movie_rename["mvr_mi_video_dynamic_range"] = (
+                self.cfg_payload.mvr_mi_video_dynamic_range
+            )
 
             # user tokens
             user_token_data = self._toml_data["user_tokens"]
@@ -1324,6 +1327,32 @@ class Config:
                 mvr_token=movie_rename.get("mvr_token"),
                 mvr_title_token=movie_rename.get("mvr_title_token"),
                 mvr_release_group=movie_rename.get("mvr_release_group", ""),
+                mvr_mi_video_dynamic_range=movie_rename.get(
+                    "mvr_mi_video_dynamic_range",
+                    {
+                        "resolutions": {"720p": False, "1080p": False, "2160p": True},
+                        "hdr_types": {
+                            "SDR": True,
+                            "PQ": False,
+                            "HLG": False,
+                            "HDR10": True,
+                            "HDR10+": True,
+                            "DV": True,
+                            "DV + HDR10": True,
+                            "DV + HDR10+": True,
+                        },
+                        "custom_strings": {
+                            "SDR": "SDR",
+                            "PQ": "",
+                            "HLG": "",
+                            "HDR10": "HDR",
+                            "HDR10+": "HDR10Plus",
+                            "DV": "DV",
+                            "DV HDR10": "DV HDR",
+                            "DV HDR10+": "DV HDR10Plus",
+                        },
+                    },
+                ),
                 user_tokens=user_token_data.get("tokens", {}),
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
