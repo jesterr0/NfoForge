@@ -1,4 +1,5 @@
 from typing import Optional
+
 from pymediainfo import MediaInfo, Track
 
 from src.exceptions import MissingVideoTrackError, ResolutionMappingError
@@ -33,7 +34,7 @@ class VideoResolutionAnalyzer:
     def __init__(self, media_info_obj: MediaInfo):
         self.media_info_obj = media_info_obj
 
-    def get_resolution(self) -> str:
+    def get_resolution(self, remove_scan: bool = False) -> str:
         video_track = self._get_video_track()
         width = self._get_width(video_track)
         height = self._get_height(video_track)
@@ -45,7 +46,11 @@ class VideoResolutionAnalyzer:
 
         width = self._closest(self.RESOLUTIONS_WIDTH, width)
         height = self._closest(self.RESOLUTIONS_HEIGHT, height)
-        return f"{self._mi_resolution(width, height)}{scan}"
+        return (
+            f"{self._mi_resolution(width, height)}{scan}"
+            if not remove_scan
+            else str(self._mi_resolution(width, height))
+        )
 
     @staticmethod
     def _get_width(track: Track) -> int:

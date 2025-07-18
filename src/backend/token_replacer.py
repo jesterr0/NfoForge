@@ -972,11 +972,7 @@ class TokenReplacer:
             }
 
             # resolution
-            resolution = int(
-                self._detect_resolution(self.media_info_obj)
-                .replace("p", "")
-                .replace("i", "")
-            )
+            resolution = int(self._detect_resolution(self.media_info_obj, True))
             res_map = {720: "720p", 1080: "1080p", 2160: "2160p"}
             res_key = next(
                 (v for k, v in res_map.items() if abs(resolution - k) < 100), None
@@ -1077,14 +1073,7 @@ class TokenReplacer:
         self, token_data: TokenData, include_sdr: bool = False, uhd_only: bool = False
     ) -> str:
         if uhd_only:
-            if (
-                int(
-                    self._detect_resolution(self.media_info_obj)
-                    .replace("p", "")
-                    .replace("i", "")
-                )
-                <= 1080
-            ):
+            if int(self._detect_resolution(self.media_info_obj, True)) <= 1080:
                 return ""
 
         dv = "DV" if "Dolby Vision" in self.guess_name.get("other", "") else ""
@@ -1256,7 +1245,7 @@ class TokenReplacer:
 
     def _resolution(self, token_data: TokenData) -> str:
         return self._optional_user_input(
-            self._detect_resolution(self.media_info_obj), token_data
+            self._detect_resolution(self.media_info_obj, False), token_data
         )
 
     def _remux(self, token_data: TokenData) -> str:
@@ -1297,15 +1286,16 @@ class TokenReplacer:
             resolution_value = 0
             if self.source_file_mi_obj and self.source_file_mi_obj.video_tracks:
                 track = self.source_file_mi_obj.video_tracks[0]
-                resolution_value = self._detect_resolution(self.source_file_mi_obj)
+                resolution_value = int(
+                    self._detect_resolution(self.source_file_mi_obj, True)
+                )
             elif not track and self.media_info_obj and self.media_info_obj.video_tracks:
                 track = self.media_info_obj.video_tracks[0]
-                resolution_value = self._detect_resolution(self.media_info_obj)
+                resolution_value = int(
+                    self._detect_resolution(self.media_info_obj, True)
+                )
 
             if track and resolution_value:
-                resolution_value = int(
-                    resolution_value.replace("i", "").replace("p", "")
-                )
                 video_format = track.format
                 dynamic_range = (
                     track.other_hdr_format[0] if track.other_hdr_format else ""
@@ -1648,11 +1638,13 @@ class TokenReplacer:
 
         return token_str if token_str else ""
 
-    def _detect_resolution(self, mi_obj: MediaInfo | None) -> str:
+    def _detect_resolution(self, mi_obj: MediaInfo | None, remove_scan: bool) -> str:
         resolution = self.guess_name.get("screen_size", "")
 
         if mi_obj:
-            detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution()
+            detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
+                remove_scan
+            )
             if detect_resolution:
                 resolution = detect_resolution
 
