@@ -209,6 +209,10 @@ class Tokens:
         "{mi_video_bit_rate_num_only}",
         "Average video bit-rate in kbps, numbers only (9975)",
     )
+    RELEASE_NOTES = NfoToken(
+        "{release_notes}",
+        "Special token that is optionally applied for each job process",
+    )
     REPACK = NfoToken("{repack}", "Returns 'REPACK' if repack was detected")
     REPACK_N = NfoToken("{repack_n}", "Repack and repack number if exists (REPACK2)")
     REPACK_REASON = NfoToken("{repack_reason}", "Reason for REPACK if provided")

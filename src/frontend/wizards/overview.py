@@ -187,6 +187,7 @@ class Overview(BaseWizardPage):
                         if self.config.shared_data.url_data
                         or self.config.shared_data.loaded_images
                         else False,
+                        release_notes=self.config.shared_data.release_notes,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),

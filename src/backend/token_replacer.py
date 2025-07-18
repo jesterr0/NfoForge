@@ -56,6 +56,7 @@ class TokenReplacer:
         "unfilled_token_mode",
         "releasers_name",
         "screen_shots",
+        "release_notes",
         "dummy_screen_shots",
         "parse_filename_attributes",
         "override_tokens",
@@ -89,6 +90,7 @@ class TokenReplacer:
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
         screen_shots: str | None = "",
+        release_notes: str | None = "",
         dummy_screen_shots: bool = False,
         parse_filename_attributes: bool = False,
     ):
@@ -120,6 +122,7 @@ class TokenReplacer:
             movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
             screen_shots (Optional[str]): Screenshots.
+            release_notes (Optional[str]): Release notes.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
               screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
             parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
@@ -150,6 +153,7 @@ class TokenReplacer:
         self.movie_clean_title_rules = movie_clean_title_rules
         self.override_title_rules = override_title_rules
         self.screen_shots = screen_shots
+        self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
         self.parse_filename_attributes = parse_filename_attributes
         self.override_tokens = override_tokens
@@ -495,6 +499,9 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.SCREEN_SHOTS.token:
             return self._screen_shots(token_data)
+
+        elif token_data.bracket_token == Tokens.RELEASE_NOTES.token:
+            return self._release_notes(token_data)
 
         elif token_data.bracket_token == Tokens.FILE_SIZE_BYTES.token:
             return self._file_size_bytes(token_data)
@@ -1332,6 +1339,11 @@ class TokenReplacer:
                 "\nScreen1 Screen2\nScreen3 Screen4\n#### DUMMY SCREENSHOTS ####"
             )
         return self._optional_user_input(self.screen_shots, token_data)
+
+    def _release_notes(self, token_data: TokenData) -> str:
+        return self._optional_user_input(
+            self.release_notes if self.release_notes else "", token_data
+        )
 
     def _file_size_bytes(self, token_data: TokenData) -> str:
         file_size = ""

@@ -346,6 +346,7 @@ class ProcessBackEnd:
                         unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                         releasers_name=releasers_name,
                         screen_shots=formatted_screens,
+                        release_notes=self.config.shared_data.release_notes,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),

@@ -28,12 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - When the **Value** is edited in the **override** section, if the **same** token in a corresponding **title token** exists it will also be updated.
 - Added support for **user tokens**.
 - Added new **Settings** tab **User Tokens**.
-  - Can now add **custom** user tokens for both **FileTokens** and **NfoTokens**. 
-  - Tokens must be **prefixed** with **usr_**, all **lowercase**, and **underscores**.
+  - Can now add **custom** user tokens for both **FileTokens** and **NfoTokens**.
+  - Tokens must be **prefixed** with **usr\_**, all **lowercase**, and **underscores**.
   - **Duplicate** tokens are ignored, only the **last duplicate** token will be accepted.
   - Includes a button to to expand the editor for longer/multi-line tokens.
 - **TokenReplacer** engine has been improved.
-
+- Added a new special NfoToken **ReleaseNotes**.
+  - This token works similar to the other NfoTokens.
+  - Added a new wizard page called **Release Notes**, this page allows you to add, delete, edit, manage as many **notes** as you want and label them what ever.
+  - Each time you utilize the work flow, you can set the type of release notes you want sent to fill the token **release_notes**.
+  - Updated default template for new nfo templates to include a if block for **release_notes**.
+  - Added a new variable to the **SharedData** called **release_notes**, that can be overridden in a plugin.
 
 ### Changed
 
@@ -61,7 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Remove Directory Input toggle in general settings.
-
 
 ## [0.7.4] - 2025-05-30
 
