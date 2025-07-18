@@ -215,6 +215,9 @@ class MoviesSettings(BaseSettings):
         self.token_table.replacement_list_widget.defaults_applied.connect(
             self._mvr_clean_title_rules_defaults_applied
         )
+        self.token_table.mi_video_dynamic_range.state_changed.connect(
+            self._mi_video_dynamic_range_update_live_cfg
+        )
 
         self.token_table_box = QGroupBox("Tokens")
         self.token_table_layout = QVBoxLayout(self.token_table_box)
@@ -286,6 +289,7 @@ class MoviesSettings(BaseSettings):
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             releasers_name=self.config.cfg_payload.releasers_name,
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
@@ -405,6 +409,9 @@ class MoviesSettings(BaseSettings):
         self.token_table.load_replacement_rules(
             self.config.cfg_payload.mvr_clean_title_rules
         )
+        self.token_table.mi_video_dynamic_range.from_dict(
+            self.config.cfg_payload.mvr_mi_video_dynamic_range
+        )
         self._mvr_default_update_check()
 
         # unblock signals
@@ -431,6 +438,11 @@ class MoviesSettings(BaseSettings):
     @Slot()
     def _mvr_clean_title_rules_defaults_applied(self) -> None:
         self.mvr_clean_title_rules_modified = False
+
+    @Slot(object)
+    def _mi_video_dynamic_range_update_live_cfg(self, data: dict) -> None:
+        if data:
+            self.config.cfg_payload.mvr_mi_video_dynamic_range = data
 
     @Slot()
     def _save_settings(self) -> None:
@@ -472,6 +484,9 @@ class MoviesSettings(BaseSettings):
             self.mvr_clean_title_rules_modified
         )
         self._mvr_clean_title_rules_save()
+        self.config.cfg_payload.mvr_mi_video_dynamic_range = (
+            self.token_table.mi_video_dynamic_range.to_dict()
+        )
         self.updated_settings_applied.emit()
 
     def _mvr_default_update_check(self) -> None:
@@ -530,6 +545,9 @@ class MoviesSettings(BaseSettings):
         self.token_table.reset()
         self.config.cfg_payload.mvr_clean_title_rules_modified = (
             self.config.cfg_payload_defaults.mvr_clean_title_rules_modified
+        )
+        self.token_table.mi_video_dynamic_range.from_dict(
+            self.config.cfg_payload_defaults.mvr_mi_video_dynamic_range
         )
         self.mvr_clean_title_rules_modified = False
 
