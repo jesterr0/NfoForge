@@ -1,10 +1,10 @@
-from dataclasses import dataclass, field
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.packages.custom_types import ImageUploadData
 from src.enums.tracker_selection import TrackerSelection
+from src.packages.custom_types import ImageUploadData
 
 
 @dataclass(slots=True)
@@ -14,6 +14,7 @@ class SharedPayload:
     loaded_images: Sequence[Path] | None = None
     generated_images: bool = False
     dynamic_data: dict[str, Any] = field(default_factory=dict)
+    release_notes: str | None = None
 
     def reset(self) -> None:
         self.url_data.clear()
@@ -21,3 +22,4 @@ class SharedPayload:
         self.loaded_images = None
         self.generated_images = False
         self.dynamic_data.clear()
+        self.release_notes = None

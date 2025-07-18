@@ -419,3 +419,9 @@ trim_blocks = 1
 lstrip_blocks = 1
 newline_sequence = '\\n'
 keep_trailing_newline = 0
+
+[release_notes]
+enable_release_notes = false
+last_used_release_note = ""
+
+[release_notes.notes]

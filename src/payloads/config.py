@@ -163,3 +163,8 @@ class ConfigPayload:
     lstrip_blocks: bool
     newline_sequence: str
     keep_trailing_newline: bool
+
+    # release notes
+    enable_release_notes: bool
+    last_used_release_note: str
+    release_notes: dict[str, str]

@@ -872,6 +872,16 @@ class Config:
                 self.cfg_payload.keep_trailing_newline
             )
 
+            # release notes
+            release_notes = self._toml_data["release_notes"]
+            release_notes["enable_release_notes"] = (
+                self.cfg_payload.enable_release_notes
+            )
+            release_notes["last_used_release_note"] = (
+                self.cfg_payload.last_used_release_note
+            )
+            release_notes["notes"] = self.cfg_payload.release_notes
+
             # if last data does not equal current data, we'll write the changes to file while also updating
             # the last data variable with the latest data
             if (
@@ -1253,6 +1263,9 @@ class Config:
             # template settings
             template_settings = toml_data["template_settings"]
 
+            # release notes
+            release_notes = toml_data["release_notes"]
+
             # build payload
             config_payload = ConfigPayload(
                 ui_suffix=general_data.get("ui_suffix", ""),
@@ -1400,6 +1413,9 @@ class Config:
                 keep_trailing_newline=bool(
                     template_settings.get("keep_trailing_newline", 0)
                 ),
+                enable_release_notes=release_notes.get("enable_release_notes", False),
+                last_used_release_note=release_notes.get("last_used_release_note", ""),
+                release_notes=release_notes.get("notes", {}),
             )
 
             # check where to store the built payload
