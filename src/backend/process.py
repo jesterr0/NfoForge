@@ -20,7 +20,7 @@ from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.image_host_uploading.ptpimg import PTPIMGUploader
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
-from src.backend.tokens import FileToken
+from src.backend.tokens import FileToken, TokenSelection
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
@@ -307,6 +307,10 @@ class ProcessBackEnd:
                 )
                 _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
 
+            user_tokens = {
+                k: v for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            }
+
             # generate nfo
             nfo = ""
             if tracker_info.nfo_template:
@@ -342,13 +346,19 @@ class ProcessBackEnd:
                         unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                         releasers_name=releasers_name,
                         screen_shots=formatted_screens,
+                        release_notes=self.config.shared_data.release_notes,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),
                         frame_size_override=self.config.shared_data.dynamic_data.get(
                             "frame_size_override"
                         ),
+                        override_tokens=self.config.shared_data.dynamic_data.get(
+                            "override_tokens"
+                        ),
+                        user_tokens=user_tokens,
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
                     ).get_output()
                     if not isinstance(nfo, str):
                         raise ValueError("NFO should be a string")
@@ -1014,6 +1024,11 @@ class ProcessBackEnd:
             if tracker_info.mvr_title_replace_map
             else None
         )
+        user_tokens = {
+            k: v
+            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        }
         format_str = TokenReplacer(
             media_input=file_name,
             jinja_engine=None,
@@ -1032,8 +1047,11 @@ class ProcessBackEnd:
             frame_size_override=self.config.shared_data.dynamic_data.get(
                 "frame_size_override"
             ),
+            override_tokens=self.config.shared_data.dynamic_data.get("override_tokens"),
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            user_tokens=user_tokens,
             override_title_rules=override_title_rules,
+            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
         )
         output = format_str.get_output()
         if output:

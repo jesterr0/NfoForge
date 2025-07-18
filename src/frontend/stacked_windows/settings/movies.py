@@ -1,31 +1,43 @@
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import Slot, QTimer
+from PySide6.QtCore import QTimer, Slot
+from PySide6.QtGui import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
-    QGroupBox,
-    QWidget,
-    QLabel,
-    QSizePolicy,
-    QVBoxLayout,
     QCheckBox,
+    QComboBox,
+    QDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
     QLineEdit,
+    QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
+from src.backend.token_replacer import ColonReplace, TokenReplacer, UnfilledTokenRemoval
+from src.backend.tokens import FileToken, TokenSelection, TokenType, Tokens
+from src.backend.utils.example_parsed_file_data import (
+    EXAMPLE_FILE_NAME,
+    EXAMPLE_MEDIAINFO_OBJ,
+    EXAMPLE_MEDIAINFO_OUTPUT_STR,
+    EXAMPLE_SEARCH_PAYLOAD,
+)
 from src.enums.tracker_selection import TrackerSelection
+from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.resizable_stacked_widget import ResizableStackedWidget
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
-from src.frontend.custom_widgets.resizable_stacked_widget import ResizableStackedWidget
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import create_form_layout, build_h_line
-from src.backend.tokens import Tokens, FileToken
-from src.backend.token_replacer import TokenReplacer, ColonReplace, UnfilledTokenRemoval
-from src.backend.utils.example_parsed_file_data import (
-    EXAMPLE_MEDIAINFO_OBJ,
-    EXAMPLE_FILE_NAME,
-    EXAMPLE_SEARCH_PAYLOAD,
+from src.frontend.utils import (
+    build_auto_theme_icon_buttons,
+    build_h_line,
+    create_form_layout,
 )
 
 
@@ -41,6 +53,7 @@ class MoviesSettings(BaseSettings):
         # hook up signals
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
+        GSigs().token_state_changed.connect(self._token_state_changed)
 
         # controls
         # rename
@@ -70,6 +83,15 @@ class MoviesSettings(BaseSettings):
             self._update_file_token_example
         )
 
+        # parse from input filename
+        self.parse_input_file_attributes = QCheckBox("Parse Filename Attributes", self)
+        self.parse_input_file_attributes.setToolTip(
+            "If enabled, attributes REMUX, HYBRID, PROPER, and REPACK will be detected from the filename"
+        )
+        self.parse_input_file_attributes.clicked.connect(
+            self._update_file_token_example
+        )
+
         # format file name
         format_file_name_lbl = QLabel("Token", self)
         format_file_name_lbl.setToolTip(
@@ -80,7 +102,9 @@ class MoviesSettings(BaseSettings):
             self._update_file_token_example
         )
 
-        format_file_name_token_example_lbl = QLabel("Example", self)
+        format_file_name_token_example_layout = self._build_example_layout(
+            self._show_example_input_data
+        )
         self.format_file_name_token_example = self._build_disabled_example_qline_edit(
             self
         )
@@ -96,8 +120,9 @@ class MoviesSettings(BaseSettings):
             self.fn_colon_replace,
             format_file_name_lbl,
             self.format_file_name_token_input,
-            format_file_name_token_example_lbl,
+            format_file_name_token_example_layout,
             self.format_file_name_token_example,
+            header_widgets=(self.parse_input_file_attributes,),
         )
         self.filename_box.setLayout(self.format_file_name_layout)
         self.filename_nested_layout = self._build_nested_groupbox_layout(
@@ -122,7 +147,9 @@ class MoviesSettings(BaseSettings):
             self._update_title_token_example
         )
 
-        format_release_title_example_lbl = QLabel("Example", self)
+        format_release_title_example_layout = self._build_example_layout(
+            self._show_example_input_data
+        )
         self.format_release_title_example = self._build_disabled_example_qline_edit(
             self
         )
@@ -137,7 +164,7 @@ class MoviesSettings(BaseSettings):
             self.title_colon_replace,
             format_release_title_lbl,
             self.format_release_title_input,
-            format_release_title_example_lbl,
+            format_release_title_example_layout,
             self.format_release_title_example,
         )
         self.title_box.setLayout(self.format_release_title_layout)
@@ -178,7 +205,7 @@ class MoviesSettings(BaseSettings):
 
         # token table
         self.token_table = TokenTable(
-            sorted(Tokens().get_token_objects(FileToken)), allow_edits=True, parent=self
+            self._get_file_tokens(), allow_edits=True, parent=self
         )
         self.token_table.main_layout.setContentsMargins(0, 0, 0, 0)
         self.mvr_clean_title_rules_modified = False
@@ -187,6 +214,9 @@ class MoviesSettings(BaseSettings):
         )
         self.token_table.replacement_list_widget.defaults_applied.connect(
             self._mvr_clean_title_rules_defaults_applied
+        )
+        self.token_table.mi_video_dynamic_range.state_changed.connect(
+            self._mi_video_dynamic_range_update_live_cfg
         )
 
         self.token_table_box = QGroupBox("Tokens")
@@ -224,8 +254,8 @@ class MoviesSettings(BaseSettings):
         # if override widget is enabled we'll update the title portion of it's widget if
         # there is no token for that widget
         override_widget: TrackerFormatOverride = (
-            self.tracker_over_ride_stacked_widget.currentWidget()
-        )  # pyright: ignore [reportAssignmentType]
+            self.tracker_over_ride_stacked_widget.currentWidget()  # pyright: ignore [reportAssignmentType]
+        )
         if (
             override_widget.enabled_checkbox.isChecked()
             and not override_widget.over_ride_format_title.text()
@@ -240,6 +270,11 @@ class MoviesSettings(BaseSettings):
         qline: QLineEdit,
         override_title_rules: list[tuple[str, str]] | None = None,
     ) -> str:
+        user_tokens = {
+            k: v
+            for k, (v, ts) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(ts) is TokenSelection.FILE_TOKEN
+        }
         format_str = TokenReplacer(
             media_input=Path(EXAMPLE_FILE_NAME),
             jinja_engine=None,
@@ -254,7 +289,10 @@ class MoviesSettings(BaseSettings):
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             releasers_name=self.config.cfg_payload.releasers_name,
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
             override_title_rules=override_title_rules,
+            user_tokens=user_tokens,
+            parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
         )
         example_txt = qline.text()
         output = format_str.get_output()
@@ -329,6 +367,9 @@ class MoviesSettings(BaseSettings):
             ColonReplace,
             self.config.cfg_payload.mvr_colon_replace_title,
         )
+        self.parse_input_file_attributes.setChecked(
+            self.config.cfg_payload.mvr_parse_filename_attributes
+        )
         if self.config.cfg_payload.mvr_token.strip():
             self._update_qline_cursor_0(
                 self.format_file_name_token_input,
@@ -368,6 +409,9 @@ class MoviesSettings(BaseSettings):
         self.token_table.load_replacement_rules(
             self.config.cfg_payload.mvr_clean_title_rules
         )
+        self.token_table.mi_video_dynamic_range.from_dict(
+            self.config.cfg_payload.mvr_mi_video_dynamic_range
+        )
         self._mvr_default_update_check()
 
         # unblock signals
@@ -395,6 +439,11 @@ class MoviesSettings(BaseSettings):
     def _mvr_clean_title_rules_defaults_applied(self) -> None:
         self.mvr_clean_title_rules_modified = False
 
+    @Slot(object)
+    def _mi_video_dynamic_range_update_live_cfg(self, data: dict) -> None:
+        if data:
+            self.config.cfg_payload.mvr_mi_video_dynamic_range = data
+
     @Slot()
     def _save_settings(self) -> None:
         self.config.cfg_payload.mvr_enabled = self.rename_check_box.isChecked()
@@ -403,6 +452,9 @@ class MoviesSettings(BaseSettings):
         )
         self.config.cfg_payload.mvr_colon_replace_filename = ColonReplace(
             self.fn_colon_replace.currentData()
+        )
+        self.config.cfg_payload.mvr_parse_filename_attributes = (
+            self.parse_input_file_attributes.isChecked()
         )
         self.config.cfg_payload.mvr_colon_replace_title = ColonReplace(
             self.title_colon_replace.currentData()
@@ -432,6 +484,9 @@ class MoviesSettings(BaseSettings):
             self.mvr_clean_title_rules_modified
         )
         self._mvr_clean_title_rules_save()
+        self.config.cfg_payload.mvr_mi_video_dynamic_range = (
+            self.token_table.mi_video_dynamic_range.to_dict()
+        )
         self.updated_settings_applied.emit()
 
     def _mvr_default_update_check(self) -> None:
@@ -474,6 +529,9 @@ class MoviesSettings(BaseSettings):
         self.fn_colon_replace.setCurrentIndex(
             self.config.cfg_payload_defaults.mvr_colon_replace_filename.value - 1
         )
+        self.parse_input_file_attributes.setChecked(
+            self.config.cfg_payload_defaults.mvr_parse_filename_attributes
+        )
         self.format_file_name_token_input.setText(
             self.config.cfg_payload_defaults.mvr_token
         )
@@ -487,6 +545,9 @@ class MoviesSettings(BaseSettings):
         self.token_table.reset()
         self.config.cfg_payload.mvr_clean_title_rules_modified = (
             self.config.cfg_payload_defaults.mvr_clean_title_rules_modified
+        )
+        self.token_table.mi_video_dynamic_range.from_dict(
+            self.config.cfg_payload_defaults.mvr_mi_video_dynamic_range
         )
         self.mvr_clean_title_rules_modified = False
 
@@ -507,6 +568,66 @@ class MoviesSettings(BaseSettings):
                 over_ride_widget.over_ride_replacement_table.add_rows(
                     tracker_info.mvr_title_replace_map
                 )
+
+    @Slot()
+    def _show_example_input_data(self) -> None:
+        window = QDialog(self)
+        window.resize(self.geometry().size())
+
+        example_fn = QLineEdit(window)
+        example_fn.setReadOnly(True)
+        example_fn.setText(EXAMPLE_FILE_NAME)
+
+        example_mi = CodeEditor(
+            line_numbers=False, wrap_text=False, mono_font=True, parent=window
+        )
+        example_mi.setReadOnly(True)
+        example_mi.setPlainText(EXAMPLE_MEDIAINFO_OUTPUT_STR)
+
+        layout = QVBoxLayout()
+        layout.addWidget(
+            QLabel('<span style="font-weight: bold;">Example Filename:</span>', window)
+        )
+        layout.addWidget(example_fn)
+        layout.addWidget(
+            QLabel('<span style="font-weight: bold;">Example MediaInfo:</span>', window)
+        )
+        layout.addWidget(example_mi)
+
+        window.setLayout(layout)
+        window.exec()
+
+    def _build_example_layout(self, btn_signal: Callable) -> QWidget:
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        widget = QWidget()
+        widget.setLayout(layout)
+        layout.addWidget(QLabel("Example", self))
+        btn: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "preview.svg",
+            "exampleLayoutBtn",
+            20,
+            20,
+            parent=self,
+        )
+        btn.setToolTip("Preview example filename and MediaInfo")
+        btn.clicked.connect(btn_signal)
+        layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
+        return widget
+
+    @Slot()
+    def _token_state_changed(self) -> None:
+        self.token_table.populate_table(self._get_file_tokens(), False)
+        self._update_file_token_example()
+
+    def _get_file_tokens(self) -> list[TokenType]:
+        user_tokens = [
+            TokenType(f"{{{k}}}", "User Token")
+            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        ]
+        return sorted(Tokens().get_token_objects(FileToken)) + user_tokens
 
     @staticmethod
     def _build_colon_replace_combo(
@@ -535,17 +656,25 @@ class MoviesSettings(BaseSettings):
         widget_2: QWidget,
         widget_t1: QWidget,
         widget_t2: QWidget,
+        header_widgets: Sequence[QWidget] | None = None,
+        footer_widgets: Sequence[QWidget] | None = None,
         margins: tuple[int, int, int, int] | None = None,
     ) -> QVBoxLayout:
         """margins (tuple[int, int, int, int] | None, optional): Left, top, right, bottom"""
         layout = QVBoxLayout()
         if margins:
             layout.setContentsMargins(*margins)
+        if header_widgets:
+            for hw in header_widgets:
+                layout.addWidget(hw)
         layout.addWidget(colon_replace_lbl)
         layout.addWidget(colon_replace)
         layout.addWidget(widget_1)
         layout.addWidget(widget_2)
         layout.addLayout(create_form_layout(widget_t1, widget_t2))
+        if footer_widgets:
+            for fw in footer_widgets:
+                layout.addWidget(fw)
         return layout
 
     @staticmethod

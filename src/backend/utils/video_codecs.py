@@ -1,22 +1,22 @@
 import re
-from guessit import guessit
-from pymediainfo import MediaInfo
+
+from pymediainfo import MediaInfo, Track
 
 
 class VideoCodecs:
-    def get_codec(self, mi_obj: MediaInfo.parse, guessit_obj: guessit) -> str:
+    def get_codec(self, mi_obj: MediaInfo | None, guessit_obj: dict) -> str:
         parse_guessit = self._guessit(guessit_obj)
         parse_media_info = self._mediainfo(mi_obj)
         return self._process_results(parse_guessit, parse_media_info)
 
     @staticmethod
-    def _guessit(guessit_obj: guessit) -> str:
+    def _guessit(guessit_obj: dict) -> str:
         video_codec = guessit_obj.get("video_codec", "")
         if video_codec in ["H.264", "H.265"]:
             video_codec = video_codec.replace("H.", "x")
         return video_codec
 
-    def _mediainfo(self, mi_obj: MediaInfo.parse) -> str:
+    def _mediainfo(self, mi_obj: MediaInfo | None) -> str | None:
         if mi_obj and mi_obj.video_tracks:
             detect_video_codec = mi_obj.video_tracks[0].format
             if detect_video_codec:
@@ -32,12 +32,9 @@ class VideoCodecs:
                     return self._vc1(mi_obj.video_tracks[0])
                 elif detect_video_codec in ["VP8", "VP9"]:
                     return self._vpx(mi_obj.video_tracks[0])
-        return None
 
     @staticmethod
-    def _process_results(
-        parse_guessit: guessit, parse_media_info: MediaInfo.parse
-    ) -> str:
+    def _process_results(parse_guessit: str, parse_media_info: str | None) -> str:
         codec = ""
         if parse_guessit:
             codec = parse_guessit
@@ -47,11 +44,11 @@ class VideoCodecs:
         return codec
 
     @staticmethod
-    def _av1(mi_obj_video_track: MediaInfo.parse) -> str:
+    def _av1(mi_obj_video_track: Track) -> str:
         return mi_obj_video_track.format
 
     @staticmethod
-    def _avc(mi_obj_video_track: MediaInfo.parse) -> str:
+    def _avc(mi_obj_video_track: Track) -> str:
         if (
             mi_obj_video_track.writing_library
             and "x264" in mi_obj_video_track.writing_library
@@ -63,7 +60,7 @@ class VideoCodecs:
         return "AVC"
 
     @staticmethod
-    def _hevc(mi_obj_video_track: MediaInfo.parse) -> str:
+    def _hevc(mi_obj_video_track: Track) -> str:
         if (
             mi_obj_video_track.writing_library
             and "x265" in mi_obj_video_track.writing_library
@@ -80,7 +77,7 @@ class VideoCodecs:
         return "HEVC"
 
     @staticmethod
-    def _mpeg(mi_obj_video_track: MediaInfo.parse) -> str:
+    def _mpeg(mi_obj_video_track: Track) -> str:
         if mi_obj_video_track.format_version:
             version_num = re.search(r"\d", mi_obj_video_track.format_version)
             if version_num and int(version_num.group()) > 1:
@@ -88,9 +85,9 @@ class VideoCodecs:
         return "MPEG"
 
     @staticmethod
-    def _vc1(mi_obj_video_track: MediaInfo.parse) -> str:
+    def _vc1(mi_obj_video_track: Track) -> str:
         return mi_obj_video_track.format
 
     @staticmethod
-    def _vpx(mi_obj_video_track: MediaInfo.parse) -> str:
+    def _vpx(mi_obj_video_track: Track) -> str:
         return mi_obj_video_track.format

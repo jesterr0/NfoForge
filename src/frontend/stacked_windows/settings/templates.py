@@ -4,25 +4,26 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QCheckBox,
     QLayout,
-    QWidget,
+    QLineEdit,
     QMessageBox,
+    QWidget,
 )
 
-from src.enums.tracker_selection import TrackerSelection
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
-from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
+from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.template_selector import TemplateSelector
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import (
-    build_h_line,
     build_auto_theme_svg_widget,
+    build_h_line,
     create_form_layout,
 )
 
@@ -34,6 +35,8 @@ class TemplatesSettings(BaseSettings):
 
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
+        GSigs().settings_tab_changed.connect(self._on_tab_changed)
+        GSigs().settings_close.connect(self._on_tab_changed)
 
         self.jinja_lbl = QLabel(
             '<span>Powered by </span><a href="https://jinja.palletsprojects.com/en/stable/">jinja2</a>',
@@ -464,7 +467,11 @@ class TemplatesSettings(BaseSettings):
                             is QMessageBox.StandardButton.Yes
                         ):
                             return False
-            elif cur_tracker in (TrackerSelection.REELFLIX, TrackerSelection.AITHER, TrackerSelection.LST):
+            elif cur_tracker in (
+                TrackerSelection.REELFLIX,
+                TrackerSelection.AITHER,
+                TrackerSelection.LST,
+            ):
                 rf_template = self.template_selector.backend.read_template(
                     self.config.cfg_payload.rf_tracker.nfo_template
                 )
@@ -713,3 +720,8 @@ class TemplatesSettings(BaseSettings):
         palette = widget.palette()
         palette.setColor(QPalette.ColorRole.Text, color)
         widget.setPalette(palette)
+
+    @Slot(int)
+    def _on_tab_changed(self, _: int | None = None) -> None:
+        if self.template_selector.token_table_window:
+            self.template_selector.token_table_window.close()

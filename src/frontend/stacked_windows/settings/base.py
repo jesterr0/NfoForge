@@ -1,17 +1,17 @@
 from enum import Enum
-from typing import Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Type
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QSizePolicy,
-    QVBoxLayout,
-    QSpacerItem,
-    QScrollArea,
     QFrame,
-    QLayout,
-    QToolButton,
     QHBoxLayout,
+    QLayout,
+    QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from src.config.config import Config
@@ -89,11 +89,9 @@ class BaseSettings(QWidget):
         self.inner_layout.addWidget(widget, **kwargs)
         self.inner_layout.addSpacerItem(self._spacer_item)
 
-    def add_layout(self, layout: QLayout) -> None:
-        """Adds layout to parent layout, removing and adding the spacer item to the bottom"""
-        self.inner_layout.removeItem(self._spacer_item)
-        self.inner_layout.addLayout(layout)
-        self.inner_layout.addSpacerItem(self._spacer_item)
+    def add_layout(self, layout: QLayout, **kwargs) -> None:
+        """Adds layout to parent layout"""
+        self.inner_layout.addLayout(layout, **kwargs)
 
     def _reset_settings_button(self) -> None:
         """Stops the timer and sets the text back to it's default state"""

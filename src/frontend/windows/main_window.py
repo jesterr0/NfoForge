@@ -61,7 +61,7 @@ class MainWindow(QMainWindow):
 
         # additional stacked widgets (windows)
         self.settings = Settings(self.config, self)
-        self.settings.close_settings.connect(self._close_settings)
+        GSigs().settings_close.connect(self._close_settings)
 
         self.stacked_widget = QStackedWidget(self)
         self.stacked_widget.addWidget(self.wizard)

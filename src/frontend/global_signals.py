@@ -19,6 +19,9 @@ class GlobalSignals(QObject):
     # settings
     settings_clicked = Signal()
     settings_refresh = Signal()
+    settings_close = Signal()  # called anytime we close settings
+    settings_tab_changed = Signal(int)  # new index or -1 if not new
+    token_state_changed = Signal()
 
     # wizard
     wizard_next = Signal()

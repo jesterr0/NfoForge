@@ -1,32 +1,32 @@
 from collections.abc import Iterable
 from os import PathLike
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
+    QVBoxLayout,
+    QWidget,
+)
 from pymediainfo import MediaInfo
 
-from PySide6.QtCore import Slot, Qt
-from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QScrollArea,
-    QFrame,
-    QLabel,
-    QWidget,
-    QFormLayout,
-    QLineEdit,
-    QSpacerItem,
-    QSizePolicy,
-    QGroupBox,
-    QListWidget,
-)
-
+from src.backend.template_selector import TemplateSelectorBackEnd
+from src.backend.token_replacer import TokenReplacer
 from src.config.config import Config
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
 from src.frontend.custom_widgets.image_listbox import ThumbnailListWidget
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.frontend.utils import recursively_clear_layout
-from src.backend.token_replacer import TokenReplacer
-from src.backend.template_selector import TemplateSelectorBackEnd
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -169,6 +169,11 @@ class Overview(BaseWizardPage):
                 nfo = ""
                 nfo_template = template_selector_backend.read_template(template)
                 if nfo_template:
+                    # TODO: user_tokens should really be cached, we'll deal with this when we remove/rework overview page?
+                    user_tokens = {
+                        k: v
+                        for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+                    }
                     token_replacer = TokenReplacer(
                         media_input=media_input,
                         jinja_engine=self.config.jinja_engine,
@@ -182,13 +187,19 @@ class Overview(BaseWizardPage):
                         if self.config.shared_data.url_data
                         or self.config.shared_data.loaded_images
                         else False,
+                        release_notes=self.config.shared_data.release_notes,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),
                         frame_size_override=self.config.shared_data.dynamic_data.get(
                             "frame_size_override"
                         ),
+                        override_tokens=self.config.shared_data.dynamic_data.get(
+                            "override_tokens"
+                        ),
+                        user_tokens=user_tokens,
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
                     ).get_output()
                     if token_replacer:
                         nfo = token_replacer

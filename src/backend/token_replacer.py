@@ -36,6 +36,8 @@ from src.version import __version__, program_name, program_url
 
 
 class TokenReplacer:
+    FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
+
     __slots__ = (
         "media_input",
         "token_string",
@@ -54,11 +56,16 @@ class TokenReplacer:
         "unfilled_token_mode",
         "releasers_name",
         "screen_shots",
+        "release_notes",
         "dummy_screen_shots",
+        "parse_filename_attributes",
+        "override_tokens",
+        "user_tokens",
         "edition_override",
         "frame_size_override",
         "movie_clean_title_rules",
         "override_title_rules",
+        "mi_video_dynamic_range",
         "token_data",
     )
 
@@ -77,12 +84,17 @@ class TokenReplacer:
         token_type: Iterable[TokenType] | Type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
+        override_tokens: dict[str, str] | None = None,
+        user_tokens: dict[str, str] | None = None,
         edition_override: str | None = None,
         frame_size_override: str | None = None,
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
+        mi_video_dynamic_range: dict[str, Any] | None = None,
         screen_shots: str | None = "",
+        release_notes: str | None = "",
         dummy_screen_shots: bool = False,
+        parse_filename_attributes: bool = False,
     ):
         """
         Takes an input string with tokens and outputs a new string with formatted data based
@@ -99,19 +111,25 @@ class TokenReplacer:
             source_file_mi_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
             flatten (Optional[bool]): Rather or not to flatten the data to a single string
             file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
-            with no newlines or extra white space (used for filenames). `colon_replace` is ignored
-            when this is used.
+              with no newlines or extra white space (used for filenames). `colon_replace` is ignored
+              when this is used.
             token_type (Optional[Iterable[TokenType]]): Specific `TokenType`'s to use, or None for all.
             unfilled_token_mode (UnfilledTokenRemoval): What to do with unused tokens.
             eg. (TokenType, TokenType).
             releasers_name (Optional[str]): Releasers name.
+            override_tokens (Optional[dict[str, str]]): Override tokens with a supplied value regardless of logic.
+            user_tokens (Optional[dict[str, str]]): User tokens (must be prefixed with usr_).
             edition_override (Optional[str]): Edition override.
             frame_size_override (Optional[str]): Frame size override.
             movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
+            mi_video_dynamic_range: (Optional[dict[str, Any]]: Rules to control formatting of video dynamic range.
             screen_shots (Optional[str]): Screenshots.
+            release_notes (Optional[str]): Release notes.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
-            screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
+              screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
+            parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
+              detected from the filename.
         """
         self.media_input = Path(media_input)
         self.jinja_engine = jinja_engine
@@ -137,8 +155,13 @@ class TokenReplacer:
         self.frame_size_override = frame_size_override
         self.movie_clean_title_rules = movie_clean_title_rules
         self.override_title_rules = override_title_rules
+        self.mi_video_dynamic_range = mi_video_dynamic_range
         self.screen_shots = screen_shots
+        self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
+        self.parse_filename_attributes = parse_filename_attributes
+        self.override_tokens = override_tokens
+        self.user_tokens = user_tokens
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
         if not self.flatten and not self.jinja_engine:
@@ -172,7 +195,8 @@ class TokenReplacer:
             if not self.jinja_engine:
                 raise AttributeError("Could not detect 'jinja_engine'")
             jinja_output = self.jinja_engine.render_from_str(
-                self.token_string, filled_tokens
+                self.token_string,
+                filled_tokens | self.user_tokens if self.user_tokens else filled_tokens,
             )
             return jinja_output
 
@@ -181,7 +205,7 @@ class TokenReplacer:
             setattr(self.token_data, key, value)
 
     def _parse_user_input(self):
-        """Extract valid tokens from user input string"""
+        """Extract valid tokens from user input string, ignoring unknown tokens."""
         valid_tokens = Tokens.get_tokens()
 
         matches = re.finditer(
@@ -192,18 +216,16 @@ class TokenReplacer:
             pre = match.group(1) if match.group(1) else ""
             token_str = match.group(2)
             post = match.group(3) if match.group(3) else ""
-            if token_str in valid_tokens:
+            # accept built-in or user tokens only
+            if token_str in valid_tokens or (
+                token_str.startswith("usr_")
+                and self.user_tokens
+                and token_str in self.user_tokens
+            ):
                 string_token_data = TokenData(
                     pre, token_str, f"{{{token_str}}}", post, match.group()
                 )
                 parsed_tokens.add(string_token_data)
-
-        invalid_tokens = {
-            t.token for t in parsed_tokens if t.token is not None
-        } - valid_tokens
-        if invalid_tokens:
-            invalid_token_str = ", ".join(invalid_tokens)
-            raise InvalidTokenError(f"Invalid tokens found: {invalid_token_str}")
 
         return parsed_tokens
 
@@ -224,6 +246,23 @@ class TokenReplacer:
         return all_tokens
 
     def _get_token_value(self, token_data: TokenData) -> str:
+        # handle user tokens
+        if (
+            self.user_tokens
+            and token_data.token
+            and token_data.token.startswith("usr_")
+        ):
+            return self._optional_user_input(
+                self.user_tokens.get(token_data.token, ""), token_data
+            )
+
+        # handle over ride tokens
+        if self.override_tokens and token_data.token in self.override_tokens:
+            return self._optional_user_input(
+                self.override_tokens[token_data.token], token_data
+            )
+
+        # default token handling
         if not self.token_type:
             get_media_token = self._media_tokens(token_data)
             if get_media_token:
@@ -239,6 +278,11 @@ class TokenReplacer:
             )
             for token_type in token_types:
                 if token_type == FileToken:
+                    if (
+                        not self.parse_filename_attributes
+                        and token_data.token in self.FILENAME_ATTRIBUTES
+                    ):
+                        continue
                     get_token = self._media_tokens(token_data)
                     if get_token:
                         return get_token
@@ -254,6 +298,12 @@ class TokenReplacer:
 
         if token_data.bracket_token == Tokens.FRAME_SIZE.token:
             return self._frame_size(token_data)
+
+        if token_data.bracket_token == Tokens.HYBRID.token:
+            return self._hybrid(token_data)
+
+        if token_data.bracket_token == Tokens.LOCALIZATION.token:
+            return self._localization(token_data)
 
         if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE.token:
             return self._mi_audio_bitrate(token_data, False)
@@ -397,6 +447,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.RESOLUTION.token:
             return self._resolution(token_data)
 
+        elif token_data.bracket_token == Tokens.REMUX.token:
+            return self._remux(token_data)
+
         elif token_data.bracket_token == Tokens.RE_RELEASE.token:
             return self._re_release(token_data)
 
@@ -450,6 +503,9 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.SCREEN_SHOTS.token:
             return self._screen_shots(token_data)
+
+        elif token_data.bracket_token == Tokens.RELEASE_NOTES.token:
+            return self._release_notes(token_data)
 
         elif token_data.bracket_token == Tokens.FILE_SIZE_BYTES.token:
             return self._file_size_bytes(token_data)
@@ -519,8 +575,8 @@ class TokenReplacer:
 
             # apply specific formatting for 'movie_clean_title'
             if "movie_clean_title" in formatted_title and filled_tokens:
-                formatted_title = formatted_title.format(
-                    movie_clean_title=filled_tokens["movie_clean_title"]
+                formatted_title = formatted_title.replace(
+                    "{movie_clean_title}", filled_tokens["movie_clean_title"]
                 )
 
             # remove unfilled tokens if needed
@@ -550,14 +606,14 @@ class TokenReplacer:
                                 rf"{replace}", rf"{replace_with}", formatted_title
                             )
                 return formatted_title
-        except (ValueError, KeyError):
+        except (ValueError, KeyError, IndexError):
             return None
 
     def _remove_unfilled_tokens(self, formatted_title: str) -> str:
         if self.unfilled_token_mode == UnfilledTokenRemoval.KEEP:
             return formatted_title
         elif self.unfilled_token_mode == UnfilledTokenRemoval.TOKEN_ONLY:
-            return re.sub(r"({.+})", "", formatted_title, flags=re.MULTILINE)
+            return re.sub(r"{[^{}]*}", "", formatted_title, flags=re.MULTILINE)
         elif self.unfilled_token_mode == UnfilledTokenRemoval.ENTIRE_LINE:
             return re.sub(r"(\b.*?{.+}*?\n)", "", formatted_title, flags=re.MULTILINE)
         else:
@@ -644,6 +700,20 @@ class TokenReplacer:
 
         # convert the set back to a string, joining with spaces
         return self._optional_user_input(" ".join(edition_set), token_data)
+
+    def _hybrid(self, token_data: TokenData) -> str:
+        return self._optional_user_input(
+            "HYBRID" if "hybrid" in self.media_input.stem.lower() else "", token_data
+        )
+
+    def _localization(self, token_data: TokenData) -> str:
+        localization = ""
+        lowered_input = self.media_input.stem.lower()
+        if "subbed" in lowered_input:
+            localization = "Subbed"
+        elif "Dubbed" in lowered_input:
+            localization = "Dubbed"
+        return self._optional_user_input(localization, token_data)
 
     def _mi_audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
         bitrate = ""
@@ -879,38 +949,131 @@ class TokenReplacer:
         return self._optional_user_input(codec, token_data)
 
     def _mi_video_dynamic_range(self, token_data: TokenData) -> str:
-        dynamic_range = "HDR" if "HDR" in self.guess_name.get("other", "") else ""
+        hdr_string = ""
 
-        if self.media_info_obj and self.media_info_obj.video_tracks:
-            get_dynamic_range = self.media_info_obj.video_tracks[0].other_hdr_format
-            if get_dynamic_range:
-                try:
-                    if "HDR" in get_dynamic_range[0]:
-                        dynamic_range = "HDR"
+        if (
+            self.mi_video_dynamic_range
+            and self.media_info_obj
+            and self.media_info_obj.video_tracks
+        ):
+
+            def normalize(s: str) -> str:
+                return s.replace(" ", "").lower()
+
+            fallback_names = {
+                "SDR": "SDR",
+                "PQ": "PQ",
+                "HLG": "HLG",
+                "HDR10": "HDR10",
+                "HDR10+": "HDR10+",
+                "DV": "DV",
+                "DV HDR10": "DV HDR10",
+                "DV HDR10+": "DV HDR10+",
+            }
+
+            # resolution
+            resolution = int(self._detect_resolution(self.media_info_obj, True))
+            res_map = {720: "720p", 1080: "1080p", 2160: "2160p"}
+            res_key = next(
+                (v for k, v in res_map.items() if abs(resolution - k) < 100), None
+            )
+
+            if not res_key or not self.mi_video_dynamic_range["resolutions"].get(
+                res_key, False
+            ):
+                return self._optional_user_input("", token_data)
+
+            # get data from dict
+            enabled_hdr_types = [
+                k for k, v in self.mi_video_dynamic_range["hdr_types"].items() if v
+            ]
+            custom_strings = self.mi_video_dynamic_range.get("custom_strings", {})
+            enabled_hdr_types_sorted = sorted(enabled_hdr_types, key=len, reverse=True)
+            norm_enabled_types = {normalize(k): k for k in enabled_hdr_types_sorted}
+
+            # extract HDR format and transfer characteristics
+            hdr_format = ""
+            transfer_characteristics = ""
+            try:
+                hdr_format = self.media_info_obj.video_tracks[0].other_hdr_format[0]
+            except (AttributeError, IndexError, TypeError):
+                pass
+            try:
+                transfer_characteristics = self.media_info_obj.video_tracks[
+                    0
+                ].transfer_characteristics
+            except (AttributeError, IndexError, TypeError):
+                pass
+
+            # detect mi candidates
+            mi_candidates = []
+            if hdr_format:
+                if "Dolby Vision" in hdr_format and "HDR10+" in hdr_format:
+                    mi_candidates.append("DV HDR10+")
+                if (
+                    "Dolby Vision" in hdr_format
+                    and "HDR10" in hdr_format
+                    and "HDR10+" not in hdr_format
+                ):
+                    mi_candidates.append("DV HDR10")
+                if (
+                    "Dolby Vision" in hdr_format
+                    and "HDR10" not in hdr_format
+                    and "HDR10+" not in hdr_format
+                ):
+                    mi_candidates.append("DV")
+                if "HDR10+" in hdr_format:
+                    mi_candidates.append("HDR10+")
+                if "HDR10" in hdr_format and "HDR10+" not in hdr_format:
+                    mi_candidates.append("HDR10")
+
+            # PQ/HLG from transfer characteristics
+            for t in ("PQ", "HLG"):
+                if transfer_characteristics == t:
+                    mi_candidates.append(t)
+
+            # try to match the most specific enabled HDR type
+            for candidate in mi_candidates:
+                norm_candidate = normalize(candidate)
+                if norm_candidate in norm_enabled_types:
+                    hdr_type = norm_enabled_types[norm_candidate]
+                    custom = custom_strings.get(hdr_type, "").strip()
+                    hdr_string = custom or fallback_names.get(hdr_type, hdr_type)
+                    break
+
+            # fallback: if nothing matched, check if SDR is enabled and present in candidates
+            if (
+                not hdr_string
+                and "SDR" in enabled_hdr_types
+                and (
+                    any(normalize(c) == "sdr" for c in mi_candidates)
+                    or not mi_candidates
+                )
+            ):
+                custom = custom_strings.get("SDR", "").strip()
+                hdr_string = custom or fallback_names.get("SDR", "SDR")
+
+            # append PQ/HLG if enabled, matches transfer_characteristics, and not already present
+            for t in ("PQ", "HLG"):
+                if (
+                    transfer_characteristics == t
+                    and t in enabled_hdr_types
+                    and normalize(t) not in normalize(str(hdr_string))
+                ):
+                    custom = custom_strings.get(t, "").strip()
+                    to_add = custom or fallback_names.get(t, t)
+                    if hdr_string:
+                        hdr_string += f" {to_add}"
                     else:
-                        dynamic_range = ""
-                except IndexError:
-                    dynamic_range = ""
+                        hdr_string = to_add
 
-            video_width = self.media_info_obj.video_tracks[0].width
-            if video_width and video_width > 1920 and video_width <= 3840:
-                if not dynamic_range:
-                    dynamic_range = "SDR"
-
-        return self._optional_user_input(dynamic_range, token_data)
+        return self._optional_user_input(hdr_string, token_data)
 
     def _mi_video_dynamic_range_type(
         self, token_data: TokenData, include_sdr: bool = False, uhd_only: bool = False
     ) -> str:
         if uhd_only:
-            if (
-                int(
-                    self._detect_resolution(self.media_info_obj)
-                    .replace("p", "")
-                    .replace("i", "")
-                )
-                <= 1080
-            ):
+            if int(self._detect_resolution(self.media_info_obj, True)) <= 1080:
                 return ""
 
         dv = "DV" if "Dolby Vision" in self.guess_name.get("other", "") else ""
@@ -1082,7 +1245,12 @@ class TokenReplacer:
 
     def _resolution(self, token_data: TokenData) -> str:
         return self._optional_user_input(
-            self._detect_resolution(self.media_info_obj), token_data
+            self._detect_resolution(self.media_info_obj, False), token_data
+        )
+
+    def _remux(self, token_data: TokenData) -> str:
+        return self._optional_user_input(
+            "REMUX" if "remux" in self.media_input.stem.lower() else "", token_data
         )
 
     def _re_release(self, token_data: TokenData) -> str:
@@ -1111,7 +1279,6 @@ class TokenReplacer:
         elif "HDTV" in source:
             source = "HDTV"
         elif "Web" in source:
-            # TODO: if encode it should be WEBRip and if dl it should be WEBDL
             source = "Web"
 
         if not source or source == "BluRay":
@@ -1119,15 +1286,16 @@ class TokenReplacer:
             resolution_value = 0
             if self.source_file_mi_obj and self.source_file_mi_obj.video_tracks:
                 track = self.source_file_mi_obj.video_tracks[0]
-                resolution_value = self._detect_resolution(self.source_file_mi_obj)
+                resolution_value = int(
+                    self._detect_resolution(self.source_file_mi_obj, True)
+                )
             elif not track and self.media_info_obj and self.media_info_obj.video_tracks:
                 track = self.media_info_obj.video_tracks[0]
-                resolution_value = self._detect_resolution(self.media_info_obj)
+                resolution_value = int(
+                    self._detect_resolution(self.media_info_obj, True)
+                )
 
             if track and resolution_value:
-                resolution_value = int(
-                    resolution_value.replace("i", "").replace("p", "")
-                )
                 video_format = track.format
                 dynamic_range = (
                     track.other_hdr_format[0] if track.other_hdr_format else ""
@@ -1268,6 +1436,11 @@ class TokenReplacer:
                 "\nScreen1 Screen2\nScreen3 Screen4\n#### DUMMY SCREENSHOTS ####"
             )
         return self._optional_user_input(self.screen_shots, token_data)
+
+    def _release_notes(self, token_data: TokenData) -> str:
+        return self._optional_user_input(
+            self.release_notes if self.release_notes else "", token_data
+        )
 
     def _file_size_bytes(self, token_data: TokenData) -> str:
         file_size = ""
@@ -1465,11 +1638,13 @@ class TokenReplacer:
 
         return token_str if token_str else ""
 
-    def _detect_resolution(self, mi_obj: MediaInfo | None) -> str:
+    def _detect_resolution(self, mi_obj: MediaInfo | None, remove_scan: bool) -> str:
         resolution = self.guess_name.get("screen_size", "")
 
         if mi_obj:
-            detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution()
+            detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
+                remove_scan
+            )
             if detect_resolution:
                 resolution = detect_resolution
 

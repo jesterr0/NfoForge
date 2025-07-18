@@ -292,6 +292,7 @@ mvr_enabled = true
 mvr_replace_illegal_chars = true
 mvr_colon_replace_filename = 3
 mvr_colon_replace_title = 3
+mvr_parse_filename_attributes = true
 mvr_token = "{movie_clean_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
 mvr_title_token = "{movie_clean_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
 mvr_clean_title_rules = [
@@ -334,6 +335,33 @@ mvr_clean_title_rules = [
 ]
 mvr_clean_title_rules_modified = false
 mvr_release_group = ""
+
+[movie_rename.mvr_mi_video_dynamic_range.resolutions]
+720p = false
+1080p = false
+2160p = true
+
+[movie_rename.mvr_mi_video_dynamic_range.hdr_types]
+SDR = true
+PQ = false
+HLG = false
+HDR10 = true
+"HDR10+" = true
+DV = true
+"DV HDR10" = true
+"DV HDR10+" = true
+
+[movie_rename.mvr_mi_video_dynamic_range.custom_strings]
+SDR = "SDR"
+PQ = ""
+HLG = ""
+HDR10 = "HDR"
+"HDR10+" = "HDR10Plus"
+DV = "DV"
+"DV HDR10" = "DV HDR"
+"DV HDR10+" = "DV HDR10Plus"
+
+[user_tokens.tokens]
 
 [screenshots]
 crop_mode = 2
@@ -416,3 +444,9 @@ trim_blocks = 1
 lstrip_blocks = 1
 newline_sequence = '\\n'
 keep_trailing_newline = 0
+
+[release_notes]
+enable_release_notes = false
+last_used_release_note = ""
+
+[release_notes.notes]

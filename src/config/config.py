@@ -689,6 +689,9 @@ class Config:
             movie_rename["mvr_colon_replace_title"] = ColonReplace(
                 self.cfg_payload.mvr_colon_replace_title
             ).value
+            movie_rename["mvr_parse_filename_attributes"] = (
+                self.cfg_payload.mvr_parse_filename_attributes
+            )
             movie_rename["mvr_token"] = self.cfg_payload.mvr_token
             movie_rename["mvr_title_token"] = self.cfg_payload.mvr_title_token
             movie_rename["mvr_clean_title_rules"] = (
@@ -698,6 +701,13 @@ class Config:
                 self.cfg_payload.mvr_clean_title_rules_modified
             )
             movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
+            movie_rename["mvr_mi_video_dynamic_range"] = (
+                self.cfg_payload.mvr_mi_video_dynamic_range
+            )
+
+            # user tokens
+            user_token_data = self._toml_data["user_tokens"]
+            user_token_data["tokens"] = self.cfg_payload.user_tokens
 
             # screenshots
             screen_shot_data = self._toml_data["screenshots"]
@@ -864,6 +874,16 @@ class Config:
             template_settings["keep_trailing_newline"] = int(
                 self.cfg_payload.keep_trailing_newline
             )
+
+            # release notes
+            release_notes = self._toml_data["release_notes"]
+            release_notes["enable_release_notes"] = (
+                self.cfg_payload.enable_release_notes
+            )
+            release_notes["last_used_release_note"] = (
+                self.cfg_payload.last_used_release_note
+            )
+            release_notes["notes"] = self.cfg_payload.release_notes
 
             # if last data does not equal current data, we'll write the changes to file while also updating
             # the last data variable with the latest data
@@ -1221,6 +1241,9 @@ class Config:
             # movie rename
             movie_rename = toml_data["movie_rename"]
 
+            # user token data
+            user_token_data = toml_data["user_tokens"]
+
             # screenshots
             screen_shot_data = toml_data["screenshots"]
 
@@ -1243,6 +1266,9 @@ class Config:
             # template settings
             template_settings = toml_data["template_settings"]
 
+            # release notes
+            release_notes = toml_data["release_notes"]
+
             # build payload
             config_payload = ConfigPayload(
                 ui_suffix=general_data.get("ui_suffix", ""),
@@ -1259,7 +1285,9 @@ class Config:
                 timeout=general_data.get("timeout", 60),
                 log_level=LogLevel(general_data.get("log_level", 20)),
                 log_total=general_data.get("log_total", 50),
-                working_dir=Path(general_data["working_dir"]) if general_data.get("working_dir") else self.default_working_dir(ensure_exists=True),
+                working_dir=Path(general_data["working_dir"])
+                if general_data.get("working_dir")
+                else self.default_working_dir(ensure_exists=True),
                 ffmpeg=ffmpeg,
                 frame_forge=frame_forge,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
@@ -1289,6 +1317,9 @@ class Config:
                 mvr_colon_replace_title=ColonReplace(
                     movie_rename.get("mvr_colon_replace_title", 3)
                 ),
+                mvr_parse_filename_attributes=movie_rename[
+                    "mvr_parse_filename_attributes"
+                ],
                 mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
                 mvr_clean_title_rules_modified=movie_rename[
                     "mvr_clean_title_rules_modified"
@@ -1296,6 +1327,33 @@ class Config:
                 mvr_token=movie_rename.get("mvr_token"),
                 mvr_title_token=movie_rename.get("mvr_title_token"),
                 mvr_release_group=movie_rename.get("mvr_release_group", ""),
+                mvr_mi_video_dynamic_range=movie_rename.get(
+                    "mvr_mi_video_dynamic_range",
+                    {
+                        "resolutions": {"720p": False, "1080p": False, "2160p": True},
+                        "hdr_types": {
+                            "SDR": True,
+                            "PQ": False,
+                            "HLG": False,
+                            "HDR10": True,
+                            "HDR10+": True,
+                            "DV": True,
+                            "DV + HDR10": True,
+                            "DV + HDR10+": True,
+                        },
+                        "custom_strings": {
+                            "SDR": "SDR",
+                            "PQ": "",
+                            "HLG": "",
+                            "HDR10": "HDR",
+                            "HDR10+": "HDR10Plus",
+                            "DV": "DV",
+                            "DV HDR10": "DV HDR",
+                            "DV HDR10+": "DV HDR10Plus",
+                        },
+                    },
+                ),
+                user_tokens=user_token_data.get("tokens", {}),
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
                 screen_shot_count=screen_shot_data.get("screen_shot_count", 20),
@@ -1384,6 +1442,9 @@ class Config:
                 keep_trailing_newline=bool(
                     template_settings.get("keep_trailing_newline", 0)
                 ),
+                enable_release_notes=release_notes.get("enable_release_notes", False),
+                last_used_release_note=release_notes.get("last_used_release_note", ""),
+                release_notes=release_notes.get("notes", {}),
             )
 
             # check where to store the built payload

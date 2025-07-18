@@ -1,10 +1,12 @@
-from PySide6.QtWidgets import QWidget, QLineEdit
-from PySide6.QtGui import QEnterEvent
 from PySide6.QtCore import QEvent
+from PySide6.QtGui import QEnterEvent
+from PySide6.QtWidgets import QLineEdit, QWidget
 
 
 class MaskedQLineEdit(QLineEdit):
-    def __init__(self, parent: QWidget = None, masked: bool = False, **kwargs) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, masked: bool = False, **kwargs
+    ) -> None:
         super().__init__(parent, **kwargs)
 
         if masked:

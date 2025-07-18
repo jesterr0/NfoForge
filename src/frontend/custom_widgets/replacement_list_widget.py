@@ -133,8 +133,8 @@ class LoadedReplacementListWidget(QWidget):
             self.replacement_list_widget.default_rules = rules
 
     def reset(self) -> None:
-        self.replacement_list_widget.clearContents()
         self.replacement_list_widget.setRowCount(0)
+        self.replacement_list_widget.clearContents()
 
     def apply_defaults(self) -> None:
         if self.default_rules:
