@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All combo boxes (drop down menus) mouse wheel has been disabled as to not accidentally change while scrolling the new scroll window.
   - **Output can no longer be edited directly, you must use the override token area above and edit each value as needed**.
   - When the **Value** is edited in the **override** section, if the **same** token in a corresponding **title token** exists it will also be updated.
+  - Added a new **quality** selection box, this box will **override** the **source** token if utilized. It's automatically detected and set on initialization of the rename page.
 - Added support for **user tokens**.
 - Added new **Settings** tab **User Tokens**.
   - Can now add **custom** user tokens for both **FileTokens** and **NfoTokens**.

@@ -35,7 +35,9 @@ from src.backend.utils.rename_normalizations import (
     LOCALIZATION_INFO,
     RE_RELEASE_INFO,
 )
+from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.config.config import Config
+from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.utils import build_auto_theme_icon_buttons, build_h_line
@@ -171,12 +173,16 @@ class RenameEncode(BaseWizardPage):
         self.proper_reason_lbl.hide()
         self.proper_reason_combo.hide()
 
-        self.combo_info_pairs = (
-            (self.edition_combo, EDITION_INFO),
-            (self.frame_size_combo, FRAME_SIZE_INFO),
-            (self.localization_combo, LOCALIZATION_INFO),
-            (self.re_release_combo, RE_RELEASE_INFO),
+        quality_combo_lbl = QLabel("Quality", self)
+        self.quality_combo = CustomComboBox(
+            completer=True,
+            completer_strict=True,
+            disable_mouse_wheel=True,
+            parent=self,
         )
+        self.quality_combo.addItem("")
+        self.quality_combo.addItems(QualitySelection)
+        self.quality_combo.currentIndexChanged.connect(self._update_quality_combo)
 
         self.remux_checkbox = QCheckBox("REMUX", self)
         self.remux_checkbox.setToolTip("Toggle REMUX token")
@@ -241,7 +247,9 @@ class RenameEncode(BaseWizardPage):
         options_layout.addWidget(self.repack_reason_combo, 3, 1, 1, 2)
         options_layout.addWidget(self.proper_reason_lbl, 2, 1)
         options_layout.addWidget(self.proper_reason_combo, 3, 1, 1, 2)
-        options_layout.addLayout(checkboxes_layout, 4, 0, 1, 1)
+        options_layout.addWidget(quality_combo_lbl, 4, 0)
+        options_layout.addWidget(self.quality_combo, 5, 0)
+        options_layout.addLayout(checkboxes_layout, 6, 0, 1, 1)
         options_layout.addWidget(build_h_line((6, 4, 6, 4)), 18, 0, 1, 3)
         options_layout.addWidget(release_group_lbl, 19, 0)
         options_layout.addWidget(self.release_group_entry, 20, 0, 1, 3)
@@ -288,6 +296,14 @@ class RenameEncode(BaseWizardPage):
 
         self.token_override.setText(self.config.cfg_payload.mvr_token)
 
+        get_quality = self.backend.get_quality(
+            media_input=media_file, source_input=data.source_file
+        )
+        if get_quality:
+            quality_idx = self.quality_combo.findText(get_quality)
+            if quality_idx > -1:
+                self.quality_combo.setCurrentIndex(quality_idx)
+
         self.release_group_entry.setText(
             release_group_name if release_group_name else ""
         )
@@ -297,7 +313,11 @@ class RenameEncode(BaseWizardPage):
     def validatePage(self) -> bool:
         file_input = self.config.media_input_payload.encode_file
         if file_input:
-            if not self._name_validations() or not self._release_group_validation():
+            if (
+                not self._name_validations()
+                or not self._release_group_validation()
+                or not self._quality_validations()
+            ):
                 return False
             self.config.media_input_payload.renamed_file = Path(
                 file_input
@@ -455,6 +475,31 @@ class RenameEncode(BaseWizardPage):
                 return False
         return True
 
+    def _quality_validations(self) -> bool:
+        cur_quality = (
+            QualitySelection(self.quality_combo.currentText())
+            if self.quality_combo.currentText()
+            else None
+        )
+        if not cur_quality:
+            return True
+        elif cur_quality in {QualitySelection.DVD, QualitySelection.SDTV}:
+            mi_obj = self.config.media_input_payload.encode_file_mi_obj
+            if not mi_obj:
+                raise FileNotFoundError("Failed to parse MediaInfo")
+            detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
+                remove_scan=True
+            )
+            if detect_resolution:
+                if int(detect_resolution) > 576:
+                    QMessageBox.warning(
+                        self,
+                        "Error",
+                        f"Cannot utilize quality {cur_quality} with a resolution above 576p.",
+                    )
+                    return False
+        return True
+
     def _re_release_reason_tokens_update(self) -> None:
         """
         Updates Jinja global variables for repack or proper reasons based on the current combo box selections
@@ -493,6 +538,24 @@ class RenameEncode(BaseWizardPage):
         self._update_override_tokens(
             "localization", self.localization_combo.currentText()
         )
+
+    @Slot(int)
+    def _update_quality_combo(self, _: int) -> None:
+        cur_text = self.quality_combo.currentText()
+
+        # if not using dvd or bluray disable REMUX
+        if cur_text:
+            if QualitySelection(cur_text) not in {
+                QualitySelection.DVD,
+                QualitySelection.BLURAY,
+            }:
+                self.remux_checkbox.setChecked(False)
+                self.remux_checkbox.setEnabled(False)
+            else:
+                self.remux_checkbox.setEnabled(True)
+
+        # update override
+        self._update_override_tokens("source", cur_text, False if cur_text else True)
 
     @Slot(int)
     def _update_re_release_combo(self, _: int) -> None:

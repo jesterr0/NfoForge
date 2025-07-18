@@ -1290,7 +1290,6 @@ class TokenReplacer:
         elif "HDTV" in source:
             source = "HDTV"
         elif "Web" in source:
-            # TODO: if encode it should be WEBRip and if dl it should be WEBDL
             source = "Web"
 
         if not source or source == "BluRay":

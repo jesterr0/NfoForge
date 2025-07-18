@@ -1,9 +1,11 @@
 from pathlib import Path
 from typing import Any
 
+from guessit import guessit
 from pymediainfo import MediaInfo
 
 from src.backend.token_replacer import TokenReplacer
+from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.payloads.media_search import MediaSearchPayload
 
@@ -52,3 +54,27 @@ class RenameEncodeBackEnd:
     def reset(self) -> None:
         self.token_replacer = None
         self.override_tokens.clear()
+
+    @staticmethod
+    def get_quality(
+        media_input: Path,
+        source_input: Path | None = None,
+    ) -> QualitySelection | None:
+        source = guessit(media_input.name).get("source", "")
+
+        # if we have access to the source file let's instead parse that
+        if source_input:
+            check_source_file = guessit(source_input.name).get("source", "")
+            if check_source_file:
+                source = check_source_file
+
+        if "Ultra Blu-ray" in source or "Blu-ray" in source:
+            return QualitySelection.BLURAY
+        elif "DVD" in source:
+            return QualitySelection.DVD
+        elif "Web" in source:
+            return QualitySelection.WEB_DL
+        elif "HDTV" in source:
+            return QualitySelection.HDTV
+        elif "SDTV" in source:
+            return QualitySelection.SDTV

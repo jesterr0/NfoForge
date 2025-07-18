@@ -1,5 +1,8 @@
 from enum import Enum, auto as auto_enum
+
 from typing_extensions import override
+
+from src.enums import CaseInsensitiveStrEnum
 
 
 class TypeHierarchy(Enum):
@@ -17,3 +20,12 @@ class TypeHierarchy(Enum):
             TypeHierarchy.RE_RELEASE: "Re-Release",
         }
         return str_map[self]
+
+
+class QualitySelection(CaseInsensitiveStrEnum):
+    SDTV = "SDTV"
+    HDTV = "HDTV"
+    DVD = "DVD"
+    WEB_RIP = "WEBRip"
+    WEB_DL = "WEBDL"
+    BLURAY = "BluRay"
