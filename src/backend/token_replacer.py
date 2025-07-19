@@ -24,7 +24,7 @@ from src.backend.utils.media_info_utils import (
     MinimalMediaInfo,
     calculate_avg_video_bit_rate,
 )
-from src.backend.utils.rename_normalizations import EDITION_INFO, EDITION_STRINGS_ONLY
+from src.backend.utils.rename_normalizations import EDITION_INFO
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.video_codecs import VideoCodecs
 from src.backend.utils.working_dir import RUNTIME_DIR
@@ -629,36 +629,35 @@ class TokenReplacer:
             return values if isinstance(values, list) else [values]
 
         # ensure we have unique editions
-        edition_set = set()
+        normalized_edition_set = set()
 
-        # collect editions from `guess_name`
-        edition_set.update(collect_editions(self.guess_name, "edition"))
+        # search the entire filename for edition patterns
+        filename = self.media_input.stem.lower()
+        for rename_normalize in EDITION_INFO:
+            for regex_str in rename_normalize.re_gex:
+                if re.search(regex_str, filename, flags=re.I):
+                    normalized_edition_set.add(rename_normalize.normalized)
+                    break  # only add once per edition type
 
-        # normalize some editions
-        if edition_set:
-            normalized_edition_set = set()
-            for item in edition_set:
-                item_lowered = str(item).lower()
-                # skip IMAX since guessit considers this an edition
-                if "imax" in item_lowered:
-                    continue
-                # normalize all supported edition strings
-                elif item_lowered in EDITION_STRINGS_ONLY:
-                    for rename_normalize in EDITION_INFO:
-                        for regex_str in rename_normalize.re_gex:
-                            match_edition = re.search(
-                                regex_str, item_lowered, flags=re.I
-                            )
-                            if match_edition:
-                                normalized_edition_set.add(rename_normalize.normalized)
-                                break  # be sure we only match one
-                # add any other editions that are not supported
-                else:
-                    normalized_edition_set.add(item)
-            edition_set = normalized_edition_set
+        # also process any editions from guess_name['edition']
+        edition_set = set(collect_editions(self.guess_name, "edition"))
+        for item in edition_set:
+            item_lowered = str(item).lower()
+            if "imax" in item_lowered:
+                continue
+            matched = False
+            for rename_normalize in EDITION_INFO:
+                for regex_str in rename_normalize.re_gex:
+                    if re.search(regex_str, item_lowered, flags=re.I):
+                        normalized_edition_set.add(rename_normalize.normalized)
+                        matched = True
+                        break
+                if matched:
+                    break
+            if not matched:
+                normalized_edition_set.add(item)
 
-        # convert the set back to a string, joining with spaces
-        return self._optional_user_input(" ".join(edition_set), token_data)
+        return self._optional_user_input(" ".join(normalized_edition_set), token_data)
 
     def _frame_size(self, token_data: TokenData) -> str:
         if self.frame_size_override:

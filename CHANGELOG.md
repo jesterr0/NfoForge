@@ -58,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - You can set which HDR types will be returned.
   - You can adjust custom strings that will be used when they are returned for each HDR type.
 - TokenTable in edit mode is not organized a bit better with h-lines.
+- Massively improved edition detection from filename in rename window.
 
 ### Fixed
 

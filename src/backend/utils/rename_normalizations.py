@@ -6,31 +6,31 @@ from src.packages.custom_types import RenameNormalization
 EDITION_INFO: Sequence[RenameNormalization] = (
     RenameNormalization(
         "Alternative Cut",
-        (r"alternative(?:[\s|\.]*cut)?",),
+        (r"alternative(?:[\s\.\-_]*cut)?",),
     ),
     RenameNormalization(
         "Collectors Edition",
-        (r"(?:collector's|collectors|collector)[\s|\.]*edition",),
+        (r"collector'?s?([\s\.\-_]*edition)?",),
     ),
     RenameNormalization(
         "Criterion Edition",
-        (r"criterion(?:[\s|\.]*edition)?",),
+        (r"criterion(?:[\s\.\-_]*edition)?",),
     ),
     RenameNormalization(
         "Deluxe Edition",
-        (r"deluxe(?:[\s|\.]*edition)?",),
+        (r"deluxe(?:[\s\.\-_]*edition)?",),
     ),
     RenameNormalization(
         "Directors Cut",
-        (r"(?:director's|directors)[\s|\.]*cut",),
+        (r"(?:director's|directors)[\s\.\-_]*cut",),
     ),
     RenameNormalization(
         "Extended Cut",
-        (r"extended(?:[\s|\.]*cut)?",),
+        (r"extended(?:[\s\.\-_]*cut)?",),
     ),
     RenameNormalization(
         "Limited Edition",
-        (r"limited(?:[\s|\.]*edition)?",),
+        (r"limited(?:[\s\.\-_]*edition)?",),
     ),
     RenameNormalization(
         "Remastered",
@@ -38,29 +38,26 @@ EDITION_INFO: Sequence[RenameNormalization] = (
     ),
     RenameNormalization(
         "Special Edition",
-        (r"special(?:[\s|\.]*edition)?",),
+        (r"special(?:[\s\.\-_]*edition)?",),
     ),
     RenameNormalization(
         "Theatrical Cut",
-        (r"theatrical(?:[\s|\.]*cut)?",),
+        (r"theatrical(?:[\s\.\-_]*cut)?",),
     ),
     RenameNormalization("Uncensored", (r"uncensored",)),
     RenameNormalization(
         "Ultimate",
-        (r"ultimate(?:[\s|\.]*edition)?",),
+        (r"ultimate(?:[\s\.\-_]*edition)?",),
     ),
     RenameNormalization("Unrated", (r"unrated",)),
     RenameNormalization("Uncut", (r"uncut",)),
 )
 
-# store edition strings only in a list to be used for quick matches
-EDITION_STRINGS_ONLY = [x.normalized.lower().split()[0].strip() for x in EDITION_INFO]
-
 FRAME_SIZE_INFO = (
     RenameNormalization("IMAX", (r"imax",)),
     RenameNormalization(
         "Open Matte",
-        (r"open[\s|\.]*matte",),
+        (r"open[\s\.\-_]*matte",),
     ),
 )
 
