@@ -282,6 +282,7 @@ class MediaSearch(BaseWizardPage):
                     return False
 
             GSigs().wizard_next_button_reset_txt.emit()
+            super().validatePage()
             return True
 
     def _check_invalid_entries(self, entires: tuple[QLineEdit, ...]) -> bool:

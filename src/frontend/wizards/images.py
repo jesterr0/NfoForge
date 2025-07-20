@@ -363,6 +363,7 @@ class ImagesPage(BaseWizardPage):
                 f"#### IMG URL Data ####\n{img_url_data}\n#### IMG URL Data ####",
             )
 
+        super().validatePage()
         return True
 
     @Slot(str, float)

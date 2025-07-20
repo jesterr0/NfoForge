@@ -355,6 +355,7 @@ class RenameEncode(BaseWizardPage):
             # close token window
             self._close_token_window()
 
+            super().validatePage()
             return True
         return False
 
