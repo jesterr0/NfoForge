@@ -170,7 +170,9 @@ class CustomTokenEditor(QWidget):
         selected = self.table.selectedItems()
         if selected:
             row = self.table.currentRow()
-            self.value_edit.setPlainText(self.value_map.get(row, ""))
+            name_item = self.table.item(row, 0)
+            name = name_item.text() if name_item else None
+            self.value_edit.setPlainText(self.value_map.get(name, ""))
         else:
             self.value_edit.clear()
 
@@ -179,15 +181,19 @@ class CustomTokenEditor(QWidget):
             return
         row = self.table.currentRow()
         if row >= 0:
-            self.value_map[row] = self.value_edit.toPlainText()
+            name_item = self.table.item(row, 0)
+            name = name_item.text() if name_item else None
+            if name:
+                self.value_map[name] = self.value_edit.toPlainText()
 
     def _add_token(self) -> None:
         row = self.table.rowCount()
+        default_name = "usr_new_token"
         self.table.insertRow(row)
-        self.table.setItem(row, 0, QTableWidgetItem("usr_new_token"))
+        self.table.setItem(row, 0, QTableWidgetItem(default_name))
         type_item = QTableWidgetItem(self.token_types[0])
         self.table.setItem(row, 1, type_item)
-        self.value_map[row] = ""
+        self.value_map[default_name] = ""
         self.table.selectRow(row)
 
     def _delete_token(self) -> None:
@@ -196,7 +202,7 @@ class CustomTokenEditor(QWidget):
             return
 
         # Confirm? timer logic
-        if not self._delete_confirm_row or self._delete_confirm_row != row:
+        if self._delete_confirm_row is None or self._delete_confirm_row != row:
             self.delete_btn.setText("Confirm?")
             self._delete_confirm_row = row
             if self._delete_timer:
@@ -212,17 +218,22 @@ class CustomTokenEditor(QWidget):
             return
 
         # if already in confirm state, delete
+        name_item = self.table.item(row, 0)
+        name = name_item.text() if name_item else None
         self.table.removeRow(row)
-        self.value_map.pop(row, None)
-        self.value_map = {
-            i: self.value_map.get(i, "") for i in range(self.table.rowCount())
-        }
-        self.value_edit.clear()
+        if name and name in self.value_map:
+            self.value_map.pop(name)
         self.delete_btn.setText("Delete")
         self._delete_confirm_row = None
         if self._delete_timer:
             self._delete_timer.stop()
         self.table.setEnabled(True)
+        # select next logical row after delete
+        if self.table.rowCount() > 0:
+            next_row = min(row, self.table.rowCount() - 1)
+            self.table.selectRow(next_row)
+        else:
+            self.value_edit.clear()
 
     def _reset_delete_button(self) -> None:
         self.delete_btn.setText("Delete")
@@ -232,21 +243,21 @@ class CustomTokenEditor(QWidget):
     @Slot()
     def _save_now(self) -> None:
         data = self.save_all()
-        if data:
-            self.save_changes_now.emit(data)
+        self.save_changes_now.emit(data)
 
     def save_all(self) -> dict[str, tuple[str, str]] | None:
         """Save all tokens returning the output, if None is returned there was an error."""
         tokens = {}
-
         for row in range(self.table.rowCount()):
             name_item = self.table.item(row, 0)
             type_item = self.table.item(row, 1)
             name = name_item.text() if name_item else ""
             ttype = type_item.text() if type_item else self.token_types[0]
-
+            value = self.value_map.get(name, "")
+            if not name or not value or not name.startswith(self.token_prefix):
+                continue
             if TokenSelection(ttype) is TokenSelection.FILE_TOKEN:
-                lines = str(self.value_map.get(row, "")).splitlines(False)
+                lines = str(value).splitlines(False)
                 line_len = len(lines)
                 if line_len > 1:
                     QMessageBox.warning(
@@ -257,17 +268,11 @@ class CustomTokenEditor(QWidget):
                         "corrected to continue saving.",
                     )
                     return
-                if line_len < 1:  # skip empty tokens
+                value = lines[0] if line_len == 1 else ""
+                if not value:
                     continue
-                value = lines[0]
-            else:
-                value = self.value_map.get(row, "")
-
-            if name and name.startswith(self.token_prefix):
-                tokens[name] = (value, ttype)
-
+            tokens[name] = (value, ttype)
         self.tokens = tokens
-
         return tokens
 
     def get_tokens(self) -> dict[str, tuple[str, str]]:
@@ -285,13 +290,12 @@ class CustomTokenEditor(QWidget):
             type_item = QTableWidgetItem(ttype)
             self.table.setItem(i, 0, name_item)
             self.table.setItem(i, 1, type_item)
-            self.value_map[i] = value
-
-            # re-validate row highlight
+            self.value_map[name] = value
             self._on_item_changed(name_item)
         if tokens:
             self.table.selectRow(0)
-            self.value_edit.setPlainText(self.value_map.get(0, ""))
+            first_name = next(iter(tokens.keys()))
+            self.value_edit.setPlainText(self.value_map.get(first_name, ""))
         else:
             self.value_edit.clear()
 
