@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Each time you utilize the work flow, you can set the type of release notes you want sent to fill the token **release_notes**.
   - Updated default template for new nfo templates to include a if block for **release_notes**.
   - Added a new variable to the **SharedData** called **release_notes**, that can be overridden in a plugin.
+- **Directory** support has been officially added and tested.
+  - You can now open a directory in **Basic** mode, this will be good for structures that have a top level folder and file(s) inside. 
+  - During **rename** on the **process** page the **top-level folder** that was opened will be renamed at the same time as the file.
+  - The largest file with the **supported selected suffix (.mkv/.mp4)** will automatically be detected as your **media file**.
+  - You can open a file/directory via drag and drop or by using the dedicated buttons.
+  - If the file is a directory you'll see a new **file tree** appear, showing the files that will be utilized.
 
 ### Changed
 
@@ -59,6 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - You can adjust custom strings that will be used when they are returned for each HDR type.
 - TokenTable in edit mode is not organized a bit better with h-lines.
 - Massively improved edition detection from filename in rename window.
+- **Basic Input** page will now flash yellow to alert the user when the user attempts to press **Next** with invalid/missing inputs.
 
 ### Fixed
 
