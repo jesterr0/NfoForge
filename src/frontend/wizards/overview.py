@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -42,10 +41,35 @@ class Overview(BaseWizardPage):
 
         self.config = config
 
-        media_input, self.media_input_box = self.build_form_layout("Input")
-        renamed_output, self.renamed_output_box = self.build_form_layout("Output")
+        self.renamed_output_box = QVBoxLayout()
+        self.renamed_output_box.setContentsMargins(0, 0, 0, 0)
+        renamed_output_widget = QWidget()
+        renamed_output_widget.setLayout(self.renamed_output_box)
+
+        # rename section
+        self.label_parent_in = QLabel("Parent Folder Name In:", self)
+        self.edit_parent_in = QLineEdit(parent=self, readOnly=True)
+
+        self.label_parent_out = QLabel("Parent Folder Name Out:", self)
+        self.edit_parent_out = QLineEdit(parent=self, readOnly=True)
+
+        self.label_media_in = QLabel("Media File Name In:", self)
+        self.edit_media_in = QLineEdit(parent=self, readOnly=True)
+
+        self.label_media_out = QLabel("Media File Name Out:", self)
+        self.edit_media_out = QLineEdit(parent=self, readOnly=True)
+
+        self.renamed_output_box.addWidget(self.label_parent_in)
+        self.renamed_output_box.addWidget(self.edit_parent_in)
+        self.renamed_output_box.addWidget(self.label_parent_out)
+        self.renamed_output_box.addWidget(self.edit_parent_out)
+        self.renamed_output_box.addWidget(self.label_media_in)
+        self.renamed_output_box.addWidget(self.edit_media_in)
+        self.renamed_output_box.addWidget(self.label_media_out)
+        self.renamed_output_box.addWidget(self.edit_media_out)
+
         self.renamed_media_box = self.build_group_box(
-            "Media Rename", media_input, renamed_output
+            "Media Rename", renamed_output_widget
         )
 
         self.tracker_list_box = QListWidget()
@@ -55,7 +79,7 @@ class Overview(BaseWizardPage):
         self.tracker_list_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         trackers_box = self.build_group_box("Tracker(s)", self.tracker_list_box)
 
-        self.file_tree_view = FileSystemTreeView()
+        self.file_tree_view = FileSystemTreeView(parent=self)
         self.file_tree_view.setSelectionMode(
             self.file_tree_view.SelectionMode.NoSelection
         )
@@ -98,7 +122,7 @@ class Overview(BaseWizardPage):
         payload = self.config.media_input_payload
         media_in = payload.encode_file
         source_in = payload.source_file
-        media_file_dir = None
+        media_file_dir = payload.encode_file_dir
         renamed_out = payload.renamed_file
         media_info_obj = payload.encode_file_mi_obj
         source_file_mi_obj = payload.source_file_mi_obj
@@ -117,41 +141,80 @@ class Overview(BaseWizardPage):
                 ]
             )
 
-        self.media_input_box.setText(str(media_in))
-
         self._update_renamed_media_box(renamed_out)
-
         self._populate_file_view(media_file_dir if media_file_dir else media_in)
 
-        self._update_nfo_text(
-            media_input=media_in,
-            source_file=source_in,
-            media_info_obj=media_info_obj,
-            source_file_mi_obj=source_file_mi_obj,
-        )
+        # only call _update_nfo_text if required args are not None
+        if media_in and media_info_obj:
+            self._update_nfo_text(
+                media_input=media_in,
+                source_file=source_in,
+                media_info_obj=media_info_obj,
+                source_file_mi_obj=source_file_mi_obj,
+            )
 
         self._update_thumbnails()
 
-    def _update_renamed_media_box(
-        self, renamed_output: PathLike[str] | Path | None
-    ) -> None:
+    def _update_renamed_media_box(self, renamed_output: Path | None) -> None:
+        payload = self.config.media_input_payload
+        encode_file_dir = (
+            Path(self.config.media_input_payload.encode_file_dir)
+            if self.config.media_input_payload.encode_file_dir
+            else None
+        )
         if renamed_output:
             self.renamed_media_box.show()
-            self.renamed_output_box.setText(str(renamed_output))
+            # show/hide and set text for folder fields
+            if encode_file_dir:
+                self.label_parent_in.show()
+                self.edit_parent_in.show()
+                self.edit_parent_in.setText(Path(encode_file_dir).name)
+                self.edit_parent_in.setToolTip(Path(encode_file_dir).name)
+
+                edit_parent_out_path = Path(renamed_output)
+                self.label_parent_out.show()
+                self.edit_parent_out.show()
+                self.edit_parent_out.setText(edit_parent_out_path.stem)
+                self.edit_parent_out.setToolTip(edit_parent_out_path.stem)
+            else:
+                self.label_parent_in.hide()
+                self.edit_parent_in.hide()
+                self.label_parent_out.hide()
+                self.edit_parent_out.hide()
+
+            # always show file fields, but check for None
+            self.label_media_in.show()
+            self.edit_media_in.show()
+            if payload.encode_file is not None:
+                self.edit_media_in.setText(payload.encode_file.name)
+                self.edit_media_in.setToolTip(payload.encode_file.name)
+            else:
+                self.edit_media_in.setText("")
+                self.edit_media_in.setToolTip("")
+
+            self.label_media_out.show()
+            self.edit_media_out.show()
+            if renamed_output.name:
+                self.edit_media_out.setText(renamed_output.name)
+                self.edit_media_out.setToolTip(renamed_output.name)
+            else:
+                self.edit_media_out.setText("")
+                self.edit_media_out.setToolTip("")
         else:
             self.renamed_media_box.hide()
 
     def _populate_file_view(self, path: Path | None) -> None:
         if path:
             self.file_tree_view.build_tree(path)
+            self.file_tree_view.expandAll()
             self.file_tree_view.show()
         else:
             self.file_tree_view.hide()
 
     def _update_nfo_text(
         self,
-        media_input: PathLike[str] | Path,
-        source_file: PathLike[str] | Path | None,
+        media_input: Path,
+        source_file: Path | None,
         media_info_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
     ) -> None:
@@ -248,13 +311,10 @@ class Overview(BaseWizardPage):
         )
 
     @staticmethod
-    def build_form_layout(txt1: str) -> tuple[QFormLayout, QLineEdit]:
+    def build_form_layout(txt1: str) -> tuple[QFormLayout, QFormLayout]:
         layout = QFormLayout()
         layout.addWidget(QLabel(txt1))
-        text_box = QLineEdit()
-        text_box.setReadOnly(True)
-        layout.addWidget(text_box)
-        return layout, text_box
+        return layout, layout
 
     @staticmethod
     def build_group_box(text: str, *args: QWidget) -> QGroupBox:

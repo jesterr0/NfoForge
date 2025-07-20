@@ -8,21 +8,19 @@ from pymediainfo import MediaInfo
 class MediaInputPayload:
     script_file: Path | None = None
     source_file: Path | None = None
-    source_file_dir: Path | None = None
     source_file_mi_obj: MediaInfo | None = None
     encode_file: Path | None = None
-    encode_file_dir: Path | None = None
     encode_file_mi_obj: MediaInfo | None = None
+    encode_file_dir: Path | None = None
     renamed_file: Path | None = None
     working_dir: Path | None = None
 
     def reset(self) -> None:
         self.script_file = None
         self.source_file = None
-        self.source_file_dir = None
         self.source_file_mi_obj = None
         self.encode_file = None
-        self.encode_file_dir = None
         self.encode_file_mi_obj = None
+        self.encode_file_dir = None
         self.renamed_file = None
         self.working_dir = None

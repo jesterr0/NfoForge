@@ -20,7 +20,7 @@ class ReleaseNotes(BaseWizardPage):
             <h4>Release Notes</h4><span style="font-size: 9pt; font-weight: normal;">
             <p>
                 The currently selected output below will fill the token 
-                <span style="font-weight: bold;">{release_notes}</span> automatically if
+                <span style="font-weight: bold;">{{ release_notes }}</span> automatically if
                 utilized in any of your <span style="font-weight: bold;">templates</span>.
             </p>""")
         self.setCommitPage(True)
@@ -63,6 +63,7 @@ class ReleaseNotes(BaseWizardPage):
                 self.dict_widget.combo.setCurrentIndex(combo_idx)
 
     def validatePage(self) -> bool:
+        super().validatePage()
         self._apply_release_notes()
         self._update_cfg()
         return True

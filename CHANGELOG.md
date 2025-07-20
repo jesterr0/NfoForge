@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Output can no longer be edited directly, you must use the override token area above and edit each value as needed**.
   - When the **Value** is edited in the **override** section, if the **same** token in a corresponding **title token** exists it will also be updated.
   - Added a new **quality** selection box, this box will **override** the **source** token if utilized. It's automatically detected and set on initialization of the rename page.
-  - New validation to ensure the user isn't blatantly using an invalid quality to resolution. 
+  - New validation to ensure the user isn't blatantly using an invalid quality to resolution.
 - Added support for **user tokens**.
 - Added new **Settings** tab **User Tokens**.
   - Can now add **custom** user tokens for both **FileTokens** and **NfoTokens**.
@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Each time you utilize the work flow, you can set the type of release notes you want sent to fill the token **release_notes**.
   - Updated default template for new nfo templates to include a if block for **release_notes**.
   - Added a new variable to the **SharedData** called **release_notes**, that can be overridden in a plugin.
+- **Directory** support has been officially added and tested.
+  - You can now open a directory in **Basic** mode, this will be good for structures that have a top level folder and file(s) inside.
+  - During **rename** on the **process** page the **top-level folder** that was opened will be renamed at the same time as the file.
+  - The largest file with the **supported selected suffix (.mkv/.mp4)** will automatically be detected as your **media file**.
+  - You can open a file/directory via drag and drop or by using the dedicated buttons.
+  - If the file is a directory you'll see a new **file tree** appear, showing the files that will be utilized.
 
 ### Changed
 
@@ -59,6 +65,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - You can adjust custom strings that will be used when they are returned for each HDR type.
 - TokenTable in edit mode is not organized a bit better with h-lines.
 - Massively improved edition detection from filename in rename window.
+- **Basic Input** page will now flash yellow to alert the user when the user attempts to press **Next** with invalid/missing inputs.
+- **Overview Page** file tree widget now auto expands upload loading files.
 
 ### Fixed
 

@@ -1,9 +1,9 @@
 from collections.abc import Iterable
 from pathlib import Path
-from PySide6.QtWidgets import QLineEdit, QPushButton, QToolButton
+
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QDragMoveEvent, QDropEvent, QDragEnterEvent
-# from typing import Type, TypeVar
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
+from PySide6.QtWidgets import QLineEdit, QPushButton, QToolButton
 
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.image_listbox import ThumbnailListWidget
@@ -114,8 +114,8 @@ class DNDMixin:
 
 
 class DNDLineEdit(DNDMixin, QLineEdit):  # pyright: ignore [reportIncompatibleMethodOverride]
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
         self.setAcceptDrops(True)
 
 
@@ -126,29 +126,31 @@ class DNDCustomLineEdit(DNDMixin, CodeEditor):  # pyright: ignore [reportIncompa
         wrap_text: bool = False,
         mono_font: bool = True,
         parent=None,
+        **kwargs,
     ):
         super().__init__(
             line_numbers=line_numbers,
             wrap_text=wrap_text,
             mono_font=mono_font,
             parent=parent,
+            **kwargs,
         )
         self.setAcceptDrops(True)
 
 
 class DNDButton(DNDMixin, QPushButton):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
         self.setAcceptDrops(True)
 
 
 class DNDToolButton(DNDMixin, QToolButton):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
         self.setAcceptDrops(True)
 
 
 class DNDThumbnailListWidget(DNDMixin, ThumbnailListWidget):  # pyright: ignore [reportIncompatibleMethodOverride]
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, parent=None, **kwargs):
+        super().__init__(parent=parent, **kwargs)
         self.setAcceptDrops(True)

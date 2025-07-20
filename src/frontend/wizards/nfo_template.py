@@ -118,6 +118,7 @@ class NfoTemplate(BaseWizardPage):
 
         self.config.save_config()
         self.template_selector.destroy_token_window.emit()
+        super().validatePage()
         return True
 
     def _validate_tracker_selection(self) -> bool:
