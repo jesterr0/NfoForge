@@ -2,7 +2,6 @@ import asyncio
 from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
-import re
 import traceback
 from typing import Any, TYPE_CHECKING
 
@@ -14,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QProgressBar,
+    QTextBrowser,
     QVBoxLayout,
 )
 from pymediainfo import MediaInfo
@@ -25,7 +25,6 @@ from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
 from src.exceptions import ProcessError
-from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -83,7 +82,6 @@ class DupeWorker(BaseWorker):
                 self.backend.dupe_checks(
                     file_input=self.file_input,
                     processing_queue=self.processing_queue,
-                    queued_text_update=self._queued_text_update_cb,
                     media_search_payload=self.media_search_payload,
                 )
             )
@@ -186,11 +184,8 @@ class ProcessPage(BaseWizardPage):
         self.tracker_process_tree.combo_changed.connect(self._tree_combo_changed)
 
         text_widget_label = QLabel("Log", self)
-        self.text_widget = CodeEditor(
-            line_numbers=False, wrap_text=True, mono_font=True, parent=self
-        )
-        self.text_widget.setReadOnly(True)
-        self.apply_syntax_highlighting()
+
+        self.text_widget = QTextBrowser(parent=self, openExternalLinks=True)
 
         self.progress_bar = QProgressBar(self)
         self.progress_bar.hide()
@@ -201,20 +196,6 @@ class ProcessPage(BaseWizardPage):
         main_layout.addWidget(self.text_widget, stretch=5)
         main_layout.addWidget(self.progress_bar, stretch=1)
         self.setLayout(main_layout)
-
-    def apply_syntax_highlighting(self) -> None:
-        highlight = [
-            HighlightKeywords(
-                re.compile(r"(Total potential dupes found.+)"), "#e1401d", True
-            ),
-            HighlightKeywords(re.compile(r"(?i)(fail.*)\b"), "#e1401d", False),
-        ]
-        for tracker in self.config.tracker_map.keys():
-            tracker = re.escape(str(tracker))
-            highlight.append(
-                HighlightKeywords(re.compile(rf"'({tracker})':"), "#e1401d", True)
-            )
-        self.text_widget.highlight_keywords(highlight)
 
     @Slot()
     def process_jobs(self) -> None:
@@ -231,7 +212,7 @@ class ProcessPage(BaseWizardPage):
             raise AttributeError("Could not determine tracker data")
 
         GSigs().main_window_set_disabled.emit(True)
-        # NOTE: Pass encode_file_dir to workers/process backend as needed for torrent root folder naming
+
         if self.processing_mode == UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
                 backend=self.backend,
@@ -242,9 +223,12 @@ class ProcessPage(BaseWizardPage):
             )
             self.dupe_worker.dupes_found.connect(self._on_dupes_found)
             self.dupe_worker.job_failed.connect(self._on_failed)
-            self.dupe_worker.queued_text_update.connect(self._on_text_update)
-            self.dupe_worker.queued_text_update_replace_last_line.connect(
-                self._on_text_update_replace_last_line
+            # self.dupe_worker.queued_text_update.connect(self._on_text_update)
+            # self.dupe_worker.queued_text_update_replace_last_line.connect(
+            #     self._on_text_update_replace_last_line
+            # )
+            self._on_text_update(
+                '<h3 style="margin-bottom: 0px; padding-bottom: 0px;">📋 Checking for dupes:</h3>',
             )
             self.dupe_worker.start()
 
@@ -283,14 +267,35 @@ class ProcessPage(BaseWizardPage):
         self, dupes: dict[TrackerSelection, list[TrackerSearchResult]]
     ) -> None:
         if dupes:
-            duplicate_base_str = "###### Potential Duplicates ######\n{}\n###### Potential Duplicates ######"
-            duplicates = ""
-
-            for tracker, releases in dupes.items():
-                duplicates = duplicates + f"\n{tracker}:\n"
-                for item in releases:
-                    duplicates = duplicates + f"{item.name}\n"
-            self._on_text_update(duplicate_base_str.format(duplicates.strip()))
+            # if not dupes
+            total_dupes = sum(len(item) for item in dupes.values())
+            if total_dupes == 0:
+                self._on_text_update("<br /><span>✅ No duplicates found</span>")
+            # if dupes are found
+            else:
+                duplicates = (
+                    f"<br /><span>⚠️ Total potential dupes found: {total_dupes}</span>"
+                )
+                for tracker, releases in dupes.items():
+                    duplicates += (
+                        "<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
+                        "margin: 10px 0 16px 0; padding: 8px 10px;'>"
+                        f"<b style='font-size: 1.08em;'>{tracker}</b>"
+                        "<table style='border-collapse:collapse; margin-top:6px;'>"
+                    )
+                    for item in releases:
+                        duplicates += (
+                            "<tr>"
+                            "<td style='padding: 10px 4px; border-bottom: 1px solid #eee;'>"
+                            f'📄 <a href="{item.url}" rel="noreferrer nofollow" style="color: #1976d2; '
+                            f'text-decoration: underline; font-weight: bold;">{item.name}</a>'
+                            "</td>"
+                            "</tr>"
+                        )
+                    duplicates += "</table></div>"
+                self._on_text_update(duplicates)
+        else:
+            self._on_text_update("<br /><span>✅ No duplicates found</span>")
 
         self.processing_mode = UploadProcessMode.UPLOAD
         self._job_ended()
@@ -304,7 +309,7 @@ class ProcessPage(BaseWizardPage):
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
-        self._on_text_update(f"\n{e}")
+        self._on_text_update(f"<br /><p>{e}</p>")
         LOG.error(LOG.LOG_SOURCE.FE, trace_back)
 
     def _job_ended(self) -> None:
@@ -319,7 +324,10 @@ class ProcessPage(BaseWizardPage):
 
     @Slot(str)
     def _on_text_update(self, txt: str) -> None:
-        self.text_widget.appendPlainText(txt)
+        cursor = self.text_widget.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.insertHtml(txt)
+        self.text_widget.setTextCursor(cursor)
         self.text_widget.ensureCursorVisible()
         LOG.info(LOG.LOG_SOURCE.FE, txt)
 
@@ -408,7 +416,7 @@ class ProcessPage(BaseWizardPage):
 
             for tracker in ordered_trackers:
                 combo_box = self.tracker_process_tree.add_row(
-                    headers=(str(tracker), "", "Queued"),
+                    headers=(str(tracker), "", "⌛ Queued"),
                     combo_data=[  # [int, [(str, (ImageUploadFromTo, (TrackerSelection, ImageHost)))]]
                         (
                             1,
@@ -468,9 +476,18 @@ class ProcessPage(BaseWizardPage):
         if self.processing_mode == UploadProcessMode.UPLOAD:
             # file rename first (if needed)
             if renamed_input and (str(og_input) != str(renamed_input)):
-                self._on_text_update(
-                    f"Renaming input file:\n'{og_input.name}' -> '{renamed_input.name}'\n"
-                )
+                self._on_text_update("""\
+                    <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📼 Renaming input file:</h3>
+                    <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
+                    <tr>
+                        <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+                        <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+                    </tr>
+                    <tr>
+                        <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncut.BluRay.1080p.DTS-X.7.1.VC-1.mkv</td>
+                        <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncensored.BluRay.1080p.DTS-X.7.1.VC-1.mkv</td>
+                    </tr>
+                    </table>""")
                 try:
                     # only rename if source and destination are different and source exists
                     if og_input != renamed_input and og_input.exists():
@@ -503,9 +520,18 @@ class ProcessPage(BaseWizardPage):
                 new_folder = encode_file_dir.parent / detected_input.stem
                 if encode_file_dir != new_folder:
                     try:
-                        self._on_text_update(
-                            f"Renaming parent folder: '{encode_file_dir}' -> '{new_folder}'\n"
-                        )
+                        self._on_text_update("""\
+                            <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📂 Renaming parent folder:</h3>
+                            <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
+                            <tr>
+                                <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+                                <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+                            </tr>
+                            <tr>
+                                <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncut.BluRay.1080p.DTS-X.7.1.VC-1</td>
+                                <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncensored.BluRay.1080p.DTS-X.7.1.VC-1</td>
+                            </tr>
+                            </table>""")
                         encode_file_dir.rename(new_folder)
                         # update payload to reflect new folder name
                         self.config.media_input_payload.encode_file_dir = new_folder

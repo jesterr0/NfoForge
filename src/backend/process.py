@@ -85,11 +85,8 @@ class ProcessBackEnd:
         self,
         file_input: Path,
         processing_queue: list[str],
-        queued_text_update: Callable[[str], None],
         media_search_payload: MediaSearchPayload,
     ) -> dict[str, Path]:
-        queued_text_update("Checking for dupes...")
-
         tasks = []
         for tracker_name in processing_queue:
             if TrackerSelection(tracker_name) == TrackerSelection.MORE_THAN_TV:
@@ -135,11 +132,6 @@ class ProcessBackEnd:
         for item in async_results:
             if item:
                 dupes[item[0]] = item[1]
-
-        dupe_count = sum(len(item) for item in dupes.values())
-        queued_text_update(
-            f"Total potential dupes found: {dupe_count} (REVIEW BEFORE CONTINUING)\n"
-        )
 
         return dupes
 
@@ -265,15 +257,23 @@ class ProcessBackEnd:
         # determine maximum piece size for the current tracker(s)
         max_piece_size = self.determine_max_piece_size(process_dict)
         if max_piece_size:
-            queued_text_update(f"Detected maximum piece size: {max_piece_size} (bytes)")
+            queued_text_update(
+                '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🔎 Detected maximum piece size:</h3>'
+            )
+            queued_text_update(f"<br /><span>{max_piece_size} (bytes)</span>")
 
         # use encode_file_dir as the source for torrent if set, else use media_input
         torrent_source = encode_file_dir if encode_file_dir else media_input
 
         # process
+        queued_text_update(
+            '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:'
+        )
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
-            queued_status_update(tracker_name, "Processing")
-            queued_text_update(f"\nStarting work for '{tracker_name}':")
+            queued_status_update(tracker_name, "▶️ Processing")
+            queued_text_update(
+                f'<br /><span>Starting work for <span style="font-weight: bold;">{tracker_name}</span></span>'
+            )
 
             # screenshots stuff, updated below for each tracker in the loop
             tracker_images = None
@@ -291,7 +291,7 @@ class ProcessBackEnd:
 
             # torrent file
             if idx == 0:
-                queued_text_update("Generating torrent")
+                queued_text_update("<br /><span>Generating torrent</span>")
                 torrent = generate_torrent(
                     tracker_info=tracker_info,
                     input_file=torrent_source,
@@ -301,7 +301,7 @@ class ProcessBackEnd:
                 write_to_disk = write_torrent(torrent, torrent_path)
                 base_torrent_file = write_to_disk
             else:
-                queued_text_update("Cloning torrent")
+                queued_text_update("<br /><span>Cloning torrent</span>")
                 clone = clone_torrent(
                     tracker_info=tracker_info,
                     torrent_path=torrent_path,
@@ -408,7 +408,7 @@ class ProcessBackEnd:
 
             # upload
             if tracker_info.upload_enabled and pre_upload_processing is not False:
-                queued_text_update("Uploading release")
+                queued_text_update("<br /><span>Uploading release</span>")
                 execute_upload = None
                 try:
                     execute_upload = self.upload(
@@ -424,13 +424,16 @@ class ProcessBackEnd:
                     )
                 except Exception as upload_error:
                     queued_text_update(
-                        f"Failed to upload release, check logs for information ({upload_error})"
+                        '<br /><br /><p style="font-weight: bold; color: red;">Failed to upload '
+                        f"release, check logs for information ({upload_error})</p>",
                     )
                     caught_error.emit(f"Upload Error: {traceback.format_exc()}")
-                    queued_status_update(tracker_name, "Failed")
+                    queued_status_update(tracker_name, "❌ Failed")
 
                 if execute_upload:
-                    queued_text_update("Successfully uploaded release")
+                    queued_text_update(
+                        "<br /><span>Successfully uploaded release</span>"
+                    )
                     # handle injection
                     try:
                         self._handle_injection(
@@ -439,29 +442,32 @@ class ProcessBackEnd:
                             torrent_path=torrent_path,
                             file_input=media_input,
                         )
-                        queued_status_update(tracker_name, "Complete")
+                        queued_status_update(tracker_name, "✅ Complete")
                     except Exception as e:
                         queued_status_update(
-                            tracker_name, f"Failed to inject torrent ({e})"
+                            tracker_name, f"❌ Failed to inject torrent ({e})"
                         )
                         caught_error.emit(f"Injection Error: {traceback.format_exc()}")
                 else:
                     queued_text_update(
-                        "Failed to upload release, check logs for information"
+                        '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
+                        "check logs for information</span>"
                     )
-                    queued_status_update(tracker_name, "Failed")
+                    queued_status_update(tracker_name, "❌ Failed")
             elif not tracker_info.upload_enabled and pre_upload_processing is None:
-                queued_text_update("Skipping upload & injection, upload is disabled")
-                queued_status_update(tracker_name, "Complete")
+                queued_text_update(
+                    "<br /><span>Skipping upload & injection, upload is disabled</span>"
+                )
+                queued_status_update(tracker_name, "✅ Complete")
             elif tracker_info.upload_enabled and pre_upload_processing is False:
                 queued_text_update(
-                    "Skipping upload & injection, upload is disabled via plugin"
+                    "<br /><span>Skipping upload & injection, upload is disabled via plugin</span>"
                 )
-                queued_status_update(tracker_name, "Complete")
+                queued_status_update(tracker_name, "✅ Complete")
 
             nfo_generated_str = "NFO & " if nfo else ""
             queued_text_update(
-                f"Generated {nfo_generated_str}torrent output directory:\n{torrent_path.parent}"
+                f"<br /><span>Generated {nfo_generated_str}torrent output directory:\n{torrent_path.parent}</span><br />",
             )
 
         # disconnect from clients and reset related variables after use
@@ -522,7 +528,7 @@ class ProcessBackEnd:
         if to_image_hosts:
             if img_from is ImageSource.URLS:
                 queued_text_update(
-                    f"Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)"
+                    f"<br />Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)",
                 )
 
                 if not self.config.media_input_payload.working_dir:
@@ -539,7 +545,7 @@ class ProcessBackEnd:
                 self.config.shared_data.loaded_images = files_to_upload
 
                 queued_text_update(
-                    f"Successfully downloaded {len(files_to_upload)} user-provided URL(s)"
+                    f"<br />Successfully downloaded {len(files_to_upload)} user-provided URL(s)",
                 )
             else:
                 files_to_upload = self.config.shared_data.loaded_images
@@ -558,17 +564,21 @@ class ProcessBackEnd:
                     and self.config.cfg_payload.optimize_dl_url_images
                     or img_from is ImageSource.URLS
                 ):
-                    queued_text_update(f"Optimizing {len(files_to_upload)} image(s)")
+                    queued_text_update(
+                        f"<br />Optimizing {len(files_to_upload)} image(s)"
+                    )
                     try:
                         files_to_upload = self._optimize_images(
                             progress_bar_cb, files_to_upload
                         )
                     except Exception as opt_e:
-                        queued_text_update(f"Failed to optimize image(s) ({opt_e})")
+                        queued_text_update(
+                            f"<br />Failed to optimize image(s) ({opt_e})"
+                        )
 
                 # upload images
                 queued_text_update(
-                    f"Uploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)"
+                    f"<br />Uploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)",
                 )
                 async_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(async_loop)
@@ -598,7 +608,7 @@ class ProcessBackEnd:
                     url_host_count += 1
 
             queued_text_update(
-                f"Using {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)"
+                f"<br />Using {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)",
             )
 
         return url_data
@@ -1057,7 +1067,7 @@ class ProcessBackEnd:
         )
         output = format_str.get_output()
         if output:
-            queued_text_update(f"Release title: {output}")
+            queued_text_update(f"<br />Release title: {output}")
         return output if output else None
 
     def torrent_gen_cb(
@@ -1081,7 +1091,7 @@ class ProcessBackEnd:
             if client_settings.enabled:
                 inj_success, inj_msg = False, "Failed"
                 queued_text_update(
-                    f"Injecting torrent [Tracker: {tracker_name} | Client: {client}]"
+                    f"<br />Injecting torrent [Tracker: {tracker_name} | Client: {client}]",
                 )
                 if client == TorrentClientSelection.QBITTORRENT:
                     inj_success, inj_msg = self.qbittorrent_inject(torrent_path)
@@ -1102,7 +1112,7 @@ class ProcessBackEnd:
                     )
 
                 queued_text_update(
-                    f"{'Completed' if inj_success else 'Failed'}, status: {inj_msg}"
+                    f"<br />{'Completed' if inj_success else 'Failed'}, status: {inj_msg}",
                 )
 
     def qbittorrent_inject(self, torrent_path: Path) -> tuple[bool, str]:

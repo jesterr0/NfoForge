@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Massively improved edition detection from filename in rename window.
 - **Basic Input** page will now flash yellow to alert the user when the user attempts to press **Next** with invalid/missing inputs.
 - **Overview Page** file tree widget now auto expands upload loading files.
+- **Process Page** log area has been re-worked with rich text. Utilizing emojis and html/css to make things look a bit nicer overall.
+  - Detected **duplicates** now have clickable links right from the **log window**, that will open your default browser to navigate to if desired.
+  - Emojis for status column.
+  - Better organization/separation for different steps in the window.
 
 ### Fixed
 
