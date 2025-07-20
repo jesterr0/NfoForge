@@ -1,15 +1,10 @@
 from os import PathLike
 from pathlib import Path
-from typing import List, Optional
-from PySide6.QtWidgets import (
-    QTreeView,
-    QWidget,
-    QFileIconProvider,
-    QHeaderView,
-    QFrame,
-)
-from PySide6.QtGui import QStandardItemModel, QStandardItem, QIcon
+from typing import Any
+
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QFileIconProvider, QFrame, QHeaderView, QTreeView, QWidget
 
 from src.backend.utils.working_dir import RUNTIME_DIR
 
@@ -28,9 +23,13 @@ class FileSystemTreeView(QTreeView):
     IMAGE_DIR = RUNTIME_DIR / "images"
 
     def __init__(
-        self, path: PathLike[str] = None, read_only: bool = True, parent: QWidget = None
+        self,
+        path: PathLike[str] | Path | None = None,
+        read_only: bool = True,
+        parent: QWidget | None = None,
+        **kwargs,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent=parent, **kwargs)
         self.setObjectName("fileSystemTreeView")
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
@@ -39,36 +38,49 @@ class FileSystemTreeView(QTreeView):
 
         self.items = {}
 
-        self.model = QStandardItemModel()
-        self.model.setHorizontalHeaderLabels(("Name", "Size", "Ext"))
-        self.setModel(self.model)
+        self._model = QStandardItemModel()
+        self._model.setHorizontalHeaderLabels(("Name", "Size", "Ext"))
+        self.setModel(self._model)
 
         self.header().setStretchLastSection(False)
-        self.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
 
         self.icon_provider = QFileIconProvider()
 
         if path:
             self.build_tree(path)
 
-        self.model.itemChanged.connect(self.handle_item_changed)
+        self._model.itemChanged.connect(self.handle_item_changed)
 
     def clear_tree(self) -> None:
-        self.model.removeRows(0, self.model.rowCount())
+        self._model.removeRows(0, self._model.rowCount())
 
-    def build_tree(self, path: Optional[Path]) -> None:
+    def build_tree(self, path: PathLike[str] | Path | None) -> None:
+        """
+        Build the tree starting from the given path. The root directory is always shown as the top-level node.
+        """
+        self.clear_tree()
         if path:
-            parent_item = self.model.invisibleRootItem()
-            self.add_items(parent_item, path)
+            path = Path(path)
+            root_item = self.create_row_item(path)
+            self.items[path.name] = str(path)
+            ext = "" if path.is_dir() else path.suffix.replace(".", "")
+            self._model.invisibleRootItem().appendRow(
+                (root_item, QStandardItem(""), QStandardItem(ext))
+            )
+            if path.is_dir():
+                self.add_items(root_item, path)
 
     def add_items(self, parent_item, path) -> None:
         path = Path(path)
         directories = []
         files = []
 
-        # Separate directories and files
+        # separate directories and files
         if path.is_dir():
-            for item_path in path.iterdir():
+            for item_path in sorted(
+                path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+            ):
                 if item_path.is_dir():
                     directories.append(item_path)
                 else:
@@ -76,21 +88,19 @@ class FileSystemTreeView(QTreeView):
         else:
             files.append(path)
 
-        # Add directories first
+        # add directories first
         for item_path in directories:
             item = self.create_row_item(item_path)
             self.items[item_path.name] = str(item_path)
-
-            # Recursively add child items
+            parent_item.appendRow((item, QStandardItem(""), QStandardItem("")))
+            # recursively add child items
             self.add_items(item, item_path)
-            parent_item.appendRow(item)
 
-        # Add files second
+        # add files second
         for item_path in files:
             item = self.create_row_item(item_path)
             size_item = QStandardItem(self.get_file_size_in_gb(item_path))
             suffix_item = QStandardItem(item_path.suffix.replace(".", ""))
-
             self.items[item_path.name] = str(item_path)
             parent_item.appendRow((item, size_item, suffix_item))
 
@@ -100,12 +110,12 @@ class FileSystemTreeView(QTreeView):
             item.setCheckable(False)
         else:
             item.setCheckable(True)
-            item.setCheckState(Qt.Checked)
+            item.setCheckState(Qt.CheckState.Checked)
         item.setEditable(False)
         item.setSelectable(True)
         item.setToolTip(str(item_path.name))
         if item_path.is_dir():
-            item.setIcon(self.icon_provider.icon(QFileIconProvider.Folder))
+            item.setIcon(self.icon_provider.icon(QFileIconProvider.IconType.Folder))
         else:
             item.setIcon(self.get_custom_icon(item_path))
         return item
@@ -115,7 +125,7 @@ class FileSystemTreeView(QTreeView):
         self.update_child_items_check_state(item, item.checkState())
 
     def update_child_items_check_state(
-        self, item: QStandardItem, check_state: int
+        self, item: QStandardItem, check_state: Qt.CheckState
     ) -> None:
         if item.hasChildren():
             for row in range(item.rowCount()):
@@ -125,24 +135,61 @@ class FileSystemTreeView(QTreeView):
         else:
             item.setCheckState(check_state)
 
-    def get_checked_items(self) -> List[Optional[PathLike[str]]]:
+    def get_checked_items(self) -> list[dict[str, Any]]:
         """
-        Generates a list of selected items with their full paths
-
-        Returns:
-            List[Optional[PathLike[str]]]: Returns a list of PathLike strings.
+        Generates a list of selected items with their full paths, relative paths, sizes in bytes,
+        and directory status. In read_only mode, returns all items as checked.
         """
-        checked_items = []
-        root_item = self.model.invisibleRootItem()
-        self._collect_checked_items(root_item, checked_items)
+        checked_items: list[dict[str, Any]] = []
+        root_item = self._model.invisibleRootItem()
+        # find the root path for relative path calculation
+        if self.items:
+            # the first value in self.items is the root
+            root_path_str = next(iter(self.items.values()))
+            root_path = Path(root_path_str)
+        else:
+            root_path = None
+        self._collect_checked_items(
+            root_item, checked_items, root_path, treat_all_checked=self.read_only
+        )
         return checked_items
 
-    def _collect_checked_items(self, parent_item, checked_items):
+    def _collect_checked_items(
+        self,
+        parent_item: QStandardItem,
+        checked_items: list,
+        root_path: Path | None,
+        treat_all_checked: bool = False,
+    ) -> None:
         for row in range(parent_item.rowCount()):
             item = parent_item.child(row)
-            if item.checkState() == Qt.Checked:
-                checked_items.append(self.items[item.text()])
-            self._collect_checked_items(item, checked_items)
+            is_checked = treat_all_checked or item.checkState() == Qt.CheckState.Checked
+            if is_checked:
+                path_str = self.items[item.text()]
+                path_obj = Path(path_str)
+                try:
+                    size = path_obj.stat().st_size
+                except Exception:
+                    size = 0
+                is_dir = path_obj.is_dir()
+                if root_path:
+                    try:
+                        relative_path = str(path_obj.relative_to(root_path))
+                    except ValueError:
+                        relative_path = path_obj.name
+                else:
+                    relative_path = path_obj.name
+                checked_items.append(
+                    {
+                        "path": path_str,
+                        "relative_path": relative_path,
+                        "size": size,
+                        "is_dir": is_dir,
+                    }
+                )
+            self._collect_checked_items(
+                item, checked_items, root_path, treat_all_checked
+            )
 
     def get_custom_icon(self, item_path: Path) -> QIcon:
         """Returns the appropriate icon for the given file based on its extension."""
@@ -166,9 +213,9 @@ class FileSystemTreeView(QTreeView):
                     icon_path = self.IMAGE_DIR / "staxrip.ico"
                 if icon_path and icon_path.exists():
                     return QIcon(str(icon_path))
-            return self.icon_provider.icon(QFileIconProvider.File)
         except FileNotFoundError:
-            return self.icon_provider.icon(QFileIconProvider.File)
+            pass
+        return self.icon_provider.icon(QFileIconProvider.IconType.File)
 
     @staticmethod
     def get_file_size_in_gb(file_input: Path) -> str:
