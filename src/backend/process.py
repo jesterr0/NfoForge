@@ -88,7 +88,7 @@ class ProcessBackEnd:
         queued_text_update: Callable[[str], None],
         media_search_payload: MediaSearchPayload,
     ) -> dict[str, Path]:
-        queued_text_update("Checking for dupes")
+        queued_text_update("Checking for dupes...")
 
         tasks = []
         for tracker_name in processing_queue:
@@ -138,7 +138,7 @@ class ProcessBackEnd:
 
         dupe_count = sum(len(item) for item in dupes.values())
         queued_text_update(
-            f"Total potential dupes found: {dupe_count} (REVIEW BEFORE CONTINUING)"
+            f"Total potential dupes found: {dupe_count} (REVIEW BEFORE CONTINUING)\n"
         )
 
         return dupes
@@ -252,6 +252,7 @@ class ProcessBackEnd:
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
         releasers_name: str,
+        encode_file_dir: Path | None = None,
     ) -> None:
         # handle image uploading
         images = self.handle_images_for_trackers(
@@ -264,9 +265,10 @@ class ProcessBackEnd:
         # determine maximum piece size for the current tracker(s)
         max_piece_size = self.determine_max_piece_size(process_dict)
         if max_piece_size:
-            queued_text_update(
-                f"\nDetected maximum piece size: {max_piece_size} (bytes)"
-            )
+            queued_text_update(f"Detected maximum piece size: {max_piece_size} (bytes)")
+
+        # use encode_file_dir as the source for torrent if set, else use media_input
+        torrent_source = encode_file_dir if encode_file_dir else media_input
 
         # process
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
@@ -292,7 +294,7 @@ class ProcessBackEnd:
                 queued_text_update("Generating torrent")
                 torrent = generate_torrent(
                     tracker_info=tracker_info,
-                    input_file=media_input,
+                    input_file=torrent_source,
                     max_piece_size=max_piece_size,
                     cb=self.torrent_gen_cb,
                 )
@@ -638,7 +640,7 @@ class ProcessBackEnd:
         Args:
             to_image_hosts (set[ImageHost]): The set of image hosts to upload to.
             filepaths (Sequence[Path]): The file paths of the images to be uploaded.
-            progress_bar_cb (Callable[[float], None]): Callback function to track upload progress.
+            progress_bar_cb (Callable[[float], None): Callback function to track upload progress.
 
         Returns:
             dict[ImageHost, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
