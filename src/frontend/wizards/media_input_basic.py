@@ -21,10 +21,7 @@ from src.exceptions import MediaFileNotFoundError
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import (
-    build_auto_theme_icon_buttons,
-    QWidgetTempStyle,
-)
+from src.frontend.utils import QWidgetTempStyle, build_auto_theme_icon_buttons
 from src.frontend.utils.media_input_utils import MediaInputWorker
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
@@ -128,12 +125,15 @@ class MediaInputBasic(BaseWizardPage):
                 )
             # handle directory
             elif entry_data.is_dir():
-                checked_items = self.file_tree.get_checked_items()
-                supported_files = [
+                checked_items: list[dict[str, Any]] = (
+                    self.file_tree.get_checked_items() or []
+                )
+                supported_files: list[dict[str, Any]] = [
                     item
                     for item in checked_items
-                    if not item["is_dir"]
-                    and Path(item["path"]).suffix.lower()
+                    if isinstance(item, dict)
+                    and not item.get("is_dir", False)
+                    and Path(item.get("path", "")).suffix.lower()
                     in self.config.cfg_payload.source_media_ext_filter
                 ]
                 if not supported_files:
@@ -141,7 +141,7 @@ class MediaInputBasic(BaseWizardPage):
                         "No supported media files selected in directory "
                         f"({', '.join(self.config.cfg_payload.source_media_ext_filter)})"
                     )
-                largest_file = max(supported_files, key=lambda x: x["size"])
+                largest_file = max(supported_files, key=lambda x: x.get("size", 0))
                 self.config.media_input_payload.encode_file = Path(largest_file["path"])
                 self.config.media_input_payload.encode_file_dir = entry_data
             self._run_worker()
