@@ -83,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rare issue that could happen if the token when was closed after copying data from it.
 - Extra white space on some of the settings tab at the bottom of the window.
 - TokenReplacer engine not replacing tokens when there was an unknown or invalid token in the user input.
+- Depending on the vertical height of the parent window sometimes the **Process Page log** would not scroll all the way down when the progress bar was shown.
 
 ### Removed
 
