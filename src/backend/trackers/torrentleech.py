@@ -52,7 +52,7 @@ class TLUploader:
     ) -> str | None:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
-        data = self._get_data(get_resolution)
+        data = self._get_data(torrent_file.stem, get_resolution)
         if tracker_title:
             data["name"] = tracker_title
 
@@ -87,21 +87,37 @@ class TLUploader:
         with open(torrent_file, "rb") as t_file:
             return {"nfo": nfo, "torrent": (str(torrent_file), t_file.read())}
 
-    def _get_data(self, resolution: str) -> dict:
+    def _get_data(self, title: str, resolution: str) -> dict:
         return {
             "announcekey": self.announce_key,
-            "category": self._detect_category(resolution),
+            "category": self._detect_category(title, resolution),
         }
 
     @staticmethod
-    def _detect_category(resolution: str) -> int:
-        # TODO: add support for everything else/tv
-        if resolution in {"720p", "1080p"}:
-            return TLCategories.MOVIE_BLURAY_RIP.value
-        elif resolution == "2160p":
-            return TLCategories.MOVIE_4K.value
+    def _detect_category(title: str, resolution: str) -> int:
+        # TODO: This will still need some TLC. We need a cleaner way to determine whats what
+        # and pass it to all trackers
+        title_lowered = title.lower()
+        if "bluray" in title_lowered or "blu-ray" in title_lowered:
+            if resolution in {"720p", "1080p"}:
+                return TLCategories.MOVIE_BLURAY_RIP.value
+            elif resolution == "2160p":
+                return TLCategories.MOVIE_4K.value
+            else:
+                raise TrackerError(
+                    "Resolution must be one of '720p', '1080p' or '2160p'"
+                )
+        # TODO: will need to add check if it's a movie for SERIES
+        elif "webrip" in title_lowered or "webdl" in title_lowered:
+            return TLCategories.MOVIE_WEB_RIP.value
+        elif "dvd" in title_lowered:
+            if "rip" in title_lowered:
+                return TLCategories.MOVIE_DVD_RIP.value
+            return TLCategories.MOVIE_DVD.value
+        elif "hdtv" in title_lowered:
+            return TLCategories.MOVIE_HD_RIP.value
         else:
-            raise TrackerError("Resolution must be one of '720p', '1080p' or '2160p'")
+            raise TrackerError("Failed to determine proper TorrentLeech category")
 
 
 class TLSearch:
