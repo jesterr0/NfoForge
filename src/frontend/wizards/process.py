@@ -353,6 +353,8 @@ class ProcessPage(BaseWizardPage):
         if progress:
             if not self.progress_bar.isVisible():
                 self.progress_bar.show()
+                # scroll to bottom since progress bar will occupy some space depending on parent vertical size
+                self.text_widget.ensureCursorVisible()
             self.progress_bar.setValue(int(progress))
             if progress == 100:
                 self.progress_bar.reset()

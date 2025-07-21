@@ -47,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The largest file with the **supported selected suffix (.mkv/.mp4)** will automatically be detected as your **media file**.
   - You can open a file/directory via drag and drop or by using the dedicated buttons.
   - If the file is a directory you'll see a new **file tree** appear, showing the files that will be utilized.
+- Added support for torrent generation with **mkbrr**.
+  - Added support in the **Dependencies** settings tab modify the path to mkbrr if needed.
+  - Torrent generation will now **default** now **mkbrr** if it's available, but will fall back to torf as needed or on failure.
 
 ### Changed
 
@@ -83,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rare issue that could happen if the token when was closed after copying data from it.
 - Extra white space on some of the settings tab at the bottom of the window.
 - TokenReplacer engine not replacing tokens when there was an unknown or invalid token in the user input.
+- Depending on the vertical height of the parent window sometimes the **Process Page log** would not scroll all the way down when the progress bar was shown.
 
 ### Removed
 

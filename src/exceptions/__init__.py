@@ -72,3 +72,7 @@ class ImageHostError(NfoForgeError):
 
 class URLFormattingError(NfoForgeError):
     """Custom exception for URL formatting related errors"""
+
+
+class MkbrrTorrentError(NfoForgeError):
+    """Custom exception mkbrr torrent related errors"""

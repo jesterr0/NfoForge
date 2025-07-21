@@ -1,6 +1,5 @@
 import asyncio
 from collections.abc import Callable
-from os import PathLike
 from pathlib import Path
 import shutil
 import traceback
@@ -25,7 +24,12 @@ from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
 from src.backend.torrent_clients.transmission import TransmissionClient
-from src.backend.torrents import clone_torrent, generate_torrent, write_torrent
+from src.backend.torrents import (
+    clone_torrent,
+    generate_torrent,
+    mkbrr_generate_torrent,
+    write_torrent,
+)
 from src.backend.trackers import (
     AitherSearch,
     BHDSearch,
@@ -291,17 +295,53 @@ class ProcessBackEnd:
 
             # torrent file
             if idx == 0:
-                queued_text_update("<br /><span>Generating torrent</span>")
-                torrent = generate_torrent(
-                    tracker_info=tracker_info,
-                    input_file=torrent_source,
-                    max_piece_size=max_piece_size,
-                    cb=self.torrent_gen_cb,
-                )
-                write_to_disk = write_torrent(torrent, torrent_path)
-                base_torrent_file = write_to_disk
+                # try mkbrr first, fallback to torf if not available or on error
+                try:
+                    if (
+                        self.config.cfg_payload.mkbrr
+                        and self.config.cfg_payload.mkbrr.exists()
+                    ):
+                        queued_text_update(
+                            '<br /><span>Generating torrent with <span style="font-weight: bold;">'
+                            "mkbrr</span></span>"
+                        )
+                        torrent = mkbrr_generate_torrent(
+                            mkbrr_path=self.config.cfg_payload.mkbrr,
+                            tracker_info=tracker_info,
+                            path=torrent_source,
+                            output_path=torrent_path,
+                            max_piece_size=max_piece_size,
+                            cb=self.mkbrr_torrent_gen_cb,
+                        )
+                        base_torrent_file = torrent_path
+                    else:
+                        raise Exception("mkbrr not configured or not found")
+                except Exception as mkbrr_error:
+                    # only show error if mkbrr was available but failed
+                    if self.config.cfg_payload.mkbrr:
+                        queued_text_update(
+                            f'<br /><span style="color: red;">mkbrr failed: {mkbrr_error} '
+                            "(falling back to torf)</span>"
+                        )
+
+                    queued_text_update(
+                        '<br /><span>Generating torrent with <span style="font-weight: bold;">'
+                        "torf</span></span>"
+                    )
+                    torrent = generate_torrent(
+                        tracker_info=tracker_info,
+                        path=torrent_source,
+                        max_piece_size=max_piece_size,
+                        cb=self.torrent_gen_cb,
+                    )
+                    write_to_disk = write_torrent(torrent, torrent_path)
+                    base_torrent_file = write_to_disk
             else:
                 queued_text_update("<br /><span>Cloning torrent</span>")
+                if not base_torrent_file:
+                    raise FileNotFoundError(
+                        "Failed to determine base torrent file to clone"
+                    )
                 clone = clone_torrent(
                     tracker_info=tracker_info,
                     torrent_path=torrent_path,
@@ -1073,12 +1113,16 @@ class ProcessBackEnd:
     def torrent_gen_cb(
         self,
         _torrent: Torrent,
-        _filepath: PathLike[str],
+        _filepath: str,
         pieces_done: int,
         pieces_total: int,
     ) -> None:
         if self.progress_bar_cb:
             self.progress_bar_cb(round(pieces_done / pieces_total * 100, 2))
+
+    def mkbrr_torrent_gen_cb(self, progress: int) -> None:
+        if self.progress_bar_cb:
+            self.progress_bar_cb(progress)
 
     def _handle_injection(
         self,

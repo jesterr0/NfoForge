@@ -60,6 +60,7 @@ class ConfigPayload:
     # dependencies
     ffmpeg: Path | None
     frame_forge: Path | None
+    mkbrr: Path | None
 
     # api keys
     tmdb_api_key: str
