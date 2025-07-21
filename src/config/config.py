@@ -283,6 +283,9 @@ class Config:
             dependencies_data["frame_forge"] = self.resolve_dependency(
                 self.cfg_payload.frame_forge
             )
+            dependencies_data["mkbrr"] = self.resolve_dependency(
+                self.cfg_payload.mkbrr
+            )
 
             # api keys
             api_keys_data = self._toml_data["api_keys"]
@@ -930,6 +933,9 @@ class Config:
                 if dependencies_data["frame_forge"]
                 else None
             )
+            mkbrr = (
+                Path(dependencies_data["mkbrr"]) if dependencies_data["mkbrr"] else None
+            )
 
             # api keys
             api_keys_data = toml_data["api_keys"]
@@ -1290,6 +1296,7 @@ class Config:
                 else self.default_working_dir(ensure_exists=True),
                 ffmpeg=ffmpeg,
                 frame_forge=frame_forge,
+                mkbrr=mkbrr,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
                 tvdb_api_key=api_keys_data.get("tvdb_api_key", ""),
                 tracker_order=tracker_order,
