@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added support for torrent generation with **mkbrr**.
   - Added support in the **Dependencies** settings tab modify the path to mkbrr if needed.
   - Torrent generation will now **default** now **mkbrr** if it's available, but will fall back to torf as needed or on failure.
+  - As of now **mkbrr** will  not be bundled with NfoForge on Windows. However, if desired it'll look for **mkbrr** on the system path or in NfoForge's `runtime/apps/mkbrr/*` if you decide you want to bundle it.
 
 ### Changed
 
