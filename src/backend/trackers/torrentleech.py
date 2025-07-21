@@ -226,12 +226,41 @@ class TLSearch:
 
     def _login(self) -> bool:
         if self._load_cookies():
-            cookie_token = self._validate_session()
-            if cookie_token:
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE, "TorrentLeech cookies valid, skipping login"
+            try:
+                cookie_token = self._validate_session()
+                if cookie_token:
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE, "TorrentLeech cookies valid, skipping login"
+                    )
+                    return True
+                else:
+                    # cookie invalid/expired, delete and retry login
+                    try:
+                        self.cookie_path.unlink()
+                        LOG.debug(
+                            LOG.LOG_SOURCE.BE,
+                            f"Deleted expired TorrentLeech cookie: {self.cookie_path}",
+                        )
+                    except Exception as e:
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {e}"
+                        )
+            except TrackerError as e:
+                # cookie invalid/expired, delete and retry login
+                try:
+                    self.cookie_path.unlink()
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        f"Deleted expired TorrentLeech cookie (exception): {self.cookie_path}",
+                    )
+                except Exception as ex:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {ex}"
+                    )
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"TL cookie invalid: {e}. Retrying login with fresh session.",
                 )
-                return True
 
         response = self._session.get(self.LOGIN_URL, timeout=self.timeout)
         csrf_token = response.cookie["csrf_token"]

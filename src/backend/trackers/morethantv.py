@@ -98,10 +98,41 @@ class MTVUploader:
 
     def login(self, username: str, password: str, totp: str):
         if self._load_cookies():
-            cookie_token = self._validate_session()
-            if cookie_token:
-                LOG.debug(LOG.LOG_SOURCE.BE, "MoreThanTV cookies valid, skipping login")
-                return cookie_token
+            try:
+                cookie_token = self._validate_session()
+                if cookie_token:
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE, "MoreThanTV cookies valid, skipping login"
+                    )
+                    return cookie_token
+                else:
+                    # cookie invalid/expired, delete and retry login
+                    try:
+                        self.cookie_path.unlink()
+                        LOG.debug(
+                            LOG.LOG_SOURCE.BE,
+                            f"Deleted expired MoreThanTV cookie: {self.cookie_path}",
+                        )
+                    except Exception as e:
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {e}"
+                        )
+            except TrackerError as e:
+                # cookie invalid/expired, delete and retry login
+                try:
+                    self.cookie_path.unlink()
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        f"Deleted expired MoreThanTV cookie (exception): {self.cookie_path}",
+                    )
+                except Exception as ex:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {ex}"
+                    )
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"MTV cookie invalid: {e}. Retrying login with fresh session.",
+                )
 
         # Initial GET to load the login page
         login_page = self._session.get(

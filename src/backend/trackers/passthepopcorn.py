@@ -419,8 +419,8 @@ class PTPUploader:
                 remaster_title.add("The Criterion Collection")
             elif {"MASTERS OF CINEMA", "MOC"} & distributors:
                 remaster_title.add("Masters of Cinema")
-        except IndexError:
-            pass
+        except Exception as e:
+            LOG.debug(LOG.LOG_SOURCE.BE, f"Failed to get distributor data: {e}")
 
         # editions
         def collect_editions(source, key: str) -> list:
@@ -634,12 +634,42 @@ class PTPUploader:
 
     def login(self) -> str | None:
         if self._load_cookies():
-            cookie_token = self._validate_session()
-            if cookie_token:
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE, "PassThePopcorn cookies valid, skipping login"
+            try:
+                cookie_token = self._validate_session()
+                if cookie_token:
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        "PassThePopcorn cookies valid, skipping login",
+                    )
+                    return cookie_token
+                else:
+                    # cookie invalid/expired, delete and retry login
+                    try:
+                        self.cookie_path.unlink()
+                        LOG.debug(
+                            LOG.LOG_SOURCE.BE,
+                            f"Deleted expired PassThePopcorn cookie: {self.cookie_path}",
+                        )
+                    except Exception as e:
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {e}"
+                        )
+            except TrackerError as e:
+                # cookie invalid/expired, delete and retry login
+                try:
+                    self.cookie_path.unlink()
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        f"Deleted expired PassThePopcorn cookie (exception): {self.cookie_path}",
+                    )
+                except Exception as ex:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {ex}"
+                    )
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"PTP cookie invalid: {e}. Retrying login with fresh session.",
                 )
-                return cookie_token
 
         LOG.debug(LOG.LOG_SOURCE.BE, "Cookies are invalid or missing, performing login")
         pass_key = self.announce_url.split("/")[-2]
