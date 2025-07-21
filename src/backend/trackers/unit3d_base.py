@@ -13,6 +13,11 @@ from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
+from src.enums.trackers.darkpeers import (
+    DarkPeersCategory,
+    DarkPeersResolution,
+    DarkPeersType,
+)
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.enums.trackers.reelflix import (
@@ -25,9 +30,17 @@ from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
-CategoryEnums = ReelFlixCategory | AitherCategory | HunoCategory | LSTCategory
-ResolutionEnums = ReelFlixResolution | AitherResolution | HunoResolution | LSTResolution
-TypeEnums = ReelFlixType | AitherType | HunoType | LSTType
+CategoryEnums = (
+    ReelFlixCategory | AitherCategory | HunoCategory | LSTCategory | DarkPeersCategory
+)
+ResolutionEnums = (
+    ReelFlixResolution
+    | AitherResolution
+    | HunoResolution
+    | LSTResolution
+    | DarkPeersResolution
+)
+TypeEnums = ReelFlixType | AitherType | HunoType | LSTType | DarkPeersType
 
 
 class Unit3dBaseUploader:

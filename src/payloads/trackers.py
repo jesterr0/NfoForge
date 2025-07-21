@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
-from src.enums.trackers.morethantv import MTVSourceOrigin
+
 from src.enums.token_replacer import ColonReplace
+from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
+from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
 
 
@@ -117,6 +118,7 @@ class HunoInfo(TrackerInfo):
     stream_optimized: int = 0
     image_width: int = 350
 
+
 @dataclass(slots=True)
 class LSTInfo(TrackerInfo):
     api_key: str | None = None
@@ -132,3 +134,12 @@ class LSTInfo(TrackerInfo):
     free: int = 0
     double_up: int = 0
     sticky: int = 0
+
+
+@dataclass(slots=True)
+class DarkPeersInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: int = 0
+    internal: int = 0
+    personal_release: int = 0
+    image_width: int = 500
