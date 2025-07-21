@@ -2,7 +2,7 @@ from pathlib import Path
 
 from pymediainfo import MediaInfo
 
-from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
+from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType

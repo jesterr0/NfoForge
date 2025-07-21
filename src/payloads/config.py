@@ -26,6 +26,7 @@ from src.payloads.image_hosts import (
 from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
+    DarkPeersInfo,
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
@@ -78,6 +79,7 @@ class ConfigPayload:
     aither_tracker: AitherInfo
     huno_tracker: HunoInfo
     lst_tracker: LSTInfo
+    darkpeers_tracker: DarkPeersInfo
 
     # torrent client settings
     qbittorrent: TorrentClient

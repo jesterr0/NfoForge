@@ -41,6 +41,7 @@ from src.payloads.shared_data import SharedPayload
 from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
+    DarkPeersInfo,
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
@@ -616,6 +617,55 @@ class Config:
             lst_data["double_up"] = self.cfg_payload.lst_tracker.double_up
             lst_data["sticky"] = self.cfg_payload.lst_tracker.sticky
             lst_data["image_width"] = self.cfg_payload.lst_tracker.image_width
+
+            # DarkPeers tracker
+            if "dark_peers" not in tracker_data:
+                tracker_data["dark_peers"] = tomlkit.table()
+            dark_peers_data = tracker_data["dark_peers"]
+            dark_peers_data["upload_enabled"] = (
+                self.cfg_payload.darkpeers_tracker.upload_enabled
+            )
+            dark_peers_data["announce_url"] = (
+                self.cfg_payload.darkpeers_tracker.announce_url
+            )
+            dark_peers_data["enabled"] = self.cfg_payload.darkpeers_tracker.enabled
+            dark_peers_data["source"] = self.cfg_payload.darkpeers_tracker.source
+            dark_peers_data["comments"] = self.cfg_payload.darkpeers_tracker.comments
+            dark_peers_data["nfo_template"] = (
+                self.cfg_payload.darkpeers_tracker.nfo_template
+            )
+            dark_peers_data["max_piece_size"] = (
+                self.cfg_payload.darkpeers_tracker.max_piece_size
+            )
+            dark_peers_data["url_type"] = URLType(
+                self.cfg_payload.darkpeers_tracker.url_type
+            ).value
+            dark_peers_data["column_s"] = self.cfg_payload.darkpeers_tracker.column_s
+            dark_peers_data["column_space"] = (
+                self.cfg_payload.darkpeers_tracker.column_space
+            )
+            dark_peers_data["row_space"] = self.cfg_payload.darkpeers_tracker.row_space
+            dark_peers_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.darkpeers_tracker.mvr_title_override_enabled
+            )
+            dark_peers_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.darkpeers_tracker.mvr_title_colon_replace
+            ).value
+            dark_peers_data["mvr_title_token_override"] = (
+                self.cfg_payload.darkpeers_tracker.mvr_title_token_override
+            )
+            dark_peers_data["mvr_title_replace_map"] = (
+                self.cfg_payload.darkpeers_tracker.mvr_title_replace_map
+            )
+            dark_peers_data["api_key"] = self.cfg_payload.darkpeers_tracker.api_key
+            dark_peers_data["anonymous"] = self.cfg_payload.darkpeers_tracker.anonymous
+            dark_peers_data["internal"] = self.cfg_payload.darkpeers_tracker.internal
+            dark_peers_data["personal_release"] = (
+                self.cfg_payload.darkpeers_tracker.personal_release
+            )
+            dark_peers_data["image_width"] = (
+                self.cfg_payload.darkpeers_tracker.image_width
+            )
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -1213,6 +1263,36 @@ class Config:
                 image_width=lst_tracker_data["image_width"],
             )
 
+            darkpeers_tracker_data = tracker_data["dark_peers"]
+            darkpeers_tracker = DarkPeersInfo(
+                upload_enabled=darkpeers_tracker_data["upload_enabled"],
+                announce_url=darkpeers_tracker_data["announce_url"],
+                enabled=darkpeers_tracker_data["enabled"],
+                source=darkpeers_tracker_data["source"],
+                comments=darkpeers_tracker_data["comments"],
+                nfo_template=darkpeers_tracker_data["nfo_template"],
+                max_piece_size=darkpeers_tracker_data["max_piece_size"],
+                url_type=URLType(darkpeers_tracker_data["url_type"]),
+                column_s=darkpeers_tracker_data["column_s"],
+                column_space=darkpeers_tracker_data["column_space"],
+                row_space=darkpeers_tracker_data["row_space"],
+                mvr_title_override_enabled=darkpeers_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    darkpeers_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=darkpeers_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=darkpeers_tracker_data["mvr_title_replace_map"],
+                api_key=darkpeers_tracker_data["api_key"],
+                anonymous=darkpeers_tracker_data["anonymous"],
+                internal=darkpeers_tracker_data["internal"],
+                personal_release=darkpeers_tracker_data["personal_release"],
+                image_width=darkpeers_tracker_data["image_width"],
+            )
+
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]
 
@@ -1309,6 +1389,7 @@ class Config:
                 aither_tracker=aither_tracker,
                 huno_tracker=huno_tracker,
                 lst_tracker=lst_tracker,
+                darkpeers_tracker=darkpeers_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
@@ -1496,6 +1577,9 @@ class Config:
             TrackerSelection.LST: self.cfg_payload.lst_tracker
             if not defaults
             else self.cfg_payload_defaults.lst_tracker,
+            TrackerSelection.DARK_PEERS: self.cfg_payload.darkpeers_tracker
+            if not defaults
+            else self.cfg_payload_defaults.darkpeers_tracker,
         }
 
     def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:

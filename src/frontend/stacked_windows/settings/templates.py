@@ -472,6 +472,7 @@ class TemplatesSettings(BaseSettings):
                 TrackerSelection.REELFLIX,
                 TrackerSelection.AITHER,
                 TrackerSelection.LST,
+                TrackerSelection.DARK_PEERS,
             ):
                 rf_template = self.template_selector.backend.read_template(
                     self.config.cfg_payload.rf_tracker.nfo_template

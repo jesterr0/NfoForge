@@ -5,15 +5,15 @@ from pymediainfo import MediaInfo
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.reelflix import (
-    ReelFlixCategory,
-    ReelFlixResolution,
-    ReelFlixType,
+from src.enums.trackers.darkpeers import (
+    DarkPeersCategory,
+    DarkPeersResolution,
+    DarkPeersType,
 )
 from src.payloads.media_search import MediaSearchPayload
 
 
-def rf_uploader(
+def dp_uploader(
     media_mode: MediaMode,
     api_key: str,
     torrent_file: Path,
@@ -22,20 +22,13 @@ def rf_uploader(
     nfo: str,
     internal: bool,
     anonymous: bool,
-    personal_release: bool,
-    stream_optimized: bool,
-    opt_in_to_mod_queue: bool,
-    featured: bool,
-    free: bool,
-    double_up: bool,
-    sticky: bool,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
 ) -> bool | None:
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
-    uploader = ReelFlixUploader(
+    uploader = DarkPeersUploader(
         media_mode=media_mode,
         api_key=api_key,
         torrent_file=torrent_file,
@@ -52,19 +45,12 @@ def rf_uploader(
         nfo=nfo,
         internal=internal,
         anonymous=anonymous,
-        personal_release=personal_release,
-        stream_optimized=stream_optimized,
-        opt_in_to_mod_queue=opt_in_to_mod_queue,
-        featured=featured,
-        free=free,
-        double_up=double_up,
-        sticky=sticky,
     )
     return upload
 
 
-class ReelFlixUploader(Unit3dBaseUploader):
-    """Upload torrents to ReelFliX"""
+class DarkPeersUploader(Unit3dBaseUploader):
+    """Upload torrents to DarkPeers"""
 
     __slots__ = ()
 
@@ -78,29 +64,29 @@ class ReelFlixUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.REELFLIX,
-            base_url="https://reelflix.xyz",
+            tracker_name=TrackerSelection.DARK_PEERS,
+            base_url="https://darkpeers.org",
             media_mode=media_mode,
             api_key=api_key,
             torrent_file=torrent_file,
             file_input=file_input,
             mediainfo_obj=mediainfo_obj,
-            cat_enum=ReelFlixCategory,
-            res_enum=ReelFlixResolution,
-            type_enum=ReelFlixType,
+            cat_enum=DarkPeersCategory,
+            res_enum=DarkPeersResolution,
+            type_enum=DarkPeersType,
             timeout=timeout,
         )
 
 
-class ReelFlixSearch(Unit3dBaseSearch):
-    """Search ReelFliX"""
+class DarkPeersSearch(Unit3dBaseSearch):
+    """Search DarkPeers"""
 
     __slots__ = ()
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.REELFLIX,
-            base_url="https://reelflix.xyz",
+            tracker_name=TrackerSelection.DARK_PEERS,
+            base_url="https://darkpeers.org",
             api_key=api_key,
             timeout=timeout,
         )
