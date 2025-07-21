@@ -33,6 +33,7 @@ from src.backend.torrents import (
 from src.backend.trackers import (
     AitherSearch,
     BHDSearch,
+    DarkPeersSearch,
     HunoSearch,
     LSTSearch,
     MTVSearch,
@@ -41,6 +42,7 @@ from src.backend.trackers import (
     TLSearch,
     aither_uploader,
     bhd_uploader,
+    dp_uploader,
     huno_uploader,
     lst_uploader,
     mtv_uploader,
@@ -93,7 +95,8 @@ class ProcessBackEnd:
     ) -> dict[str, Path]:
         tasks = []
         for tracker_name in processing_queue:
-            if TrackerSelection(tracker_name) == TrackerSelection.MORE_THAN_TV:
+            tracker_sel = TrackerSelection(tracker_name)
+            if tracker_sel == TrackerSelection.MORE_THAN_TV:
                 tasks.append(
                     self._dupe_mtv(
                         tracker_name=tracker_name,
@@ -101,33 +104,37 @@ class ProcessBackEnd:
                         media_search_payload=media_search_payload,
                     )
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.TORRENT_LEECH:
+            elif tracker_sel == TrackerSelection.TORRENT_LEECH:
                 tasks.append(
                     self._dupe_tl(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.BEYOND_HD:
+            elif tracker_sel == TrackerSelection.BEYOND_HD:
                 tasks.append(
                     self._dupe_bhd(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.PASS_THE_POPCORN:
+            elif tracker_sel == TrackerSelection.PASS_THE_POPCORN:
                 tasks.append(
                     self._dupe_ptp(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.REELFLIX:
+            elif tracker_sel == TrackerSelection.REELFLIX:
                 tasks.append(
                     self._dupe_rf(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.AITHER:
+            elif tracker_sel == TrackerSelection.AITHER:
                 tasks.append(
                     self._dupe_aither(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.HUNO:
+            elif tracker_sel == TrackerSelection.HUNO:
                 tasks.append(
                     self._dupe_huno(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.LST:
+            elif tracker_sel == TrackerSelection.LST:
                 tasks.append(
                     self._dupe_lst(tracker_name=tracker_name, file_input=file_input)
+                )
+            elif tracker_sel == TrackerSelection.DARK_PEERS:
+                tasks.append(
+                    self._dupe_dp(tracker_name=tracker_name, file_input=file_input)
                 )
 
         async_results = await asyncio.gather(*tasks)
@@ -231,6 +238,15 @@ class ProcessBackEnd:
         ).search(file_name=file_input)
         if lst_search:
             return TrackerSelection(tracker_name), lst_search
+
+    async def _dupe_dp(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
+        dp_search = DarkPeersSearch(
+            api_key=self.config.cfg_payload.darkpeers_tracker.api_key,
+        ).search(file_name=file_input)
+        if dp_search:
+            return TrackerSelection(tracker_name), dp_search
 
     def process_trackers(
         self,
@@ -568,6 +584,10 @@ class ProcessBackEnd:
                 tracker_to_host_map[TrackerSelection(tracker)] = img_to
 
         # handle image host uploads
+        if to_image_hosts or to_url:
+            queued_text_update(
+                '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🎥 Image Handling:</h3>'
+            )
         if to_image_hosts:
             if img_from is ImageSource.URLS:
                 queued_text_update(
@@ -1053,6 +1073,23 @@ class ProcessBackEnd:
                 free=bool(tracker_payload.free),
                 double_up=bool(tracker_payload.double_up),
                 sticky=bool(tracker_payload.sticky),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_payload,
+                timeout=self.config.cfg_payload.timeout,
+            )
+        elif tracker == TrackerSelection.DARK_PEERS:
+            tracker_payload = self.config.cfg_payload.darkpeers_tracker
+            return dp_uploader(
+                media_mode=media_mode,
+                api_key=tracker_payload.api_key,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
+                nfo=nfo,
+                internal=bool(tracker_payload.internal),
+                anonymous=bool(tracker_payload.anonymous),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
