@@ -295,9 +295,9 @@ class ProcessBackEnd:
 
             # torrent file
             if idx == 0:
-                # try mkbrr first, fallback to torf if not available or on error
+                # try mkbrr first if enabled, fallback to torf if not available or on error
                 try:
-                    if (
+                    if self.config.cfg_payload.enable_mkbrr and (
                         self.config.cfg_payload.mkbrr
                         and self.config.cfg_payload.mkbrr.exists()
                     ):
@@ -318,7 +318,10 @@ class ProcessBackEnd:
                         raise Exception("mkbrr not configured or not found")
                 except Exception as mkbrr_error:
                     # only show error if mkbrr was available but failed
-                    if self.config.cfg_payload.mkbrr:
+                    if (
+                        self.config.cfg_payload.enable_mkbrr
+                        and self.config.cfg_payload.mkbrr
+                    ):
                         queued_text_update(
                             f'<br /><span style="color: red;">mkbrr failed: {mkbrr_error} '
                             "(falling back to torf)</span>"

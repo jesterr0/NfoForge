@@ -239,7 +239,8 @@ class TemplatesSettings(BaseSettings):
                     ),
                     self.block_end_str_entry,
                 ),
-            )
+            ),
+            add_stretch=True,
         )
 
         self.add_layout(

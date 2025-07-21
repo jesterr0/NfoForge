@@ -1,24 +1,25 @@
 import webbrowser
-from PySide6.QtWidgets import (
-    QMainWindow,
-    QStackedWidget,
-    QMessageBox,
-    QStatusBar,
-    QLabel,
-)
+
 from PySide6.QtCore import QByteArray, QTimer, Slot
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QStackedWidget,
+    QStatusBar,
+)
 
+from src.backend.main_window import kill_child_processes
 from src.config.config import Config
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
 from src.frontend.global_signals import GSigs
+from src.frontend.stacked_windows.settings.settings import Settings
 from src.frontend.utils.main_window_utils import MainWindowWorker
 from src.frontend.wizards.wizard import MainWindowWizard
-from src.frontend.stacked_windows.settings.settings import Settings
 from src.logger.nfo_forge_logger import LOG
-from src.backend.main_window import kill_child_processes
-from src.version import program_name, __version__
+from src.version import __version__, program_name
 
 
 class MainWindow(QMainWindow):
@@ -119,7 +120,7 @@ class MainWindow(QMainWindow):
                     self.config.save_config()
                     self.settings.re_load_settings.emit()
                     self.stacked_widget.setCurrentWidget(self.settings)
-                    self.settings.swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+                    GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
             elif ss_mode == ScreenShotMode.ADV_SS_COMP:
                 frame_forge = self.config.cfg_payload.frame_forge
@@ -137,7 +138,7 @@ class MainWindow(QMainWindow):
                     self.config.save_config()
                     self.settings.re_load_settings.emit()
                     self.stacked_widget.setCurrentWidget(self.settings)
-                    self.settings.swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+                    GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
     def setup_logger(self) -> None:
         threaded_worker = MainWindowWorker(self._setup_logger, parent=self)

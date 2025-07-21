@@ -42,9 +42,7 @@ class UserTokenSettings(BaseSettings):
 
         self.add_widget(desc)
         self.add_widget(self.token_editor, stretch=10)
-        self.inner_layout.removeItem(self._spacer_item)
-
-        self.add_layout(self.reset_layout)
+        self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
 

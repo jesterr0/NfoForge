@@ -229,7 +229,7 @@ class MoviesSettings(BaseSettings):
         self.add_layout(self.title_nested_layout)
         self.add_widget(self.over_ride_box)
         self.add_widget(self.token_table_box)
-        self.add_layout(self.reset_layout)
+        self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
 

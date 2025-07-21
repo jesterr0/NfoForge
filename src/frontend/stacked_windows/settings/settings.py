@@ -34,7 +34,6 @@ if TYPE_CHECKING:
 
 class Settings(QWidget):
     re_load_settings = Signal()
-    swap_tab = Signal(object)
 
     def __init__(self, config: Config, parent: "MainWindow") -> None:
         super().__init__(parent)
@@ -44,7 +43,7 @@ class Settings(QWidget):
         self.main_window = parent
         self.re_load_settings.connect(self._reload_settings)
         GSigs().settings_refresh.connect(self._reload_settings)
-        self.swap_tab.connect(self._swap_tab)
+        GSigs().settings_swap_tab.connect(self._swap_tab)
 
         self._save_approved_counter = 0
 

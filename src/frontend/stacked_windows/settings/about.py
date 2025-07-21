@@ -133,7 +133,7 @@ class AboutTab(BaseSettings):
         self.add_widget(build_h_line((40, 1, 40, 1)))
         self.add_layout(self.bitcoin_layout)
         self.add_widget(build_h_line((40, 1, 40, 1)))
-        self.add_layout(self.ethereum_layout)
+        self.add_layout(self.ethereum_layout, add_stretch=True)
 
     def _copy_bitcoin_to_clipboard(self) -> None:
         self._copy_to_clipboard(self.bitcoin_hash.text())

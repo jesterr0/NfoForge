@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Slot
+from PySide6.QtCore import QTimer, Qt, Slot
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -21,6 +22,7 @@ from src.backend.utils.file_utilities import open_explorer
 from src.enums.logging_settings import LogLevel
 from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
+from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
@@ -152,6 +154,29 @@ class GeneralSettings(BaseSettings):
         self.global_timeout_spinbox.setRange(2, 120)
         self.global_timeout_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
 
+        enable_mkbrr = QLabel("Enable mkbrr", self)
+        enable_mkbrr.setToolTip(
+            "If mkbrr is detected torrent generation will be "
+            "completed by mkbrr\n(will fall back to torf if failure is detected)"
+        )
+        self.enable_mkbrr = QCheckBox(self)
+        self.enable_mkbrr.setToolTip(enable_mkbrr.toolTip())
+        check_mkbrr: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "preview.svg",
+            "checkmkbrr",
+            20,
+            20,
+            parent=self,
+        )
+        check_mkbrr.setToolTip("Navigate to Dependencies settings tab")
+        check_mkbrr.clicked.connect(self._swap_dep_tab)
+        mkbrr_widget = QWidget()
+        mkbrr_h_box = QHBoxLayout(mkbrr_widget)
+        mkbrr_h_box.setContentsMargins(0, 0, 0, 0)
+        mkbrr_h_box.addWidget(self.enable_mkbrr)
+        mkbrr_h_box.addWidget(check_mkbrr, alignment=Qt.AlignmentFlag.AlignRight)
+
         log_level_lbl = QLabel("Log Level", self)
         log_level_lbl.setToolTip("Sets minimum log level")
 
@@ -241,6 +266,8 @@ class GeneralSettings(BaseSettings):
             create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(create_form_layout(enable_mkbrr, mkbrr_widget))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
             create_form_layout(max_log_files_lbl, self.max_log_files_spinbox)
@@ -273,6 +300,7 @@ class GeneralSettings(BaseSettings):
         )
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
+        self.enable_mkbrr.setChecked(payload.enable_mkbrr)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
         self.max_log_files_spinbox.setValue(payload.log_total)
         self.working_dir_entry.setText(
@@ -388,6 +416,10 @@ class GeneralSettings(BaseSettings):
     def _handle_open_working_dir_click(self) -> None:
         open_explorer(self.config.cfg_payload.working_dir)
 
+    @Slot()
+    def _swap_dep_tab(self):
+        GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+
     def _load_plugin_combos(self) -> None:
         if self.plugin_wizard_page_combo.count() == 0:
             if self.config.loaded_plugins:
@@ -478,6 +510,7 @@ class GeneralSettings(BaseSettings):
             self.releasers_name_entry.text().strip()
         )
         self.config.cfg_payload.timeout = self.global_timeout_spinbox.value()
+        self.config.cfg_payload.enable_mkbrr = self.enable_mkbrr.isChecked()
         self.config.cfg_payload.log_level = LogLevel(self.log_level_combo.currentData())
         LOG.set_log_level(self.config.cfg_payload.log_level)
         self.config.cfg_payload.log_total = self.max_log_files_spinbox.value()
@@ -507,6 +540,7 @@ class GeneralSettings(BaseSettings):
         )
         self.releasers_name_entry.clear()
         self.global_timeout_spinbox.setValue(self.config.cfg_payload_defaults.timeout)
+        self.enable_mkbrr.setChecked(self.config.cfg_payload_defaults.enable_mkbrr)
         self.working_dir_entry.setText(str(self.config.default_working_dir()))
 
     @staticmethod

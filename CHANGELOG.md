@@ -49,8 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - If the file is a directory you'll see a new **file tree** appear, showing the files that will be utilized.
 - Added support for torrent generation with **mkbrr**.
   - Added support in the **Dependencies** settings tab modify the path to mkbrr if needed.
-  - Torrent generation will now **default** now **mkbrr** if it's available, but will fall back to torf as needed or on failure.
-  - As of now **mkbrr** will  not be bundled with NfoForge on Windows. However, if desired it'll look for **mkbrr** on the system path or in NfoForge's `runtime/apps/mkbrr/*` if you decide you want to bundle it.
+  - Torrent generation will now **default** to **mkbrr** if it's available, but will fall back to torf as needed or on failure.
+  - As of now **mkbrr** will not be bundled with NfoForge on Windows. However, if desired it'll look for **mkbrr** on the system path or in NfoForge's `runtime/apps/mkbrr/*` if you decide you want to bundle it.
+  - Added toggle to prioritize torrent generation with **mkbrr** if exists/enabled.
 
 ### Changed
 
@@ -75,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Detected **duplicates** now have clickable links right from the **log window**, that will open your default browser to navigate to if desired.
   - Emojis for status column.
   - Better organization/separation for different steps in the window.
+- Improved settings tabs layout.
 
 ### Fixed
 
