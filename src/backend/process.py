@@ -384,6 +384,7 @@ class ProcessBackEnd:
                     if cur_tracker in images:
                         tracker_images = images[cur_tracker]
                         format_images_to_str = format_image_data_to_str(
+                            cur_tracker,
                             tracker_images,
                             tracker_info.url_type,
                             tracker_info.column_s,

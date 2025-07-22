@@ -1,8 +1,11 @@
+from pathlib import Path
 import re
 import shutil
-from pathlib import Path
-from pymediainfo import MediaInfo
 from typing import Tuple, Union
+
+from pymediainfo import MediaInfo
+
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.url_type import URLType
 from src.exceptions import MediaFrameCountError, URLFormattingError
 from src.logger.nfo_forge_logger import LOG
@@ -257,6 +260,7 @@ def extract_images_from_str(
 
 
 def format_image_data_to_str(
+    tracker: TrackerSelection,
     data: dict[int, ImageUploadData],
     url_type: URLType,
     columns: int,
@@ -268,6 +272,7 @@ def format_image_data_to_str(
     Formats a dictionary of image upload data into a structured string using BBCode or HTML.
 
     Args:
+        tracker (TrackerSelection): TrackerSelection.
         data (dict[int, ImageUploadData]): Dictionary mapping indices to ImageUploadData objects.
         url_type (URLType): The format type (BBCode or HTML).
         columns (int): Number of images per row.
@@ -287,16 +292,22 @@ def format_image_data_to_str(
         if item.url:
             img_url = item.medium_url if item.medium_url else item.url
 
-            if url_type == URLType.BBCODE:
-                urls.append(f"[url={item.url}][img]{img_url}[/img][/url]")
-            elif url_type == URLType.HTML:
-                urls.append(f'<a href="{item.url}"><img src="{img_url}"></a>')
+            # we can force image layouts for trackers if needed here
+            if tracker is TrackerSelection.PASS_THE_POPCORN:
+                urls.append(f"[img]{img_url}[/img]")
+            # default formatting
+            else:
+                if url_type == URLType.BBCODE:
+                    urls.append(f"[url={item.url}][img]{img_url}[/img][/url]")
+                elif url_type == URLType.HTML:
+                    urls.append(f'<a href="{item.url}"><img src="{img_url}"></a>')
 
     if not urls:
         if strict:
             raise URLFormattingError("Invalid URL data")
         return ""
 
+    # handle positional formatting
     column_spacing = " " * column_space
     row_spacing = "\n" * (row_space + 1)
 

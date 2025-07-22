@@ -92,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TokenReplacer engine not replacing tokens when there was an unknown or invalid token in the user input.
 - Depending on the vertical height of the parent window sometimes the **Process Page log** would not scroll all the way down when the progress bar was shown.
 - Expired cookies on **TorrentLeech**, **PassThePopCorn**, **MoreThanTv** was not automatically being deleted and recreated as needed. Resulting in failed authentication.
+- PassThePopCorn could upload with an invalid image format in some cases.
 
 ### Removed
 
