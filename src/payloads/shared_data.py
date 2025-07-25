@@ -13,6 +13,7 @@ class SharedPayload:
     selected_trackers: Sequence[TrackerSelection] | None = None
     loaded_images: Sequence[Path] | None = None
     generated_images: bool = False
+    is_comparison_images: bool = False
     dynamic_data: dict[str, Any] = field(default_factory=dict)
     release_notes: str | None = None
 
@@ -21,5 +22,6 @@ class SharedPayload:
         self.selected_trackers = None
         self.loaded_images = None
         self.generated_images = False
+        self.is_comparison_images = False
         self.dynamic_data.clear()
         self.release_notes = None
