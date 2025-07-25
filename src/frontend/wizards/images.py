@@ -247,6 +247,10 @@ class ImagesPage(BaseWizardPage):
         self.crop_values: CropValues | None = None
         self.advanced_resize: AdvancedResize | None = None
 
+        # we need to keep track of the type of images that are dropped/generated
+        # to update SharedPayload.is_comparison_images
+        self.is_comparison_images = False
+
         self.generate_images = QPushButton("Generate", self)
         self.generate_images.setToolTip("Generates images from media file(s).")
         self.generate_images.clicked.connect(self._generate_images)
@@ -364,6 +368,7 @@ class ImagesPage(BaseWizardPage):
             )
 
         super().validatePage()
+        self.config.shared_data.is_comparison_images = self.is_comparison_images
         return True
 
     @Slot(str, float)
@@ -464,7 +469,7 @@ class ImagesPage(BaseWizardPage):
         profile_handlers = {
             Profile.BASIC: self._handle_basic_profile,
             Profile.ADVANCED: self._handle_basic_comparison,
-            Profile.PLUGIN: self._handle_plugin_profile,
+            Profile.PLUGIN: self._handle_basic_comparison,
         }
 
         profile = Profile(self.config.cfg_payload.profile)
@@ -519,26 +524,6 @@ class ImagesPage(BaseWizardPage):
         )
 
     def _handle_basic_comparison(self) -> tuple:
-        if (
-            not self.config.media_input_payload.source_file
-            or not self.config.media_input_payload.encode_file
-        ):
-            raise FileNotFoundError(
-                "Failed to locate path to 'source_file' or 'encode_file'"
-            )
-        self.source_file = Path(self.config.media_input_payload.source_file)
-        source_file_mi_obj = self.config.media_input_payload.source_file_mi_obj
-        self.media_file = Path(self.config.media_input_payload.encode_file)
-        media_file_mi_obj = self.config.media_input_payload.encode_file_mi_obj
-        comparison_subs = self.config.cfg_payload.comparison_subtitles
-        return (
-            self.config.cfg_payload.ss_mode,
-            source_file_mi_obj,
-            media_file_mi_obj,
-            comparison_subs,
-        )
-
-    def _handle_plugin_profile(self) -> tuple:
         if (
             not self.config.media_input_payload.source_file
             or not self.config.media_input_payload.encode_file
@@ -658,9 +643,13 @@ class ImagesPage(BaseWizardPage):
     def _handle_image_text_drop(self, urls: str) -> None:
         self.thumbnail_listbox.clear()
         _, _, img_objs = extract_images_from_str(urls)
-        self._update_text_box("Successfully parsed images!")
-        self.thumbnail_listbox.addItems([str(x) for x in img_objs])
+        if img_objs:
+            self._update_text_box("Successfully parsed images!")
+            self.thumbnail_listbox.addItems([str(x) for x in img_objs])
+        else:
+            self._update_text_box("No image URLs detected.")
         self.config.shared_data.url_data = img_objs
+        self.is_comparison_images = self._ask_comparison()
         self._complete_loading()
 
     @Slot()
@@ -691,7 +680,35 @@ class ImagesPage(BaseWizardPage):
                 self.thumbnail_listbox.add_thumbnail(img)
             self.config.shared_data.loaded_images = images
             self.config.shared_data.generated_images = generated
+
+            # if generated we need to check the ss_mode to determine if these are comp images
+            if (
+                generated
+                and self.config.cfg_payload.ss_mode is ScreenShotMode.BASIC_SS_GEN
+            ):
+                self.is_comparison_images = False
+            elif (
+                generated
+                and self.config.cfg_payload.ss_mode is not ScreenShotMode.BASIC_SS_GEN
+            ):
+                self.is_comparison_images = True
+            # if not generated we need to ask the user the type of images
+            elif not generated:
+                self.is_comparison_images = self._ask_comparison()
+
         self._complete_loading()
+
+    def _ask_comparison(self) -> bool:
+        if (
+            QMessageBox.question(
+                self,
+                "Image Type",
+                "Are the dropped images comparison images?",
+            )
+            is QMessageBox.StandardButton.Yes
+        ):
+            return True
+        return False
 
     @Slot(int)
     def _re_sync(self, offset: int) -> None:
@@ -714,6 +731,8 @@ class ImagesPage(BaseWizardPage):
 
     @Slot()
     def reset_page(self) -> None:
+        self.is_comparison_images = False
+
         self.text_box.clear()
         self.progress_bar.setValue(0)
         self.progress_bar.reset()

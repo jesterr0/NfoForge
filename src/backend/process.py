@@ -52,7 +52,12 @@ from src.backend.trackers import (
 )
 from src.backend.trackers.utils import format_image_tag
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
-from src.backend.utils.images import format_image_data_to_str
+from src.backend.utils.images import (
+    format_image_data_to_comparison,
+    format_image_data_to_str,
+    get_parity_images,
+    get_parity_images_to_str,
+)
 from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.enums.torrent_client import TorrentClientSelection
@@ -381,8 +386,16 @@ class ProcessBackEnd:
                 if nfo_template:
                     # convert images for the NFO
                     formatted_screens = None
+                    comparison_screens = None
+                    even_screens = None
+                    even_screens_str = None
+                    odd_screens = None
+                    odd_screens_str = None
                     if cur_tracker in images:
                         tracker_images = images[cur_tracker]
+                        # tracker_images = {0: ImageUploadData(url='https://ptpimg.me/a6uy28.png', medium_url=None),
+                        # 1: ImageUploadData(url='https://ptpimg.me/0mdplg.png', medium_url=None),
+                        # 2: ImageUploadData(url='https://ptpimg.me/644r4s.png', medium_url=None)}
                         format_images_to_str = format_image_data_to_str(
                             cur_tracker,
                             tracker_images,
@@ -397,6 +410,22 @@ class ProcessBackEnd:
                             getattr(tracker_info, "image_width", 350),
                         )
 
+                        # if images we're comparison images we attempt to generate some more screenshot tokens
+                        if self.config.shared_data.is_comparison_images:
+                            comparison_screens = format_image_data_to_comparison(
+                                tracker_images
+                            )
+                            even_screens = get_parity_images(data=tracker_images)
+                            odd_screens = get_parity_images(
+                                data=tracker_images, even=False
+                            )
+                            even_screens_str = get_parity_images_to_str(
+                                data=tracker_images
+                            )
+                            odd_screens_str = get_parity_images_to_str(
+                                data=tracker_images, even=False
+                            )
+
                     nfo = TokenReplacer(
                         media_input=media_input,
                         jinja_engine=jinja_engine,
@@ -408,6 +437,11 @@ class ProcessBackEnd:
                         unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                         releasers_name=releasers_name,
                         screen_shots=formatted_screens,
+                        screen_shots_comparison=comparison_screens,
+                        screen_shots_even_obj=even_screens,
+                        screen_shots_odd_obj=odd_screens,
+                        screen_shots_even_str=even_screens_str,
+                        screen_shots_odd_str=odd_screens_str,
                         release_notes=self.config.shared_data.release_notes,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
