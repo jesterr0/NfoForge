@@ -217,6 +217,26 @@ class Tokens:
     REPACK_N = NfoToken("{repack_n}", "Repack and repack number if exists (REPACK2)")
     REPACK_REASON = NfoToken("{repack_reason}", "Reason for REPACK if provided")
     SCREEN_SHOTS = NfoToken("{screen_shots}", "Screenshots")
+    SCREEN_SHOTS_COMPARISON = NfoToken(
+        "{screen_shots_comparison}",
+        "Screenshots in comparison mode (raw URLs only; user must add comparison tags)",
+    )
+    SCREEN_SHOTS_EVEN_OJB = NfoToken(
+        "{screen_shots_even_obj}",
+        "Even screenshot objects in a list with both obj.url and obj.medium_url (both are not guaranteed)",
+    )
+    SCREEN_SHOTS_ODD_OBJ = NfoToken(
+        "{screen_shots_odd_obj}",
+        "Odd screenshot URLs in a list with both obj.url and obj.medium_url (both are not guaranteed)",
+    )
+    SCREEN_SHOTS_EVEN_STR = NfoToken(
+        "{screen_shots_even_str}",
+        "Even screenshot URLs as strings (medium_url if available, else url)",
+    )
+    SCREEN_SHOTS_ODD_STR = NfoToken(
+        "{screen_shots_odd_str}",
+        "Odd screenshot URLs as strings (medium_url if available, else url)",
+    )
     FILE_SIZE_BYTES = NfoToken("{file_size_bytes}", "File size in bytes (8469985859)")
     FILE_SIZE = NfoToken("{file_size}", "File size (7.89 GiB)")
     DURATION_MILLISECONDS = NfoToken(
