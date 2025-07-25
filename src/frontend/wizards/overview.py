@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMessageBox,
     QScrollArea,
     QSizePolicy,
     QSpacerItem,
@@ -21,10 +22,13 @@ from pymediainfo import MediaInfo
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.config.config import Config
+from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
 from src.frontend.custom_widgets.image_listbox import ThumbnailListWidget
+from src.frontend.global_signals import GSigs
 from src.frontend.utils import recursively_clear_layout
+from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -39,7 +43,7 @@ class Overview(BaseWizardPage):
         self.setTitle("Overview (Read Only)")
         self.setCommitPage(True)
 
-        self.config = config
+        self.worker: GeneralWorker | None = None
 
         self.renamed_output_box = QVBoxLayout()
         self.renamed_output_box.setContentsMargins(0, 0, 0, 0)
@@ -145,15 +149,56 @@ class Overview(BaseWizardPage):
         self._populate_file_view(media_file_dir if media_file_dir else media_in)
 
         # only call _update_nfo_text if required args are not None
+        # we'll finish initialization in a worker since this takes a moment to load up
+        # if generating multiple NFO's and running multiple plugins etc.
         if media_in and media_info_obj:
-            self._update_nfo_text(
+            self._run_worker(
                 media_input=media_in,
                 source_file=source_in,
                 media_info_obj=media_info_obj,
                 source_file_mi_obj=source_file_mi_obj,
             )
 
+    def _run_worker(
+        self,
+        media_input: Path,
+        source_file: Path | None,
+        media_info_obj: MediaInfo,
+        source_file_mi_obj: MediaInfo | None,
+    ) -> None:
+        self.worker = GeneralWorker(
+            func=self._update_nfo_text,
+            media_input=media_input,
+            source_file=source_file,
+            media_info_obj=media_info_obj,
+            source_file_mi_obj=source_file_mi_obj,
+            parent=self,
+        )
+        self.worker.job_failed.connect(self._worker_failed)
+        self.worker.job_finished.connect(self._worker_finished)
+        GSigs().main_window_set_disabled.emit(True)
+        GSigs().main_window_update_status_tip.emit("Generating NFOs", 0)
+        self.worker.start()
+
+    @Slot(object)
+    def _worker_finished(self, data: dict[TrackerSelection, str] | None) -> None:
+        # populate NFO widgets with data
+        if data:
+            for tracker, nfo in data.items():
+                nfo_widget = self._build_nfo_widget()
+                nfo_widget.setPlainText(nfo)
+                self.nfo_box_layout.addWidget(QLabel(str(tracker)))
+                self.nfo_box_layout.addWidget(nfo_widget)
+
         self._update_thumbnails()
+
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
+
+    @Slot(str)
+    def _worker_failed(self, msg: str) -> None:
+        QMessageBox.critical(self, "Error", msg)
+        GSigs().main_window_set_disabled.emit(False)
 
     def _update_renamed_media_box(self, renamed_output: Path | None) -> None:
         payload = self.config.media_input_payload
@@ -217,7 +262,7 @@ class Overview(BaseWizardPage):
         source_file: Path | None,
         media_info_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
-    ) -> None:
+    ) -> dict[TrackerSelection, str] | None:
         template_selector_backend = TemplateSelectorBackEnd()
         template_selector_backend.load_templates()
 
@@ -227,6 +272,7 @@ class Overview(BaseWizardPage):
             self.nfo_box.show()
 
         if self.config.shared_data.selected_trackers:
+            data = {}
             for tracker in self.config.shared_data.selected_trackers:
                 template = self.config.tracker_map[tracker].nfo_template
                 nfo = ""
@@ -287,10 +333,8 @@ class Overview(BaseWizardPage):
                         # it might not be available.
                         pass
 
-                    nfo_widget = self._build_nfo_widget()
-                    nfo_widget.setPlainText(nfo)
-                    self.nfo_box_layout.addWidget(QLabel(str(tracker)))
-                    self.nfo_box_layout.addWidget(nfo_widget)
+                    data[tracker] = nfo
+                    return data
 
     def _update_thumbnails(self) -> None:
         if self.config.shared_data.loaded_images:
