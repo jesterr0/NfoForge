@@ -1,11 +1,13 @@
-import aiohttp
 import asyncio
-from collections.abc import Callable, Sequence, Awaitable
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
 
-from src.exceptions import ImageUploadError
-from src.packages.custom_types import ImageUploadData
+import aiohttp
+
 from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.exceptions import ImageUploadError
+from src.logger.nfo_forge_logger import LOG
+from src.packages.custom_types import ImageUploadData
 
 PTPIMG_BASE_URL = "https://ptpimg.me"
 
@@ -50,7 +52,10 @@ async def upload_image(
             if attempt < retries - 1:
                 await asyncio.sleep(2**attempt)
             else:
-                print(f"Upload failed after {retries} attempts: {e}")
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"ptpimg: upload failed after {retries} attempts: {e}",
+                )
 
     return {"status": "Failed", "reason": "Failure on retry"}
 

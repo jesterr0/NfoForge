@@ -78,6 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Emojis for status column.
   - Better organization/separation for different steps in the window.
 - Improved settings tabs layout.
+- All image host uploaders now log retries.
 
 ### Fixed
 
