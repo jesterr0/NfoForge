@@ -22,7 +22,7 @@ from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import QWidgetTempStyle, build_auto_theme_icon_buttons
-from src.frontend.utils.media_input_utils import MediaInputWorker
+from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ class MediaInputBasic(BaseWizardPage):
         self.setCommitPage(True)
 
         self.backend = MediaInputBackEnd()
-        self.worker: MediaInputWorker | None = None
+        self.worker: GeneralWorker | None = None
         self._loading_completed = False
 
         self.extensions = self.get_media_extensions()
@@ -157,7 +157,7 @@ class MediaInputBasic(BaseWizardPage):
             self.config.cfg_payload.working_dir
             / generate_unique_date_name(file_path.stem)
         )
-        self.worker = MediaInputWorker(
+        self.worker = GeneralWorker(
             func=self.backend.get_media_info, file_input=file_path, parent=self
         )
         self.worker.job_failed.connect(self._worker_failed)

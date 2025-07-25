@@ -18,7 +18,7 @@ from src.config.config import Config
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import build_auto_theme_icon_buttons
-from src.frontend.utils.media_input_utils import MediaInputWorker
+from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class MediaInputAdvanced(BaseWizardPage):
         self.setCommitPage(True)
 
         self.backend = MediaInputBackEnd()
-        self.worker: MediaInputWorker | None = None
+        self.worker: GeneralWorker | None = None
         self._loading_completed = False
 
         self.source_label = QLabel("Source", self)
@@ -140,7 +140,7 @@ class MediaInputAdvanced(BaseWizardPage):
                 self.config.media_input_payload.encode_file.stem  # pyright: ignore [reportOptionalMemberAccess]
             )
         )
-        self.worker = MediaInputWorker(
+        self.worker = GeneralWorker(
             func=self.backend.get_media_info_files, files=files, parent=self
         )
         self.worker.job_failed.connect(self._worker_failed)
