@@ -53,6 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - As of now **mkbrr** will not be bundled with NfoForge on Windows. However, if desired it'll look for **mkbrr** on the system path or in NfoForge's `runtime/apps/mkbrr/*` if you decide you want to bundle it.
   - Added toggle to prioritize torrent generation with **mkbrr** if exists/enabled.
 - Added support for **DarkPeers**.
+- Added prompt if user opens URLs or image files to be utilized asking if they are comparison images.
+- Added new **screenshot comparison tokens** _(they are available as long as the user used comparison images via generation or input)_.
+  - Added new token **screen_shots_comparison**.
+    - The user is still responsible for the comparison tags in their templates, this only outputs the raw image URLs in the correct format.
+  - Added new token **screen_shots_even_obj**.
+    - Returns an iterable of even screenshot objects that have **x.url** and **x.medium_url** _(both are not guaranteed so check them with an if statement)_, the user can display it/iterate it in what ever way they desire via the template engine.
+  - Added new token **screen_shots_odd_obj**.
+    - Returns an iterable of odd screenshot objects that have **x.url** and **x.medium_url** _(both are not guaranteed so check them with an if statement)_, the user can display it/iterate it in what ever way they desire via the template engine.
+  - Added new token **screen_shots_even_str**.
+    - Returns an iterable of even strings (source).
+  - Added new token **screen_shots_odd_str**.
+    - Returns an iterable of odd strings (encode).
 
 ### Changed
 
@@ -78,6 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Emojis for status column.
   - Better organization/separation for different steps in the window.
 - Improved settings tabs layout.
+- All image host uploaders now log retries.
 
 ### Fixed
 
@@ -93,6 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Depending on the vertical height of the parent window sometimes the **Process Page log** would not scroll all the way down when the progress bar was shown.
 - Expired cookies on **TorrentLeech**, **PassThePopCorn**, **MoreThanTv** was not automatically being deleted and recreated as needed. Resulting in failed authentication.
 - PassThePopCorn could upload with an invalid image format in some cases.
+- Sandbox preview now properly uses dummy screenshots.
 
 ### Removed
 

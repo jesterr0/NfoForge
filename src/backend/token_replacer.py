@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 import re
 from typing import Any, Type
@@ -31,6 +31,7 @@ from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
+from src.packages.custom_types import ImageUploadData
 from src.payloads.media_search import MediaSearchPayload
 from src.version import __version__, program_name, program_url
 
@@ -56,6 +57,12 @@ class TokenReplacer:
         "unfilled_token_mode",
         "releasers_name",
         "screen_shots",
+        "screen_shots_comparison",
+        "screen_shots_even_obj",
+        "screen_shots_odd_obj",
+        "screen_shots_even_str",
+        "screen_shots_odd_str",
+        "odd_screens",
         "release_notes",
         "dummy_screen_shots",
         "parse_filename_attributes",
@@ -91,7 +98,12 @@ class TokenReplacer:
         movie_clean_title_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
         mi_video_dynamic_range: dict[str, Any] | None = None,
-        screen_shots: str | None = "",
+        screen_shots: str | None = None,
+        screen_shots_comparison: str | None = None,
+        screen_shots_even_obj: Sequence[ImageUploadData] | None = None,
+        screen_shots_odd_obj: Sequence[ImageUploadData] | None = None,
+        screen_shots_even_str: Sequence[str] | None = None,
+        screen_shots_odd_str: Sequence[str] | None = None,
         release_notes: str | None = "",
         dummy_screen_shots: bool = False,
         parse_filename_attributes: bool = False,
@@ -125,6 +137,16 @@ class TokenReplacer:
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
             mi_video_dynamic_range: (Optional[dict[str, Any]]: Rules to control formatting of video dynamic range.
             screen_shots (Optional[str]): Screenshots.
+            screen_shots_comparison (Optional[str]): Screenshots in comparison mode
+              (raw URLs only; user must add comparison tags).
+            screen_shots_even_obj (Optional[Sequence[ImageUploadData]]): Even screenshot objects in a
+              list with both obj.url and obj.medium_url (both are not guaranteed).
+            screen_shots_odd_obj (Optional[Sequence[ImageUploadData]]): Odd screenshot URLs in a list
+              with both obj.url and obj.medium_url (both are not guaranteed).
+            screen_shots_even_str (Optional[Sequence[str]]): Even screenshot URLs as strings
+              (medium_url if available, else url).
+            screen_shots_odd_str (Optional[Sequence[str]]): Odd screenshot URLs as strings
+              (medium_url if available, else url).
             release_notes (Optional[str]): Release notes.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
               screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
@@ -157,6 +179,11 @@ class TokenReplacer:
         self.override_title_rules = override_title_rules
         self.mi_video_dynamic_range = mi_video_dynamic_range
         self.screen_shots = screen_shots
+        self.screen_shots_comparison = screen_shots_comparison
+        self.screen_shots_even_obj = screen_shots_even_obj
+        self.screen_shots_odd_obj = screen_shots_odd_obj
+        self.screen_shots_even_str = screen_shots_even_str
+        self.screen_shots_odd_str = screen_shots_odd_str
         self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
         self.parse_filename_attributes = parse_filename_attributes
@@ -245,7 +272,7 @@ class TokenReplacer:
 
         return all_tokens
 
-    def _get_token_value(self, token_data: TokenData) -> str:
+    def _get_token_value(self, token_data: TokenData) -> str | Sequence[Any] | None:
         # handle user tokens
         if (
             self.user_tokens
@@ -458,7 +485,7 @@ class TokenReplacer:
 
         return ""
 
-    def _nfo_tokens(self, token_data: TokenData) -> str:
+    def _nfo_tokens(self, token_data: TokenData) -> str | Sequence[Any] | None:
         if token_data.bracket_token == Tokens.CHAPTER_TYPE.token:
             return self._chapter_type(token_data)
 
@@ -503,6 +530,21 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.SCREEN_SHOTS.token:
             return self._screen_shots(token_data)
+
+        elif token_data.bracket_token == Tokens.SCREEN_SHOTS_COMPARISON.token:
+            return self._screen_shots_comparison(token_data)
+
+        elif token_data.bracket_token == Tokens.SCREEN_SHOTS_EVEN_OJB.token:
+            return self._screen_shots_even_obj()
+
+        elif token_data.bracket_token == Tokens.SCREEN_SHOTS_ODD_OBJ.token:
+            return self._screen_shots_odd_obj()
+
+        elif token_data.bracket_token == Tokens.SCREEN_SHOTS_EVEN_STR.token:
+            return self._screen_shots_even_str()
+
+        elif token_data.bracket_token == Tokens.SCREEN_SHOTS_ODD_STR.token:
+            return self._screen_shots_odd_str()
 
         elif token_data.bracket_token == Tokens.RELEASE_NOTES.token:
             return self._release_notes(token_data)
@@ -1434,7 +1476,60 @@ class TokenReplacer:
                 "(Real screenshots will be generated on the process page in the appropriate format for the tracker)"
                 "\nScreen1 Screen2\nScreen3 Screen4\n#### DUMMY SCREENSHOTS ####"
             )
-        return self._optional_user_input(self.screen_shots, token_data)
+        return self._optional_user_input(
+            self.screen_shots if self.screen_shots else "", token_data
+        )
+
+    def _screen_shots_comparison(self, token_data: TokenData) -> str:
+        if self.dummy_screen_shots:
+            return (
+                "#### DUMMY SCREENSHOTS #### \n"
+                "Note: You MUST fill in the comparison tag that is required!"
+                "(Real screenshots will be generated on the process page)"
+                "\nScreen1 Screen2\nScreen3 Screen4\n#### DUMMY SCREENSHOTS ####"
+            )
+        return self._optional_user_input(
+            self.screen_shots_comparison if self.screen_shots_comparison else "",
+            token_data,
+        )
+
+    def _screen_shots_even_obj(self) -> Sequence[ImageUploadData] | None:
+        if self.dummy_screen_shots:
+            return [
+                ImageUploadData(
+                    f"https://fakeimage.com/img/{str(i).zfill(2)}.png",
+                    f"https://fakeimage.com/img/{str(i).zfill(2)}md.png",
+                )
+                for i in range(2, 13, 2)
+            ]
+        return self.screen_shots_even_obj
+
+    def _screen_shots_odd_obj(self) -> Sequence[ImageUploadData] | None:
+        if self.dummy_screen_shots:
+            return [
+                ImageUploadData(
+                    f"https://fakeimage.com/img/{str(i).zfill(2)}.png",
+                    f"https://fakeimage.com/img/{str(i).zfill(2)}md.png",
+                )
+                for i in range(1, 12, 2)
+            ]
+        return self.screen_shots_odd_obj
+
+    def _screen_shots_even_str(self) -> Sequence[str] | None:
+        if self.dummy_screen_shots:
+            return [
+                f"https://fakeimage.com/img/{str(i).zfill(2)}.png"
+                for i in range(2, 13, 2)
+            ]
+        return self.screen_shots_even_str
+
+    def _screen_shots_odd_str(self) -> Sequence[str] | None:
+        if self.dummy_screen_shots:
+            return [
+                f"https://fakeimage.com/img/{str(i).zfill(2)}.png"
+                for i in range(1, 12, 2)
+            ]
+        return self.screen_shots_odd_str
 
     def _release_notes(self, token_data: TokenData) -> str:
         return self._optional_user_input(
