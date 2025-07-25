@@ -13,6 +13,10 @@ Average Bitrate         : {{ mi_video_bit_rate }}
 Encoder                 : {{ releasers_name }}
 {% endif %}
 
+{% if screen_shots %}
+{{ screen_shots }}
+{% endif %}
+
 {% if release_notes %}
 Release Notes:
 {{ release_notes }}
