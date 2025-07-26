@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 from PySide6.QtCore import QTimer, Qt, Slot
 from PySide6.QtGui import QWheelEvent
@@ -18,7 +19,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.utils.file_utilities import open_explorer
+from src.backend.utils.file_utilities import (
+    file_bytes_to_str,
+    get_dir_size,
+    open_explorer,
+)
 from src.enums.logging_settings import LogLevel
 from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
@@ -242,12 +247,26 @@ class GeneralSettings(BaseSettings):
         self.working_dir_open_btn.setToolTip("Open working directory")
         self.working_dir_open_btn.clicked.connect(self._handle_open_working_dir_click)
 
+        self.working_dir_clean_up: QToolButton = build_auto_theme_icon_buttons(
+            QToolButton,
+            "delete.svg",
+            "wdOpenDirDeleteBtn",
+            20,
+            20,
+            parent=self,
+        )
+        self.working_dir_clean_up.setToolTip("Clean up working directory")
+        self.working_dir_clean_up.clicked.connect(
+            self._handle_working_dir_clean_up_click
+        )
+
         working_dir_widget = QWidget()
         working_dir_layout = QHBoxLayout(working_dir_widget)
         working_dir_layout.setContentsMargins(0, 0, 0, 0)
         working_dir_layout.addWidget(self.working_dir_entry, stretch=1)
         working_dir_layout.addWidget(self.working_dir_btn)
         working_dir_layout.addWidget(self.working_dir_open_btn)
+        working_dir_layout.addWidget(self.working_dir_clean_up)
 
         self.add_layout(create_form_layout(config_lbl, config_widget))
         self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
@@ -415,6 +434,30 @@ class GeneralSettings(BaseSettings):
     @Slot()
     def _handle_open_working_dir_click(self) -> None:
         open_explorer(self.config.cfg_payload.working_dir)
+
+    @Slot()
+    def _handle_working_dir_clean_up_click(self) -> None:
+        total_size = get_dir_size(self.config.cfg_payload.working_dir)
+
+        msg = (
+            "Would you like to clean up the working directory now?\n\n"
+            f"Size: {file_bytes_to_str(total_size)}\n\n"
+            "WARNING: This will remove all data!"
+        )
+
+        if (
+            QMessageBox.question(
+                self,
+                "Clean Up",
+                msg,
+            )
+            is QMessageBox.StandardButton.Yes
+        ):
+            for item in self.config.cfg_payload.working_dir.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
 
     @Slot()
     def _swap_dep_tab(self):

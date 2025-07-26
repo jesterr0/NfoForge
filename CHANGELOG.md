@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The largest file with the **supported selected suffix (.mkv/.mp4)** will automatically be detected as your **media file**.
   - You can open a file/directory via drag and drop or by using the dedicated buttons.
   - If the file is a directory you'll see a new **file tree** appear, showing the files that will be utilized.
+  - Program now displays current size of working directory on status bar 3.5 seconds after launch.
+  - Added a delete button to clean up working directory in the settings tab.
 - Added support for torrent generation with **mkbrr**.
   - Added support in the **Dependencies** settings tab modify the path to mkbrr if needed.
   - Torrent generation will now **default** to **mkbrr** if it's available, but will fall back to torf as needed or on failure.

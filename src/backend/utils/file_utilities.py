@@ -43,3 +43,16 @@ def open_explorer(path: Path) -> None:
         # Linux and others
         else:
             run(["xdg-open", str(path.as_posix())])
+
+
+def file_bytes_to_str(size: float) -> str:
+    """Return size as a string"""
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} PB"
+
+
+def get_dir_size(path: Path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())

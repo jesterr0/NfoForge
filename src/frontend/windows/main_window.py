@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.main_window import kill_child_processes
+from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
 from src.config.config import Config
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
@@ -73,6 +74,9 @@ class MainWindow(QMainWindow):
         # key binds
         self.open_log_dir_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
         self.open_log_dir_shortcut.activated.connect(self.open_log)
+
+        # run delayed start up tasks
+        self._delayed_start_up_tasks()
 
     @Slot()
     def _close_settings(self) -> None:
@@ -148,6 +152,18 @@ class MainWindow(QMainWindow):
         """Ran by threaded worker"""
         LOG.set_log_level(self.config.cfg_payload.log_level)
         LOG.clean_up_logs(self.config.cfg_payload.log_total)
+
+    def _delayed_start_up_tasks(self) -> None:
+        """Any task ran inside of this method should be triggered via a QTimer.singleShot"""
+        QTimer.singleShot(3500, self.display_temp_directory_size)
+
+    def display_temp_directory_size(self) -> None:
+        size = get_dir_size(self.config.cfg_payload.working_dir)
+        if size <= 0:
+            return
+        GSigs().main_window_update_status_tip.emit(
+            f"Working directory size: {file_bytes_to_str(size)}", 8000
+        )
 
     @Slot(str, int)
     def update_status_tip(self, message: str, timer: int) -> None:
