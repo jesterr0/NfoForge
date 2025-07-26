@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.utils.file_utilities import find_largest_file_in_directory
+from src.backend.utils.file_utilities import generate_unique_date_name
 from src.config.config import Config
 from src.frontend.custom_widgets.dnd_factory import DNDButton, DNDToolButton
 
@@ -42,7 +43,7 @@ class BaseWizardPage(QWizardPage):
         Overrides QWizardPage validatePage and should ALWAYS be called in children pages before
         returning True.
         """
-        if not self.config.cfg_payload.working_dir:
+        if not self.config.media_input_payload.working_dir:
             raise FileNotFoundError(
                 "Could not detect working directory that should be set from child wizard input "
                 "page using method set_working_dir"
@@ -51,7 +52,11 @@ class BaseWizardPage(QWizardPage):
 
     def set_working_dir(self, path: Path) -> None:
         """Convenient method to set the working directory for MediaInputPayload"""
-        self.config.cfg_payload.working_dir = path
+        self.config.media_input_payload.working_dir = path
+
+    def gen_unique_date_name(self, path: Path) -> str:
+        """Convenient method to generate unique date name for working directory for MediaInputPayload"""
+        return generate_unique_date_name(path.stem)
 
     @staticmethod
     def find_largest_media(directory: Path, extensions: Iterable) -> Path | None:

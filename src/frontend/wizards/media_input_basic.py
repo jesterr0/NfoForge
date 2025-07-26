@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
 from pymediainfo import MediaInfo
 
 from src.backend.media_input import MediaInputBackEnd
-from src.backend.utils.file_utilities import generate_unique_date_name
 from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.exceptions import MediaFileNotFoundError
@@ -157,8 +156,7 @@ class MediaInputBasic(BaseWizardPage):
         if not file_path:
             raise FileNotFoundError("Failed to detect input path")
         self.set_working_dir(
-            self.config.cfg_payload.working_dir
-            / generate_unique_date_name(file_path.stem)
+            self.config.cfg_payload.working_dir / self.gen_unique_date_name(file_path)
         )
         self.worker = GeneralWorker(
             func=self.backend.get_media_info, file_input=file_path, parent=self

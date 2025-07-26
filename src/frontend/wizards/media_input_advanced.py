@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
 from pymediainfo import MediaInfo
 
 from src.backend.media_input import MediaInputBackEnd
-from src.backend.utils.file_utilities import generate_unique_date_name
 from src.config.config import Config
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.global_signals import GSigs
@@ -128,8 +127,8 @@ class MediaInputAdvanced(BaseWizardPage):
                 raise FileNotFoundError("Failed to detect input path")
         self.set_working_dir(
             self.config.cfg_payload.working_dir
-            / generate_unique_date_name(
-                self.config.media_input_payload.encode_file.stem  # pyright: ignore [reportOptionalMemberAccess]
+            / self.gen_unique_date_name(
+                self.config.media_input_payload.encode_file  # pyright: ignore [reportArgumentType]
             )
         )
         self.worker = GeneralWorker(
