@@ -6,7 +6,7 @@ from typing import Any, TYPE_CHECKING
 from urllib import parse as url_parse
 import webbrowser
 
-from PySide6.QtCore import QThread, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QSize, QThread, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QCursor, QPixmap
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -35,7 +35,7 @@ from src.config.config import Config
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -247,8 +247,9 @@ class MediaSearch(BaseWizardPage):
         self.search_label.setCursor(QCursor(Qt.CursorShape.WhatsThisCursor))
         self.search_entry = QLineEdit()
         self.search_entry.returnPressed.connect(self._search_tmdb_api)
-        self.search_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "search.svg", "searchButton", 24, 24
+        self.search_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.search_button, "ph.file-search-light", icon_size=QSize(24, 24)
         )
         self.search_button.setFixedSize(24, 24)
         self.search_button.clicked.connect(self._search_tmdb_api)

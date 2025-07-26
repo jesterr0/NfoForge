@@ -2,7 +2,7 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QThread, Signal, Slot
+from PySide6.QtCore import QSize, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -41,7 +41,8 @@ from src.frontend.custom_widgets.dnd_factory import (
 )
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.cropping import CropWidget
-from src.frontend.utils import build_auto_theme_icon_buttons, build_v_line
+from src.frontend.utils import build_v_line
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.windows.image_viewer import ImageViewer
 from src.frontend.wizards.media_input_basic import MediaInputBasic
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -257,14 +258,16 @@ class ImagesPage(BaseWizardPage):
 
         self.progress_bar = QProgressBar(self)
 
-        open_images_btn: DNDToolButton = build_auto_theme_icon_buttons(
-            DNDToolButton, "open.svg", "openImageButton", 20, 20, parent=self
+        open_images_btn = DNDToolButton(self)
+        QTAThemeSwap().register(
+            open_images_btn, "ph.file-arrow-down-light", icon_size=QSize(20, 20)
         )
         open_images_btn.setToolTip("Use existing generated images (.png, .jpg, .jpeg).")
         open_images_btn.clicked.connect(self._open_images)
 
-        paste_urls: DNDToolButton = build_auto_theme_icon_buttons(
-            DNDToolButton, "paste_clipboard.svg", "pasteURLsButton", 20, 20, parent=self
+        paste_urls = DNDToolButton(self)
+        QTAThemeSwap().register(
+            paste_urls, "ph.clipboard-light", icon_size=QSize(20, 20)
         )
         paste_urls.setToolTip("Paste image URLs from clipboard.")
         paste_urls.clicked.connect(self._handle_url_paste)

@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import QSize, Signal, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -21,8 +21,9 @@ from src.exceptions import MediaFileNotFoundError
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import QWidgetTempStyle, build_auto_theme_icon_buttons
+from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.general_worker import GeneralWorker
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -56,15 +57,17 @@ class MediaInputBasic(BaseWizardPage):
             lambda e: self.update_entries(e, self.input_entry)
         )
 
-        self.media_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open.svg", "mediaButton", 24, 24, parent=self
+        self.media_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.media_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         self.media_button.clicked.connect(
             lambda: self.open_media_dialog(self.input_entry, "media", self.extensions)
         )
 
-        self.media_dir_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open_folder.svg", "mediaButton", 24, 24, parent=self
+        self.media_dir_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.media_dir_button, "ph.folder-open-light", icon_size=QSize(24, 24)
         )
         self.media_dir_button.clicked.connect(
             lambda: self.open_dir_dialog(self.input_entry)

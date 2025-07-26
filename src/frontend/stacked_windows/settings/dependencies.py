@@ -2,7 +2,7 @@ from pathlib import Path
 import platform
 from typing import Any
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -21,8 +21,8 @@ from src.frontend.custom_widgets.dnd_factory import (
     DNDToolButton,
 )
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.utils import build_h_line
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class DependencySettings(BaseSettings):
@@ -66,8 +66,9 @@ class DependencySettings(BaseSettings):
         entry.set_extensions(("*",))
         entry.dropped.connect(lambda e: self._update_entry(entry, e))
 
-        browse_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open.svg", f"{label_text}Btn", 24, 24, parent=self
+        browse_button = QToolButton(self)
+        QTAThemeSwap().register(
+            browse_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         browse_button.setToolTip(f"Set path to {label_text}")
         browse_button.clicked.connect(

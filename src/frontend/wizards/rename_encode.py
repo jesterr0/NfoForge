@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -40,7 +40,8 @@ from src.config.config import Config
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.token_table import TokenTable
-from src.frontend.utils import build_auto_theme_icon_buttons, build_h_line
+from src.frontend.utils import build_h_line
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
 
@@ -203,13 +204,9 @@ class RenameEncode(BaseWizardPage):
         self.release_group_entry.textEdited.connect(self.update_generated_name)
 
         token_override_lbl = QLabel("Override File Name Tokens", self)
-        view_tokens_popup_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "token.svg",
-            "previewTokenBtn",
-            20,
-            20,
-            parent=self,
+        view_tokens_popup_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            view_tokens_popup_btn, "ph.eye-light", icon_size=QSize(20, 20)
         )
         view_tokens_popup_btn.setToolTip("Preview available file tokens")
         view_tokens_popup_btn.clicked.connect(self._see_tokens)

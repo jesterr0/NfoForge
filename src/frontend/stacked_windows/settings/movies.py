@@ -2,7 +2,7 @@ from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Slot
+from PySide6.QtCore import QSize, QTimer, Slot
 from PySide6.QtGui import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -34,11 +34,8 @@ from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import (
-    build_auto_theme_icon_buttons,
-    build_h_line,
-    create_form_layout,
-)
+from src.frontend.utils import build_h_line, create_form_layout
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class MoviesSettings(BaseSettings):
@@ -603,14 +600,8 @@ class MoviesSettings(BaseSettings):
         widget = QWidget()
         widget.setLayout(layout)
         layout.addWidget(QLabel("Example", self))
-        btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "preview.svg",
-            "exampleLayoutBtn",
-            20,
-            20,
-            parent=self,
-        )
+        btn = QToolButton(self)
+        QTAThemeSwap().register(btn, "ph.eye-light", icon_size=QSize(20, 20))
         btn.setToolTip("Preview example filename and MediaInfo")
         btn.clicked.connect(btn_signal)
         layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)

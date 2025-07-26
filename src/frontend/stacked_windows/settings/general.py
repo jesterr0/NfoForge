@@ -1,7 +1,7 @@
 from pathlib import Path
 import shutil
 
-from PySide6.QtCore import QTimer, Qt, Slot
+from PySide6.QtCore import QSize, QTimer, Qt, Slot
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -33,11 +33,8 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import (
-    build_auto_theme_icon_buttons,
-    build_h_line,
-    create_form_layout,
-)
+from src.frontend.utils import build_h_line, create_form_layout
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -166,14 +163,8 @@ class GeneralSettings(BaseSettings):
         )
         self.enable_mkbrr = QCheckBox(self)
         self.enable_mkbrr.setToolTip(enable_mkbrr.toolTip())
-        check_mkbrr: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "preview.svg",
-            "checkmkbrr",
-            20,
-            20,
-            parent=self,
-        )
+        check_mkbrr = QToolButton(self)
+        QTAThemeSwap().register(check_mkbrr, "ph.eye-light", icon_size=QSize(20, 20))
         check_mkbrr.setToolTip("Navigate to Dependencies settings tab")
         check_mkbrr.clicked.connect(self._swap_dep_tab)
         mkbrr_widget = QWidget()
@@ -199,14 +190,16 @@ class GeneralSettings(BaseSettings):
         self.max_log_files_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
 
         open_logs_lbl = QLabel("View Logs", self)
-        self.open_log_directory: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "files.svg", "openLogDirectory", 20, 20
+        self.open_log_directory = QToolButton(self)
+        QTAThemeSwap().register(
+            self.open_log_directory, "ph.files-light", icon_size=QSize(20, 20)
         )
         self.open_log_directory.setToolTip("Open log directory")
         self.open_log_directory.clicked.connect(GSigs().main_window_open_log_dir.emit)
 
-        self.open_log_file: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "file.svg", "openLogFile", 20, 20
+        self.open_log_file = QToolButton(self)
+        QTAThemeSwap().register(
+            self.open_log_file, "ph.file-arrow-down-light", icon_size=QSize(20, 20)
         )
         self.open_log_file.setToolTip(
             "Open log file if exists otherwise will open the log directory"
@@ -230,30 +223,23 @@ class GeneralSettings(BaseSettings):
         self.working_dir_entry.setToolTip(
             "Working files (torrents, images, etc.) will be placed inside of this folder for each job"
         )
-        self.working_dir_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open_folder.svg", "workingDirBtn", 20, 20
+        self.working_dir_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.working_dir_btn, "ph.folder-open-light", icon_size=QSize(20, 20)
         )
         self.working_dir_btn.setToolTip("Set working directory")
         self.working_dir_btn.clicked.connect(self._handle_working_dir_click)
 
-        self.working_dir_open_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "preview.svg",
-            "wdOpenDirBtn",
-            20,
-            20,
-            parent=self,
+        self.working_dir_open_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.working_dir_open_btn, "ph.eye-light", icon_size=QSize(20, 20)
         )
         self.working_dir_open_btn.setToolTip("Open working directory")
         self.working_dir_open_btn.clicked.connect(self._handle_open_working_dir_click)
 
-        self.working_dir_clean_up: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "delete.svg",
-            "wdOpenDirDeleteBtn",
-            20,
-            20,
-            parent=self,
+        self.working_dir_clean_up = QToolButton(self)
+        QTAThemeSwap().register(
+            self.working_dir_clean_up, "ph.trash-light", icon_size=QSize(20, 20)
         )
         self.working_dir_clean_up.setToolTip("Clean up working directory")
         self.working_dir_clean_up.clicked.connect(
