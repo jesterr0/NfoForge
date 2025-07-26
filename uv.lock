@@ -955,7 +955,7 @@ wheels = [
 
 [[package]]
 name = "nfoforge"
-version = "0.7.4"
+version = "0.8.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -978,6 +978,7 @@ dependencies = [
     { name = "pyotp" },
     { name = "pyside6" },
     { name = "qbittorrent-api" },
+    { name = "qtawesome" },
     { name = "rapidfuzz" },
     { name = "regex" },
     { name = "semver" },
@@ -1033,6 +1034,7 @@ requires-dist = [
     { name = "pyotp", specifier = ">=2.9.0" },
     { name = "pyside6", specifier = "==6.8.3" },
     { name = "qbittorrent-api", specifier = ">=2025.2.0" },
+    { name = "qtawesome", specifier = ">=1.4.0" },
     { name = "rapidfuzz", specifier = ">=3.12.1" },
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "rstcheck", extras = ["sphinx"], marker = "extra == 'docs-dev'", specifier = ">=6.2.4" },
@@ -1588,6 +1590,30 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/36/f1/ead3835272242bc8b71c4a595a3c3e2771740210f237e57d27fe3aecd24e/qh3-1.5.3-pp311-pypy311_pp73-musllinux_1_1_i686.whl", hash = "sha256:c0561c504843fe6caa6b1ab91dbba75e0ca7687814fbc116051cbf517aeb496e", size = 2169611, upload-time = "2025-06-16T04:08:47.702Z" },
     { url = "https://files.pythonhosted.org/packages/3f/03/6a8bfd61d60589db90fc78768730cd0df474ad2ff53aa61a63a68dc279bf/qh3-1.5.3-pp311-pypy311_pp73-musllinux_1_1_x86_64.whl", hash = "sha256:2bd132b507e203f7e8e853ec81bb0d9319b62fa07cf9202e360c61ac40681ac9", size = 2530251, upload-time = "2025-06-16T04:08:49.094Z" },
     { url = "https://files.pythonhosted.org/packages/31/3f/5475015df232a290786a5ba252775d7d6f93f9e4933fb4087322d3112caa/qh3-1.5.3-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:73cb156866e456a704a4707f469e45419bfd4de0f4f803012022a88b5303a5a7", size = 2002941, upload-time = "2025-06-16T04:08:50.469Z" },
+]
+
+[[package]]
+name = "qtawesome"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "qtpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/56/57/2f6c402b4cd91a58fd378a5f36be6b5855cf43dc25f77f581e2612e6d558/qtawesome-1.4.0.tar.gz", hash = "sha256:783e414d1317f3e978bf67ea8e8a1b1498bad9dbd305dec814027e3b50521be6", size = 2614365, upload-time = "2025-02-27T22:01:01.864Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/ee/6e6c6715129c929af2d95ddb2e9decf54c1beffe58f336911197aacc0448/qtawesome-1.4.0-py3-none-any.whl", hash = "sha256:a4d689fa071c595aa6184171ce1f0f847677cb8d2db45382c43129f1d72a3d93", size = 2595296, upload-time = "2025-02-27T22:00:59.921Z" },
+]
+
+[[package]]
+name = "qtpy"
+version = "2.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/70/01/392eba83c8e47b946b929d7c46e0f04b35e9671f8bb6fc36b6f7945b4de8/qtpy-2.4.3.tar.gz", hash = "sha256:db744f7832e6d3da90568ba6ccbca3ee2b3b4a890c3d6fbbc63142f6e4cdf5bb", size = 66982, upload-time = "2025-02-11T15:09:25.759Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/76/37c0ccd5ab968a6a438f9c623aeecc84c202ab2fabc6a8fd927580c15b5a/QtPy-2.4.3-py3-none-any.whl", hash = "sha256:72095afe13673e017946cc258b8d5da43314197b741ed2890e563cf384b51aa1", size = 95045, upload-time = "2025-02-11T15:09:24.162Z" },
 ]
 
 [[package]]
