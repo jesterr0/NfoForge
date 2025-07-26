@@ -498,6 +498,7 @@ class ProcessBackEnd:
                         mi_obj=mediainfo_obj,
                         upload_text_cb=queued_text_update,
                         upload_text_replace_last_line_cb=queued_text_update_replace_last_line,
+                        progress_cb=self.progress_bar_cb,
                     )
 
             # upload

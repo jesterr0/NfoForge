@@ -1,20 +1,19 @@
-import importlib
-import sys
 from collections.abc import Callable, Sequence
+import importlib
 from pathlib import Path
-from pymediainfo import MediaInfo
+import sys
 from typing import Any
 
 from PySide6.QtCore import SignalInstance
+from pymediainfo import MediaInfo
 
 from src.backend.utils.working_dir import CURRENT_DIR
-from src.exceptions import PluginError
-
 from src.config.config import Config
 from src.enums.tracker_selection import TrackerSelection
+from src.exceptions import PluginError
 from src.logger.nfo_forge_logger import LOG
-from src.plugins.plugin_wizard_base import WizardPluginBase
 from src.plugins.plugin_payload import PluginPayload
+from src.plugins.plugin_wizard_base import WizardPluginBase
 
 
 class PluginLoader:
@@ -111,6 +110,7 @@ class PluginLoader:
                     "mi_obj": MediaInfo,
                     "upload_text_cb": Callable[[str], None],
                     "upload_text_replace_last_line_cb": Callable[[str], None],
+                    "progress_cb": Callable[[float], None],
                 },
             },
         )
