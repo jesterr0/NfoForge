@@ -36,6 +36,7 @@ dependencies = [
     "tvdb-v4-official>=1.1.0",
     "rapidfuzz>=3.12.1",
     "oslex2>=0.1.5",
+    "qtawesome>=1.4.0",
 ]
 
 [project.optional-dependencies]

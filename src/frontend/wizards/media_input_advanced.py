@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import QSize, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
     QLabel,
@@ -17,8 +17,8 @@ from src.backend.utils.file_utilities import generate_unique_date_name
 from src.config.config import Config
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.utils.general_worker import GeneralWorker
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -46,13 +46,9 @@ class MediaInputAdvanced(BaseWizardPage):
         self.source_entry.dropped.connect(
             lambda e: self._update_entries(e, self.source_entry)
         )
-        self.source_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "open.svg",
-            "sourceButton",
-            24,
-            24,
-            parent=self,
+        self.source_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.source_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         self.source_button.clicked.connect(
             lambda: self._open_filedialog(
@@ -71,13 +67,9 @@ class MediaInputAdvanced(BaseWizardPage):
         self.encode_entry.dropped.connect(
             lambda e: self._update_entries(e, self.encode_entry)
         )
-        self.encode_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "open.svg",
-            "encodeButton",
-            24,
-            24,
-            parent=self,
+        self.encode_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.encode_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         self.encode_button.clicked.connect(
             lambda: self._open_filedialog(

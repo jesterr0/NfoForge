@@ -4,7 +4,7 @@ import re
 import traceback
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -32,7 +32,7 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.media_input_basic import MediaInputBasic
 from src.frontend.wizards.media_search import MediaSearch
 
@@ -60,8 +60,9 @@ class TemplateSelector(QWidget):
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
 
-        self.token_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "token.svg", "tokenTemplateBtn", 24, 24
+        self.token_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.token_btn, "ph.squares-four-light", icon_size=QSize(24, 24)
         )
         self.token_btn.setCheckable(True)
         self.token_btn.clicked.connect(self.show_tokens)
@@ -69,37 +70,42 @@ class TemplateSelector(QWidget):
 
         self.template_combo: QComboBox = CustomComboBox(True)
         self.template_combo.currentIndexChanged.connect(self.selection_changed)
-        self.new_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "add_circle.svg", "newTemplateBtn", 24, 24
+        self.new_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.new_btn, "ph.plus-circle-light", icon_size=QSize(24, 24)
         )
 
-        self.popup_button: CustomButtonMenu = build_auto_theme_icon_buttons(
-            CustomButtonMenu, "assignment.svg", "trackerPopUpBtn", 32, 24, True
+        self.popup_button = CustomButtonMenu(parent=self)
+        QTAThemeSwap().register(
+            self.popup_button, "ph.check-square-light", icon_size=QSize(24, 24)
         )
         self.popup_button.setText("Trackers")
         self.popup_button.item_changed.connect(self._tracker_toggled)
 
         self.new_btn.setToolTip("Create a new template")
         self.new_btn.clicked.connect(self.new_template)
-        self.save_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "save.svg", "saveTemplateBtn", 24, 24
+
+        self.save_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.save_btn, "ph.floppy-disk-light", icon_size=QSize(24, 24)
         )
         self.save_btn.setToolTip("Save current template changes")
         self.save_btn.clicked.connect(self.save_template)
-        self.del_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "delete.svg", "delTemplateBtn", 24, 24
+
+        self.del_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.del_btn, "ph.trash-simple-light", icon_size=QSize(24, 24)
         )
         self.del_btn.setToolTip("Delete current template")
         self.del_btn.clicked.connect(self.delete_template)
+
         v_line = QFrame()
         v_line.setFrameShape(QFrame.Shape.VLine)
         v_line.setFrameShadow(QFrame.Shadow.Raised)
-        self.preview_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "preview.svg" if not self.sandbox else "service_toolbox.svg",
-            "previewTemplateBtn",
-            24,
-            24,
+
+        self.preview_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.preview_btn, "ph.eye-light", icon_size=QSize(24, 24)
         )
         if not self.sandbox:
             self.preview_btn.setToolTip("Preview template with applied changes")
@@ -109,8 +115,10 @@ class TemplateSelector(QWidget):
             )
         self.preview_btn.setCheckable(True)
         self.preview_btn.clicked.connect(self.preview_template)
-        self.max_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "full_screen.svg", "maxTemplateBtn", 24, 24
+
+        self.max_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.max_btn, "ph.corners-out-light", icon_size=QSize(24, 24)
         )
         self.max_btn.setToolTip("Pop out window of template")
         self.max_btn.clicked.connect(self.maximize_template)

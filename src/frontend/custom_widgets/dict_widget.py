@@ -1,6 +1,6 @@
 import sys
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QSize, QTimer, Qt
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class AddKeyDialog(QDialog):
@@ -89,13 +89,15 @@ class DictWidget(QWidget):
         self.combo.addItems(self.keys)
         self.combo.currentIndexChanged.connect(self.update_text)
 
-        self.add_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "add_circle.svg", "addDictKey", 24, 24
+        self.add_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.add_btn, "ph.plus-circle-light", icon_size=QSize(24, 24)
         )
         self.add_btn.clicked.connect(self.add_item)
 
-        self.del_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "delete.svg", "delDictKey", 24, 24
+        self.del_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.del_btn, "ph.trash-simple-light", icon_size=QSize(24, 24)
         )
         self.del_btn.clicked.connect(self.handle_delete)
 

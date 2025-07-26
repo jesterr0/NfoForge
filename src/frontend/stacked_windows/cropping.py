@@ -1,25 +1,25 @@
-import re
 from pathlib import Path
+import re
 from typing import List
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QHBoxLayout,
-    QWidget,
-    QToolButton,
-    QLabel,
-    QSizePolicy,
-    QVBoxLayout,
-    QGroupBox,
-    QSpinBox,
     QFileDialog,
     QFrame,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QSizePolicy,
+    QSpinBox,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
-from src.frontend.utils import build_auto_theme_icon_buttons
-from src.frontend.custom_widgets.dnd_factory import DNDCustomLineEdit
-from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 from src.backend.utils.crop_detect import parse_scripts
+from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
+from src.frontend.custom_widgets.dnd_factory import DNDCustomLineEdit
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.packages.custom_types import CropValues
 
 
@@ -31,8 +31,9 @@ class CropWidget(QWidget):
 
         cropping_group = QGroupBox("Crop")
 
-        input_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open.svg", "cropOpenBtn", 24, 24, parent=self
+        input_button = QToolButton(self)
+        QTAThemeSwap().register(
+            input_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         input_button.clicked.connect(self._open_script_file_dialogue)
 
@@ -79,9 +80,8 @@ class CropWidget(QWidget):
         cropping_layout.addLayout(middle_layout)
 
         button_box_layout = QHBoxLayout()
-        okay_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "check.svg", "logOkayButton", 24, 24, parent=self
-        )
+        okay_button = QToolButton(self)
+        QTAThemeSwap().register(okay_button, "ph.check-light", icon_size=QSize(24, 24))
         okay_button.clicked.connect(self._okay)
         button_box_layout.addWidget(okay_button, alignment=Qt.AlignmentFlag.AlignRight)
         button_box_layout.setAlignment(Qt.AlignmentFlag.AlignRight)

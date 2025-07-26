@@ -1,6 +1,8 @@
 from collections.abc import Sequence
 
+from PySide6.QtCore import QModelIndex, QSize, Signal, Slot
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QListWidget,
     QSizePolicy,
@@ -8,11 +10,9 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
-    QFrame,
 )
-from PySide6.QtCore import Signal, Slot, QModelIndex
 
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class SortableListBox(QWidget):
@@ -28,18 +28,15 @@ class SortableListBox(QWidget):
         self.list_box.setDragDropMode(QListWidget.DragDropMode.InternalMove)
         self.list_box.model().rowsMoved.connect(self._signal_move)
 
-        self.move_up_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "arrow_upward.svg", "moveUpBtn", 20, 20, parent=self
+        self.move_up_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.move_up_btn, "ph.arrow-up-light", icon_size=QSize(20, 20)
         )
         self.move_up_btn.clicked.connect(self._move_up)
 
-        self.move_down_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "arrow_downward.svg",
-            "moveDownBtn",
-            20,
-            20,
-            parent=self,
+        self.move_down_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.move_down_btn, "ph.arrow-down-light", icon_size=QSize(20, 20)
         )
         self.move_down_btn.clicked.connect(self._move_down)
 

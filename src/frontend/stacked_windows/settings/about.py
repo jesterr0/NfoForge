@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtGui import QGuiApplication, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout
 
@@ -6,7 +6,8 @@ from src.backend.utils.working_dir import RUNTIME_DIR
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_auto_theme_icon_buttons, build_h_line
+from src.frontend.utils import build_h_line
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.version import __version__
 
 
@@ -80,8 +81,9 @@ class AboutTab(BaseSettings):
         self.bitcoin_hash.setReadOnly(True)
         self.bitcoin_hash.setText("bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc")
 
-        self.bitcoin_copy_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "content_copy.svg", "btcCopyBtn", 20, 20, parent=self
+        self.bitcoin_copy_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.bitcoin_copy_btn, "ph.copy-simple-light", icon_size=QSize(20, 20)
         )
         self.bitcoin_copy_btn.clicked.connect(self._copy_bitcoin_to_clipboard)
 
@@ -112,8 +114,9 @@ class AboutTab(BaseSettings):
         self.ethereum_hash.setReadOnly(True)
         self.ethereum_hash.setText("0x86a726C7158b852C8001Fb6762f3a263742529e6")
 
-        self.ethereum_copy_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "content_copy.svg", "ethCopyBtn", 20, 20, parent=self
+        self.ethereum_copy_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.ethereum_copy_btn, "ph.copy-simple-light", icon_size=QSize(20, 20)
         )
         self.ethereum_copy_btn.clicked.connect(self._copy_ethereum_to_clipboard)
 
