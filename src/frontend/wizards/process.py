@@ -1,39 +1,38 @@
-import re
 import asyncio
-import traceback
-
 from copy import deepcopy
 from dataclasses import fields
-from typing import TYPE_CHECKING, Any
 from pathlib import Path
-from pymediainfo import MediaInfo
-from PySide6.QtCore import QObject, Slot, QThread, Signal
+import traceback
+from typing import Any, TYPE_CHECKING
+
+from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtGui import QTextCursor, Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QLabel,
-    QVBoxLayout,
-    QMessageBox,
     QFileDialog,
+    QLabel,
+    QMessageBox,
     QProgressBar,
+    QTextBrowser,
+    QVBoxLayout,
 )
+from pymediainfo import MediaInfo
 
-from src.config.config import Config
 from src.backend.process import ProcessBackEnd
+from src.config.config import Config
 from src.enums.image_host import ImageHost, ImageSource
+from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
-from src.enums.media_mode import MediaMode
 from src.exceptions import ProcessError
-from src.frontend.global_signals import GSigs
-from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
+from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.packages.custom_types import ImageUploadFromTo
-from src.payloads.tracker_search_result import TrackerSearchResult
-from src.payloads.media_search import MediaSearchPayload
-from src.nf_jinja2 import Jinja2TemplateEngine
 from src.logger.nfo_forge_logger import LOG
+from src.nf_jinja2 import Jinja2TemplateEngine
+from src.packages.custom_types import ImageUploadFromTo
+from src.payloads.media_search import MediaSearchPayload
+from src.payloads.tracker_search_result import TrackerSearchResult
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -83,7 +82,6 @@ class DupeWorker(BaseWorker):
                 self.backend.dupe_checks(
                     file_input=self.file_input,
                     processing_queue=self.processing_queue,
-                    queued_text_update=self._queued_text_update_cb,
                     media_search_payload=self.media_search_payload,
                 )
             )
@@ -110,6 +108,7 @@ class ProcessWorker(BaseWorker):
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
         releasers_name: str,
+        encode_file_dir: Path | None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -123,6 +122,7 @@ class ProcessWorker(BaseWorker):
         self.media_mode = media_mode
         self.media_search_payload = media_search_payload
         self.releasers_name = releasers_name
+        self.encode_file_dir = encode_file_dir
 
     def run(self) -> None:
         try:
@@ -141,6 +141,7 @@ class ProcessWorker(BaseWorker):
                 media_mode=self.media_mode,
                 media_search_payload=self.media_search_payload,
                 releasers_name=self.releasers_name,
+                encode_file_dir=self.encode_file_dir,
             )
             self.job_finished.emit()
         except Exception as e:
@@ -183,11 +184,8 @@ class ProcessPage(BaseWizardPage):
         self.tracker_process_tree.combo_changed.connect(self._tree_combo_changed)
 
         text_widget_label = QLabel("Log", self)
-        self.text_widget = CodeEditor(
-            line_numbers=False, wrap_text=True, mono_font=True, parent=self
-        )
-        self.text_widget.setReadOnly(True)
-        self.apply_syntax_highlighting()
+
+        self.text_widget = QTextBrowser(parent=self, openExternalLinks=True)
 
         self.progress_bar = QProgressBar(self)
         self.progress_bar.hide()
@@ -199,31 +197,22 @@ class ProcessPage(BaseWizardPage):
         main_layout.addWidget(self.progress_bar, stretch=1)
         self.setLayout(main_layout)
 
-    def apply_syntax_highlighting(self) -> None:
-        highlight = [
-            HighlightKeywords(
-                re.compile(r"(Total potential dupes found.+)"), "#e1401d", True
-            ),
-            HighlightKeywords(re.compile(r"(?i)(fail.*)\b"), "#e1401d", False),
-        ]
-        for tracker in self.config.tracker_map.keys():
-            tracker = re.escape(str(tracker))
-            highlight.append(
-                HighlightKeywords(re.compile(rf"'({tracker})':"), "#e1401d", True)
-            )
-        self.text_widget.highlight_keywords(highlight)
-
     @Slot()
     def process_jobs(self) -> None:
         # get paths and other things from the media input payload
-        torrent_dir, detected_input, mediainfo_obj = self._handle_files()
+        detected_input, mediainfo_obj, encode_file_dir = self._handle_files()
 
         # get tracker data and check for existing torrent files
-        tracker_data = self._gather_tracker_data(torrent_dir, detected_input)
+        if not self.config.media_input_payload.working_dir:
+            raise FileNotFoundError("Failed to detect MediaInputPayload.working_dir")
+        tracker_data = self._gather_tracker_data(
+            self.config.media_input_payload.working_dir, detected_input
+        )
         if not tracker_data:
             raise AttributeError("Could not determine tracker data")
 
         GSigs().main_window_set_disabled.emit(True)
+
         if self.processing_mode == UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
                 backend=self.backend,
@@ -234,9 +223,12 @@ class ProcessPage(BaseWizardPage):
             )
             self.dupe_worker.dupes_found.connect(self._on_dupes_found)
             self.dupe_worker.job_failed.connect(self._on_failed)
-            self.dupe_worker.queued_text_update.connect(self._on_text_update)
-            self.dupe_worker.queued_text_update_replace_last_line.connect(
-                self._on_text_update_replace_last_line
+            # self.dupe_worker.queued_text_update.connect(self._on_text_update)
+            # self.dupe_worker.queued_text_update_replace_last_line.connect(
+            #     self._on_text_update_replace_last_line
+            # )
+            self._on_text_update(
+                '<h3 style="margin-bottom: 0px; padding-bottom: 0px;">📋 Checking for dupes:</h3>',
             )
             self.dupe_worker.start()
 
@@ -256,6 +248,7 @@ class ProcessPage(BaseWizardPage):
                 media_mode=self.config.cfg_payload.media_mode,
                 media_search_payload=self.config.media_search_payload,
                 releasers_name=self.config.cfg_payload.releasers_name,
+                encode_file_dir=encode_file_dir,
                 parent=self,
             )
             self.process_worker.caught_error.connect(self._log_caught_error)
@@ -274,14 +267,35 @@ class ProcessPage(BaseWizardPage):
         self, dupes: dict[TrackerSelection, list[TrackerSearchResult]]
     ) -> None:
         if dupes:
-            duplicate_base_str = "###### Potential Duplicates ######\n{}\n###### Potential Duplicates ######"
-            duplicates = ""
-
-            for tracker, releases in dupes.items():
-                duplicates = duplicates + f"\n{tracker}:\n"
-                for item in releases:
-                    duplicates = duplicates + f"{item.name}\n"
-            self._on_text_update(duplicate_base_str.format(duplicates.strip()))
+            # if not dupes
+            total_dupes = sum(len(item) for item in dupes.values())
+            if total_dupes == 0:
+                self._on_text_update("<br /><span>✅ No duplicates found</span>")
+            # if dupes are found
+            else:
+                duplicates = (
+                    f"<br /><span>⚠️ Total potential dupes found: {total_dupes}</span>"
+                )
+                for tracker, releases in dupes.items():
+                    duplicates += (
+                        "<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
+                        "margin: 10px 0 16px 0; padding: 8px 10px;'>"
+                        f"<b style='font-size: 1.08em;'>{tracker}</b>"
+                        "<table style='border-collapse:collapse; margin-top:6px;'>"
+                    )
+                    for item in releases:
+                        duplicates += (
+                            "<tr>"
+                            "<td style='padding: 10px 4px; border-bottom: 1px solid #eee;'>"
+                            f'📄 <a href="{item.url}" rel="noreferrer nofollow" style="color: #1976d2; '
+                            f'text-decoration: underline; font-weight: bold;">{item.name}</a>'
+                            "</td>"
+                            "</tr>"
+                        )
+                    duplicates += "</table></div>"
+                self._on_text_update(duplicates)
+        else:
+            self._on_text_update("<br /><span>✅ No duplicates found</span>")
 
         self.processing_mode = UploadProcessMode.UPLOAD
         self._job_ended()
@@ -295,7 +309,7 @@ class ProcessPage(BaseWizardPage):
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
-        self._on_text_update(f"\n{e}")
+        self._on_text_update(f"<br /><p>{e}</p>")
         LOG.error(LOG.LOG_SOURCE.FE, trace_back)
 
     def _job_ended(self) -> None:
@@ -310,7 +324,10 @@ class ProcessPage(BaseWizardPage):
 
     @Slot(str)
     def _on_text_update(self, txt: str) -> None:
-        self.text_widget.appendPlainText(txt)
+        cursor = self.text_widget.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        cursor.insertHtml(txt)
+        self.text_widget.setTextCursor(cursor)
         self.text_widget.ensureCursorVisible()
         LOG.info(LOG.LOG_SOURCE.FE, txt)
 
@@ -336,6 +353,8 @@ class ProcessPage(BaseWizardPage):
         if progress:
             if not self.progress_bar.isVisible():
                 self.progress_bar.show()
+                # scroll to bottom since progress bar will occupy some space depending on parent vertical size
+                self.text_widget.ensureCursorVisible()
             self.progress_bar.setValue(int(progress))
             if progress == 100:
                 self.progress_bar.reset()
@@ -399,7 +418,7 @@ class ProcessPage(BaseWizardPage):
 
             for tracker in ordered_trackers:
                 combo_box = self.tracker_process_tree.add_row(
-                    headers=(str(tracker), "", "Queued"),
+                    headers=(str(tracker), "", "⌛ Queued"),
                     combo_data=[  # [int, [(str, (ImageUploadFromTo, (TrackerSelection, ImageHost)))]]
                         (
                             1,
@@ -431,50 +450,65 @@ class ProcessPage(BaseWizardPage):
     def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
         self.save_config = True
 
-    def get_inputs(self) -> tuple[Path, Path | None, MediaInfo]:
+    def get_inputs(self) -> tuple[Path, Path | None, MediaInfo, Path | None]:
         payload = self.config.media_input_payload
         media_in = payload.encode_file
         if not media_in:
             raise FileNotFoundError("Failed to detect encode input")
         renamed_out = payload.renamed_file
         media_info_obj = payload.encode_file_mi_obj
+        encode_file_dir = payload.encode_file_dir
         if not media_info_obj:
             raise AttributeError("Failed to read media info for encode input")
         return (
             Path(media_in),
             Path(renamed_out) if renamed_out else None,
             media_info_obj,
+            Path(encode_file_dir) if encode_file_dir else None,
         )
 
-    def _handle_files(self) -> tuple[Path, Path, MediaInfo]:
+    def _handle_files(self) -> tuple[Path, MediaInfo, Path | None]:
         # get paths and other things from the media input payload
-        og_input, renamed_input, mediainfo_obj = self.get_inputs()
-        torrent_dir = (
-            renamed_input.parent / f"{renamed_input.stem}_nf"
-            if renamed_input
-            else og_input.parent / f"{og_input.stem}_nf"
-        )
+        og_input, renamed_input, mediainfo_obj, encode_file_dir = self.get_inputs()
+
         detected_input = renamed_input if renamed_input else og_input
         LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
 
         # handle rename if we're uploading
         if self.processing_mode == UploadProcessMode.UPLOAD:
-            # we're doing string comparison of inputs for case sensitive vs case insensitive systems
+            # file rename first (if needed)
             if renamed_input and (str(og_input) != str(renamed_input)):
-                self._on_text_update(
-                    f"Renaming input file:\n'{og_input.name}' -> '{renamed_input.name}'\n"
-                )
+                self._on_text_update("""\
+                    <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📼 Renaming input file:</h3>
+                    <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
+                    <tr>
+                        <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+                        <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+                    </tr>
+                    <tr>
+                        <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncut.BluRay.1080p.DTS-X.7.1.VC-1.mkv</td>
+                        <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncensored.BluRay.1080p.DTS-X.7.1.VC-1.mkv</td>
+                    </tr>
+                    </table>""")
                 try:
-                    detected_input = self.backend.rename_file(
-                        f_in=og_input, f_out=renamed_input
-                    )
-
-                    if not detected_input.exists():
-                        detected_input_error = (
-                            "Cannot continue, the detected input does not exist"
+                    # only rename if source and destination are different and source exists
+                    if og_input != renamed_input and og_input.exists():
+                        detected_input = self.backend.rename_file(
+                            f_in=og_input, f_out=renamed_input
                         )
-                        LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
-                        raise ProcessError(detected_input_error)
+                        if not detected_input.exists():
+                            detected_input_error = (
+                                "Cannot continue, the detected input does not exist"
+                            )
+                            LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
+                            raise ProcessError(detected_input_error)
+                        # update payload to reflect new file name
+                        self.config.media_input_payload.encode_file = detected_input
+                        og_input = detected_input
+                    else:
+                        detected_input = renamed_input
+                        self.config.media_input_payload.encode_file = detected_input
+                        og_input = detected_input
                 except Exception as e:
                     LOG.error(
                         LOG.LOG_SOURCE.FE,
@@ -482,19 +516,54 @@ class ProcessPage(BaseWizardPage):
                     )
                     raise
 
-        return torrent_dir, detected_input, mediainfo_obj
+            # directory rename (if needed)
+            if encode_file_dir:
+                # The new folder name should be detected_input.stem
+                new_folder = encode_file_dir.parent / detected_input.stem
+                if encode_file_dir != new_folder:
+                    try:
+                        self._on_text_update("""\
+                            <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📂 Renaming parent folder:</h3>
+                            <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
+                            <tr>
+                                <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+                                <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+                            </tr>
+                            <tr>
+                                <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncut.BluRay.1080p.DTS-X.7.1.VC-1</td>
+                                <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncensored.BluRay.1080p.DTS-X.7.1.VC-1</td>
+                            </tr>
+                            </table>""")
+                        encode_file_dir.rename(new_folder)
+                        # update payload to reflect new folder name
+                        self.config.media_input_payload.encode_file_dir = new_folder
+                        encode_file_dir = new_folder
+                        # update encode_file path to point to the file inside the new folder
+                        old_file = self.config.media_input_payload.encode_file
+                        if old_file:
+                            new_file = new_folder / Path(old_file).name
+                            self.config.media_input_payload.encode_file = new_file
+                            detected_input = new_file
+                    except Exception as e:
+                        LOG.error(
+                            LOG.LOG_SOURCE.FE,
+                            f"Failed to rename parent folder: {e}\n{traceback.format_exc()}",
+                        )
+                        raise
+
+        return detected_input, mediainfo_obj, encode_file_dir
 
     def _gather_tracker_data(
-        self, torrent_dir: Path, detected_input: Path
+        self, process_dir: Path, detected_input: Path
     ) -> dict[str, Any] | None:
         tracker_data = {}
         for tracker, (
             combo_text,
             (image_host_data, _),
         ), _ in self.tracker_process_tree.get_item_values():
-            torrent_dir_out = torrent_dir / tracker.lower()
-            torrent_dir_out.mkdir(parents=True, exist_ok=True)
-            torrent_out = Path(torrent_dir_out / f"{detected_input.stem}.torrent")
+            process_dir_out = process_dir / tracker.lower()
+            process_dir_out.mkdir(parents=True, exist_ok=True)
+            torrent_out = Path(process_dir_out / f"{detected_input.stem}.torrent")
 
             if self.processing_mode == UploadProcessMode.UPLOAD:
                 if torrent_out.exists():
@@ -511,7 +580,7 @@ class ProcessPage(BaseWizardPage):
                             parent=self,
                             caption="Select Save Output",
                             filter="*.torrent",
-                            dir=str(torrent_dir_out) if torrent_dir_out else "",
+                            dir=str(process_dir_out) if process_dir_out else "",
                         )
                         if not new_torrent_out:
                             return

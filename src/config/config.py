@@ -1,53 +1,56 @@
 from pathlib import Path
-import tomlkit
-from tomlkit import TOMLDocument
 from typing import TYPE_CHECKING
 
-from src.config.dependencies import FindDependencies
+from platformdirs import user_data_dir as pd_user_data_dir
+import tomlkit
+from tomlkit import TOMLDocument
+
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.enums.theme import NfoForgeTheme
+from src.config.dependencies import FindDependencies
 from src.enums.cropping import Cropping
+from src.enums.image_host import ImageHost, ImageSource
+from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
+from src.enums.logging_settings import LogLevel
 from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
-from src.enums.image_host import ImageHost, ImageSource
 from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.image_plugin import ImagePlugin
 from src.enums.subtitles import SubtitleAlignment
-from src.enums.trackers.morethantv import MTVSourceOrigin
-from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
-from src.enums.tracker_selection import TrackerSelection
+from src.enums.theme import NfoForgeTheme
 from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import TorrentClientSelection
+from src.enums.tracker_selection import TrackerSelection
+from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
+from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
-from src.enums.logging_settings import LogLevel
-from src.payloads.config import ConfigPayload, ProgramConfigPayload
-from src.payloads.shared_data import SharedPayload
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.trackers import (
-    HunoInfo,
-    TrackerInfo,
-    MoreThanTVInfo,
-    TorrentLeechInfo,
-    BeyondHDInfo,
-    PassThePopcornInfo,
-    ReelFlixInfo,
-    AitherInfo,
-    LSTInfo,
-)
+from src.exceptions import ConfigError
+from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.clients import TorrentClient
-from src.payloads.watch_folder import WatchFolder
+from src.payloads.config import ConfigPayload, ProgramConfigPayload
 from src.payloads.image_hosts import (
-    ImagePayloadBase,
     CheveretoV3Payload,
     CheveretoV4Payload,
     ImageBBPayload,
     ImageBoxPayload,
+    ImagePayloadBase,
     PTPIMGPayload,
 )
-from src.exceptions import ConfigError
-from src.nf_jinja2 import Jinja2TemplateEngine
+from src.payloads.media_inputs import MediaInputPayload
+from src.payloads.media_search import MediaSearchPayload
+from src.payloads.shared_data import SharedPayload
+from src.payloads.trackers import (
+    AitherInfo,
+    BeyondHDInfo,
+    DarkPeersInfo,
+    HunoInfo,
+    LSTInfo,
+    MoreThanTVInfo,
+    PassThePopcornInfo,
+    ReelFlixInfo,
+    TorrentLeechInfo,
+    TrackerInfo,
+)
+from src.payloads.watch_folder import WatchFolder
 
 if TYPE_CHECKING:
     from src.plugins.plugin_payload import PluginPayload
@@ -267,11 +270,12 @@ class Config:
             general_data["encode_media_ext_filter"] = (
                 self.cfg_payload.encode_media_ext_filter
             )
-            general_data["media_input_dir"] = self.cfg_payload.media_input_dir
             general_data["releasers_name"] = self.cfg_payload.releasers_name
             general_data["timeout"] = self.cfg_payload.timeout
+            general_data["enable_mkbrr"] = self.cfg_payload.enable_mkbrr
             general_data["log_level"] = LogLevel(self.cfg_payload.log_level).value
             general_data["log_total"] = self.cfg_payload.log_total
+            general_data["working_dir"] = str(self.cfg_payload.working_dir)
 
             # dependencies
             dependencies_data = self._toml_data["dependencies"]
@@ -281,6 +285,7 @@ class Config:
             dependencies_data["frame_forge"] = self.resolve_dependency(
                 self.cfg_payload.frame_forge
             )
+            dependencies_data["mkbrr"] = self.resolve_dependency(self.cfg_payload.mkbrr)
 
             # api keys
             api_keys_data = self._toml_data["api_keys"]
@@ -576,20 +581,14 @@ class Config:
             if "lst" not in tracker_data:
                 tracker_data["lst"] = tomlkit.table()
             lst_data = tracker_data["lst"]
-            lst_data["upload_enabled"] = (
-                self.cfg_payload.lst_tracker.upload_enabled
-            )
+            lst_data["upload_enabled"] = self.cfg_payload.lst_tracker.upload_enabled
             lst_data["announce_url"] = self.cfg_payload.lst_tracker.announce_url
             lst_data["enabled"] = self.cfg_payload.lst_tracker.enabled
             lst_data["source"] = self.cfg_payload.lst_tracker.source
             lst_data["comments"] = self.cfg_payload.lst_tracker.comments
             lst_data["nfo_template"] = self.cfg_payload.lst_tracker.nfo_template
-            lst_data["max_piece_size"] = (
-                self.cfg_payload.lst_tracker.max_piece_size
-            )
-            lst_data["url_type"] = URLType(
-                self.cfg_payload.lst_tracker.url_type
-            ).value
+            lst_data["max_piece_size"] = self.cfg_payload.lst_tracker.max_piece_size
+            lst_data["url_type"] = URLType(self.cfg_payload.lst_tracker.url_type).value
             lst_data["column_s"] = self.cfg_payload.lst_tracker.column_s
             lst_data["column_space"] = self.cfg_payload.lst_tracker.column_space
             lst_data["row_space"] = self.cfg_payload.lst_tracker.row_space
@@ -608,12 +607,8 @@ class Config:
             lst_data["api_key"] = self.cfg_payload.lst_tracker.api_key
             lst_data["anonymous"] = self.cfg_payload.lst_tracker.anonymous
             lst_data["internal"] = self.cfg_payload.lst_tracker.internal
-            lst_data["personal_release"] = (
-                self.cfg_payload.lst_tracker.personal_release
-            )
-            lst_data["mod_queue_opt_in"] = (
-                self.cfg_payload.lst_tracker.mod_queue_opt_in
-            )
+            lst_data["personal_release"] = self.cfg_payload.lst_tracker.personal_release
+            lst_data["mod_queue_opt_in"] = self.cfg_payload.lst_tracker.mod_queue_opt_in
             lst_data["draft_queue_opt_in"] = (
                 self.cfg_payload.lst_tracker.draft_queue_opt_in
             )
@@ -622,6 +617,55 @@ class Config:
             lst_data["double_up"] = self.cfg_payload.lst_tracker.double_up
             lst_data["sticky"] = self.cfg_payload.lst_tracker.sticky
             lst_data["image_width"] = self.cfg_payload.lst_tracker.image_width
+
+            # DarkPeers tracker
+            if "dark_peers" not in tracker_data:
+                tracker_data["dark_peers"] = tomlkit.table()
+            dark_peers_data = tracker_data["dark_peers"]
+            dark_peers_data["upload_enabled"] = (
+                self.cfg_payload.darkpeers_tracker.upload_enabled
+            )
+            dark_peers_data["announce_url"] = (
+                self.cfg_payload.darkpeers_tracker.announce_url
+            )
+            dark_peers_data["enabled"] = self.cfg_payload.darkpeers_tracker.enabled
+            dark_peers_data["source"] = self.cfg_payload.darkpeers_tracker.source
+            dark_peers_data["comments"] = self.cfg_payload.darkpeers_tracker.comments
+            dark_peers_data["nfo_template"] = (
+                self.cfg_payload.darkpeers_tracker.nfo_template
+            )
+            dark_peers_data["max_piece_size"] = (
+                self.cfg_payload.darkpeers_tracker.max_piece_size
+            )
+            dark_peers_data["url_type"] = URLType(
+                self.cfg_payload.darkpeers_tracker.url_type
+            ).value
+            dark_peers_data["column_s"] = self.cfg_payload.darkpeers_tracker.column_s
+            dark_peers_data["column_space"] = (
+                self.cfg_payload.darkpeers_tracker.column_space
+            )
+            dark_peers_data["row_space"] = self.cfg_payload.darkpeers_tracker.row_space
+            dark_peers_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.darkpeers_tracker.mvr_title_override_enabled
+            )
+            dark_peers_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.darkpeers_tracker.mvr_title_colon_replace
+            ).value
+            dark_peers_data["mvr_title_token_override"] = (
+                self.cfg_payload.darkpeers_tracker.mvr_title_token_override
+            )
+            dark_peers_data["mvr_title_replace_map"] = (
+                self.cfg_payload.darkpeers_tracker.mvr_title_replace_map
+            )
+            dark_peers_data["api_key"] = self.cfg_payload.darkpeers_tracker.api_key
+            dark_peers_data["anonymous"] = self.cfg_payload.darkpeers_tracker.anonymous
+            dark_peers_data["internal"] = self.cfg_payload.darkpeers_tracker.internal
+            dark_peers_data["personal_release"] = (
+                self.cfg_payload.darkpeers_tracker.personal_release
+            )
+            dark_peers_data["image_width"] = (
+                self.cfg_payload.darkpeers_tracker.image_width
+            )
 
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
@@ -697,6 +741,9 @@ class Config:
             movie_rename["mvr_colon_replace_title"] = ColonReplace(
                 self.cfg_payload.mvr_colon_replace_title
             ).value
+            movie_rename["mvr_parse_filename_attributes"] = (
+                self.cfg_payload.mvr_parse_filename_attributes
+            )
             movie_rename["mvr_token"] = self.cfg_payload.mvr_token
             movie_rename["mvr_title_token"] = self.cfg_payload.mvr_title_token
             movie_rename["mvr_clean_title_rules"] = (
@@ -706,6 +753,13 @@ class Config:
                 self.cfg_payload.mvr_clean_title_rules_modified
             )
             movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
+            movie_rename["mvr_mi_video_dynamic_range"] = (
+                self.cfg_payload.mvr_mi_video_dynamic_range
+            )
+
+            # user tokens
+            user_token_data = self._toml_data["user_tokens"]
+            user_token_data["tokens"] = self.cfg_payload.user_tokens
 
             # screenshots
             screen_shot_data = self._toml_data["screenshots"]
@@ -873,6 +927,16 @@ class Config:
                 self.cfg_payload.keep_trailing_newline
             )
 
+            # release notes
+            release_notes = self._toml_data["release_notes"]
+            release_notes["enable_release_notes"] = (
+                self.cfg_payload.enable_release_notes
+            )
+            release_notes["last_used_release_note"] = (
+                self.cfg_payload.last_used_release_note
+            )
+            release_notes["notes"] = self.cfg_payload.release_notes
+
             # if last data does not equal current data, we'll write the changes to file while also updating
             # the last data variable with the latest data
             if (
@@ -917,6 +981,9 @@ class Config:
                 Path(dependencies_data["frame_forge"])
                 if dependencies_data["frame_forge"]
                 else None
+            )
+            mkbrr = (
+                Path(dependencies_data["mkbrr"]) if dependencies_data["mkbrr"] else None
             )
 
             # api keys
@@ -1181,9 +1248,7 @@ class Config:
                 mvr_title_colon_replace=ColonReplace(
                     lst_tracker_data["mvr_title_colon_replace"]
                 ),
-                mvr_title_token_override=lst_tracker_data[
-                    "mvr_title_token_override"
-                ],
+                mvr_title_token_override=lst_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=lst_tracker_data["mvr_title_replace_map"],
                 api_key=lst_tracker_data["api_key"],
                 anonymous=lst_tracker_data["anonymous"],
@@ -1196,6 +1261,36 @@ class Config:
                 double_up=lst_tracker_data["double_up"],
                 sticky=lst_tracker_data["sticky"],
                 image_width=lst_tracker_data["image_width"],
+            )
+
+            darkpeers_tracker_data = tracker_data["dark_peers"]
+            darkpeers_tracker = DarkPeersInfo(
+                upload_enabled=darkpeers_tracker_data["upload_enabled"],
+                announce_url=darkpeers_tracker_data["announce_url"],
+                enabled=darkpeers_tracker_data["enabled"],
+                source=darkpeers_tracker_data["source"],
+                comments=darkpeers_tracker_data["comments"],
+                nfo_template=darkpeers_tracker_data["nfo_template"],
+                max_piece_size=darkpeers_tracker_data["max_piece_size"],
+                url_type=URLType(darkpeers_tracker_data["url_type"]),
+                column_s=darkpeers_tracker_data["column_s"],
+                column_space=darkpeers_tracker_data["column_space"],
+                row_space=darkpeers_tracker_data["row_space"],
+                mvr_title_override_enabled=darkpeers_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    darkpeers_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=darkpeers_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=darkpeers_tracker_data["mvr_title_replace_map"],
+                api_key=darkpeers_tracker_data["api_key"],
+                anonymous=darkpeers_tracker_data["anonymous"],
+                internal=darkpeers_tracker_data["internal"],
+                personal_release=darkpeers_tracker_data["personal_release"],
+                image_width=darkpeers_tracker_data["image_width"],
             )
 
             # torrent clients
@@ -1231,6 +1326,9 @@ class Config:
             # movie rename
             movie_rename = toml_data["movie_rename"]
 
+            # user token data
+            user_token_data = toml_data["user_tokens"]
+
             # screenshots
             screen_shot_data = toml_data["screenshots"]
 
@@ -1253,6 +1351,9 @@ class Config:
             # template settings
             template_settings = toml_data["template_settings"]
 
+            # release notes
+            release_notes = toml_data["release_notes"]
+
             # build payload
             config_payload = ConfigPayload(
                 ui_suffix=general_data.get("ui_suffix", ""),
@@ -1265,13 +1366,17 @@ class Config:
                 encode_media_ext_filter=general_data.get(
                     "encode_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
                 ),
-                media_input_dir=general_data.get("media_input_dir"),
                 releasers_name=general_data.get("releasers_name", ""),
                 timeout=general_data.get("timeout", 60),
+                enable_mkbrr=general_data.get("enable_mkbrr", True),
                 log_level=LogLevel(general_data.get("log_level", 20)),
                 log_total=general_data.get("log_total", 50),
+                working_dir=Path(general_data["working_dir"])
+                if general_data.get("working_dir")
+                else self.default_working_dir(ensure_exists=True),
                 ffmpeg=ffmpeg,
                 frame_forge=frame_forge,
+                mkbrr=mkbrr,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
                 tvdb_api_key=api_keys_data.get("tvdb_api_key", ""),
                 tracker_order=tracker_order,
@@ -1284,6 +1389,7 @@ class Config:
                 aither_tracker=aither_tracker,
                 huno_tracker=huno_tracker,
                 lst_tracker=lst_tracker,
+                darkpeers_tracker=darkpeers_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
@@ -1299,6 +1405,9 @@ class Config:
                 mvr_colon_replace_title=ColonReplace(
                     movie_rename.get("mvr_colon_replace_title", 3)
                 ),
+                mvr_parse_filename_attributes=movie_rename[
+                    "mvr_parse_filename_attributes"
+                ],
                 mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
                 mvr_clean_title_rules_modified=movie_rename[
                     "mvr_clean_title_rules_modified"
@@ -1306,6 +1415,33 @@ class Config:
                 mvr_token=movie_rename.get("mvr_token"),
                 mvr_title_token=movie_rename.get("mvr_title_token"),
                 mvr_release_group=movie_rename.get("mvr_release_group", ""),
+                mvr_mi_video_dynamic_range=movie_rename.get(
+                    "mvr_mi_video_dynamic_range",
+                    {
+                        "resolutions": {"720p": False, "1080p": False, "2160p": True},
+                        "hdr_types": {
+                            "SDR": True,
+                            "PQ": False,
+                            "HLG": False,
+                            "HDR10": True,
+                            "HDR10+": True,
+                            "DV": True,
+                            "DV + HDR10": True,
+                            "DV + HDR10+": True,
+                        },
+                        "custom_strings": {
+                            "SDR": "SDR",
+                            "PQ": "",
+                            "HLG": "",
+                            "HDR10": "HDR",
+                            "HDR10+": "HDR10Plus",
+                            "DV": "DV",
+                            "DV HDR10": "DV HDR",
+                            "DV HDR10+": "DV HDR10Plus",
+                        },
+                    },
+                ),
+                user_tokens=user_token_data.get("tokens", {}),
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
                 screen_shot_count=screen_shot_data.get("screen_shot_count", 20),
@@ -1394,6 +1530,9 @@ class Config:
                 keep_trailing_newline=bool(
                     template_settings.get("keep_trailing_newline", 0)
                 ),
+                enable_release_notes=release_notes.get("enable_release_notes", False),
+                last_used_release_note=release_notes.get("last_used_release_note", ""),
+                release_notes=release_notes.get("notes", {}),
             )
 
             # check where to store the built payload
@@ -1438,6 +1577,9 @@ class Config:
             TrackerSelection.LST: self.cfg_payload.lst_tracker
             if not defaults
             else self.cfg_payload_defaults.lst_tracker,
+            TrackerSelection.DARK_PEERS: self.cfg_payload.darkpeers_tracker
+            if not defaults
+            else self.cfg_payload_defaults.darkpeers_tracker,
         }
 
     def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:
@@ -1493,6 +1635,13 @@ class Config:
             return str(Path(path_attr))
         else:
             return ""
+
+    @staticmethod
+    def default_working_dir(ensure_exists: bool = False) -> Path:
+        wd = Path(pd_user_data_dir(appname="nfoforge", appauthor=False))
+        if ensure_exists:
+            wd.mkdir(parents=True, exist_ok=True)
+        return wd
 
     # TODO: all these methods can be re activated when self.shared_data is needed IF they are needed
     # def set_shared_data(self, key, value):

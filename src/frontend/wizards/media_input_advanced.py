@@ -1,24 +1,25 @@
 from pathlib import Path
-from pymediainfo import MediaInfo
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Slot
+from PySide6.QtCore import QSize, Slot
 from PySide6.QtWidgets import (
-    QToolButton,
-    QLineEdit,
-    QLabel,
     QFileDialog,
-    QVBoxLayout,
+    QLabel,
+    QLineEdit,
     QMessageBox,
+    QToolButton,
+    QVBoxLayout,
 )
+from pymediainfo import MediaInfo
 
 from src.backend.media_input import MediaInputBackEnd
+from src.backend.utils.file_utilities import generate_unique_date_name
 from src.config.config import Config
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils.general_worker import GeneralWorker
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.frontend.utils.media_input_utils import MediaInputWorker
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -32,9 +33,8 @@ class MediaInputAdvanced(BaseWizardPage):
         self.setTitle("Input - Advanced")
         self.setCommitPage(True)
 
-        self.config = config
         self.backend = MediaInputBackEnd()
-        self.worker: MediaInputWorker | None = None
+        self.worker: GeneralWorker | None = None
         self._loading_completed = False
 
         self.source_label = QLabel("Source", self)
@@ -46,13 +46,9 @@ class MediaInputAdvanced(BaseWizardPage):
         self.source_entry.dropped.connect(
             lambda e: self._update_entries(e, self.source_entry)
         )
-        self.source_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "open_folder.svg",
-            "sourceButton",
-            24,
-            24,
-            parent=self,
+        self.source_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.source_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         self.source_button.clicked.connect(
             lambda: self._open_filedialog(
@@ -71,13 +67,9 @@ class MediaInputAdvanced(BaseWizardPage):
         self.encode_entry.dropped.connect(
             lambda e: self._update_entries(e, self.encode_entry)
         )
-        self.encode_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "open_folder.svg",
-            "encodeButton",
-            24,
-            24,
-            parent=self,
+        self.encode_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.encode_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         self.encode_button.clicked.connect(
             lambda: self._open_filedialog(
@@ -101,6 +93,7 @@ class MediaInputAdvanced(BaseWizardPage):
 
     def validatePage(self) -> bool:
         if self._loading_completed:
+            super().validatePage()
             return True
 
         required_entries = (
@@ -133,7 +126,13 @@ class MediaInputAdvanced(BaseWizardPage):
         for file_path in files:
             if not file_path:
                 raise FileNotFoundError("Failed to detect input path")
-        self.worker = MediaInputWorker(
+        self.set_working_dir(
+            self.config.cfg_payload.working_dir
+            / generate_unique_date_name(
+                self.config.media_input_payload.encode_file.stem  # pyright: ignore [reportOptionalMemberAccess]
+            )
+        )
+        self.worker = GeneralWorker(
             func=self.backend.get_media_info_files, files=files, parent=self
         )
         self.worker.job_failed.connect(self._worker_failed)
@@ -164,7 +163,7 @@ class MediaInputAdvanced(BaseWizardPage):
         self, entry_widget: QLineEdit, title: str, extension: list
     ) -> None:
         supported_extensions = (
-            f"{title} File " f"({' '.join(['*' + ext for ext in extension])})"
+            f"{title} File ({' '.join(['*' + ext for ext in extension])})"
         )
         open_file, _ = QFileDialog.getOpenFileName(
             parent=self,

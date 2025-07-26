@@ -1,31 +1,21 @@
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-from src.logger.nfo_forge_logger import LogLevel
-from src.enums.theme import NfoForgeTheme
-from src.enums.profile import Profile
-from src.enums.media_mode import MediaMode
-from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.image_plugin import ImagePlugin
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.indexer import Indexer
 from src.enums.cropping import Cropping
+from src.enums.image_host import ImageHost, ImageSource
+from src.enums.image_plugin import ImagePlugin
+from src.enums.indexer import Indexer
+from src.enums.media_mode import MediaMode
+from src.enums.profile import Profile
+from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
+from src.enums.theme import NfoForgeTheme
 from src.enums.token_replacer import ColonReplace
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.url_type import URLType
-from src.payloads.trackers import (
-    MoreThanTVInfo,
-    TorrentLeechInfo,
-    BeyondHDInfo,
-    PassThePopcornInfo,
-    ReelFlixInfo,
-    AitherInfo,
-    HunoInfo,
-    LSTInfo,
-)
+from src.logger.nfo_forge_logger import LogLevel
 from src.payloads.clients import TorrentClient
-from src.payloads.watch_folder import WatchFolder
 from src.payloads.image_hosts import (
     CheveretoV3Payload,
     CheveretoV4Payload,
@@ -33,6 +23,18 @@ from src.payloads.image_hosts import (
     ImageBoxPayload,
     PTPIMGPayload,
 )
+from src.payloads.trackers import (
+    AitherInfo,
+    BeyondHDInfo,
+    DarkPeersInfo,
+    HunoInfo,
+    LSTInfo,
+    MoreThanTVInfo,
+    PassThePopcornInfo,
+    ReelFlixInfo,
+    TorrentLeechInfo,
+)
+from src.payloads.watch_folder import WatchFolder
 
 
 @dataclass(slots=True)
@@ -50,15 +52,17 @@ class ConfigPayload:
     media_mode: MediaMode
     source_media_ext_filter: list[str]
     encode_media_ext_filter: list[str]
-    media_input_dir: bool
     releasers_name: str
     timeout: int
+    enable_mkbrr: bool
     log_level: LogLevel
     log_total: int
+    working_dir: Path
 
     # dependencies
     ffmpeg: Path | None
     frame_forge: Path | None
+    mkbrr: Path | None
 
     # api keys
     tmdb_api_key: str
@@ -75,6 +79,7 @@ class ConfigPayload:
     aither_tracker: AitherInfo
     huno_tracker: HunoInfo
     lst_tracker: LSTInfo
+    darkpeers_tracker: DarkPeersInfo
 
     # torrent client settings
     qbittorrent: TorrentClient
@@ -90,11 +95,16 @@ class ConfigPayload:
     mvr_replace_illegal_chars: bool
     mvr_colon_replace_filename: ColonReplace
     mvr_colon_replace_title: ColonReplace
+    mvr_parse_filename_attributes: bool
     mvr_token: str
     mvr_title_token: str
     mvr_clean_title_rules: list[tuple[str, str]]
     mvr_clean_title_rules_modified: bool
     mvr_release_group: str
+    mvr_mi_video_dynamic_range: dict[str, Any]
+
+    # user tokens
+    user_tokens: dict[str, tuple[str, str]]
 
     # screenshot settings
     crop_mode: Cropping
@@ -159,3 +169,8 @@ class ConfigPayload:
     lstrip_blocks: bool
     newline_sequence: str
     keep_trailing_newline: bool
+
+    # release notes
+    enable_release_notes: bool
+    last_used_release_note: str
+    release_notes: dict[str, str]

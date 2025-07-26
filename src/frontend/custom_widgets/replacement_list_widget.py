@@ -1,23 +1,24 @@
-import re
 from collections.abc import Sequence
+import re
+
+from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication,
-    QMessageBox,
-    QWidget,
-    QVBoxLayout,
     QHBoxLayout,
+    QHeaderView,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QTableWidget,
     QTableWidgetItem,
-    QPushButton,
-    QHeaderView,
-    QSizePolicy,
     QToolButton,
-    QSpacerItem,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, Slot
-from PySide6.QtGui import QColor, QPalette
 
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class LoadedReplacementListWidget(QWidget):
@@ -45,59 +46,39 @@ class LoadedReplacementListWidget(QWidget):
         self.replacement_list_widget.set_defaults.connect(self.apply_defaults)
         self.replacement_list_widget.setMinimumHeight(180)
 
-        self.add_row_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "add_circle.svg",
-            "addRowBtn",
-            20,
-            20,
-            parent=self,
+        self.add_row_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.add_row_btn, "ph.plus-circle-light", icon_size=QSize(20, 20)
         )
         self.add_row_btn.clicked.connect(self.replacement_list_widget.add_row)
         self.add_row_btn.setToolTip("Add a row")
 
-        self.delete_row_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "delete.svg",
-            "deleteRowBtn",
-            20,
-            20,
-            parent=self,
+        self.delete_row_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.delete_row_btn, "ph.trash-simple-light", icon_size=QSize(20, 20)
         )
         self.delete_row_btn.clicked.connect(
             self.replacement_list_widget.remove_selected_row
         )
         self.delete_row_btn.setToolTip("Remove currently selected row")
 
-        self.reset_table_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "reset.svg",
-            "resetTableBtn",
-            20,
-            20,
-            parent=self,
+        self.reset_table_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.reset_table_btn, "ph.arrow-clockwise-light", icon_size=QSize(20, 20)
         )
         self.reset_table_btn.clicked.connect(self.reset_table)
         self.reset_table_btn.setToolTip("Reset table to defaults")
 
-        self.row_up_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "arrow_upward.svg",
-            "rowUpBtn",
-            20,
-            20,
-            parent=self,
+        self.row_up_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.row_up_btn, "ph.arrow-up-light", icon_size=QSize(20, 20)
         )
         self.row_up_btn.clicked.connect(self.replacement_list_widget.move_up)
         self.row_up_btn.setToolTip("Move currently selected row up")
 
-        self.row_down_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "arrow_downward.svg",
-            "rowDownBtn",
-            20,
-            20,
-            parent=self,
+        self.row_down_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.row_down_btn, "ph.arrow-down-light", icon_size=QSize(20, 20)
         )
         self.row_down_btn.clicked.connect(self.replacement_list_widget.move_down)
         self.row_down_btn.setToolTip("Move currently selected row down")
@@ -133,8 +114,8 @@ class LoadedReplacementListWidget(QWidget):
             self.replacement_list_widget.default_rules = rules
 
     def reset(self) -> None:
-        self.replacement_list_widget.clearContents()
         self.replacement_list_widget.setRowCount(0)
+        self.replacement_list_widget.clearContents()
 
     def apply_defaults(self) -> None:
         if self.default_rules:

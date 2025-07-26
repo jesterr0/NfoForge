@@ -1,12 +1,13 @@
-import traceback
 from collections.abc import Callable
+import traceback
 
-from PySide6.QtCore import Signal, QThread
+from PySide6.QtCore import QThread, Signal
+
 from src.logger.nfo_forge_logger import LOG
 
 
-class MediaInputWorker(QThread):
-    """Handle jobs in a thread to keep the frontend smooth for media input"""
+class GeneralWorker(QThread):
+    """Handle jobs in a thread to keep the frontend smooth for different purposes"""
 
     job_finished = Signal(object)
     job_failed = Signal(str)

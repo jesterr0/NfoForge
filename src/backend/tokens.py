@@ -1,6 +1,8 @@
 from collections.abc import Iterable
-from dataclasses import field, make_dataclass, asdict
-from typing import NamedTuple, Type, Any
+from dataclasses import asdict, field, make_dataclass
+from typing import Any, NamedTuple, Type
+
+from src.enums import CaseInsensitiveStrEnum
 
 
 MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
@@ -47,12 +49,26 @@ class NfoToken(TokenType):
     pass
 
 
+class TokenSelection(CaseInsensitiveStrEnum):
+    FILE_TOKEN = "FileToken"
+    NFO_TOKEN = "NfoToken"
+
+    def get_token_obj(self) -> Type[TokenType]:
+        if self == TokenSelection.FILE_TOKEN:
+            return FileToken
+        elif self == TokenSelection.NFO_TOKEN:
+            return NfoToken
+        raise AttributeError("Failed to get token object")
+
+
 class Tokens:
     __slots__ = ()
 
     # File Tokens
     EDITION = FileToken("{edition}", "Edition")
     FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
+    HYBRID = FileToken("{hybrid}", "HYBRID")
+    LOCALIZATION = FileToken("{localization}", "Subbed/Dubbed")
     MI_AUDIO_BITRATE = FileToken("{mi_audio_bitrate}", "Audio bitrate (640000)")
     MI_AUDIO_BITRATE_FORMATTED = FileToken(
         "{mi_audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
@@ -163,6 +179,7 @@ class Tokens:
     )
     RE_RELEASE = FileToken("{re_release}", "Repack/Proper")
     RESOLUTION = FileToken("{resolution}", "Resolution (1080p)")
+    REMUX = FileToken("{remux}", "REMUX")
     SOURCE = FileToken("{source}", "Source media (BluRay/DVD)")
 
     # NFO Tokens
@@ -192,10 +209,34 @@ class Tokens:
         "{mi_video_bit_rate_num_only}",
         "Average video bit-rate in kbps, numbers only (9975)",
     )
+    RELEASE_NOTES = NfoToken(
+        "{release_notes}",
+        "Special token that is optionally applied for each job process",
+    )
     REPACK = NfoToken("{repack}", "Returns 'REPACK' if repack was detected")
     REPACK_N = NfoToken("{repack_n}", "Repack and repack number if exists (REPACK2)")
     REPACK_REASON = NfoToken("{repack_reason}", "Reason for REPACK if provided")
     SCREEN_SHOTS = NfoToken("{screen_shots}", "Screenshots")
+    SCREEN_SHOTS_COMPARISON = NfoToken(
+        "{screen_shots_comparison}",
+        "Screenshots in comparison mode (raw URLs only; user must add comparison tags)",
+    )
+    SCREEN_SHOTS_EVEN_OJB = NfoToken(
+        "{screen_shots_even_obj}",
+        "Even screenshot objects in a list with both obj.url and obj.medium_url (both are not guaranteed)",
+    )
+    SCREEN_SHOTS_ODD_OBJ = NfoToken(
+        "{screen_shots_odd_obj}",
+        "Odd screenshot URLs in a list with both obj.url and obj.medium_url (both are not guaranteed)",
+    )
+    SCREEN_SHOTS_EVEN_STR = NfoToken(
+        "{screen_shots_even_str}",
+        "Even screenshot URLs as strings (medium_url if available, else url)",
+    )
+    SCREEN_SHOTS_ODD_STR = NfoToken(
+        "{screen_shots_odd_str}",
+        "Odd screenshot URLs as strings (medium_url if available, else url)",
+    )
     FILE_SIZE_BYTES = NfoToken("{file_size_bytes}", "File size in bytes (8469985859)")
     FILE_SIZE = NfoToken("{file_size}", "File size (7.89 GiB)")
     DURATION_MILLISECONDS = NfoToken(
@@ -256,7 +297,7 @@ class Tokens:
         ]
 
         TokenDataClass = make_dataclass(
-            cls_name="TokenData",
+            cls_name="TokenInfo",
             fields=fields,
             namespace={"get_dict": lambda self: asdict(self)},
         )

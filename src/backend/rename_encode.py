@@ -1,17 +1,24 @@
 from pathlib import Path
+from typing import Any
+
+from guessit import guessit
 from pymediainfo import MediaInfo
 
 from src.backend.token_replacer import TokenReplacer
-from src.enums.token_replacer import ColonReplace
+from src.enums.rename import QualitySelection
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.payloads.media_search import MediaSearchPayload
 
 
 class RenameEncodeBackEnd:
-    # def __init__(self):
-    #     pass
+    __slots__ = ("token_replacer", "override_tokens")
 
-    @staticmethod
+    def __init__(self):
+        self.token_replacer = TokenReplacer | None
+        self.override_tokens = {}
+
     def media_renamer(
+        self,
         media_file: Path,
         source_file: Path | None,
         mvr_token: str,
@@ -20,9 +27,10 @@ class RenameEncodeBackEnd:
         media_info_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
         movie_clean_title_rules: list[tuple[str, str]] | None,
+        mi_video_dynamic_range: dict[str, Any] | None,
+        user_tokens: dict[str, str] | None,
     ) -> Path | None:
-        output = None
-        token_replacer = TokenReplacer(
+        self.token_replacer = TokenReplacer(
             media_input=media_file,
             jinja_engine=None,
             source_file=source_file,
@@ -33,9 +41,40 @@ class RenameEncodeBackEnd:
             source_file_mi_obj=source_file_mi_obj,
             flatten=True,
             file_name_mode=True,
+            unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             movie_clean_title_rules=movie_clean_title_rules,
+            mi_video_dynamic_range=mi_video_dynamic_range,
+            override_tokens=self.override_tokens,
+            user_tokens=user_tokens,
         )
-        data = token_replacer.get_output()
+        data = self.token_replacer.get_output()
         if data:
-            output = data
-        return Path(output) if output else None
+            return Path(data)
+
+    def reset(self) -> None:
+        self.token_replacer = None
+        self.override_tokens.clear()
+
+    @staticmethod
+    def get_quality(
+        media_input: Path,
+        source_input: Path | None = None,
+    ) -> QualitySelection | None:
+        source = guessit(media_input.name).get("source", "")
+
+        # if we have access to the source file let's instead parse that
+        if source_input:
+            check_source_file = guessit(source_input.name).get("source", "")
+            if check_source_file:
+                source = check_source_file
+
+        if "Ultra Blu-ray" in source or "Blu-ray" in source:
+            return QualitySelection.BLURAY
+        elif "DVD" in source:
+            return QualitySelection.DVD
+        elif "Web" in source:
+            return QualitySelection.WEB_DL
+        elif "HDTV" in source:
+            return QualitySelection.HDTV
+        elif "SDTV" in source:
+            return QualitySelection.SDTV

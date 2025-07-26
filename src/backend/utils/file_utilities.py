@@ -1,5 +1,8 @@
-from os import PathLike
+from datetime import datetime
+from os import PathLike, startfile
 from pathlib import Path
+from platform import system
+from subprocess import run
 from typing import Iterable
 
 
@@ -18,3 +21,38 @@ def find_largest_file_in_directory(
                 largest_file = item
 
     return largest_file
+
+
+def generate_unique_date_name(
+    file_name: str, max_len: int = 25, date_format: str = "%m.%d.%Y_%I.%M.%S"
+) -> str:
+    """Generate unique names based on file name and current date"""
+    return f"{file_name[: max_len + 1]}_{datetime.now().strftime(date_format)}"
+
+
+def open_explorer(path: Path) -> None:
+    """Multi platform way to open explorer at X path"""
+    if path.exists() and path.is_dir():
+        cur_platform = system()
+        # windows
+        if cur_platform == "Windows":
+            startfile(str(path))
+        # mac
+        elif cur_platform == "Darwin":
+            run(["open", str(path.as_posix())])
+        # Linux and others
+        else:
+            run(["xdg-open", str(path.as_posix())])
+
+
+def file_bytes_to_str(size: float) -> str:
+    """Return size as a string"""
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} PB"
+
+
+def get_dir_size(path: Path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())

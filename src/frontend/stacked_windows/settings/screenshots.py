@@ -1,27 +1,28 @@
-from PySide6.QtCore import Slot, QEvent, Qt
+from PySide6.QtCore import QEvent, Qt, Slot
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QCheckBox,
-    QSpinBox,
-    QDoubleSpinBox,
     QMessageBox,
+    QSpinBox,
     QWidget,
 )
-from PySide6.QtGui import QColor, QPalette
 
-from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.cropping import Cropping
-from src.enums.indexer import Indexer
 from src.enums.image_plugin import ImagePlugin
-from src.enums.subtitles import SubtitleAlignment
+from src.enums.indexer import Indexer
+from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
-from src.frontend.utils import build_h_line, create_form_layout
-from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.enums.subtitles import SubtitleAlignment
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
+from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.image_host_listbox import ImageHostListBox
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
+from src.frontend.utils import build_h_line, create_form_layout
 
 
 class ScreenShotSettings(BaseSettings):
@@ -265,7 +266,7 @@ class ScreenShotSettings(BaseSettings):
         self.add_layout(
             create_form_layout(image_host_config_label, self.image_host_config)
         )
-        self.add_layout(self.reset_layout)
+        self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
 
@@ -288,7 +289,7 @@ class ScreenShotSettings(BaseSettings):
                 self.config.cfg_payload.screenshots_enabled = False
                 self.ss_enabled_btn.setChecked(False)
                 self.config.save_config()
-                self.settings_window.swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+                GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
         elif ss_mode == ScreenShotMode.ADV_SS_COMP:
             frame_forge = self.config.cfg_payload.frame_forge
@@ -305,7 +306,7 @@ class ScreenShotSettings(BaseSettings):
                 self.config.cfg_payload.screenshots_enabled = False
                 self.ss_enabled_btn.setChecked(False)
                 self.config.save_config()
-                self.settings_window.swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+                GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
     @Slot(bool)
     def _ss_enable_toggle_check(self, _: bool) -> None:

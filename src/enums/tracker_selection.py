@@ -1,4 +1,5 @@
 from typing_extensions import override
+
 from src.enums import CaseInsensitiveEnum
 
 
@@ -11,6 +12,7 @@ class TrackerSelection(CaseInsensitiveEnum):
     AITHER = "Aither"
     HUNO = "HUNO"
     LST = "LST"
+    DARK_PEERS = "DarkPeers"
 
     @override
     def __str__(self) -> str:

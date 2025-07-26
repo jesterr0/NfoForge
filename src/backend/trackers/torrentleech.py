@@ -1,13 +1,14 @@
-import pickle
-import requests
 from datetime import datetime
 from pathlib import Path
+import pickle
+
+import niquests
 from pymediainfo import MediaInfo
 
-from src.enums.trackers.torrentleech import TLCategories
-from src.exceptions import TrackerError
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.trackers.torrentleech import TLCategories
+from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
@@ -48,10 +49,10 @@ class TLUploader:
         tracker_title: str | None,
         torrent_file: Path,
         mediainfo_obj: MediaInfo,
-    ) -> str:
+    ) -> str | None:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
-        data = self._get_data(get_resolution)
+        data = self._get_data(torrent_file.stem, get_resolution)
         if tracker_title:
             data["name"] = tracker_title
 
@@ -59,7 +60,7 @@ class TLUploader:
         LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {data}")
 
         try:
-            request = requests.post(
+            request = niquests.post(
                 url=self.UPLOAD_URL,
                 files=files,
                 data=data,
@@ -77,8 +78,8 @@ class TLUploader:
                 )
                 LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
                 raise TrackerError(upload_error_msg)
-        except requests.exceptions.RequestException as e:
-            request_error_msg = f"There was an error uploading (requests): {e}"
+        except niquests.exceptions.RequestException as e:
+            request_error_msg = f"There was an error uploading (niquests): {e}"
             LOG.error(LOG.LOG_SOURCE.BE, request_error_msg)
             raise TrackerError(request_error_msg)
 
@@ -86,21 +87,37 @@ class TLUploader:
         with open(torrent_file, "rb") as t_file:
             return {"nfo": nfo, "torrent": (str(torrent_file), t_file.read())}
 
-    def _get_data(self, resolution: str) -> dict:
+    def _get_data(self, title: str, resolution: str) -> dict:
         return {
             "announcekey": self.announce_key,
-            "category": self._detect_category(resolution),
+            "category": self._detect_category(title, resolution),
         }
 
     @staticmethod
-    def _detect_category(resolution: str) -> int:
-        # TODO: add support for everything else/tv
-        if resolution in {"720p", "1080p"}:
-            return TLCategories.MOVIE_BLURAY_RIP.value
-        elif resolution == "2160p":
-            return TLCategories.MOVIE_4K.value
+    def _detect_category(title: str, resolution: str) -> int:
+        # TODO: This will still need some TLC. We need a cleaner way to determine whats what
+        # and pass it to all trackers
+        title_lowered = title.lower()
+        if "bluray" in title_lowered or "blu-ray" in title_lowered:
+            if resolution in {"720p", "1080p"}:
+                return TLCategories.MOVIE_BLURAY_RIP.value
+            elif resolution == "2160p":
+                return TLCategories.MOVIE_4K.value
+            else:
+                raise TrackerError(
+                    "Resolution must be one of '720p', '1080p' or '2160p'"
+                )
+        # TODO: will need to add check if it's a movie for SERIES
+        elif "webrip" in title_lowered or "webdl" in title_lowered:
+            return TLCategories.MOVIE_WEB_RIP.value
+        elif "dvd" in title_lowered:
+            if "rip" in title_lowered:
+                return TLCategories.MOVIE_DVD_RIP.value
+            return TLCategories.MOVIE_DVD.value
+        elif "hdtv" in title_lowered:
+            return TLCategories.MOVIE_HD_RIP.value
         else:
-            raise TrackerError("Resolution must be one of '720p', '1080p' or '2160p'")
+            raise TrackerError("Failed to determine proper TorrentLeech category")
 
 
 class TLSearch:
@@ -122,7 +139,7 @@ class TLSearch:
         self.alt_2_fa_token = alt_2_fa_token
         self.timeout = timeout
 
-        self._session = requests.Session()
+        self._session = niquests.Session()
 
     def search(self, file_input: Path) -> list[TrackerSearchResult]:
         LOG.info(
@@ -209,15 +226,44 @@ class TLSearch:
 
     def _login(self) -> bool:
         if self._load_cookies():
-            cookie_token = self._validate_session()
-            if cookie_token:
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE, "TorrentLeech cookies valid, skipping login"
+            try:
+                cookie_token = self._validate_session()
+                if cookie_token:
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE, "TorrentLeech cookies valid, skipping login"
+                    )
+                    return True
+                else:
+                    # cookie invalid/expired, delete and retry login
+                    try:
+                        self.cookie_path.unlink()
+                        LOG.debug(
+                            LOG.LOG_SOURCE.BE,
+                            f"Deleted expired TorrentLeech cookie: {self.cookie_path}",
+                        )
+                    except Exception as e:
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {e}"
+                        )
+            except TrackerError as e:
+                # cookie invalid/expired, delete and retry login
+                try:
+                    self.cookie_path.unlink()
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        f"Deleted expired TorrentLeech cookie (exception): {self.cookie_path}",
+                    )
+                except Exception as ex:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE, f"Failed to delete expired cookie: {ex}"
+                    )
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"TL cookie invalid: {e}. Retrying login with fresh session.",
                 )
-                return True
 
         response = self._session.get(self.LOGIN_URL, timeout=self.timeout)
-        csrf_token = response.cookies.get("csrf_token")
+        csrf_token = response.cookie["csrf_token"]
 
         data = {
             "username": self.username,
@@ -234,7 +280,7 @@ class TLSearch:
             LOG.error(LOG.LOG_SOURCE.BE, login_error_message)
             raise TrackerError(login_error_message)
 
-        if "loggedin" in response.text:
+        if response.text and "loggedin" in response.text:
             LOG.debug(LOG.LOG_SOURCE.BE, "Successfully logged into TorrentLeech")
             self._save_cookies()
             return True
@@ -244,9 +290,9 @@ class TLSearch:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
             with self._session.get(self.LOGIN_URL) as response:
-                if "loggedin" in response.text:
+                if response.text and "loggedin" in response.text:
                     return True
-        except requests.RequestException:
+        except niquests.RequestException:
             return False
 
     def _save_cookies(self) -> None:
@@ -258,7 +304,7 @@ class TLSearch:
         if self.cookie_path.exists():
             with open(self.cookie_path, "rb") as file:
                 cookies = pickle.load(file)
-                self._session.cookies.update(cookies)
+                self._session.cookies = cookies
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"TorrentLeech cookies loaded from {self.cookie_path}",

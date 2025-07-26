@@ -5,6 +5,117 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-07-26
+
+### Added
+
+- Added Working Directory input (general settings).
+- Added button to open current working directory in file explorer across Win, Linux, and Mac.
+- Added option to prevent parsing of input file attributes (REMUX, HYBRID, PROPER, and REPACK) in the movie settings tab.
+- Added example file input and mediainfo window in the movie settings tab to show the raw data of how the examples are being generated.
+- New tokens (**hybrid**, **localization**, and **remux**).
+- Rename window has been completely reworked.
+  - Now uses tokens instead of hierarchy, this is superior to the older method and allows greater user customization where they want this input.
+  - Added some new default **Repack Reasons** in the drop down menu.
+  - Updated default **Repack/Proper** reason placeholder.
+  - Added a new section to over ride the token string, toggled via a checkbox.
+  - Added a new button that opens a pop up window to show the user all the potential **FileTokens** they can use in their override string, where they can click to copy/search.
+  - Added a **REMUX** checkbox (if the token exists in the string it'll fill the remux token).
+  - Added a **HYBRID** checkbox (if the token exists in the string it'll fill the hybrid token).
+  - Options portion has been put in a scroll area to allow more widgets.
+  - All combo boxes (drop down menus) mouse wheel has been disabled as to not accidentally change while scrolling the new scroll window.
+  - **Output can no longer be edited directly, you must use the override token area above and edit each value as needed**.
+  - When the **Value** is edited in the **override** section, if the **same** token in a corresponding **title token** exists it will also be updated.
+  - Added a new **quality** selection box, this box will **override** the **source** token if utilized. It's automatically detected and set on initialization of the rename page.
+  - New validation to ensure the user isn't blatantly using an invalid quality to resolution.
+- Added support for **user tokens**.
+- Added new **Settings** tab **User Tokens**.
+  - Can now add **custom** user tokens for both **FileTokens** and **NfoTokens**.
+  - Tokens must be **prefixed** with **usr\_**, all **lowercase**, and **underscores**.
+  - **Duplicate** tokens are ignored, only the **last duplicate** token will be accepted.
+  - Includes a button to to expand the editor for longer/multi-line tokens.
+- **TokenReplacer** engine has been improved.
+- Added a new special NfoToken **release_notes**.
+  - This token works similar to the other NfoTokens.
+  - Added a new wizard page called **Release Notes**, this page allows you to add, delete, edit, manage as many **notes** as you want and label them what ever.
+  - Each time you utilize the work flow, you can set the type of release notes you want sent to fill the token **release_notes**.
+  - Updated default template for new nfo templates to include a if block for **release_notes**.
+  - Added a new variable to the **SharedData** called **release_notes**, that can be overridden in a plugin.
+- **Directory** support has been officially added and tested.
+  - You can now open a directory in **Basic** mode, this will be good for structures that have a top level folder and file(s) inside.
+  - During **rename** on the **process** page the **top-level folder** that was opened will be renamed at the same time as the file.
+  - The largest file with the **supported selected suffix (.mkv/.mp4)** will automatically be detected as your **media file**.
+  - You can open a file/directory via drag and drop or by using the dedicated buttons.
+  - If the file is a directory you'll see a new **file tree** appear, showing the files that will be utilized.
+  - Program now displays current size of working directory on status bar 3.5 seconds after launch.
+  - Added a delete button to clean up working directory in the settings tab.
+- Added support for torrent generation with **mkbrr**.
+  - Added support in the **Dependencies** settings tab modify the path to mkbrr if needed.
+  - Torrent generation will now **default** to **mkbrr** if it's available, but will fall back to torf as needed or on failure.
+  - As of now **mkbrr** will not be bundled with NfoForge on Windows. However, if desired it'll look for **mkbrr** on the system path or in NfoForge's `runtime/apps/mkbrr/*` if you decide you want to bundle it.
+  - Added toggle to prioritize torrent generation with **mkbrr** if exists/enabled.
+- Added support for **DarkPeers**.
+- Added prompt if user opens URLs or image files to be utilized asking if they are comparison images.
+- Added new **screenshot comparison tokens** _(they are available as long as the user used comparison images via generation or input)_.
+  - Added new token **screen_shots_comparison**.
+    - The user is still responsible for the comparison tags in their templates, this only outputs the raw image URLs in the correct format.
+  - Added new token **screen_shots_even_obj**.
+    - Returns an iterable of even screenshot objects that have **x.url** and **x.medium_url** _(both are not guaranteed so check them with an if statement)_, the user can display it/iterate it in what ever way they desire via the template engine.
+  - Added new token **screen_shots_odd_obj**.
+    - Returns an iterable of odd screenshot objects that have **x.url** and **x.medium_url** _(both are not guaranteed so check them with an if statement)_, the user can display it/iterate it in what ever way they desire via the template engine.
+  - Added new token **screen_shots_even_str**.
+    - Returns an iterable of even strings (source).
+  - Added new token **screen_shots_odd_str**.
+    - Returns an iterable of odd strings (encode).
+
+### Changed
+
+- Upgraded PySide6 to 6.8.3 (tried to go for latest version but there was some minor graphical issues with images).
+- Upgraded from requests to niquests.
+- Built in plugin descriptions are more descriptive (thanks yammes).
+- Slightly organized general settings tab.
+- Basic/Advanced inputs now sets working directory sub folder name based on inputs for rest of programs control flow.
+- Basic input now always accepts a folder or a file without needing toggled in settings.
+- Improved error handling of token replacer backend.
+- **Template Settings** token child window will now automatically be closed when closing settings or navigating to a new settings tab.
+- **Major** token **mi_video_dynamic_range** changes (thanks yammes):
+  - Built a new widget in the **Movie Settings** tab that allows the user fine grained control over how it works.
+  - Set which resolutions this token will be active in (720p, 1080p, 2160p).
+  - You can set which HDR types will be returned.
+  - You can adjust custom strings that will be used when they are returned for each HDR type.
+- TokenTable in edit mode is not organized a bit better with h-lines.
+- Massively improved edition detection from filename in rename window.
+- **Basic Input** page will now flash yellow to alert the user when the user attempts to press **Next** with invalid/missing inputs.
+- **Overview Page** file tree widget now auto expands upload loading files.
+- **Process Page** log area has been re-worked with rich text. Utilizing emojis and html/css to make things look a bit nicer overall.
+  - Detected **duplicates** now have clickable links right from the **log window**, that will open your default browser to navigate to if desired.
+  - Emojis for status column.
+  - Better organization/separation for different steps in the window.
+- Improved settings tabs layout.
+- All image host uploaders now log retries.
+- **Overview** page initialization is now handled in a threaded worker, to keep the UI smooth while it's handling longer loading NFOs/plugins.
+- Improved icons across the whole program (less dependencies to package in the runtime folder).
+
+### Fixed
+
+- Don't send TVDB ID to Unit3d trackers if media type is not series.
+- Error when image generation is disabled.
+- Built in editions in rename window could be duplicated with specific formatting.
+- Wrong svg icon on advanced input for the buttons.
+- Fixed about tab copy to clip board buttons not working.
+- Token **mi_audio_bitrate** would return no results.
+- Rare issue that could happen if the token when was closed after copying data from it.
+- Extra white space on some of the settings tab at the bottom of the window.
+- TokenReplacer engine not replacing tokens when there was an unknown or invalid token in the user input.
+- Depending on the vertical height of the parent window sometimes the **Process Page log** would not scroll all the way down when the progress bar was shown.
+- Expired cookies on **TorrentLeech**, **PassThePopCorn**, **MoreThanTv** was not automatically being deleted and recreated as needed. Resulting in failed authentication.
+- PassThePopCorn could upload with an invalid image format in some cases.
+- Sandbox preview now properly uses dummy screenshots.
+
+### Removed
+
+- Remove Directory Input toggle in general settings.
+
 ## [0.7.4] - 2025-05-30
 
 ### Fixed

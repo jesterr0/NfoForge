@@ -28,7 +28,7 @@ class SecuritySettings(BaseSettings):
 
         self.add_layout(create_form_layout(tmdb_api_key_lbl, self.tmdb_api_key_entry))
         self.add_layout(create_form_layout(tvdb_api_key_lbl, self.tvdb_api_key_entry))
-        self.add_layout(self.reset_layout)
+        self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
 

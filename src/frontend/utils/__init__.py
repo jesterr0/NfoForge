@@ -1,16 +1,18 @@
-from typing import Any
 from pathlib import Path
+from typing import Any
+import weakref
+
+from PySide6.QtCore import QSize, QTimer, Qt, Slot
+from PySide6.QtGui import QCursor, QIcon
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
-    QWidget,
-    QLayout,
-    QFrame,
-    QStackedWidget,
     QFormLayout,
+    QFrame,
+    QLayout,
+    QStackedWidget,
+    QWidget,
 )
-from PySide6.QtGui import QIcon, QCursor
-from PySide6.QtCore import Qt, QSize, Slot
 
 from src.backend.utils.working_dir import RUNTIME_DIR
 
@@ -211,3 +213,47 @@ def create_form_layout(
     if widget2:
         form_layout.addWidget(widget2)
     return form_layout
+
+
+class QWidgetTempStyle:
+    """Singleton to temporarily manipulate stylesheets of widgets for warnings."""
+
+    __slots__ = ("timers",)
+    timers: "weakref.WeakKeyDictionary[QWidget, QTimer]"
+
+    _instance = None
+
+    def __new__(cls, *args, **kwargs) -> "QWidgetTempStyle":
+        if not cls._instance:
+            cls._instance = super().__new__(cls)
+            cls._instance.timers = weakref.WeakKeyDictionary()
+        return cls._instance
+
+    def set_temp_style(
+        self,
+        widget: QWidget,
+        temp_style: str = "background-color: yellow;",
+        duration: int = 1000,
+        system_beep: bool = False,
+    ) -> None:
+        """Temporarily set a widget's style, then restore the original after duration."""
+        if widget in self.timers:
+            self.timers[widget].stop()
+
+        if not hasattr(widget, "_original_style"):
+            widget._original_style = widget.styleSheet()  # type: ignore
+        widget.setStyleSheet(temp_style)
+        timer = QTimer(singleShot=True)
+
+        def restore():
+            # only restore if the widget still exists and has the temp style
+            if hasattr(widget, "_original_style"):
+                widget.setStyleSheet(widget._original_style)  # type: ignore
+                del widget._original_style  # type: ignore
+            self.timers.pop(widget, None)
+
+        timer.timeout.connect(restore)
+        timer.start(duration)
+        if system_beep:
+            QApplication.beep()
+        self.timers[widget] = timer

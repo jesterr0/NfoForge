@@ -1,8 +1,11 @@
+from pathlib import Path
 import re
 import shutil
-from pathlib import Path
-from pymediainfo import MediaInfo
 from typing import Tuple, Union
+
+from pymediainfo import MediaInfo
+
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.url_type import URLType
 from src.exceptions import MediaFrameCountError, URLFormattingError
 from src.logger.nfo_forge_logger import LOG
@@ -257,6 +260,7 @@ def extract_images_from_str(
 
 
 def format_image_data_to_str(
+    tracker: TrackerSelection,
     data: dict[int, ImageUploadData],
     url_type: URLType,
     columns: int,
@@ -268,6 +272,7 @@ def format_image_data_to_str(
     Formats a dictionary of image upload data into a structured string using BBCode or HTML.
 
     Args:
+        tracker (TrackerSelection): TrackerSelection.
         data (dict[int, ImageUploadData]): Dictionary mapping indices to ImageUploadData objects.
         url_type (URLType): The format type (BBCode or HTML).
         columns (int): Number of images per row.
@@ -287,16 +292,22 @@ def format_image_data_to_str(
         if item.url:
             img_url = item.medium_url if item.medium_url else item.url
 
-            if url_type == URLType.BBCODE:
-                urls.append(f"[url={item.url}][img]{img_url}[/img][/url]")
-            elif url_type == URLType.HTML:
-                urls.append(f'<a href="{item.url}"><img src="{img_url}"></a>')
+            # we can force image layouts for trackers if needed here
+            if tracker is TrackerSelection.PASS_THE_POPCORN:
+                urls.append(f"[img]{img_url}[/img]")
+            # default formatting
+            else:
+                if url_type == URLType.BBCODE:
+                    urls.append(f"[url={item.url}][img]{img_url}[/img][/url]")
+                elif url_type == URLType.HTML:
+                    urls.append(f'<a href="{item.url}"><img src="{img_url}"></a>')
 
     if not urls:
         if strict:
             raise URLFormattingError("Invalid URL data")
         return ""
 
+    # handle positional formatting
     column_spacing = " " * column_space
     row_spacing = "\n" * (row_space + 1)
 
@@ -307,3 +318,84 @@ def format_image_data_to_str(
 
     formatted_text = row_spacing.join(formatted_rows)
     return formatted_text
+
+
+def format_image_data_to_comparison(data: dict[int, ImageUploadData]) -> str:
+    """
+    Formats images in a comparison format.
+    ```
+    img_source1 img_encode1
+    img_source2 img_encode2
+    img_source3 img_encode3
+    ```
+
+    Args:
+        data (dict[int, ImageUploadData]): Dictionary mapping indices to ImageUploadData objects.
+    """
+    COLUMNS = 2
+
+    urls = []
+
+    for item in data.values():
+        if item.url:
+            img_url = item.medium_url if item.medium_url else item.url
+            urls.append(img_url)
+
+    if not urls:
+        return ""
+
+    # handle positional formatting
+    column_spacing = " "
+    row_spacing = "\n"
+
+    formatted_rows = []
+    for i in range(0, len(urls), COLUMNS):
+        row = column_spacing.join(urls[i : i + COLUMNS])
+        formatted_rows.append(row)
+
+    formatted_text = row_spacing.join(formatted_rows)
+    return formatted_text
+
+
+def get_parity_images(
+    data: dict[int, ImageUploadData], even: bool = True
+) -> list[ImageUploadData]:
+    """
+    Return a list of image objects from a dictionary, filtered by even or odd index.
+
+    Args:
+        data (dict[int, ImageUploadData]):
+            Dictionary of images, where keys are integer indices.
+        even (bool, optional):
+            If True, select even-indexed images (default). If False, select odd-indexed images.
+
+    Returns:
+        list[ImageUploadData]:
+            List of ImageUploadData objects.
+    """
+    parity = 0 if even else 1
+    return [item for idx, item in data.items() if idx % 2 == parity]
+
+
+def get_parity_images_to_str(
+    data: dict[int, ImageUploadData], even: bool = True
+) -> list[str]:
+    """
+    Return a list of images strings from a dictionary, filtered by even or odd index.
+
+    Args:
+        data (dict[int, ImageUploadData]):
+            Dictionary of images, where keys are integer indices.
+        even (bool, optional):
+            If True, select even-indexed images (default). If False, select odd-indexed images.
+
+    Returns:
+        list[str]:
+            If True, return a list of image URLs (preferring medium_url if available, else url).
+    """
+    parity = 0 if even else 1
+    return [
+        item.medium_url if item.medium_url else item.url
+        for idx, item in data.items()
+        if idx % 2 == parity and item.url
+    ]

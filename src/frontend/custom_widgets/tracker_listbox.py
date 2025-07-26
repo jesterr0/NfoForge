@@ -1,34 +1,34 @@
 from enum import Enum
 from typing import Type
 
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal, Slot
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QFrame,
-    QVBoxLayout,
-    QWidget,
-    QLabel,
     QCheckBox,
     QFormLayout,
+    QFrame,
+    QInputDialog,
+    QLabel,
     QLineEdit,
-    QTreeWidget,
-    QTreeWidgetItem,
     QMenu,
     QSpinBox,
-    QInputDialog,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot, QEvent, QTimer
-from PySide6.QtGui import QAction
 
-from src.enums.trackers.beyondhd import BHDPromo, BHDLiveRelease
+from src.config.config import Config
+from src.enums.tracker_selection import TrackerSelection
+from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
-from src.enums.tracker_selection import TrackerSelection
-from src.payloads.trackers import TrackerInfo
-from src.config.config import Config
-from src.frontend.utils import build_h_line
-from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.url_organizer import URLOrganizer
 from src.frontend.global_signals import GSigs
+from src.frontend.utils import build_h_line
+from src.payloads.trackers import TrackerInfo
 
 
 class TrackerEditBase(QFrame):
@@ -788,6 +788,7 @@ class HunoTrackerEdit(TrackerEditBase):
             self.config.cfg_payload.huno_tracker.column_space = col_space
             self.config.cfg_payload.huno_tracker.row_space = row_space
 
+
 class LSTTrackerEdit(TrackerEditBase):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(config, parent)
@@ -890,9 +891,7 @@ class LSTTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.lst_tracker.comments = self.comments.text().strip()
         self.config.cfg_payload.lst_tracker.source = self.source.text().strip()
         self.config.cfg_payload.lst_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.lst_tracker.anonymous = int(
-            self.anonymous.isChecked()
-        )
+        self.config.cfg_payload.lst_tracker.anonymous = int(self.anonymous.isChecked())
         self.config.cfg_payload.lst_tracker.internal = int(self.internal.isChecked())
         self.config.cfg_payload.lst_tracker.personal_release = int(
             self.personal_release.isChecked()
@@ -906,15 +905,104 @@ class LSTTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.lst_tracker.image_width = self.image_width.value()
         self.config.cfg_payload.lst_tracker.featured = int(self.featured.isChecked())
         self.config.cfg_payload.lst_tracker.free = int(self.free.isChecked())
-        self.config.cfg_payload.lst_tracker.double_up = int(
-            self.double_up.isChecked()
-        )
+        self.config.cfg_payload.lst_tracker.double_up = int(self.double_up.isChecked())
         self.config.cfg_payload.lst_tracker.sticky = int(self.sticky.isChecked())
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
             self.config.cfg_payload.lst_tracker.column_s = col_s
             self.config.cfg_payload.lst_tracker.column_space = col_space
             self.config.cfg_payload.lst_tracker.row_space = row_space
+
+
+class DarkPeersEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
+        staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
+        staff_and_internal_lbl = QLabel(
+            "All items below are available for staff and internal users", self
+        )
+        bold_font = staff_and_internal_lbl.font()
+        bold_font.setWeight(bold_font.Weight.Bold)
+        staff_and_internal_lbl.setFont(bold_font)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_widget_to_layout(
+            staff_and_internal_lbl,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        self.add_widget_to_layout(staff_and_internal_h_line)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.darkpeers_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.darkpeers_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.darkpeers_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.darkpeers_tracker.comments = (
+            self.comments.text().strip()
+        )
+        self.config.cfg_payload.darkpeers_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.darkpeers_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.darkpeers_tracker.anonymous = int(
+            self.anonymous.isChecked()
+        )
+        self.config.cfg_payload.darkpeers_tracker.internal = int(
+            self.internal.isChecked()
+        )
+        self.config.cfg_payload.darkpeers_tracker.personal_release = int(
+            self.personal_release.isChecked()
+        )
+        self.config.cfg_payload.darkpeers_tracker.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.darkpeers_tracker.column_s = col_s
+            self.config.cfg_payload.darkpeers_tracker.column_space = col_space
+            self.config.cfg_payload.darkpeers_tracker.row_space = row_space
 
 
 class TrackerListWidget(QWidget):
@@ -978,6 +1066,8 @@ class TrackerListWidget(QWidget):
             tracker_widget = HunoTrackerEdit(self.config, self)
         elif tracker is TrackerSelection.LST:
             tracker_widget = LSTTrackerEdit(self.config, self)
+        elif tracker is TrackerSelection.DARK_PEERS:
+            tracker_widget = DarkPeersEdit(self.config, self)
 
         if tracker_widget:
             tracker_widget.load_data.emit()

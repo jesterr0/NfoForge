@@ -24,8 +24,7 @@ class TrackersSettings(BaseSettings):
 
         self.add_widget(self.tracker_widget, stretch=5)
         self.add_widget(tracker_order_lbl)
-        self.add_widget(self.tracker_order, stretch=2)
-        self.inner_layout.removeItem(self._spacer_item)
+        self.add_widget(self.tracker_order, stretch=2, add_stretch=True)
 
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)

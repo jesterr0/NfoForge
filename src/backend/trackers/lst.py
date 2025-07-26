@@ -2,7 +2,8 @@ from pathlib import Path
 
 from pymediainfo import MediaInfo
 
-from src.backend.trackers import Unit3dBaseSearch, Unit3dBaseUploader
+from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
+from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.exceptions import TrackerError
@@ -10,6 +11,7 @@ from src.payloads.media_search import MediaSearchPayload
 
 
 def lst_uploader(
+    media_mode: MediaMode,
     api_key: str,
     torrent_file: Path,
     file_input: Path,
@@ -31,6 +33,7 @@ def lst_uploader(
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
     uploader = LSTUploader(
+        media_mode=media_mode,
         api_key=api_key,
         torrent_file=torrent_file,
         file_input=file_input,
@@ -64,6 +67,7 @@ class LSTUploader(Unit3dBaseUploader):
 
     def __init__(
         self,
+        media_mode: MediaMode,
         api_key: str,
         torrent_file: Path,
         file_input: Path,
@@ -73,6 +77,7 @@ class LSTUploader(Unit3dBaseUploader):
         super().__init__(
             tracker_name=TrackerSelection.LST,
             base_url="https://lst.gg",
+            media_mode=media_mode,
             api_key=api_key,
             torrent_file=torrent_file,
             file_input=file_input,

@@ -1,24 +1,26 @@
 import webbrowser
-from PySide6.QtWidgets import (
-    QMainWindow,
-    QStackedWidget,
-    QMessageBox,
-    QStatusBar,
-    QLabel,
-)
+
 from PySide6.QtCore import QByteArray, QTimer, Slot
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import (
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QStackedWidget,
+    QStatusBar,
+)
 
+from src.backend.main_window import kill_child_processes
+from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
 from src.config.config import Config
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
 from src.frontend.global_signals import GSigs
+from src.frontend.stacked_windows.settings.settings import Settings
 from src.frontend.utils.main_window_utils import MainWindowWorker
 from src.frontend.wizards.wizard import MainWindowWizard
-from src.frontend.stacked_windows.settings.settings import Settings
 from src.logger.nfo_forge_logger import LOG
-from src.backend.main_window import kill_child_processes
-from src.version import program_name, __version__
+from src.version import __version__, program_name
 
 
 class MainWindow(QMainWindow):
@@ -61,7 +63,7 @@ class MainWindow(QMainWindow):
 
         # additional stacked widgets (windows)
         self.settings = Settings(self.config, self)
-        self.settings.close_settings.connect(self._close_settings)
+        GSigs().settings_close.connect(self._close_settings)
 
         self.stacked_widget = QStackedWidget(self)
         self.stacked_widget.addWidget(self.wizard)
@@ -72,6 +74,9 @@ class MainWindow(QMainWindow):
         # key binds
         self.open_log_dir_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
         self.open_log_dir_shortcut.activated.connect(self.open_log)
+
+        # run delayed start up tasks
+        self._delayed_start_up_tasks()
 
     @Slot()
     def _close_settings(self) -> None:
@@ -119,7 +124,7 @@ class MainWindow(QMainWindow):
                     self.config.save_config()
                     self.settings.re_load_settings.emit()
                     self.stacked_widget.setCurrentWidget(self.settings)
-                    self.settings.swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+                    GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
             elif ss_mode == ScreenShotMode.ADV_SS_COMP:
                 frame_forge = self.config.cfg_payload.frame_forge
@@ -137,7 +142,7 @@ class MainWindow(QMainWindow):
                     self.config.save_config()
                     self.settings.re_load_settings.emit()
                     self.stacked_widget.setCurrentWidget(self.settings)
-                    self.settings.swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+                    GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
     def setup_logger(self) -> None:
         threaded_worker = MainWindowWorker(self._setup_logger, parent=self)
@@ -147,6 +152,18 @@ class MainWindow(QMainWindow):
         """Ran by threaded worker"""
         LOG.set_log_level(self.config.cfg_payload.log_level)
         LOG.clean_up_logs(self.config.cfg_payload.log_total)
+
+    def _delayed_start_up_tasks(self) -> None:
+        """Any task ran inside of this method should be triggered via a QTimer.singleShot"""
+        QTimer.singleShot(3500, self.display_temp_directory_size)
+
+    def display_temp_directory_size(self) -> None:
+        size = get_dir_size(self.config.cfg_payload.working_dir)
+        if size <= 0:
+            return
+        GSigs().main_window_update_status_tip.emit(
+            f"Working directory size: {file_bytes_to_str(size)}", 8000
+        )
 
     @Slot(str, int)
     def update_status_tip(self, message: str, timer: int) -> None:

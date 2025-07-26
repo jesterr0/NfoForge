@@ -1,29 +1,40 @@
-from PySide6.QtCore import Slot, QTimer
+from pathlib import Path
+import shutil
+
+from PySide6.QtCore import QSize, QTimer, Qt, Slot
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QCheckBox,
     QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
     QSpinBox,
-    QWidget,
     QToolButton,
+    QWidget,
 )
 
-from src.enums.theme import NfoForgeTheme
-from src.enums.profile import Profile
-from src.enums.media_mode import MediaMode
+from src.backend.utils.file_utilities import (
+    file_bytes_to_str,
+    get_dir_size,
+    open_explorer,
+)
 from src.enums.logging_settings import LogLevel
+from src.enums.media_mode import MediaMode
+from src.enums.profile import Profile
+from src.enums.settings_window import SettingsTabs
+from src.enums.theme import NfoForgeTheme
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_auto_theme_icon_buttons, create_form_layout
+from src.frontend.utils import build_h_line, create_form_layout
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -135,12 +146,6 @@ class GeneralSettings(BaseSettings):
             parent=self,
         )
 
-        dir_toggle_lbl = QLabel("Directory Input")
-        dir_toggle_lbl.setToolTip(
-            "Toggle if we're accepting a directory of file(s) or a single file"
-        )
-        self.dir_toggle_btn = QCheckBox(self)
-
         releasers_name_lbl = QLabel("Releasers Name")
         releasers_name_lbl.setToolTip("Sets the releaser's name. As displayed in NFOs")
         self.releasers_name_entry = QLineEdit(self)
@@ -150,6 +155,23 @@ class GeneralSettings(BaseSettings):
         self.global_timeout_spinbox = QSpinBox(self)
         self.global_timeout_spinbox.setRange(2, 120)
         self.global_timeout_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+
+        enable_mkbrr = QLabel("Enable mkbrr", self)
+        enable_mkbrr.setToolTip(
+            "If mkbrr is detected torrent generation will be "
+            "completed by mkbrr\n(will fall back to torf if failure is detected)"
+        )
+        self.enable_mkbrr = QCheckBox(self)
+        self.enable_mkbrr.setToolTip(enable_mkbrr.toolTip())
+        check_mkbrr = QToolButton(self)
+        QTAThemeSwap().register(check_mkbrr, "ph.eye-light", icon_size=QSize(20, 20))
+        check_mkbrr.setToolTip("Navigate to Dependencies settings tab")
+        check_mkbrr.clicked.connect(self._swap_dep_tab)
+        mkbrr_widget = QWidget()
+        mkbrr_h_box = QHBoxLayout(mkbrr_widget)
+        mkbrr_h_box.setContentsMargins(0, 0, 0, 0)
+        mkbrr_h_box.addWidget(self.enable_mkbrr)
+        mkbrr_h_box.addWidget(check_mkbrr, alignment=Qt.AlignmentFlag.AlignRight)
 
         log_level_lbl = QLabel("Log Level", self)
         log_level_lbl.setToolTip("Sets minimum log level")
@@ -168,14 +190,16 @@ class GeneralSettings(BaseSettings):
         self.max_log_files_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
 
         open_logs_lbl = QLabel("View Logs", self)
-        self.open_log_directory: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "files.svg", "openLogDirectory", 20, 20
+        self.open_log_directory = QToolButton(self)
+        QTAThemeSwap().register(
+            self.open_log_directory, "ph.files-light", icon_size=QSize(20, 20)
         )
         self.open_log_directory.setToolTip("Open log directory")
         self.open_log_directory.clicked.connect(GSigs().main_window_open_log_dir.emit)
 
-        self.open_log_file: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "file.svg", "openLogFile", 20, 20
+        self.open_log_file = QToolButton(self)
+        QTAThemeSwap().register(
+            self.open_log_file, "ph.file-arrow-down-light", icon_size=QSize(20, 20)
         )
         self.open_log_file.setToolTip(
             "Open log file if exists otherwise will open the log directory"
@@ -193,6 +217,43 @@ class GeneralSettings(BaseSettings):
             )
         )
 
+        working_dir_lbl = QLabel("Working Directory", self)
+        self.working_dir_entry = QLineEdit(self)
+        self.working_dir_entry.setReadOnly(True)
+        self.working_dir_entry.setToolTip(
+            "Working files (torrents, images, etc.) will be placed inside of this folder for each job"
+        )
+        self.working_dir_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.working_dir_btn, "ph.folder-open-light", icon_size=QSize(20, 20)
+        )
+        self.working_dir_btn.setToolTip("Set working directory")
+        self.working_dir_btn.clicked.connect(self._handle_working_dir_click)
+
+        self.working_dir_open_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.working_dir_open_btn, "ph.eye-light", icon_size=QSize(20, 20)
+        )
+        self.working_dir_open_btn.setToolTip("Open working directory")
+        self.working_dir_open_btn.clicked.connect(self._handle_open_working_dir_click)
+
+        self.working_dir_clean_up = QToolButton(self)
+        QTAThemeSwap().register(
+            self.working_dir_clean_up, "ph.trash-light", icon_size=QSize(20, 20)
+        )
+        self.working_dir_clean_up.setToolTip("Clean up working directory")
+        self.working_dir_clean_up.clicked.connect(
+            self._handle_working_dir_clean_up_click
+        )
+
+        working_dir_widget = QWidget()
+        working_dir_layout = QHBoxLayout(working_dir_widget)
+        working_dir_layout.setContentsMargins(0, 0, 0, 0)
+        working_dir_layout.addWidget(self.working_dir_entry, stretch=1)
+        working_dir_layout.addWidget(self.working_dir_btn)
+        working_dir_layout.addWidget(self.working_dir_open_btn)
+        working_dir_layout.addWidget(self.working_dir_clean_up)
+
         self.add_layout(create_form_layout(config_lbl, config_widget))
         self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
         self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
@@ -203,18 +264,22 @@ class GeneralSettings(BaseSettings):
         self.add_layout(create_form_layout(media_mode_lbl, self.media_mode_combo))
         self.add_widget(self.source_ext_filter)
         self.add_widget(self.encode_ext_filter)
-        self.add_layout(create_form_layout(dir_toggle_lbl, self.dir_toggle_btn))
         self.add_layout(
             create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
         self.add_layout(
             create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
         )
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(create_form_layout(enable_mkbrr, mkbrr_widget))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
             create_form_layout(max_log_files_lbl, self.max_log_files_spinbox)
         )
         self.add_layout(create_form_layout(open_logs_lbl, log_btn_widget))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(create_form_layout(working_dir_lbl, working_dir_widget))
         self.add_layout(self.reset_layout)
 
         self._load_saved_settings()
@@ -238,11 +303,14 @@ class GeneralSettings(BaseSettings):
             user_settings=payload.encode_media_ext_filter,
             filter_widget=self.encode_ext_filter,
         )
-        self.dir_toggle_btn.setChecked(payload.media_input_dir)
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
+        self.enable_mkbrr.setChecked(payload.enable_mkbrr)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
         self.max_log_files_spinbox.setValue(payload.log_total)
+        self.working_dir_entry.setText(
+            str(payload.working_dir) if payload.working_dir else ""
+        )
 
     def load_selected_configs(self) -> None:
         self.selected_config.clear()
@@ -335,6 +403,52 @@ class GeneralSettings(BaseSettings):
             for widget in self._plugin_widgets:
                 widget.hide()
 
+    @Slot()
+    def _handle_working_dir_click(self) -> None:
+        wd = QFileDialog.getExistingDirectory(
+            parent=self,
+            caption="Select Directory",
+            dir=str(self.config.cfg_payload.working_dir)
+            if self.config.cfg_payload.working_dir
+            else "",
+        )
+        if wd:
+            wd = Path(wd)
+            self.working_dir_entry.setText(str(wd))
+            self.config.cfg_payload.working_dir = wd
+
+    @Slot()
+    def _handle_open_working_dir_click(self) -> None:
+        open_explorer(self.config.cfg_payload.working_dir)
+
+    @Slot()
+    def _handle_working_dir_clean_up_click(self) -> None:
+        total_size = get_dir_size(self.config.cfg_payload.working_dir)
+
+        msg = (
+            "Would you like to clean up the working directory now?\n\n"
+            f"Size: {file_bytes_to_str(total_size)}\n\n"
+            "WARNING: This will remove all data!"
+        )
+
+        if (
+            QMessageBox.question(
+                self,
+                "Clean Up",
+                msg,
+            )
+            is QMessageBox.StandardButton.Yes
+        ):
+            for item in self.config.cfg_payload.working_dir.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+
+    @Slot()
+    def _swap_dep_tab(self):
+        GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+
     def _load_plugin_combos(self) -> None:
         if self.plugin_wizard_page_combo.count() == 0:
             if self.config.loaded_plugins:
@@ -421,14 +535,15 @@ class GeneralSettings(BaseSettings):
         self.config.cfg_payload.encode_media_ext_filter = (
             self.encode_ext_filter.get_accepted_items()
         )
-        self.config.cfg_payload.media_input_dir = self.dir_toggle_btn.isChecked()
         self.config.cfg_payload.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
         self.config.cfg_payload.timeout = self.global_timeout_spinbox.value()
+        self.config.cfg_payload.enable_mkbrr = self.enable_mkbrr.isChecked()
         self.config.cfg_payload.log_level = LogLevel(self.log_level_combo.currentData())
         LOG.set_log_level(self.config.cfg_payload.log_level)
         self.config.cfg_payload.log_total = self.max_log_files_spinbox.value()
+        self.config.cfg_payload.working_dir = Path(self.working_dir_entry.text())
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
@@ -452,9 +567,10 @@ class GeneralSettings(BaseSettings):
         self._load_filter_widget(
             user_settings=None, filter_widget=self.encode_ext_filter, defaults=True
         )
-        self.dir_toggle_btn.setChecked(False)
         self.releasers_name_entry.clear()
         self.global_timeout_spinbox.setValue(self.config.cfg_payload_defaults.timeout)
+        self.enable_mkbrr.setChecked(self.config.cfg_payload_defaults.enable_mkbrr)
+        self.working_dir_entry.setText(str(self.config.default_working_dir()))
 
     @staticmethod
     def _disable_scrollwheel_spinbox(event: QWheelEvent) -> None:

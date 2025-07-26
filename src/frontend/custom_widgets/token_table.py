@@ -1,23 +1,25 @@
-from PySide6.QtCore import Slot, QTimer
-from PySide6.QtGui import Qt, QCursor, QColor
+import weakref
+
+from PySide6.QtCore import QTimer, Slot
+from PySide6.QtGui import QColor, QCursor, Qt
 from PySide6.QtWidgets import (
-    QApplication,
-    QLabel,
-    QSizePolicy,
-    QTableWidgetItem,
-    QTableWidget,
     QAbstractItemView,
+    QApplication,
     QHeaderView,
-    QVBoxLayout,
+    QLabel,
     QLineEdit,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
     QWidget,
-    QSpacerItem,
 )
 
+from src.backend.tokens import MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS
+from src.frontend.custom_widgets.dynamic_range_widget import DynamicRangeWidget
 from src.frontend.custom_widgets.replacement_list_widget import (
     LoadedReplacementListWidget,
 )
-from src.backend.tokens import MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS
+from src.frontend.utils import build_h_line
 
 
 class TokenTable(QWidget):
@@ -36,7 +38,6 @@ class TokenTable(QWidget):
         self.allow_edits = allow_edits
 
         self.table = QTableWidget(self)
-        self.table.setRowCount(len(tokens))
         self.table.setColumnCount(2)
         self.table.setMinimumHeight(180)
         self.table.setHorizontalHeaderLabels(("Token", "Description"))
@@ -65,21 +66,37 @@ class TokenTable(QWidget):
                 <br>
                 <span style="font-style: italic; font-size: small;">Rules are processed in row order from top to bottom. 
                 Use the arrow buttons to adjust row order.</span>"""
-            replacement_list_widget_lbl = QLabel(movie_clean_title_custom_str)
-            replacement_list_widget_lbl.setWordWrap(True)
-
+            replacement_list_widget_lbl = QLabel(
+                movie_clean_title_custom_str, parent=self, wordWrap=True
+            )
             self.replacement_list_widget = LoadedReplacementListWidget(
                 MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS, self
             )
-            self.main_layout.addSpacerItem(
-                QSpacerItem(
-                    1, 12, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
-                )
-            )
+            self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
             self.main_layout.addWidget(replacement_list_widget_lbl)
             self.main_layout.addWidget(self.replacement_list_widget)
 
+            mi_video_dynamic_range_lbl_str = """\
+                <h4 style="margin: 0; margin-bottom: 6px;">Dynamic Range Token</h4>
+                <span>
+                    Allows fine grain customization of what 
+                    <span style="font-weight: bold;">{mi_video_dynamic_range}</span> returns. 
+                </span>"""
+            mi_video_dynamic_range_lbl = QLabel(
+                mi_video_dynamic_range_lbl_str, parent=self, wordWrap=True
+            )
+            self.mi_video_dynamic_range = DynamicRangeWidget(parent=self)
+            self.mi_video_dynamic_range.main_layout.setContentsMargins(0, 0, 0, 0)
+            self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
+            self.main_layout.addWidget(mi_video_dynamic_range_lbl)
+            self.main_layout.addWidget(self.mi_video_dynamic_range)
+
     def populate_table(self, tokens: list, remove_brackets: bool) -> None:
+        self.table.setRowCount(0)
+        self.table.clearContents()
+
+        self.table.setRowCount(len(tokens))
+
         for i, token in enumerate(tokens):
             token_name = (
                 token.token
@@ -94,6 +111,8 @@ class TokenTable(QWidget):
             description_item = QTableWidgetItem(token.description)
             description_item.setToolTip(token.description)
             self.table.setItem(i, 1, description_item)
+
+        self.setup_table_properties()
 
     def setup_table_properties(self) -> None:
         self.table.resizeColumnsToContents()
@@ -119,15 +138,27 @@ class TokenTable(QWidget):
 
     @Slot(int, int)
     def copy_token_to_clipboard(self, row: int, _: int):
-        token = self.table.item(row, 0).text()
-        if token == "Copied!":
+        token = self.table.item(row, 0)
+        if not token:
+            return
+        token_text = token.text()
+        if token_text == "Copied!":
             return
         clipboard = QApplication.clipboard()
-        clipboard.setText(token)
+        clipboard.setText(token_text)
         table_item = QTableWidgetItem("Copied!")
         table_item.setForeground(QColor("#e1401d"))
         self.table.setItem(row, 0, table_item)
-        QTimer.singleShot(1000, lambda: self.copy_status(row, 0, token))
+
+        # use a weakref here to prevent runtime errors if the window is destroyed before the singleShot fires
+        self_ref = weakref.ref(self)
+
+        def restore():
+            self_obj = self_ref()
+            if self_obj and self_obj.table:
+                self_obj.copy_status(row, 0, token_text)
+
+        QTimer.singleShot(1000, restore)
 
     def copy_status(self, row: int, column: int, text: str):
         self.table.setItem(row, column, QTableWidgetItem(text))

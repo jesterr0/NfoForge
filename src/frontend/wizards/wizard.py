@@ -1,23 +1,24 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QWizard, QPushButton
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import QPushButton, QWizard
 
 from src.config.config import Config
-from src.enums.wizard import WizardPages
 from src.enums.profile import Profile
+from src.enums.wizard import WizardPages
 from src.frontend.global_signals import GSigs
-from src.frontend.wizards.wizard_base_page import DummyWizardPage
-from src.frontend.wizards.media_input_basic import MediaInputBasic
-from src.frontend.wizards.media_input_advanced import MediaInputAdvanced
-from src.frontend.wizards.media_search import MediaSearch
-from src.frontend.wizards.rename_encode import RenameEncode
 from src.frontend.wizards.images import ImagesPage
+from src.frontend.wizards.media_input_advanced import MediaInputAdvanced
+from src.frontend.wizards.media_input_basic import MediaInputBasic
+from src.frontend.wizards.media_search import MediaSearch
 from src.frontend.wizards.nfo_template import NfoTemplate
-from src.frontend.wizards.trackers import TrackersPage
 from src.frontend.wizards.overview import Overview
 from src.frontend.wizards.process import ProcessPage
+from src.frontend.wizards.release_notes import ReleaseNotes
+from src.frontend.wizards.rename_encode import RenameEncode
+from src.frontend.wizards.trackers import TrackersPage
+from src.frontend.wizards.wizard_base_page import DummyWizardPage
 
 
 if TYPE_CHECKING:
@@ -46,6 +47,7 @@ class MainWindowWizard(QWizard):
             RenameEncode(self.config, self.main_window),
             ImagesPage(self.config, self.main_window),
             TrackersPage(self.config, self.main_window),
+            ReleaseNotes(self.config, self.main_window),
             NfoTemplate(self.config, self.main_window),
             Overview(self.config, self.main_window),
             ProcessPage(self.config, self.main_window),
@@ -250,6 +252,9 @@ class MainWindowWizard(QWizard):
             return WizardPages.TRACKERS_PAGE.value
 
         elif current_page == WizardPages.TRACKERS_PAGE:
+            return WizardPages.RELEASE_NOTES_PAGE.value
+
+        elif current_page == WizardPages.RELEASE_NOTES_PAGE:
             return WizardPages.NFO_TEMPLATE_PAGE.value
 
         elif current_page == WizardPages.NFO_TEMPLATE_PAGE:
@@ -265,7 +270,8 @@ class MainWindowWizard(QWizard):
 
     def _flow_dev(self, current_page: WizardPages) -> int:
         if current_page in self._START_PAGES:
-            return WizardPages.MEDIA_SEARCH_PAGE.value
+            # return WizardPages.MEDIA_SEARCH_PAGE.value
+            return WizardPages.RENAME_ENCODE_PAGE.value
 
         elif current_page == WizardPages.MEDIA_SEARCH_PAGE:
             if self.config.cfg_payload.mvr_enabled:
@@ -288,6 +294,9 @@ class MainWindowWizard(QWizard):
             return WizardPages.TRACKERS_PAGE.value
 
         elif current_page == WizardPages.TRACKERS_PAGE:
+            return WizardPages.RELEASE_NOTES_PAGE.value
+
+        elif current_page == WizardPages.RELEASE_NOTES_PAGE:
             return WizardPages.NFO_TEMPLATE_PAGE.value
 
         elif current_page == WizardPages.NFO_TEMPLATE_PAGE:

@@ -1,13 +1,12 @@
 [project]
 name = "NfoForge"
-version = "0.7.4"
+version = "0.8.0"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "pymediainfo>=7.0.1",
-    "requests>=2.32.3",
     "tomlkit>=0.13.2",
     "guessit>=3.8.0",
     "autoqpf>=0.2.4",
@@ -18,7 +17,8 @@ dependencies = [
     "cinemagoer>=2023.5.1",
     "torf>=4.2.7",
     "pillow>=11.1.0",
-    "pyside6==6.8.0.2",
+    "platformdirs>=4.3.8",
+    "pyside6==6.8.3",
     "psutil>=7.0.0",
     "pyimgbox>=1.0.7",
     "aiohttp>=3.11.18",
@@ -28,6 +28,7 @@ dependencies = [
     "bencode-py>=4.0.0",
     "transmission-rpc>=7.0.11",
     "deluge-web-client>=1.0.4",
+    "niquests>=3.14.1",
     "regex>=2024.11.6",
     "stdlib-list>=0.11.1",
     "jinja2>=3.1.5",
@@ -35,6 +36,7 @@ dependencies = [
     "tvdb-v4-official>=1.1.0",
     "rapidfuzz>=3.12.1",
     "oslex2>=0.1.5",
+    "qtawesome>=1.4.0",
 ]
 
 [project.optional-dependencies]

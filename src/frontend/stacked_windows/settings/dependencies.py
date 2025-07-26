@@ -1,28 +1,28 @@
+from pathlib import Path
 import platform
 from typing import Any
-from pathlib import Path
 
-from PySide6.QtCore import Slot, Qt
+from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtWidgets import (
-    QLabel,
-    QLineEdit,
     QFileDialog,
     QHBoxLayout,
+    QLabel,
+    QLayout,
+    QLineEdit,
+    QSizePolicy,
+    QSpacerItem,
     QToolButton,
     QVBoxLayout,
-    QSpacerItem,
-    QSizePolicy,
-    QLayout,
 )
 
-from src.frontend.utils import build_auto_theme_icon_buttons
 from src.frontend.custom_widgets.dnd_factory import (
+    DNDButton,
     DNDLineEdit,
     DNDToolButton,
-    DNDButton,
 )
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class DependencySettings(BaseSettings):
@@ -41,11 +41,16 @@ class DependencySettings(BaseSettings):
             extension,
             "FrameForge Path",
         )
+        self.mkbrr_widgets = self._create_dependency_widgets(
+            "mkbrr",
+            extension,
+            "mkbrr Path",
+        )
 
         self.add_layout(self._build_dependency_layout(*self.ffmpeg_widgets))
         self.add_layout(self._build_dependency_layout(*self.frame_forge_widgets))
-
-        self.add_layout(self.reset_layout)
+        self.add_layout(self._build_dependency_layout(*self.mkbrr_widgets))
+        self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
 
@@ -61,8 +66,9 @@ class DependencySettings(BaseSettings):
         entry.set_extensions(("*",))
         entry.dropped.connect(lambda e: self._update_entry(entry, e))
 
-        browse_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open.svg", f"{label_text}Btn", 24, 24, parent=self
+        browse_button = QToolButton(self)
+        QTAThemeSwap().register(
+            browse_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         browse_button.setToolTip(f"Set path to {label_text}")
         browse_button.clicked.connect(
@@ -98,6 +104,9 @@ class DependencySettings(BaseSettings):
             str(frame_forge_path) if frame_forge_path else ""
         )
 
+        mkbrr_path = self.config.cfg_payload.mkbrr
+        self.mkbrr_widgets[2].setText(str(mkbrr_path) if mkbrr_path else "")
+
     @Slot()
     def _save_settings(self) -> None:
         ffmpeg_path = self.ffmpeg_widgets[2].text().strip()
@@ -107,11 +116,15 @@ class DependencySettings(BaseSettings):
         self.config.cfg_payload.frame_forge = (
             Path(frame_forge_path) if frame_forge_path else None
         )
+
+        mkbrr_path = self.mkbrr_widgets[2].text().strip()
+        self.config.cfg_payload.mkbrr = Path(mkbrr_path) if mkbrr_path else None
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
         self.ffmpeg_widgets[2].clear()
         self.frame_forge_widgets[2].clear()
+        self.mkbrr_widgets[2].clear()
 
     @staticmethod
     def _build_dependency_layout(

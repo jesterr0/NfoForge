@@ -1,32 +1,35 @@
 from collections.abc import Iterable
-from os import PathLike
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtWidgets import (
+    QFormLayout,
+    QFrame,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+    QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
+    QVBoxLayout,
+    QWidget,
+)
 from pymediainfo import MediaInfo
 
-from PySide6.QtCore import Slot, Qt
-from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QScrollArea,
-    QFrame,
-    QLabel,
-    QWidget,
-    QFormLayout,
-    QLineEdit,
-    QSpacerItem,
-    QSizePolicy,
-    QGroupBox,
-    QListWidget,
-)
-
+from src.backend.template_selector import TemplateSelectorBackEnd
+from src.backend.token_replacer import TokenReplacer
 from src.config.config import Config
+from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
 from src.frontend.custom_widgets.image_listbox import ThumbnailListWidget
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.frontend.global_signals import GSigs
 from src.frontend.utils import recursively_clear_layout
-from src.backend.token_replacer import TokenReplacer
-from src.backend.template_selector import TemplateSelectorBackEnd
+from src.frontend.utils.general_worker import GeneralWorker
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -40,12 +43,37 @@ class Overview(BaseWizardPage):
         self.setTitle("Overview (Read Only)")
         self.setCommitPage(True)
 
-        self.config = config
+        self.worker: GeneralWorker | None = None
 
-        media_input, self.media_input_box = self.build_form_layout("Input")
-        renamed_output, self.renamed_output_box = self.build_form_layout("Output")
+        self.renamed_output_box = QVBoxLayout()
+        self.renamed_output_box.setContentsMargins(0, 0, 0, 0)
+        renamed_output_widget = QWidget()
+        renamed_output_widget.setLayout(self.renamed_output_box)
+
+        # rename section
+        self.label_parent_in = QLabel("Parent Folder Name In:", self)
+        self.edit_parent_in = QLineEdit(parent=self, readOnly=True)
+
+        self.label_parent_out = QLabel("Parent Folder Name Out:", self)
+        self.edit_parent_out = QLineEdit(parent=self, readOnly=True)
+
+        self.label_media_in = QLabel("Media File Name In:", self)
+        self.edit_media_in = QLineEdit(parent=self, readOnly=True)
+
+        self.label_media_out = QLabel("Media File Name Out:", self)
+        self.edit_media_out = QLineEdit(parent=self, readOnly=True)
+
+        self.renamed_output_box.addWidget(self.label_parent_in)
+        self.renamed_output_box.addWidget(self.edit_parent_in)
+        self.renamed_output_box.addWidget(self.label_parent_out)
+        self.renamed_output_box.addWidget(self.edit_parent_out)
+        self.renamed_output_box.addWidget(self.label_media_in)
+        self.renamed_output_box.addWidget(self.edit_media_in)
+        self.renamed_output_box.addWidget(self.label_media_out)
+        self.renamed_output_box.addWidget(self.edit_media_out)
+
         self.renamed_media_box = self.build_group_box(
-            "Media Rename", media_input, renamed_output
+            "Media Rename", renamed_output_widget
         )
 
         self.tracker_list_box = QListWidget()
@@ -55,7 +83,7 @@ class Overview(BaseWizardPage):
         self.tracker_list_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         trackers_box = self.build_group_box("Tracker(s)", self.tracker_list_box)
 
-        self.file_tree_view = FileSystemTreeView()
+        self.file_tree_view = FileSystemTreeView(parent=self)
         self.file_tree_view.setSelectionMode(
             self.file_tree_view.SelectionMode.NoSelection
         )
@@ -98,7 +126,7 @@ class Overview(BaseWizardPage):
         payload = self.config.media_input_payload
         media_in = payload.encode_file
         source_in = payload.source_file
-        media_file_dir = None
+        media_file_dir = payload.encode_file_dir
         renamed_out = payload.renamed_file
         media_info_obj = payload.encode_file_mi_obj
         source_file_mi_obj = payload.source_file_mi_obj
@@ -117,44 +145,124 @@ class Overview(BaseWizardPage):
                 ]
             )
 
-        self.media_input_box.setText(str(media_in))
-
         self._update_renamed_media_box(renamed_out)
-
         self._populate_file_view(media_file_dir if media_file_dir else media_in)
 
-        self._update_nfo_text(
-            media_input=media_in,
-            source_file=source_in,
+        # only call _update_nfo_text if required args are not None
+        # we'll finish initialization in a worker since this takes a moment to load up
+        # if generating multiple NFO's and running multiple plugins etc.
+        if media_in and media_info_obj:
+            self._run_worker(
+                media_input=media_in,
+                source_file=source_in,
+                media_info_obj=media_info_obj,
+                source_file_mi_obj=source_file_mi_obj,
+            )
+
+    def _run_worker(
+        self,
+        media_input: Path,
+        source_file: Path | None,
+        media_info_obj: MediaInfo,
+        source_file_mi_obj: MediaInfo | None,
+    ) -> None:
+        self.worker = GeneralWorker(
+            func=self._update_nfo_text,
+            media_input=media_input,
+            source_file=source_file,
             media_info_obj=media_info_obj,
             source_file_mi_obj=source_file_mi_obj,
+            parent=self,
         )
+        self.worker.job_failed.connect(self._worker_failed)
+        self.worker.job_finished.connect(self._worker_finished)
+        GSigs().main_window_set_disabled.emit(True)
+        GSigs().main_window_update_status_tip.emit("Generating NFOs", 0)
+        self.worker.start()
+
+    @Slot(object)
+    def _worker_finished(self, data: dict[TrackerSelection, str] | None) -> None:
+        # populate NFO widgets with data
+        if data:
+            for tracker, nfo in data.items():
+                nfo_widget = self._build_nfo_widget()
+                nfo_widget.setPlainText(nfo)
+                self.nfo_box_layout.addWidget(QLabel(str(tracker)))
+                self.nfo_box_layout.addWidget(nfo_widget)
 
         self._update_thumbnails()
 
-    def _update_renamed_media_box(
-        self, renamed_output: PathLike[str] | Path | None
-    ) -> None:
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
+
+    @Slot(str)
+    def _worker_failed(self, msg: str) -> None:
+        QMessageBox.critical(self, "Error", msg)
+        GSigs().main_window_set_disabled.emit(False)
+
+    def _update_renamed_media_box(self, renamed_output: Path | None) -> None:
+        payload = self.config.media_input_payload
+        encode_file_dir = (
+            Path(self.config.media_input_payload.encode_file_dir)
+            if self.config.media_input_payload.encode_file_dir
+            else None
+        )
         if renamed_output:
             self.renamed_media_box.show()
-            self.renamed_output_box.setText(str(renamed_output))
+            # show/hide and set text for folder fields
+            if encode_file_dir:
+                self.label_parent_in.show()
+                self.edit_parent_in.show()
+                self.edit_parent_in.setText(Path(encode_file_dir).name)
+                self.edit_parent_in.setToolTip(Path(encode_file_dir).name)
+
+                edit_parent_out_path = Path(renamed_output)
+                self.label_parent_out.show()
+                self.edit_parent_out.show()
+                self.edit_parent_out.setText(edit_parent_out_path.stem)
+                self.edit_parent_out.setToolTip(edit_parent_out_path.stem)
+            else:
+                self.label_parent_in.hide()
+                self.edit_parent_in.hide()
+                self.label_parent_out.hide()
+                self.edit_parent_out.hide()
+
+            # always show file fields, but check for None
+            self.label_media_in.show()
+            self.edit_media_in.show()
+            if payload.encode_file is not None:
+                self.edit_media_in.setText(payload.encode_file.name)
+                self.edit_media_in.setToolTip(payload.encode_file.name)
+            else:
+                self.edit_media_in.setText("")
+                self.edit_media_in.setToolTip("")
+
+            self.label_media_out.show()
+            self.edit_media_out.show()
+            if renamed_output.name:
+                self.edit_media_out.setText(renamed_output.name)
+                self.edit_media_out.setToolTip(renamed_output.name)
+            else:
+                self.edit_media_out.setText("")
+                self.edit_media_out.setToolTip("")
         else:
             self.renamed_media_box.hide()
 
     def _populate_file_view(self, path: Path | None) -> None:
         if path:
             self.file_tree_view.build_tree(path)
+            self.file_tree_view.expandAll()
             self.file_tree_view.show()
         else:
             self.file_tree_view.hide()
 
     def _update_nfo_text(
         self,
-        media_input: PathLike[str] | Path,
-        source_file: PathLike[str] | Path | None,
+        media_input: Path,
+        source_file: Path | None,
         media_info_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
-    ) -> None:
+    ) -> dict[TrackerSelection, str] | None:
         template_selector_backend = TemplateSelectorBackEnd()
         template_selector_backend.load_templates()
 
@@ -164,11 +272,17 @@ class Overview(BaseWizardPage):
             self.nfo_box.show()
 
         if self.config.shared_data.selected_trackers:
+            data = {}
             for tracker in self.config.shared_data.selected_trackers:
                 template = self.config.tracker_map[tracker].nfo_template
                 nfo = ""
                 nfo_template = template_selector_backend.read_template(template)
                 if nfo_template:
+                    # TODO: user_tokens should really be cached, we'll deal with this when we remove/rework overview page?
+                    user_tokens = {
+                        k: v
+                        for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+                    }
                     token_replacer = TokenReplacer(
                         media_input=media_input,
                         jinja_engine=self.config.jinja_engine,
@@ -182,13 +296,19 @@ class Overview(BaseWizardPage):
                         if self.config.shared_data.url_data
                         or self.config.shared_data.loaded_images
                         else False,
+                        release_notes=self.config.shared_data.release_notes,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),
                         frame_size_override=self.config.shared_data.dynamic_data.get(
                             "frame_size_override"
                         ),
+                        override_tokens=self.config.shared_data.dynamic_data.get(
+                            "override_tokens"
+                        ),
+                        user_tokens=user_tokens,
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
                     ).get_output()
                     if token_replacer:
                         nfo = token_replacer
@@ -213,10 +333,8 @@ class Overview(BaseWizardPage):
                         # it might not be available.
                         pass
 
-                    nfo_widget = self._build_nfo_widget()
-                    nfo_widget.setPlainText(nfo)
-                    self.nfo_box_layout.addWidget(QLabel(str(tracker)))
-                    self.nfo_box_layout.addWidget(nfo_widget)
+                    data[tracker] = nfo
+                    return data
 
     def _update_thumbnails(self) -> None:
         if self.config.shared_data.loaded_images:
@@ -237,13 +355,10 @@ class Overview(BaseWizardPage):
         )
 
     @staticmethod
-    def build_form_layout(txt1: str) -> tuple[QFormLayout, QLineEdit]:
+    def build_form_layout(txt1: str) -> tuple[QFormLayout, QFormLayout]:
         layout = QFormLayout()
         layout.addWidget(QLabel(txt1))
-        text_box = QLineEdit()
-        text_box.setReadOnly(True)
-        layout.addWidget(text_box)
-        return layout, text_box
+        return layout, layout
 
     @staticmethod
     def build_group_box(text: str, *args: QWidget) -> QGroupBox:

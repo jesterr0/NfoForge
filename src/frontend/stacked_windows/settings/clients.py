@@ -1,9 +1,9 @@
 from PySide6.QtCore import Slot
 
 from src.enums.torrent_client import TorrentClientSelection
+from src.frontend.custom_widgets.client_listbox import ClientListWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.custom_widgets.client_listbox import ClientListWidget
 
 
 class ClientsSettings(BaseSettings):
@@ -14,8 +14,7 @@ class ClientsSettings(BaseSettings):
         self.client_widget = ClientListWidget(self.config, self)
         self.client_widget.testing_started.connect(self._testing_started)
         self.client_widget.testing_ended.connect(self._testing_ended)
-        self.inner_layout.removeItem(self._spacer_item)
-        self.inner_layout.addWidget(self.client_widget, stretch=1)
+        self.add_widget(self.client_widget, add_stretch=True, stretch=1)
 
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)

@@ -3,15 +3,21 @@ from pathlib import Path
 import re
 from typing import Type
 
+import niquests
 from pymediainfo import MediaInfo
 import regex
-import requests
 
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
+from src.enums.trackers.darkpeers import (
+    DarkPeersCategory,
+    DarkPeersResolution,
+    DarkPeersType,
+)
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.enums.trackers.reelflix import (
@@ -24,9 +30,17 @@ from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
-CategoryEnums = ReelFlixCategory | AitherCategory | HunoCategory | LSTCategory
-ResolutionEnums = ReelFlixResolution | AitherResolution | HunoResolution | LSTResolution
-TypeEnums = ReelFlixType | AitherType | HunoType | LSTType
+CategoryEnums = (
+    ReelFlixCategory | AitherCategory | HunoCategory | LSTCategory | DarkPeersCategory
+)
+ResolutionEnums = (
+    ReelFlixResolution
+    | AitherResolution
+    | HunoResolution
+    | LSTResolution
+    | DarkPeersResolution
+)
+TypeEnums = ReelFlixType | AitherType | HunoType | LSTType | DarkPeersType
 
 
 class Unit3dBaseUploader:
@@ -36,6 +50,7 @@ class Unit3dBaseUploader:
         "tracker_name",
         "upload_url",
         "base_url",
+        "media_mode",
         "api_key",
         "torrent_file",
         "file_input",
@@ -52,6 +67,7 @@ class Unit3dBaseUploader:
         self,
         tracker_name: TrackerSelection,
         base_url: str,
+        media_mode: MediaMode,
         api_key: str,
         torrent_file: Path,
         file_input: Path,
@@ -63,6 +79,7 @@ class Unit3dBaseUploader:
     ) -> None:
         self.tracker_name = tracker_name
         self.upload_url = f"{cleanse_base_url(base_url)}/api/torrents/upload"
+        self.media_mode = media_mode
         self.api_key = api_key
         self.torrent_file = torrent_file
         self.file_input = file_input
@@ -109,16 +126,19 @@ class Unit3dBaseUploader:
             # 'keywords': meta['keywords'],
             "internal": int(internal),
             "stream": int(stream_optimized),
-            "igdb": 0,
+            "igdb": 0,  # for games
+            "imdb": 0,
+            "tmdb": 0,
+            "tvdb": 0,
             "mal": 0,
         }
         if personal_release is not None:
             upload_payload["personal_release"] = int(personal_release)
         if imdb_id:
-            upload_payload["imdb"] = imdb_id.replace("t", "")
+            upload_payload["imdb"] = int(imdb_id.replace("t", ""))
         if tmdb_id:
             upload_payload["tmdb"] = tmdb_id
-        if tvdb_id:
+        if self.media_mode is MediaMode.SERIES and tvdb_id:
             upload_payload["tvdb"] = tvdb_id
         if mal_id:
             upload_payload["mal"] = mal_id
@@ -147,7 +167,7 @@ class Unit3dBaseUploader:
 
         open_torrent = self.torrent_file.open(mode="rb")
         try:
-            with requests.post(
+            with niquests.post(
                 url=self.upload_url,
                 files={"torrent": open_torrent},
                 params=params,
@@ -164,7 +184,7 @@ class Unit3dBaseUploader:
                 else:
                     error_msg = f"Message='{message}' Context='{context}'"
                     raise TrackerError(error_msg)
-        except (requests.exceptions.RequestException, TrackerError) as error:
+        except (niquests.exceptions.RequestException, TrackerError) as error:
             requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
             raise TrackerError(requests_exc_error_msg)
@@ -302,7 +322,7 @@ class Unit3dBaseSearch:
                 LOG.LOG_SOURCE.BE,
                 f"Searching {self.tracker_name} for title: {file_name}",
             )
-            with requests.get(
+            with niquests.get(
                 self.search_url,
                 headers=TRACKER_HEADERS,
                 params=params,
@@ -311,7 +331,7 @@ class Unit3dBaseSearch:
                 if response.ok and response.status_code == 200:
                     response_json = response.json()
                     results = self._convert_response(response_json)
-        except requests.exceptions.RequestException as error_message:
+        except niquests.exceptions.RequestException as error_message:
             raise TrackerError(error_message)
 
         results = results if results else []

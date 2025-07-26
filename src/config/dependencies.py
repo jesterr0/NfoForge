@@ -1,10 +1,10 @@
-import shutil
 from os import PathLike
 from pathlib import Path
+import shutil
 
-from src.enums.dependencies import Dependencies
 from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.enums.dependencies import Dependencies
 
 # determine os exe
 OS_EXE = get_executable_string_by_os()

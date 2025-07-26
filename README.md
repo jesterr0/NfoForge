@@ -35,6 +35,7 @@ Comprehensive documentation is on the way and will be available soon.
 - Aither
 - HUNO
 - LST
+- DarkPeers
 
 _Supported trackers will be added overtime, if you'd like a tracker added open an [issue](https://github.com/jesterr0/NfoForge/issues/new) and it will be considered_
 
@@ -70,7 +71,7 @@ _Supported trackers will be added overtime, if you'd like a tracker added open a
 - pyimgbox
 - PySide6
 - qbittorrent-api
-- requests
+- niquests
 - tomlkit
 - torf
 - transmission-rpc

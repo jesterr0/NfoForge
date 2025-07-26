@@ -1,7 +1,7 @@
 import platform
 
-from src.version import program_name, __version__
 from src.enums.tracker_selection import TrackerSelection
+from src.version import __version__, program_name
 
 TRACKER_HEADERS = {
     "User-Agent": f"{program_name} v{__version__} ({platform.system()} {platform.release()})"
@@ -62,6 +62,7 @@ _TRACKER_MAP = {
     TrackerSelection.REELFLIX: _basic_bbcode_formatting,
     TrackerSelection.AITHER: _basic_bbcode_formatting,
     TrackerSelection.LST: _basic_bbcode_formatting,
+    TrackerSelection.DARK_PEERS: _basic_bbcode_formatting,
 }
 
 

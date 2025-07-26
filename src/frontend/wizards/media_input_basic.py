@@ -1,33 +1,38 @@
 from collections.abc import Sequence
 from pathlib import Path
-from pymediainfo import MediaInfo
-from typing import TYPE_CHECKING, Any
+from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import Slot, Signal
+from PySide6.QtCore import QSize, Signal, Slot
 from PySide6.QtWidgets import (
-    QToolButton,
-    QLineEdit,
-    QLabel,
     QFileDialog,
-    QVBoxLayout,
+    QHBoxLayout,
+    QLineEdit,
     QMessageBox,
+    QToolButton,
+    QVBoxLayout,
 )
+from pymediainfo import MediaInfo
 
 from src.backend.media_input import MediaInputBackEnd
+from src.backend.utils.file_utilities import generate_unique_date_name
 from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.exceptions import MediaFileNotFoundError
-from src.frontend.global_signals import GSigs
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
+from src.frontend.custom_widgets.file_tree import FileSystemTreeView
+from src.frontend.global_signals import GSigs
+from src.frontend.utils import QWidgetTempStyle
+from src.frontend.utils.general_worker import GeneralWorker
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.frontend.utils import build_auto_theme_icon_buttons
-from src.frontend.utils.media_input_utils import MediaInputWorker
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
 class MediaInputBasic(BaseWizardPage):
+    DEF_INPUT_ENTRY_TXT = "Open file or directory..."
+
     file_loaded = Signal(str)
 
     def __init__(self, config: Config, parent: "MainWindow | Any") -> None:
@@ -37,47 +42,54 @@ class MediaInputBasic(BaseWizardPage):
         self.setTitle("Input")
         self.setCommitPage(True)
 
-        self.config = config
         self.backend = MediaInputBackEnd()
-        self.worker: MediaInputWorker | None = None
+        self.worker: GeneralWorker | None = None
         self._loading_completed = False
 
         self.extensions = self.get_media_extensions()
 
-        self.input_label = QLabel("Input", self)
-        self.input_entry = DNDLineEdit(self)
-        self.input_entry.setReadOnly(True)
+        self.input_entry: QLineEdit = DNDLineEdit(
+            parent=self, readOnly=True, placeholderText=self.DEF_INPUT_ENTRY_TXT
+        )
         self.input_entry.set_extensions(self.extensions)
+        self.input_entry.set_accept_dir(True)
         self.input_entry.dropped.connect(
             lambda e: self.update_entries(e, self.input_entry)
         )
-        self.media_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open.svg", "mediaButton", 24, 24, parent=self
+
+        self.media_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.media_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
         self.media_button.clicked.connect(
             lambda: self.open_media_dialog(self.input_entry, "media", self.extensions)
         )
 
-        self.media_dir_button: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "open_folder.svg", "mediaButton", 24, 24, parent=self
+        self.media_dir_button = QToolButton(self)
+        QTAThemeSwap().register(
+            self.media_dir_button, "ph.folder-open-light", icon_size=QSize(24, 24)
         )
         self.media_dir_button.clicked.connect(
             lambda: self.open_dir_dialog(self.input_entry)
         )
 
+        self.file_tree = FileSystemTreeView(parent=self)
+        self.file_tree.hide()
+
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.addWidget(self.input_entry, stretch=1)
+        button_layout.addWidget(self.media_button)
+        button_layout.addWidget(self.media_dir_button)
+
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.addLayout(
-            self._button_form_layout(
-                self.input_label,
-                self.input_entry,
-                self.media_button,
-                self.media_dir_button,
-            )
-        )
-        self._toggle_dir_input()
+        self.main_layout.addLayout(button_layout)
+        self.main_layout.addWidget(self.file_tree, stretch=1)
+        self.main_layout.addStretch()
 
     def validatePage(self) -> bool:
         if self._loading_completed:
+            super().validatePage()
             return True
 
         required_entries = [
@@ -88,9 +100,8 @@ class MediaInputBasic(BaseWizardPage):
         for entry in required_entries:
             if entry.text().strip() == "" or entry.text() == entry.placeholderText():
                 invalid_entries = True
-                # TODO: Flash red or something once we theme it
-                # entry.setStyleSheet("QLineEdit {border: 1px solid red; border-radius: 3px;}")
                 entry.setPlaceholderText("Requires input")
+                QWidgetTempStyle().set_temp_style(widget=entry, system_beep=True)
 
         if invalid_entries:
             return False
@@ -98,21 +109,43 @@ class MediaInputBasic(BaseWizardPage):
             try:
                 self.update_payload_data()
             except MediaFileNotFoundError as input_error:
-                required_entries[0].setPlaceholderText(str(input_error))
+                # directory
+                if self.file_tree.isVisible():
+                    QMessageBox.warning(self, "Error", str(input_error))
+                    self.reset_page()
+                # single file
+                else:
+                    required_entries[0].setPlaceholderText(str(input_error))
             return False
 
     def update_payload_data(self) -> None:
         entry_data = Path(self.input_entry.text())
         if self.config.cfg_payload.media_mode == MediaMode.MOVIES:
+            # handle file
             if entry_data.is_file():
                 self.config.media_input_payload.encode_file = (
                     Path(entry_data) if entry_data else None
                 )
+            # handle directory
             elif entry_data.is_dir():
-                media_file = self.find_largest_media(entry_data, self.extensions)
-                if not media_file:
-                    raise MediaFileNotFoundError("Cannot detect media file")
-                self.config.media_input_payload.encode_file = media_file
+                checked_items: list[dict[str, Any]] = (
+                    self.file_tree.get_checked_items() or []
+                )
+                supported_files: list[dict[str, Any]] = [
+                    item
+                    for item in checked_items
+                    if isinstance(item, dict)
+                    and not item.get("is_dir", False)
+                    and Path(item.get("path", "")).suffix.lower()
+                    in self.config.cfg_payload.source_media_ext_filter
+                ]
+                if not supported_files:
+                    raise MediaFileNotFoundError(
+                        "No supported media files selected in directory "
+                        f"({', '.join(self.config.cfg_payload.source_media_ext_filter)})"
+                    )
+                largest_file = max(supported_files, key=lambda x: x.get("size", 0))
+                self.config.media_input_payload.encode_file = Path(largest_file["path"])
                 self.config.media_input_payload.encode_file_dir = entry_data
             self._run_worker()
         elif self.config.cfg_payload.media_mode == MediaMode.SERIES:
@@ -123,7 +156,11 @@ class MediaInputBasic(BaseWizardPage):
         file_path = self.config.media_input_payload.encode_file
         if not file_path:
             raise FileNotFoundError("Failed to detect input path")
-        self.worker = MediaInputWorker(
+        self.set_working_dir(
+            self.config.cfg_payload.working_dir
+            / generate_unique_date_name(file_path.stem)
+        )
+        self.worker = GeneralWorker(
             func=self.backend.get_media_info, file_input=file_path, parent=self
         )
         self.worker.job_failed.connect(self._worker_failed)
@@ -153,7 +190,7 @@ class MediaInputBasic(BaseWizardPage):
         self, entry_widget: QLineEdit, title: str, extension: list | set
     ) -> None:
         supported_extensions = (
-            f"{title} file " f"({' '.join(['*' + ext for ext in extension])})"
+            f"{title} file ({' '.join(['*' + ext for ext in extension])})"
         )
         open_file, _ = QFileDialog.getOpenFileName(
             parent=self,
@@ -170,7 +207,7 @@ class MediaInputBasic(BaseWizardPage):
             caption="Select Directory",
         )
         if open_dir:
-            entry_widget.setText(str(Path(open_dir)))
+            self.update_entries((str(Path(open_dir)),), entry_widget)
 
     def get_media_extensions(self) -> Sequence[str]:
         accepted_inputs = self.config.cfg_payload.source_media_ext_filter
@@ -190,23 +227,27 @@ class MediaInputBasic(BaseWizardPage):
             return accepted_inputs
         return self.config.ACCEPTED_EXTENSIONS
 
-    def _toggle_dir_input(self) -> None:
-        if self.config.cfg_payload.media_input_dir:
-            self.media_dir_button.show()
-            self.input_entry.set_accept_dir(True)
-        else:
-            self.media_dir_button.hide()
-            self.input_entry.set_accept_dir(False)
-
     def update_entries(self, event: Sequence, widget: QLineEdit) -> None:
-        file_path = str(Path(event[0]))
+        path = Path(event[0])
+
+        # enable file tree if directory
+        if path.is_dir():
+            self.file_tree.build_tree(path)
+            self.file_tree.expandAll()
+            self.file_tree.show()
+        else:
+            self.file_tree.hide()
+            self.file_tree.clear_tree()
+
+        file_path = str(path)
         widget.setText(file_path)
         self.file_loaded.emit(file_path)
 
     @Slot()
     def reset_page(self) -> None:
         self.input_entry.clear()
-        self.input_entry.setPlaceholderText("")
-        self._toggle_dir_input()
+        self.input_entry.setPlaceholderText(self.DEF_INPUT_ENTRY_TXT)
+        self.file_tree.hide()
+        self.file_tree.clear_tree()
         self.worker = None
         self._loading_completed = False

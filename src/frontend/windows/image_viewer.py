@@ -1,29 +1,29 @@
-import re
 from os import PathLike
 from pathlib import Path
+import re
 from typing import Union
 
+from PySide6.QtCore import QObject, QSize, Qt, Signal, Slot
+from PySide6.QtGui import QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
-    QLabel,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QWidget,
-    QTabWidget,
-    QGroupBox,
-    QToolButton,
-    QListWidget,
     QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
     QMessageBox,
+    QTabWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtGui import QImage, QKeySequence, QShortcut
-from PySide6.QtCore import Qt, Slot, QObject, Signal
 
 from src.enums.screen_shot_mode import ScreenShotMode
-from src.frontend.custom_widgets.image_label import ImageLabel
 from src.frontend.custom_widgets.image_comparison import SideBySideImage
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.custom_widgets.image_label import ImageLabel
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class ImageViewer(QWidget):
@@ -144,22 +144,18 @@ class ImageViewer(QWidget):
         mini_preview_box_layout = QVBoxLayout(mini_preview_box)
         mini_preview_box_layout.addWidget(self.mini_preview_lbl)
 
-        self.seek_left_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "arrow_left.svg",
-            "leftSeekButton",
-            24,
-            24,
+        self.seek_left_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.seek_left_btn, "ph.arrow-left-light", icon_size=QSize(24, 24)
         )
         self.seek_left_btn.clicked.connect(self._previous_image)
-        self.seek_right_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "arrow_right.svg",
-            "rightSeekButton",
-            24,
-            24,
+
+        self.seek_right_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.seek_right_btn, "ph.arrow-right-light", icon_size=QSize(24, 24)
         )
         self.seek_right_btn.clicked.connect(self._next_image)
+
         left_btn_layout = QHBoxLayout()
         left_btn_layout.addWidget(
             self.seek_left_btn, stretch=1, alignment=Qt.AlignmentFlag.AlignRight
@@ -168,34 +164,34 @@ class ImageViewer(QWidget):
             self.seek_right_btn, stretch=1, alignment=Qt.AlignmentFlag.AlignLeft
         )
 
-        self.de_select_images_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "double_arrow_left.svg",
-            "deselectImagesButton",
-            24,
-            24,
+        self.de_select_images_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.de_select_images_btn,
+            "ph.arrow-line-left-light",
+            icon_size=QSize(24, 24),
         )
         if self.comparison_mode == ScreenShotMode.BASIC_SS_GEN:
             self.de_select_images_btn.clicked.connect(self._remove_single_image)
         else:
             self.de_select_images_btn.clicked.connect(self._remove_image_pair)
-        self.select_images_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton,
-            "double_arrow_right.svg",
-            "selectImagesButton",
-            24,
-            24,
+
+        self.select_images_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.select_images_btn, "ph.arrow-line-right-light", icon_size=QSize(24, 24)
         )
         if self.comparison_mode == ScreenShotMode.BASIC_SS_GEN:
             self.select_images_btn.clicked.connect(self._select_single_image)
         else:
             self.select_images_btn.clicked.connect(self._select_image_pair)
-        self.confirm_selection_btn: QToolButton = build_auto_theme_icon_buttons(
-            QToolButton, "check.svg", "confirmImagesButton", 24, 24
+
+        self.confirm_selection_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.confirm_selection_btn, "ph.check-light", icon_size=QSize(24, 24)
         )
         if self.required_selected_screens != 0:
             self.confirm_selection_btn.setEnabled(False)
         self.confirm_selection_btn.clicked.connect(self.close)
+
         right_btn_layout = QHBoxLayout()
         right_btn_layout.addWidget(
             self.de_select_images_btn, stretch=1, alignment=Qt.AlignmentFlag.AlignRight

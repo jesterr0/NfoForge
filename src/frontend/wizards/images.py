@@ -2,35 +2,24 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal, QThread, Slot
+from PySide6.QtCore import QSize, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
+    QFrame,
     QGroupBox,
-    QVBoxLayout,
     QHBoxLayout,
+    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
-    QMessageBox,
-    QStackedWidget,
-    QWidget,
-    QFrame,
-    QFileDialog,
     QScrollArea,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
-
 from pymediainfo import MediaInfo
 
-from src.config.config import Config
-from src.exceptions.utils import get_full_traceback
-from src.logger.nfo_forge_logger import LOG
-from src.enums.cropping import Cropping
-from src.enums.indexer import Indexer
-from src.enums.profile import Profile
-from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.subtitles import SubtitleAlignment
-from src.enums.image_plugin import ImagePlugin
-from src.packages.custom_types import CropValues, SubNames, AdvancedResize
 from src.backend.images import ImagesBackEnd
 from src.backend.utils.images import (
     compare_resolutions,
@@ -38,16 +27,27 @@ from src.backend.utils.images import (
     extract_images_from_str,
 )
 from src.backend.utils.script_parser import ScriptParser
-from src.frontend.global_signals import GSigs
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.config.config import Config
+from src.enums.cropping import Cropping
+from src.enums.image_plugin import ImagePlugin
+from src.enums.indexer import Indexer
+from src.enums.profile import Profile
+from src.enums.screen_shot_mode import ScreenShotMode
+from src.enums.subtitles import SubtitleAlignment
+from src.exceptions.utils import get_full_traceback
 from src.frontend.custom_widgets.dnd_factory import (
-    DNDToolButton,
     DNDThumbnailListWidget,
+    DNDToolButton,
 )
+from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.cropping import CropWidget
+from src.frontend.utils import build_v_line
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.windows.image_viewer import ImageViewer
 from src.frontend.wizards.media_input_basic import MediaInputBasic
-from src.frontend.utils import build_auto_theme_icon_buttons, build_v_line
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.logger.nfo_forge_logger import LOG
+from src.packages.custom_types import AdvancedResize, CropValues, SubNames
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -248,20 +248,26 @@ class ImagesPage(BaseWizardPage):
         self.crop_values: CropValues | None = None
         self.advanced_resize: AdvancedResize | None = None
 
+        # we need to keep track of the type of images that are dropped/generated
+        # to update SharedPayload.is_comparison_images
+        self.is_comparison_images = False
+
         self.generate_images = QPushButton("Generate", self)
         self.generate_images.setToolTip("Generates images from media file(s).")
         self.generate_images.clicked.connect(self._generate_images)
 
         self.progress_bar = QProgressBar(self)
 
-        open_images_btn: DNDToolButton = build_auto_theme_icon_buttons(
-            DNDToolButton, "open.svg", "openImageButton", 20, 20, parent=self
+        open_images_btn = DNDToolButton(self)
+        QTAThemeSwap().register(
+            open_images_btn, "ph.file-arrow-down-light", icon_size=QSize(20, 20)
         )
         open_images_btn.setToolTip("Use existing generated images (.png, .jpg, .jpeg).")
         open_images_btn.clicked.connect(self._open_images)
 
-        paste_urls: DNDToolButton = build_auto_theme_icon_buttons(
-            DNDToolButton, "paste_clipboard.svg", "pasteURLsButton", 20, 20, parent=self
+        paste_urls = DNDToolButton(self)
+        QTAThemeSwap().register(
+            paste_urls, "ph.clipboard-light", icon_size=QSize(20, 20)
         )
         paste_urls.setToolTip("Paste image URLs from clipboard.")
         paste_urls.clicked.connect(self._handle_url_paste)
@@ -364,6 +370,8 @@ class ImagesPage(BaseWizardPage):
                 f"#### IMG URL Data ####\n{img_url_data}\n#### IMG URL Data ####",
             )
 
+        super().validatePage()
+        self.config.shared_data.is_comparison_images = self.is_comparison_images
         return True
 
     @Slot(str, float)
@@ -464,7 +472,7 @@ class ImagesPage(BaseWizardPage):
         profile_handlers = {
             Profile.BASIC: self._handle_basic_profile,
             Profile.ADVANCED: self._handle_basic_comparison,
-            Profile.PLUGIN: self._handle_plugin_profile,
+            Profile.PLUGIN: self._handle_basic_comparison,
         }
 
         profile = Profile(self.config.cfg_payload.profile)
@@ -538,30 +546,12 @@ class ImagesPage(BaseWizardPage):
             comparison_subs,
         )
 
-    def _handle_plugin_profile(self) -> tuple:
-        if (
-            not self.config.media_input_payload.source_file
-            or not self.config.media_input_payload.encode_file
-        ):
-            raise FileNotFoundError(
-                "Failed to locate path to 'source_file' or 'encode_file'"
-            )
-        self.source_file = Path(self.config.media_input_payload.source_file)
-        source_file_mi_obj = self.config.media_input_payload.source_file_mi_obj
-        self.media_file = Path(self.config.media_input_payload.encode_file)
-        media_file_mi_obj = self.config.media_input_payload.encode_file_mi_obj
-        comparison_subs = self.config.cfg_payload.comparison_subtitles
-        return (
-            self.config.cfg_payload.ss_mode,
-            source_file_mi_obj,
-            media_file_mi_obj,
-            comparison_subs,
-        )
-
     def _set_image_directory(self) -> None:
-        if not self.media_file:
-            raise FileNotFoundError("Failed to locate path to 'media_file'")
-        self.image_dir = self.media_file.parent / f"{self.media_file.stem}_images"
+        if not self.config.media_input_payload.working_dir:
+            raise FileNotFoundError(
+                "Failed to locate path to 'working directory for media'"
+            )
+        self.image_dir = self.config.media_input_payload.working_dir / "images"
 
     def _get_sub_names(self, comparison_subs) -> SubNames | None:
         if comparison_subs:
@@ -656,9 +646,13 @@ class ImagesPage(BaseWizardPage):
     def _handle_image_text_drop(self, urls: str) -> None:
         self.thumbnail_listbox.clear()
         _, _, img_objs = extract_images_from_str(urls)
-        self._update_text_box("Successfully parsed images!")
-        self.thumbnail_listbox.addItems([str(x) for x in img_objs])
+        if img_objs:
+            self._update_text_box("Successfully parsed images!")
+            self.thumbnail_listbox.addItems([str(x) for x in img_objs])
+        else:
+            self._update_text_box("No image URLs detected.")
         self.config.shared_data.url_data = img_objs
+        self.is_comparison_images = self._ask_comparison()
         self._complete_loading()
 
     @Slot()
@@ -689,7 +683,35 @@ class ImagesPage(BaseWizardPage):
                 self.thumbnail_listbox.add_thumbnail(img)
             self.config.shared_data.loaded_images = images
             self.config.shared_data.generated_images = generated
+
+            # if generated we need to check the ss_mode to determine if these are comp images
+            if (
+                generated
+                and self.config.cfg_payload.ss_mode is ScreenShotMode.BASIC_SS_GEN
+            ):
+                self.is_comparison_images = False
+            elif (
+                generated
+                and self.config.cfg_payload.ss_mode is not ScreenShotMode.BASIC_SS_GEN
+            ):
+                self.is_comparison_images = True
+            # if not generated we need to ask the user the type of images
+            elif not generated:
+                self.is_comparison_images = self._ask_comparison()
+
         self._complete_loading()
+
+    def _ask_comparison(self) -> bool:
+        if (
+            QMessageBox.question(
+                self,
+                "Image Type",
+                "Are the dropped images comparison images?",
+            )
+            is QMessageBox.StandardButton.Yes
+        ):
+            return True
+        return False
 
     @Slot(int)
     def _re_sync(self, offset: int) -> None:
@@ -712,6 +734,8 @@ class ImagesPage(BaseWizardPage):
 
     @Slot()
     def reset_page(self) -> None:
+        self.is_comparison_images = False
+
         self.text_box.clear()
         self.progress_bar.setValue(0)
         self.progress_bar.reset()

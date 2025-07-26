@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 
 import regex
-import requests
+import niquests
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -109,7 +109,7 @@ class BHDUploader:
         )
 
         try:
-            response = requests.post(
+            response = niquests.post(
                 self._upload_url,
                 data=upload_payload,
                 files=self._files(),
@@ -142,7 +142,7 @@ class BHDUploader:
                 LOG.error(LOG.LOG_SOURCE.BE, failed_error_msg)
                 raise TrackerError(failed_error_msg)
 
-        except requests.exceptions.RequestException as error:
+        except niquests.exceptions.RequestException as error:
             requests_exc_error_msg = f"Failed to upload to BeyondHD: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
             raise TrackerError(requests_exc_error_msg)
@@ -281,7 +281,7 @@ class BHDSearch:
         results = []
         try:
             LOG.info(LOG.LOG_SOURCE.BE, f"Searching BeyondHD for title: {title}")
-            response = requests.post(
+            response = niquests.post(
                 url=self._search_url,
                 params=payload,
                 headers=TRACKER_HEADERS,
@@ -292,7 +292,7 @@ class BHDSearch:
             results = self._convert_response(response_json.get("results", []))
             LOG.info(LOG.LOG_SOURCE.BE, f"Total results found: {len(results)}")
             LOG.debug(LOG.LOG_SOURCE.BE, f"Total results found: {results}")
-        except requests.exceptions.RequestException as error_message:
+        except niquests.exceptions.RequestException as error_message:
             raise TrackerError(error_message)
 
         return results

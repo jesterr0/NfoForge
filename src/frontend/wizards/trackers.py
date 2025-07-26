@@ -45,6 +45,7 @@ class TrackersPage(BaseWizardPage):
 
         self.config.save_config()
         GSigs().settings_refresh.emit()
+        super().validatePage()
         return True
 
     @Slot()

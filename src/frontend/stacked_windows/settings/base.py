@@ -1,17 +1,15 @@
 from enum import Enum
-from typing import Type, TYPE_CHECKING
+from typing import TYPE_CHECKING, Type
 
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtWidgets import (
-    QWidget,
-    QSizePolicy,
-    QVBoxLayout,
-    QSpacerItem,
-    QScrollArea,
     QFrame,
-    QLayout,
-    QToolButton,
     QHBoxLayout,
+    QLayout,
+    QScrollArea,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 from src.config.config import Config
@@ -53,12 +51,11 @@ class BaseSettings(QWidget):
         self._reset_settings_btn.setToolTip("Reset settings to default")
         self._reset_settings_btn.clicked.connect(self._reset_settings_click)
         self.reset_layout = QHBoxLayout()
-        self.reset_layout.addSpacerItem(
-            QSpacerItem(
-                20, 40, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-            )
+        self.reset_layout.setContentsMargins(6, 12, 6, 6)
+        self.reset_layout.addWidget(
+            self._reset_settings_btn, stretch=1, alignment=Qt.AlignmentFlag.AlignRight
         )
-        self.reset_layout.addWidget(self._reset_settings_btn)
+        self.reset_layout.addStretch()
 
         scroll_area = QScrollArea(self)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -67,10 +64,6 @@ class BaseSettings(QWidget):
         inner_widget = QWidget(scroll_area)
         scroll_area.setWidget(inner_widget)
         self.inner_layout = QVBoxLayout(inner_widget)
-        self._spacer_item = QSpacerItem(
-            20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding
-        )
-        self.inner_layout.addSpacerItem(self._spacer_item)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 2)
         layout.addWidget(scroll_area)
@@ -83,17 +76,21 @@ class BaseSettings(QWidget):
                     f"You must implement the {method} method for {self.__class__.__name__}"
                 )
 
-    def add_widget(self, widget: QWidget, **kwargs) -> None:
-        """Adds widget to parent layout, removing and adding the spacer item to the bottom"""
-        self.inner_layout.removeItem(self._spacer_item)
-        self.inner_layout.addWidget(widget, **kwargs)
-        self.inner_layout.addSpacerItem(self._spacer_item)
+    def add_widget(self, widget: QWidget, add_stretch: bool = False, **kwargs) -> None:
+        """Adds widget to parent layout, removing and adding the spacer item to the bottom
 
-    def add_layout(self, layout: QLayout) -> None:
-        """Adds layout to parent layout, removing and adding the spacer item to the bottom"""
-        self.inner_layout.removeItem(self._spacer_item)
-        self.inner_layout.addLayout(layout)
-        self.inner_layout.addSpacerItem(self._spacer_item)
+        add_stretch should be applied to the last item added to the layout"""
+        self.inner_layout.addWidget(widget, **kwargs)
+        if add_stretch:
+            self.inner_layout.addStretch()
+
+    def add_layout(self, layout: QLayout, add_stretch: bool = False, **kwargs) -> None:
+        """Adds layout to parent layout
+
+        add_stretch should be applied to the last item added to the layout"""
+        self.inner_layout.addLayout(layout, **kwargs)
+        if add_stretch:
+            self.inner_layout.addStretch()
 
     def _reset_settings_button(self) -> None:
         """Stops the timer and sets the text back to it's default state"""

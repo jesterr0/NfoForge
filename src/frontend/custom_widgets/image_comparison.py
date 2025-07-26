@@ -2,19 +2,19 @@ from os import PathLike
 from pathlib import Path
 from typing import Union
 
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QWidget,
     QApplication,
+    QHBoxLayout,
     QSlider,
     QToolButton,
-    QHBoxLayout,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtGui import QPixmap, QPainter, QPen
-from PySide6.QtCore import Qt, Signal
 
 from src.frontend.custom_widgets.image_label import ImageLabel
-from src.frontend.utils import build_auto_theme_icon_buttons
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class SideBySideImage(QWidget):
@@ -52,24 +52,28 @@ class SideBySideImage(QWidget):
         self.updateImage()
 
         # buttons
-        self.swap_reference = build_auto_theme_icon_buttons(
-            QToolButton, "swap.svg", "swapReferenceButton", 24, 24
+        self.swap_reference = QToolButton(self)
+        QTAThemeSwap().register(
+            self.swap_reference, "ph.swap-light", icon_size=QSize(24, 24)
         )
         self.swap_reference.setToolTip("Swap reference frames")
         self.swap_reference.clicked.connect(self.swap_ref)
 
-        self.next_frame_btn = build_auto_theme_icon_buttons(
-            QToolButton, "arrow_right.svg", "rightFrameButton", 24, 24
+        self.next_frame_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.next_frame_btn, "ph.arrow-right-light", icon_size=QSize(24, 24)
         )
         self.next_frame_btn.clicked.connect(lambda: self.change_frame(1))
 
-        self.prev_frame_btn = build_auto_theme_icon_buttons(
-            QToolButton, "arrow_left.svg", "leftFrameButton", 24, 24
+        self.prev_frame_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.prev_frame_btn, "ph.arrow-left-light", icon_size=QSize(24, 24)
         )
         self.prev_frame_btn.clicked.connect(lambda: self.change_frame(-1))
 
-        self.apply_offset = build_auto_theme_icon_buttons(
-            QToolButton, "check.svg", "applyOffset", 24, 24
+        self.apply_offset = QToolButton(self)
+        QTAThemeSwap().register(
+            self.apply_offset, "ph.check-light", icon_size=QSize(24, 24)
         )
         self.apply_offset.setToolTip("Apply offset")
         self.apply_offset.clicked.connect(self.send_offset)

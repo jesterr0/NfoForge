@@ -1,6 +1,5 @@
 import asyncio
 from collections.abc import Callable
-from os import PathLike
 from pathlib import Path
 import shutil
 import traceback
@@ -20,15 +19,21 @@ from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.image_host_uploading.ptpimg import PTPIMGUploader
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
-from src.backend.tokens import FileToken
+from src.backend.tokens import FileToken, TokenSelection
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
 from src.backend.torrent_clients.transmission import TransmissionClient
-from src.backend.torrents import clone_torrent, generate_torrent, write_torrent
+from src.backend.torrents import (
+    clone_torrent,
+    generate_torrent,
+    mkbrr_generate_torrent,
+    write_torrent,
+)
 from src.backend.trackers import (
     AitherSearch,
     BHDSearch,
+    DarkPeersSearch,
     HunoSearch,
     LSTSearch,
     MTVSearch,
@@ -37,6 +42,7 @@ from src.backend.trackers import (
     TLSearch,
     aither_uploader,
     bhd_uploader,
+    dp_uploader,
     huno_uploader,
     lst_uploader,
     mtv_uploader,
@@ -46,7 +52,12 @@ from src.backend.trackers import (
 )
 from src.backend.trackers.utils import format_image_tag
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
-from src.backend.utils.images import format_image_data_to_str
+from src.backend.utils.images import (
+    format_image_data_to_comparison,
+    format_image_data_to_str,
+    get_parity_images,
+    get_parity_images_to_str,
+)
 from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.enums.torrent_client import TorrentClientSelection
@@ -85,14 +96,12 @@ class ProcessBackEnd:
         self,
         file_input: Path,
         processing_queue: list[str],
-        queued_text_update: Callable[[str], None],
         media_search_payload: MediaSearchPayload,
     ) -> dict[str, Path]:
-        queued_text_update("Checking for dupes")
-
         tasks = []
         for tracker_name in processing_queue:
-            if TrackerSelection(tracker_name) == TrackerSelection.MORE_THAN_TV:
+            tracker_sel = TrackerSelection(tracker_name)
+            if tracker_sel == TrackerSelection.MORE_THAN_TV:
                 tasks.append(
                     self._dupe_mtv(
                         tracker_name=tracker_name,
@@ -100,33 +109,37 @@ class ProcessBackEnd:
                         media_search_payload=media_search_payload,
                     )
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.TORRENT_LEECH:
+            elif tracker_sel == TrackerSelection.TORRENT_LEECH:
                 tasks.append(
                     self._dupe_tl(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.BEYOND_HD:
+            elif tracker_sel == TrackerSelection.BEYOND_HD:
                 tasks.append(
                     self._dupe_bhd(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.PASS_THE_POPCORN:
+            elif tracker_sel == TrackerSelection.PASS_THE_POPCORN:
                 tasks.append(
                     self._dupe_ptp(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.REELFLIX:
+            elif tracker_sel == TrackerSelection.REELFLIX:
                 tasks.append(
                     self._dupe_rf(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.AITHER:
+            elif tracker_sel == TrackerSelection.AITHER:
                 tasks.append(
                     self._dupe_aither(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.HUNO:
+            elif tracker_sel == TrackerSelection.HUNO:
                 tasks.append(
                     self._dupe_huno(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif TrackerSelection(tracker_name) == TrackerSelection.LST:
+            elif tracker_sel == TrackerSelection.LST:
                 tasks.append(
                     self._dupe_lst(tracker_name=tracker_name, file_input=file_input)
+                )
+            elif tracker_sel == TrackerSelection.DARK_PEERS:
+                tasks.append(
+                    self._dupe_dp(tracker_name=tracker_name, file_input=file_input)
                 )
 
         async_results = await asyncio.gather(*tasks)
@@ -135,11 +148,6 @@ class ProcessBackEnd:
         for item in async_results:
             if item:
                 dupes[item[0]] = item[1]
-
-        dupe_count = sum(len(item) for item in dupes.values())
-        queued_text_update(
-            f"Total potential dupes found: {dupe_count} (REVIEW BEFORE CONTINUING)"
-        )
 
         return dupes
 
@@ -226,7 +234,7 @@ class ProcessBackEnd:
         ).search(file_name=file_input)
         if aither_search:
             return TrackerSelection(tracker_name), aither_search
-        
+
     async def _dupe_lst(
         self, tracker_name: str, file_input: Path
     ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
@@ -235,6 +243,15 @@ class ProcessBackEnd:
         ).search(file_name=file_input)
         if lst_search:
             return TrackerSelection(tracker_name), lst_search
+
+    async def _dupe_dp(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
+        dp_search = DarkPeersSearch(
+            api_key=self.config.cfg_payload.darkpeers_tracker.api_key,
+        ).search(file_name=file_input)
+        if dp_search:
+            return TrackerSelection(tracker_name), dp_search
 
     def process_trackers(
         self,
@@ -252,6 +269,7 @@ class ProcessBackEnd:
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
         releasers_name: str,
+        encode_file_dir: Path | None = None,
     ) -> None:
         # handle image uploading
         images = self.handle_images_for_trackers(
@@ -265,13 +283,22 @@ class ProcessBackEnd:
         max_piece_size = self.determine_max_piece_size(process_dict)
         if max_piece_size:
             queued_text_update(
-                f"\nDetected maximum piece size: {max_piece_size} (bytes)"
+                '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🔎 Detected maximum piece size:</h3>'
             )
+            queued_text_update(f"<br /><span>{max_piece_size} (bytes)</span>")
+
+        # use encode_file_dir as the source for torrent if set, else use media_input
+        torrent_source = encode_file_dir if encode_file_dir else media_input
 
         # process
+        queued_text_update(
+            '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:'
+        )
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
-            queued_status_update(tracker_name, "Processing")
-            queued_text_update(f"\nStarting work for '{tracker_name}':")
+            queued_status_update(tracker_name, "▶️ Processing")
+            queued_text_update(
+                f'<br /><span>Starting work for <span style="font-weight: bold;">{tracker_name}</span></span>'
+            )
 
             # screenshots stuff, updated below for each tracker in the loop
             tracker_images = None
@@ -289,23 +316,66 @@ class ProcessBackEnd:
 
             # torrent file
             if idx == 0:
-                queued_text_update("Generating torrent")
-                torrent = generate_torrent(
-                    tracker_info=tracker_info,
-                    input_file=media_input,
-                    max_piece_size=max_piece_size,
-                    cb=self.torrent_gen_cb,
-                )
-                write_to_disk = write_torrent(torrent, torrent_path)
-                base_torrent_file = write_to_disk
+                # try mkbrr first if enabled, fallback to torf if not available or on error
+                try:
+                    if self.config.cfg_payload.enable_mkbrr and (
+                        self.config.cfg_payload.mkbrr
+                        and self.config.cfg_payload.mkbrr.exists()
+                    ):
+                        queued_text_update(
+                            '<br /><span>Generating torrent with <span style="font-weight: bold;">'
+                            "mkbrr</span></span>"
+                        )
+                        torrent = mkbrr_generate_torrent(
+                            mkbrr_path=self.config.cfg_payload.mkbrr,
+                            tracker_info=tracker_info,
+                            path=torrent_source,
+                            output_path=torrent_path,
+                            max_piece_size=max_piece_size,
+                            cb=self.mkbrr_torrent_gen_cb,
+                        )
+                        base_torrent_file = torrent_path
+                    else:
+                        raise Exception("mkbrr not configured or not found")
+                except Exception as mkbrr_error:
+                    # only show error if mkbrr was available but failed
+                    if (
+                        self.config.cfg_payload.enable_mkbrr
+                        and self.config.cfg_payload.mkbrr
+                    ):
+                        queued_text_update(
+                            f'<br /><span style="color: red;">mkbrr failed: {mkbrr_error} '
+                            "(falling back to torf)</span>"
+                        )
+
+                    queued_text_update(
+                        '<br /><span>Generating torrent with <span style="font-weight: bold;">'
+                        "torf</span></span>"
+                    )
+                    torrent = generate_torrent(
+                        tracker_info=tracker_info,
+                        path=torrent_source,
+                        max_piece_size=max_piece_size,
+                        cb=self.torrent_gen_cb,
+                    )
+                    write_to_disk = write_torrent(torrent, torrent_path)
+                    base_torrent_file = write_to_disk
             else:
-                queued_text_update("Cloning torrent")
+                queued_text_update("<br /><span>Cloning torrent</span>")
+                if not base_torrent_file:
+                    raise FileNotFoundError(
+                        "Failed to determine base torrent file to clone"
+                    )
                 clone = clone_torrent(
                     tracker_info=tracker_info,
                     torrent_path=torrent_path,
                     base_torrent_file=base_torrent_file,
                 )
                 _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
+
+            user_tokens = {
+                k: v for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            }
 
             # generate nfo
             nfo = ""
@@ -315,19 +385,46 @@ class ProcessBackEnd:
                 )
                 if nfo_template:
                     # convert images for the NFO
-                    tracker_images = images[cur_tracker]
-                    format_images_to_str = format_image_data_to_str(
-                        tracker_images,
-                        tracker_info.url_type,
-                        tracker_info.column_s,
-                        tracker_info.column_space,
-                        tracker_info.row_space,
-                    )
-                    formatted_screens = format_image_tag(
-                        cur_tracker,
-                        format_images_to_str,
-                        getattr(tracker_info, "image_width", 350),
-                    )
+                    formatted_screens = None
+                    comparison_screens = None
+                    even_screens = None
+                    even_screens_str = None
+                    odd_screens = None
+                    odd_screens_str = None
+                    if cur_tracker in images:
+                        tracker_images = images[cur_tracker]
+                        # tracker_images = {0: ImageUploadData(url='https://ptpimg.me/a6uy28.png', medium_url=None),
+                        # 1: ImageUploadData(url='https://ptpimg.me/0mdplg.png', medium_url=None),
+                        # 2: ImageUploadData(url='https://ptpimg.me/644r4s.png', medium_url=None)}
+                        format_images_to_str = format_image_data_to_str(
+                            cur_tracker,
+                            tracker_images,
+                            tracker_info.url_type,
+                            tracker_info.column_s,
+                            tracker_info.column_space,
+                            tracker_info.row_space,
+                        )
+                        formatted_screens = format_image_tag(
+                            cur_tracker,
+                            format_images_to_str,
+                            getattr(tracker_info, "image_width", 350),
+                        )
+
+                        # if images we're comparison images we attempt to generate some more screenshot tokens
+                        if self.config.shared_data.is_comparison_images:
+                            comparison_screens = format_image_data_to_comparison(
+                                tracker_images
+                            )
+                            even_screens = get_parity_images(data=tracker_images)
+                            odd_screens = get_parity_images(
+                                data=tracker_images, even=False
+                            )
+                            even_screens_str = get_parity_images_to_str(
+                                data=tracker_images
+                            )
+                            odd_screens_str = get_parity_images_to_str(
+                                data=tracker_images, even=False
+                            )
 
                     nfo = TokenReplacer(
                         media_input=media_input,
@@ -340,13 +437,24 @@ class ProcessBackEnd:
                         unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                         releasers_name=releasers_name,
                         screen_shots=formatted_screens,
+                        screen_shots_comparison=comparison_screens,
+                        screen_shots_even_obj=even_screens,
+                        screen_shots_odd_obj=odd_screens,
+                        screen_shots_even_str=even_screens_str,
+                        screen_shots_odd_str=odd_screens_str,
+                        release_notes=self.config.shared_data.release_notes,
                         edition_override=self.config.shared_data.dynamic_data.get(
                             "edition_override"
                         ),
                         frame_size_override=self.config.shared_data.dynamic_data.get(
                             "frame_size_override"
                         ),
+                        override_tokens=self.config.shared_data.dynamic_data.get(
+                            "override_tokens"
+                        ),
+                        user_tokens=user_tokens,
                         movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
                     ).get_output()
                     if not isinstance(nfo, str):
                         raise ValueError("NFO should be a string")
@@ -394,7 +502,7 @@ class ProcessBackEnd:
 
             # upload
             if tracker_info.upload_enabled and pre_upload_processing is not False:
-                queued_text_update("Uploading release")
+                queued_text_update("<br /><span>Uploading release</span>")
                 execute_upload = None
                 try:
                     execute_upload = self.upload(
@@ -410,13 +518,16 @@ class ProcessBackEnd:
                     )
                 except Exception as upload_error:
                     queued_text_update(
-                        f"Failed to upload release, check logs for information ({upload_error})"
+                        '<br /><br /><p style="font-weight: bold; color: red;">Failed to upload '
+                        f"release, check logs for information ({upload_error})</p>",
                     )
                     caught_error.emit(f"Upload Error: {traceback.format_exc()}")
-                    queued_status_update(tracker_name, "Failed")
+                    queued_status_update(tracker_name, "❌ Failed")
 
                 if execute_upload:
-                    queued_text_update("Successfully uploaded release")
+                    queued_text_update(
+                        "<br /><span>Successfully uploaded release</span>"
+                    )
                     # handle injection
                     try:
                         self._handle_injection(
@@ -425,29 +536,32 @@ class ProcessBackEnd:
                             torrent_path=torrent_path,
                             file_input=media_input,
                         )
-                        queued_status_update(tracker_name, "Complete")
+                        queued_status_update(tracker_name, "✅ Complete")
                     except Exception as e:
                         queued_status_update(
-                            tracker_name, f"Failed to inject torrent ({e})"
+                            tracker_name, f"❌ Failed to inject torrent ({e})"
                         )
                         caught_error.emit(f"Injection Error: {traceback.format_exc()}")
                 else:
                     queued_text_update(
-                        "Failed to upload release, check logs for information"
+                        '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
+                        "check logs for information</span>"
                     )
-                    queued_status_update(tracker_name, "Failed")
+                    queued_status_update(tracker_name, "❌ Failed")
             elif not tracker_info.upload_enabled and pre_upload_processing is None:
-                queued_text_update("Skipping upload & injection, upload is disabled")
-                queued_status_update(tracker_name, "Complete")
+                queued_text_update(
+                    "<br /><span>Skipping upload & injection, upload is disabled</span>"
+                )
+                queued_status_update(tracker_name, "✅ Complete")
             elif tracker_info.upload_enabled and pre_upload_processing is False:
                 queued_text_update(
-                    "Skipping upload & injection, upload is disabled via plugin"
+                    "<br /><span>Skipping upload & injection, upload is disabled via plugin</span>"
                 )
-                queued_status_update(tracker_name, "Complete")
+                queued_status_update(tracker_name, "✅ Complete")
 
             nfo_generated_str = "NFO & " if nfo else ""
             queued_text_update(
-                f"Generated {nfo_generated_str}torrent output directory:\n{torrent_path.parent}"
+                f"<br /><span>Generated {nfo_generated_str}torrent output directory:\n{torrent_path.parent}</span><br />",
             )
 
         # disconnect from clients and reset related variables after use
@@ -505,14 +619,20 @@ class ProcessBackEnd:
                 tracker_to_host_map[TrackerSelection(tracker)] = img_to
 
         # handle image host uploads
+        if to_image_hosts or to_url:
+            queued_text_update(
+                '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🎥 Image Handling:</h3>'
+            )
         if to_image_hosts:
             if img_from is ImageSource.URLS:
                 queued_text_update(
-                    f"Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)"
+                    f"<br />Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)",
                 )
 
+                if not self.config.media_input_payload.working_dir:
+                    raise FileNotFoundError("Working directory was not found")
                 img_output_path = (
-                    media_input.parent / f"{media_input.stem}_nf" / "dl_imgs"
+                    self.config.media_input_payload.working_dir / "dl_imgs"
                 )
                 img_downloader = ImageDownloader(
                     self.config.shared_data.url_data,
@@ -523,7 +643,7 @@ class ProcessBackEnd:
                 self.config.shared_data.loaded_images = files_to_upload
 
                 queued_text_update(
-                    f"Successfully downloaded {len(files_to_upload)} user-provided URL(s)"
+                    f"<br />Successfully downloaded {len(files_to_upload)} user-provided URL(s)",
                 )
             else:
                 files_to_upload = self.config.shared_data.loaded_images
@@ -542,17 +662,21 @@ class ProcessBackEnd:
                     and self.config.cfg_payload.optimize_dl_url_images
                     or img_from is ImageSource.URLS
                 ):
-                    queued_text_update(f"Optimizing {len(files_to_upload)} image(s)")
+                    queued_text_update(
+                        f"<br />Optimizing {len(files_to_upload)} image(s)"
+                    )
                     try:
                         files_to_upload = self._optimize_images(
                             progress_bar_cb, files_to_upload
                         )
                     except Exception as opt_e:
-                        queued_text_update(f"Failed to optimize image(s) ({opt_e})")
+                        queued_text_update(
+                            f"<br />Failed to optimize image(s) ({opt_e})"
+                        )
 
                 # upload images
                 queued_text_update(
-                    f"Uploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)"
+                    f"<br />Uploading {len(files_to_upload)} images to {len(to_image_hosts)} image host(s)",
                 )
                 async_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(async_loop)
@@ -582,7 +706,7 @@ class ProcessBackEnd:
                     url_host_count += 1
 
             queued_text_update(
-                f"Using {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)"
+                f"<br />Using {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)",
             )
 
         return url_data
@@ -624,7 +748,7 @@ class ProcessBackEnd:
         Args:
             to_image_hosts (set[ImageHost]): The set of image hosts to upload to.
             filepaths (Sequence[Path]): The file paths of the images to be uploaded.
-            progress_bar_cb (Callable[[float], None]): Callback function to track upload progress.
+            progress_bar_cb (Callable[[float], None): Callback function to track upload progress.
 
         Returns:
             dict[ImageHost, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
@@ -897,9 +1021,11 @@ class ProcessBackEnd:
                 totp=tracker_payload.totp,
                 timeout=self.config.cfg_payload.timeout,
             )
+        # Unit3d trackers
         elif tracker == TrackerSelection.REELFLIX:
             tracker_payload = self.config.cfg_payload.rf_tracker
             return rf_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -923,6 +1049,7 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.AITHER:
             tracker_payload = self.config.cfg_payload.aither_tracker
             return aither_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -946,6 +1073,7 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.HUNO:
             tracker_payload = self.config.cfg_payload.huno_tracker
             return huno_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -963,6 +1091,7 @@ class ProcessBackEnd:
         elif tracker == TrackerSelection.LST:
             tracker_payload = self.config.cfg_payload.lst_tracker
             return lst_uploader(
+                media_mode=media_mode,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -979,6 +1108,23 @@ class ProcessBackEnd:
                 free=bool(tracker_payload.free),
                 double_up=bool(tracker_payload.double_up),
                 sticky=bool(tracker_payload.sticky),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_payload,
+                timeout=self.config.cfg_payload.timeout,
+            )
+        elif tracker == TrackerSelection.DARK_PEERS:
+            tracker_payload = self.config.cfg_payload.darkpeers_tracker
+            return dp_uploader(
+                media_mode=media_mode,
+                api_key=tracker_payload.api_key,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                tracker_title=self.generate_tracker_title(
+                    file_input, tracker_info, queued_text_update
+                ),
+                nfo=nfo,
+                internal=bool(tracker_payload.internal),
+                anonymous=bool(tracker_payload.anonymous),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
@@ -1005,6 +1151,11 @@ class ProcessBackEnd:
             if tracker_info.mvr_title_replace_map
             else None
         )
+        user_tokens = {
+            k: v
+            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        }
         format_str = TokenReplacer(
             media_input=file_name,
             jinja_engine=None,
@@ -1023,23 +1174,30 @@ class ProcessBackEnd:
             frame_size_override=self.config.shared_data.dynamic_data.get(
                 "frame_size_override"
             ),
+            override_tokens=self.config.shared_data.dynamic_data.get("override_tokens"),
             movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            user_tokens=user_tokens,
             override_title_rules=override_title_rules,
+            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
         )
         output = format_str.get_output()
         if output:
-            queued_text_update(f"Release title: {output}")
+            queued_text_update(f"<br />Release title: {output}")
         return output if output else None
 
     def torrent_gen_cb(
         self,
         _torrent: Torrent,
-        _filepath: PathLike[str],
+        _filepath: str,
         pieces_done: int,
         pieces_total: int,
     ) -> None:
         if self.progress_bar_cb:
             self.progress_bar_cb(round(pieces_done / pieces_total * 100, 2))
+
+    def mkbrr_torrent_gen_cb(self, progress: int) -> None:
+        if self.progress_bar_cb:
+            self.progress_bar_cb(progress)
 
     def _handle_injection(
         self,
@@ -1052,7 +1210,7 @@ class ProcessBackEnd:
             if client_settings.enabled:
                 inj_success, inj_msg = False, "Failed"
                 queued_text_update(
-                    f"Injecting torrent [Tracker: {tracker_name} | Client: {client}]"
+                    f"<br />Injecting torrent [Tracker: {tracker_name} | Client: {client}]",
                 )
                 if client == TorrentClientSelection.QBITTORRENT:
                     inj_success, inj_msg = self.qbittorrent_inject(torrent_path)
@@ -1073,7 +1231,7 @@ class ProcessBackEnd:
                     )
 
                 queued_text_update(
-                    f"{'Completed' if inj_success else 'Failed'}, status: {inj_msg}"
+                    f"<br />{'Completed' if inj_success else 'Failed'}, status: {inj_msg}",
                 )
 
     def qbittorrent_inject(self, torrent_path: Path) -> tuple[bool, str]:
