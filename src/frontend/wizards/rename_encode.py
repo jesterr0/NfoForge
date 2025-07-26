@@ -291,6 +291,8 @@ class RenameEncode(BaseWizardPage):
         self.media_label.setText(media_file.stem)
         self.media_label.setToolTip(media_file.stem)
 
+        self._pre_load_attribute_combos(media_file.stem)
+
         self.token_override.setText(self.config.cfg_payload.mvr_token)
 
         get_quality = self.backend.get_quality(
@@ -355,6 +357,55 @@ class RenameEncode(BaseWizardPage):
             super().validatePage()
             return True
         return False
+
+    def _pre_load_attribute_combos(self, filename: str) -> None:
+        # handle edition
+        for item in EDITION_INFO:
+            for pat in item.re_gex:
+                if re.search(pat, filename, flags=re.I):
+                    idx = self.edition_combo.findText(item.normalized)
+                    if idx > -1:
+                        self.edition_combo.setCurrentIndex(idx)
+                        break
+            else:
+                continue
+            break
+
+        # handle frame size
+        for item in FRAME_SIZE_INFO:
+            for pat in item.re_gex:
+                if re.search(pat, filename, flags=re.I):
+                    idx = self.frame_size_combo.findText(item.normalized)
+                    if idx > -1:
+                        self.frame_size_combo.setCurrentIndex(idx)
+                        break
+            else:
+                continue
+            break
+
+        # handle localization
+        for item in LOCALIZATION_INFO:
+            for pat in item.re_gex:
+                if re.search(pat, filename, flags=re.I):
+                    idx = self.localization_combo.findText(item.normalized)
+                    if idx > -1:
+                        self.localization_combo.setCurrentIndex(idx)
+                        break
+            else:
+                continue
+            break
+
+        # handle re-release
+        for item in RE_RELEASE_INFO:
+            for pat in item.re_gex:
+                if re.search(pat, filename, flags=re.I):
+                    idx = self.re_release_combo.findText(item.normalized)
+                    if idx > -1:
+                        self.re_release_combo.setCurrentIndex(idx)
+                        break
+            else:
+                continue
+            break
 
     @Slot(bool)
     def _on_override_group_toggled(self, checked: bool) -> None:
