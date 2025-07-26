@@ -42,7 +42,7 @@ class BaseWizardPage(QWizardPage):
         Overrides QWizardPage validatePage and should ALWAYS be called in children pages before
         returning True.
         """
-        if not self.config.media_input_payload.working_dir:
+        if not self.config.cfg_payload.working_dir:
             raise FileNotFoundError(
                 "Could not detect working directory that should be set from child wizard input "
                 "page using method set_working_dir"
@@ -51,7 +51,7 @@ class BaseWizardPage(QWizardPage):
 
     def set_working_dir(self, path: Path) -> None:
         """Convenient method to set the working directory for MediaInputPayload"""
-        self.config.media_input_payload.working_dir = path
+        self.config.cfg_payload.working_dir = path
 
     @staticmethod
     def find_largest_media(directory: Path, extensions: Iterable) -> Path | None:
