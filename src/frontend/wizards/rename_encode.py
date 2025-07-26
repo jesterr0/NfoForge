@@ -359,53 +359,19 @@ class RenameEncode(BaseWizardPage):
         return False
 
     def _pre_load_attribute_combos(self, filename: str) -> None:
-        # handle edition
-        for item in EDITION_INFO:
-            for pat in item.re_gex:
-                if re.search(pat, filename, flags=re.I):
-                    idx = self.edition_combo.findText(item.normalized)
-                    if idx > -1:
-                        self.edition_combo.setCurrentIndex(idx)
-                        break
-            else:
-                continue
-            break
+        def select_combo_by_regex(norm_list, combo):
+            for item in norm_list:
+                for pat in item.re_gex:
+                    if re.search(pat, filename, flags=re.I):
+                        idx = combo.findText(item.normalized)
+                        if idx > -1:
+                            combo.setCurrentIndex(idx)
+                            return
 
-        # handle frame size
-        for item in FRAME_SIZE_INFO:
-            for pat in item.re_gex:
-                if re.search(pat, filename, flags=re.I):
-                    idx = self.frame_size_combo.findText(item.normalized)
-                    if idx > -1:
-                        self.frame_size_combo.setCurrentIndex(idx)
-                        break
-            else:
-                continue
-            break
-
-        # handle localization
-        for item in LOCALIZATION_INFO:
-            for pat in item.re_gex:
-                if re.search(pat, filename, flags=re.I):
-                    idx = self.localization_combo.findText(item.normalized)
-                    if idx > -1:
-                        self.localization_combo.setCurrentIndex(idx)
-                        break
-            else:
-                continue
-            break
-
-        # handle re-release
-        for item in RE_RELEASE_INFO:
-            for pat in item.re_gex:
-                if re.search(pat, filename, flags=re.I):
-                    idx = self.re_release_combo.findText(item.normalized)
-                    if idx > -1:
-                        self.re_release_combo.setCurrentIndex(idx)
-                        break
-            else:
-                continue
-            break
+        select_combo_by_regex(EDITION_INFO, self.edition_combo)
+        select_combo_by_regex(FRAME_SIZE_INFO, self.frame_size_combo)
+        select_combo_by_regex(LOCALIZATION_INFO, self.localization_combo)
+        select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
 
     @Slot(bool)
     def _on_override_group_toggled(self, checked: bool) -> None:
