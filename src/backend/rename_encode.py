@@ -68,7 +68,9 @@ class RenameEncodeBackEnd:
             if check_source_file:
                 source = check_source_file
 
-        if "Ultra Blu-ray" in source or "Blu-ray" in source:
+        if "Ultra HD Blu-ray" in source:
+            return QualitySelection.UHD_BLURAY
+        elif "Blu-ray" in source:
             return QualitySelection.BLURAY
         elif "DVD" in source:
             return QualitySelection.DVD

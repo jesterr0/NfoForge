@@ -1311,7 +1311,7 @@ class TokenReplacer:
             if check_source_file:
                 source = check_source_file
 
-        if "Ultra Blu-ray" in source:
+        if "Ultra HD Blu-ray" in source:
             source = "UHD BluRay"
         elif "Blu-ray" in source:
             source = "BluRay"

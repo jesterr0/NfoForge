@@ -8,3 +8,4 @@ class QualitySelection(CaseInsensitiveStrEnum):
     WEB_RIP = "WEBRip"
     WEB_DL = "WEBDL"
     BLURAY = "BluRay"
+    UHD_BLURAY = "UHD BluRay"
