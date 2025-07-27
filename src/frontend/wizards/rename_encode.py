@@ -586,7 +586,7 @@ class RenameEncode(BaseWizardPage):
         self._update_override_tokens("hybrid", "HYBRID", remove=not e)
 
     def _update_override_tokens(self, k: str, v: str, remove: bool = False) -> None:
-        if remove or not v:
+        if remove:
             self.backend.override_tokens.pop(k, None)
         else:
             self.backend.override_tokens[k] = v
