@@ -1,9 +1,10 @@
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 import re
 from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Qt, Signal, Slot
+from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -784,7 +785,12 @@ class RenameTokenControl(QWidget):
     def _item_changed(self, item: QTableWidgetItem) -> None:
         token = self.table.item(item.row(), 0)
         if token and item:
-            self.row_modified.emit((token.text().strip("{}"), item.text()))
+            QTimer.singleShot(
+                1,
+                partial(
+                    self.row_modified.emit, (token.text().strip("{}"), item.text())
+                ),
+            )
 
     def get_token_values(self) -> dict:
         """Return a dict of token: value"""
