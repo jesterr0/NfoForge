@@ -201,6 +201,8 @@ class MainWindowWizard(QWizard):
     def _set_disabled(self, value: bool) -> None:
         self.settings_button.setDisabled(value)
         self.next_button.setDisabled(value)
+        self.reset_button.setDisabled(value)
+        self.process_button.setDisabled(value)
 
     def end_early(self) -> None:
         self.setButtonLayout(self.early_ending_buttons)

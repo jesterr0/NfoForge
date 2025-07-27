@@ -211,7 +211,8 @@ class ProcessPage(BaseWizardPage):
         if not tracker_data:
             raise AttributeError("Could not determine tracker data")
 
-        GSigs().main_window_set_disabled.emit(True)
+        GSigs().wizard_set_disabled.emit(True)
+        self.tracker_process_tree.setDisabled(True)
 
         if self.processing_mode == UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
@@ -315,7 +316,8 @@ class ProcessPage(BaseWizardPage):
     def _job_ended(self) -> None:
         self.dupe_worker = None
         self.process_worker = None
-        GSigs().main_window_set_disabled.emit(False)
+        GSigs().wizard_set_disabled.emit(False)
+        self.tracker_process_tree.setDisabled(False)
 
     @Slot(str, str)
     def _on_status_update(self, index: str, txt: str) -> None:

@@ -95,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All image host uploaders now log retries.
 - **Overview** page initialization is now handled in a threaded worker, to keep the UI smooth while it's handling longer loading NFOs/plugins.
 - Improved icons across the whole program (less dependencies to package in the runtime folder).
+- Process window log window is scrollable during processing now.
 
 ### Fixed
 
