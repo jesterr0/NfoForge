@@ -67,6 +67,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Returns an iterable of even strings (source).
   - Added new token **screen_shots_odd_str**.
     - Returns an iterable of odd strings (encode).
+- **pre_upload_plugin** now has access to the callable **progress_cb** in the process window. It expects a **float**, if this will allow the user to utilize the progress bar in their program.
 
 ### Changed
 
