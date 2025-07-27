@@ -347,7 +347,7 @@ class ProcessPage(BaseWizardPage):
             QTextCursor.MoveOperation.StartOfBlock, QTextCursor.MoveMode.KeepAnchor
         )
         cursor.removeSelectedText()
-        cursor.insertText(txt)
+        cursor.insertHtml(txt)
         if not cursor.atEnd():
             cursor.deleteChar()
         self.text_widget.setTextCursor(cursor)
