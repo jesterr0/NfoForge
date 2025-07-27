@@ -8,6 +8,7 @@ from typing import Any, TYPE_CHECKING
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 from PySide6.QtGui import QTextCursor, Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QFileDialog,
     QLabel,
@@ -159,6 +160,11 @@ class ProcessWorker(BaseWorker):
 
 
 class ProcessPage(BaseWizardPage):
+    THEMES = {
+        "dark": {"box_color": "#626262"},
+        "light": {"box_color": "#e6e6e6"},
+    }
+
     def __init__(self, config: Config, parent: "MainWindow") -> None:
         super().__init__(config, parent)
         self.setObjectName("processPage")
@@ -478,18 +484,21 @@ class ProcessPage(BaseWizardPage):
 
         # handle rename if we're uploading
         if self.processing_mode == UploadProcessMode.UPLOAD:
+            # grab table bg color based on theme
+            table_element_bg = self.get_theme_colors()
+
             # file rename first (if needed)
             if renamed_input and (str(og_input) != str(renamed_input)):
-                self._on_text_update("""\
+                self._on_text_update(f"""\
                     <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📼 Renaming input file:</h3>
                     <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
                     <tr>
-                        <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-                        <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
                     </tr>
                     <tr>
-                        <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncut.BluRay.1080p.DTS-X.7.1.VC-1.mkv</td>
-                        <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncensored.BluRay.1080p.DTS-X.7.1.VC-1.mkv</td>
+                        <td style="border: 1px solid #bbb; padding: 6px;">{og_input.stem}</td>
+                        <td style="border: 1px solid #bbb; padding: 6px;">{renamed_input.stem}</td>
                     </tr>
                     </table>""")
                 try:
@@ -524,16 +533,16 @@ class ProcessPage(BaseWizardPage):
                 new_folder = encode_file_dir.parent / detected_input.stem
                 if encode_file_dir != new_folder:
                     try:
-                        self._on_text_update("""\
+                        self._on_text_update(f"""\
                             <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📂 Renaming parent folder:</h3>
                             <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
                             <tr>
-                                <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-                                <th style="background: #f0f0f0; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+                                <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+                                <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
                             </tr>
                             <tr>
-                                <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncut.BluRay.1080p.DTS-X.7.1.VC-1</td>
-                                <td style="border: 1px solid #bbb; padding: 6px;">The.Twilight.Saga.Breaking.Dawn.2011.Uncensored.BluRay.1080p.DTS-X.7.1.VC-1</td>
+                                <td style="border: 1px solid #bbb; padding: 6px;">{encode_file_dir.stem}</td>
+                                <td style="border: 1px solid #bbb; padding: 6px;">{new_folder.stem}</td>
                             </tr>
                             </table>""")
                         encode_file_dir.rename(new_folder)
@@ -599,6 +608,14 @@ class ProcessPage(BaseWizardPage):
             raise ProcessError(tracker_paths_error_msg)
 
         return tracker_data
+
+    def get_theme_colors(self):
+        app = QApplication.instance()
+        if app:
+            color_scheme = app.styleHints().colorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            scheme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
+            return self.THEMES[scheme]["box_color"]
+        return "#e6e6e6"
 
     def initializePage(self) -> None:
         self.add_tracker_items()
