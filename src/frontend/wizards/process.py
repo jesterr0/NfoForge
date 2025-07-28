@@ -235,7 +235,7 @@ class ProcessPage(BaseWizardPage):
             #     self._on_text_update_replace_last_line
             # )
             self._on_text_update(
-                '<h3 style="margin-bottom: 0px; padding-bottom: 0px;">📋 Checking for dupes:</h3>',
+                '<h3 style="margin: 0; padding: 0;">📋 Checking for dupes:</h3>',
             )
             self.dupe_worker.start()
 
@@ -331,26 +331,31 @@ class ProcessPage(BaseWizardPage):
         self.tracker_process_tree.update_value(index, 2, txt)
 
     @Slot(str)
-    def _on_text_update(self, txt: str) -> None:
+    def _on_text_update(self, txt: str | None = None) -> None:
+        """If text is provided insert it, if None or '' is sent create a line break"""
         cursor = self.text_widget.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertHtml(txt)
+        if txt:
+            cursor.insertHtml(txt)
+            LOG.info(LOG.LOG_SOURCE.FE, f"Process log: {txt}")
+        if not txt:
+            cursor.insertHtml("<br />")
         self.text_widget.setTextCursor(cursor)
         self.text_widget.ensureCursorVisible()
-        LOG.info(LOG.LOG_SOURCE.FE, txt)
 
     @Slot(str)
     def _on_text_update_replace_last_line(self, txt: str) -> None:
+        """Updates last line of text from the start of line"""
         cursor = self.text_widget.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.movePosition(
-            QTextCursor.MoveOperation.StartOfBlock, QTextCursor.MoveMode.KeepAnchor
+            QTextCursor.MoveOperation.StartOfLine, QTextCursor.MoveMode.KeepAnchor
         )
         cursor.removeSelectedText()
         cursor.insertHtml(txt)
-        if not cursor.atEnd():
-            cursor.deleteChar()
         self.text_widget.setTextCursor(cursor)
+        self.text_widget.ensureCursorVisible()
+        LOG.info(LOG.LOG_SOURCE.FE, f"Process log replace last line: {txt}")
 
     @Slot(str)
     def _log_caught_error(self, txt: str) -> None:
@@ -490,7 +495,7 @@ class ProcessPage(BaseWizardPage):
             # file rename first (if needed)
             if renamed_input and (str(og_input) != str(renamed_input)):
                 self._on_text_update(f"""\
-                    <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📼 Renaming input file:</h3>
+                    <br /><h3 style="margin: 0; padding: 0;">📼 Renaming input file:</h3>
                     <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
                     <tr>
                         <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
@@ -534,7 +539,7 @@ class ProcessPage(BaseWizardPage):
                 if encode_file_dir != new_folder:
                     try:
                         self._on_text_update(f"""\
-                            <br /><h3 style="margin-bottom: 0; padding-bottom: 0;">📂 Renaming parent folder:</h3>
+                            <br /><h3 style="margin: 0; padding: 0;">📂 Renaming parent folder:</h3>
                             <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
                             <tr>
                                 <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
