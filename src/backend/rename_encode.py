@@ -5,6 +5,7 @@ from guessit import guessit
 from pymediainfo import MediaInfo
 
 from src.backend.token_replacer import TokenReplacer
+from src.backend.tokens import FileToken
 from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.payloads.media_search import MediaSearchPayload
@@ -30,6 +31,7 @@ class RenameEncodeBackEnd:
         mi_video_dynamic_range: dict[str, Any] | None,
         user_tokens: dict[str, str] | None,
     ) -> Path | None:
+        # print(movie_clean_title_rules)
         self.token_replacer = TokenReplacer(
             media_input=media_file,
             jinja_engine=None,
@@ -41,6 +43,7 @@ class RenameEncodeBackEnd:
             source_file_mi_obj=source_file_mi_obj,
             flatten=True,
             file_name_mode=True,
+            token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             movie_clean_title_rules=movie_clean_title_rules,
             mi_video_dynamic_range=mi_video_dynamic_range,
