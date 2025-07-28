@@ -193,7 +193,9 @@ class ProcessPage(BaseWizardPage):
 
         self.text_widget = QTextBrowser(parent=self, openExternalLinks=True)
 
-        self.progress_bar = QProgressBar(self)
+        self.progress_bar = QProgressBar(
+            self, minimum=0, maximum=10000, textVisible=True
+        )
         self.progress_bar.hide()
 
         main_layout = QVBoxLayout(self)
@@ -368,8 +370,19 @@ class ProcessPage(BaseWizardPage):
                 self.progress_bar.show()
                 # scroll to bottom since progress bar will occupy some space depending on parent vertical size
                 self.text_widget.ensureCursorVisible()
-            self.progress_bar.setValue(int(progress))
-            if progress == 100:
+
+            # calculate progress
+            int_value = int(progress * 100)
+            self.progress_bar.setValue(int_value)
+
+            # format text cleanly
+            if progress == int(progress):
+                self.progress_bar.setFormat(f"{int(progress)} %")
+            else:
+                self.progress_bar.setFormat(f"{progress:.2f} %")
+
+            # if complete reset and hide progress bar
+            if progress >= 100:
                 self.progress_bar.reset()
                 self.progress_bar.hide()
 
