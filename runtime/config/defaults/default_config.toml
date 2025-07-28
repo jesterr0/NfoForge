@@ -63,9 +63,9 @@ url_type = 2
 column_s = 1
 column_space = 1
 row_space = 0
-mvr_title_override_enabled = false
+mvr_title_override_enabled = true
 mvr_title_token_override = ""
-mvr_title_replace_map = []
+mvr_title_replace_map = [["\\.", "[space]"]]
 mvr_title_colon_replace = 3
 username = ""
 password = ""
@@ -338,27 +338,7 @@ mvr_clean_title_rules = [
         "and",
     ],
     [
-        '/',
-        '\\',
-    ],
-    [
-        "'",
-        "[remove]",
-    ],
-    [
-        '''(?<=\d),(?=\d)''',
-        "[remove]",
-    ],
-    [
-        '''(?<=\w),(?=\s\w)''',
-        "[space]",
-    ],
-    [
-        '''\s+-\s+''',
-        ".",
-    ],
-    [
-        '''(?<=\s|\w)(,|<|>|\/|\\|;|:|'|\"|\||`|~|!|\?|@|\$|%|\^|\*|-|_|=)(?=\s)|('|:|\?|,)(?=(?:(?:s|m)\s)|\s|$)|(\(|\)|\[|\]|\{|\})''',
+        "[^a-zA-Z0-9]",
         "[space]",
     ],
     [

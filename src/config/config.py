@@ -65,7 +65,7 @@ class Config:
     the program as needed as well as store other payloads that might need shared
     """
 
-    DEV_MODE: bool = True
+    DEV_MODE: bool = False
 
     ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
 
