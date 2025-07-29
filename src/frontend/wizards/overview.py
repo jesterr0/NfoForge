@@ -183,12 +183,16 @@ class Overview(BaseWizardPage):
     @Slot(object)
     def _worker_finished(self, data: dict[TrackerSelection, str] | None) -> None:
         # populate NFO widgets with data
+        recursively_clear_layout(self.nfo_box_layout)
         if data:
+            self.nfo_box.show()
             for tracker, nfo in data.items():
                 nfo_widget = self._build_nfo_widget()
                 nfo_widget.setPlainText(nfo)
                 self.nfo_box_layout.addWidget(QLabel(str(tracker)))
                 self.nfo_box_layout.addWidget(nfo_widget)
+        else:
+            self.nfo_box.hide()
 
         self._update_thumbnails()
 
@@ -263,78 +267,77 @@ class Overview(BaseWizardPage):
         media_info_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
     ) -> dict[TrackerSelection, str] | None:
+        """Threaded method, don't update UI in here"""
+        
         template_selector_backend = TemplateSelectorBackEnd()
         template_selector_backend.load_templates()
 
         if not self.config.shared_data.selected_trackers:
-            self.nfo_box.hide()
-        elif self.config.shared_data.selected_trackers and not self.nfo_box.isVisible():
-            self.nfo_box.show()
+            return None
 
-        if self.config.shared_data.selected_trackers:
-            data = {}
-            for tracker in self.config.shared_data.selected_trackers:
-                template = self.config.tracker_map[tracker].nfo_template
-                nfo = ""
-                nfo_template = template_selector_backend.read_template(template)
-                if nfo_template:
-                    # TODO: user_tokens should really be cached, we'll deal with this when we remove/rework overview page?
-                    user_tokens = {
-                        k: v
-                        for k, (v, _) in self.config.cfg_payload.user_tokens.items()
-                    }
-                    token_replacer = TokenReplacer(
-                        media_input=media_input,
-                        jinja_engine=self.config.jinja_engine,
-                        source_file=source_file,
-                        token_string=nfo_template,
-                        media_search_obj=self.config.media_search_payload,
-                        media_info_obj=media_info_obj,
-                        source_file_mi_obj=source_file_mi_obj,
-                        releasers_name=self.config.cfg_payload.releasers_name,
-                        dummy_screen_shots=True
-                        if self.config.shared_data.url_data
-                        or self.config.shared_data.loaded_images
-                        else False,
-                        release_notes=self.config.shared_data.release_notes,
-                        edition_override=self.config.shared_data.dynamic_data.get(
-                            "edition_override"
-                        ),
-                        frame_size_override=self.config.shared_data.dynamic_data.get(
-                            "frame_size_override"
-                        ),
-                        override_tokens=self.config.shared_data.dynamic_data.get(
-                            "override_tokens"
-                        ),
-                        user_tokens=user_tokens,
-                        movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
-                    ).get_output()
-                    if token_replacer:
-                        nfo = token_replacer
-                        if not isinstance(nfo, str):
-                            raise ValueError("NFO should be a string")
+        data = {}
+        for tracker in self.config.shared_data.selected_trackers:
+            template = self.config.tracker_map[tracker].nfo_template
+            nfo = ""
+            nfo_template = template_selector_backend.read_template(template)
+            if nfo_template:
+                # TODO: user_tokens should really be cached, we'll deal with this when we remove/rework overview page?
+                user_tokens = {
+                    k: v
+                    for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+                }
+                token_replacer = TokenReplacer(
+                    media_input=media_input,
+                    jinja_engine=self.config.jinja_engine,
+                    source_file=source_file,
+                    token_string=nfo_template,
+                    media_search_obj=self.config.media_search_payload,
+                    media_info_obj=media_info_obj,
+                    source_file_mi_obj=source_file_mi_obj,
+                    releasers_name=self.config.cfg_payload.releasers_name,
+                    dummy_screen_shots=True
+                    if self.config.shared_data.url_data
+                    or self.config.shared_data.loaded_images
+                    else False,
+                    release_notes=self.config.shared_data.release_notes,
+                    edition_override=self.config.shared_data.dynamic_data.get(
+                        "edition_override"
+                    ),
+                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                        "frame_size_override"
+                    ),
+                    override_tokens=self.config.shared_data.dynamic_data.get(
+                        "override_tokens"
+                    ),
+                    user_tokens=user_tokens,
+                    movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+                ).get_output()
+                if token_replacer:
+                    nfo = token_replacer
+                    if not isinstance(nfo, str):
+                        raise ValueError("NFO should be a string")
 
-                    try:
-                        token_replacer_plugin = self.config.cfg_payload.token_replacer
-                        if token_replacer_plugin:
-                            plugin = self.config.loaded_plugins[
-                                token_replacer_plugin
-                            ].token_replacer
-                            if plugin and callable(plugin):
-                                replace_tokens = plugin(
-                                    config=self.config,
-                                    input_str=nfo,
-                                    tracker_s=(tracker,),
-                                )
-                                nfo = replace_tokens if replace_tokens else nfo
-                    except Exception:
-                        # we attempt to execute the plugin, but since some data is filled in process step
-                        # it might not be available.
-                        pass
+                try:
+                    token_replacer_plugin = self.config.cfg_payload.token_replacer
+                    if token_replacer_plugin:
+                        plugin = self.config.loaded_plugins[
+                            token_replacer_plugin
+                        ].token_replacer
+                        if plugin and callable(plugin):
+                            replace_tokens = plugin(
+                                config=self.config,
+                                input_str=nfo,
+                                tracker_s=(tracker,),
+                            )
+                            nfo = replace_tokens if replace_tokens else nfo
+                except Exception:
+                    # we attempt to execute the plugin, but since some data is filled in process step
+                    # it might not be available.
+                    pass
 
-                    data[tracker] = nfo
-                    return data
+                data[tracker] = nfo
+        return data
 
     def _update_thumbnails(self) -> None:
         if self.config.shared_data.loaded_images:

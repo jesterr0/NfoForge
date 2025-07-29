@@ -5,12 +5,31 @@ All notable changes to this project will be documented in this file starting wit
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2025-0?-??
+
+### Added
+
+-
+
+### Changed
+
+-
+
+### Fixed
+
+- Overview page shows all NFOs again (broken since v0.8.0).
+- Overview page was modifying the UI in a thread (since v0.8.0).
+
+### Removed
+
+-
+
 ## [0.8.2] - 2025-07-28
 
 ### Changed
 
 - Process window is now supports 2 decimal precision.
-- TorrentLeech title naming scheme is now enforced, added defaults to the override. 
+- TorrentLeech title naming scheme is now enforced, added defaults to the override.
 
 ### Fixed
 
