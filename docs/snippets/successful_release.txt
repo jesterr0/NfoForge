@@ -1,0 +1,97 @@
+Info
+Title:                  : Finding Nemo (2003)
+Format Profile          : High@L4.1
+Resolution              : 1080p
+Average Bitrate         : 7984 kbps
+
+[url=https://i.ibb.co/qLYV8zvZ/fda41dad416a.png][img=340]https://i.ibb.co/TDMdGZsC/fda41dad416a.png[/img][/url]
+[url=https://i.ibb.co/W48HVbVS/8571d81e7502.png][img=340]https://i.ibb.co/Xr0WYhYm/8571d81e7502.png[/img][/url]
+[url=https://i.ibb.co/PZBQTKXZ/b206089213f3.png][img=340]https://i.ibb.co/ynLShtvn/b206089213f3.png[/img][/url]
+
+
+MediaInfo
+General
+Complete name                            : Finding.Nemo.2003.BluRay.1080p.DDP.5.1.x264.mkv
+File size                                : 6.10 GiB
+Duration                                 : 1 h 40 min
+Overall bit rate                         : 8 650 kb/s
+Frame rate                               : 23.976 FPS
+
+Video
+ID                                       : 1
+Format                                   : AVC
+Format profile                           : High@L4.1
+Duration                                 : 1 h 40 min
+Bit rate                                 : 8 000 kb/s
+Width                                    : 1 920 pixels
+Height                                   : 1 080 pixels
+Display aspect ratio                     : 16:9
+Frame rate                               : 23.976 (24000/1001) FPS
+Color space                              : YUV
+Chroma subsampling                       : 4:2:0
+Bit depth                                : 8 bits
+
+Audio #1
+ID                                       : 2
+Commercial name                          : Dolby Digital Plus
+Codec ID                                 : A_EAC3
+Bit rate                                 : 640 kb/s
+Channel(s)                               : 6 channels
+ChannelLayout_Original                   : L R C LFE Ls Rs
+Sampling rate                            : 48.0 kHz
+Language                                 : English
+
+Text #1
+ID                                       : 3
+Format                                   : UTF-8
+Language                                 : English
+Title                                    : English (SRT)
+
+Text #2
+ID                                       : 4
+Format                                   : PGS
+Language                                 : English
+Title                                    : English
+
+Text #3
+ID                                       : 5
+Format                                   : PGS
+Language                                 : English
+Title                                    : English (SDH)
+
+Menu
+00_00_00000                              : New Parents
+00_04_18717                              : Main Titles
+00_05_35669                              : First Day of School
+00_11_17802                              : Field Trip
+00_12_16277                              : the Drop Off
+00_14_08848                              : Nemo Lost
+00_16_29280                              : Meeting Dory
+00_18_50338                              : Sharks
+00_25_31989                              : the Tank Gang
+00_30_54227                              : the Abyss
+00_33_01646                              : Anglerfish
+00_36_11836                              : Nemo's Initiation
+00_40_19167                              : Fish Impressions
+00_44_58279                              : Jellyfish
+00_48_12389                              : the Filter
+00_51_28419                              : Sea Turtles
+00_56_07030                              : News Travels
+01_00_55902                              : Off Ramp
+01_05_20667                              : Dory Speaks Whale
+01_07_02101                              : Algae
+01_08_30148                              : Inside the Whale
+01_13_19437                              : Sydney Harbour
+01_14_15201                              : the Aquascum
+01_16_00097                              : Pelicans
+01_18_41300                              : Darla!
+01_21_57621                              : Goodbye, Dory
+01_24_29481                              : Nemo and Dory
+01_26_54334                              : Fishing Net
+01_29_26611                              : Reunion
+01_30_51363                              : Back on the Reef
+01_32_42974                              : Tank Escape
+01_33_24265                              : End Credits
+
+
+Shared with [url=https://github.com/jesterr0/NfoForge]NfoForge v0.8.2[/url]
