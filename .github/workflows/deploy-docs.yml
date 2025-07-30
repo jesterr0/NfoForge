@@ -1,7 +1,7 @@
 name: Deploy MkDocs site
 
 on:
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 jobs:
   build-deploy:
@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
-      - run: pip install mkdocs
+          python-version: "3.x"
+      - run: pip install mkdocs mkdocs-material
       - run: mkdocs build
       - run: mkdocs gh-deploy --force
