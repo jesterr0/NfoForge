@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mediainfo version="25.04">
+    <File>
+        <track type="General">
+            <ID>0 (0x0)</ID>
+            <Complete_name>G:\BDMV\STREAM\00106.m2ts</Complete_name>
+            <CompleteName_Last>G:\BDMV\STREAM\00133.m2ts</CompleteName_Last>
+            <Format>BDAV</Format>
+            <Format_Info>Blu-ray Video</Format_Info>
+            <File_size>75.0 GiB</File_size>
+            <Duration>2 h 28 min</Duration>
+            <Overall_bit_rate_mode>Variable</Overall_bit_rate_mode>
+            <Overall_bit_rate>72.5 Mb/s</Overall_bit_rate>
+            <Maximum_Overall_bit_rate>109 Mb/s</Maximum_Overall_bit_rate>
+            <Frame_rate>23.976 FPS</Frame_rate>
+        </track>
+        <track type="Video">
+            <ID>4113 (0x1011)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>HEVC</Format>
+            <Format_Info>High Efficiency Video Coding</Format_Info>
+            <Format_profile>Main 10@L5.1@High</Format_profile>
+            <HDR_format>SMPTE ST 2094 App 4, Version 1, HDR10+ Profile B compatible</HDR_format>
+            <Codec_ID>36</Codec_ID>
+            <Duration>2 h 28 min</Duration>
+            <Width>3 840 pixels</Width>
+            <Height>2 160 pixels</Height>
+            <Display_aspect_ratio>16:9</Display_aspect_ratio>
+            <Frame_rate>23.976 (24000/1001) FPS</Frame_rate>
+            <Color_space>YUV</Color_space>
+            <Chroma_subsampling>4:2:0 (Type 2)</Chroma_subsampling>
+            <Bit_depth>10 bits</Bit_depth>
+            <Writing_library>ATEME Titan File 3.9.0 (4.9.0.0)        </Writing_library>
+            <Color_range>Limited</Color_range>
+            <Color_primaries>BT.2020</Color_primaries>
+            <Transfer_characteristics>PQ</Transfer_characteristics>
+            <Matrix_coefficients>BT.2020 non-constant</Matrix_coefficients>
+            <Mastering_display_color_primaries>Display P3</Mastering_display_color_primaries>
+            <Mastering_display_luminance>min: 0.0050 cd/m2, max: 1000 cd/m2</Mastering_display_luminance>
+            <Maximum_Content_Light_Level>1179 cd/m2</Maximum_Content_Light_Level>
+            <Maximum_FrameAverage_Light_Level>501 cd/m2</Maximum_FrameAverage_Light_Level>
+        </track>
+        <track type="Audio" typeorder="1">
+            <ID>4352 (0x1100)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>DTS XLL X</Format>
+            <Format_Info>Digital Theater Systems</Format_Info>
+            <Commercial_name>DTS-HD MA + DTS:X</Commercial_name>
+            <Muxing_mode>Stream extension</Muxing_mode>
+            <Codec_ID>134</Codec_ID>
+            <Duration>2 h 28 min</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Channel_s_>8 channels</Channel_s_>
+            <Channel_layout>C L R LFE Lb Rb Lss Rss Objects</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>93.750 FPS (512 SPF)</Frame_rate>
+            <Bit_depth>24 bits</Bit_depth>
+            <Compression_mode>Lossless</Compression_mode>
+        </track>
+        <track type="Audio" typeorder="2">
+            <ID>4353 (0x1101)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>DTS XLL X</Format>
+            <Format_Info>Digital Theater Systems</Format_Info>
+            <Commercial_name>DTS-HD MA + DTS:X</Commercial_name>
+            <Muxing_mode>Stream extension</Muxing_mode>
+            <Codec_ID>134</Codec_ID>
+            <Duration>2 h 28 min</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Channel_s_>8 channels</Channel_s_>
+            <Channel_layout>C L R LFE Lb Rb Lss Rss Objects</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>93.750 FPS (512 SPF)</Frame_rate>
+            <Bit_depth>16 bits</Bit_depth>
+            <Compression_mode>Lossless</Compression_mode>
+        </track>
+        <track type="Audio" typeorder="3">
+            <ID>4354 (0x1102)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>DTS</Format>
+            <Format_Info>Digital Theater Systems</Format_Info>
+            <Codec_ID>130</Codec_ID>
+            <Duration>2 h 28 min</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>768 kb/s</Bit_rate>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>C L R Ls Rs LFE</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>93.750 FPS (512 SPF)</Frame_rate>
+            <Bit_depth>24 bits</Bit_depth>
+            <Compression_mode>Lossy</Compression_mode>
+            <Stream_size>814 MiB (1%)</Stream_size>
+        </track>
+        <track type="Audio" typeorder="4">
+            <ID>4355 (0x1103)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>DTS</Format>
+            <Format_Info>Digital Theater Systems</Format_Info>
+            <Codec_ID>130</Codec_ID>
+            <Duration>2 h 28 min</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>768 kb/s</Bit_rate>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>C L R Ls Rs LFE</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>93.750 FPS (512 SPF)</Frame_rate>
+            <Bit_depth>24 bits</Bit_depth>
+            <Compression_mode>Lossy</Compression_mode>
+            <Stream_size>814 MiB (1%)</Stream_size>
+        </track>
+        <track type="Audio" typeorder="5">
+            <ID>4356 (0x1104)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AC-3</Format>
+            <Format_Info>Audio Coding 3</Format_Info>
+            <Commercial_name>Dolby Digital</Commercial_name>
+            <Format_settings>Dolby Surround</Format_settings>
+            <Codec_ID>129</Codec_ID>
+            <Duration>2 h 28 min</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>192 kb/s</Bit_rate>
+            <Channel_s_>2 channels</Channel_s_>
+            <Channel_layout>L R</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossy</Compression_mode>
+            <Stream_size>203 MiB (0%)</Stream_size>
+            <Service_kind>Complete Main</Service_kind>
+            <Dialog_Normalization>-27 dB</Dialog_Normalization>
+            <compr>1.49 dB</compr>
+            <dynrng>1.49 dB</dynrng>
+            <dsurmod>Dolby Surround encoded</dsurmod>
+            <mixlevel>105 dB</mixlevel>
+            <ltrtcmixlev>-3.0 dB</ltrtcmixlev>
+            <ltrtsurmixlev>-3.0 dB</ltrtsurmixlev>
+            <lorocmixlev>-3.0 dB</lorocmixlev>
+            <lorosurmixlev>-3.0 dB</lorosurmixlev>
+            <dialnorm_Average>-27 dB</dialnorm_Average>
+            <dialnorm_Minimum>-27 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-27 dB</dialnorm_Maximum>
+        </track>
+        <track type="Text" typeorder="1">
+            <ID>4768 (0x12A0)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>83 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="2">
+            <ID>4769 (0x12A1)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>83 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="3">
+            <ID>4770 (0x12A2)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>83 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="4">
+            <ID>4771 (0x12A3)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>667 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="5">
+            <ID>4772 (0x12A4)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>83 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="6">
+            <ID>4773 (0x12A5)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>83 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="7">
+            <ID>4774 (0x12A6)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>209 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="8">
+            <ID>4775 (0x12A7)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>209 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="9">
+            <ID>4776 (0x12A8)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>209 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="10">
+            <ID>4777 (0x12A9)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>209 ms</Delay_relative_to_video>
+        </track>
+        <track type="Text" typeorder="11">
+            <ID>4778 (0x12AA)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+        <track type="Text" typeorder="12">
+            <ID>4779 (0x12AB)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+        <track type="Text" typeorder="13">
+            <ID>4780 (0x12AC)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+    </File>
+</Mediainfo>

@@ -1,0 +1,34 @@
+site_name: NfoForge Documentation
+nav:
+  - Introduction: index.md
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: custom
+  font:
+    text: Montserrat
+    code: Fira Mono
+  features:
+    - content.code.copy
+    - search.highlight
+    - navigation.footer
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+
+plugins:
+  - search
+  # - macros:
+  #     module_name: scripts/parse_custom_formats
+
+# extra_css:
+#   - stylesheets/extra.css

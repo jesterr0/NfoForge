@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mediainfo version="25.04">
+    <File>
+        <track type="General">
+            <ID>0 (0x0)</ID>
+            <Complete_name>C:\Users\jlw_4049\Downloads\CHRISTMAS WITH THE KRANKS (_10_)\BDMV\CLIPINF\00005.clpi</Complete_name>
+            <Format>Blu-ray Clip info</Format>
+            <File_size>412 Bytes</File_size>
+            <Duration>12 s 183 ms</Duration>
+            <Overall_bit_rate_mode>Variable</Overall_bit_rate_mode>
+            <Overall_bit_rate>4 458 kb/s</Overall_bit_rate>
+            <Maximum_Overall_bit_rate>48.0 Mb/s</Maximum_Overall_bit_rate>
+            <Frame_rate>23.976 FPS</Frame_rate>
+            <OverallBitRate_Precision_Min>4457811</OverallBitRate_Precision_Min>
+            <OverallBitRate_Precision_Max>4458182</OverallBitRate_Precision_Max>
+        </track>
+        <track type="Video">
+            <ID>4113 (0x1011)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AVC</Format>
+            <Format_Info>Advanced Video Codec</Format_Info>
+            <Format_profile>High@L4.1</Format_profile>
+            <Format_settings>CABAC / 2 Ref Frames</Format_settings>
+            <Format_settings__CABAC>Yes</Format_settings__CABAC>
+            <Format_settings__Reference_frames>2 frames</Format_settings__Reference_frames>
+            <Format_settings__GOP>M=3, N=22</Format_settings__GOP>
+            <Format_settings__Slice_count>4 slices per frame</Format_settings__Slice_count>
+            <Codec_ID>27</Codec_ID>
+            <Duration>12 s 137 ms</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Bit_rate>4 275 kb/s</Bit_rate>
+            <Maximum_bit_rate>38.2 Mb/s</Maximum_bit_rate>
+            <Width>1 920 pixels</Width>
+            <Height>1 080 pixels</Height>
+            <Display_aspect_ratio>16:9</Display_aspect_ratio>
+            <Frame_rate>23.976 (24000/1001) FPS</Frame_rate>
+            <Color_space>YUV</Color_space>
+            <Chroma_subsampling>4:2:0</Chroma_subsampling>
+            <Bit_depth>8 bits</Bit_depth>
+            <Scan_type>Progressive</Scan_type>
+            <Bits__Pixel_Frame_>0.086</Bits__Pixel_Frame_>
+            <Stream_size>6.18 MiB</Stream_size>
+            <format_identifier>HDMV</format_identifier>
+            <Source>00005.m2ts</Source>
+        </track>
+    </File>
+</Mediainfo>

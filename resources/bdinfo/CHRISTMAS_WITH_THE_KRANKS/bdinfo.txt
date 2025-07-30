@@ -1,0 +1,126 @@
+Disc Title:     CHRISTMAS WITH THE KRANKS
+Disc Label:     CHRISTMAS WITH THE KRANKS (_10_)
+Disc Size:      26,005,301,069 bytes
+Protection:     AACS
+BDInfo:         0.8.0.1
+
+Notes:          
+
+BDINFO HOME:
+  Cinema Squid (old)
+    http://www.cinemasquid.com/blu-ray/tools/bdinfo
+  UniqProject GitHub (new)
+    https://github.com/UniqProject/BDInfo
+
+INCLUDES FORUMS REPORT FOR:
+  AVS Forum Blu-ray Audio and Video Specifications Thread
+    http://www.avsforum.com/avs-vb/showthread.php?t=1155731
+
+
+"********************\
+PLAYLIST: 00003.MPLS
+"********************\
+
+<--- BEGIN FORUMS PASTE --->
+[code]
+                                                                                                                      Total        Video                                                                           
+Title                                                           Codec   Length    Movie Size        Disc Size         Bitrate      Bitrate      Main Audio Track                          Secondary Audio Track    
+-----                                                           ------  -------   --------------    ----------------  -----------  -----------  ------------------                        ---------------------    
+00003.MPLS                                                      AVC     01:39:07  24,766,795,776    26,005,301,069    33.31 Mbps   26.81 Mbps   DTS-HD Master 5.1 3805 kbps (48kHz/24-bit)                         
+[/code]
+
+[code]
+DISC INFO:
+Disc Title:     CHRISTMAS WITH THE KRANKS
+Disc Label:     CHRISTMAS WITH THE KRANKS (_10_)
+Disc Size:      26,005,301,069 bytes
+Protection:     AACS
+BDInfo:         0.8.0.1b
+
+PLAYLIST REPORT:
+
+Name:           00003.MPLS
+Length:         01:39:07.316 (h:m:s.ms)
+Size:           24,766,795,776 bytes
+Total Bitrate:  33.31 Mbps
+
+VIDEO:
+
+Codec                   Bitrate             Description     
+---------------         -------------       -----------     
+MPEG-4 AVC Video        26,808 kbps         1080p / 23.976 fps / 16:9 / High Profile 4.1
+
+AUDIO:
+
+Codec                           Language        Bitrate         Description     
+---------------                 -------------   -------------   -----------     
+DTS-HD Master Audio             English          3805 kbps      5.1 / 48 kHz /  3805 kbps / 24-bit (DTS Core: 5.1 / 48 kHz /  1509 kbps / 24-bit)
+Dolby Digital Audio             French            448 kbps      5.1 / 48 kHz /   448 kbps / DN -31dB
+Dolby Digital Audio             Spanish           448 kbps      5.1 / 48 kHz /   448 kbps / DN -31dB
+
+SUBTITLES:
+
+Codec                           Language        Bitrate         Description     
+---------------                 -------------   -------------   -----------     
+Presentation Graphics           English         36.80 kbps      1920x1080 / 1467 Captions
+Presentation Graphics           French          24.37 kbps      1920x1080 / 1131 Captions
+Presentation Graphics           Spanish         29.34 kbps      1920x1080 / 1141 Captions
+
+FILES:
+
+Name            Time In         Length          Size            Total Bitrate   
+--------------- -------------   -------------   -------------   -------------   
+00006.M2TS      0:00:00.000     1:38:55.179     24,760,006,656  33,374 kbps     
+00005.M2TS      1:38:55.179     0:00:12.137     6,789,120        4,475 kbps     
+
+CHAPTERS:
+
+Number          Time In         Length          Avg Video Rate  Max 1-Sec Rate  Max 1-Sec Time  Max 5-Sec Rate  Max 5-Sec Time  Max 10Sec Rate  Max 10Sec Time  Avg Frame Size  Max Frame Size  Max Frame Time  
+------          -------------   -------------   --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  
+1               0:00:00.000     0:10:01.434     27,141 kbps     40,658 kbps     00:03:15.236    31,801 kbps     00:03:11.316    29,679 kbps     00:03:06.352    141,493 bytes   627,439 bytes   00:06:46.906    
+2               0:10:01.434     0:10:00.683     27,920 kbps     40,730 kbps     00:12:08.811    31,100 kbps     00:12:05.057    29,352 kbps     00:12:00.511    145,563 bytes   606,816 bytes   00:17:17.327    
+3               0:20:02.117     0:09:57.680     27,858 kbps     38,165 kbps     00:24:24.963    30,057 kbps     00:22:11.455    29,081 kbps     00:23:47.384    145,237 bytes   584,647 bytes   00:20:52.376    
+4               0:29:59.797     0:10:04.020     27,904 kbps     37,389 kbps     00:38:53.748    29,986 kbps     00:36:39.447    28,891 kbps     00:38:44.655    145,477 bytes   660,997 bytes   00:32:33.785    
+5               0:40:03.818     0:10:01.434     27,901 kbps     37,275 kbps     00:49:45.440    29,887 kbps     00:46:25.324    28,917 kbps     00:45:08.038    145,465 bytes   660,863 bytes   00:47:30.806    
+6               0:50:05.252     0:09:59.056     27,886 kbps     39,538 kbps     00:59:21.307    30,019 kbps     00:53:46.181    29,090 kbps     00:57:10.343    145,383 bytes   750,045 bytes   00:54:24.803    
+7               1:00:04.309     0:10:00.016     27,900 kbps     38,888 kbps     01:09:02.471    29,967 kbps     01:08:58.801    29,061 kbps     01:09:19.363    145,458 bytes   616,216 bytes   01:00:42.055    
+8               1:10:04.325     0:10:02.643     27,903 kbps     37,827 kbps     01:12:29.928    30,095 kbps     01:11:28.575    29,041 kbps     01:19:34.978    145,474 bytes   574,672 bytes   01:15:56.969    
+9               1:20:06.968     0:09:58.973     27,916 kbps     36,633 kbps     01:29:03.755    30,143 kbps     01:29:28.196    28,921 kbps     01:23:15.156    145,542 bytes   558,911 bytes   01:22:27.359    
+10              1:30:05.942     0:03:14.652     27,586 kbps     37,142 kbps     01:30:25.586    29,906 kbps     01:30:15.118    28,760 kbps     01:30:25.253    143,821 bytes   511,718 bytes   01:30:07.276    
+11              1:33:20.595     0:05:34.375     10,929 kbps     38,028 kbps     01:38:36.869    23,529 kbps     01:38:34.742    18,443 kbps     01:37:32.680     56,978 bytes   392,984 bytes   01:38:37.828    
+12              1:38:54.970     0:00:12.345      4,153 kbps     16,830 kbps     01:39:06.148     5,998 kbps     01:39:02.269     4,458 kbps     01:38:57.264     21,797 bytes   348,524 bytes   01:39:02.519    
+
+STREAM DIAGNOSTICS:
+
+File            PID             Type            Codec           Language                Seconds                     Bitrate                  Bytes        Packets       
+----------      -------------   -----           ----------      -------------           --------------          ---------------         --------------  -----------     
+00006.M2TS      4113 (0x1011)   0x1B            AVC                                     5935.096                 26,855 kbps            19,923,299,126  108,361,542     
+00006.M2TS      4352 (0x1100)   0x86            DTS-HD MA       eng (English)           5935.096                  3,813 kbps             2,828,979,232   16,298,754     
+00006.M2TS      4353 (0x1101)   0x81            AC3             fra (French)            5935.096                    448 kbps               332,369,408    1,854,740     
+00006.M2TS      4354 (0x1102)   0x81            AC3             spa (Spanish)           5935.096                    448 kbps               332,369,408    1,854,740     
+00006.M2TS      4608 (0x1200)   0x90            PGS             eng (English)           5935.096                     37 kbps                27,355,327      158,120     
+00006.M2TS      4609 (0x1201)   0x90            PGS             fra (French)            5935.096                     24 kbps                18,114,598      105,727     
+00006.M2TS      4610 (0x1202)   0x90            PGS             spa (Spanish)           5935.096                     29 kbps                21,808,817      125,884     
+00005.M2TS      4113 (0x1011)   0x1B            AVC                                     12.054                    4,253 kbps                 6,407,935       34,933     
+
+[/code]
+<---- END FORUMS PASTE ---->
+
+QUICK SUMMARY:
+
+Disc Title:     CHRISTMAS WITH THE KRANKS
+Disc Label:     CHRISTMAS WITH THE KRANKS (_10_)
+Disc Size:      26,005,301,069 bytes
+Protection:     AACS
+Playlist:       00003.MPLS
+Size:           24,766,795,776 bytes
+Length:         01:39:07.316
+Total Bitrate:  33.31 Mbps
+Video:          MPEG-4 AVC Video / 26,808 kbps / 1080p / 23.976 fps / 16:9 / High Profile 4.1
+Audio:          English / DTS-HD Master Audio / 5.1 / 48 kHz /  3805 kbps / 24-bit (DTS Core: 5.1 / 48 kHz /  1509 kbps / 24-bit)
+Audio:          French / Dolby Digital Audio / 5.1 / 48 kHz /   448 kbps / DN -31dB
+Audio:          Spanish / Dolby Digital Audio / 5.1 / 48 kHz /   448 kbps / DN -31dB
+Subtitle:       English / 36.80 kbps
+Subtitle:       French / 24.37 kbps
+Subtitle:       Spanish / 29.34 kbps
+

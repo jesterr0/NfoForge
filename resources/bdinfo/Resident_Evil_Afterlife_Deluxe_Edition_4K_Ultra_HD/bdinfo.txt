@@ -1,0 +1,143 @@
+Disc Title:     Resident Evil: Afterlife - Deluxe Edition - 4K Ultra HD
+Disc Label:     Resident.Evil.Afterlife.2010.2160p.USA.UHD.Blu-ray.DV.HDR.HEVC.TrueHD.7.1.Atmos-sprs
+Disc Size:      141,099,481,803 bytes
+Protection:     AACS2
+Extras:         Ultra HD, BD-Java
+BDInfo:         0.8.0.1
+
+Notes:          
+
+BDINFO HOME:
+  Cinema Squid (old)
+    http://www.cinemasquid.com/blu-ray/tools/bdinfo
+  UniqProject GitHub (new)
+    https://github.com/UniqProject/BDInfo
+
+INCLUDES FORUMS REPORT FOR:
+  AVS Forum Blu-ray Audio and Video Specifications Thread
+    http://www.avsforum.com/avs-vb/showthread.php?t=1155731
+
+
+"********************\
+PLAYLIST: 00001.MPLS
+"********************\
+
+<--- BEGIN FORUMS PASTE --->
+[code]
+                                                                                                                      Total        Video                                                                           
+Title                                                           Codec   Length    Movie Size        Disc Size         Bitrate      Bitrate      Main Audio Track                          Secondary Audio Track    
+-----                                                           ------  -------   --------------    ----------------  -----------  -----------  ------------------                        ---------------------    
+00001.MPLS                                                      HEVC    01:36:52  56,489,766,912    141,099,481,803   77.75 Mbps   63.27 Mbps   Dolby Atmos 7.1 3975 kbps (48kHz/24-bit)  DTS-HD Master 5.1 2419 kbps (48kHz/16-bit)
+[/code]
+
+[code]
+DISC INFO:
+Disc Title:     Resident Evil: Afterlife - Deluxe Edition - 4K Ultra HD
+Disc Label:     Resident.Evil.Afterlife.2010.2160p.USA.UHD.Blu-ray.DV.HDR.HEVC.TrueHD.7.1.Atmos-sprs
+Disc Size:      141,099,481,803 bytes
+Protection:     AACS2
+Extras:         Ultra HD, BD-Java
+BDInfo:         0.8.0.1b
+
+PLAYLIST REPORT:
+
+Name:           00001.MPLS
+Length:         01:36:52.806 (h:m:s.ms)
+Size:           56,489,766,912 bytes
+Total Bitrate:  77.75 Mbps
+
+(*) Indicates included stream hidden by this playlist.
+
+VIDEO:
+
+Codec                   Bitrate             Description     
+---------------         -------------       -----------     
+MPEG-H HEVC Video       63,265 kbps         2160p / 23.976 fps / 16:9 / Main 10 @ Level 5.1 @ High / 4:2:0 / 10 bits / HDR10 / Limited Range / BT.2020 / PQ / BT.2020 non-constant / Mastering display color primaries: BT.2020 / Mastering display luminance: min: 0.0050 cd/m2, max: 4000.0000 cd/m2 / Maximum Content Light Level: 936 cd / m2 / Maximum Frame-Average Light Level: 600 cd/m2
+* MPEG-H HEVC Video     2,097 kbps          1080p / 23.976 fps / 16:9 / Main 10 @ Level 5.1 @ High / 4:2:0 / 10 bits / Dolby Vision / Limited Range / BT.2020 / PQ / BT.2020 non-constant / Mastering display color primaries: BT.2020 / Mastering display luminance: min: 0.0050 cd/m2, max: 4000.0000 cd/m2
+
+AUDIO:
+
+Codec                           Language        Bitrate         Description     
+---------------                 -------------   -------------   -----------     
+Dolby TrueHD/Atmos Audio        English          3975 kbps      7.1 / 48 kHz /  3335 kbps / 24-bit (AC3 Embedded: 5.1 / 48 kHz /   640 kbps / DN -31dB)
+DTS-HD Master Audio             English          2419 kbps      5.1 / 48 kHz /  2419 kbps / 16-bit (DTS Core: 5.1 / 48 kHz /  1509 kbps / 16-bit)
+Dolby Digital Audio             French            640 kbps      5.1 / 48 kHz /   640 kbps / DN -31dB
+Dolby Digital Audio             Spanish           640 kbps      5.1 / 48 kHz /   640 kbps / DN -31dB
+
+SUBTITLES:
+
+Codec                           Language        Bitrate         Description     
+---------------                 -------------   -------------   -----------     
+Presentation Graphics           English         17.98 kbps      1920x1080 / 818 Captions
+Presentation Graphics           English         15.14 kbps      1920x1080 / 638 Captions
+Presentation Graphics           French          13.75 kbps      1920x1080 / 644 Captions
+Presentation Graphics           Spanish         14.78 kbps      1920x1080 / 658 Captions (17 Forced Captions)
+Presentation Graphics           French           0.88 kbps      1920x1080 / 34 Forced Captions
+
+FILES:
+
+Name            Time In         Length          Size            Total Bitrate   
+--------------- -------------   -------------   -------------   -------------   
+00001.M2TS      0:00:00.000     1:36:52.806     56,489,766,912  77,746 kbps     
+
+CHAPTERS:
+
+Number          Time In         Length          Avg Video Rate  Max 1-Sec Rate  Max 1-Sec Time  Max 5-Sec Rate  Max 5-Sec Time  Max 10Sec Rate  Max 10Sec Time  Avg Frame Size  Max Frame Size  Max Frame Time  
+------          -------------   -------------   --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  --------------  
+1               0:00:00.000     0:07:16.978     65,089 kbps     115,826 kbps    00:06:02.236    92,665 kbps     00:04:28.726    84,119 kbps     00:04:28.101    339,343 bytes   1,665,421 bytes 00:04:32.855    
+2               0:07:16.978     0:06:47.573     70,660 kbps     124,645 kbps    00:08:29.717    93,791 kbps     00:13:16.587    89,089 kbps     00:13:26.222    368,389 bytes   1,650,864 bytes 00:12:55.608    
+3               0:14:04.552     0:05:16.816     65,069 kbps     120,040 kbps    00:14:47.011    86,271 kbps     00:16:10.010    83,089 kbps     00:17:27.880    339,241 bytes   1,435,937 bytes 00:14:47.052    
+4               0:19:21.368     0:06:02.570     59,862 kbps     129,543 kbps    00:23:27.864    84,568 kbps     00:20:33.273    80,558 kbps     00:20:31.772    312,091 bytes   2,100,020 bytes 00:23:27.906    
+5               0:25:23.939     0:04:43.283     57,237 kbps     117,827 kbps    00:29:07.704    91,798 kbps     00:29:07.662    81,336 kbps     00:26:22.080    298,406 bytes   1,268,535 bytes 00:28:51.813    
+6               0:30:07.222     0:05:00.967     69,131 kbps     113,935 kbps    00:33:18.746    88,304 kbps     00:33:05.066    80,471 kbps     00:33:23.668    360,418 bytes   1,590,811 bytes 00:31:33.182    
+7               0:35:08.189     0:06:42.902     73,358 kbps     114,934 kbps    00:35:20.993    92,038 kbps     00:35:50.231    84,966 kbps     00:35:46.811    382,457 bytes   1,538,625 bytes 00:40:08.280    
+8               0:41:51.091     0:05:16.149     74,471 kbps     140,642 kbps    00:46:09.057    91,385 kbps     00:46:09.099    86,518 kbps     00:46:09.057    388,258 bytes   1,697,721 bytes 00:46:09.141    
+9               0:47:07.241     0:06:34.227     74,092 kbps     119,670 kbps    00:47:37.521    88,063 kbps     00:47:37.479    82,377 kbps     00:47:37.521    386,280 bytes   1,774,251 bytes 00:53:41.468    
+10              0:53:41.468     0:07:12.473     72,070 kbps     114,755 kbps    00:55:13.393    89,045 kbps     00:58:24.167    81,668 kbps     00:59:34.988    375,739 bytes   1,637,876 bytes 00:53:42.260    
+11              1:00:53.941     0:07:04.590     71,384 kbps     131,445 kbps    01:05:40.978    92,424 kbps     01:05:03.107    84,831 kbps     01:05:32.345    372,164 bytes   1,380,266 bytes 01:04:21.148    
+12              1:07:58.532     0:06:09.452     61,676 kbps     124,800 kbps    01:08:41.909    93,961 kbps     01:09:36.797    86,061 kbps     01:09:36.672    321,549 bytes   1,500,821 bytes 01:08:41.951    
+13              1:14:07.985     0:03:46.726     50,525 kbps     91,582 kbps     01:17:49.039    84,492 kbps     01:17:48.789    79,624 kbps     01:14:17.911    263,414 bytes   1,012,556 bytes 01:16:46.018    
+14              1:17:54.711     0:05:44.302     45,057 kbps     96,866 kbps     01:21:40.687    72,927 kbps     01:21:39.936    66,111 kbps     01:22:24.272    234,907 bytes   897,431 bytes   01:21:41.688    
+15              1:23:39.014     0:03:45.475     54,015 kbps     112,132 kbps    01:27:05.178    89,239 kbps     01:27:02.342    84,264 kbps     01:26:57.503    281,609 bytes   1,190,248 bytes 01:26:45.575    
+16              1:27:24.489     0:09:28.317     44,773 kbps     112,266 kbps    01:29:13.723    88,778 kbps     01:27:24.489    82,533 kbps     01:27:24.489    233,442 bytes   1,353,582 bytes 01:30:50.987    
+
+STREAM DIAGNOSTICS:
+
+File            PID             Type            Codec           Language                Seconds                     Bitrate                  Bytes        Packets       
+----------      -------------   -----           ----------      -------------           --------------          ---------------         --------------  -----------     
+00001.M2TS      4113 (0x1011)   0x24            HEVC                                    5812.682                 63,266 kbps            45,968,325,457  249,908,955     
+00001.M2TS      4117 (0x1015)   0x24            HEVC                                    5812.682                  2,097 kbps             1,523,853,379    8,370,557     
+00001.M2TS      4352 (0x1100)   0x83            Atmos           eng (English)           5812.682                  3,975 kbps             2,888,147,690   19,559,649     
+00001.M2TS      4353 (0x1101)   0x86            DTS-HD MA       eng (English)           5812.682                  2,419 kbps             1,757,907,668   10,469,280     
+00001.M2TS      4354 (0x1102)   0x81            AC3             fra (French)            5812.682                    640 kbps               465,026,560    2,724,765     
+00001.M2TS      4355 (0x1103)   0x81            AC3             spa (Spanish)           5812.682                    640 kbps               465,026,560    2,724,765     
+00001.M2TS      4768 (0x12A0)   0x90            PGS             eng (English)           5812.682                     18 kbps                13,064,095       76,313     
+00001.M2TS      4769 (0x12A1)   0x90            PGS             eng (English)           5812.682                     15 kbps                11,003,521       63,923     
+00001.M2TS      4770 (0x12A2)   0x90            PGS             fra (French)            5812.682                     14 kbps                 9,992,608       58,464     
+00001.M2TS      4771 (0x12A3)   0x90            PGS             spa (Spanish)           5812.682                     15 kbps                10,735,880       62,699     
+00001.M2TS      4772 (0x12A4)   0x90            PGS             fra (French)            5812.682                      1 kbps                   642,019        3,709     
+
+[/code]
+<---- END FORUMS PASTE ---->
+
+QUICK SUMMARY:
+
+Disc Title:     Resident Evil: Afterlife - Deluxe Edition - 4K Ultra HD
+Disc Label:     Resident.Evil.Afterlife.2010.2160p.USA.UHD.Blu-ray.DV.HDR.HEVC.TrueHD.7.1.Atmos-sprs
+Disc Size:      141,099,481,803 bytes
+Protection:     AACS2
+Playlist:       00001.MPLS
+Size:           56,489,766,912 bytes
+Length:         01:36:52.806
+Total Bitrate:  77.75 Mbps
+Video:          MPEG-H HEVC Video / 63,265 kbps / 2160p / 23.976 fps / 16:9 / Main 10 @ Level 5.1 @ High / 4:2:0 / 10 bits / HDR10 / Limited Range / BT.2020 / PQ / BT.2020 non-constant / Mastering display color primaries: BT.2020 / Mastering display luminance: min: 0.0050 cd/m2, max: 4000.0000 cd/m2 / Maximum Content Light Level: 936 cd / m2 / Maximum Frame-Average Light Level: 600 cd/m2
+* Video:        MPEG-H HEVC Video / 2,097 kbps / 1080p / 23.976 fps / 16:9 / Main 10 @ Level 5.1 @ High / 4:2:0 / 10 bits / Dolby Vision / Limited Range / BT.2020 / PQ / BT.2020 non-constant / Mastering display color primaries: BT.2020 / Mastering display luminance: min: 0.0050 cd/m2, max: 4000.0000 cd/m2
+Audio:          English / Dolby TrueHD/Atmos Audio / 7.1 / 48 kHz /  3335 kbps / 24-bit (AC3 Embedded: 5.1 / 48 kHz /   640 kbps / DN -31dB)
+Audio:          English / DTS-HD Master Audio / 5.1 / 48 kHz /  2419 kbps / 16-bit (DTS Core: 5.1 / 48 kHz /  1509 kbps / 16-bit)
+Audio:          French / Dolby Digital Audio / 5.1 / 48 kHz /   640 kbps / DN -31dB
+Audio:          Spanish / Dolby Digital Audio / 5.1 / 48 kHz /   640 kbps / DN -31dB
+Subtitle:       English / 17.98 kbps
+Subtitle:       English / 15.14 kbps
+Subtitle:       French / 13.75 kbps
+Subtitle:       Spanish / 14.78 kbps
+Subtitle:       French / 0.88 kbps
