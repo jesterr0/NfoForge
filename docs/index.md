@@ -1,6 +1,6 @@
 # NfoForge
 
-A powerful media upload assistant featuring a step-by-step [wizard](view/using-the-wizard.md).
+A powerful media upload assistant featuring a step-by-step [wizard](view/getting-started/using-the-wizard.md).
 
 ## Information
 

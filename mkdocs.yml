@@ -1,10 +1,11 @@
 site_name: NfoForge Documentation
 
 nav:
-    - Introduction: index.md
-    - Install: view/install.md
-    - Initial Setup: view/initial-setup.md
-    - Using The Wizard: view/using-the-wizard.md
+    - Home: index.md
+    - Getting Started:
+          - Install: view/getting-started/install.md
+          - Initial Setup: view/getting-started/initial-setup.md
+          - Using The Wizard: view/getting-started/using-the-wizard.md
 
 theme:
     name: material
@@ -34,6 +35,7 @@ theme:
     features:
         - content.code.copy
         - search.highlight
+        - navigation.tabs
         - navigation.footer
 
 markdown_extensions:
