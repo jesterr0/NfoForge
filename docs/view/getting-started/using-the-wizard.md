@@ -1,9 +1,9 @@
 # Using the Wizard
 
-For this guide, we'll be using the movie [Finding Nemo (2003)](https://www.imdb.com/title/tt0266543/).
+For this guide, we'll be using the movie [Big Buck Bunny (2008)](https://www.imdb.com/title/tt1254207/).
 
 ```text {.scrollable-code-block}
---8<-- "docs/snippets/finding-nemo-example-1080p_mediainfo.txt"
+--8<-- "docs/snippets/bbb_mediainfo.txt"
 ```
 
 ### Input Page
@@ -31,7 +31,7 @@ This will parse IMDb, TVDb, and Anilist to return metadata for the selected titl
 
 <small>_As long as you have **Rename Movie** ticked in **Settings -> Movie** you will see this page. It is enabled by default._</small>
 
-You'll notice that the **TokenReplacer** engine has already used a combination of the filename, metadata, and MediaInfo to give you a clean/proper output: `Finding.Nemo.2003.BluRay.1080p.DDP.5.1.x264`. This supports numerous overrides and selections, but those will be covered later in the guide. For now, you can simply click **Next** to continue.
+You'll notice that the **TokenReplacer** engine has already used a combination of the filename, metadata, and MediaInfo to give you a clean/proper output: `Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`. This supports numerous overrides and selections, but those will be covered later in the guide. For now, you can simply click **Next** to continue.
 
 ### Images Page
 
