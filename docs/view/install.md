@@ -10,7 +10,7 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 
 ## Run From Source
 
-1. **Install [uv](https://docs.astral.sh/uv/getting-started/installation/)**.
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 2. Install Python with uv if not already installed.  
    <small>_Refer to the **requires-python** value in `pyproject.toml` to see the supported Python range._</small>
