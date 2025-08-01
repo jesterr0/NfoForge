@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mediainfo version="25.04">
+    <File>
+        <track type="General">
+            <ID>0 (0x0)</ID>
+            <Complete_name>\\JLW-UNRAID\encoding_share\hallowed\downloads\Resident.Evil.Afterlife.2010.2160p.USA.UHD.Blu-ray.DV.HDR.HEVC.TrueHD.7.1.Atmos-sprs\BDMV\STREAM\00001.m2ts</Complete_name>
+            <Format>BDAV</Format>
+            <Format_Info>Blu-ray Video</Format_Info>
+            <File_size>52.6 GiB</File_size>
+            <Duration>1 h 36 min</Duration>
+            <Overall_bit_rate_mode>Variable</Overall_bit_rate_mode>
+            <Overall_bit_rate>77.7 Mb/s</Overall_bit_rate>
+            <Maximum_Overall_bit_rate>128 Mb/s</Maximum_Overall_bit_rate>
+            <Frame_rate>23.976 FPS</Frame_rate>
+        </track>
+        <track type="Video" typeorder="1">
+            <ID>4113 (0x1011)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>HEVC</Format>
+            <Format_Info>High Efficiency Video Coding</Format_Info>
+            <Format_profile>Main 10@L5.1@High</Format_profile>
+            <HDR_format>SMPTE ST 2086, HDR10 compatible</HDR_format>
+            <Codec_ID>36</Codec_ID>
+            <Duration>1 h 36 min</Duration>
+            <Width>3 840 pixels</Width>
+            <Height>2 160 pixels</Height>
+            <Display_aspect_ratio>16:9</Display_aspect_ratio>
+            <Frame_rate>23.976 (24000/1001) FPS</Frame_rate>
+            <Color_space>YUV</Color_space>
+            <Chroma_subsampling>4:2:0 (Type 2)</Chroma_subsampling>
+            <Bit_depth>10 bits</Bit_depth>
+            <Color_range>Limited</Color_range>
+            <Color_primaries>BT.2020</Color_primaries>
+            <Transfer_characteristics>PQ</Transfer_characteristics>
+            <Matrix_coefficients>BT.2020 non-constant</Matrix_coefficients>
+            <Mastering_display_color_primaries>BT.2020</Mastering_display_color_primaries>
+            <Mastering_display_luminance>min: 0.0050 cd/m2, max: 4000 cd/m2</Mastering_display_luminance>
+            <Maximum_Content_Light_Level>936 cd/m2</Maximum_Content_Light_Level>
+            <Maximum_FrameAverage_Light_Level>600 cd/m2</Maximum_FrameAverage_Light_Level>
+        </track>
+        <track type="Video" typeorder="2">
+            <ID>4117 (0x1015)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>HEVC</Format>
+            <Format_Info>High Efficiency Video Coding</Format_Info>
+            <Format_profile>Main 10@L5.1@High</Format_profile>
+            <HDR_format>SMPTE ST 2086, HDR10 compatible</HDR_format>
+            <Codec_ID>36</Codec_ID>
+            <Duration>1 h 36 min</Duration>
+            <Width>1 920 pixels</Width>
+            <Height>1 080 pixels</Height>
+            <Display_aspect_ratio>16:9</Display_aspect_ratio>
+            <Frame_rate>23.976 (24000/1001) FPS</Frame_rate>
+            <Color_space>YUV</Color_space>
+            <Chroma_subsampling>4:2:0 (Type 2)</Chroma_subsampling>
+            <Bit_depth>10 bits</Bit_depth>
+            <Color_range>Limited</Color_range>
+            <Color_primaries>BT.2020</Color_primaries>
+            <Transfer_characteristics>PQ</Transfer_characteristics>
+            <Matrix_coefficients>BT.2020 non-constant</Matrix_coefficients>
+            <Mastering_display_color_primaries>BT.2020</Mastering_display_color_primaries>
+            <Mastering_display_luminance>min: 0.0050 cd/m2, max: 4000 cd/m2</Mastering_display_luminance>
+        </track>
+        <track type="Audio" typeorder="1">
+            <ID>4352 (0x1100)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>MLP FBA AC-3 16-ch</Format>
+            <Format_Info>Meridian Lossless Packing FBA with 16-channel presentation</Format_Info>
+            <Commercial_name>Dolby TrueHD with Dolby Atmos</Commercial_name>
+            <Muxing_mode>Stream extension</Muxing_mode>
+            <Codec_ID>131</Codec_ID>
+            <Duration>1 h 36 min</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Bit_rate>640 kb/s</Bit_rate>
+            <Maximum_bit_rate>6 354 kb/s</Maximum_bit_rate>
+            <Channel_s_>8 channels</Channel_s_>
+            <Channel_layout>L R C LFE Ls Rs Lb Rb</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossless</Compression_mode>
+            <Stream_size>443 MiB (1%)</Stream_size>
+            <Service_kind>Complete Main</Service_kind>
+            <Number_of_dynamic_objects>11</Number_of_dynamic_objects>
+            <Bed_channel_count>1 channel</Bed_channel_count>
+            <Bed_channel_configuration>LFE</Bed_channel_configuration>
+            <Dialog_Normalization>-31 dB</Dialog_Normalization>
+            <compr>-0.28 dB</compr>
+            <cmixlev>-3.0 dB</cmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <dialnorm_Average>-31 dB</dialnorm_Average>
+            <dialnorm_Minimum>-31 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-31 dB</dialnorm_Maximum>
+        </track>
+        <track type="Audio" typeorder="2">
+            <ID>4353 (0x1101)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>DTS XLL</Format>
+            <Format_Info>Digital Theater Systems</Format_Info>
+            <Commercial_name>DTS-HD Master Audio</Commercial_name>
+            <Muxing_mode>Stream extension</Muxing_mode>
+            <Codec_ID>134</Codec_ID>
+            <Duration>1 h 36 min</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>C L R Ls Rs LFE</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>93.750 FPS (512 SPF)</Frame_rate>
+            <Bit_depth>16 bits</Bit_depth>
+            <Compression_mode>Lossless</Compression_mode>
+        </track>
+        <track type="Audio" typeorder="3">
+            <ID>4354 (0x1102)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AC-3</Format>
+            <Format_Info>Audio Coding 3</Format_Info>
+            <Commercial_name>Dolby Digital</Commercial_name>
+            <Codec_ID>129</Codec_ID>
+            <Duration>1 h 36 min</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>640 kb/s</Bit_rate>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>L R C LFE Ls Rs</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossy</Compression_mode>
+            <Delay_relative_to_video>-8 ms</Delay_relative_to_video>
+            <Stream_size>443 MiB (1%)</Stream_size>
+            <Service_kind>Complete Main</Service_kind>
+            <Dialog_Normalization>-31 dB</Dialog_Normalization>
+            <compr>-0.28 dB</compr>
+            <cmixlev>-3.0 dB</cmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <dialnorm_Average>-31 dB</dialnorm_Average>
+            <dialnorm_Minimum>-31 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-31 dB</dialnorm_Maximum>
+        </track>
+        <track type="Audio" typeorder="4">
+            <ID>4355 (0x1103)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AC-3</Format>
+            <Format_Info>Audio Coding 3</Format_Info>
+            <Commercial_name>Dolby Digital</Commercial_name>
+            <Codec_ID>129</Codec_ID>
+            <Duration>1 h 36 min</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>640 kb/s</Bit_rate>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>L R C LFE Ls Rs</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossy</Compression_mode>
+            <Delay_relative_to_video>-8 ms</Delay_relative_to_video>
+            <Stream_size>443 MiB (1%)</Stream_size>
+            <Service_kind>Complete Main</Service_kind>
+            <Dialog_Normalization>-31 dB</Dialog_Normalization>
+            <compr>-0.28 dB</compr>
+            <cmixlev>-3.0 dB</cmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <dialnorm_Average>-31 dB</dialnorm_Average>
+            <dialnorm_Minimum>-31 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-31 dB</dialnorm_Maximum>
+        </track>
+        <track type="Text" typeorder="1">
+            <ID>4768 (0x12A0)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+        <track type="Text" typeorder="2">
+            <ID>4769 (0x12A1)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+        <track type="Text" typeorder="3">
+            <ID>4770 (0x12A2)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+        <track type="Text" typeorder="4">
+            <ID>4771 (0x12A3)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+        <track type="Text" typeorder="5">
+            <ID>4772 (0x12A4)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+        </track>
+    </File>
+</Mediainfo>

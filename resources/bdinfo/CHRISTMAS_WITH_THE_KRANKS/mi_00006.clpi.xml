@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mediainfo version="25.04">
+    <File>
+        <track type="General">
+            <ID>0 (0x0)</ID>
+            <Complete_name>CHRISTMAS WITH THE KRANKS (_10_)\BDMV\CLIPINF\00006.clpi</Complete_name>
+            <Format>Blu-ray Clip info</Format>
+            <File_size>41.2 KiB</File_size>
+            <Duration>1 h 38 min</Duration>
+            <Overall_bit_rate_mode>Variable</Overall_bit_rate_mode>
+            <Overall_bit_rate>33.4 Mb/s</Overall_bit_rate>
+            <Maximum_Overall_bit_rate>48.0 Mb/s</Maximum_Overall_bit_rate>
+            <Frame_rate>23.976 FPS</Frame_rate>
+            <OverallBitRate_Precision_Min>33370050</OverallBitRate_Precision_Min>
+            <OverallBitRate_Precision_Max>33370055</OverallBitRate_Precision_Max>
+        </track>
+        <track type="Video">
+            <ID>4113 (0x1011)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AVC</Format>
+            <Format_Info>Advanced Video Codec</Format_Info>
+            <Format_profile>High@L4.1</Format_profile>
+            <Format_settings>CABAC / 2 Ref Frames</Format_settings>
+            <Format_settings__CABAC>Yes</Format_settings__CABAC>
+            <Format_settings__Reference_frames>2 frames</Format_settings__Reference_frames>
+            <Format_settings__GOP>M=1, N=5</Format_settings__GOP>
+            <Format_settings__Slice_count>4 slices per frame</Format_settings__Slice_count>
+            <Codec_ID>27</Codec_ID>
+            <Duration>1 h 38 min</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Maximum_bit_rate>37.8 Mb/s</Maximum_bit_rate>
+            <Width>1 920 pixels</Width>
+            <Height>1 080 pixels</Height>
+            <Display_aspect_ratio>16:9</Display_aspect_ratio>
+            <Frame_rate>23.976 (24000/1001) FPS</Frame_rate>
+            <Color_space>YUV</Color_space>
+            <Chroma_subsampling>4:2:0</Chroma_subsampling>
+            <Bit_depth>8 bits</Bit_depth>
+            <Scan_type>Progressive</Scan_type>
+            <format_identifier>HDMV</format_identifier>
+            <Source>00006.m2ts</Source>
+        </track>
+        <track type="Audio" typeorder="1">
+            <ID>4352 (0x1100)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>DTS XLL</Format>
+            <Format_Info>Digital Theater Systems</Format_Info>
+            <Commercial_name>DTS-HD Master Audio</Commercial_name>
+            <Muxing_mode>Stream extension</Muxing_mode>
+            <Codec_ID>134</Codec_ID>
+            <Duration>1 h 38 min</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>C L R Ls Rs LFE</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>93.750 FPS (512 SPF)</Frame_rate>
+            <Bit_depth>24 bits</Bit_depth>
+            <Compression_mode>Lossless</Compression_mode>
+            <Language>English</Language>
+            <Source>00006.m2ts</Source>
+        </track>
+        <track type="Audio" typeorder="2">
+            <ID>4353 (0x1101)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AC-3</Format>
+            <Format_Info>Audio Coding 3</Format_Info>
+            <Commercial_name>Dolby Digital</Commercial_name>
+            <Codec_ID>129</Codec_ID>
+            <Duration>1 h 38 min</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>448 kb/s</Bit_rate>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>L R C LFE Ls Rs</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossy</Compression_mode>
+            <Stream_size>317 MiB</Stream_size>
+            <Language>French</Language>
+            <Service_kind>Complete Main</Service_kind>
+            <bsid>8</bsid>
+            <Dialog_Normalization>-31</Dialog_Normalization>
+            <Dialog_Normalization>-31 dB</Dialog_Normalization>
+            <compr>-0.28</compr>
+            <compr>-0.28 dB</compr>
+            <acmod>7</acmod>
+            <lfeon>1</lfeon>
+            <cmixlev>-3.0</cmixlev>
+            <cmixlev>-3.0 dB</cmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <dialnorm_Average>-31</dialnorm_Average>
+            <dialnorm_Average>-31 dB</dialnorm_Average>
+            <dialnorm_Minimum>-31</dialnorm_Minimum>
+            <dialnorm_Minimum>-31 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-31</dialnorm_Maximum>
+            <dialnorm_Maximum>-31 dB</dialnorm_Maximum>
+            <dialnorm_Count>2033</dialnorm_Count>
+            <compr_Average>0.58</compr_Average>
+            <compr_Average>0.58 dB</compr_Average>
+            <compr_Minimum>-10.10</compr_Minimum>
+            <compr_Minimum>-10.10 dB</compr_Minimum>
+            <compr_Maximum>6.02</compr_Maximum>
+            <compr_Maximum>6.02 dB</compr_Maximum>
+            <compr_Count>1987</compr_Count>
+            <dynrng_Average>0.53</dynrng_Average>
+            <dynrng_Average>0.53 dB</dynrng_Average>
+            <dynrng_Minimum>-10.32</dynrng_Minimum>
+            <dynrng_Minimum>-10.32 dB</dynrng_Minimum>
+            <dynrng_Maximum>6.02</dynrng_Maximum>
+            <dynrng_Maximum>6.02 dB</dynrng_Maximum>
+            <dynrng_Count>2025</dynrng_Count>
+            <format_identifier>AC-3</format_identifier>
+            <Source>00006.m2ts</Source>
+        </track>
+        <track type="Audio" typeorder="3">
+            <ID>4354 (0x1102)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AC-3</Format>
+            <Format_Info>Audio Coding 3</Format_Info>
+            <Commercial_name>Dolby Digital</Commercial_name>
+            <Codec_ID>129</Codec_ID>
+            <Duration>1 h 38 min</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>448 kb/s</Bit_rate>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>L R C LFE Ls Rs</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossy</Compression_mode>
+            <Stream_size>317 MiB</Stream_size>
+            <Language>Spanish</Language>
+            <Service_kind>Complete Main</Service_kind>
+            <bsid>8</bsid>
+            <Dialog_Normalization>-31</Dialog_Normalization>
+            <Dialog_Normalization>-31 dB</Dialog_Normalization>
+            <compr>-0.28</compr>
+            <compr>-0.28 dB</compr>
+            <acmod>7</acmod>
+            <lfeon>1</lfeon>
+            <cmixlev>-3.0</cmixlev>
+            <cmixlev>-3.0 dB</cmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <dialnorm_Average>-31</dialnorm_Average>
+            <dialnorm_Average>-31 dB</dialnorm_Average>
+            <dialnorm_Minimum>-31</dialnorm_Minimum>
+            <dialnorm_Minimum>-31 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-31</dialnorm_Maximum>
+            <dialnorm_Maximum>-31 dB</dialnorm_Maximum>
+            <dialnorm_Count>2033</dialnorm_Count>
+            <compr_Average>0.36</compr_Average>
+            <compr_Average>0.36 dB</compr_Average>
+            <compr_Minimum>-11.02</compr_Minimum>
+            <compr_Minimum>-11.02 dB</compr_Minimum>
+            <compr_Maximum>6.02</compr_Maximum>
+            <compr_Maximum>6.02 dB</compr_Maximum>
+            <compr_Count>1984</compr_Count>
+            <dynrng_Average>0.31</dynrng_Average>
+            <dynrng_Average>0.31 dB</dynrng_Average>
+            <dynrng_Minimum>-11.26</dynrng_Minimum>
+            <dynrng_Minimum>-11.26 dB</dynrng_Minimum>
+            <dynrng_Maximum>6.02</dynrng_Maximum>
+            <dynrng_Maximum>6.02 dB</dynrng_Maximum>
+            <dynrng_Count>2024</dynrng_Count>
+            <format_identifier>AC-3</format_identifier>
+            <Source>00006.m2ts</Source>
+        </track>
+        <track type="Text" typeorder="1">
+            <ID>4608 (0x1200)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Language>English</Language>
+            <Source>00006.m2ts</Source>
+        </track>
+        <track type="Text" typeorder="2">
+            <ID>4609 (0x1201)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Language>French</Language>
+            <Source>00006.m2ts</Source>
+        </track>
+        <track type="Text" typeorder="3">
+            <ID>4610 (0x1202)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Language>Spanish</Language>
+            <Source>00006.m2ts</Source>
+        </track>
+    </File>
+</Mediainfo>

@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Mediainfo version="25.04">
+    <File>
+        <track type="General">
+            <ID>0 (0x0)</ID>
+            <Complete_name>RICK AND MORTY SEASON 1\BDMV\STREAM\00044.m2ts</Complete_name>
+            <CompleteName_Last>RICK AND MORTY SEASON 1\BDMV\STREAM\00073.m2ts</CompleteName_Last>
+            <Format>BDAV</Format>
+            <Format_Info>Blu-ray Video</Format_Info>
+            <File_size>8.48 GiB</File_size>
+            <Duration>23 s 670 ms</Duration>
+            <Overall_bit_rate_mode>Variable</Overall_bit_rate_mode>
+            <Overall_bit_rate>3 079 Mb/s</Overall_bit_rate>
+            <Maximum_Overall_bit_rate>48.0 Mb/s</Maximum_Overall_bit_rate>
+            <Frame_rate>23.976 FPS</Frame_rate>
+        </track>
+        <track type="Video" typeorder="1">
+            <ID>4113 (0x1011)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>VC-1</Format>
+            <Format_profile>Advanced@L3</Format_profile>
+            <Codec_ID>234</Codec_ID>
+            <Duration>23 s 523 ms</Duration>
+            <Width>1 920 pixels</Width>
+            <Height>1 080 pixels</Height>
+            <Display_aspect_ratio>16:9</Display_aspect_ratio>
+            <Frame_rate>23.976 (24000/1001) FPS</Frame_rate>
+            <Color_space>YUV</Color_space>
+            <Chroma_subsampling>4:2:0</Chroma_subsampling>
+            <Bit_depth>8 bits</Bit_depth>
+            <Scan_type>Progressive</Scan_type>
+            <Compression_mode>Lossy</Compression_mode>
+        </track>
+        <track type="Video" typeorder="2">
+            <ID>4113 (0x1011)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AVC</Format>
+            <Format_Info>Advanced Video Codec</Format_Info>
+            <Format_profile>High@L4.1</Format_profile>
+            <Format_settings>CABAC / 4 Ref Frames</Format_settings>
+            <Format_settings__CABAC>Yes</Format_settings__CABAC>
+            <Format_settings__Reference_frames>4 frames</Format_settings__Reference_frames>
+            <Format_settings__Slice_count>4 slices per frame</Format_settings__Slice_count>
+            <Codec_ID>234</Codec_ID>
+            <Duration>5 s 0 ms</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Maximum_bit_rate>35.0 Mb/s</Maximum_bit_rate>
+            <Width>1 920 pixels</Width>
+            <Height>1 080 pixels</Height>
+            <Display_aspect_ratio>16:9</Display_aspect_ratio>
+            <Frame_rate>24.000 FPS</Frame_rate>
+            <Standard>NTSC</Standard>
+            <Color_space>YUV</Color_space>
+            <Chroma_subsampling>4:2:0</Chroma_subsampling>
+            <Bit_depth>8 bits</Bit_depth>
+            <Scan_type>Progressive</Scan_type>
+            <Color_range>Limited</Color_range>
+            <Color_primaries>BT.709</Color_primaries>
+            <Transfer_characteristics>BT.709</Transfer_characteristics>
+            <Matrix_coefficients>BT.709</Matrix_coefficients>
+        </track>
+        <track type="Audio" typeorder="1">
+            <ID>4352 (0x1100)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>MLP FBA</Format>
+            <Format_Info>Meridian Lossless Packing FBA</Format_Info>
+            <Commercial_name>Dolby TrueHD</Commercial_name>
+            <Muxing_mode>Stream extension</Muxing_mode>
+            <Codec_ID>131</Codec_ID>
+            <Duration>19 s 168 ms</Duration>
+            <Bit_rate_mode>Variable</Bit_rate_mode>
+            <Bit_rate>448 kb/s</Bit_rate>
+            <Maximum_bit_rate>3 207 kb/s</Maximum_bit_rate>
+            <Channel_s_>6 channels</Channel_s_>
+            <Channel_layout>L R C LFE Ls Rs</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossless</Compression_mode>
+            <Stream_size>1.02 MiB (0%)</Stream_size>
+            <Service_kind>Complete Main</Service_kind>
+            <Dialog_Normalization>-21 dB</Dialog_Normalization>
+            <compr>-0.28 dB</compr>
+            <cmixlev>-3.0 dB</cmixlev>
+            <surmixlev>-3 dB</surmixlev>
+            <dmixmod>Lt/Rt</dmixmod>
+            <ltrtcmixlev>-3.0 dB</ltrtcmixlev>
+            <ltrtsurmixlev>-3.0 dB</ltrtsurmixlev>
+            <lorocmixlev>-3.0 dB</lorocmixlev>
+            <lorosurmixlev>-3.0 dB</lorosurmixlev>
+            <dialnorm_Average>-21 dB</dialnorm_Average>
+            <dialnorm_Minimum>-21 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-21 dB</dialnorm_Maximum>
+        </track>
+        <track type="Audio" typeorder="2">
+            <ID>4352 (0x1100)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AC-3</Format>
+            <Format_Info>Audio Coding 3</Format_Info>
+            <Commercial_name>Dolby Digital</Commercial_name>
+            <Codec_ID>131</Codec_ID>
+            <Duration>19 s 168 ms</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>192 kb/s</Bit_rate>
+            <Channel_s_>2 channels</Channel_s_>
+            <Channel_layout>L R</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossy</Compression_mode>
+            <Stream_size>449 KiB (0%)</Stream_size>
+            <Service_kind>Complete Main</Service_kind>
+            <Dialog_Normalization>-27 dB</Dialog_Normalization>
+            <compr>-0.28 dB</compr>
+            <dsurmod>Not Dolby Surround encoded</dsurmod>
+            <dialnorm_Average>-27 dB</dialnorm_Average>
+            <dialnorm_Minimum>-27 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-27 dB</dialnorm_Maximum>
+        </track>
+        <track type="Audio" typeorder="3">
+            <ID>4353 (0x1101)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>AC-3</Format>
+            <Format_Info>Audio Coding 3</Format_Info>
+            <Commercial_name>Dolby Digital</Commercial_name>
+            <Codec_ID>129</Codec_ID>
+            <Duration>23 s 670 ms</Duration>
+            <Bit_rate_mode>Constant</Bit_rate_mode>
+            <Bit_rate>192 kb/s</Bit_rate>
+            <Channel_s_>2 channels</Channel_s_>
+            <Channel_layout>L R</Channel_layout>
+            <Sampling_rate>48.0 kHz</Sampling_rate>
+            <Frame_rate>31.250 FPS (1536 SPF)</Frame_rate>
+            <Compression_mode>Lossy</Compression_mode>
+            <Stream_size>555 KiB (0%)</Stream_size>
+            <Service_kind>Complete Main</Service_kind>
+            <Dialog_Normalization>-27 dB</Dialog_Normalization>
+            <compr>-0.28 dB</compr>
+            <dsurmod>Not Dolby Surround encoded</dsurmod>
+            <dialnorm_Average>-27 dB</dialnorm_Average>
+            <dialnorm_Minimum>-27 dB</dialnorm_Minimum>
+            <dialnorm_Maximum>-27 dB</dialnorm_Maximum>
+        </track>
+        <track type="Text">
+            <ID>4608 (0x1200)</ID>
+            <Menu_ID>1 (0x1)</Menu_ID>
+            <Format>PGS</Format>
+            <Codec_ID>144</Codec_ID>
+            <Delay_relative_to_video>2 s 377 ms</Delay_relative_to_video>
+        </track>
+    </File>
+</Mediainfo>
