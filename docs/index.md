@@ -41,6 +41,7 @@ _Supported trackers will be added over time. If you'd like a tracker added, open
 
 -   Windows 8.1+
 -   Linux (tested on Ubuntu 24.04.1 LTS)
+-   MacOs _(untested)_
 
 ## Supported Image Hosts
 
