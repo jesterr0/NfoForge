@@ -133,7 +133,7 @@ Edition                 : None
 
 <!-- prettier-ignore -->
 !!! info
-    Detects if there is an edition detected and fills it with a clean formatted output. If there is not edition detected it outputs 'None' as the edition.
+    Detects if there is an edition detected and fills it with a clean formatted output. If there is not any editions detected it outputs 'None' as the edition.
 
 **Output:**
 
