@@ -271,6 +271,9 @@ class ProcessBackEnd:
         releasers_name: str,
         encode_file_dir: Path | None = None,
     ) -> None:
+        # make sure we have all the latest templates in case changes was made during the wizard
+        self.template_selector_be.load_templates()
+
         # handle image uploading
         images = self.handle_images_for_trackers(
             media_input, process_dict, queued_text_update, progress_bar_cb

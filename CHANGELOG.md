@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - System bell ringing when using sandbox mode.
 - UI bug where the process page progress bar could still exist when clicking start over after processing jobs.
+- Creating a new template during during the flow of the wizard the process page would not load the new templates without restarting the program *(This did not affect uploading, just writing the generated NFO to disk)*.
 
 ### Removed
 
