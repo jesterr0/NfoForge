@@ -64,7 +64,7 @@ Select **Next** to continue.
 
 ![Release Notes](../../images/wizard/release_notes.png){ width=100%, style="max-width: 500px;" }
 
-This page allows you to create, save, or select a custom release note to inject into the NFO. It will replace the token **{ release_notes }** if it exists in the template.
+This page allows you to create, save, or select a custom release note to inject into the NFO. It will replace the token **{{ release_notes }}** if it exists in the template.
 
 Select **Next** to continue.
 
