@@ -81,7 +81,7 @@ This page is quite advanced. However, for this example, we will go over basic us
     - For now, we can use this basic template to continue.
 3. You can preview the template.
     - This will show what your expected template will look like. The only portions that won't appear are those filled by **plugins** and **screenshots**, as these are executed and filled at process time later in the wizard.
-4. Once satisfied with your template, you can click this to save changes or press **CTRL + S** with the text window in focus. You'll see **Saved template** in the title bar at the bottom of NfoForge.
+4. Once satisfied with your template, you can click this to save changes or press **CTRL + S** with the text window in focus. You'll see **Saved template** in the status bar at the bottom of NfoForge.
 
 Select **Next** to continue.
 
