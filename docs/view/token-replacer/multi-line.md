@@ -9,15 +9,13 @@
     File size     : 339 MiB
     ```
 
-NfoForge will automatically use the formatter in **flat** mode for paths (files and folders).
-
 ### Format
 
-[FileTokens](introduction.md) and [NfoTokens](introduction.md) are available when **flat** mode is disabled in NfoForge. You'll notice that when flat mode is disabled, tokens must use **two** sets of brackets, e.g., `{{ movie_title }}`.
+For multi-line strings **both** [FileTokens](introduction.md) and [NfoTokens](introduction.md) are available for use in NfoForge. Also, tokens **must** use **two** sets of brackets, e.g., `{{ movie_title }}`.
 
 <!-- prettier-ignore -->
 !!! tip
-    Whitespace inside the tokens is not required, but by convention, your tokens should have a space before the text inside the token. e.g., `{{ movie_title }}` instead of `{{movie_title}}`.
+    Whitespace inside the tokens is not required *(is ignored)*, but by convention, your tokens should have a space before the text inside the token. e.g., `{{ movie_title }}` instead of `{{movie_title}}`.
 
 ### Usage
 
