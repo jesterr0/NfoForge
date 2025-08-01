@@ -14,12 +14,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QProgressBar,
+    QPushButton,
     QTextBrowser,
     QVBoxLayout,
 )
 from pymediainfo import MediaInfo
 
 from src.backend.process import ProcessBackEnd
+from src.backend.utils.file_utilities import open_explorer
 from src.config.config import Config
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_mode import MediaMode
@@ -198,11 +200,21 @@ class ProcessPage(BaseWizardPage):
         )
         self.progress_bar.hide()
 
+        self.open_temp_output_btn = QPushButton("Open Working Directory", self)
+        self.open_temp_output_btn.setToolTip(
+            "Opens current working directory in operating systems explorer"
+        )
+        self.open_temp_output_btn.clicked.connect(self._open_temp_output)
+        self.open_temp_output_btn.hide()
+
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.tracker_process_tree, stretch=3)
         main_layout.addWidget(text_widget_label, alignment=Qt.AlignmentFlag.AlignBottom)
         main_layout.addWidget(self.text_widget, stretch=5)
         main_layout.addWidget(self.progress_bar, stretch=1)
+        main_layout.addWidget(
+            self.open_temp_output_btn, alignment=Qt.AlignmentFlag.AlignRight
+        )
         self.setLayout(main_layout)
 
     @Slot()
@@ -323,6 +335,10 @@ class ProcessPage(BaseWizardPage):
 
     def _job_ended(self) -> None:
         self.dupe_worker = None
+        # if we just finished processing uploads we can show the open temp button
+        if self.process_worker:
+            self.open_temp_output_btn.show()
+            self.text_widget.ensureCursorVisible()
         self.process_worker = None
         GSigs().wizard_set_disabled.emit(False)
         self.tracker_process_tree.setDisabled(False)
@@ -635,6 +651,14 @@ class ProcessPage(BaseWizardPage):
             return self.THEMES[scheme]["box_color"]
         return "#e6e6e6"
 
+    @Slot()
+    def _open_temp_output(self) -> None:
+        if (
+            self.config.media_input_payload.working_dir
+            and self.config.media_input_payload.working_dir.exists()
+        ):
+            open_explorer(self.config.media_input_payload.working_dir)
+
     def initializePage(self) -> None:
         self.add_tracker_items()
 
@@ -647,3 +671,5 @@ class ProcessPage(BaseWizardPage):
         self.tracker_process_tree.clear()
         self.text_widget.clear()
         self.progress_bar.reset()
+        self.progress_bar.hide()
+        self.open_temp_output_btn.hide()

@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- 
+- The start to proper documentation [here](https://jesterr0.github.io/NfoForge/).
+- On process page a new button to view current working directory after processing will appear.
 
 ### Changed
 
@@ -18,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - System bell ringing when using sandbox mode.
+- UI bug where the process page progress bar could still exist when clicking start over after processing jobs.
 
 ### Removed
 
