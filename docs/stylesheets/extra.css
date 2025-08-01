@@ -3,3 +3,9 @@
     overflow-y: auto;
     overflow-x: auto;
 }
+
+.token-parent table {
+    max-height: 450px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
