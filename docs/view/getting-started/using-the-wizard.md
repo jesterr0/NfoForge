@@ -23,7 +23,7 @@ Once you've opened the path, you can simply select **Next**.
 
 The page will immediately parse the file (or attempt to, if the name is somewhat structured) and return some results. If you find no results, refine the search below and try again. Once you have found the appropriate title, simply select it in the top window and press **Select Title** to continue to the next page.
 
-This will parse IMDb, TVDb, and Anilist to return metadata for the selected title.
+This will parse TMDB, IMDb, TVDb, and Anilist to return metadata for the selected title.
 
 ### Rename Page
 
@@ -77,7 +77,7 @@ This page is quite advanced. However, for this example, we will go over basic us
 1. Create a new template.
 2. You'll be greeted with a built-in default template that NfoForge provides.
     - This template covers the basics and is almost enough to release properly to most trackers.
-    - You can customize it to your desire. A more in-depth guide of the template engine and how it works will be covered later in the guide.
+    - You can customize it to your desire. A more in-depth guide of the token replacer and how it works will be covered later in the guide.
     - For now, we can use this basic template to continue.
 3. You can preview the template.
     - This will show what your expected template will look like. The only portions that won't appear are those filled by **plugins** and **screenshots**, as these are executed and filled at process time later in the wizard.
