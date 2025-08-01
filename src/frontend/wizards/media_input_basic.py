@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
@@ -34,12 +34,18 @@ class MediaInputBasic(BaseWizardPage):
 
     file_loaded = Signal(str)
 
-    def __init__(self, config: Config, parent: "MainWindow | Any") -> None:
+    def __init__(
+        self,
+        config: Config,
+        parent: "MainWindow | Any",
+        on_finished_cb: Callable | None = None,
+    ) -> None:
         super().__init__(config, parent)
-
         self.setObjectName("mediaInputBasic")
         self.setTitle("Input")
         self.setCommitPage(True)
+
+        self._on_finished_cb = on_finished_cb
 
         self.backend = MediaInputBackEnd()
         self.worker: GeneralWorker | None = None
@@ -175,7 +181,11 @@ class MediaInputBasic(BaseWizardPage):
         self._loading_completed = True
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
-        GSigs().wizard_next.emit()
+        # if finished has a cb, utilize that instead of emit (for sandbox)
+        if self._on_finished_cb:
+            self._on_finished_cb()
+        else:
+            GSigs().wizard_next.emit()
 
     @Slot(str)
     def _worker_failed(self, msg: str) -> None:

@@ -1,5 +1,6 @@
 import asyncio
 from collections import OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 import traceback
 from typing import Any, TYPE_CHECKING
@@ -107,13 +108,19 @@ class IDParseWorker(QThread):
 
 
 class MediaSearch(BaseWizardPage):
-    def __init__(self, config: Config, parent: "MainWindow | Any") -> None:
+    def __init__(
+        self,
+        config: Config,
+        parent: "MainWindow | Any",
+        on_finished_cb: Callable | None = None,
+    ) -> None:
         super().__init__(config, parent)
         self.setTitle("Search")
         self.setObjectName("mediaSearch")
         self.setCommitPage(True)
 
         self.main_window = parent
+        self._on_finished_cb = on_finished_cb
 
         self.config = config
         self.backend = MediaSearchBackEnd(api_key=self.config.cfg_payload.tmdb_api_key)
@@ -334,7 +341,11 @@ class MediaSearch(BaseWizardPage):
         try:
             self._update_payload_data(media_data)
             self.other_ids_parsed = True
-            GSigs().wizard_next.emit()
+            # if finished has a cb, utilize that instead of emit (for sandbox)
+            if self._on_finished_cb:
+                self._on_finished_cb()
+            else:
+                GSigs().wizard_next.emit()
         except Exception:
             raise
         finally:
