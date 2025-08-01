@@ -10,51 +10,51 @@ At present, **Movies** are the only supported media type. However, support for *
 
 ## Key Features
 
--   Token system for advanced media file renaming.
--   Integration with TMDB, IMDb, TVDB, and MAL for title parsing.
--   Flexible Jinja-based template system for NFO file generation.
--   Screenshot generation and upload, including comparisons.
--   Output file organization, saving .torrent and NFO files to disk.
--   Torrent cloning support for multi-tracker releases without re-generation.
--   Duplicate release checker - checks trackers for duplicates pre-upload.
--   Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.
--   Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require the same Python version as NfoForge).
--   Support for movie files in MKV and MP4 format.
--   Automatic detection for light/dark mode (with a manual override if desired) _Windows only_.
--   Additional format support and features coming soon!
+- Token system for advanced media file renaming.
+- Integration with TMDB, IMDb, TVDB, and MAL for title parsing.
+- Flexible Jinja-based template system for NFO file generation.
+- Screenshot generation and upload, including comparisons.
+- Output file organization, saving .torrent and NFO files to disk.
+- Torrent cloning support for multi-tracker releases without re-generation.
+- Duplicate release checker - checks trackers for duplicates pre-upload.
+- Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.
+- Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require the same Python version as NfoForge).
+- Support for movie files in MKV and MP4 format.
+- Automatic detection for light/dark mode (with a manual override if desired) _Windows only_.
+- Additional format support and features coming soon!
 
 ## Supported Trackers
 
--   BeyondHD
--   MoreThanTV
--   TorrentLeech
--   PassThePopcorn
--   ReelFliX
--   Aither
--   HUNO
--   LST
--   DarkPeers
+- BeyondHD
+- MoreThanTV
+- TorrentLeech
+- PassThePopcorn
+- ReelFliX
+- Aither
+- HUNO
+- LST
+- DarkPeers
 
 _Supported trackers will be added over time. If you'd like a tracker added, open an [issue](https://github.com/jesterr0/NfoForge/issues/new) and it will be considered._
 
 ## Supported Operating Systems
 
--   Windows 8.1+
--   Linux (tested on Ubuntu 24.04.1 LTS)
--   MacOs _(untested)_
+- Windows 8.1+
+- Linux (tested on Ubuntu 24.04.1 LTS)
+- MacOs _(untested)_
 
 ## Supported Image Hosts
 
--   Chevereto v3/v4
--   ImageBox
--   ImageBB
--   PTPIMG
+- Chevereto v3/v4
+- ImageBox
+- ImageBB
+- PTPIMG
 
 ## Requirements
 
--   TMDB Api [key (v3)](https://www.themoviedb.org/settings/api)
--   TVDB Api [key](https://thetvdb.com/api-information)
--   FFMPEG and/or [FrameForge **1.4.0+**](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
+- TMDB Api [key (v3)](https://www.themoviedb.org/settings/api)
+- TVDB Api [key](https://thetvdb.com/api-information)
+- FFMPEG and/or [FrameForge **1.4.0+**](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
 ## Support
 

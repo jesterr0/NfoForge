@@ -2,6 +2,8 @@
 
 These are the minimal **required** settings that must be set in order to process files.
 
+<!--prettier-ignore-start -->
+
 1. Open settings.
 
     ![Initial Settings](../../images/initial_setup/initial-settings.png){ width=100%, style="max-width: 500px;" }
@@ -13,6 +15,8 @@ These are the minimal **required** settings that must be set in order to process
 3. Configure your desired trackers.
 
     ![TVDb TMDb Keys](../../images/initial_setup/trackers.png){ width=100%, style="max-width: 500px;" }
+
+<!--prettier-ignore-end -->
 
 4. Select **Apply** to save changes.
 
