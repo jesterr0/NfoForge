@@ -1,9 +1,8 @@
 from os import PathLike
 from pathlib import Path
 import re
-from typing import Union
 
-from PySide6.QtCore import QObject, QSize, Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtGui import QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -28,14 +27,15 @@ from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 class ImageViewer(QWidget):
     re_sync_images = Signal(int)
-    exit_viewer = Signal((list,))
+    exit_viewer = Signal(list)
 
     def __init__(
         self,
-        image_base_dir: Union[str, PathLike],
+        image_base_dir: PathLike[str],
         comparison_mode: ScreenShotMode,
-        required_selected_screens: int,
-        parent: QObject = None,
+        min_required_selected_screens: int = 0,
+        max_required_selected_screens: int = 0,
+        parent=None,
     ):
         super().__init__(parent)
         self.setObjectName("imageViewer")
@@ -43,8 +43,8 @@ class ImageViewer(QWidget):
 
         # TODO: allow user customization for this
         self.resize(800, 600)
-        self.setWindowFlag(Qt.Window)
-        self.setWindowModality(Qt.ApplicationModal)
+        self.setWindowFlag(Qt.WindowType.Window)
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.showMaximized()
 
         # folder vars
@@ -60,7 +60,8 @@ class ImageViewer(QWidget):
         self.moving_image_s = False
 
         self.comparison_mode = comparison_mode
-        self.required_selected_screens = required_selected_screens
+        self.min_required_selected_screens = min_required_selected_screens
+        self.max_required_selected_screens = max_required_selected_screens
         self.ignore_requirements = False
 
         # image tab vars (these will be defined in _build_image_tab)
@@ -188,7 +189,7 @@ class ImageViewer(QWidget):
         QTAThemeSwap().register(
             self.confirm_selection_btn, "ph.check-light", icon_size=QSize(24, 24)
         )
-        if self.required_selected_screens != 0:
+        if self.min_required_selected_screens != 0:
             self.confirm_selection_btn.setEnabled(False)
         self.confirm_selection_btn.clicked.connect(self.close)
 
@@ -521,16 +522,28 @@ class ImageViewer(QWidget):
 
     def _button_control(self):
         """
-        Check's total selected images by using the listbox count against the required selected screens,
-        enabling/disabling buttons as needed based on that metric.
+        Enables/disables buttons based on min/max required selected screens.
+        Confirm is enabled only if min <= count <= max (if max is set).
+        Select is enabled if count < max (if max is set).
         """
-        if self.required_selected_screens != 0:
-            if self.selection_listbox.count() < self.required_selected_screens:
-                self.select_images_btn.setEnabled(True)
+        count = self.selection_listbox.count()
+        min_req = self.min_required_selected_screens
+        max_req = self.max_required_selected_screens
+
+        # Select button logic
+        if max_req != 0 and count >= max_req:
+            self.select_images_btn.setEnabled(False)
+        else:
+            self.select_images_btn.setEnabled(True)
+
+        # Confirm button logic
+        if min_req != 0:
+            if (count < min_req) or (max_req != 0 and count > max_req):
                 self.confirm_selection_btn.setEnabled(False)
             else:
-                self.select_images_btn.setEnabled(False)
                 self.confirm_selection_btn.setEnabled(True)
+        else:
+            self.confirm_selection_btn.setEnabled(True)
 
     @Slot()
     def _update_preview_img(self):
@@ -554,13 +567,13 @@ class ImageViewer(QWidget):
         if self.ignore_requirements:
             event.accept()
         else:
-            if self.required_selected_screens != 0:
-                if self.selection_listbox.count() < self.required_selected_screens:
+            if self.min_required_selected_screens != 0:
+                if self.selection_listbox.count() < self.min_required_selected_screens:
                     if (
                         QMessageBox.question(
                             self,
                             "Confirm",
-                            f"Your configuration requires {self.required_selected_screens} "
+                            f"Your configuration requires {self.min_required_selected_screens} "
                             f"image(s) and you have only selected {self.selection_listbox.count()}."
                             "\n\nAre you sure you want to exit?",
                         )

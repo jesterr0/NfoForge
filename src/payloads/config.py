@@ -119,7 +119,8 @@ class ConfigPayload:
     subtitle_outline_color: str
     trim_start: int
     trim_end: int
-    required_selected_screens: int
+    min_required_selected_screens: int
+    max_required_selected_screens: int
     comparison_subtitles: bool
     comparison_subtitle_source_name: str
     comparison_subtitle_encode_name: str

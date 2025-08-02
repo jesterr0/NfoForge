@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The start to proper documentation [here](https://jesterr0.github.io/NfoForge/).
 - On process page a new button to view current working directory after processing will appear.
+- Added min/max required screenshots/sets.
+  - Settings window now has two spinbox's to set min/max screenshot requirements.
+  - ImageViewer has been upgraded to allow max screens.
 
 ### Changed
 
@@ -24,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
--
+- Required selected screenshots (replaced see Added).
 
 ## [0.8.2] - 2025-07-28
 

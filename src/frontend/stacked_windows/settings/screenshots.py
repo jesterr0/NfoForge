@@ -68,11 +68,21 @@ class ScreenShotSettings(BaseSettings):
             step=1, min_max_range=(0, 30), parent=self
         )
 
-        ss_required_count_lbl = QLabel("Required Selected Screenshot Count", self)
-        ss_required_count_lbl.setToolTip(
-            "Required screenshots/screenshot pairs to be selected before closing Image Viewer"
+        min_ss_required_count_lbl = QLabel(
+            "Image Viewer Minimum Screenshot Count", self
         )
-        self.ss_required_count_spinbox = self._build_spinbox(1, (0, 100), self)
+        min_ss_required_count_lbl.setToolTip(
+            "Image Viewer minimum required screenshots/screenshot pairs to be selected before closing Image Viewer"
+        )
+        self.min_ss_required_count_spinbox = self._build_spinbox(1, (0, 100), self)
+
+        max_ss_required_count_lbl = QLabel(
+            "Image Viewer Maximum Screenshot Count", self
+        )
+        max_ss_required_count_lbl.setToolTip(
+            "Image Viewer maximum required screenshots/screenshot pairs to be selected before closing Image Viewer"
+        )
+        self.max_ss_required_count_spinbox = self._build_spinbox(1, (0, 100), self)
 
         crop_mode_lbl = QLabel("Crop Mode", self)
         crop_mode_lbl.setToolTip("Sets which cropping method will be used")
@@ -212,7 +222,14 @@ class ScreenShotSettings(BaseSettings):
         self.add_layout(create_form_layout(ss_trim_start_lbl, self.ss_trim_start))
         self.add_layout(create_form_layout(ss_trim_end_lbl, self.ss_trim_end))
         self.add_layout(
-            create_form_layout(ss_required_count_lbl, self.ss_required_count_spinbox)
+            create_form_layout(
+                min_ss_required_count_lbl, self.min_ss_required_count_spinbox
+            )
+        )
+        self.add_layout(
+            create_form_layout(
+                max_ss_required_count_lbl, self.max_ss_required_count_spinbox
+            )
         )
         self.add_layout(create_form_layout(crop_mode_lbl, self.crop_mode_combo))
         self.add_layout(create_form_layout(indexer_lbl, self.indexer_combo))
@@ -350,7 +367,12 @@ class ScreenShotSettings(BaseSettings):
         self.load_combo_box(self.ss_mode_combo, ScreenShotMode, payload.ss_mode)
         self.ss_trim_start.setValue(payload.trim_start)
         self.ss_trim_end.setValue(payload.trim_end)
-        self.ss_required_count_spinbox.setValue(payload.required_selected_screens)
+        self.min_ss_required_count_spinbox.setValue(
+            payload.min_required_selected_screens
+        )
+        self.max_ss_required_count_spinbox.setValue(
+            payload.max_required_selected_screens
+        )
         self.load_combo_box(self.crop_mode_combo, Cropping, payload.crop_mode)
         self.load_combo_box(self.indexer_combo, Indexer, payload.indexer)
         self.load_combo_box(self.image_plugin_combo, ImagePlugin, payload.image_plugin)
@@ -386,8 +408,11 @@ class ScreenShotSettings(BaseSettings):
         self.config.cfg_payload.screenshots_enabled = self.ss_enabled_btn.isChecked()
         self.config.cfg_payload.screen_shot_count = self.ss_count_spinbox.value()
         self.config.cfg_payload.ss_mode = self.ss_mode_combo.currentData()
-        self.config.cfg_payload.required_selected_screens = (
-            self.ss_required_count_spinbox.value()
+        self.config.cfg_payload.min_required_selected_screens = (
+            self.min_ss_required_count_spinbox.value()
+        )
+        self.config.cfg_payload.max_required_selected_screens = (
+            self.max_ss_required_count_spinbox.value()
         )
         self.config.cfg_payload.crop_mode = self.crop_mode_combo.currentData()
         self.config.cfg_payload.indexer = self.indexer_combo.currentData()
@@ -442,8 +467,11 @@ class ScreenShotSettings(BaseSettings):
         self.ss_mode_combo.setCurrentIndex(
             self.config.cfg_payload_defaults.ss_mode.value - 1
         )
-        self.ss_required_count_spinbox.setValue(
-            self.config.cfg_payload_defaults.required_selected_screens
+        self.min_ss_required_count_spinbox.setValue(
+            self.config.cfg_payload_defaults.min_required_selected_screens
+        )
+        self.max_ss_required_count_spinbox.setValue(
+            self.config.cfg_payload_defaults.max_required_selected_screens
         )
         self.crop_mode_combo.setCurrentIndex(
             self.config.cfg_payload_defaults.crop_mode.value - 1

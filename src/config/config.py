@@ -768,8 +768,11 @@ class Config:
                 self.cfg_payload.screenshots_enabled
             )
             screen_shot_data["screen_shot_count"] = self.cfg_payload.screen_shot_count
-            screen_shot_data["required_selected_screens"] = (
-                self.cfg_payload.required_selected_screens
+            screen_shot_data["min_required_selected_screens"] = (
+                self.cfg_payload.min_required_selected_screens
+            )
+            screen_shot_data["max_required_selected_screens"] = (
+                self.cfg_payload.max_required_selected_screens
             )
             screen_shot_data["ss_mode"] = ScreenShotMode(self.cfg_payload.ss_mode).value
             screen_shot_data["sub_size_height_720"] = (
@@ -1445,8 +1448,11 @@ class Config:
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
                 screen_shot_count=screen_shot_data.get("screen_shot_count", 20),
-                required_selected_screens=screen_shot_data.get(
-                    "required_selected_screens", 0
+                min_required_selected_screens=screen_shot_data.get(
+                    "min_required_selected_screens", 0
+                ),
+                max_required_selected_screens=screen_shot_data.get(
+                    "max_required_selected_screens", 0
                 ),
                 ss_mode=ScreenShotMode(screen_shot_data.get("ss_mode", 1)),
                 sub_size_height_720=screen_shot_data.get("sub_size_height_720", 12),
