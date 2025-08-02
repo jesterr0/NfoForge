@@ -55,7 +55,6 @@ At present, **Movies** are the only supported media type. However, support for *
 ## Requirements
 
 - TMDB Api [key (v3)](https://www.themoviedb.org/settings/api)
-- TVDB Api [key](https://thetvdb.com/api-information)
 - FFMPEG and/or [FrameForge **1.4.0+**](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
 ## Support
