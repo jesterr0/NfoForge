@@ -290,7 +290,6 @@ class Config:
             # api keys
             api_keys_data = self._toml_data["api_keys"]
             api_keys_data["tmdb_api_key"] = self.cfg_payload.tmdb_api_key
-            api_keys_data["tvdb_api_key"] = self.cfg_payload.tvdb_api_key
 
             # trackers
             tracker_data = self._toml_data["tracker"]
@@ -1381,7 +1380,6 @@ class Config:
                 frame_forge=frame_forge,
                 mkbrr=mkbrr,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
-                tvdb_api_key=api_keys_data.get("tvdb_api_key", ""),
                 tracker_order=tracker_order,
                 last_used_img_host=last_used_img_host,
                 mtv_tracker=mtv_tracker,

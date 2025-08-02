@@ -19,7 +19,6 @@ mkbrr = ""
 
 [api_keys]
 tmdb_api_key = ""
-tvdb_api_key = ""
 
 [tracker.settings]
 tracker_order = []

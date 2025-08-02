@@ -66,7 +66,6 @@ class ConfigPayload:
 
     # api keys
     tmdb_api_key: str
-    tvdb_api_key: str
 
     # trackers
     tracker_order: list[TrackerSelection]

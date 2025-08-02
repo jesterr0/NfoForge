@@ -72,7 +72,6 @@ class IDParseWorker(QThread):
         tmdb_year: int,
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
-        tvdb_api_key: str,
         parent=None,
     ) -> None:
         super().__init__(parent=parent)
@@ -82,7 +81,6 @@ class IDParseWorker(QThread):
         self.tmdb_year = tmdb_year
         self.original_language = original_language
         self.tmdb_genres = tmdb_genres
-        self.tvdb_api_key = tvdb_api_key
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
@@ -95,7 +93,6 @@ class IDParseWorker(QThread):
                     self.tmdb_year,
                     self.original_language,
                     self.tmdb_genres,
-                    self.tvdb_api_key,
                 )
             )
             self.job_finished.emit(parse_other_ids)
@@ -326,7 +323,6 @@ class MediaSearch(BaseWizardPage):
                     "original_language"
                 ),
                 tmdb_genres=item_data.get("genre_ids", []),
-                tvdb_api_key=self.config.cfg_payload.tvdb_api_key,
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
@@ -490,7 +486,6 @@ class MediaSearch(BaseWizardPage):
     def _check_media_api_keys(self) -> bool:
         required_keys_map = {
             "TMDB (v3)": "tmdb_api_key",
-            "TVDb": "tvdb_api_key",
         }
 
         for service, key_attr in required_keys_map.items():

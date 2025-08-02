@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Required selected screenshots (replaced see Added).
+- Requirement for TVDB Api Key (still gets metadata from TVDB).
 
 ## [0.8.2] - 2025-07-28
 
