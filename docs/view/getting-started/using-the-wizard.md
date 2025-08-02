@@ -29,15 +29,19 @@ This will parse TMDB, IMDb, TVDb, and Anilist to return metadata for the selecte
 
 ![Media Search](../../images/wizard/rename.png){ width=100%, style="max-width: 500px;" }
 
-<small>_As long as you have **Rename Movie** ticked in **Settings -> Movie** you will see this page. It is enabled by default._</small>
+<!-- prettier-ignore -->
+!!! info
+    As long as you have **Rename Movie** ticked in **Settings -> Movie** you will see this page. It is enabled by default.
 
-You'll notice that the **TokenReplacer** engine has already used a combination of the filename, metadata, and MediaInfo to give you a clean/proper output: `Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`. This supports numerous overrides and selections, but those will be covered later in the guide. For now, you can simply click **Next** to continue.
+You'll notice that the **TokenReplacer** has already used a combination of the filename, metadata, and MediaInfo to give you a clean/proper output: `Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`. This supports numerous overrides and selections, but those will be covered later in the guide. For now, you can simply click **Next** to continue.
 
 ### Images Page
 
 ![Images](../../images/wizard/images.png){ width=100%, style="max-width: 500px;" }
 
-<small>_As long as you have **Enable Screenshots** ticked in **Settings -> Screenshots** you will see this page. It is enabled by default._</small>
+<!-- prettier-ignore -->
+!!! info
+    As long as you have **Enable Screenshots** ticked in **Settings 🠮 Screenshots** you will see this page. It is enabled by default.
 
 1. Allows you to open images (.png/.jpeg) that have already been generated.
 2. Allows you to paste in any type of URLs.

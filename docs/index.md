@@ -35,7 +35,9 @@ At present, **Movies** are the only supported media type. However, support for *
 - LST
 - DarkPeers
 
-_Supported trackers will be added over time. If you'd like a tracker added, open an [issue](https://github.com/jesterr0/NfoForge/issues/new) and it will be considered._
+<!-- prettier-ignore -->
+!!! info
+    Supported trackers will be added over time. If you'd like a tracker added, open an [issue](https://github.com/jesterr0/NfoForge/issues/new) and it will be considered. *Pull requests are also welcome if you have the ability.*
 
 ## Supported Operating Systems
 
