@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Creating a new template during during the flow of the wizard the process page would not load the new templates without restarting the program _(This did not affect uploading, just writing the generated NFO to disk)_.
 - Overview page now shows all generated NFOs (regression in v0.8.0).
 - Override panel isn't reset in rename window properly.
+- **movie_clean_title** defaults have changed, preventing output from `St. Elmo's` from becoming `St. Elmo s`.
 
 ### Removed
 

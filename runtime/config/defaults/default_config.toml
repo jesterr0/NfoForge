@@ -337,6 +337,10 @@ mvr_clean_title_rules = [
         "and",
     ],
     [
+        "'",
+        "[remove]",
+    ],
+    [
         "[^a-zA-Z0-9]",
         "[space]",
     ],
