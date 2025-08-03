@@ -65,7 +65,7 @@ about_txt = f"""\
 
 
 class AboutTab(BaseSettings):
-    ATTRIBUTION_SIZE = (138, 88)
+    ATTRIBUTION_SIZE = (88, 56)
 
     def __init__(self, config, main_window, parent) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
