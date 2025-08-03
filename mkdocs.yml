@@ -1,5 +1,7 @@
 site_name: NfoForge Documentation
 
+use_directory_urls: false
+
 nav:
   - Home: index.md
   - Getting Started:
@@ -64,6 +66,7 @@ markdown_extensions:
 
 plugins:
   - search
+  - offline
 
 extra_css:
   - stylesheets/extra.css
