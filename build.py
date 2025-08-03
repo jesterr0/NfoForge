@@ -1,10 +1,11 @@
-import re
 import os
-import platform
-import shutil
-import sys
 from pathlib import Path
+import platform
+import re
+import shutil
 from subprocess import run
+import sys
+
 from stdlib_list import stdlib_list
 
 
@@ -97,10 +98,35 @@ def get_site_packages() -> Path:
     return Path(get_location.group(1))
 
 
+def run_doc_stuff(project_root: Path) -> Path:
+    """Runs needed doc scripts and builds up to date docs to bundle."""
+    # build doc snippets
+    print("Generating document snippets")
+    docs_scripts_dir = project_root / "docs_scripts"
+    for py_file in docs_scripts_dir.glob("*.py"):
+        build_doc_snippets = run(("uv", "run", str(py_file)))
+        if build_doc_snippets.returncode != 0:
+            raise AttributeError("Failed to build documentation for build")
+
+    # build final docs
+    print("Generating documentation")
+    out = project_root / "runtime" / "docs"
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir()
+    build_doc = run(("uv", "run", "mkdocs", "build", "--clean", "--site-dir", str(out)))
+    if build_doc.returncode != 0:
+        raise AttributeError("Failed to build documentation for build")
+    return out
+
+
 def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # change directory to the project's root directory
     project_root = Path(__file__).parent
     os.chdir(project_root)
+
+    # build fresh docs
+    run_doc_stuff(project_root)
 
     # ensure we're in a virtual env, if we are, install dependencies using Poetry
     if sys.prefix == sys.base_prefix:
