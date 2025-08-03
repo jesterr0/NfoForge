@@ -14,10 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added min/max required screenshots/sets.
   - Settings window now has two spinbox's to set min/max screenshot requirements.
   - ImageViewer has been upgraded to allow max screens.
+- Added attributions for TMDB and TVDB in the docs/about page.
+- Added clickable links to Documentation (online and offline).
 
 ### Changed
 
--
+- Added qtawesome to Thanks and Credits in about page.
+- H-lines are a bit wider in about page.
 
 ### Fixed
 

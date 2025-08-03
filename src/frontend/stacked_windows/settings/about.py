@@ -1,6 +1,12 @@
 from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtGui import QGuiApplication, QPixmap
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QToolButton, QVBoxLayout
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QToolButton,
+    QVBoxLayout,
+)
 
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
@@ -47,24 +53,82 @@ about_txt = f"""\
     <li>tomlkit</li>
     <li>torf</li>
     <li>transmission-rpc</li>
+    <li>qtawesome</li>
 </ul>
 <h3>Support</h3>
 <a href="https://github.com/jesterr0/NfoForge">Github</a>
-<h3>Donations</h3>
-<p>NfoForge is a free application. Donations of any size are greatly appreciated, and will support NfoForge's active development. Thank you!
+<br />
+<a href="https://jesterr0.github.io/NfoForge/">Documentation</a>
+<OFFLINE_DOCS_PATH_REP>
+<h3>Attributions</h3>
 """
 
 
 class AboutTab(BaseSettings):
+    ATTRIBUTION_SIZE = (138, 88)
+
     def __init__(self, config, main_window, parent) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("aboutTab")
 
         self.update_saved_settings.connect(self._save_settings)
 
-        self.about_lbl = QLabel(about_txt, self)
+        docs_index_path = RUNTIME_DIR / "docs" / "index.html"
+        self.about_lbl = QLabel(
+            about_txt.replace(
+                "<OFFLINE_DOCS_PATH_REP>",
+                f'<br /><a href="file:///{docs_index_path}">Offline Documentation</a>',
+            )
+            if docs_index_path.exists()
+            else about_txt.replace("<OFFLINE_DOCS_PATH_REP>", ""),
+            self,
+        )
         self.about_lbl.setWordWrap(True)
         self.about_lbl.setOpenExternalLinks(True)
+
+        # tvdb
+        self.tvdb_image_lbl = QLabel(self)
+
+        tvdb_info_attr_info = QLabel(
+            '<span>Metadata provided by <a href="https://www.thetvdb.com/">TVDB</a>. '
+            "Please consider adding missing information"
+            ' or <a href="https://thetvdb.com/subscribe">subscribing</a></span>.',
+            wordWrap=True,
+            openExternalLinks=True,
+            parent=self,
+        )
+
+        tvdb_frame_layout = QHBoxLayout()
+        tvdb_frame_layout.addWidget(self.tvdb_image_lbl)
+        tvdb_frame_layout.addWidget(tvdb_info_attr_info, stretch=1)
+
+        # tmdb
+        tmdb_icon = QPixmap(str(RUNTIME_DIR / "images" / "tmdb_med.png")).scaled(
+            *self.ATTRIBUTION_SIZE,
+            aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
+            mode=Qt.TransformationMode.SmoothTransformation,
+        )
+        self.tmdb_image_lbl = QLabel(self)
+        self.tmdb_image_lbl.setPixmap(tmdb_icon)
+
+        tmdb_info_attr_info = QLabel(
+            '<span>Metadata provided by <a href="https://www.themoviedb.org/">TMDB</a></span>.',
+            wordWrap=True,
+            openExternalLinks=True,
+            parent=self,
+        )
+
+        tmdb_frame_layout = QHBoxLayout()
+        tmdb_frame_layout.addWidget(self.tmdb_image_lbl)
+        tmdb_frame_layout.addWidget(tmdb_info_attr_info, stretch=1)
+
+        donation_info_lbl = QLabel(
+            "<h3>Donations</h3><p>NfoForge is a free application. "
+            "Donations of any size are greatly appreciated, and will support "
+            "NfoForge's active development. Thank you!</p>",
+            wordWrap=True,
+            parent=self,
+        )
 
         self.bitcoin_lbl = QLabel("<h4>Bitcoin</h4>", self)
         self.bitcoin_qr_img = QLabel(self)
@@ -132,10 +196,22 @@ class AboutTab(BaseSettings):
             self._build_h_layout(self.ethereum_hash, self.ethereum_copy_btn)
         )
 
+        # connect to color scheme change signal to change images based on dark/light mode
+        app = QApplication.instance()
+        QApplication.instance().styleHints().colorSchemeChanged.connect(  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            self._update_tvdb_image
+        )
+        # set the initial image
+        self._update_tvdb_image(app.styleHints().colorScheme())  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+
         self.add_widget(self.about_lbl)
-        self.add_widget(build_h_line((40, 1, 40, 1)))
+        self.add_layout(tvdb_frame_layout)
+        self.inner_layout.addSpacing(10)
+        self.add_layout(tmdb_frame_layout)
+        self.add_widget(build_h_line((20, 1, 20, 1)))
+        self.add_widget(donation_info_lbl)
         self.add_layout(self.bitcoin_layout)
-        self.add_widget(build_h_line((40, 1, 40, 1)))
+        self.add_widget(build_h_line((20, 1, 20, 1)))
         self.add_layout(self.ethereum_layout, add_stretch=True)
 
     def _copy_bitcoin_to_clipboard(self) -> None:
@@ -155,6 +231,23 @@ class AboutTab(BaseSettings):
         layout.addWidget(entry, stretch=1)
         layout.addWidget(btn)
         return layout
+
+    @Slot(Qt.ColorScheme)
+    def _update_tvdb_image(self, color_scheme: Qt.ColorScheme):
+        """Updates the image based on the color scheme."""
+        if color_scheme == Qt.ColorScheme.Dark:
+            tvdb_icon = QPixmap(str(RUNTIME_DIR / "images" / "tvdb_dark.png")).scaled(
+                *self.ATTRIBUTION_SIZE,
+                aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
+                mode=Qt.TransformationMode.SmoothTransformation,
+            )
+        else:
+            tvdb_icon = QPixmap(str(RUNTIME_DIR / "images" / "tvdb.png")).scaled(
+                *self.ATTRIBUTION_SIZE,
+                aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
+                mode=Qt.TransformationMode.SmoothTransformation,
+            )
+        self.tvdb_image_lbl.setPixmap(tvdb_icon)
 
     @Slot()
     def _save_settings(self) -> None:
