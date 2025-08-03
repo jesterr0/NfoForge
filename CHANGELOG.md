@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ImageViewer has been upgraded to allow max screens.
 - Added attributions for TMDB and TVDB in the docs/about page.
 - Added clickable links to Documentation (online and offline).
+- Process process dupe changes:
+  - Now logs duplicate check errors.
+  - If dupe check worker completely fails, a prompt comes up asking the user if they'd like to continue with uploading. If the user selects yes, NfoForge will continue to upload on next wizard click, if the user selects no they can attempt to check for dupes again.
+  - If dupe check fails for a specific tracker (or multiple), each are now displayed and logged to console. NfoForge allows the user to continue uploading at this point, displaying the error on the output window.
 
 ### Changed
 
