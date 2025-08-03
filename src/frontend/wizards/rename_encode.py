@@ -41,7 +41,7 @@ from src.config.config import Config
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.token_table import TokenTable
-from src.frontend.utils import build_h_line
+from src.frontend.utils import block_all_signals, build_h_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
@@ -200,8 +200,11 @@ class RenameEncode(BaseWizardPage):
         checkboxes_layout.addWidget(self.hybrid_checkbox)
 
         release_group_lbl = QLabel("Release Group", self)
+        release_group_lbl.setToolTip(
+            "Release group name (this requires the token {release_group} in the token string)"
+        )
         self.release_group_entry = QLineEdit(self)
-        self.release_group_entry.setToolTip("Release group name")
+        self.release_group_entry.setToolTip(release_group_lbl.toolTip())
         self.release_group_entry.textEdited.connect(self.update_generated_name)
 
         token_override_lbl = QLabel("Override File Name Tokens", self)
@@ -313,22 +316,11 @@ class RenameEncode(BaseWizardPage):
     def validatePage(self) -> bool:
         file_input = self.config.media_input_payload.encode_file
         if file_input:
-            if (
-                not self._name_validations()
-                or not self._release_group_validation()
-                or not self._quality_validations()
-            ):
+            if not self._name_validations() or not self._quality_validations():
                 return False
             self.config.media_input_payload.renamed_file = Path(
                 file_input
             ).parent / Path(f"{self.output_entry.text().strip()}{self._input_ext}")
-
-            release_group = self.release_group_entry.text().strip()
-            if release_group and (
-                release_group != self.config.cfg_payload.mvr_release_group
-            ):
-                self.config.cfg_payload.mvr_release_group = release_group
-                self.config.save_config()
 
             # update config shared data with detected edition
             edition_combo_text = self.edition_combo.currentText()
@@ -390,6 +382,8 @@ class RenameEncode(BaseWizardPage):
     def _update_override(self, data: tuple[str, str]) -> None:
         self.backend.override_tokens[data[0]] = data[1]
         self._overridden_tokens.add(data[0])
+        if data[0] == "release_group":
+            self.release_group_entry.setText(data[1].lstrip("-"))
         self.update_generated_name()
 
     @Slot()
@@ -444,51 +438,6 @@ class RenameEncode(BaseWizardPage):
                 "Both 'IMAX' and 'Open Matte' should not be used together.",
             )
             return False
-        return True
-
-    def _release_group_validation(self) -> bool:
-        input_text = self.output_entry.text().strip()
-
-        saved_release_group = self.release_group_entry.text().strip()
-        if saved_release_group.startswith("-"):
-            QMessageBox.information(
-                self,
-                "Release Group",
-                "Remove '-' from the start of your release group, this will be handled automatically.",
-            )
-            return False
-
-        detect_group = re.search(r"-(\w{2,}?)$", input_text)
-        if detect_group and (detect_group.group(1) != saved_release_group):
-            if (
-                QMessageBox.question(
-                    self,
-                    "Release Group",
-                    (
-                        "Release group detected in output that isn't the same as saved group, "
-                        "would you like for this to be changed now?\n\nNote: you will have a chance "
-                        "to confirm after this change."
-                    ),
-                )
-                is QMessageBox.StandardButton.Yes
-            ):
-                new_name = f"{input_text.replace(detect_group.group(1), '')}{saved_release_group}"
-                if new_name.endswith("-"):
-                    new_name = new_name[:-1]
-                self.output_entry.setText(new_name)
-                return False
-        elif not detect_group and saved_release_group:
-            if (
-                QMessageBox.question(
-                    self,
-                    "Release Group",
-                    "Release group is missing from output, would you like to apply this now?\n\nNote: you "
-                    "will have a chance to confirm after this change.",
-                )
-                is QMessageBox.StandardButton.Yes
-            ):
-                self.output_entry.setText(f"{input_text}-{saved_release_group}")
-                return False
         return True
 
     def _quality_validations(self) -> bool:
@@ -607,9 +556,13 @@ class RenameEncode(BaseWizardPage):
         media_file = data.encode_file
         source_file = data.source_file
         media_info_obj = data.encode_file_mi_obj
+
+        # treat release group as a pure override token
         release_group = self.release_group_entry.text().strip()
         if release_group:
             self.backend.override_tokens["release_group"] = release_group
+        else:
+            self.backend.override_tokens.pop("release_group", None)
 
         if not media_file:
             raise FileNotFoundError("Failed to read media_file")
@@ -637,7 +590,9 @@ class RenameEncode(BaseWizardPage):
 
         if get_file_name and self.backend.token_replacer:
             # update rename token control
-            sort_token_order = re.findall(r"\{(.*?)\}", token)
+            sort_token_order = re.findall(
+                r"\{(?:[:][^:}]+:)*([a-z_]+)(?:[:][^:}]+:)*\}", token
+            )
             sort_token_data = self.backend.token_replacer.token_data.get_dict()  # pyright: ignore[reportAttributeAccessIssue]
             sorted_token_data = {
                 k: sort_token_data[k]
@@ -677,6 +632,7 @@ class RenameEncode(BaseWizardPage):
                 self.proper_reason_combo.show()
 
     def reset_page(self) -> None:
+        block_all_signals(self, True)
         self.media_label.clear()
         for combo_box in (
             self.edition_combo,
@@ -684,9 +640,7 @@ class RenameEncode(BaseWizardPage):
             self.localization_combo,
             self.re_release_combo,
         ):
-            combo_box.blockSignals(True)
             combo_box.setCurrentIndex(0)
-            combo_box.blockSignals(False)
         self._reset_re_release_reason_widgets()
         self.release_group_entry.clear()
         self.options_scroll_area.verticalScrollBar().setValue(0)
@@ -698,6 +652,7 @@ class RenameEncode(BaseWizardPage):
         self._overridden_tokens.clear()
 
         self.backend.reset()
+        block_all_signals(self, False)
 
     @staticmethod
     def _update_combo_box(

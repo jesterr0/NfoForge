@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added qtawesome to Thanks and Credits in about page.
 - H-lines are a bit wider in about page.
+- Movie Rename page release group entry is now part of the override tokens.
+  - You can now modify this in both the token override section of the window as well as the release group entry _(these fields will stay in sync when edited)_.
+  - For auto detection of input release group you should keep the release group entry blank.
+  - You need to use the token **{release_group}** for this functionality to work _({:opt=-:release_group})_.
+  - Updated tooltips for release group widgets.
 
 ### Fixed
 
@@ -34,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Overview page now shows all generated NFOs (regression in v0.8.0).
 - Override panel isn't reset in rename window properly.
 - **movie_clean_title** defaults have changed, preventing output from `St. Elmo's` from becoming `St. Elmo s`.
+- Movie Rename page having an error on reset in certain circumstances due to signals still being fired off.
+- There was no way to modify release group on filename.
+- Override tokens in the Movie Rename page now respects **:opt=x:** properly.
 
 ### Removed
 
