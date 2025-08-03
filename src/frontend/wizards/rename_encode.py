@@ -690,6 +690,7 @@ class RenameEncode(BaseWizardPage):
         self._reset_re_release_reason_widgets()
         self.release_group_entry.clear()
         self.options_scroll_area.verticalScrollBar().setValue(0)
+        self.override_group.setChecked(False)
         self.output_entry.clear()
 
         self._input_ext = None
