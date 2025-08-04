@@ -32,4 +32,4 @@ class MediaSearchPayload:
         self.title = None
         self.year = None
         self.original_title = None
-        self.genres = []
+        self.genres.clear()
