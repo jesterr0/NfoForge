@@ -19,7 +19,6 @@ mkbrr = ""
 
 [api_keys]
 tmdb_api_key = ""
-tvdb_api_key = ""
 
 [tracker.settings]
 tracker_order = []
@@ -338,6 +337,10 @@ mvr_clean_title_rules = [
         "and",
     ],
     [
+        "'",
+        "[remove]",
+    ],
+    [
         "[^a-zA-Z0-9]",
         "[space]",
     ],
@@ -389,7 +392,8 @@ subtitle_color = "#f5c70a"
 subtitle_outline_color = "#000000"
 trim_start = 20
 trim_end = 20
-required_selected_screens = 0
+min_required_selected_screens = 4
+max_required_selected_screens = 12
 comparison_subtitles = true
 comparison_subtitle_source_name = "Source"
 comparison_subtitle_encode_name = "Encode"

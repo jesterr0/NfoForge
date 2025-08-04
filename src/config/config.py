@@ -133,6 +133,13 @@ class Config:
         # jinja engine
         self.jinja_engine = Jinja2TemplateEngine(**self._jinja_env_settings())
 
+        # expose payloads for use in the engine
+        self.jinja_engine.add_global("nf_shared_data", self.shared_data)
+        self.jinja_engine.add_global(
+            "nf_media_search_payload", self.media_search_payload
+        )
+        self.jinja_engine.add_global("nf_media_input_payload", self.media_input_payload)
+
     def reset_config(self) -> None:
         """Reset the configuration payloads to their default values."""
         self.shared_data.reset()
@@ -141,6 +148,12 @@ class Config:
         self.media_input_payload.reset()
 
         self.jinja_engine.reset_added_globals()
+        # re-expose payloads for use in the engine
+        self.jinja_engine.add_global("nf_shared_data", self.shared_data)
+        self.jinja_engine.add_global(
+            "nf_media_search_payload", self.media_search_payload
+        )
+        self.jinja_engine.add_global("nf_media_input_payload", self.media_input_payload)
 
     def load_program_conf(self, config_file: str | None) -> None:
         """
@@ -290,7 +303,6 @@ class Config:
             # api keys
             api_keys_data = self._toml_data["api_keys"]
             api_keys_data["tmdb_api_key"] = self.cfg_payload.tmdb_api_key
-            api_keys_data["tvdb_api_key"] = self.cfg_payload.tvdb_api_key
 
             # trackers
             tracker_data = self._toml_data["tracker"]
@@ -768,8 +780,11 @@ class Config:
                 self.cfg_payload.screenshots_enabled
             )
             screen_shot_data["screen_shot_count"] = self.cfg_payload.screen_shot_count
-            screen_shot_data["required_selected_screens"] = (
-                self.cfg_payload.required_selected_screens
+            screen_shot_data["min_required_selected_screens"] = (
+                self.cfg_payload.min_required_selected_screens
+            )
+            screen_shot_data["max_required_selected_screens"] = (
+                self.cfg_payload.max_required_selected_screens
             )
             screen_shot_data["ss_mode"] = ScreenShotMode(self.cfg_payload.ss_mode).value
             screen_shot_data["sub_size_height_720"] = (
@@ -1378,7 +1393,6 @@ class Config:
                 frame_forge=frame_forge,
                 mkbrr=mkbrr,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
-                tvdb_api_key=api_keys_data.get("tvdb_api_key", ""),
                 tracker_order=tracker_order,
                 last_used_img_host=last_used_img_host,
                 mtv_tracker=mtv_tracker,
@@ -1445,8 +1459,11 @@ class Config:
                 crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
                 screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
                 screen_shot_count=screen_shot_data.get("screen_shot_count", 20),
-                required_selected_screens=screen_shot_data.get(
-                    "required_selected_screens", 0
+                min_required_selected_screens=screen_shot_data.get(
+                    "min_required_selected_screens", 0
+                ),
+                max_required_selected_screens=screen_shot_data.get(
+                    "max_required_selected_screens", 0
                 ),
                 ss_mode=ScreenShotMode(screen_shot_data.get("ss_mode", 1)),
                 sub_size_height_720=screen_shot_data.get("sub_size_height_720", 12),

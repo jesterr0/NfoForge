@@ -11,6 +11,7 @@ custom-pyinstaller/
 *.csv
 runtime/apps/
 runtime/cookies/
+runtime/docs/
 runtime/config/program/
 runtime/config/user/
 runtime/logs/

@@ -29,15 +29,19 @@ This will parse TMDB, IMDb, TVDb, and Anilist to return metadata for the selecte
 
 ![Media Search](../../images/wizard/rename.png){ width=100%, style="max-width: 500px;" }
 
-<small>_As long as you have **Rename Movie** ticked in **Settings -> Movie** you will see this page. It is enabled by default._</small>
+<!-- prettier-ignore -->
+!!! info
+    As long as you have **Rename Movie** ticked in **Settings -> Movie** you will see this page. It is enabled by default.
 
-You'll notice that the **TokenReplacer** engine has already used a combination of the filename, metadata, and MediaInfo to give you a clean/proper output: `Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`. This supports numerous overrides and selections, but those will be covered later in the guide. For now, you can simply click **Next** to continue.
+You'll notice that the **TokenReplacer** has already used a combination of the filename, metadata, and MediaInfo to give you a clean/proper output: `Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`. This supports numerous overrides and selections, but those will be covered later in the guide. For now, you can simply click **Next** to continue.
 
 ### Images Page
 
 ![Images](../../images/wizard/images.png){ width=100%, style="max-width: 500px;" }
 
-<small>_As long as you have **Enable Screenshots** ticked in **Settings -> Screenshots** you will see this page. It is enabled by default._</small>
+<!-- prettier-ignore -->
+!!! info
+    As long as you have **Enable Screenshots** ticked in **Settings 🠮 Screenshots** you will see this page. It is enabled by default.
 
 1. Allows you to open images (.png/.jpeg) that have already been generated.
 2. Allows you to paste in any type of URLs.
@@ -64,7 +68,7 @@ Select **Next** to continue.
 
 ![Release Notes](../../images/wizard/release_notes.png){ width=100%, style="max-width: 500px;" }
 
-This page allows you to create, save, or select a custom release note to inject into the NFO. It will replace the token **{ release_notes }** if it exists in the template.
+This page allows you to create, save, or select a custom release note to inject into the NFO. It will replace the token **{{ release_notes }}** if it exists in the template.
 
 Select **Next** to continue.
 
@@ -74,6 +78,8 @@ Select **Next** to continue.
 
 This page is quite advanced. However, for this example, we will go over basic usage. By default, there won't be any templates; you must create one to continue.
 
+<!--prettier-ignore-start -->
+
 1. Create a new template.
 2. You'll be greeted with a built-in default template that NfoForge provides.
     - This template covers the basics and is almost enough to release properly to most trackers.
@@ -81,7 +87,9 @@ This page is quite advanced. However, for this example, we will go over basic us
     - For now, we can use this basic template to continue.
 3. You can preview the template.
     - This will show what your expected template will look like. The only portions that won't appear are those filled by **plugins** and **screenshots**, as these are executed and filled at process time later in the wizard.
-4. Once satisfied with your template, you can click this to save changes or press **CTRL + S** with the text window in focus. You'll see **Saved template** in the title bar at the bottom of NfoForge.
+4. Once satisfied with your template, you can click this to save changes or press **CTRL + S** with the text window in focus. You'll see **Saved template** in the status bar at the bottom of NfoForge.
+
+<!--prettier-ignore-end -->
 
 Select **Next** to continue.
 

@@ -257,3 +257,14 @@ class QWidgetTempStyle:
         if system_beep:
             QApplication.beep()
         self.timers[widget] = timer
+
+
+def block_all_signals(widget: QWidget, block: bool) -> None:
+    """Recursively block/unblock signals for parent and all child widgets."""
+
+    def block_signals_recursive(w: QWidget) -> None:
+        w.blockSignals(block)
+        for child in w.findChildren(QWidget):
+            block_signals_recursive(child)
+
+    block_signals_recursive(widget)

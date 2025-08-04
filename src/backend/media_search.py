@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import concurrent.futures
 from itertools import zip_longest
 import re
@@ -7,8 +8,8 @@ from typing import Any
 from guessit import guessit
 from imdb import Cinemagoer
 from imdb.Movie import Movie
-from rapidfuzz import fuzz
 import niquests
+from rapidfuzz import fuzz
 import tvdb_v4_official
 from unidecode import unidecode
 
@@ -194,13 +195,10 @@ class MediaSearchBackEnd:
         tmdb_year: int,
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
-        tvdb_api_key: str,
     ) -> dict[str, Any]:
         tasks = {
             "imdb_data": asyncio.create_task(self.parse_imdb_data(imdb_id)),
-            "tvdb_data": asyncio.create_task(
-                self.parse_tvdb_data(imdb_id, tvdb_api_key)
-            ),
+            "tvdb_data": asyncio.create_task(self.parse_tvdb_data(imdb_id)),
         }
 
         # parse anime if needed
@@ -218,19 +216,35 @@ class MediaSearchBackEnd:
                 results[key] = {"success": False, "error": str(e)}
         return results
 
+    async def parse_tvdb_data(self, imdb_id: str) -> dict | None:
+        tvdb_parse = tvdb_v4_official.TVDB(self._get_tvdb_k())
+        data = tvdb_parse.search_by_remote_id(imdb_id)
+        if data and isinstance(data, list):
+            return data[0]
+
+    @staticmethod
+    def _get_tvdb_k() -> str:
+        k = (
+            b"MDEwMDExMTAwMTAxMDEwMDAxMDExMDAxMDAxMTAwMDAwMTAwMTEwMTAwMTEwMDEwMDE"
+            b"wMTEwMDEwMDExMDEwMTAxMDAxMTAxMDEwMTAxMDAwMTAwMDEwMTAxMTEwMTAwMDEwMTEwMTA"
+            b"wMTAwMDExMTAxMDAwMTAxMDAxMTAxMDEwMTAwMTEwMTAxMDAwMDExMDAxMTAwMDAwMDExMDA"
+            b"wMDAxMDExMDEwMDEwMTAxMDAwMTEwMDExMTAwMTEwMTAxMDEwMDExMDAwMTAxMDExMTAxMDA"
+            b"xMDAxMDAxMTAxMDEwMTAwMTEwMTAxMDEwMTAwMDEwMDAwMDEwMTExMDEwMDAxMDAxMTEwMDEw"
+            b"MTAxMDAwMTEwMTAxMTAwMTEwMTAxMDEwMTEwMTAwMTEwMTAxMDAxMDAxMTAxMDExMTAxMTEwM"
+            b"TAwMTExMDAxMTAxMDEwMDExMDEwMDAwMTEwMTEwMDAxMDAxMTEwMDEwMTAxMDAwMTAwMTAxMDAxMTAxMDEx"
+        )
+        binary_bytes = base64.b64decode(k)
+        b64_bytes = bytes(
+            int(binary_bytes[i : i + 8], 2) for i in range(0, len(binary_bytes), 8)
+        )
+        return base64.b64decode(b64_bytes).decode()
+
     @staticmethod
     async def parse_imdb_data(imdb_id: str) -> Movie | None:
         imdb_parse = Cinemagoer()
         get_movie = imdb_parse.get_movie(imdb_id.replace("t", ""))
         if get_movie:
             return get_movie
-
-    @staticmethod
-    async def parse_tvdb_data(imdb_id: str, api_key: str) -> dict | None:
-        tvdb_parse = tvdb_v4_official.TVDB(api_key)
-        data = tvdb_parse.search_by_remote_id(imdb_id)
-        if data and isinstance(data, list):
-            return data[0]
 
     @staticmethod
     async def parse_ani_list(tmdb_title: str, tmdb_year: int) -> dict[str, Any] | None:

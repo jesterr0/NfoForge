@@ -14,12 +14,14 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QProgressBar,
+    QPushButton,
     QTextBrowser,
     QVBoxLayout,
 )
 from pymediainfo import MediaInfo
 
 from src.backend.process import ProcessBackEnd
+from src.backend.utils.file_utilities import open_explorer
 from src.config.config import Config
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_mode import MediaMode
@@ -59,7 +61,7 @@ class BaseWorker(QThread):
 
 
 class DupeWorker(BaseWorker):
-    dupes_found = Signal(object)
+    results = Signal(object)
 
     def __init__(
         self,
@@ -86,7 +88,7 @@ class DupeWorker(BaseWorker):
                     media_search_payload=self.media_search_payload,
                 )
             )
-            self.dupes_found.emit(dupes)
+            self.results.emit(dupes)
         except Exception as e:
             self.job_failed.emit(str(e), traceback.format_exc())
         finally:
@@ -198,11 +200,21 @@ class ProcessPage(BaseWizardPage):
         )
         self.progress_bar.hide()
 
+        self.open_temp_output_btn = QPushButton("Open Working Directory", self)
+        self.open_temp_output_btn.setToolTip(
+            "Opens current working directory in operating systems explorer"
+        )
+        self.open_temp_output_btn.clicked.connect(self._open_temp_output)
+        self.open_temp_output_btn.hide()
+
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.tracker_process_tree, stretch=3)
         main_layout.addWidget(text_widget_label, alignment=Qt.AlignmentFlag.AlignBottom)
         main_layout.addWidget(self.text_widget, stretch=5)
         main_layout.addWidget(self.progress_bar, stretch=1)
+        main_layout.addWidget(
+            self.open_temp_output_btn, alignment=Qt.AlignmentFlag.AlignRight
+        )
         self.setLayout(main_layout)
 
     @Slot()
@@ -230,8 +242,8 @@ class ProcessPage(BaseWizardPage):
                 media_search_payload=self.config.media_search_payload,
                 parent=self,
             )
-            self.dupe_worker.dupes_found.connect(self._on_dupes_found)
-            self.dupe_worker.job_failed.connect(self._on_failed)
+            self.dupe_worker.results.connect(self._on_dupe_results)
+            self.dupe_worker.job_failed.connect(self._on_dupes_failed)
             # self.dupe_worker.queued_text_update.connect(self._on_text_update)
             # self.dupe_worker.queued_text_update_replace_last_line.connect(
             #     self._on_text_update_replace_last_line
@@ -272,43 +284,75 @@ class ProcessPage(BaseWizardPage):
             self.process_worker.start()
 
     @Slot(object)
-    def _on_dupes_found(
-        self, dupes: dict[TrackerSelection, list[TrackerSearchResult]]
+    def _on_dupe_results(
+        self,
+        dupes: dict[
+            TrackerSelection,
+            tuple[TrackerSelection, bool, list[TrackerSearchResult] | str],
+        ],
     ) -> None:
         if dupes:
-            # if not dupes
-            total_dupes = sum(len(item) for item in dupes.values())
-            if total_dupes == 0:
-                self._on_text_update("<br /><span>✅ No duplicates found</span>")
-            # if dupes are found
-            else:
-                duplicates = (
-                    f"<br /><span>⚠️ Total potential dupes found: {total_dupes}</span>"
-                )
-                for tracker, releases in dupes.items():
+            total_dupes = 0
+            duplicates = ""
+            for tracker, result in dupes.items():
+                _, success, data = result
+                if success:
+                    if isinstance(data, list) and data:
+                        total_dupes += len(data)
+                        duplicates += (
+                            "<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
+                            "margin: 10px 0 16px 0; padding: 8px 10px;'>"
+                            f"<b style='font-size: 1.08em;'>{tracker}</b>"
+                            "<table style='border-collapse:collapse; margin-top:6px;'>"
+                        )
+                        for item in data:
+                            duplicates += (
+                                "<tr>"
+                                "<td style='padding: 10px 4px; border-bottom: 1px solid #eee;'>"
+                                f'📄 <a href="{item.url}" rel="noreferrer nofollow" style="color: #1976d2; '
+                                f'text-decoration: underline; font-weight: bold;">{item.name}</a>'
+                                "</td>"
+                                "</tr>"
+                            )
+                        duplicates += "</table></div>"
+                else:
+                    # error string
                     duplicates += (
-                        "<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
+                        f"<div style='border: 1px solid #d4d4d4; border-radius: 6px; "
                         "margin: 10px 0 16px 0; padding: 8px 10px;'>"
                         f"<b style='font-size: 1.08em;'>{tracker}</b>"
-                        "<table style='border-collapse:collapse; margin-top:6px;'>"
+                        f"<br /><span style='color: red;'>Error: {data}</span>"
+                        "</div>"
                     )
-                    for item in releases:
-                        duplicates += (
-                            "<tr>"
-                            "<td style='padding: 10px 4px; border-bottom: 1px solid #eee;'>"
-                            f'📄 <a href="{item.url}" rel="noreferrer nofollow" style="color: #1976d2; '
-                            f'text-decoration: underline; font-weight: bold;">{item.name}</a>'
-                            "</td>"
-                            "</tr>"
-                        )
-                    duplicates += "</table></div>"
-                self._on_text_update(duplicates)
+            if total_dupes == 0 and not duplicates:
+                self._on_text_update("<br /><span>✅ No duplicates found</span>")
+            else:
+                self._on_text_update(
+                    f"<br /><span>⚠️ Total potential dupes found: {total_dupes}</span>"
+                    + duplicates
+                )
         else:
             self._on_text_update("<br /><span>✅ No duplicates found</span>")
 
         self.processing_mode = UploadProcessMode.UPLOAD
         self._job_ended()
         GSigs().wizard_process_btn_change_txt.emit("Process (Generate and Upload)")
+
+    @Slot(str, str)
+    def _on_dupes_failed(self, e: str, trace_back: str) -> None:
+        self._on_failed(e, trace_back)
+        # set process mode to upload if user wants to continue anyways
+        if (
+            QMessageBox.question(
+                self,
+                "Continue",
+                "Failed to detect dupes (see logs), would you like to continue uploading? Select"
+                " 'No' if you'd like to attempt to check for dupes again"
+                "\n\nNote: You should still check if duplicates for your release exists.",
+            )
+            is QMessageBox.StandardButton.Yes
+        ):
+            self.processing_mode = UploadProcessMode.UPLOAD
 
     @Slot()
     def _on_finished(self) -> None:
@@ -323,6 +367,10 @@ class ProcessPage(BaseWizardPage):
 
     def _job_ended(self) -> None:
         self.dupe_worker = None
+        # if we just finished processing uploads we can show the open temp button
+        if self.process_worker:
+            self.open_temp_output_btn.show()
+            self.text_widget.ensureCursorVisible()
         self.process_worker = None
         GSigs().wizard_set_disabled.emit(False)
         self.tracker_process_tree.setDisabled(False)
@@ -635,6 +683,14 @@ class ProcessPage(BaseWizardPage):
             return self.THEMES[scheme]["box_color"]
         return "#e6e6e6"
 
+    @Slot()
+    def _open_temp_output(self) -> None:
+        if (
+            self.config.media_input_payload.working_dir
+            and self.config.media_input_payload.working_dir.exists()
+        ):
+            open_explorer(self.config.media_input_payload.working_dir)
+
     def initializePage(self) -> None:
         self.add_tracker_items()
 
@@ -647,3 +703,5 @@ class ProcessPage(BaseWizardPage):
         self.tracker_process_tree.clear()
         self.text_widget.clear()
         self.progress_bar.reset()
+        self.progress_bar.hide()
+        self.open_temp_output_btn.hide()

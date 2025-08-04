@@ -59,10 +59,14 @@ You can see this in action in real time inside **NfoForge** under **Settings →
 
 There are three built-in rename token strings:
 
--   **Filename** token string
-    -   The filename (or folder, if applicable) is shared across all trackers.
-    -   There can only be one of these tokens.
--   **Title** token string (global)
-    -   A single global token shared across all trackers that don't have an override.
--   Per-tracker **Title** token string override
-    -   Overrides the global title token for each tracker.
+<!--prettier-ignore-start -->
+
+- **Filename** token string
+    - The filename (or folder, if applicable) is shared across all trackers.
+    - There can only be one of these tokens.
+- **Title** token string (global)
+    - A single global token shared across all trackers that don't have an override.
+- Per-tracker **Title** token string override
+    - Overrides the global title token for each tracker.
+
+<!--prettier-ignore-end -->

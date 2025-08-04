@@ -3,18 +3,30 @@ from enum import Enum, StrEnum
 
 def _missing_func(cls, value):
     """Helper function to check member/value for a match."""
-    if value:
-        value = str(value).lower()
-        for member in cls:
-            member_lowered = member.name.lower()
-            value_lowered = member.value.lower()
+    if value is None:
+        return
+
+    value_str = str(value).lower() if isinstance(value, str) else value
+
+    for member in cls:
+        member_name = member.name.lower()
+        member_value = member.value
+
+        # compare member name (case-insensitive)
+        if isinstance(value, str):
+            if member_name == value_str or member_name.replace("_", " ") == value_str:
+                return member
+
+        # compare member value
+        if isinstance(member_value, str) and isinstance(value, str):
+            member_value_lower = member_value.lower()
             if (
-                (member_lowered == value)
-                or (member_lowered.replace("_", " ") == value)
-                or (value_lowered == value)
-                or (value_lowered.replace("_", " ") == value)
+                member_value_lower == value_str
+                or member_value_lower.replace("_", " ") == value_str
             ):
                 return member
+        elif member_value == value:
+            return member
 
 
 class CaseInsensitiveEnum(Enum):

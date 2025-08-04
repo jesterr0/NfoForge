@@ -1,9 +1,48 @@
 # Changelog
 
-All notable changes to this project will be documented in this file starting with **0.6.0**.
+## [0.8.3] - 2025-04-08
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Added
+
+- The start to proper documentation [here](https://jesterr0.github.io/NfoForge/).
+- On process page a new button to view current working directory after processing will appear.
+- Added min/max required screenshots/sets.
+  - Settings window now has two spinbox's to set min/max screenshot requirements.
+  - ImageViewer has been upgraded to allow max screens.
+- Added attributions for TMDB and TVDB in the docs/about page.
+- Added clickable links to Documentation (online and offline).
+- Process process dupe changes:
+  - Now logs duplicate check errors.
+  - If dupe check worker completely fails, a prompt comes up asking the user if they'd like to continue with uploading. If the user selects yes, NfoForge will continue to upload on next wizard click, if the user selects no they can attempt to check for dupes again.
+  - If dupe check fails for a specific tracker (or multiple), each are now displayed and logged to console. NfoForge allows the user to continue uploading at this point, displaying the error on the output window.
+
+### Changed
+
+- Added qtawesome to Thanks and Credits in about page.
+- H-lines are a bit wider in about page.
+- Movie Rename page release group entry is now part of the override tokens.
+  - You can now modify this in both the token override section of the window as well as the release group entry _(these fields will stay in sync when edited)_.
+  - For auto detection of input release group you should keep the release group entry blank.
+  - You need to use the token **{release_group}** for this functionality to work _({:opt=-:release_group})_.
+  - Updated tooltips for release group widgets.
+
+### Fixed
+
+- System bell ringing when using sandbox mode.
+- UI bug where the process page progress bar could still exist when clicking start over after processing jobs.
+- Creating a new template during during the flow of the wizard the process page would not load the new templates without restarting the program _(This did not affect uploading, just writing the generated NFO to disk)_.
+- Overview page now shows all generated NFOs (regression in v0.8.0).
+- Override panel isn't reset in rename window properly.
+- **movie_clean_title** defaults have changed, preventing output from `St. Elmo's` from becoming `St. Elmo s`.
+- Movie Rename page having an error on reset in certain circumstances due to signals still being fired off.
+- There was no way to modify release group on filename.
+- Override tokens in the Movie Rename page now respects **:opt=x:** properly.
+- A bug when selecting your torrent client that would pop up (and still work).
+
+### Removed
+
+- Required selected screenshots (replaced see Added).
+- Requirement for TVDB Api Key (still gets metadata from TVDB).
 
 ## [0.8.2] - 2025-07-28
 
@@ -387,3 +426,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Image host selection is no longer in the General settings page.
 - Image uploading is not done in the Image wizard page anymore.
 - **Parse with MediaInfo** in **Movies** settings (this will always be done).
+
+# Info
+
+All notable changes to this project will be documented in this file starting with **0.6.0**.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

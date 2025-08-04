@@ -1,4 +1,6 @@
-from jinja2 import Environment, Template, FileSystemLoader
+from typing import Any
+
+from jinja2 import Environment, FileSystemLoader, Template
 
 
 class Jinja2TemplateEngine:
@@ -17,7 +19,7 @@ class Jinja2TemplateEngine:
             **env_options,
         )
 
-    def add_global(self, name: str, value) -> None:
+    def add_global(self, name: str, value: Any) -> None:
         """Add a global variable to the environment."""
         self.environment.globals[name] = value
         self._added_globals.append(name)

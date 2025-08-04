@@ -12,8 +12,12 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
+<!--prettier-ignore-start -->
+
 2. Install Python with uv if not already installed.  
-   <small>_Refer to the **requires-python** value in `pyproject.toml` to see the supported Python range._</small>
+
+    !!! question "What version of Python?"
+        Refer to the **requires-python** value in [`pyproject.toml`](https://github.com/jesterr0/NfoForge/blob/main/pyproject.toml) to see the supported Python range.
 
     ```sh
     uv python install 3.12
@@ -30,3 +34,5 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
     ```sh
     uv run .\start_ui.py
     ```
+    
+<!--prettier-ignore-end -->

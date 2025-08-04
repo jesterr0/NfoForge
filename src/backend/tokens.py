@@ -8,6 +8,7 @@ from src.enums import CaseInsensitiveStrEnum
 MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
     (r"", r"[unidecode]"),
     (r"&", r"and"),
+    (r"'", r"[remove]"),
     (r"[^a-zA-Z0-9]", r"[space]"),
     (r"\s{2,}", r"[space]"),
 ]

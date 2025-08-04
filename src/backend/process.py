@@ -63,6 +63,7 @@ from src.enums.media_mode import MediaMode
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ImageHostError
+from src.logger.nfo_forge_logger import LOG
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import (
     ImageHost,
@@ -97,7 +98,7 @@ class ProcessBackEnd:
         file_input: Path,
         processing_queue: list[str],
         media_search_payload: MediaSearchPayload,
-    ) -> dict[str, Path]:
+    ) -> dict[str, tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]]:
         tasks = []
         for tracker_name in processing_queue:
             tracker_sel = TrackerSelection(tracker_name)
@@ -142,12 +143,22 @@ class ProcessBackEnd:
                     self._dupe_dp(tracker_name=tracker_name, file_input=file_input)
                 )
 
-        async_results = await asyncio.gather(*tasks)
+        async_results = await asyncio.gather(*tasks, return_exceptions=True)
 
         dupes = {}
-        for item in async_results:
-            if item:
-                dupes[item[0]] = item[1]
+        for tracker_sel, item in zip(processing_queue, async_results):
+            if isinstance(item, tuple) and len(item) == 3:
+                dupes[TrackerSelection(tracker_sel)] = item
+            elif isinstance(item, Exception):
+                LOG.error(
+                    LOG.LOG_SOURCE.BE,
+                    "".join(
+                        traceback.format_exception(type(item), item, item.__traceback__)
+                    ),
+                )
+                dupes[tracker_sel] = (tracker_sel, False, str(item))
+            else:
+                dupes[tracker_sel] = (tracker_sel, False, f"Unexpected result: {item}")
 
         return dupes
 
@@ -156,102 +167,201 @@ class ProcessBackEnd:
         tracker_name: str,
         file_input: Path,
         media_search_payload: MediaSearchPayload,
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        mtv_search = MTVSearch(
-            self.config.cfg_payload.mtv_tracker.api_key,
-            timeout=self.config.cfg_payload.timeout,
-        ).search(
-            title=file_input.stem,
-            imdb_id=media_search_payload.imdb_id,
-            tmdb_id=media_search_payload.tmdb_id,
-        )
-        if mtv_search:
-            return TrackerSelection(tracker_name), mtv_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.mtv_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "MTV API key missing"
+        try:
+            title = file_input.stem
+            imdb_id = media_search_payload.imdb_id
+            tmdb_id = media_search_payload.tmdb_id
+            if not title or not imdb_id or not tmdb_id:
+                return (
+                    TrackerSelection(tracker_name),
+                    False,
+                    "Required MTV search parameters missing",
+                )
+            mtv_search = MTVSearch(
+                api_key,
+                timeout=self.config.cfg_payload.timeout,
+            ).search(
+                title=title,
+                imdb_id=imdb_id,
+                tmdb_id=tmdb_id,
+            )
+            if mtv_search:
+                return TrackerSelection(tracker_name), True, mtv_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_tl(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        tl_search = TLSearch(
-            username=self.config.cfg_payload.tl_tracker.username,
-            password=self.config.cfg_payload.tl_tracker.password,
-            cookie_dir=self.config.TRACKER_COOKIE_PATH,
-            alt_2_fa_token=self.config.cfg_payload.tl_tracker.alt_2_fa_token,
-            timeout=self.config.cfg_payload.timeout,
-        ).search(file_input)
-        if tl_search:
-            return TrackerSelection(tracker_name), tl_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        username = self.config.cfg_payload.tl_tracker.username
+        password = self.config.cfg_payload.tl_tracker.password
+        if not username or not password:
+            return (
+                TrackerSelection(tracker_name),
+                False,
+                "TL username or password missing",
+            )
+        try:
+            tl_search = TLSearch(
+                username=username,
+                password=password,
+                cookie_dir=self.config.TRACKER_COOKIE_PATH,
+                alt_2_fa_token=self.config.cfg_payload.tl_tracker.alt_2_fa_token,
+                timeout=self.config.cfg_payload.timeout,
+            ).search(file_input)
+            if tl_search:
+                return TrackerSelection(tracker_name), True, tl_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_bhd(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        bhd_search = BHDSearch(
-            api_key=self.config.cfg_payload.bhd_tracker.api_key,
-            rss_key=self.config.cfg_payload.bhd_tracker.rss_key,
-            timeout=self.config.cfg_payload.timeout,
-        ).search(file_input.stem)
-        if bhd_search:
-            return TrackerSelection(tracker_name), bhd_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.bhd_tracker.api_key
+        rss_key = self.config.cfg_payload.bhd_tracker.rss_key
+        if not api_key or not rss_key:
+            return (
+                TrackerSelection(tracker_name),
+                False,
+                "BHD API key or RSS key missing",
+            )
+        try:
+            bhd_search = BHDSearch(
+                api_key=api_key,
+                rss_key=rss_key,
+                timeout=self.config.cfg_payload.timeout,
+            ).search(file_input.stem)
+            if bhd_search:
+                return TrackerSelection(tracker_name), True, bhd_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_ptp(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        ptp_search = PTPSearch(
-            api_user=self.config.cfg_payload.ptp_tracker.api_user,
-            api_key=self.config.cfg_payload.ptp_tracker.api_key,
-            timeout=self.config.cfg_payload.timeout,
-        ).search(
-            movie_title=self.config.media_search_payload.title,
-            movie_year=self.config.media_search_payload.year,
-            file_name=file_input.stem,
-            imdb_id=self.config.media_search_payload.imdb_id,
-        )
-        if ptp_search:
-            return TrackerSelection(tracker_name), ptp_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_user = self.config.cfg_payload.ptp_tracker.api_user
+        api_key = self.config.cfg_payload.ptp_tracker.api_key
+        title = self.config.media_search_payload.title
+        year = self.config.media_search_payload.year
+        imdb_id = self.config.media_search_payload.imdb_id
+        if not api_user or not api_key or not title or year is None or not imdb_id:
+            return (
+                TrackerSelection(tracker_name),
+                False,
+                "PTP API user/key or search parameters missing",
+            )
+        try:
+            ptp_search = PTPSearch(
+                api_user=api_user,
+                api_key=api_key,
+                timeout=self.config.cfg_payload.timeout,
+            ).search(
+                movie_title=title,
+                movie_year=year,
+                file_name=file_input.stem,
+                imdb_id=imdb_id,
+            )
+            if ptp_search:
+                return TrackerSelection(tracker_name), True, ptp_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_rf(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        rf_search = ReelFlixSearch(
-            api_key=self.config.cfg_payload.rf_tracker.api_key,
-        ).search(file_name=file_input)
-        if rf_search:
-            return TrackerSelection(tracker_name), rf_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.rf_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "ReelFlix API key missing"
+        try:
+            rf_search = ReelFlixSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if rf_search:
+                return TrackerSelection(tracker_name), True, rf_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_aither(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        aither_search = AitherSearch(
-            api_key=self.config.cfg_payload.aither_tracker.api_key,
-        ).search(file_name=file_input)
-        if aither_search:
-            return TrackerSelection(tracker_name), aither_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.aither_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "Aither API key missing"
+        try:
+            aither_search = AitherSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if aither_search:
+                return TrackerSelection(tracker_name), True, aither_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_huno(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        aither_search = HunoSearch(
-            api_key=self.config.cfg_payload.huno_tracker.api_key,
-        ).search(file_name=file_input)
-        if aither_search:
-            return TrackerSelection(tracker_name), aither_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.huno_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "Huno API key missing"
+        try:
+            huno_search = HunoSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if huno_search:
+                return TrackerSelection(tracker_name), True, huno_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_lst(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        lst_search = LSTSearch(
-            api_key=self.config.cfg_payload.lst_tracker.api_key,
-        ).search(file_name=file_input)
-        if lst_search:
-            return TrackerSelection(tracker_name), lst_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.lst_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "LST API key missing"
+        try:
+            lst_search = LSTSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if lst_search:
+                return TrackerSelection(tracker_name), True, lst_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     async def _dupe_dp(
         self, tracker_name: str, file_input: Path
-    ) -> tuple[TrackerSelection, list[TrackerSearchResult]] | None:
-        dp_search = DarkPeersSearch(
-            api_key=self.config.cfg_payload.darkpeers_tracker.api_key,
-        ).search(file_name=file_input)
-        if dp_search:
-            return TrackerSelection(tracker_name), dp_search
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.darkpeers_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "DarkPeers API key missing"
+        try:
+            dp_search = DarkPeersSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if dp_search:
+                return TrackerSelection(tracker_name), True, dp_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
 
     def process_trackers(
         self,
@@ -271,6 +381,9 @@ class ProcessBackEnd:
         releasers_name: str,
         encode_file_dir: Path | None = None,
     ) -> None:
+        # make sure we have all the latest templates in case changes was made during the wizard
+        self.template_selector_be.load_templates()
+
         # handle image uploading
         images = self.handle_images_for_trackers(
             media_input, process_dict, queued_text_update, progress_bar_cb

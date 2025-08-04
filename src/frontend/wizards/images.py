@@ -613,10 +613,11 @@ class ImagesPage(BaseWizardPage):
                 ss_mode = ScreenShotMode.BASIC_SS_GEN
 
             self.image_viewer = ImageViewer(
-                self.image_dir,
-                ss_mode,
-                self.config.cfg_payload.required_selected_screens,
-                self,
+                image_base_dir=self.image_dir,
+                comparison_mode=ss_mode,
+                min_required_selected_screens=self.config.cfg_payload.min_required_selected_screens,
+                max_required_selected_screens=self.config.cfg_payload.max_required_selected_screens,
+                parent=self,
             )
             self.image_viewer.show()
             GSigs().main_window_set_disabled.emit(False)

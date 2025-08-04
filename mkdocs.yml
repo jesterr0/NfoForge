@@ -1,65 +1,74 @@
 site_name: NfoForge Documentation
 
+use_directory_urls: false
+
 nav:
-    - Home: index.md
-    - Getting Started:
-          - Install: view/getting-started/install.md
-          - Initial Setup: view/getting-started/initial-setup.md
-          - Using The Wizard: view/getting-started/using-the-wizard.md
-    - TokenReplacer:
-          - Introduction: view/token-replacer/introduction.md
-          - Flat Strings: view/token-replacer/flat.md
-          - Multi-Line Strings: view/token-replacer/multi-line.md
+  - Home: index.md
+  - Getting Started:
+      - Install: view/getting-started/install.md
+      - Initial Setup: view/getting-started/initial-setup.md
+      - Using The Wizard: view/getting-started/using-the-wizard.md
+  - TokenReplacer:
+      - Introduction: view/token-replacer/introduction.md
+      - Tokens: view/token-replacer/tokens.md
+      - Flat Strings: view/token-replacer/flat.md
+      - Multi-Line Strings: view/token-replacer/multi-line.md
+      - Advanced: view/token-replacer/advanced.md
+
+not_in_nav: |
+  file_tokens.md
+  nfo_tokens.md
 
 theme:
-    name: material
-    favicon: images/hammer_merged.ico
-    logo: images/hammer_merged.ico
-    palette:
-        # Palette toggle for automatic mode
-        - media: "(prefers-color-scheme)"
-          toggle:
-              icon: material/brightness-auto
-              name: Switch to light mode
-        # Palette toggle for light mode
-        - media: "(prefers-color-scheme: light)"
-          scheme: default
-          toggle:
-              icon: material/weather-sunny
-              name: Switch to dark mode
-        # Palette toggle for dark mode
-        - media: "(prefers-color-scheme: dark)"
-          scheme: slate
-          toggle:
-              icon: material/weather-night
-              name: Switch to system preference
-    font:
-        text: Montserrat
-        code: Fira Mono
-    features:
-        - content.code.copy
-        - search.highlight
-        - navigation.tabs
-        - navigation.footer
+  name: material
+  favicon: images/hammer_merged.ico
+  logo: images/hammer_merged.ico
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-night
+        name: Switch to system preference
+  font:
+    text: Montserrat
+    code: Fira Mono
+  features:
+    - content.code.copy
+    - search.highlight
+    - navigation.tabs
+    - navigation.footer
 
 markdown_extensions:
-    - admonition
-    - pymdownx.details
-    - pymdownx.highlight:
-          anchor_linenums: true
-          line_spans: __span
-          pygments_lang_class: true
-    - pymdownx.inlinehilite
-    - pymdownx.snippets:
-          base_path: !relative $config_dir
-    - pymdownx.superfences
-    - pymdownx.tabbed:
-          alternate_style: true
-    - attr_list
-    - md_in_html
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path: !relative $config_dir
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
 
 plugins:
-    - search
+  - search
+  - offline
 
 extra_css:
-    - stylesheets/extra.css
+  - stylesheets/extra.css

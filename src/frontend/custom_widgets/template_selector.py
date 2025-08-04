@@ -493,7 +493,6 @@ class SandBoxInput(QDialog):
         GSigs().main_window_set_disabled.connect(self._set_disabled)
         GSigs().main_window_update_status_tip.connect(self._update_fake_status_bar)
         GSigs().main_window_clear_status_tip.connect(self._clear_fake_status_bar)
-        GSigs().wizard_next.connect(self._handle_next)
 
         self.sandbox_lbl = QLabel("Input", self)
         bigger_font = self.sandbox_lbl.font()
@@ -501,7 +500,9 @@ class SandBoxInput(QDialog):
         bigger_font.setPointSize(9)
         self.sandbox_lbl.setFont(bigger_font)
 
-        self.media_input = MediaInputBasic(self.config, self)
+        self.media_input = MediaInputBasic(
+            self.config, self, on_finished_cb=self._handle_next
+        )
         self.media_input.media_dir_button.hide()
         self.media_input.main_layout.setContentsMargins(0, 0, 0, 0)
         self.media_input.file_loaded.connect(self._update_media_search)
@@ -509,7 +510,9 @@ class SandBoxInput(QDialog):
         self.media_search_lbl = QLabel("Search", self)
         self.media_search_lbl.setFont(bigger_font)
 
-        self.media_search = MediaSearch(self.config, self)
+        self.media_search = MediaSearch(
+            self.config, self, on_finished_cb=self._handle_next
+        )
         self.media_search.main_layout.setContentsMargins(6, 0, 0, 0)
 
         self.accept_btn = QToolButton(self)
