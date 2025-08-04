@@ -1,5 +1,5 @@
 from datetime import datetime
-from os import PathLike, startfile
+from os import PathLike
 from pathlib import Path
 from platform import system
 from subprocess import run
@@ -36,6 +36,8 @@ def open_explorer(path: Path) -> None:
         cur_platform = system()
         # windows
         if cur_platform == "Windows":
+            from os import startfile
+
             startfile(str(path))
         # mac
         elif cur_platform == "Darwin":
