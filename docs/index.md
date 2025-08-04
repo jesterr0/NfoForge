@@ -63,10 +63,10 @@ If you have questions, need support, or want a new feature, please open an issue
 
 ## Attribution
 
-![TMDB](../../images/misc/tmdb_med.png){ width=100%, style="max-width: 64px;" }  
+![TMDB](images/misc/tmdb_med.png){ width=100%, style="max-width: 64px;" }  
 Metadata provided by [TVDB](https://www.thetvdb.com/). Please consider adding missing information or [subscribing](https://thetvdb.com/subscribe).
 
-![TVDB](../../images/misc/tvdb.png){ width=100%, style="max-width: 64px; background-color: #ffffff47; border-radius: 5px; padding: 3px;" }  
+![TVDB](images/misc/tvdb.png){ width=100%, style="max-width: 64px; background-color: #ffffff47; border-radius: 5px; padding: 3px;" }  
 Metadata provided by [TMDB](https://www.themoviedb.org/).
 
 ## Donations
