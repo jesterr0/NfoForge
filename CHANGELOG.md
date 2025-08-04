@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Movie Rename page having an error on reset in certain circumstances due to signals still being fired off.
 - There was no way to modify release group on filename.
 - Override tokens in the Movie Rename page now respects **:opt=x:** properly.
+- A bug when selecting your torrent client that would pop up (and still work).
 
 ### Removed
 
