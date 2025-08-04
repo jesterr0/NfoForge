@@ -10,8 +10,10 @@ nav:
       - Using The Wizard: view/getting-started/using-the-wizard.md
   - TokenReplacer:
       - Introduction: view/token-replacer/introduction.md
+      - Tokens: view/token-replacer/tokens.md
       - Flat Strings: view/token-replacer/flat.md
       - Multi-Line Strings: view/token-replacer/multi-line.md
+      - Advanced: view/token-replacer/advanced.md
 
 not_in_nav: |
   file_tokens.md
