@@ -13,7 +13,6 @@ from src.frontend.wizards.media_input_advanced import MediaInputAdvanced
 from src.frontend.wizards.media_input_basic import MediaInputBasic
 from src.frontend.wizards.media_search import MediaSearch
 from src.frontend.wizards.nfo_template import NfoTemplate
-from src.frontend.wizards.overview import Overview
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.release_notes import ReleaseNotes
 from src.frontend.wizards.rename_encode import RenameEncode
@@ -49,7 +48,6 @@ class MainWindowWizard(QWizard):
             TrackersPage(self.config, self.main_window),
             ReleaseNotes(self.config, self.main_window),
             NfoTemplate(self.config, self.main_window),
-            Overview(self.config, self.main_window),
             ProcessPage(self.config, self.main_window),
         ]
 
@@ -260,9 +258,6 @@ class MainWindowWizard(QWizard):
             return WizardPages.NFO_TEMPLATE_PAGE.value
 
         elif current_page == WizardPages.NFO_TEMPLATE_PAGE:
-            return WizardPages.OVERVIEW_PAGE.value
-
-        elif current_page == WizardPages.OVERVIEW_PAGE:
             return WizardPages.PROCESS_PAGE.value
 
         elif current_page == WizardPages.PROCESS_PAGE:
@@ -302,9 +297,6 @@ class MainWindowWizard(QWizard):
             return WizardPages.NFO_TEMPLATE_PAGE.value
 
         elif current_page == WizardPages.NFO_TEMPLATE_PAGE:
-            return WizardPages.OVERVIEW_PAGE.value
-
-        elif current_page == WizardPages.OVERVIEW_PAGE:
             return WizardPages.PROCESS_PAGE.value
 
         elif current_page == WizardPages.PROCESS_PAGE:
