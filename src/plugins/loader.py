@@ -108,6 +108,7 @@ class PluginLoader:
                     "torrent_file": Path,
                     "media_file": Path,
                     "mi_obj": MediaInfo,
+                    "source_path": Path,
                     "upload_text_cb": Callable[[str], None],
                     "upload_text_replace_last_line_cb": Callable[[str], None],
                     "progress_cb": Callable[[float], None],

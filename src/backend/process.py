@@ -609,6 +609,7 @@ class ProcessBackEnd:
                         torrent_file=torrent_path,
                         media_file=media_input,
                         mi_obj=mediainfo_obj,
+                        source_path=torrent_source,
                         upload_text_cb=queued_text_update,
                         upload_text_replace_last_line_cb=queued_text_update_replace_last_line,
                         progress_cb=self.progress_bar_cb,
