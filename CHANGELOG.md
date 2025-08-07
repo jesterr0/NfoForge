@@ -4,7 +4,7 @@
 
 ### Added
 
-- 
+- Docs for prompt tokens.
 
 ### Changed
 
