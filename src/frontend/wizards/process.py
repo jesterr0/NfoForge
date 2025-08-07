@@ -3,13 +3,14 @@ from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
 import traceback
-from typing import Any, TYPE_CHECKING
+from typing import Any, Sequence, TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QEventLoop, QObject, QThread, Signal, Slot
 from PySide6.QtGui import QTextCursor, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDialog,
     QFileDialog,
     QLabel,
     QMessageBox,
@@ -29,6 +30,9 @@ from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
 from src.exceptions import ProcessError
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
+from src.frontend.custom_widgets.prompt_token_editor_dialog import (
+    PromptTokenEditorDialog,
+)
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
@@ -98,6 +102,7 @@ class DupeWorker(BaseWorker):
 class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
     progress_signal = Signal(int)
+    prompt_tokens_signal = Signal(list)
 
     def __init__(
         self,
@@ -127,6 +132,8 @@ class ProcessWorker(BaseWorker):
         self.releasers_name = releasers_name
         self.encode_file_dir = encode_file_dir
 
+        self._prompt_tokens_response = None
+
     def run(self) -> None:
         try:
             self.backend.process_trackers(
@@ -145,6 +152,7 @@ class ProcessWorker(BaseWorker):
                 media_search_payload=self.media_search_payload,
                 releasers_name=self.releasers_name,
                 encode_file_dir=self.encode_file_dir,
+                token_prompt_cb=self.token_prompt_and_wait_cb,
             )
             self.job_finished.emit()
         except Exception as e:
@@ -159,6 +167,30 @@ class ProcessWorker(BaseWorker):
     def _progress_cb(self, progress: float) -> None:
         if progress:
             self.progress_signal.emit(progress)
+
+    def token_prompt_and_wait_cb(
+        self, tokens: Sequence[str] | None
+    ) -> dict[str, str] | None:
+        if not tokens:
+            return None
+
+        self._prompt_tokens_response = None
+        self.prompt_tokens_signal.emit(tokens)
+        # start event loop
+        loop = QEventLoop()
+
+        @Slot(object)
+        def on_response(response: dict[str, str] | None):
+            self._prompt_tokens_response = response
+            loop.quit()
+
+        # wait for response
+        GSigs().prompt_tokens_response.connect(on_response)
+        loop.exec_()
+        GSigs().prompt_tokens_response.disconnect(on_response)
+
+        # return response
+        return self._prompt_tokens_response
 
 
 class ProcessPage(BaseWizardPage):
@@ -280,6 +312,9 @@ class ProcessPage(BaseWizardPage):
             self.process_worker.queued_text_update.connect(self._on_text_update)
             self.process_worker.queued_text_update_replace_last_line.connect(
                 self._on_text_update_replace_last_line
+            )
+            self.process_worker.prompt_tokens_signal.connect(
+                self._on_prompt_tokens_signal
             )
             self.process_worker.start()
 
@@ -433,6 +468,15 @@ class ProcessPage(BaseWizardPage):
             if progress >= 100:
                 self.progress_bar.reset()
                 self.progress_bar.hide()
+
+    @Slot(object)
+    def _on_prompt_tokens_signal(self, tokens: Sequence[str]) -> None:
+        prompt_tokens = None
+        prompt = PromptTokenEditorDialog(tokens, self)
+        if prompt.exec() == QDialog.DialogCode.Accepted:
+            prompt_tokens = prompt.get_results()
+            self.cached_sandbox_prompt_tokens = prompt_tokens
+        GSigs().prompt_tokens_response.emit(prompt_tokens)
 
     def _update_last_used_host(self) -> None:
         start_data = deepcopy(self.config.cfg_payload.last_used_img_host)

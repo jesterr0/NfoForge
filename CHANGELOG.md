@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added support for prompt tokens.
 - Docs for prompt tokens.
 
 ### Changed
@@ -16,7 +17,7 @@
 
 ### Removed
 
-- Overview pas has been removed.
+- Overview page has been removed.
 
 ## [0.8.3] - 2025-04-08
 

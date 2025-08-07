@@ -58,6 +58,7 @@ from src.backend.utils.images import (
     get_parity_images,
     get_parity_images_to_str,
 )
+from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.enums.torrent_client import TorrentClientSelection
@@ -380,6 +381,8 @@ class ProcessBackEnd:
         media_search_payload: MediaSearchPayload,
         releasers_name: str,
         encode_file_dir: Path | None = None,
+        token_prompt_cb: Callable[[Sequence[str] | None], dict[str, str] | None]
+        | None = None,
     ) -> None:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
@@ -407,6 +410,33 @@ class ProcessBackEnd:
         queued_text_update(
             '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:'
         )
+
+        # base user tokens, this will be filled with prompt tokens as well if needed
+        base_usr_tokens = {}
+
+        # find all prompt tokens
+        if token_prompt_cb:
+            all_prompt_tokens = []
+            for tracker_name in process_dict.keys():
+                cur_tracker = TrackerSelection(tracker_name)
+                tracker_info = self.config.tracker_map[cur_tracker]
+                nfo_template = self.template_selector_be.read_template(
+                    name=tracker_info.nfo_template
+                )
+                if nfo_template:
+                    prompt_tokens = get_prompt_tokens(nfo_template)
+                    all_prompt_tokens.extend(prompt_tokens)
+
+            # remove duplicates but maintain order from prompt tokens
+            if all_prompt_tokens:
+                # use a callback to wait for a response from the frontend
+                response = token_prompt_cb(list(dict.fromkeys(all_prompt_tokens)))
+                if response:
+                    base_usr_tokens.update(response)
+                    
+                    # TODO: erase this, add docs for prompt tokens
+
+        # loop from the start and process jobs
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
             queued_status_update(tracker_name, "▶️ Processing")
             queued_text_update(
@@ -486,7 +516,8 @@ class ProcessBackEnd:
                 )
                 _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
 
-            user_tokens = {
+            # combine base usr tokens with actual usr tokens to pass to the token replacer
+            user_tokens = base_usr_tokens | {
                 k: v for k, (v, t) in self.config.cfg_payload.user_tokens.items()
             }
 
