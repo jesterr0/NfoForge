@@ -9,7 +9,7 @@
 
 ### Changed
 
-- 
+- Media search window in sandbox mode is opened the same size and position as the main parent window.
 
 ### Fixed
 
