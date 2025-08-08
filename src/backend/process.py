@@ -433,8 +433,6 @@ class ProcessBackEnd:
                 response = token_prompt_cb(list(dict.fromkeys(all_prompt_tokens)))
                 if response:
                     base_usr_tokens.update(response)
-                    
-                    # TODO: erase this, add docs for prompt tokens
 
         # loop from the start and process jobs
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
