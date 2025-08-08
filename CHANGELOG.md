@@ -6,6 +6,10 @@
 
 - Added support for prompt tokens.
 - Docs for prompt tokens.
+- Overview Prompt
+  - Added checkbox in settings -> general to toggle overview prompt during processing.
+  - Now prompts the user with the full generated NFOs so they can view them and make final edits if needed.
+  - TODO: tracker title edits in the same page
 
 ### Changed
 

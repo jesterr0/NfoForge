@@ -383,6 +383,10 @@ class ProcessBackEnd:
         encode_file_dir: Path | None = None,
         token_prompt_cb: Callable[[Sequence[str] | None], dict[str, str] | None]
         | None = None,
+        overview_cb: Callable[
+            [dict[TrackerSelection, str] | None], dict[TrackerSelection, str] | None
+        ]
+        | None = None,
     ) -> None:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
@@ -433,6 +437,125 @@ class ProcessBackEnd:
                 response = token_prompt_cb(list(dict.fromkeys(all_prompt_tokens)))
                 if response:
                     base_usr_tokens.update(response)
+
+        # generate all NFOs for each tracker (execute plugin if enabled)
+        tracker_nfos = {}
+        queued_text_update("<br /><span>Generating NFOs</span>")
+        for tracker_name in process_dict.keys():
+            cur_tracker = TrackerSelection(tracker_name)
+            tracker_info = self.config.tracker_map[cur_tracker]
+            nfo_template = self.template_selector_be.read_template(
+                name=tracker_info.nfo_template
+            )
+            user_tokens = base_usr_tokens | {
+                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+            }
+            nfo = ""
+            tracker_images = None
+            formatted_screens = None
+            comparison_screens = None
+            even_screens = None
+            even_screens_str = None
+            odd_screens = None
+            odd_screens_str = None
+            if cur_tracker in images:
+                tracker_images = images[cur_tracker]
+                format_images_to_str = format_image_data_to_str(
+                    cur_tracker,
+                    tracker_images,
+                    tracker_info.url_type,
+                    tracker_info.column_s,
+                    tracker_info.column_space,
+                    tracker_info.row_space,
+                )
+                formatted_screens = format_image_tag(
+                    cur_tracker,
+                    format_images_to_str,
+                    getattr(tracker_info, "image_width", 350),
+                )
+                if self.config.shared_data.is_comparison_images:
+                    comparison_screens = format_image_data_to_comparison(tracker_images)
+                    even_screens = get_parity_images(data=tracker_images)
+                    odd_screens = get_parity_images(data=tracker_images, even=False)
+                    even_screens_str = get_parity_images_to_str(data=tracker_images)
+                    odd_screens_str = get_parity_images_to_str(
+                        data=tracker_images, even=False
+                    )
+            if nfo_template:
+                nfo = TokenReplacer(
+                    media_input=media_input,
+                    jinja_engine=jinja_engine,
+                    source_file=source_file,
+                    token_string=nfo_template,
+                    media_search_obj=media_search_payload,
+                    source_file_mi_obj=source_file_mi_obj,
+                    media_info_obj=mediainfo_obj,
+                    unfilled_token_mode=UnfilledTokenRemoval.KEEP,
+                    releasers_name=releasers_name,
+                    screen_shots=formatted_screens,
+                    screen_shots_comparison=comparison_screens,
+                    screen_shots_even_obj=even_screens,
+                    screen_shots_odd_obj=odd_screens,
+                    screen_shots_even_str=even_screens_str,
+                    screen_shots_odd_str=odd_screens_str,
+                    release_notes=self.config.shared_data.release_notes,
+                    edition_override=self.config.shared_data.dynamic_data.get(
+                        "edition_override"
+                    ),
+                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                        "frame_size_override"
+                    ),
+                    override_tokens=self.config.shared_data.dynamic_data.get(
+                        "override_tokens"
+                    ),
+                    user_tokens=user_tokens,
+                    movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+                ).get_output()
+                if not isinstance(nfo, str):
+                    raise ValueError("NFO should be a string")
+
+            # run token replacer plugin if available
+            token_replacer_plugin = self.config.cfg_payload.token_replacer
+            if token_replacer_plugin:
+                nfo_plugin = self.config.loaded_plugins[
+                    token_replacer_plugin
+                ].token_replacer
+                if nfo_plugin and callable(nfo_plugin):
+                    queued_text_update(
+                        "<br /><span>Running token replacer plugin</span>"
+                    )
+                    LOG.info(
+                        LOG.LOG_SOURCE.BE,
+                        f"Running token replacer plugin for tracker: {tracker_name}",
+                    )
+                    replace_tokens = nfo_plugin(
+                        config=self.config,
+                        input_str=nfo,
+                        tracker_s=(cur_tracker,),
+                        tracker_images=tracker_images
+                        if cur_tracker in images
+                        else None,
+                        format_images_to_str=formatted_screens,
+                        formatted_screens=formatted_screens,
+                    )
+                    nfo = replace_tokens if replace_tokens else nfo
+            tracker_nfos[cur_tracker] = nfo
+
+        # update nfos with user updates from front end if enabled
+        if self.config.cfg_payload.enable_prompt_overview and overview_cb:
+            confirm_overview = overview_cb(tracker_nfos)
+            if confirm_overview:
+                nfo_updates = [
+                    str(k)
+                    for k in tracker_nfos
+                    if k in confirm_overview and tracker_nfos[k] != confirm_overview[k]
+                ]
+                queued_text_update(
+                    "<br /><i><span>Applying user edits from overview to trackers "
+                    f'<span style="font-weight: bold;">{", ".join(nfo_updates)}</span></span></i><br />'
+                )
+                tracker_nfos = confirm_overview
 
         # loop from the start and process jobs
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
@@ -514,110 +637,7 @@ class ProcessBackEnd:
                 )
                 _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
 
-            # combine base usr tokens with actual usr tokens to pass to the token replacer
-            user_tokens = base_usr_tokens | {
-                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
-            }
-
-            # generate nfo
-            nfo = ""
-            if tracker_info.nfo_template:
-                nfo_template = self.template_selector_be.read_template(
-                    name=tracker_info.nfo_template
-                )
-                if nfo_template:
-                    # convert images for the NFO
-                    formatted_screens = None
-                    comparison_screens = None
-                    even_screens = None
-                    even_screens_str = None
-                    odd_screens = None
-                    odd_screens_str = None
-                    if cur_tracker in images:
-                        tracker_images = images[cur_tracker]
-                        # tracker_images = {0: ImageUploadData(url='https://ptpimg.me/a6uy28.png', medium_url=None),
-                        # 1: ImageUploadData(url='https://ptpimg.me/0mdplg.png', medium_url=None),
-                        # 2: ImageUploadData(url='https://ptpimg.me/644r4s.png', medium_url=None)}
-                        format_images_to_str = format_image_data_to_str(
-                            cur_tracker,
-                            tracker_images,
-                            tracker_info.url_type,
-                            tracker_info.column_s,
-                            tracker_info.column_space,
-                            tracker_info.row_space,
-                        )
-                        formatted_screens = format_image_tag(
-                            cur_tracker,
-                            format_images_to_str,
-                            getattr(tracker_info, "image_width", 350),
-                        )
-
-                        # if images we're comparison images we attempt to generate some more screenshot tokens
-                        if self.config.shared_data.is_comparison_images:
-                            comparison_screens = format_image_data_to_comparison(
-                                tracker_images
-                            )
-                            even_screens = get_parity_images(data=tracker_images)
-                            odd_screens = get_parity_images(
-                                data=tracker_images, even=False
-                            )
-                            even_screens_str = get_parity_images_to_str(
-                                data=tracker_images
-                            )
-                            odd_screens_str = get_parity_images_to_str(
-                                data=tracker_images, even=False
-                            )
-
-                    nfo = TokenReplacer(
-                        media_input=media_input,
-                        jinja_engine=jinja_engine,
-                        source_file=source_file,
-                        token_string=nfo_template,
-                        media_search_obj=media_search_payload,
-                        source_file_mi_obj=source_file_mi_obj,
-                        media_info_obj=mediainfo_obj,
-                        unfilled_token_mode=UnfilledTokenRemoval.KEEP,
-                        releasers_name=releasers_name,
-                        screen_shots=formatted_screens,
-                        screen_shots_comparison=comparison_screens,
-                        screen_shots_even_obj=even_screens,
-                        screen_shots_odd_obj=odd_screens,
-                        screen_shots_even_str=even_screens_str,
-                        screen_shots_odd_str=odd_screens_str,
-                        release_notes=self.config.shared_data.release_notes,
-                        edition_override=self.config.shared_data.dynamic_data.get(
-                            "edition_override"
-                        ),
-                        frame_size_override=self.config.shared_data.dynamic_data.get(
-                            "frame_size_override"
-                        ),
-                        override_tokens=self.config.shared_data.dynamic_data.get(
-                            "override_tokens"
-                        ),
-                        user_tokens=user_tokens,
-                        movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
-                    ).get_output()
-                    if not isinstance(nfo, str):
-                        raise ValueError("NFO should be a string")
-
-                token_replacer_plugin = self.config.cfg_payload.token_replacer
-                if token_replacer_plugin:
-                    nfo_plugin = self.config.loaded_plugins[
-                        token_replacer_plugin
-                    ].token_replacer
-                    if nfo_plugin and callable(nfo_plugin):
-                        replace_tokens = nfo_plugin(
-                            config=self.config,
-                            input_str=nfo,
-                            tracker_s=(cur_tracker,),
-                            tracker_images=tracker_images,
-                            format_images_to_str=format_images_to_str,
-                            formatted_screens=formatted_screens,
-                        )
-                        nfo = replace_tokens if replace_tokens else nfo
-
-            # write nfo to disk beside the torrent if the nfo exists
+            nfo = tracker_nfos.get(cur_tracker, "")
             if nfo:
                 with open(
                     torrent_path.with_suffix(".nfo"), "w", encoding="utf-8"

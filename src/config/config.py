@@ -285,6 +285,9 @@ class Config:
             )
             general_data["releasers_name"] = self.cfg_payload.releasers_name
             general_data["timeout"] = self.cfg_payload.timeout
+            general_data["enable_prompt_overview"] = (
+                self.cfg_payload.enable_prompt_overview
+            )
             general_data["enable_mkbrr"] = self.cfg_payload.enable_mkbrr
             general_data["log_level"] = LogLevel(self.cfg_payload.log_level).value
             general_data["log_total"] = self.cfg_payload.log_total
@@ -1383,6 +1386,7 @@ class Config:
                 ),
                 releasers_name=general_data.get("releasers_name", ""),
                 timeout=general_data.get("timeout", 60),
+                enable_prompt_overview=general_data.get("enable_prompt_overview", True),
                 enable_mkbrr=general_data.get("enable_mkbrr", True),
                 log_level=LogLevel(general_data.get("log_level", 20)),
                 log_total=general_data.get("log_total", 50),
