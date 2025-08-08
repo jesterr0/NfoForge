@@ -389,7 +389,7 @@ class ProcessBackEnd:
 
         # handle image uploading
         images = self.handle_images_for_trackers(
-            media_input, process_dict, queued_text_update, progress_bar_cb
+            process_dict, queued_text_update, progress_bar_cb
         )
 
         self.progress_bar_cb = progress_bar_cb
@@ -712,7 +712,6 @@ class ProcessBackEnd:
 
     def handle_images_for_trackers(
         self,
-        media_input: Path,
         process_dict: dict[str, Any],
         queued_text_update: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
@@ -724,7 +723,6 @@ class ProcessBackEnd:
         and uploads them to the specified image hosts.
 
         Args:
-            media_input (Path): The path to the media file associated with the images.
             process_dict (dict[str, Any]): A dictionary containing tracker-specific data,
                 including image hosting information.
             queued_text_update (Callable[[str], None]): A callback function to update the UI
