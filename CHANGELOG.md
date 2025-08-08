@@ -13,7 +13,7 @@
 
 ### Fixed
 
-- 
+- Theme swapper now de-registers widgets as they are destroyed automatically.
 
 ### Removed
 

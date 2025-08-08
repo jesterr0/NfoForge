@@ -1,5 +1,7 @@
+from functools import partial
+
 from PySide6.QtCore import QObject, QSize, Qt, Slot
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton, QToolButton
 import qtawesome as qta
 
 
@@ -40,7 +42,11 @@ class QTAwesomeThemeSwapper(QObject):
             self.swap_all_icons(self.LIGHT_COLOR)
 
     def register(
-        self, widget, icon_name: str, icon_size: QSize | None = None, **icon_kwargs
+        self,
+        widget: QToolButton | QPushButton,
+        icon_name: str,
+        icon_size: QSize | None = None,
+        **icon_kwargs,
     ) -> None:
         """Register a widget and its icon info for theme swapping."""
         self._icon_widgets.append((widget, icon_name, icon_kwargs))
@@ -50,6 +56,9 @@ class QTAwesomeThemeSwapper(QObject):
         widget.setIcon(qta.icon(icon_name, **icon_kwargs))
         if icon_size:
             widget.setIconSize(icon_size)
+
+        # connect to widget's destroyed signal to de register automatically
+        widget.destroyed.connect(partial(self.deregister, widget))
 
     def deregister(self, widget):
         """Remove a widget from icon management."""
