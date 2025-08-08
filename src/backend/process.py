@@ -516,7 +516,7 @@ class ProcessBackEnd:
 
             # combine base usr tokens with actual usr tokens to pass to the token replacer
             user_tokens = base_usr_tokens | {
-                k: v for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
             }
 
             # generate nfo
