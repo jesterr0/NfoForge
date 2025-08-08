@@ -1,25 +1,38 @@
 import re
 import sys
 from typing import NamedTuple, Pattern
-from PySide6.QtCore import Signal, Slot, Qt, QRect, QSize, QEvent
+
+from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal, Slot
 from PySide6.QtGui import (
     QColor,
-    QPainter,
-    QShortcut,
-    QTextFormat,
-    QTextCursor,
-    QTextOption,
-    QResizeEvent,
-    QPaintEvent,
-    QKeyEvent,
-    QTextCharFormat,
-    QTextDocument,
-    QSyntaxHighlighter,
-    QFontDatabase,
     QFont,
+    QFontDatabase,
+    QKeyEvent,
     QKeySequence,
+    QPaintEvent,
+    QPainter,
+    QResizeEvent,
+    QShortcut,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QTextCursor,
+    QTextDocument,
+    QTextFormat,
+    QTextOption,
 )
-from PySide6.QtWidgets import QPlainTextEdit, QWidget, QTextEdit, QApplication, QFrame
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QFrame,
+    QHBoxLayout,
+    QPlainTextEdit,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.frontend.utils import set_top_parent_geometry
 
 
 HighlightKeywords = NamedTuple(
@@ -107,11 +120,23 @@ class CodeEditor(QPlainTextEdit):
         line_numbers: bool = True,
         wrap_text: bool = False,
         mono_font: bool = True,
+        pop_out_expansion: bool = False,
+        pop_out_name: str = "Editor",
+        pop_out_geometry: QRect | None = None,
         parent=None,
+        **kwargs,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, **kwargs)
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
+
+        self.line_numbers = line_numbers
+        self.wrap_text = wrap_text
+        self.mono_font = mono_font
+        self.pop_out_expansion = pop_out_expansion
+        self.pop_out_name = pop_out_name
+        self.pop_out_geometry = pop_out_geometry
+        self.kwargs = kwargs
 
         self.highlighter = CustomHighlighter(self.document())
 
@@ -123,7 +148,6 @@ class CodeEditor(QPlainTextEdit):
 
         self.box_color, self.font_color = self.get_theme_colors()
 
-        self.line_numbers = line_numbers
         if self.line_numbers:
             self.line_number_area = LineNumberArea(self)
             self.blockCountChanged.connect(self.update_line_number_area_width)
@@ -135,6 +159,30 @@ class CodeEditor(QPlainTextEdit):
 
         self._save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         self._save_shortcut.activated.connect(self._emit_save)
+
+        # expansion
+        self.pop_out_name = pop_out_name
+        self.pop_out_geometry = pop_out_geometry
+        if pop_out_expansion:
+            self.expand_icon = QPushButton(parent=self)
+            self.expand_icon.setFixedSize(20, 20)
+            self.expand_icon.setToolTip("Expand Editor")
+            self.expand_icon.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.expand_icon.setStyleSheet(
+                "QPushButton { border: none; }"
+                "QPushButton:hover { background-color: rgba(31, 123, 228, 0.95); "
+                "border-radius: 2px; border: 1px solid #5f5f5fc9; }"
+            )
+            from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+
+            QTAThemeSwap().register(
+                self.expand_icon,
+                "ph.arrows-out-light",
+                icon_size=QSize(20, 20),
+            )
+            self.expand_icon.clicked.connect(self.expand_editor_popup)
+            self.expand_icon.hide()
+            self.installEventFilter(self)
 
     def set_monospace_font(self):
         if "Fira Mono" in QFontDatabase().families():
@@ -323,6 +371,57 @@ class CodeEditor(QPlainTextEdit):
     @Slot()
     def _emit_save(self) -> None:
         self.save_contents.emit(self.toPlainText())
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        if obj is self:
+            if event.type() == QEvent.Type.Resize:
+                self.expand_icon.move(1, 1)
+            elif event.type() == QEvent.Type.Enter:
+                self.expand_icon.show()
+            elif event.type() == QEvent.Type.Leave:
+                self.expand_icon.hide()
+        return super().eventFilter(obj, event)
+
+    def expand_editor_popup(self):
+        # build dialog
+        dlg = QDialog(self)
+        dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+        dlg.setWindowTitle(self.pop_out_name if self.pop_out_name else "Editor")
+
+        # set geometry
+        if self.pop_out_geometry:
+            dlg.setGeometry(self.pop_out_geometry)
+        # attempt to use the last valid parents geometry if no geometry is set
+        set_top_parent_geometry(dlg)
+
+        large_editor = CodeEditor(
+            line_numbers=self.line_numbers,
+            wrap_text=self.wrap_text,
+            mono_font=self.mono_font,
+            **self.kwargs,
+        )
+        large_editor.setPlainText(self.toPlainText())
+
+        cancel_btn = QPushButton("Cancel", dlg)
+        cancel_btn.setFixedWidth(150)
+        cancel_btn.clicked.connect(dlg.reject)
+
+        ok_btn = QPushButton("Okay", dlg)
+        ok_btn.setFixedWidth(150)
+        ok_btn.clicked.connect(dlg.accept)
+
+        btns = QHBoxLayout()
+        btns.addWidget(cancel_btn)
+        btns.addStretch()
+        btns.addWidget(ok_btn)
+
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(large_editor)
+        layout.addLayout(btns)
+
+        # apply changes to text if accepted
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self.setPlainText(large_editor.toPlainText())
 
 
 if __name__ == "__main__":
