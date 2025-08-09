@@ -184,7 +184,9 @@ class ProcessWorker(BaseWorker):
         loop = QEventLoop()
 
         @Slot(object)
-        def on_response(response: dict[TrackerSelection, str] | None) -> None:
+        def on_response(
+            response: dict[TrackerSelection, dict[str | None, str]] | None,
+        ) -> None:
             self._prompt_tokens_response = response
             loop.quit()
 
@@ -197,8 +199,8 @@ class ProcessWorker(BaseWorker):
         return self._prompt_tokens_response
 
     def overview_prompt_and_wait_cb(
-        self, data: dict[TrackerSelection, str] | None
-    ) -> dict[TrackerSelection, str] | None:
+        self, data: dict[TrackerSelection, dict[str | None, str]] | None
+    ) -> dict[TrackerSelection, dict[str | None, str]] | None:
         if not data:
             return
 
@@ -209,7 +211,9 @@ class ProcessWorker(BaseWorker):
         loop = QEventLoop()
 
         @Slot(object)
-        def on_response(response: dict[TrackerSelection, str] | None) -> None:
+        def on_response(
+            response: dict[TrackerSelection, dict[str | None, str]] | None,
+        ) -> None:
             self._overview_prompt = response
             loop.quit()
 
@@ -508,7 +512,9 @@ class ProcessPage(BaseWizardPage):
         GSigs().prompt_tokens_response.emit(prompt_tokens)
 
     @Slot(object)
-    def _on_overview_signal(self, data: dict[TrackerSelection, str]) -> None:
+    def _on_overview_signal(
+        self, data: dict[TrackerSelection, dict[str | None, str]]
+    ) -> None:
         result = data
         prompt = OverviewDialog(data, self)
         if prompt.exec() == QDialog.DialogCode.Accepted:
