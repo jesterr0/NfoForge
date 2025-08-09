@@ -112,7 +112,9 @@ class Unit3dBaseUploader:
     ) -> bool | None:
         params = {"api_token": self.api_key}
         upload_payload = {
-            "name": tracker_title if tracker_title else self._generate_name(),
+            "name": tracker_title
+            if tracker_title
+            else self.generate_release_title(self.file_input.stem),
             "description": nfo,
             "mediainfo": MinimalMediaInfo(self.file_input).get_full_mi_str(
                 cleansed=True
@@ -190,13 +192,6 @@ class Unit3dBaseUploader:
             raise TrackerError(requests_exc_error_msg)
         finally:
             open_torrent.close()
-
-    def _generate_name(self) -> str:
-        name = str(self.file_input.stem).replace(".", " ")
-        name = re.sub(r"\s{2,}", " ", name)
-        for replace_key, replace_val in tracker_string_replace_map().items():
-            name = name.replace(replace_key, replace_val)
-        return name
 
     def _get_category_id(self) -> str:
         return self.cat_enum(self.cat_enum.MOVIE).value
@@ -286,6 +281,14 @@ class Unit3dBaseUploader:
         if width < 1280 and height < 720:
             return True
         return False
+
+    @staticmethod
+    def generate_release_title(release_title: str) -> str:
+        name = release_title.replace(".", " ")
+        name = re.sub(r"\s{2,}", " ", name)
+        for replace_key, replace_val in tracker_string_replace_map().items():
+            name = name.replace(replace_key, replace_val)
+        return name
 
 
 class Unit3dBaseSearch:
