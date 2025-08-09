@@ -11,5 +11,4 @@ class WizardPages(Enum):
     TRACKERS_PAGE = auto_enum()
     RELEASE_NOTES_PAGE = auto_enum()
     NFO_TEMPLATE_PAGE = auto_enum()
-    OVERVIEW_PAGE = auto_enum()
     PROCESS_PAGE = auto_enum()

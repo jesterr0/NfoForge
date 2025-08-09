@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 from typing import Any
 import weakref
@@ -235,15 +236,15 @@ class QWidgetTempStyle:
         temp_style: str = "background-color: yellow;",
         duration: int = 1000,
         system_beep: bool = False,
-    ) -> None:
-        """Temporarily set a widget's style, then restore the original after duration."""
+    ) -> QTimer:
+        """Temporarily set a widget's style, then restore the original after duration. Returns the timer for manual start."""
         if widget in self.timers:
             self.timers[widget].stop()
 
         if not hasattr(widget, "_original_style"):
             widget._original_style = widget.styleSheet()  # type: ignore
         widget.setStyleSheet(temp_style)
-        timer = QTimer(singleShot=True)
+        timer = QTimer(singleShot=True, interval=duration)
 
         def restore():
             # only restore if the widget still exists and has the temp style
@@ -253,10 +254,10 @@ class QWidgetTempStyle:
             self.timers.pop(widget, None)
 
         timer.timeout.connect(restore)
-        timer.start(duration)
         if system_beep:
             QApplication.beep()
         self.timers[widget] = timer
+        return timer
 
 
 def block_all_signals(widget: QWidget, block: bool) -> None:
@@ -268,3 +269,22 @@ def block_all_signals(widget: QWidget, block: bool) -> None:
             block_signals_recursive(child)
 
     block_signals_recursive(widget)
+
+
+def set_top_parent_geometry(widget: QWidget, delay: int = 1) -> None:
+    """Find the topmost parent widget and set geometry for the given widget based on that."""
+
+    def do_the_stuff(widget: QWidget) -> None:
+        parent_widget = widget
+        last_valid_parent = widget
+        while True:
+            next_parent = parent_widget.parentWidget()
+            if next_parent is None:
+                break
+            last_valid_parent = next_parent
+            parent_widget = next_parent
+
+        if last_valid_parent:
+            widget.setGeometry(last_valid_parent.geometry())
+
+    QTimer.singleShot(delay, partial(do_the_stuff, widget))

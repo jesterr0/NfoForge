@@ -55,7 +55,7 @@ class TLUploader:
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
         data = self._get_data(torrent_file.stem, get_resolution)
         if tracker_title:
-            data["name"] = self._generate_release_title(tracker_title)
+            data["name"] = self.generate_release_title(tracker_title)
 
         LOG.info(LOG.LOG_SOURCE.BE, "Uploading torrent to TorrentLeech")
         LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {data}")
@@ -121,7 +121,7 @@ class TLUploader:
             raise TrackerError("Failed to determine proper TorrentLeech category")
 
     @staticmethod
-    def _generate_release_title(release_title: str) -> str:
+    def generate_release_title(release_title: str) -> str:
         """Force release title to be in a format that TL requires"""
         if "." in release_title:
             LOG.warning(

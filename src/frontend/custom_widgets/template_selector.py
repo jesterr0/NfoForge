@@ -25,13 +25,18 @@ from jinja2.exceptions import TemplateSyntaxError
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import TokenType, Tokens
+from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
+from src.frontend.custom_widgets.prompt_token_editor_dialog import (
+    PromptTokenEditorDialog,
+)
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
+from src.frontend.utils import set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.media_input_basic import MediaInputBasic
 from src.frontend.wizards.media_search import MediaSearch
@@ -59,6 +64,7 @@ class TemplateSelector(QWidget):
         self.templates = self.backend.templates
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
+        self.cached_sandbox_prompt_tokens: dict[str, str] | None = None
 
         self.token_btn = QToolButton(self)
         QTAThemeSwap().register(
@@ -332,8 +338,7 @@ class TemplateSelector(QWidget):
                     not self.config.media_input_payload.encode_file
                     or not self.config.media_search_payload.title
                 ):
-                    self.sandbox_input = SandBoxInput(self.config)
-                    self.sandbox_input.resize(self.main_window.size())
+                    self.sandbox_input = SandBoxInput(self.config, self)
                     if self.sandbox_input.exec() == QDialog.DialogCode.Rejected:
                         self.preview_btn.setChecked(False)
                         self.text_edit.setReadOnly(False)
@@ -348,6 +353,41 @@ class TemplateSelector(QWidget):
 
             self.text_edit.setReadOnly(True)
             self.old_text = self.text_edit.toPlainText()
+
+            # gather prompt tokens
+            if self.old_text:
+                prompt_tokens = get_prompt_tokens(self.old_text)
+                if prompt_tokens:
+                    # build dict (use cached value if present, else "")
+                    tokens_dict = {
+                        token: (
+                            self.cached_sandbox_prompt_tokens.get(token, "")
+                            if self.cached_sandbox_prompt_tokens
+                            else ""
+                        )
+                        for token in prompt_tokens
+                    }
+                    # remove any cached tokens not in the template
+                    if self.cached_sandbox_prompt_tokens:
+                        self.cached_sandbox_prompt_tokens = {
+                            k: v
+                            for k, v in self.cached_sandbox_prompt_tokens.items()
+                            if k in prompt_tokens
+                        }
+                    prompt = PromptTokenEditorDialog(tokens_dict, self)
+                    if prompt.exec() == QDialog.DialogCode.Accepted:
+                        prompt_results = prompt.get_results()
+                        self.cached_sandbox_prompt_tokens = prompt_results
+                        if prompt_results:
+                            user_tokens.update(prompt_results)
+                    else:
+                        self.text_edit.setPlainText(
+                            self.old_text if self.old_text else ""
+                        )
+                        self.preview_btn.setChecked(False)
+                        self.text_edit.setReadOnly(False)
+                        return
+
             nfo = ""
             try:
                 token_replacer = TokenReplacer(
@@ -486,6 +526,7 @@ class SandBoxInput(QDialog):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Sandbox Input")
+        set_top_parent_geometry(self)
 
         self.config = config
         self._wizard_next_count = 0

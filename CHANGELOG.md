@@ -1,6 +1,29 @@
 # Changelog
 
-## [0.8.3] - 2025-04-08
+## [0.8.4] - 2025-08-09
+
+### Added
+
+- Added support for prompt tokens.
+- Docs for prompt tokens.
+- Overview Prompt
+  - Added checkbox in settings -> general to toggle overview prompt during processing.
+  - Now prompts the user with the full generated NFOs and tracker titles so they can view them and make final edits if needed.
+  - Added docs for overview prompt.
+
+### Changed
+
+- Media search window in sandbox mode is opened the same size and position as the main parent window.
+
+### Fixed
+
+- Theme swapper now de-registers widgets as they are destroyed automatically.
+
+### Removed
+
+- Overview page has been removed and related docs.
+
+## [0.8.3] - 2025-08-04
 
 ### Added
 

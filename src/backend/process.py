@@ -50,6 +50,10 @@ from src.backend.trackers import (
     rf_uploader,
     tl_upload,
 )
+from src.backend.trackers.beyondhd import BHDUploader
+from src.backend.trackers.morethantv import MTVUploader
+from src.backend.trackers.torrentleech import TLUploader
+from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
@@ -58,6 +62,7 @@ from src.backend.utils.images import (
     get_parity_images,
     get_parity_images_to_str,
 )
+from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.enums.torrent_client import TorrentClientSelection
@@ -380,13 +385,20 @@ class ProcessBackEnd:
         media_search_payload: MediaSearchPayload,
         releasers_name: str,
         encode_file_dir: Path | None = None,
+        token_prompt_cb: Callable[[Sequence[str] | None], dict[str, str] | None]
+        | None = None,
+        overview_cb: Callable[
+            [dict[TrackerSelection, dict[str | None, str]] | None],
+            dict[TrackerSelection, dict[str | None, str]] | None,
+        ]
+        | None = None,
     ) -> None:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
 
         # handle image uploading
         images = self.handle_images_for_trackers(
-            media_input, process_dict, queued_text_update, progress_bar_cb
+            process_dict, queued_text_update, progress_bar_cb
         )
 
         self.progress_bar_cb = progress_bar_cb
@@ -407,6 +419,164 @@ class ProcessBackEnd:
         queued_text_update(
             '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:'
         )
+
+        # base user tokens, this will be filled with prompt tokens as well if needed
+        base_usr_tokens = {}
+
+        # find all prompt tokens
+        if token_prompt_cb:
+            all_prompt_tokens = []
+            for tracker_name in process_dict.keys():
+                cur_tracker = TrackerSelection(tracker_name)
+                tracker_info = self.config.tracker_map[cur_tracker]
+                nfo_template = self.template_selector_be.read_template(
+                    name=tracker_info.nfo_template
+                )
+                if nfo_template:
+                    prompt_tokens = get_prompt_tokens(nfo_template)
+                    all_prompt_tokens.extend(prompt_tokens)
+
+            # remove duplicates but maintain order from prompt tokens
+            if all_prompt_tokens:
+                # use a callback to wait for a response from the frontend
+                response = token_prompt_cb(list(dict.fromkeys(all_prompt_tokens)))
+                if response:
+                    base_usr_tokens.update(response)
+
+        # generate tracker titles first, then NFOs
+        tracker_release_data = {}
+        queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
+        for tracker_name in process_dict.keys():
+            cur_tracker = TrackerSelection(tracker_name)
+            tracker_info = self.config.tracker_map[cur_tracker]
+
+            # generate tracker title first
+            tracker_title = None
+            generated_tracker_title = self.generate_tracker_title(
+                file_name=media_input,
+                tracker_info=tracker_info,
+            )
+            if generated_tracker_title:
+                tracker_title = self.tracker_title_formatting(
+                    cur_tracker, generated_tracker_title
+                )
+
+            nfo_template = self.template_selector_be.read_template(
+                name=tracker_info.nfo_template
+            )
+            user_tokens = base_usr_tokens | {
+                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+            }
+            nfo = ""
+            tracker_images = None
+            formatted_screens = None
+            comparison_screens = None
+            even_screens = None
+            even_screens_str = None
+            odd_screens = None
+            odd_screens_str = None
+            if cur_tracker in images:
+                tracker_images = images[cur_tracker]
+                format_images_to_str = format_image_data_to_str(
+                    cur_tracker,
+                    tracker_images,
+                    tracker_info.url_type,
+                    tracker_info.column_s,
+                    tracker_info.column_space,
+                    tracker_info.row_space,
+                )
+                formatted_screens = format_image_tag(
+                    cur_tracker,
+                    format_images_to_str,
+                    getattr(tracker_info, "image_width", 350),
+                )
+                if self.config.shared_data.is_comparison_images:
+                    comparison_screens = format_image_data_to_comparison(tracker_images)
+                    even_screens = get_parity_images(data=tracker_images)
+                    odd_screens = get_parity_images(data=tracker_images, even=False)
+                    even_screens_str = get_parity_images_to_str(data=tracker_images)
+                    odd_screens_str = get_parity_images_to_str(
+                        data=tracker_images, even=False
+                    )
+            if nfo_template:
+                nfo = TokenReplacer(
+                    media_input=media_input,
+                    jinja_engine=jinja_engine,
+                    source_file=source_file,
+                    token_string=nfo_template,
+                    media_search_obj=media_search_payload,
+                    source_file_mi_obj=source_file_mi_obj,
+                    media_info_obj=mediainfo_obj,
+                    unfilled_token_mode=UnfilledTokenRemoval.KEEP,
+                    releasers_name=releasers_name,
+                    screen_shots=formatted_screens,
+                    screen_shots_comparison=comparison_screens,
+                    screen_shots_even_obj=even_screens,
+                    screen_shots_odd_obj=odd_screens,
+                    screen_shots_even_str=even_screens_str,
+                    screen_shots_odd_str=odd_screens_str,
+                    release_notes=self.config.shared_data.release_notes,
+                    edition_override=self.config.shared_data.dynamic_data.get(
+                        "edition_override"
+                    ),
+                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                        "frame_size_override"
+                    ),
+                    override_tokens=self.config.shared_data.dynamic_data.get(
+                        "override_tokens"
+                    ),
+                    user_tokens=user_tokens,
+                    movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+                ).get_output()
+                if not isinstance(nfo, str):
+                    raise ValueError("NFO should be a string")
+
+            # run token replacer plugin if available
+            token_replacer_plugin = self.config.cfg_payload.token_replacer
+            if token_replacer_plugin:
+                nfo_plugin = self.config.loaded_plugins[
+                    token_replacer_plugin
+                ].token_replacer
+                if nfo_plugin and callable(nfo_plugin):
+                    queued_text_update(
+                        "<br /><span>Running token replacer plugin</span>"
+                    )
+                    LOG.info(
+                        LOG.LOG_SOURCE.BE,
+                        f"Running token replacer plugin for tracker: {tracker_name}",
+                    )
+                    replace_tokens = nfo_plugin(
+                        config=self.config,
+                        input_str=nfo,
+                        tracker_s=(cur_tracker,),
+                        tracker_images=tracker_images
+                        if cur_tracker in images
+                        else None,
+                        format_images_to_str=formatted_screens,
+                        formatted_screens=formatted_screens,
+                    )
+                    nfo = replace_tokens if replace_tokens else nfo
+
+            tracker_release_data[cur_tracker] = {"title": tracker_title, "nfo": nfo}
+
+        # update nfos with user updates from front end if enabled
+        if self.config.cfg_payload.enable_prompt_overview and overview_cb:
+            confirm_overview = overview_cb(tracker_release_data)
+            if confirm_overview:
+                nfo_updates = [
+                    str(k)
+                    for k in tracker_release_data
+                    if k in confirm_overview
+                    and tracker_release_data[k] != confirm_overview[k]
+                ]
+                queued_text_update(
+                    "<br /><i><span>Applying user edits from overview to trackers "
+                    f'<span style="font-weight: bold;">{", ".join(nfo_updates)}</span></span></i><br />'
+                )
+                tracker_release_data = confirm_overview
+
+        # loop from the start and process jobs
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
             queued_status_update(tracker_name, "▶️ Processing")
             queued_text_update(
@@ -422,10 +592,18 @@ class ProcessBackEnd:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.tracker_map[cur_tracker]
 
+            # get tracker title and nfo data
+            cur_tracker_release_data = tracker_release_data.get(cur_tracker, {})
+            cur_tracker_title = cur_tracker_release_data.get("title", "")
+
             # get just the torrent path (there is other data that we currently aren't using)
             # >>> {'path': WindowsPath('path.torrent'), 'image_host': 'URLs',
             # 'image_host_data': ImageUploadFromTo(img_from=<ImageSource.URLS: 'URLs'>, img_to=<ImageSource.URLS: 'URLs'>)}
             torrent_path: Path = path_data["path"]
+
+            # output current tracker title we're using
+            if cur_tracker_title:
+                queued_text_update(f"<br />Release title: {cur_tracker_title}")
 
             # torrent file
             if idx == 0:
@@ -486,109 +664,7 @@ class ProcessBackEnd:
                 )
                 _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
 
-            user_tokens = {
-                k: v for k, (v, t) in self.config.cfg_payload.user_tokens.items()
-            }
-
-            # generate nfo
-            nfo = ""
-            if tracker_info.nfo_template:
-                nfo_template = self.template_selector_be.read_template(
-                    name=tracker_info.nfo_template
-                )
-                if nfo_template:
-                    # convert images for the NFO
-                    formatted_screens = None
-                    comparison_screens = None
-                    even_screens = None
-                    even_screens_str = None
-                    odd_screens = None
-                    odd_screens_str = None
-                    if cur_tracker in images:
-                        tracker_images = images[cur_tracker]
-                        # tracker_images = {0: ImageUploadData(url='https://ptpimg.me/a6uy28.png', medium_url=None),
-                        # 1: ImageUploadData(url='https://ptpimg.me/0mdplg.png', medium_url=None),
-                        # 2: ImageUploadData(url='https://ptpimg.me/644r4s.png', medium_url=None)}
-                        format_images_to_str = format_image_data_to_str(
-                            cur_tracker,
-                            tracker_images,
-                            tracker_info.url_type,
-                            tracker_info.column_s,
-                            tracker_info.column_space,
-                            tracker_info.row_space,
-                        )
-                        formatted_screens = format_image_tag(
-                            cur_tracker,
-                            format_images_to_str,
-                            getattr(tracker_info, "image_width", 350),
-                        )
-
-                        # if images we're comparison images we attempt to generate some more screenshot tokens
-                        if self.config.shared_data.is_comparison_images:
-                            comparison_screens = format_image_data_to_comparison(
-                                tracker_images
-                            )
-                            even_screens = get_parity_images(data=tracker_images)
-                            odd_screens = get_parity_images(
-                                data=tracker_images, even=False
-                            )
-                            even_screens_str = get_parity_images_to_str(
-                                data=tracker_images
-                            )
-                            odd_screens_str = get_parity_images_to_str(
-                                data=tracker_images, even=False
-                            )
-
-                    nfo = TokenReplacer(
-                        media_input=media_input,
-                        jinja_engine=jinja_engine,
-                        source_file=source_file,
-                        token_string=nfo_template,
-                        media_search_obj=media_search_payload,
-                        source_file_mi_obj=source_file_mi_obj,
-                        media_info_obj=mediainfo_obj,
-                        unfilled_token_mode=UnfilledTokenRemoval.KEEP,
-                        releasers_name=releasers_name,
-                        screen_shots=formatted_screens,
-                        screen_shots_comparison=comparison_screens,
-                        screen_shots_even_obj=even_screens,
-                        screen_shots_odd_obj=odd_screens,
-                        screen_shots_even_str=even_screens_str,
-                        screen_shots_odd_str=odd_screens_str,
-                        release_notes=self.config.shared_data.release_notes,
-                        edition_override=self.config.shared_data.dynamic_data.get(
-                            "edition_override"
-                        ),
-                        frame_size_override=self.config.shared_data.dynamic_data.get(
-                            "frame_size_override"
-                        ),
-                        override_tokens=self.config.shared_data.dynamic_data.get(
-                            "override_tokens"
-                        ),
-                        user_tokens=user_tokens,
-                        movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-                        mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
-                    ).get_output()
-                    if not isinstance(nfo, str):
-                        raise ValueError("NFO should be a string")
-
-                token_replacer_plugin = self.config.cfg_payload.token_replacer
-                if token_replacer_plugin:
-                    nfo_plugin = self.config.loaded_plugins[
-                        token_replacer_plugin
-                    ].token_replacer
-                    if nfo_plugin and callable(nfo_plugin):
-                        replace_tokens = nfo_plugin(
-                            config=self.config,
-                            input_str=nfo,
-                            tracker_s=(cur_tracker,),
-                            tracker_images=tracker_images,
-                            format_images_to_str=format_images_to_str,
-                            formatted_screens=formatted_screens,
-                        )
-                        nfo = replace_tokens if replace_tokens else nfo
-
-            # write nfo to disk beside the torrent if the nfo exists
+            nfo = cur_tracker_release_data.get("nfo", "")
             if nfo:
                 with open(
                     torrent_path.with_suffix(".nfo"), "w", encoding="utf-8"
@@ -622,14 +698,13 @@ class ProcessBackEnd:
                 try:
                     execute_upload = self.upload(
                         tracker=cur_tracker,
-                        tracker_info=tracker_info,
                         torrent_file=torrent_path,
                         file_input=Path(media_input),
                         mediainfo_obj=mediainfo_obj,
                         media_mode=media_mode,
                         media_search_payload=media_search_payload,
                         nfo=nfo,
-                        queued_text_update=queued_text_update,
+                        tracker_title=cur_tracker_title,
                     )
                 except Exception as upload_error:
                     queued_text_update(
@@ -684,7 +759,6 @@ class ProcessBackEnd:
 
     def handle_images_for_trackers(
         self,
-        media_input: Path,
         process_dict: dict[str, Any],
         queued_text_update: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
@@ -696,7 +770,6 @@ class ProcessBackEnd:
         and uploads them to the specified image hosts.
 
         Args:
-            media_input (Path): The path to the media file associated with the images.
             process_dict (dict[str, Any]): A dictionary containing tracker-specific data,
                 including image hosting information.
             queued_text_update (Callable[[str], None]): A callback function to update the UI
@@ -1058,14 +1131,13 @@ class ProcessBackEnd:
     def upload(
         self,
         tracker: TrackerSelection,
-        tracker_info: TrackerInfo,
         torrent_file: Path,
         file_input: Path,
         mediainfo_obj: MediaInfo,
         media_mode: MediaMode,
         media_search_payload: MediaSearchPayload,
         nfo: str,
-        queued_text_update: Callable[[str], None],
+        tracker_title: str,
     ) -> Path | bool | None:
         if tracker == TrackerSelection.MORE_THAN_TV:
             tracker_payload = self.config.cfg_payload.mtv_tracker
@@ -1077,9 +1149,7 @@ class ProcessBackEnd:
                 group_desc=tracker_payload.group_description,
                 torrent_file=Path(torrent_file),
                 file_input=file_input,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 mediainfo_obj=mediainfo_obj,
                 genre_ids=media_search_payload.genres,
                 media_mode=media_mode,
@@ -1092,9 +1162,7 @@ class ProcessBackEnd:
             return tl_upload(
                 announce_key=self.config.cfg_payload.tl_tracker.torrent_passkey,
                 nfo=nfo,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 torrent_file=torrent_file,
                 mediainfo_obj=mediainfo_obj,
                 timeout=self.config.cfg_payload.timeout,
@@ -1105,9 +1173,7 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 media_mode=media_mode,
                 imdb_id=media_search_payload.imdb_id,
                 tmdb_id=media_search_payload.tmdb_id,
@@ -1144,9 +1210,7 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -1168,9 +1232,7 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -1192,9 +1254,7 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -1210,9 +1270,7 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -1234,9 +1292,7 @@ class ProcessBackEnd:
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
-                tracker_title=self.generate_tracker_title(
-                    file_input, tracker_info, queued_text_update
-                ),
+                tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
@@ -1249,7 +1305,6 @@ class ProcessBackEnd:
         self,
         file_name: Path,
         tracker_info: TrackerInfo,
-        queued_text_update: Callable[[str], None],
     ) -> str | None:
         token_string = (
             tracker_info.mvr_title_token_override
@@ -1296,9 +1351,27 @@ class ProcessBackEnd:
             mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
         )
         output = format_str.get_output()
-        if output:
-            queued_text_update(f"<br />Release title: {output}")
         return output if output else None
+
+    def tracker_title_formatting(self, tracker: TrackerSelection, title: str) -> str:
+        """Apply tracker specific formatting if it has any, else return the title as it is."""
+        if tracker is TrackerSelection.MORE_THAN_TV:
+            return MTVUploader.generate_release_title(title)
+        elif tracker is TrackerSelection.TORRENT_LEECH:
+            return TLUploader.generate_release_title(title)
+        elif tracker is TrackerSelection.BEYOND_HD:
+            return BHDUploader.generate_release_title(title)
+        # Unit3d trackers
+        elif tracker in {
+            TrackerSelection.REELFLIX,
+            TrackerSelection.AITHER,
+            TrackerSelection.HUNO,
+            TrackerSelection.LST,
+            TrackerSelection.DARK_PEERS,
+        }:
+            return Unit3dBaseUploader.generate_release_title(title)
+
+        return title
 
     def torrent_gen_cb(
         self,

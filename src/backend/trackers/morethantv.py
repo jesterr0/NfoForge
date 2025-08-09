@@ -275,9 +275,9 @@ class MTVUploader:
     ) -> Path:
         data = {
             # "image": "",
-            "title": self._generate_release_title(tracker_title)
+            "title": self.generate_release_title(tracker_title)
             if tracker_title
-            else self._generate_release_title(file_input.stem),
+            else self.generate_release_title(file_input.stem),
             "category": self._get_cat_id(torrent_file.name),
             "source": self._get_source_id(file_input),
             "desc": nfo,
@@ -385,7 +385,7 @@ class MTVUploader:
             raise TrackerError(failed_error_msg)
 
     @staticmethod
-    def _generate_release_title(release_title: str) -> str:
+    def generate_release_title(release_title: str) -> str:
         """Force release title to be in a format that MTV requires"""
         if " " in release_title:
             LOG.warning(

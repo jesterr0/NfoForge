@@ -106,7 +106,9 @@ class MediaInputBasic(BaseWizardPage):
             if entry.text().strip() == "" or entry.text() == entry.placeholderText():
                 invalid_entries = True
                 entry.setPlaceholderText("Requires input")
-                QWidgetTempStyle().set_temp_style(widget=entry, system_beep=True)
+                QWidgetTempStyle().set_temp_style(
+                    widget=entry, system_beep=True
+                ).start()
 
         if invalid_entries:
             return False

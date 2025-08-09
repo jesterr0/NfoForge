@@ -273,11 +273,14 @@ class TokenReplacer:
         return all_tokens
 
     def _get_token_value(self, token_data: TokenData) -> str | Sequence[Any] | None:
-        # handle user tokens
+        # handle user and prompt tokens
         if (
             self.user_tokens
             and token_data.token
-            and token_data.token.startswith("usr_")
+            and (
+                token_data.token.startswith("usr_")
+                or token_data.token.startswith("prompt_")
+            )
         ):
             return self._optional_user_input(
                 self.user_tokens.get(token_data.token, ""), token_data

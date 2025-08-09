@@ -3,8 +3,8 @@ from os import PathLike
 from pathlib import Path
 import re
 
-import regex
 import niquests
+import regex
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -84,7 +84,9 @@ class BHDUploader:
         promo: BHDPromo | None = None,
     ) -> TrackerError | str | None:
         upload_payload = {
-            "name": tracker_title if tracker_title else self._generate_name(),
+            "name": tracker_title
+            if tracker_title
+            else self.generate_release_title(self.file_input.stem),
             "category_id": self._category_id(),
             "type": self._type(),
             "source": self._source(),
@@ -146,11 +148,6 @@ class BHDUploader:
             requests_exc_error_msg = f"Failed to upload to BeyondHD: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
             raise TrackerError(requests_exc_error_msg)
-
-    def _generate_name(self) -> str:
-        name = str(self.file_input.stem).replace(".", " ")
-        name = re.sub(r"\s{2,}", " ", name)
-        return name
 
     def _category_id(self) -> int | None:
         if self.media_mode == MediaMode.MOVIES:
@@ -261,6 +258,12 @@ class BHDUploader:
 
     def _cleaned_media_info(self) -> str:
         return MinimalMediaInfo(self.file_input).get_full_mi_str(cleansed=True)
+
+    @staticmethod
+    def generate_release_title(release_title: str) -> str:
+        name = release_title.replace(".", " ")
+        name = re.sub(r"\s{2,}", " ", name)
+        return name
 
 
 class BHDSearch:

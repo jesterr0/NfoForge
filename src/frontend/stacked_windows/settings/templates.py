@@ -36,7 +36,7 @@ class TemplatesSettings(BaseSettings):
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
         GSigs().settings_tab_changed.connect(self._on_tab_changed)
-        GSigs().settings_close.connect(self._on_tab_changed)
+        GSigs().settings_close.connect(self._on_settings_closed)
 
         self.jinja_lbl = QLabel(
             '<span>Powered by </span><a href="https://jinja.palletsprojects.com/en/stable/">jinja2</a>',
@@ -722,6 +722,12 @@ class TemplatesSettings(BaseSettings):
         palette = widget.palette()
         palette.setColor(QPalette.ColorRole.Text, color)
         widget.setPalette(palette)
+
+    @Slot()
+    def _on_settings_closed(self) -> None:
+        if self.template_selector.cached_sandbox_prompt_tokens:
+            self.template_selector.cached_sandbox_prompt_tokens.clear()
+        self._on_tab_changed()
 
     @Slot(int)
     def _on_tab_changed(self, _: int | None = None) -> None:

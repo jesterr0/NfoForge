@@ -13,6 +13,7 @@ nav:
       - Tokens: view/token-replacer/tokens.md
       - Flat Strings: view/token-replacer/flat.md
       - Multi-Line Strings: view/token-replacer/multi-line.md
+      - Prompt Tokens: view/token-replacer/prompt-tokens.md
       - Advanced: view/token-replacer/advanced.md
 
 not_in_nav: |
