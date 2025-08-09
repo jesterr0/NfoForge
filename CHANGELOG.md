@@ -8,8 +8,8 @@
 - Docs for prompt tokens.
 - Overview Prompt
   - Added checkbox in settings -> general to toggle overview prompt during processing.
-  - Now prompts the user with the full generated NFOs so they can view them and make final edits if needed.
-  - TODO: tracker title edits in the same page
+  - Now prompts the user with the full generated NFOs and tracker titles so they can view them and make final edits if needed.
+  - Added docs for overview prompt.
 
 ### Changed
 
@@ -21,7 +21,7 @@
 
 ### Removed
 
-- Overview page has been removed.
+- Overview page has been removed and related docs.
 
 ## [0.8.3] - 2025-04-08
 
