@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - 2025-m?-d?
+## [0.8.4] - 2025-08-09
 
 ### Added
 
@@ -23,7 +23,7 @@
 
 - Overview page has been removed and related docs.
 
-## [0.8.3] - 2025-04-08
+## [0.8.3] - 2025-08-04
 
 ### Added
 
