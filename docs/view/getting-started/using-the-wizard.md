@@ -93,12 +93,6 @@ This page is quite advanced. However, for this example, we will go over basic us
 
 Select **Next** to continue.
 
-### Overview Page
-
-![Overview](../../images/wizard/overview.png){ width=100%, style="max-width: 500px;" }
-
-This page allows you to quickly see everything that will happen during processing. You can simply click **Next** to continue.
-
 ### Process Page
 
 ![Process](../../images/wizard/process.png){ width=100%, style="max-width: 500px;" }
@@ -110,6 +104,18 @@ Select the host and click **Process (Dupe Check)**.
 ![Process](../../images/wizard/process_dupe.png){ width=100%, style="max-width: 500px;" }
 
 You'll notice that there is one duplicate release found. You can review this and decide if there is a duplicate for your release. If not, simply click **Process (Generate and Upload)** to continue.
+
+#### Overview and Edit
+
+![Overview](../../images/wizard/overview-and-edit.png){ width=100%, style="max-width: 500px;" }
+
+- If enabled _(Settings 🠮 General 🠮 Prompt for Overview)_ this window will appear.
+- You can edit the final formatted NFO.
+- You can also edit the tracker title _(if available)_.
+
+After reviewing, press OK to apply your changes. If you close the window or press Cancel, your previous data will be used. Processing will continue automatically after you close this window.
+
+**Note:** Some trackers require specific formatting to the tracker title. This will be applied during upload regardless of edits in this window.
 
 ![Process](../../images/wizard/process_processing.png){ width=100%, style="max-width: 500px;" }
 

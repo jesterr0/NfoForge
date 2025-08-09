@@ -36,6 +36,7 @@ class GlobalSignals(QObject):
 
     # process
     prompt_tokens_response = Signal(object)  # dict[str, str]
+    overview_prompt_response = Signal(object)  # dict[TrackerSelection, dict[str | None, str]]
     ########### SIGNALS ###########
 
     def __new__(cls, *args, **kwargs):

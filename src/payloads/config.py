@@ -54,6 +54,7 @@ class ConfigPayload:
     encode_media_ext_filter: list[str]
     releasers_name: str
     timeout: int
+    enable_prompt_overview: bool
     enable_mkbrr: bool
     log_level: LogLevel
     log_total: int

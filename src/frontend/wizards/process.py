@@ -30,6 +30,7 @@ from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
 from src.exceptions import ProcessError
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
+from src.frontend.custom_widgets.overview_dialog import OverviewDialog
 from src.frontend.custom_widgets.prompt_token_editor_dialog import (
     PromptTokenEditorDialog,
 )
@@ -103,6 +104,7 @@ class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
     progress_signal = Signal(int)
     prompt_tokens_signal = Signal(list)
+    overview_signal = Signal(object)
 
     def __init__(
         self,
@@ -133,6 +135,7 @@ class ProcessWorker(BaseWorker):
         self.encode_file_dir = encode_file_dir
 
         self._prompt_tokens_response = None
+        self._overview_prompt = None
 
     def run(self) -> None:
         try:
@@ -153,6 +156,7 @@ class ProcessWorker(BaseWorker):
                 releasers_name=self.releasers_name,
                 encode_file_dir=self.encode_file_dir,
                 token_prompt_cb=self.token_prompt_and_wait_cb,
+                overview_cb=self.overview_prompt_and_wait_cb,
             )
             self.job_finished.emit()
         except Exception as e:
@@ -172,7 +176,7 @@ class ProcessWorker(BaseWorker):
         self, tokens: Sequence[str] | None
     ) -> dict[str, str] | None:
         if not tokens:
-            return None
+            return
 
         self._prompt_tokens_response = None
         self.prompt_tokens_signal.emit(tokens)
@@ -180,7 +184,9 @@ class ProcessWorker(BaseWorker):
         loop = QEventLoop()
 
         @Slot(object)
-        def on_response(response: dict[str, str] | None):
+        def on_response(
+            response: dict[TrackerSelection, dict[str | None, str]] | None,
+        ) -> None:
             self._prompt_tokens_response = response
             loop.quit()
 
@@ -191,6 +197,33 @@ class ProcessWorker(BaseWorker):
 
         # return response
         return self._prompt_tokens_response
+
+    def overview_prompt_and_wait_cb(
+        self, data: dict[TrackerSelection, dict[str | None, str]] | None
+    ) -> dict[TrackerSelection, dict[str | None, str]] | None:
+        if not data:
+            return
+
+        self._overview_prompt = None
+        self.overview_signal.emit(data)
+
+        # start loop
+        loop = QEventLoop()
+
+        @Slot(object)
+        def on_response(
+            response: dict[TrackerSelection, dict[str | None, str]] | None,
+        ) -> None:
+            self._overview_prompt = response
+            loop.quit()
+
+        # wait for response
+        GSigs().overview_prompt_response.connect(on_response)
+        loop.exec_()
+        GSigs().overview_prompt_response.disconnect(on_response)
+
+        # return response
+        return self._overview_prompt
 
 
 class ProcessPage(BaseWizardPage):
@@ -316,6 +349,7 @@ class ProcessPage(BaseWizardPage):
             self.process_worker.prompt_tokens_signal.connect(
                 self._on_prompt_tokens_signal
             )
+            self.process_worker.overview_signal.connect(self._on_overview_signal)
             self.process_worker.start()
 
     @Slot(object)
@@ -475,8 +509,17 @@ class ProcessPage(BaseWizardPage):
         prompt = PromptTokenEditorDialog(tokens, self)
         if prompt.exec() == QDialog.DialogCode.Accepted:
             prompt_tokens = prompt.get_results()
-            self.cached_sandbox_prompt_tokens = prompt_tokens
         GSigs().prompt_tokens_response.emit(prompt_tokens)
+
+    @Slot(object)
+    def _on_overview_signal(
+        self, data: dict[TrackerSelection, dict[str | None, str]]
+    ) -> None:
+        result = data
+        prompt = OverviewDialog(data, self)
+        if prompt.exec() == QDialog.DialogCode.Accepted:
+            result = prompt.get_results()
+        GSigs().overview_prompt_response.emit(result)
 
     def _update_last_used_host(self) -> None:
         start_data = deepcopy(self.config.cfg_payload.last_used_img_host)
