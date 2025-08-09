@@ -357,33 +357,36 @@ class TemplateSelector(QWidget):
             # gather prompt tokens
             if self.old_text:
                 prompt_tokens = get_prompt_tokens(self.old_text)
-                # build dict (use cached value if present, else "")
-                tokens_dict = {
-                    token: (
-                        self.cached_sandbox_prompt_tokens.get(token, "")
-                        if self.cached_sandbox_prompt_tokens
-                        else ""
-                    )
-                    for token in prompt_tokens
-                }
-                # remove any cached tokens not in the template
-                if self.cached_sandbox_prompt_tokens:
-                    self.cached_sandbox_prompt_tokens = {
-                        k: v
-                        for k, v in self.cached_sandbox_prompt_tokens.items()
-                        if k in prompt_tokens
+                if prompt_tokens:
+                    # build dict (use cached value if present, else "")
+                    tokens_dict = {
+                        token: (
+                            self.cached_sandbox_prompt_tokens.get(token, "")
+                            if self.cached_sandbox_prompt_tokens
+                            else ""
+                        )
+                        for token in prompt_tokens
                     }
-                prompt = PromptTokenEditorDialog(tokens_dict, self)
-                if prompt.exec() == QDialog.DialogCode.Accepted:
-                    prompt_results = prompt.get_results()
-                    self.cached_sandbox_prompt_tokens = prompt_results
-                    if prompt_results:
-                        user_tokens.update(prompt_results)
-                else:
-                    self.text_edit.setPlainText(self.old_text if self.old_text else "")
-                    self.preview_btn.setChecked(False)
-                    self.text_edit.setReadOnly(False)
-                    return
+                    # remove any cached tokens not in the template
+                    if self.cached_sandbox_prompt_tokens:
+                        self.cached_sandbox_prompt_tokens = {
+                            k: v
+                            for k, v in self.cached_sandbox_prompt_tokens.items()
+                            if k in prompt_tokens
+                        }
+                    prompt = PromptTokenEditorDialog(tokens_dict, self)
+                    if prompt.exec() == QDialog.DialogCode.Accepted:
+                        prompt_results = prompt.get_results()
+                        self.cached_sandbox_prompt_tokens = prompt_results
+                        if prompt_results:
+                            user_tokens.update(prompt_results)
+                    else:
+                        self.text_edit.setPlainText(
+                            self.old_text if self.old_text else ""
+                        )
+                        self.preview_btn.setChecked(False)
+                        self.text_edit.setReadOnly(False)
+                        return
 
             nfo = ""
             try:
