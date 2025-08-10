@@ -23,7 +23,7 @@ def tl_upload(
     torrent_file: Path,
     mediainfo_obj: MediaInfo,
     timeout: int,
-) -> str | None:
+) -> bool | None:
     uploader = TLUploader(announce_key=announce_key, timeout=timeout)
     return uploader.upload(
         nfo=nfo,
@@ -50,7 +50,7 @@ class TLUploader:
         tracker_title: str | None,
         torrent_file: Path,
         mediainfo_obj: MediaInfo,
-    ) -> str | None:
+    ) -> bool | None:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
         data = self._get_data(torrent_file.stem, get_resolution)
@@ -71,7 +71,7 @@ class TLUploader:
             if request.ok and request.status_code == 200:
                 request_text = request.text
                 LOG.info(LOG.LOG_SOURCE.BE, f"Upload completed: {request_text}")
-                return request_text
+                return True
             else:
                 upload_error_msg = (
                     "There was an error uploading to TorrentLeech: "

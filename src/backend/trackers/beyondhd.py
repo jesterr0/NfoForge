@@ -27,15 +27,15 @@ def bhd_uploader(
     file_input: PathLike[str] | Path,
     tracker_title: str | None,
     media_mode: MediaMode,
-    imdb_id: str,
-    tmdb_id: str,
+    imdb_id: str | None,
+    tmdb_id: str | None,
     nfo: str,
     internal: bool,
     live_release: BHDLiveRelease,
     anonymous: bool,
     promo: BHDPromo,
     timeout: int,
-):
+) -> str | None:
     uploader = BHDUploader(
         api_key=api_key,
         torrent_file=torrent_file,
@@ -82,7 +82,7 @@ class BHDUploader:
         live_release: BHDLiveRelease = BHDLiveRelease.LIVE,
         anonymous: bool = False,
         promo: BHDPromo | None = None,
-    ) -> TrackerError | str | None:
+    ) -> str | None:
         upload_payload = {
             "name": tracker_title
             if tracker_title

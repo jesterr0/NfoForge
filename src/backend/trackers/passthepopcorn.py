@@ -62,7 +62,7 @@ def ptp_uploader(
     ).get_group_id(media_search_payload.imdb_id)
     LOG.debug(LOG.LOG_SOURCE.BE, f"Group ID: {group_id}")
 
-    upload = uploader.upload(
+    return uploader.upload(
         auth_token=auth_token,
         media_search_payload=media_search_payload,
         torrent_file=torrent_file,
@@ -71,7 +71,6 @@ def ptp_uploader(
         ptp_img_api_key=ptp_img_api_key,
         group_id=group_id,
     )
-    return upload
 
 
 class PTPUploader:
