@@ -67,7 +67,7 @@ from src.config.config import Config
 from src.enums.media_mode import MediaMode
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ImageHostError
+from src.exceptions import ImageHostError, TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import (
@@ -79,6 +79,7 @@ from src.packages.custom_types import (
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
+from src.payloads.watch_folder import WatchFolder
 
 
 class ProcessBackEnd:
@@ -88,13 +89,13 @@ class ProcessBackEnd:
         self.template_selector_be.load_templates()
 
         # callables for progress
-        self.progress_bar_cb: Callable[[float], None] = None
+        self.progress_bar_cb: Callable[[float], None] | None = None
 
         # clients
-        self.qbit_client: QBittorrentClient = None
-        self.deluge_client: DelugeClient = None
-        self.rtorrent_client: RTorrentClient = None
-        self.transmission_client: TransmissionClient = None
+        self.qbit_client: QBittorrentClient | None = None
+        self.deluge_client: DelugeClient | None = None
+        self.rtorrent_client: RTorrentClient | None = None
+        self.transmission_client: TransmissionClient | None = None
         self.watch_folder_counter = 0
         self.clients_can_logout = (self.qbit_client, self.deluge_client)
 
@@ -539,9 +540,6 @@ class ProcessBackEnd:
                     token_replacer_plugin
                 ].token_replacer
                 if nfo_plugin and callable(nfo_plugin):
-                    queued_text_update(
-                        "<br /><span>Running token replacer plugin</span>"
-                    )
                     LOG.info(
                         LOG.LOG_SOURCE.BE,
                         f"Running token replacer plugin for tracker: {tracker_name}",
@@ -570,10 +568,11 @@ class ProcessBackEnd:
                     if k in confirm_overview
                     and tracker_release_data[k] != confirm_overview[k]
                 ]
-                queued_text_update(
-                    "<br /><i><span>Applying user edits from overview to trackers "
-                    f'<span style="font-weight: bold;">{", ".join(nfo_updates)}</span></span></i><br />'
-                )
+                if nfo_updates:
+                    queued_text_update(
+                        "<br /><i><span>Applying user edits from overview to trackers "
+                        f'<span style="font-weight: bold;">{", ".join(nfo_updates)}</span></span></i><br />'
+                    )
                 tracker_release_data = confirm_overview
 
         # loop from the start and process jobs
@@ -1138,9 +1137,11 @@ class ProcessBackEnd:
         media_search_payload: MediaSearchPayload,
         nfo: str,
         tracker_title: str,
-    ) -> Path | bool | None:
-        if tracker == TrackerSelection.MORE_THAN_TV:
+    ) -> Path | bool | str | None:
+        if tracker is TrackerSelection.MORE_THAN_TV:
             tracker_payload = self.config.cfg_payload.mtv_tracker
+            if not tracker_payload.username or not tracker_payload.password:
+                raise TrackerError("Username and password is required for MoreThanTV")
             return mtv_uploader(
                 username=tracker_payload.username,
                 password=tracker_payload.password,
@@ -1158,17 +1159,22 @@ class ProcessBackEnd:
                 cookie_dir=self.config.TRACKER_COOKIE_PATH,
                 timeout=self.config.cfg_payload.timeout,
             )
-        elif tracker == TrackerSelection.TORRENT_LEECH:
+        elif tracker is TrackerSelection.TORRENT_LEECH:
+            announce_key = self.config.cfg_payload.tl_tracker.torrent_passkey
+            if not announce_key:
+                raise TrackerError("Missing announce key for TorrentLeech")
             return tl_upload(
-                announce_key=self.config.cfg_payload.tl_tracker.torrent_passkey,
+                announce_key=announce_key,
                 nfo=nfo,
                 tracker_title=tracker_title,
                 torrent_file=torrent_file,
                 mediainfo_obj=mediainfo_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
-        elif tracker == TrackerSelection.BEYOND_HD:
+        elif tracker is TrackerSelection.BEYOND_HD:
             tracker_payload = self.config.cfg_payload.bhd_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for BeyondHD")
             return bhd_uploader(
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
@@ -1184,8 +1190,18 @@ class ProcessBackEnd:
                 promo=tracker_payload.promo,
                 timeout=self.config.cfg_payload.timeout,
             )
-        elif tracker == TrackerSelection.PASS_THE_POPCORN:
+        elif tracker is TrackerSelection.PASS_THE_POPCORN:
             tracker_payload = self.config.cfg_payload.ptp_tracker
+            if (
+                not tracker_payload.api_user
+                or not tracker_payload.api_key
+                or not tracker_payload.username
+                or not tracker_payload.password
+                or not tracker_payload.announce_url
+            ):
+                raise TrackerError(
+                    "TorrentLeech requires API user, API key, username, password, and announce URL"
+                )
             return ptp_uploader(
                 api_user=tracker_payload.api_user,
                 api_key=tracker_payload.api_key,
@@ -1203,8 +1219,10 @@ class ProcessBackEnd:
                 timeout=self.config.cfg_payload.timeout,
             )
         # Unit3d trackers
-        elif tracker == TrackerSelection.REELFLIX:
+        elif tracker is TrackerSelection.REELFLIX:
             tracker_payload = self.config.cfg_payload.rf_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for ReelFliX")
             return rf_uploader(
                 media_mode=media_mode,
                 api_key=tracker_payload.api_key,
@@ -1225,8 +1243,10 @@ class ProcessBackEnd:
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
             )
-        elif tracker == TrackerSelection.AITHER:
+        elif tracker is TrackerSelection.AITHER:
             tracker_payload = self.config.cfg_payload.aither_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for Aither")
             return aither_uploader(
                 media_mode=media_mode,
                 api_key=tracker_payload.api_key,
@@ -1247,8 +1267,10 @@ class ProcessBackEnd:
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
             )
-        elif tracker == TrackerSelection.HUNO:
+        elif tracker is TrackerSelection.HUNO:
             tracker_payload = self.config.cfg_payload.huno_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for HUNO")
             return huno_uploader(
                 media_mode=media_mode,
                 api_key=tracker_payload.api_key,
@@ -1263,8 +1285,10 @@ class ProcessBackEnd:
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
             )
-        elif tracker == TrackerSelection.LST:
+        elif tracker is TrackerSelection.LST:
             tracker_payload = self.config.cfg_payload.lst_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for LST")
             return lst_uploader(
                 media_mode=media_mode,
                 api_key=tracker_payload.api_key,
@@ -1285,8 +1309,10 @@ class ProcessBackEnd:
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
             )
-        elif tracker == TrackerSelection.DARK_PEERS:
+        elif tracker is TrackerSelection.DARK_PEERS:
             tracker_payload = self.config.cfg_payload.darkpeers_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for DarkPeers")
             return dp_uploader(
                 media_mode=media_mode,
                 api_key=tracker_payload.api_key,
@@ -1400,23 +1426,26 @@ class ProcessBackEnd:
                 queued_text_update(
                     f"<br />Injecting torrent [Tracker: {tracker_name} | Client: {client}]",
                 )
-                if client == TorrentClientSelection.QBITTORRENT:
+                if client is TorrentClientSelection.QBITTORRENT:
                     inj_success, inj_msg = self.qbittorrent_inject(torrent_path)
-                elif client == TorrentClientSelection.DELUGE:
+                elif client is TorrentClientSelection.DELUGE:
                     inj_success, inj_msg = self.deluge_inject(torrent_path)
-                elif client == TorrentClientSelection.RTORRENT:
+                elif client is TorrentClientSelection.RTORRENT:
                     inj_success, inj_msg = self.rtorrent_inject(
                         torrent_path, file_input
                     )
-                elif client == TorrentClientSelection.TRANSMISSION:
+                elif client is TorrentClientSelection.TRANSMISSION:
                     inj_success, inj_msg = self.transmission_inject(torrent_path)
                 elif (
-                    client == TorrentClientSelection.WATCH_FOLDER
+                    client is TorrentClientSelection.WATCH_FOLDER
+                    and isinstance(client_settings, WatchFolder)
                     and client_settings.path
                 ):
-                    inj_success, inj_msg = self.watch_folder_inject(
-                        Path(torrent_path), tracker_name
+                    watch_folder_func = self.watch_folder_inject(
+                        Path(torrent_path), tracker_name, client_settings.path
                     )
+                    if watch_folder_func:
+                        inj_success, inj_msg = watch_folder_func
 
                 queued_text_update(
                     f"<br />{'Completed' if inj_success else 'Failed'}, status: {inj_msg}",
@@ -1453,12 +1482,12 @@ class ProcessBackEnd:
         return self.transmission_client.inject_torrent(torrent_path)
 
     def watch_folder_inject(
-        self, torrent_path: Path, tracker_name: str
-    ) -> tuple[Path, str]:
+        self, torrent_path: Path, tracker_name: str, client_path: Path
+    ) -> tuple[Path, str] | None:
         moved_file = Path(
             shutil.copy(
                 torrent_path,
-                Path(self.config.cfg_payload.watch_folder.path)
+                client_path
                 / Path(
                     torrent_path.stem
                     + f"_nf_{tracker_name.lower()}_{self.watch_folder_counter}.torrent"

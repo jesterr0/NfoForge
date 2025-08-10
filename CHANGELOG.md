@@ -13,6 +13,8 @@
 ### Fixed
 
 - Default override title token for LST, darkpeers, and Aither.
+- Remove message that would output a repeated string for each tracker in the process log output.
+- Only show update message if there was updates by the user during the overview prompt during processing.
 
 ### Removed
 
