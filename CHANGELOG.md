@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased] - 2025-?m-?d
+
+### Added
+
+- 
+
+### Changed
+
+- 
+
+### Fixed
+
+- Default override title token for LST, darkpeers, and Aither.
+
+### Removed
+
+- 
+
 ## [0.8.4] - 2025-08-09
 
 ### Added
