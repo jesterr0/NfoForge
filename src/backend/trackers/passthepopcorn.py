@@ -770,7 +770,9 @@ class PTPUploader:
                 data["TfaCode"] = pyotp.TOTP(totp).now()
                 tried_totp = True
             else:
-                got_code, code = ask_thread_safe_prompt("2FA", "Enter your 2FA code:")
+                got_code, code = ask_thread_safe_prompt(
+                    "2FA", "Enter your 2FA code for PassThePopcorn:"
+                )
                 if not got_code or not code:
                     raise TrackerError("2FA cancelled or no code entered")
                 data["TfaCode"] = code
