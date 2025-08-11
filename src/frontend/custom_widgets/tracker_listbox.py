@@ -154,8 +154,17 @@ class MTVTrackerEdit(TrackerEditBase):
         password_lbl = QLabel("Password", self)
         self.password = MaskedQLineEdit(parent=self, masked=True)
 
-        totp_lbl = QLabel("TOTP", self)
+        totp_lbl = QLabel(
+            '<span>TOTP Secret <span style="font-style: italic; font-size: small;">'
+            "(if 2FA is enabled you can add your TOTP secret to avoid prompts during processing)</span></span>",
+            parent=self,
+        )
+        totp_lbl.setToolTip(
+            "If 2FA is enabled on your account and no TOTP secret is provided, "
+            "you will be prompted to enter your one-time password"
+        )
         self.totp = MaskedQLineEdit(parent=self, masked=True)
+        self.totp.setToolTip(totp_lbl.toolTip())
 
         group_description_lbl = QLabel("Group Description", self)
         self.group_description = MaskedQLineEdit(parent=self)
@@ -422,8 +431,17 @@ class PTPTrackerEdit(TrackerEditBase):
         password_lbl = QLabel("Password", self)
         self.password = MaskedQLineEdit(parent=self, masked=True)
 
-        totp_lbl = QLabel("TOTP", self)
+        totp_lbl = QLabel(
+            '<span>TOTP Secret <span style="font-style: italic; font-size: small;">'
+            "(if 2FA is enabled you can add your TOTP secret to avoid prompts during processing)</span></span>",
+            parent=self,
+        )
+        totp_lbl.setToolTip(
+            "If 2FA is enabled on your account and no TOTP secret is provided, "
+            "you will be prompted to enter your one-time password"
+        )
         self.totp = MaskedQLineEdit(parent=self, masked=True)
+        self.totp.setToolTip(totp_lbl.toolTip())
 
         self.add_pair_to_layout(api_user_lbl, self.api_user)
         self.add_pair_to_layout(api_key_lbl, self.api_key)

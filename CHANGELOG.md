@@ -4,11 +4,14 @@
 
 ### Added
 
-- 
+-
 
 ### Changed
 
-- 
+- MoreThanTV and PassThePopcorn TOTP input changes:
+  - Label has been been changed to be more descriptive.
+  - Label and input now has a tooltip.
+  - If **TOTP Secret** is not provided the user will now be prompt during processing for their timed one time password.
 
 ### Fixed
 
@@ -18,7 +21,7 @@
 
 ### Removed
 
-- 
+-
 
 ## [0.8.4] - 2025-08-09
 

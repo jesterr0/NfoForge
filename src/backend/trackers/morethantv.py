@@ -27,6 +27,7 @@ from src.enums.trackers.morethantv import (
     MTVSourceOrigin,
 )
 from src.exceptions import TrackerError
+from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
@@ -34,9 +35,9 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 def mtv_uploader(
     username: str,
     password: str,
-    totp: str,
+    totp: str | None,
     nfo: str,
-    group_desc: str,
+    group_desc: str | None,
     torrent_file: Path | PathLike[str],
     file_input: Path | str,
     tracker_title: str | None,
@@ -72,7 +73,6 @@ def mtv_uploader(
         anonymous=anonymous,
         source_origin=source_origin,
     )
-    # TODO: do we send it back?
     return upload
 
 
@@ -96,7 +96,7 @@ class MTVUploader:
 
         self._session = niquests.Session()
 
-    def login(self, username: str, password: str, totp: str):
+    def login(self, username: str, password: str, totp: str | None) -> str | None:
         if self._load_cookies():
             try:
                 cookie_token = self._validate_session()
@@ -201,36 +201,41 @@ class MTVUploader:
             raise TrackerError(auth_key_failed_msg)
 
     def handle_2fa(
-        self, login_response: niquests.Response, totp: str
+        self, login_response: niquests.Response, totp: str | None
     ) -> niquests.Response:
         if login_response.url and "twofactor/login" in login_response.url:
-            # Generate a 2FA code
-            # TODO: get the below code manually OR prompt the user ahead of time if
-            # it's missing or prompt the user or something, maybe later just add support
-            # to prompt the user for it mid job?
-            totp = pyotp.TOTP(totp).now()
-            two_factor_payload = {
-                "token": self.get_token(login_response.text),
-                "code": str(totp),
-                "submit": "login",
-            }
+            code_to_try = None
+            tried_totp = False
+            while True:
+                if not tried_totp and totp:
+                    code_to_try = pyotp.TOTP(totp).now()
+                    tried_totp = True
+                else:
+                    got_code, code = ask_thread_safe_prompt(
+                        "2FA", "Enter your 2FA code:"
+                    )
+                    if not got_code or not code:
+                        raise TrackerError("2FA cancelled or no code entered")
+                    code_to_try = code
 
-            # post the 2FA form
-            two_factor_response = self._session.post(
-                self.LOGIN_URL_2FA,
-                data=two_factor_payload,
-                headers=TRACKER_HEADERS,
-                timeout=self.timeout,
-            )
-            if two_factor_response.status_code != 200:
-                two_fa_failure_msg = f"2FA failed: {two_factor_response.reason} ({two_factor_response.status_code})"
-                LOG.error(
-                    LOG.LOG_SOURCE.BE,
-                    two_fa_failure_msg,
+                two_factor_payload = {
+                    "token": self.get_token(login_response.text),
+                    "code": str(code_to_try),
+                    "submit": "login",
+                }
+                two_factor_response = self._session.post(
+                    self.LOGIN_URL_2FA,
+                    data=two_factor_payload,
+                    headers=TRACKER_HEADERS,
+                    timeout=self.timeout,
                 )
-                raise TrackerError(two_fa_failure_msg)
-
-            return two_factor_response
+                if two_factor_response.status_code == 200:
+                    return two_factor_response
+                else:
+                    LOG.error(
+                        LOG.LOG_SOURCE.BE,
+                        f"2FA failed: {two_factor_response.reason} ({two_factor_response.status_code})",
+                    )
 
         return login_response
 
@@ -267,7 +272,7 @@ class MTVUploader:
         file_input: Path,
         tracker_title: str | None,
         nfo: str,
-        group_desc: str,
+        group_desc: str | None,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         media_mode: MediaMode,
         anonymous: bool,
