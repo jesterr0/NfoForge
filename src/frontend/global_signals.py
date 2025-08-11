@@ -7,6 +7,8 @@ class GlobalSignals(QObject):
     _instance = None
 
     ########### SIGNALS ###########
+    ask_prompt = Signal(str, str, object)  # prompt title, prompt, Queue
+
     # main window
     main_window_set_disabled = Signal(bool)
     main_window_update_status_tip = Signal(str, int)  # message, timeout[milliseconds]
@@ -36,7 +38,8 @@ class GlobalSignals(QObject):
 
     # process
     prompt_tokens_response = Signal(object)  # dict[str, str]
-    overview_prompt_response = Signal(object)  # dict[TrackerSelection, dict[str | None, str]]
+    # dict[TrackerSelection, dict[str | None, str]]
+    overview_prompt_response = Signal(object)
     ########### SIGNALS ###########
 
     def __new__(cls, *args, **kwargs):

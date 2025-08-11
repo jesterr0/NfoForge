@@ -1,5 +1,6 @@
 from functools import partial
 from pathlib import Path
+from queue import Queue
 from typing import Any
 import weakref
 
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.frontend.global_signals import GSigs
 
 
 def icon_button_factory(base_class):
@@ -288,3 +290,12 @@ def set_top_parent_geometry(widget: QWidget, delay: int = 1) -> None:
             widget.setGeometry(last_valid_parent.geometry())
 
     QTimer.singleShot(delay, partial(do_the_stuff, widget))
+
+
+def ask_thread_safe_prompt(title: str, prompt: str) -> tuple[bool, str]:
+    """Uses a queue to wait for a message from where ever sent over QT signals"""
+    q = Queue()
+    GSigs().ask_prompt.emit(title, prompt, q)
+    result = q.get()
+    q.task_done()
+    return result
