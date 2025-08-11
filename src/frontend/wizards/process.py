@@ -260,9 +260,9 @@ class ProcessPage(BaseWizardPage):
 
         self.text_widget = QTextBrowser(parent=self, openExternalLinks=True)
 
-        self.progress_bar = QProgressBar(
-            self, minimum=0, maximum=10000, textVisible=True
-        )
+        self._progress_bar_def_range = (0, 10000)
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setRange(*self._progress_bar_def_range)
         self.progress_bar.hide()
 
         self.open_temp_output_btn = QPushButton("Open Working Directory", self)
@@ -482,26 +482,38 @@ class ProcessPage(BaseWizardPage):
 
     @Slot(float)
     def _on_progress_update(self, progress: float) -> None:
-        if progress:
-            if not self.progress_bar.isVisible():
-                self.progress_bar.show()
-                # scroll to bottom since progress bar will occupy some space depending on parent vertical size
-                self.text_widget.ensureCursorVisible()
+        if not self.progress_bar.isVisible():
+            self.progress_bar.show()
 
-            # calculate progress
-            int_value = int(progress * 100)
-            self.progress_bar.setValue(int_value)
+        # handle invalid progress values
+        if progress is None or progress < 0:
+            return
 
+        int_val = int(progress)
+        # set progress bar to 'busy' on 0
+        if int_val == 0:
+            self.progress_bar.setRange(0, 0)
+
+        # show actual progress if between 0 and 100
+        elif int_val > 0 and progress < 100:
+            self.progress_bar.setRange(*self._progress_bar_def_range)
+            self.progress_bar.setValue(int(progress * 100))
+
+            self.progress_bar.setTextVisible(True)
             # format text cleanly
-            if progress == int(progress):
-                self.progress_bar.setFormat(f"{int(progress)} %")
+            if progress == int_val:
+                self.progress_bar.setFormat(f"{int(progress)}%")
             else:
-                self.progress_bar.setFormat(f"{progress:.2f} %")
+                self.progress_bar.setFormat(f"{progress:.2f}%")
 
-            # if complete reset and hide progress bar
-            if progress >= 100:
-                self.progress_bar.reset()
-                self.progress_bar.hide()
+        # if complete reset and hide progress bar
+        elif progress >= 100:
+            self.progress_bar.reset()
+            self.progress_bar.setTextVisible(False)
+            self.progress_bar.hide()
+
+        # scroll to bottom since progress bar will occupy some space depending on parent vertical size
+        self.text_widget.ensureCursorVisible()
 
     @Slot(object)
     def _on_prompt_tokens_signal(self, tokens: Sequence[str]) -> None:

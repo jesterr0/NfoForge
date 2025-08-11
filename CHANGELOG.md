@@ -12,6 +12,7 @@
   - Label has been been changed to be more descriptive.
   - Label and input now has a tooltip.
   - If **TOTP Secret** is not provided the user will now be prompt during processing for their timed one time password.
+- Process progress bar will now be displayed as busy if progress is at 0 when sent. Once above 0 progress is handled as before.
 
 ### Fixed
 
