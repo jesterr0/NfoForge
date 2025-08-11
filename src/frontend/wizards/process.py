@@ -482,12 +482,12 @@ class ProcessPage(BaseWizardPage):
 
     @Slot(float)
     def _on_progress_update(self, progress: float) -> None:
-        if not self.progress_bar.isVisible():
-            self.progress_bar.show()
-
         # handle invalid progress values
         if progress is None or progress < 0:
             return
+
+        if not self.progress_bar.isVisible():
+            self.progress_bar.show()
 
         int_val = int(progress)
         # set progress bar to 'busy' on 0
