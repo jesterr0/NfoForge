@@ -35,6 +35,7 @@ At present, **Movies** are the only supported media type. However, support for *
 - LST
 - DarkPeers
 - ShareIsland
+- OnlyEncodes
 
 <!-- prettier-ignore -->
 !!! info
