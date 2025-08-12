@@ -13,6 +13,7 @@ class TrackerSelection(CaseInsensitiveEnum):
     HUNO = "HUNO"
     LST = "LST"
     DARK_PEERS = "DarkPeers"
+    SHARE_ISLAND = "ShareIsland"
 
     @override
     def __str__(self) -> str:

@@ -25,13 +25,23 @@ from src.enums.trackers.reelflix import (
     ReelFlixResolution,
     ReelFlixType,
 )
+from src.enums.trackers.shareisland import (
+    ShareIslandCategory,
+    ShareIslandResolution,
+    ShareIslandType,
+)
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 
 CategoryEnums = (
-    ReelFlixCategory | AitherCategory | HunoCategory | LSTCategory | DarkPeersCategory
+    ReelFlixCategory
+    | AitherCategory
+    | HunoCategory
+    | LSTCategory
+    | DarkPeersCategory
+    | ShareIslandCategory
 )
 ResolutionEnums = (
     ReelFlixResolution
@@ -39,8 +49,11 @@ ResolutionEnums = (
     | HunoResolution
     | LSTResolution
     | DarkPeersResolution
+    | ShareIslandResolution
 )
-TypeEnums = ReelFlixType | AitherType | HunoType | LSTType | DarkPeersType
+TypeEnums = (
+    ReelFlixType | AitherType | HunoType | LSTType | DarkPeersType | ShareIslandType
+)
 
 
 class Unit3dBaseUploader:

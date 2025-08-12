@@ -143,3 +143,13 @@ class DarkPeersInfo(TrackerInfo):
     internal: int = 0
     personal_release: int = 0
     image_width: int = 500
+
+
+@dataclass(slots=True)
+class ShareIslandInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: int = 0
+    internal: int = 0
+    personal_release: int = 0
+    opt_in_to_mod_queue: int = 0
+    image_width: int = 500

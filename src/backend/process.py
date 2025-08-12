@@ -39,6 +39,7 @@ from src.backend.trackers import (
     MTVSearch,
     PTPSearch,
     ReelFlixSearch,
+    ShareIslandSearch,
     TLSearch,
     aither_uploader,
     bhd_uploader,
@@ -48,6 +49,7 @@ from src.backend.trackers import (
     mtv_uploader,
     ptp_uploader,
     rf_uploader,
+    shri_uploader,
     tl_upload,
 )
 from src.backend.trackers.beyondhd import BHDUploader
@@ -147,6 +149,10 @@ class ProcessBackEnd:
             elif tracker_sel == TrackerSelection.DARK_PEERS:
                 tasks.append(
                     self._dupe_dp(tracker_name=tracker_name, file_input=file_input)
+                )
+            elif tracker_sel == TrackerSelection.SHARE_ISLAND:
+                tasks.append(
+                    self._dupe_shri(tracker_name=tracker_name, file_input=file_input)
                 )
 
         async_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -364,6 +370,23 @@ class ProcessBackEnd:
             ).search(file_name=str(file_input))
             if dp_search:
                 return TrackerSelection(tracker_name), True, dp_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
+
+    async def _dupe_shri(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.shareisland_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "ShareIsland API key missing"
+        try:
+            shri_search = ShareIslandSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if shri_search:
+                return TrackerSelection(tracker_name), True, shri_search
             else:
                 return TrackerSelection(tracker_name), True, []
         except Exception as e:
@@ -1326,6 +1349,25 @@ class ProcessBackEnd:
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
             )
+        elif tracker is TrackerSelection.SHARE_ISLAND:
+            tracker_payload = self.config.cfg_payload.shareisland_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for ShareIsland")
+            return shri_uploader(
+                media_mode=media_mode,
+                api_key=tracker_payload.api_key,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(tracker_payload.internal),
+                anonymous=bool(tracker_payload.anonymous),
+                personal_release=bool(tracker_payload.personal_release),
+                opt_in_to_mod_queue=bool(tracker_payload.opt_in_to_mod_queue),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_payload,
+                timeout=self.config.cfg_payload.timeout,
+            )
 
     def generate_tracker_title(
         self,
@@ -1394,6 +1436,7 @@ class ProcessBackEnd:
             TrackerSelection.HUNO,
             TrackerSelection.LST,
             TrackerSelection.DARK_PEERS,
+            TrackerSelection.SHARE_ISLAND,
         }:
             return Unit3dBaseUploader.generate_release_title(title)
 
