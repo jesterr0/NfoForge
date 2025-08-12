@@ -30,10 +30,12 @@ from src.payloads.trackers import (
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
+    OnlyEncodesInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
     ShareIslandInfo,
     TorrentLeechInfo,
+    UploadCXInfo,
 )
 from src.payloads.watch_folder import WatchFolder
 
@@ -82,6 +84,8 @@ class ConfigPayload:
     lst_tracker: LSTInfo
     darkpeers_tracker: DarkPeersInfo
     shareisland_tracker: ShareIslandInfo
+    ulcx_tracker: UploadCXInfo
+    oe_tracker: OnlyEncodesInfo
 
     # torrent client settings
     qbittorrent: TorrentClient

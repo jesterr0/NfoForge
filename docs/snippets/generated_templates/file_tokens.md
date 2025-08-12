@@ -20,6 +20,7 @@
 | `{mi_audio_language_1_iso_639_2}` | Audio language (first track 'ENG') |
 | `{mi_audio_language_2_iso_639_1}` | Audio language (first two tracks EN+ES) |
 | `{mi_audio_language_2_iso_639_2}` | Audio languages (first two tracks ENG+SPA) |
+| `{mi_audio_language_all_full}` | All audio languages (all tracks English Spanish..) |
 | `{mi_audio_language_all_iso_639_1}` | All audio languages (all tracks EN+ES+etc..) |
 | `{mi_audio_language_all_iso_639_2}` | All audio languages (all tracks ENG+SPA+etc..) |
 | `{mi_audio_language_dual}` | Audio language ('Dual Audio' will be returned if there are 2 or more tracks with unique languages) |

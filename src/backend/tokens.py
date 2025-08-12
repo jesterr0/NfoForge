@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, make_dataclass
-from typing import Any, NamedTuple, Sequence, Type
+from typing import Any, NamedTuple, Type
 
 from src.enums import CaseInsensitiveStrEnum
 
@@ -23,7 +23,7 @@ class TokenData:
     bracket_token: str | None = None
     post_token: str | None = None
     full_match: str | None = None
-    filters: Sequence[str] = field(default_factory=list)
+    filters: tuple[str, ...] = field(default_factory=tuple)
 
 
 class TokenType(NamedTuple):
