@@ -36,6 +36,7 @@ At present, **Movies** are the only supported media type. However, support for *
 - DarkPeers
 - ShareIsland
 - OnlyEncodes
+- UploadCX
 
 <!-- prettier-ignore -->
 !!! info
