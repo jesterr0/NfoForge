@@ -14,6 +14,8 @@ class TrackerSelection(CaseInsensitiveEnum):
     LST = "LST"
     DARK_PEERS = "DarkPeers"
     SHARE_ISLAND = "ShareIsland"
+    UPLOAD_CX = "UploadCX"
+    ONLY_ENCODES = "OnlyEncodes"
 
     @override
     def __str__(self) -> str:

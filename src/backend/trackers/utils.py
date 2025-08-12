@@ -64,6 +64,8 @@ _TRACKER_MAP = {
     TrackerSelection.LST: _basic_bbcode_formatting,
     TrackerSelection.DARK_PEERS: _basic_bbcode_formatting,
     TrackerSelection.SHARE_ISLAND: _basic_bbcode_formatting,
+    TrackerSelection.UPLOAD_CX: _basic_bbcode_formatting,
+    TrackerSelection.ONLY_ENCODES: _basic_bbcode_formatting,
 }
 
 

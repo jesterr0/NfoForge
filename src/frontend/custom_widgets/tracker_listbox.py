@@ -1129,6 +1129,150 @@ class ShareIslandEdit(TrackerEditBase):
             self.config.cfg_payload.shareisland_tracker.row_space = row_space
 
 
+class UploadCXEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.ulcx_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.ulcx_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.ulcx_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.ulcx_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.ulcx_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.ulcx_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.ulcx_tracker.anonymous = int(self.anonymous.isChecked())
+        self.config.cfg_payload.ulcx_tracker.internal = int(self.internal.isChecked())
+        self.config.cfg_payload.ulcx_tracker.personal_release = int(
+            self.personal_release.isChecked()
+        )
+        self.config.cfg_payload.ulcx_tracker.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.ulcx_tracker.column_s = col_s
+            self.config.cfg_payload.ulcx_tracker.column_space = col_space
+            self.config.cfg_payload.ulcx_tracker.row_space = row_space
+
+
+class OnlyEncodesEdit(TrackerEditBase):
+    def __init__(self, config: Config, parent=None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.cfg_payload.oe_tracker
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.cfg_payload.oe_tracker.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.cfg_payload.oe_tracker.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.cfg_payload.oe_tracker.comments = self.comments.text().strip()
+        self.config.cfg_payload.oe_tracker.source = self.source.text().strip()
+        self.config.cfg_payload.oe_tracker.api_key = self.api_key.text().strip()
+        self.config.cfg_payload.oe_tracker.anonymous = int(self.anonymous.isChecked())
+        self.config.cfg_payload.oe_tracker.internal = int(self.internal.isChecked())
+        self.config.cfg_payload.oe_tracker.personal_release = int(
+            self.personal_release.isChecked()
+        )
+        self.config.cfg_payload.oe_tracker.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.cfg_payload.oe_tracker.column_s = col_s
+            self.config.cfg_payload.oe_tracker.column_space = col_space
+            self.config.cfg_payload.oe_tracker.row_space = row_space
+
+
 class TrackerListWidget(QWidget):
     def __init__(self, config: Config, parent=None) -> None:
         super().__init__(parent)
@@ -1194,6 +1338,10 @@ class TrackerListWidget(QWidget):
             tracker_widget = DarkPeersEdit(self.config, self)
         elif tracker is TrackerSelection.SHARE_ISLAND:
             tracker_widget = ShareIslandEdit(self.config, self)
+        elif tracker is TrackerSelection.UPLOAD_CX:
+            tracker_widget = UploadCXEdit(self.config, self)
+        elif tracker is TrackerSelection.ONLY_ENCODES:
+            tracker_widget = OnlyEncodesEdit(self.config, self)
 
         if tracker_widget:
             tracker_widget.load_data.emit()

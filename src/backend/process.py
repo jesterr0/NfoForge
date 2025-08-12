@@ -37,20 +37,24 @@ from src.backend.trackers import (
     HunoSearch,
     LSTSearch,
     MTVSearch,
+    OnlyEncodesSearch,
     PTPSearch,
     ReelFlixSearch,
     ShareIslandSearch,
     TLSearch,
+    UploadCXSearch,
     aither_uploader,
     bhd_uploader,
     dp_uploader,
     huno_uploader,
     lst_uploader,
     mtv_uploader,
+    oe_uploader,
     ptp_uploader,
     rf_uploader,
     shri_uploader,
     tl_upload,
+    ulcx_uploader,
 )
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.morethantv import MTVUploader
@@ -110,7 +114,7 @@ class ProcessBackEnd:
         tasks = []
         for tracker_name in processing_queue:
             tracker_sel = TrackerSelection(tracker_name)
-            if tracker_sel == TrackerSelection.MORE_THAN_TV:
+            if tracker_sel is TrackerSelection.MORE_THAN_TV:
                 tasks.append(
                     self._dupe_mtv(
                         tracker_name=tracker_name,
@@ -118,41 +122,49 @@ class ProcessBackEnd:
                         media_search_payload=media_search_payload,
                     )
                 )
-            elif tracker_sel == TrackerSelection.TORRENT_LEECH:
+            elif tracker_sel is TrackerSelection.TORRENT_LEECH:
                 tasks.append(
                     self._dupe_tl(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.BEYOND_HD:
+            elif tracker_sel is TrackerSelection.BEYOND_HD:
                 tasks.append(
                     self._dupe_bhd(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.PASS_THE_POPCORN:
+            elif tracker_sel is TrackerSelection.PASS_THE_POPCORN:
                 tasks.append(
                     self._dupe_ptp(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.REELFLIX:
+            elif tracker_sel is TrackerSelection.REELFLIX:
                 tasks.append(
                     self._dupe_rf(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.AITHER:
+            elif tracker_sel is TrackerSelection.AITHER:
                 tasks.append(
                     self._dupe_aither(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.HUNO:
+            elif tracker_sel is TrackerSelection.HUNO:
                 tasks.append(
                     self._dupe_huno(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.LST:
+            elif tracker_sel is TrackerSelection.LST:
                 tasks.append(
                     self._dupe_lst(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.DARK_PEERS:
+            elif tracker_sel is TrackerSelection.DARK_PEERS:
                 tasks.append(
                     self._dupe_dp(tracker_name=tracker_name, file_input=file_input)
                 )
-            elif tracker_sel == TrackerSelection.SHARE_ISLAND:
+            elif tracker_sel is TrackerSelection.SHARE_ISLAND:
                 tasks.append(
                     self._dupe_shri(tracker_name=tracker_name, file_input=file_input)
+                )
+            elif tracker_sel is TrackerSelection.UPLOAD_CX:
+                tasks.append(
+                    self._dupe_ulcx(tracker_name=tracker_name, file_input=file_input)
+                )
+            elif tracker_sel is TrackerSelection.ONLY_ENCODES:
+                tasks.append(
+                    self._dupe_oe(tracker_name=tracker_name, file_input=file_input)
                 )
 
         async_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -383,6 +395,40 @@ class ProcessBackEnd:
             return TrackerSelection(tracker_name), False, "ShareIsland API key missing"
         try:
             shri_search = ShareIslandSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if shri_search:
+                return TrackerSelection(tracker_name), True, shri_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
+
+    async def _dupe_ulcx(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.ulcx_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "UploadCX API key missing"
+        try:
+            shri_search = UploadCXSearch(
+                api_key=api_key,
+            ).search(file_name=str(file_input))
+            if shri_search:
+                return TrackerSelection(tracker_name), True, shri_search
+            else:
+                return TrackerSelection(tracker_name), True, []
+        except Exception as e:
+            return TrackerSelection(tracker_name), False, str(e)
+
+    async def _dupe_oe(
+        self, tracker_name: str, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        api_key = self.config.cfg_payload.ulcx_tracker.api_key
+        if not api_key:
+            return TrackerSelection(tracker_name), False, "OnlyEncodes API key missing"
+        try:
+            shri_search = OnlyEncodesSearch(
                 api_key=api_key,
             ).search(file_name=str(file_input))
             if shri_search:
@@ -1368,6 +1414,42 @@ class ProcessBackEnd:
                 media_search_payload=media_search_payload,
                 timeout=self.config.cfg_payload.timeout,
             )
+        elif tracker is TrackerSelection.UPLOAD_CX:
+            tracker_payload = self.config.cfg_payload.ulcx_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for UploadCX")
+            return ulcx_uploader(
+                media_mode=media_mode,
+                api_key=tracker_payload.api_key,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(tracker_payload.internal),
+                anonymous=bool(tracker_payload.anonymous),
+                personal_release=bool(tracker_payload.personal_release),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_payload,
+                timeout=self.config.cfg_payload.timeout,
+            )
+        elif tracker is TrackerSelection.ONLY_ENCODES:
+            tracker_payload = self.config.cfg_payload.oe_tracker
+            if not tracker_payload.api_key:
+                raise TrackerError("Missing API key for OnlyEncodes")
+            return oe_uploader(
+                media_mode=media_mode,
+                api_key=tracker_payload.api_key,
+                torrent_file=torrent_file,
+                file_input=file_input,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(tracker_payload.internal),
+                anonymous=bool(tracker_payload.anonymous),
+                personal_release=bool(tracker_payload.personal_release),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_payload,
+                timeout=self.config.cfg_payload.timeout,
+            )
 
     def generate_tracker_title(
         self,
@@ -1437,6 +1519,8 @@ class ProcessBackEnd:
             TrackerSelection.LST,
             TrackerSelection.DARK_PEERS,
             TrackerSelection.SHARE_ISLAND,
+            TrackerSelection.UPLOAD_CX,
+            TrackerSelection.ONLY_ENCODES,
         }:
             return Unit3dBaseUploader.generate_release_title(title)
 
