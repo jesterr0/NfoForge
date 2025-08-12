@@ -55,6 +55,122 @@ You can see this in action in real time inside **NfoForge** under **Settings →
 
 ![Token Example](../../images/tokens/token-example.png){ width=100%, style="max-width: 500px;" }
 
+### Filters
+
+You can apply several filters to filled tokens to fine-tune your output. Each example below defines a string and shows the result before and after applying a filter. Filters are simple to use:
+
+- Define a filter using the `|` character inside the brackets, immediately after the token name: `{token|filter}`.
+- You can still use **opt** for optional text, but filters are only applied to the token value itself. The filter must be placed before **opt**. For example: `{:opt=x:token|filter:opt=x:}`.
+
+<!-- prettier-ignore -->
+!!! info
+    Filters work identically to their Python [equivalents](https://docs.python.org/3/library/stdtypes.html#string-methods).
+
+#### upper
+
+{example_token} = tom
+
+```text
+{:opt=hi :example_token|upper}
+```
+
+```text
+hi TOM
+```
+
+#### lower
+
+{example_token} = TOM
+
+```text
+{:opt=hi :example_token|lower}
+```
+
+```text
+hi tom
+```
+
+#### title
+
+{example_token} = TOM
+
+```text
+{:opt=hi :example_token|title}
+```
+
+```text
+hi Tom
+```
+
+#### swapcase
+
+{example_token} = Tom
+
+```text
+{:opt=hi :example_token|swapcase}
+```
+
+```text
+hi tOM
+```
+
+#### capitalize
+
+{example_token} = tom
+
+```text
+{:opt=hi :example_token|capitalize}
+```
+
+```text
+hi Tom
+```
+
+#### zfill
+
+{example_token} = 42
+
+```text
+{:opt=hi :example_token|zfill(5)}
+```
+
+```text
+hi 00042
+```
+
+#### replace
+
+{example_token} = tom
+
+```text
+{:opt=hi :example_token|replace("m", "mmy")}
+```
+
+```text
+hi tommy
+```
+
+You can use single or double quotes for the arguments, and any character (including commas, spaces, or quotes) can be replaced. For example:
+
+```text
+{:opt=hi :example_token|replace(',', '-')}
+{:opt=hi :example_token|replace('foo,bar', 'baz,qux')}
+```
+
+### Chained Filters
+
+You can chain multiple filters together by separating them with `|`. Filters are applied in order from left to right.
+
+{example_token} = tom
+
+```text
+{:opt=hi :example_token|replace("m", "mmy")|upper}
+```
+
+```text
+hi TOMMY
+```
+
 ### Additional Information
 
 There are three built-in rename token strings:

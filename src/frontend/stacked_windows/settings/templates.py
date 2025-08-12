@@ -473,6 +473,7 @@ class TemplatesSettings(BaseSettings):
                 TrackerSelection.AITHER,
                 TrackerSelection.LST,
                 TrackerSelection.DARK_PEERS,
+                TrackerSelection.SHARE_ISLAND,
             ):
                 rf_template = self.template_selector.backend.read_template(
                     self.config.cfg_payload.rf_tracker.nfo_template

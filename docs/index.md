@@ -34,6 +34,7 @@ At present, **Movies** are the only supported media type. However, support for *
 - HUNO
 - LST
 - DarkPeers
+- ShareIsland
 
 <!-- prettier-ignore -->
 !!! info
