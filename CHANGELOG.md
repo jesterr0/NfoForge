@@ -4,7 +4,10 @@
 
 ### Added
 
--
+- Support for ShareIsland tracker.
+- Opt-in mod queue for ReelFliX and Aither.
+- Flat string filters for filenames/titles.
+- Added a new FileToken **{mi_audio_language_all_full}**.
 
 ### Changed
 
