@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from pymediainfo import MediaInfo
+from typing_extensions import override
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.enums.media_mode import MediaMode
@@ -91,6 +92,7 @@ class LSTUploader(Unit3dBaseUploader):
     # def _get_category_id(self) -> str:  # TODO: detect TV here when support is added
     #     return super()._get_category_id()
 
+    @override
     def _get_resolution_id(self) -> str:
         try:
             return super()._get_resolution_id()
