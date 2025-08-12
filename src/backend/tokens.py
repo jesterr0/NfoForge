@@ -1,6 +1,6 @@
 from collections.abc import Iterable
-from dataclasses import asdict, field, make_dataclass
-from typing import Any, NamedTuple, Type
+from dataclasses import asdict, dataclass, field, make_dataclass
+from typing import Any, NamedTuple, Sequence, Type
 
 from src.enums import CaseInsensitiveStrEnum
 
@@ -14,14 +14,16 @@ MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
 ]
 
 
-class TokenData(NamedTuple):
+@dataclass(frozen=True)
+class TokenData:
     """Holds the data for tokens"""
 
-    pre_token: str | None
-    token: str | None
-    bracket_token: str | None
-    post_token: str | None
-    full_match: str | None
+    pre_token: str | None = None
+    token: str | None = None
+    bracket_token: str | None = None
+    post_token: str | None = None
+    full_match: str | None = None
+    filters: Sequence[str] = field(default_factory=list)
 
 
 class TokenType(NamedTuple):
@@ -98,6 +100,10 @@ class Tokens:
     MI_AUDIO_LANGUAGE_ALL_ISO_639_2 = FileToken(
         "{mi_audio_language_all_iso_639_2}",
         "All audio languages (all tracks ENG+SPA+etc..)",
+    )
+    MI_AUDIO_LANGUAGE_ALL_FULL = FileToken(
+        "{mi_audio_language_all_full}",
+        "All audio languages (all tracks English Spanish..)",
     )
     MI_AUDIO_LANGUAGE_DUAL = FileToken(
         "{mi_audio_language_dual}",
