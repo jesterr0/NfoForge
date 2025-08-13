@@ -8,7 +8,7 @@
 
 ### Changed
 
-- 
+- Massively improved the auto crop detection logic.
 
 ### Fixed
 
