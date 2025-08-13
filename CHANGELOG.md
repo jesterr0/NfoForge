@@ -4,7 +4,8 @@
 
 ### Added
 
-- 
+- Ability to sync images in **Basic Comparison** screenshot mode.
+  - Sync tab to image viewer.
 
 ### Changed
 
@@ -16,7 +17,7 @@
 
 ### Removed
 
-- 
+-
 
 ## [0.8.6] - 2025-08-12
 

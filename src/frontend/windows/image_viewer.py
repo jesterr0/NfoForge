@@ -65,17 +65,17 @@ class ImageViewer(QWidget):
         self.ignore_requirements = False
 
         # image tab vars (these will be defined in _build_image_tab)
-        self.img_path_lbl: QLabel = None
-        self.resolution_lbl: QLabel = None
-        self.img_selection_lbl: QLabel = None
-        self.selected_image_count: QLabel = None
-        self.selection_listbox: QListWidget = None
-        self.mini_preview_lbl: ImageLabel = None
-        self.seek_left_btn: QToolButton = None
-        self.seek_right_btn: QToolButton = None
-        self.de_select_images_btn: QToolButton = None
-        self.select_images_btn: QToolButton = None
-        self.confirm_selection_btn: QToolButton = None
+        self.img_path_lbl: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.resolution_lbl: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.img_selection_lbl: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.selected_image_count: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.selection_listbox: QListWidget = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.mini_preview_lbl: ImageLabel = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.seek_left_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.seek_right_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.de_select_images_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.select_images_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.confirm_selection_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
 
         # images vars
         self.image_path = None
@@ -88,7 +88,10 @@ class ImageViewer(QWidget):
         tab1 = self._build_image_tab()
         self.tabbed_widget.addTab(tab1, "Images")
 
-        if self.comparison_mode == ScreenShotMode.ADV_SS_COMP:
+        if self.comparison_mode in {
+            ScreenShotMode.SIMPLE_SS_COMP,
+            ScreenShotMode.ADV_SS_COMP,
+        }:
             self.sync_images = [x for x in self.img_sync_dir.glob("*.png")]
             self.sync_image_index = 0
             self.sync_image = self.sync_images[self.sync_image_index]
@@ -104,6 +107,8 @@ class ImageViewer(QWidget):
         layout.addWidget(self.tabbed_widget)
 
     def _build_image_tab(self):
+        if not self.image_path:
+            raise AttributeError("Cannot build image tab with invalid image_path")
         image_info_box = QGroupBox("Image Info")
         self.img_path_lbl = QLabel(self.image_path.name)
         self.resolution_lbl = QLabel()
@@ -243,6 +248,8 @@ class ImageViewer(QWidget):
             self._update_image_info_labels()
 
     def _update_image_info_labels(self):
+        if not self.image_path:
+            raise AttributeError("Cannot build image tab with invalid image_path")
         self.img_path_lbl.setText(self.image_path.name)
         self.img_selection_lbl.setText(
             f"{self.current_selected_index + 1} of {self.comparison_images_total}"
@@ -275,6 +282,8 @@ class ImageViewer(QWidget):
                 return
 
             for full_name in self.comparison_images:
+                if not find_image_pair:
+                    raise AttributeError("Failed to find image pair")
                 get_pair = re.findall(
                     rf"{find_image_pair.group(1)}[ab]_\w+(?:__\d+?\]?)?.png",
                     full_name.name,
@@ -295,6 +304,9 @@ class ImageViewer(QWidget):
                         )
                         - 1
                     )
+
+            if not selected_index_var:
+                raise AttributeError("Failed to find selected_index_var")
 
             self._move_image_cleanup(selected_index_var)
 
@@ -410,6 +422,9 @@ class ImageViewer(QWidget):
                     self.selection_listbox.item(count - 1).text(),
                 )
 
+                if not get_frame_number:
+                    raise AttributeError("Failed to determine get_frame_number")
+
                 # get pairs
                 get_pair = self.selection_listbox.findItems(
                     get_frame_number.group(1), Qt.MatchFlag.MatchContains
@@ -444,6 +459,9 @@ class ImageViewer(QWidget):
             get_frame_number = re.search(
                 r"(\d+)[ab]_\w+(?:__\d+?\]?)?.png", current_selection
             )
+
+            if not get_frame_number:
+                raise AttributeError("Failed to determine get_frame_number")
 
             # get pairs
             get_pair = self.selection_listbox.findItems(
@@ -622,6 +640,6 @@ if __name__ == "__main__":
     app = QApplication([])
     app.setStyle("Fusion")
 
-    viewer = ImageViewer(r"input")
-    viewer.show()
+    # viewer = ImageViewer(r"input")
+    # viewer.show()
     app.exec()
