@@ -1,33 +1,33 @@
-import re
-import platform
-import oslex2
-import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
-from random import randint
-from multiprocessing import cpu_count
-from pymediainfo import MediaInfo
-from PySide6.QtCore import SignalInstance
+import platform
+import random
+import re
+import subprocess
 
-from src.logger.nfo_forge_logger import LOG
-from src.enums.cropping import Cropping
-from src.enums.indexer import Indexer
-from src.enums.image_plugin import ImagePlugin
-from src.enums.subtitles import SubtitleAlignment
+from PySide6.QtCore import SignalInstance
+import oslex2
+from pymediainfo import MediaInfo
+
 from src.backend.utils.images import (
+    create_directories,
     determine_ffmpeg_trimmed_frames,
+    ffmpeg_crop_to_crop_values,
     generate_progress,
     get_ffmpeg_tone_map_str,
-    get_total_frames,
     get_frame_rate,
-    create_directories,
+    get_total_frames,
     vapoursynth_to_ffmpeg_crop,
-    ffmpeg_crop_to_crop_values,
 )
+from src.backend.utils.images import compare_res, compare_resolutions
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.backend.utils.images import compare_resolutions, compare_res
-from src.packages.custom_types import AdvancedResize, CropValues, SubNames
+from src.enums.cropping import Cropping
+from src.enums.image_plugin import ImagePlugin
+from src.enums.indexer import Indexer
+from src.enums.subtitles import SubtitleAlignment
+from src.logger.nfo_forge_logger import LOG
 from src.packages.crop_detect import CropDetect
+from src.packages.custom_types import AdvancedResize, CropValues, SubNames
 
 
 class ImageGeneration(ABC):
@@ -139,60 +139,111 @@ class BasicImageGeneration(ImageGeneration):
         ffmpeg_path: Path,
         signal: SignalInstance,
     ) -> int:
+        """Basic image generation using direct seeks for optimal performance."""
+
         img_comparison = create_directories(output_directory)[0]
-        output = str(img_comparison / "%02d_output.png")
+        output_pattern = str(img_comparison / "%02d_output.png")
 
         total_frames = get_total_frames(mi_object)
         frame_rate = get_frame_rate(mi_object)
 
-        available_frames, start_time = determine_ffmpeg_trimmed_frames(
+        available_frames, start_time_str = determine_ffmpeg_trimmed_frames(
             trim=trim, total_frames=total_frames, frame_rate=frame_rate
         )
 
-        # determine mod(n, interval) where interval spaces out `total_images` within the available frames
-        interval = max(1, available_frames // total_images)
+        # convert start time to seconds (start_time_str is already in seconds as a string)
+        start_seconds = float(start_time_str)
 
-        tone_map_str = ""
+        # calculate the duration we're working with
+        duration_seconds = available_frames / frame_rate
+
+        # add random offset
+        rand_offset = random.randint(0, int(frame_rate) * 10)
+        random_time_offset = rand_offset / frame_rate
+
+        # calculate timestamps for each frame we want
+        timestamps = []
+        for i in range(total_images):
+            # distribute frames evenly across the available duration
+            progress = i / max(1, total_images - 1) if total_images > 1 else 0
+            offset_seconds = (
+                start_seconds + (progress * duration_seconds) + random_time_offset
+            )
+
+            # format back to HH:MM:SS.mmm
+            hours = int(offset_seconds // 3600)
+            minutes = int((offset_seconds % 3600) // 60)
+            seconds = offset_seconds % 60
+            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
+            timestamps.append(timestamp)
+
+        # build filter chain
+        filters = []
+
+        # HDR tone mapping if needed
         if mi_object.video_tracks[0].other_hdr_format:
             tone_map_str = get_ffmpeg_tone_map_str()
+            if tone_map_str:
+                filters.append(tone_map_str.lstrip(","))
 
-        # determine threads and use half of them, defaulting back to ffmpeg default of 0 if needed
-        cpu_cores = cpu_count() or 0
-        thread_count = str(int(cpu_cores / 2)) if (cpu_cores and cpu_cores) > 0 else "0"
+        vf_filter = ",".join(filters) if filters else "copy"
 
-        # build vf filter
-        rand_offset = randint(0, int(frame_rate) * 10)
-        select_filter = f"not(mod(n+{rand_offset},{interval}))"
-        vf_filter = f"select='{select_filter}'{tone_map_str}"
+        # extract each frame individually using seeks
+        success_count = 0
+        for i, timestamp in enumerate(timestamps):
+            output_file = output_pattern.replace("%02d", f"{i + 1:02d}")
 
-        command = [
-            str(ffmpeg_path),
-            "-ss",
-            start_time,
-            "-copyts",
-            "-i",
-            str(media_input),
-            "-vf",
-            vf_filter,
-            "-frames:v",
-            str(total_images),
-            "-fps_mode",
-            "vfr",
-            # "-compression_level",
-            # "9" if compression else "0",
-            "-compression_level",
-            "9",
-            "-an",
-            "-threads",
-            thread_count,
-            output,
-            "-v",
-            "error",
-            "-hide_banner",
-            "-stats",
-        ]
+            command = [
+                str(ffmpeg_path),
+                "-ss",
+                timestamp,
+                "-i",
+                str(media_input),
+                "-vf",
+                vf_filter,
+                "-frames:v",
+                "1",
+                "-compression_level",
+                "6",
+                "-an",
+                "-y",
+                output_file,
+                "-v",
+                "error",
+                "-hide_banner",
+            ]
 
-        return self.run_ffmpeg_command(command, total_images, signal)
+            # run the command
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                    if platform.system() == "Windows"
+                    else 0,
+                )
+
+                if result.returncode == 0:
+                    success_count += 1
+                    # emit progress
+                    progress = (i + 1) / total_images * 100
+                    signal.emit(f"Extracted frame {i + 1}/{total_images}", progress)
+                else:
+                    LOG.error(
+                        LOG.LOG_SOURCE.BE,
+                        f"Failed to extract frame at {timestamp}: {result.stderr}",
+                    )
+
+            except subprocess.TimeoutExpired:
+                LOG.error(LOG.LOG_SOURCE.BE, f"Timeout extracting frame at {timestamp}")
+            except Exception as e:
+                LOG.error(
+                    LOG.LOG_SOURCE.BE, f"Error extracting frame at {timestamp}: {e}"
+                )
+
+        return 0 if success_count == total_images else 1
 
 
 class ComparisonImageGeneration(ImageGeneration):
@@ -216,8 +267,11 @@ class ComparisonImageGeneration(ImageGeneration):
         crop_values: CropValues | None,
         ffmpeg_path: Path,
         signal: SignalInstance,
+        re_sync: int = 0,
     ) -> int:
-        img_comparison = create_directories(output_directory)[0]
+        directories = create_directories(output_directory, sync_dir=True)
+        img_comparison = directories[0]
+        img_sync = directories[2] if len(directories) == 3 else None
 
         enc_output = str(img_comparison / "%02db_encode.png")
         src_output = str(img_comparison / "%02da_source.png")
@@ -268,29 +322,41 @@ class ComparisonImageGeneration(ImageGeneration):
                     detected_width, detected_height, media_width, media_height
                 ):
                     crop_miss_match_msg = (
-                        "Crop detection correction needed for mismatched resolution."
+                        "Crop detection found different aspect ratio, "
+                        "will crop and scale to match encode resolution."
                     )
                     LOG.info(LOG.LOG_SOURCE.BE, crop_miss_match_msg)
                     signal.emit(
                         crop_miss_match_msg,
                         0,
                     )
-                    detected_width = media_width
-                    detected_height = media_height
+                    # keep the original crop (which removes letter boxing) and let the scaling handle the resize
                     detect_crop_msg = (
-                        "Crop detection adjustment completed."
-                        f"(crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]})."
+                        "Crop detection will use original crop and scale to encode resolution."
+                        f"(crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]} "
+                        f"+ scale to {media_width}x{media_height})."
                     )
                     LOG.info(LOG.LOG_SOURCE.BE, detect_crop_msg)
                     signal.emit(detect_crop_msg, 0)
-                    detect_crop = f"crop={detected_width}:{detected_height}:{split_crop[2]}:{split_crop[3]}"
 
         generate_enc_img_msg = "\nGenerating encode images."
         LOG.info(LOG.LOG_SOURCE.BE, generate_enc_img_msg)
         signal.emit(generate_enc_img_msg, 0)
 
         frame_rate = get_frame_rate(media_file_mi_obj)
-        random_offset = randint(0, (int(frame_rate) * 10))
+        random_offset = random.randint(0, (int(frame_rate) * 10))
+
+        # convert re_sync frames to seconds (positive value means source is ahead, so we delay source)
+        # this matches FrameForge behavior where positive re_sync delays the source
+        source_re_sync_offset = re_sync / frame_rate if re_sync != 0 else 0.0
+
+        if source_re_sync_offset != 0:
+            re_sync_msg = (
+                f"Applying re-sync offset: {re_sync} frames "
+                f"({source_re_sync_offset:.3f} seconds) to source."
+            )
+            LOG.info(LOG.LOG_SOURCE.BE, re_sync_msg)
+            signal.emit(re_sync_msg, 0)
 
         generate_encode_images = self.generate_comp_frames(
             input_video=media_input,
@@ -328,7 +394,30 @@ class ComparisonImageGeneration(ImageGeneration):
             ffmpeg_crop=detect_crop,
             width=media_width,
             height=media_height,
+            re_sync_offset_seconds=source_re_sync_offset,
         )
+
+        # generate sync frames similar to FrameForge
+        if img_sync:
+            self.generate_sync_frames(
+                source_input=source_input,
+                media_input=media_input,
+                media_file_mi_obj=media_file_mi_obj,
+                img_sync=img_sync,
+                total_images=total_images,
+                trim=trim,
+                random_offset=random_offset,
+                frame_rate=frame_rate,
+                subtitle_color=subtitle_color,
+                subtitle_outline_color=subtitle_outline_color,
+                sub_size=sub_size,
+                ffmpeg_path=ffmpeg_path,
+                signal=signal,
+                ffmpeg_crop=detect_crop,
+                width=media_width,
+                height=media_height,
+                source_re_sync_offset=source_re_sync_offset,
+            )
 
         if generate_encode_images != 0 and generate_source_images != 0:
             return 1
@@ -353,91 +442,163 @@ class ComparisonImageGeneration(ImageGeneration):
         ffmpeg_crop: str | None = None,
         width: int | None = None,
         height: int | None = None,
-        offset_frames=0,
+        re_sync_offset_seconds: float = 0.0,
     ) -> int:
-        # TODO: add ability to adjust sync?
-        # if we decide not to, we can remove 'offset_frames'
+        """Frame generation using direct seeks for optimal performance."""
 
         total_frames = get_total_frames(mi_object)
-
-        available_frames, start_time = determine_ffmpeg_trimmed_frames(
+        available_frames, start_time_str = determine_ffmpeg_trimmed_frames(
             trim=trim, total_frames=total_frames, frame_rate=frame_rate
         )
 
-        # determine mod(n, interval) where interval spaces out `total_images` within the available frames
-        interval = max(1, available_frames // total_images)
+        # convert start time to seconds (start_time_str is already in seconds as a string)
+        start_seconds = float(start_time_str)
 
-        ffmpeg_crop = f",{ffmpeg_crop}" if ffmpeg_crop else ""
-        resize = f",scale=w={width}:h={height}" if (width and height) else ""
+        # calculate the duration we're working with
+        duration_seconds = available_frames / frame_rate
 
-        tone_map_str = ""
+        # calculate timestamps for each frame we want
+        timestamps = []
+        for i in range(total_images):
+            # distribute frames evenly across the available duration
+            progress = i / max(1, total_images - 1) if total_images > 1 else 0
+            offset_seconds = start_seconds + (progress * duration_seconds)
+
+            # add random offset (convert from frame offset to time offset)
+            random_time_offset = random_offset / frame_rate
+            offset_seconds += random_time_offset
+
+            # apply re-sync offset
+            offset_seconds += re_sync_offset_seconds
+
+            # ensure we don't go negative
+            offset_seconds = max(0, offset_seconds)
+
+            # format back to HH:MM:SS.mmm
+            hours = int(offset_seconds // 3600)
+            minutes = int((offset_seconds % 3600) // 60)
+            seconds = offset_seconds % 60
+            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
+            timestamps.append(timestamp)
+
+        # build filter chain for processing
+        filters = []
+
+        # HDR tone mapping if needed
         if mi_object.video_tracks[0].other_hdr_format:
             tone_map_str = get_ffmpeg_tone_map_str()
+            if tone_map_str:
+                filters.append(tone_map_str.lstrip(","))
 
-        subtitle = ""
-        draw_text_support = self.check_draw_text(ffmpeg)
-        if text_overlay and draw_text_support:
+        # crop and resize - crop first, then resize
+        if ffmpeg_crop:
+            # remove leading comma if present, since we're building a list
+            crop_filter = ffmpeg_crop.lstrip(",")
+            filters.append(crop_filter)
+
+        if width and height:
+            filters.append(f"scale={width}:{height}")
+
+        # subtitle
+        if text_overlay and self.check_draw_text(ffmpeg):
             font_path = (
                 Path(RUNTIME_DIR / "fonts" / "Montserrat-Medium.ttf")
                 .as_posix()
                 .replace(":", r"\:")
             )
-
             quoted_font_path = oslex2.quote(font_path)
             quoted_text_overlay = oslex2.quote(text_overlay)
             quoted_subtitle_color = oslex2.quote(subtitle_color)
             quoted_subtitle_outline_color = oslex2.quote(subtitle_outline_color)
 
-            subtitle = (
-                f",drawtext=fontfile={quoted_font_path}:"
+            subtitle_filter = (
+                f"drawtext=fontfile={quoted_font_path}:"
                 f"text={quoted_text_overlay}:"
                 f"x=10:y=10:fontsize={sub_size}:fontcolor={quoted_subtitle_color}:"
                 f"borderw=1:bordercolor={quoted_subtitle_outline_color}"
             )
-        elif text_overlay and not draw_text_support:
-            LOG.warning(
+            filters.append(subtitle_filter)
+
+        vf_filter = ",".join(filters) if filters else "copy"
+
+        # debug logging
+        LOG.debug(LOG.LOG_SOURCE.BE, f"Filter chain: {vf_filter}")
+        LOG.debug(
+            LOG.LOG_SOURCE.BE,
+            f"Crop: {ffmpeg_crop}, Resize: {width}x{height} if provided",
+        )
+        if re_sync_offset_seconds != 0.0:
+            LOG.debug(
                 LOG.LOG_SOURCE.BE,
-                "Your build of FFMPEG does not support the 'drawtext' filter",
+                f"Applying re-sync offset: {re_sync_offset_seconds:.3f} seconds",
             )
 
-        # Build the vf filter for selecting frames
-        select_filter = f"not(mod(n+{random_offset},{interval}))"
-        vf_filter = (
-            f"select='{select_filter}'{tone_map_str}{ffmpeg_crop}{resize}{subtitle}"
-        )
+        # extract each frame individually using seeks
+        success_count = 0
+        for i, timestamp in enumerate(timestamps):
+            # handle different output pattern formats
+            if "%02d" in output_pattern:
+                output_file = output_pattern.replace("%02d", f"{i + 1:02d}")
+            elif "%03d" in output_pattern:
+                output_file = output_pattern.replace("%03d", f"{i + 1:03d}")
+            else:
+                # fallback: add frame number before extension
+                path_obj = Path(output_pattern)
+                output_file = str(
+                    path_obj.parent / f"{path_obj.stem}_{i + 1:02d}{path_obj.suffix}"
+                )
 
-        # determine threads and use half of them, defaulting back to ffmpeg default of 0 if needed
-        cpu_cores = cpu_count() or 0
-        thread_count = str(int(cpu_cores / 2)) if (cpu_cores and cpu_cores) > 0 else "0"
+            command = [
+                str(ffmpeg),
+                "-ss",
+                timestamp,
+                "-i",
+                str(input_video),
+                "-vf",
+                vf_filter,
+                "-frames:v",
+                "1",
+                "-compression_level",
+                "6",
+                "-an",
+                "-y",
+                output_file,
+                "-v",
+                "error",
+                "-hide_banner",
+            ]
 
-        command = [
-            str(ffmpeg),
-            "-ss",
-            start_time,
-            "-copyts",
-            "-i",
-            str(input_video),
-            "-vf",
-            vf_filter,
-            "-frames:v",
-            str(total_images),
-            "-fps_mode",
-            "vfr",
-            # "-compression_level",
-            # "9" if compression else "0",
-            "-compression_level",
-            "9",
-            "-an",
-            "-threads",
-            thread_count,
-            str(output_pattern),
-            "-v",
-            "error",
-            "-hide_banner",
-            "-stats",
-        ]
+            # run the command
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                    if platform.system() == "Windows"
+                    else 0,
+                )
 
-        return self.run_ffmpeg_command(command, total_images, signal)
+                if result.returncode == 0:
+                    success_count += 1
+                    # emit progress
+                    progress = (i + 1) / total_images * 100
+                    signal.emit(f"Extracted frame {i + 1}/{total_images}", progress)
+                else:
+                    LOG.error(
+                        LOG.LOG_SOURCE.BE,
+                        f"Failed to extract frame at {timestamp}: {result.stderr}",
+                    )
+
+            except subprocess.TimeoutExpired:
+                LOG.error(LOG.LOG_SOURCE.BE, f"Timeout extracting frame at {timestamp}")
+            except Exception as e:
+                LOG.error(
+                    LOG.LOG_SOURCE.BE, f"Error extracting frame at {timestamp}: {e}"
+                )
+
+        return 0 if success_count == total_images else 1
 
     @staticmethod
     def check_draw_text(ffmpeg_path: Path) -> bool:
@@ -451,6 +612,320 @@ class ComparisonImageGeneration(ImageGeneration):
             return True
         else:
             return False
+
+    def generate_sync_frames(
+        self,
+        source_input: Path,
+        media_input: Path,
+        media_file_mi_obj: MediaInfo,
+        img_sync: Path,
+        total_images: int,
+        trim: tuple[int, int],
+        random_offset: int,
+        frame_rate: float,
+        subtitle_color: str,
+        subtitle_outline_color: str,
+        sub_size: int,
+        ffmpeg_path: Path,
+        signal: SignalInstance,
+        ffmpeg_crop: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        source_re_sync_offset: float = 0.0,
+    ) -> None:
+        """Generate sync frames similar to FrameForge for manual synchronization."""
+
+        signal.emit("\nGenerating sync frames for manual offset adjustment", 0)
+        LOG.info(
+            LOG.LOG_SOURCE.BE, "Generating sync frames for manual offset adjustment"
+        )
+
+        # create sync subdirectories
+        sync1_dir = img_sync / "sync1"
+        sync2_dir = img_sync / "sync2"
+        sync1_dir.mkdir(exist_ok=True)
+        sync2_dir.mkdir(exist_ok=True)
+
+        # calculate frames similar to the main comparison generation
+        total_frames = get_total_frames(media_file_mi_obj)
+        available_frames, start_time_str = determine_ffmpeg_trimmed_frames(
+            trim=trim, total_frames=total_frames, frame_rate=frame_rate
+        )
+
+        start_seconds = float(start_time_str)
+        duration_seconds = available_frames / frame_rate
+
+        # generate frame list similar to main comparison
+        comparison_frames = []
+        for i in range(total_images):
+            progress = i / max(1, total_images - 1) if total_images > 1 else 0
+            offset_seconds = start_seconds + (progress * duration_seconds)
+            random_time_offset = random_offset / frame_rate
+            offset_seconds += random_time_offset
+
+            # convert back to frame number for easier manipulation
+            frame_number = int(offset_seconds * frame_rate)
+            comparison_frames.append(frame_number)
+
+        # select 2 random frames from the comparison frames (similar to FrameForge)
+        sync_frame_1 = random.choice(comparison_frames)
+        remaining_frames = [f for f in comparison_frames if f != sync_frame_1]
+        sync_frame_2 = (
+            random.choice(remaining_frames)
+            if remaining_frames
+            else sync_frame_1 + int(frame_rate * 30)
+        )
+
+        # generate reference frames (encode frames with frame number subtitle)
+        self._generate_reference_frames(
+            media_input=media_input,
+            sync_frames=[sync_frame_1, sync_frame_2],
+            img_sync=img_sync,
+            frame_rate=frame_rate,
+            subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
+            sub_size=sub_size,
+            ffmpeg_path=ffmpeg_path,
+        )
+
+        # generate sync ranges around each reference frame (±5 frames)
+        sync_range_1 = [sync_frame_1 + i for i in range(-5, 6)]
+        sync_range_2 = [sync_frame_2 + i for i in range(-5, 6)]
+
+        # generate sync frames for sync1 directory
+        self._generate_sync_range_frames(
+            source_input=source_input,
+            sync_frames=sync_range_1,
+            output_dir=sync1_dir,
+            frame_rate=frame_rate,
+            subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
+            sub_size=sub_size,
+            ffmpeg_path=ffmpeg_path,
+            ffmpeg_crop=ffmpeg_crop,
+            width=width,
+            height=height,
+            source_re_sync_offset=source_re_sync_offset,
+        )
+
+        # generate sync frames for sync2 directory
+        self._generate_sync_range_frames(
+            source_input=source_input,
+            sync_frames=sync_range_2,
+            output_dir=sync2_dir,
+            frame_rate=frame_rate,
+            subtitle_color=subtitle_color,
+            subtitle_outline_color=subtitle_outline_color,
+            sub_size=sub_size,
+            ffmpeg_path=ffmpeg_path,
+            ffmpeg_crop=ffmpeg_crop,
+            width=width,
+            height=height,
+            source_re_sync_offset=source_re_sync_offset,
+        )
+
+        signal.emit("Sync frame generation completed", 100)
+        LOG.info(LOG.LOG_SOURCE.BE, "Sync frame generation completed")
+
+    def _generate_reference_frames(
+        self,
+        media_input: Path,
+        sync_frames: list[int],
+        img_sync: Path,
+        frame_rate: float,
+        subtitle_color: str,
+        subtitle_outline_color: str,
+        sub_size: int,
+        ffmpeg_path: Path,
+    ) -> None:
+        """Generate reference frames (encode frames with frame number subtitle)."""
+
+        for i, frame_number in enumerate(sync_frames):
+            # convert frame to timestamp
+            timestamp_seconds = frame_number / frame_rate
+            hours = int(timestamp_seconds // 3600)
+            minutes = int((timestamp_seconds % 3600) // 60)
+            seconds = timestamp_seconds % 60
+            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
+
+            output_file = str(img_sync / f"{i + 1:02d}b_encode__{frame_number}.png")
+
+            # build filter chain with reference subtitle
+            filters = []
+
+            # add subtitle with frame reference info
+            if self.check_draw_text(ffmpeg_path):
+                font_path = (
+                    Path(RUNTIME_DIR / "fonts" / "Montserrat-Medium.ttf")
+                    .as_posix()
+                    .replace(":", r"\:")
+                )
+                quoted_font_path = oslex2.quote(font_path)
+                text = f"Reference Frame {frame_number}"
+                quoted_subtitle_color = oslex2.quote(subtitle_color)
+                quoted_subtitle_outline_color = oslex2.quote(subtitle_outline_color)
+
+                subtitle_filter = (
+                    f"drawtext=fontfile={quoted_font_path}:"
+                    f"text={text}:"
+                    f"fontsize={sub_size + 5}:"
+                    f"fontcolor={quoted_subtitle_color}:"
+                    f"bordercolor={quoted_subtitle_outline_color}:"
+                    f"borderw=1:x=(w-text_w)/2:y=h-text_h-10"
+                )
+                filters.append(subtitle_filter)
+
+            vf_filter = ",".join(filters) if filters else "copy"
+
+            command = [
+                str(ffmpeg_path),
+                "-ss",
+                timestamp,
+                "-i",
+                str(media_input),
+                "-vf",
+                vf_filter,
+                "-frames:v",
+                "1",
+                "-compression_level",
+                "6",
+                "-an",
+                "-y",
+                output_file,
+                "-v",
+                "error",
+                "-hide_banner",
+            ]
+
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                    if platform.system() == "Windows"
+                    else 0,
+                )
+
+                if result.returncode != 0:
+                    LOG.error(
+                        LOG.LOG_SOURCE.BE,
+                        f"Failed to generate reference frame {frame_number}: {result.stderr}",
+                    )
+
+            except Exception as e:
+                LOG.error(
+                    LOG.LOG_SOURCE.BE,
+                    f"Error generating reference frame {frame_number}: {e}",
+                )
+
+    def _generate_sync_range_frames(
+        self,
+        source_input: Path,
+        sync_frames: list[int],
+        output_dir: Path,
+        frame_rate: float,
+        subtitle_color: str,
+        subtitle_outline_color: str,
+        sub_size: int,
+        ffmpeg_path: Path,
+        ffmpeg_crop: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        source_re_sync_offset: float = 0.0,
+    ) -> None:
+        """Generate sync frames (source frames with frame number subtitle and offset)."""
+
+        for i, frame_number in enumerate(sync_frames):
+            # apply re-sync offset to timestamp
+            timestamp_seconds = (frame_number / frame_rate) + source_re_sync_offset
+            timestamp_seconds = max(0, timestamp_seconds)  # Ensure non-negative
+
+            hours = int(timestamp_seconds // 3600)
+            minutes = int((timestamp_seconds % 3600) // 60)
+            seconds = timestamp_seconds % 60
+            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:06.3f}"
+
+            output_file = str(output_dir / f"{i + 1:02d}a_source__{frame_number}.png")
+
+            # build filter chain
+            filters = []
+
+            # crop and resize - crop first, then resize
+            if ffmpeg_crop:
+                crop_filter = ffmpeg_crop.lstrip(",")
+                filters.append(crop_filter)
+
+            if width and height:
+                filters.append(f"scale={width}:{height}")
+
+            # add subtitle with sync frame info
+            if self.check_draw_text(ffmpeg_path):
+                font_path = (
+                    Path(RUNTIME_DIR / "fonts" / "Montserrat-Medium.ttf")
+                    .as_posix()
+                    .replace(":", r"\:")
+                )
+                quoted_font_path = oslex2.quote(font_path)
+                text = f"Sync Frame {frame_number}"
+                quoted_subtitle_color = oslex2.quote(subtitle_color)
+                quoted_subtitle_outline_color = oslex2.quote(subtitle_outline_color)
+
+                subtitle_filter = (
+                    f"drawtext=fontfile={quoted_font_path}:"
+                    f"text={text}:"
+                    f"fontsize={sub_size + 5}:"
+                    f"fontcolor={quoted_subtitle_color}:"
+                    f"bordercolor={quoted_subtitle_outline_color}:"
+                    f"borderw=1:x=(w-text_w)/2:y=10"
+                )
+                filters.append(subtitle_filter)
+
+            vf_filter = ",".join(filters) if filters else "copy"
+
+            command = [
+                str(ffmpeg_path),
+                "-ss",
+                timestamp,
+                "-i",
+                str(source_input),
+                "-vf",
+                vf_filter,
+                "-frames:v",
+                "1",
+                "-compression_level",
+                "6",
+                "-an",
+                "-y",
+                output_file,
+                "-v",
+                "error",
+                "-hide_banner",
+            ]
+
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                    if platform.system() == "Windows"
+                    else 0,
+                )
+
+                if result.returncode != 0:
+                    LOG.error(
+                        LOG.LOG_SOURCE.BE,
+                        f"Failed to generate sync frame {frame_number}: {result.stderr}",
+                    )
+
+            except Exception as e:
+                LOG.error(
+                    LOG.LOG_SOURCE.BE,
+                    f"Error generating sync frame {frame_number}: {e}",
+                )
 
 
 class FrameForgeImageGeneration(ImageGeneration):
@@ -678,6 +1153,7 @@ class ImagesBackEnd:
         crop_values: CropValues | None,
         ffmpeg_path: Path,
         signal: SignalInstance,
+        re_sync: int = 0,
     ) -> int:
         """
         Generate comparison images and emit progress signals.
@@ -716,6 +1192,7 @@ class ImagesBackEnd:
             crop_values=crop_values,
             ffmpeg_path=ffmpeg_path,
             signal=signal,
+            re_sync=re_sync,
         )
 
     @staticmethod

@@ -184,6 +184,7 @@ class QueuedWorker(QThread):
             self.crop_values,
             self.ffmpeg_path,
             self.progress_signal,
+            self.re_sync,
         )
         self.job_finished.emit(job)
 

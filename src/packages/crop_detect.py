@@ -1,9 +1,9 @@
-import re
-import platform
-import subprocess
 from collections import Counter
 from os import PathLike
 from pathlib import Path
+import platform
+import re
+import subprocess
 
 
 class CropDetect:
@@ -55,7 +55,7 @@ class CropDetect:
         )
         output = result.stderr
 
-        return re.findall(r"x1:(\d+) x2:(\d+) y1:(\d+) y2:(\d+)", output)
+        return re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", output)
 
     def get_result(self) -> str | None:
         return self.result
@@ -63,12 +63,13 @@ class CropDetect:
     def _convert_raw_to_crop_params(self, raw_crop: str | None) -> str | None:
         if not raw_crop:
             return
-        x1, x2, y1, y2 = map(int, raw_crop)
-        width = self._round_up_to_even(x2 - x1)
-        height = self._round_up_to_even(y2 - y1)
-        x1 = self._round_up_to_even(x1)
-        y1 = self._round_up_to_even(y1)
-        return f"crop={width}:{height}:{x1}:{y1}"
+        width, height, x, y = map(int, raw_crop)
+        # ensure even values for video encoding compatibility
+        width = self._round_up_to_even(width)
+        height = self._round_up_to_even(height)
+        x = self._round_up_to_even(x)
+        y = self._round_up_to_even(y)
+        return f"crop={width}:{height}:{x}:{y}"
 
     @staticmethod
     def _get_largest_common_crop_params(crop_params_list: list) -> str | None:
@@ -87,15 +88,13 @@ class CropDetect:
                 largest_common_crop = crop
             else:
                 # compare the sizes of the crops (width and height) and choose the largest
-                current_x1, current_x2, current_y1, current_y2 = map(
+                current_width, current_height, _current_x, _current_y = map(
                     int, largest_common_crop
                 )
-                new_x1, new_x2, new_y1, new_y2 = map(int, crop)
+                new_width, new_height, _new_x, _new_y = map(int, crop)
 
-                # if the current crop has a larger size, replace the largest_common_crop
-                if (new_x2 - new_x1) * (new_y2 - new_y1) > (current_x2 - current_x1) * (
-                    current_y2 - current_y1
-                ):
+                # if the current crop has a larger area, replace the largest_common_crop
+                if (new_width * new_height) > (current_width * current_height):
                     largest_common_crop = crop
 
         return largest_common_crop

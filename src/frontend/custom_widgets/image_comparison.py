@@ -18,7 +18,7 @@ from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 class SideBySideImage(QWidget):
-    offset_applied = Signal((int,))
+    offset_applied = Signal(object)  # Optional[int]
 
     def __init__(self, sync_dir: Union[str, PathLike], parent=None):
         super().__init__(parent)
@@ -31,18 +31,44 @@ class SideBySideImage(QWidget):
         )
         self.ref_img_1 = QPixmap(self.reference_img[self.ref_index])
 
-        self.sync_dirs = [
-            sorted(Path(self.sync_dir / "sync1").glob("*.png")),
-            sorted(Path(self.sync_dir / "sync2").glob("*.png")),
-        ]
-        self.sync_dir = self.sync_dirs[self.ref_index]
-        self.sync_dir_len = len(self.sync_dir)
+        # load sync directories and sort them to match reference frame order
+        sync1_frames = sorted(Path(self.sync_dir / "sync1").glob("*.png"))
+        sync2_frames = sorted(Path(self.sync_dir / "sync2").glob("*.png"))
+
+        # get the frame numbers from reference images to determine proper sync directory pairing
+        ref_frame_numbers = [int(img.stem.split("__")[1]) for img in self.reference_img]
+
+        # determine which sync directory corresponds to which reference frame
+        # by finding the sync directory whose frames are closest to each reference frame
+        sync1_base_frame = (
+            int(sync1_frames[len(sync1_frames) // 2].stem.split("__")[1])
+            if sync1_frames
+            else 0
+        )
+        sync2_base_frame = (
+            int(sync2_frames[len(sync2_frames) // 2].stem.split("__")[1])
+            if sync2_frames
+            else 0
+        )
+
+        # match sync directories to reference frames based on frame numbers
+        if abs(sync1_base_frame - ref_frame_numbers[0]) < abs(
+            sync2_base_frame - ref_frame_numbers[0]
+        ):
+            # sync1 matches first reference, sync2 matches second reference
+            self.sync_dirs = [sync1_frames, sync2_frames]
+        else:
+            # sync2 matches first reference, sync1 matches second reference
+            self.sync_dirs = [sync2_frames, sync1_frames]
+
+        self.sync_frames = self.sync_dirs[self.ref_index]
+        self.sync_dir_len = len(self.sync_frames)
 
         self.sync_img_index = 0
-        self.sync_img = QPixmap(self.sync_dir[self.sync_img_index])
+        self.sync_img = QPixmap(self.sync_frames[self.sync_img_index])
 
         # ui
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setRange(0, 10000)
         self.slider.setValue(5000)
         self.slider.valueChanged.connect(self.updateImage)
@@ -103,7 +129,9 @@ class SideBySideImage(QWidget):
         reference_frame_num = int(
             self.reference_img[self.ref_index].stem.split("__")[1]
         )
-        offset_frame_num = int(self.sync_dir[self.sync_img_index].stem.split("__")[1])
+        offset_frame_num = int(
+            self.sync_frames[self.sync_img_index].stem.split("__")[1]
+        )
         self.offset_applied.emit(offset_frame_num - reference_frame_num)
 
     def swap_ref(self):
@@ -113,10 +141,10 @@ class SideBySideImage(QWidget):
             self.ref_index = 0
 
         self.ref_img_1 = QPixmap(self.reference_img[self.ref_index])
-        self.sync_dir = self.sync_dirs[self.ref_index]
-        self.sync_dir_len = len(self.sync_dir)
+        self.sync_frames = self.sync_dirs[self.ref_index]
+        self.sync_dir_len = len(self.sync_frames)
         self.sync_img_index = 0
-        self.sync_img = QPixmap(self.sync_dir[self.sync_img_index])
+        self.sync_img = QPixmap(self.sync_frames[self.sync_img_index])
         self.slider.setValue(5000)
         self.updateImage()
 
@@ -124,7 +152,7 @@ class SideBySideImage(QWidget):
         new_index = self.sync_img_index + direction
         if 0 <= new_index < self.sync_dir_len:
             self.sync_img_index = new_index
-            self.sync_img = QPixmap(self.sync_dir[self.sync_img_index])
+            self.sync_img = QPixmap(self.sync_frames[self.sync_img_index])
             self.updateImage()
 
     def updateImage(self):
@@ -138,7 +166,7 @@ class SideBySideImage(QWidget):
         combined_image = QPixmap(self.ref_img_1.size())
 
         # Fill pixmap with first image
-        combined_image.fill(Qt.transparent)
+        combined_image.fill(Qt.GlobalColor.transparent)
         painter = QPainter(combined_image)
         painter.drawPixmap(
             0, 0, self.ref_img_1.copy(0, 0, image1_width, self.ref_img_1.height())
@@ -157,7 +185,7 @@ class SideBySideImage(QWidget):
         )
 
         # Draw a vertical line to separate the images
-        pen = QPen(Qt.red, 2, Qt.SolidLine)
+        pen = QPen(Qt.GlobalColor.red, 2, Qt.PenStyle.SolidLine)
         painter.setPen(pen)
 
         x = image1_width

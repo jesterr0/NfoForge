@@ -1,5 +1,29 @@
 # Changelog
 
+## [Unreleased] - 2025-?m-?d
+
+### Added
+
+- Ability to sync images in **Basic Comparison** screenshot mode.
+  - Sync tab to image viewer.
+
+### Changed
+
+- Massively improved the auto crop detection logic.
+- Image generation for **Basic** and **Basic Comparison** modes have been re-worked.
+  - For basic and basic comparison image generation we're looking at about a **80x** speed up for image generation.
+  - Brings VC-1 image generation up to speed with other codecs.
+
+### Fixed
+
+- Edge case where sync images could be out of sync in the ImageViewer Sync tab.
+- Auto crop could fail in certain circumstances.
+- Bug when working with VC-1 files and generating images due to auto crop and basic comparison mode.
+
+### Removed
+
+-
+
 ## [0.8.6] - 2025-08-12
 
 ### Added
