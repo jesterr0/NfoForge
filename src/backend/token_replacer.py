@@ -297,77 +297,85 @@ class TokenReplacer:
                 or token_data.token.startswith("prompt_")
             )
         ):
-            value = self._optional_user_input(
+            return self._optional_user_input(
                 self.user_tokens.get(token_data.token, ""), token_data
             )
 
         # handle override tokens
-        elif self.override_tokens and token_data.token in self.override_tokens:
-            value = self._optional_user_input(
+        if self.override_tokens and token_data.token in self.override_tokens:
+            return self._optional_user_input(
                 self.override_tokens[token_data.token], token_data
             )
 
-        # default token handling
-        elif not self.token_type:
-            value = self._media_tokens(token_data)
-            if not value:
-                value = ""
-        else:
+        # get raw token value
+        raw_value = self._get_raw_token_value(token_data)
+        if not raw_value:
+            return ""
+
+        # apply custom filters only for flatten mode (filename generation)
+        if self.flatten and token_data.filters and isinstance(raw_value, str):
+            raw_value = self._apply_custom_filters(raw_value, token_data.filters)
+
+        return f"{token_data.pre_token}{raw_value}{token_data.post_token}"
+
+    def _get_raw_token_value(self, token_data: TokenData) -> str | Sequence[Any] | None:
+        """Get the raw token value without filters or pre/post tokens."""
+        # determine which token types to check
+        if self.token_type:
             token_types = (
                 self.token_type
                 if isinstance(self.token_type, (list, set, tuple))
                 else [self.token_type]
             )
-            value = ""
-            for token_type in token_types:
-                if token_type == FileToken:
-                    if (
-                        not self.parse_filename_attributes
-                        and token_data.token in self.FILENAME_ATTRIBUTES
-                    ):
-                        continue
-                    get_token = self._media_tokens(token_data)
-                    if get_token:
-                        value = get_token
-                elif token_type == NfoToken:
-                    get_token = self._nfo_tokens(token_data)
-                    if get_token:
-                        value = get_token
+        else:
+            # no specific type: check both media and nfo tokens
+            token_types = [FileToken, NfoToken]
 
-        # apply filters only to the token value (not pre/post)
-        filtered_token_value = value
-        if token_data.filters and isinstance(filtered_token_value, str):
-            for f in token_data.filters:
-                f_lowered = f.lower()
-                if f_lowered == "upper":
-                    filtered_token_value = filtered_token_value.upper()
-                elif f_lowered == "lower":
-                    filtered_token_value = filtered_token_value.lower()
-                elif f_lowered == "title":
-                    filtered_token_value = filtered_token_value.title()
-                elif f_lowered == "swapcase":
-                    filtered_token_value = filtered_token_value.swapcase()
-                elif f_lowered == "capitalize":
-                    filtered_token_value = filtered_token_value.capitalize()
-                elif f_lowered.startswith("zfill(") and f_lowered.endswith(")"):
-                    m = re.match(r"zfill\((.*?)\)", f, re.IGNORECASE)
-                    if m:
-                        try:
-                            filtered_token_value = filtered_token_value.zfill(
-                                int(m.group(1).strip())
-                            )
-                        except ValueError:
-                            pass
-                elif f_lowered.startswith("replace(") and f_lowered.endswith(")"):
-                    # support replace('old', 'new') or replace("old", "new")
-                    m = re.match(r"replace\((['\"])(.*?)\1,\s*?(['\"])(.*?)\3\)", f)
-                    if m:
-                        old = m.group(2)
-                        new = m.group(4)
-                        filtered_token_value = filtered_token_value.replace(old, new)
+        for token_type in token_types:
+            if token_type == FileToken:
+                if (
+                    not self.parse_filename_attributes
+                    and token_data.token in self.FILENAME_ATTRIBUTES
+                ):
+                    continue
+                value = self._media_tokens(token_data)
+                if value:
+                    return value
+            elif token_type == NfoToken:
+                value = self._nfo_tokens(token_data)
+                if value:
+                    return value
 
-        # concatenate pre_token, filtered_token_value, post_token
-        return f"{token_data.pre_token}{filtered_token_value}{token_data.post_token}"
+        return ""
+
+    def _apply_custom_filters(self, value: str, filters: tuple[str, ...]) -> str:
+        """Apply custom filters to a string value."""
+        for f in filters:
+            f_lowered = f.lower()
+            if f_lowered == "upper":
+                value = value.upper()
+            elif f_lowered == "lower":
+                value = value.lower()
+            elif f_lowered == "title":
+                value = value.title()
+            elif f_lowered == "swapcase":
+                value = value.swapcase()
+            elif f_lowered == "capitalize":
+                value = value.capitalize()
+            elif f_lowered.startswith("zfill(") and f_lowered.endswith(")"):
+                m = re.match(r"zfill\((\d+)\)", f, re.IGNORECASE)
+                if m:
+                    try:
+                        value = value.zfill(int(m.group(1)))
+                    except ValueError:
+                        pass
+            elif f_lowered.startswith("replace(") and f_lowered.endswith(")"):
+                m = re.match(r"replace\((['\"])(.*?)\1,\s*?(['\"])(.*?)\3\)", f)
+                if m:
+                    old = m.group(2)
+                    new = m.group(4)
+                    value = value.replace(old, new)
+        return value
 
     def _media_tokens(self, token_data: TokenData) -> str:
         if token_data.bracket_token == Tokens.EDITION.token:
