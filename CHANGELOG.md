@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.8.5] - 2025-08-12
+
+### Added
+
+- Support for new trackers.
+  - ShareIsland
+  - OnlyEncodes
+  - UploadCX
+- Opt-in mod queue for ReelFliX and Aither.
+- Flat string filters for filenames/titles.
+- Added a new FileToken **{mi_audio_language_all_full}**.
+
+### Changed
+
+- MoreThanTV and PassThePopcorn TOTP input changes:
+  - Label has been been changed to be more descriptive.
+  - Label and input now has a tooltip.
+  - If **TOTP Secret** is not provided the user will now be prompt during processing for their timed one time password.
+- Process progress bar will now be displayed as busy if progress is at 0 when sent. Once above 0 progress is handled as before.
+
+### Fixed
+
+- Default override title token for LST, darkpeers, and Aither.
+- Remove message that would output a repeated string for each tracker in the process log output.
+- Only show update message if there was updates by the user during the overview prompt during processing.
+
 ## [0.8.4] - 2025-08-09
 
 ### Added

@@ -19,6 +19,7 @@ from src.enums.trackers.passthepopcorn import (
     PTPType,
 )
 from src.exceptions import TrackerError
+from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
@@ -62,7 +63,7 @@ def ptp_uploader(
     ).get_group_id(media_search_payload.imdb_id)
     LOG.debug(LOG.LOG_SOURCE.BE, f"Group ID: {group_id}")
 
-    upload = uploader.upload(
+    return uploader.upload(
         auth_token=auth_token,
         media_search_payload=media_search_payload,
         torrent_file=torrent_file,
@@ -71,7 +72,6 @@ def ptp_uploader(
         ptp_img_api_key=ptp_img_api_key,
         group_id=group_id,
     )
-    return upload
 
 
 class PTPUploader:
@@ -694,9 +694,16 @@ class PTPUploader:
                             raise TrackerError(
                                 "Missing TOTP and you have TFA enabled, cannot continue"
                             )
-                        tofa_response = self._handle_2fa(data, self.totp)
-                        response_json = tofa_response.json()
-                        token = response_json.get("AntiCsrfToken")
+                        # loop until we get a valid token or user cancels
+                        while not token:
+                            tofa_response = self._handle_2fa(data, self.totp)
+                            response_json = tofa_response.json()
+                            token = response_json.get("AntiCsrfToken")
+                            if not token:
+                                LOG.error(
+                                    LOG.LOG_SOURCE.BE,
+                                    "2FA failed: Invalid code or token not received. Retrying...",
+                                )
                     if token:
                         self._save_cookies()
                         return token
@@ -757,22 +764,35 @@ class PTPUploader:
         return False
 
     def _handle_2fa(self, data: dict[str, str], totp: str) -> niquests.Response:
-        data["TfaCode"] = pyotp.TOTP(totp).now()
-        data["TfaType"] = "normal"
-        headers = {
-            "User-Agent": TRACKER_HEADERS["User-Agent"],
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-        response = self._session.post(
-            self.LOGIN_URL,
-            data=data,
-            headers=headers,
-        )
-        if response.status_code != 200:
-            raise TrackerError(
-                f"2FA failed: {response.reason} ({response.status_code})"
+        tried_totp = False
+        while True:
+            if not tried_totp and totp:
+                data["TfaCode"] = pyotp.TOTP(totp).now()
+                tried_totp = True
+            else:
+                got_code, code = ask_thread_safe_prompt(
+                    "2FA", "Enter your 2FA code for PassThePopcorn:"
+                )
+                if not got_code or not code:
+                    raise TrackerError("2FA cancelled or no code entered")
+                data["TfaCode"] = code
+            data["TfaType"] = "normal"
+            headers = {
+                "User-Agent": TRACKER_HEADERS["User-Agent"],
+                "Content-Type": "application/x-www-form-urlencoded",
+            }
+            response = self._session.post(
+                self.LOGIN_URL,
+                data=data,
+                headers=headers,
             )
-        return response
+            if response.status_code == 200:
+                return response
+            else:
+                LOG.error(
+                    LOG.LOG_SOURCE.BE,
+                    f"2FA failed: {response.reason} ({response.status_code})",
+                )
 
 
 class PTPSearch:

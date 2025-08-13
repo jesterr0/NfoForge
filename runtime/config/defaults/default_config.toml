@@ -159,7 +159,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -227,7 +227,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -264,7 +264,101 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = 0
+internal = 0
+personal_release = 0
+image_width = 500
+
+[tracker.shareisland]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "Shareisland"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{movie_clean_title} {release_year} {mi_audio_language_all_full|upper|replace(' ',' - ')} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = 0
+internal = 0
+personal_release = 0
+opt_in_to_mod_queue = 0
+image_width = 350
+
+[tracker.uploadcx]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "ULCX"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = 0
+internal = 0
+personal_release = 0
+image_width = 500
+
+[tracker.only_encodes]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "OE"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',

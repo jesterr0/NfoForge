@@ -8,8 +8,18 @@ from src.backend.trackers.darkpeers import (
 from src.backend.trackers.huno import HunoSearch, HunoUploader, huno_uploader
 from src.backend.trackers.lst import LSTSearch, LSTUploader, lst_uploader
 from src.backend.trackers.morethantv import MTVSearch, MTVUploader, mtv_uploader
+from src.backend.trackers.onlyencodes import (
+    OnlyEncodesSearch,
+    OnlyEncodesUploader,
+    oe_uploader,
+)
 from src.backend.trackers.passthepopcorn import PTPSearch, PTPUploader, ptp_uploader
 from src.backend.trackers.reelflix import ReelFlixSearch, ReelFlixUploader, rf_uploader
+from src.backend.trackers.shareisland import (
+    ShareIslandSearch,
+    ShareIslandUploader,
+    shri_uploader,
+)
 from src.backend.trackers.torrentleech import TLSearch, TLUploader, tl_upload
 from src.backend.trackers.unit3d_base import (
     CategoryEnums,
@@ -17,6 +27,11 @@ from src.backend.trackers.unit3d_base import (
     TypeEnums,
     Unit3dBaseSearch,
     Unit3dBaseUploader,
+)
+from src.backend.trackers.uploadcx import (
+    UploadCXSearch,
+    UploadCXUploader,
+    ulcx_uploader,
 )
 
 __all__ = (
@@ -52,4 +67,13 @@ __all__ = (
     "DarkPeersSearch",
     "dp_uploader",
     "DarkPeersUploader",
+    "ShareIslandSearch",
+    "shri_uploader",
+    "ShareIslandUploader",
+    "UploadCXSearch",
+    "UploadCXUploader",
+    "ulcx_uploader",
+    "OnlyEncodesSearch",
+    "OnlyEncodesUploader",
+    "oe_uploader",
 )

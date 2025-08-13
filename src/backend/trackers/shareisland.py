@@ -1,17 +1,19 @@
 from pathlib import Path
 
 from pymediainfo import MediaInfo
-from typing_extensions import override
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
-from src.exceptions import TrackerError
+from src.enums.trackers.shareisland import (
+    ShareIslandCategory,
+    ShareIslandResolution,
+    ShareIslandType,
+)
 from src.payloads.media_search import MediaSearchPayload
 
 
-def lst_uploader(
+def shri_uploader(
     media_mode: MediaMode,
     api_key: str,
     torrent_file: Path,
@@ -22,18 +24,13 @@ def lst_uploader(
     anonymous: bool,
     personal_release: bool,
     opt_in_to_mod_queue: bool,
-    draft_queue_opt_in: bool,
-    featured: bool,
-    free: bool,
-    double_up: bool,
-    sticky: bool,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
 ) -> bool | None:
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
-    uploader = LSTUploader(
+    uploader = ShareIslandUploader(
         media_mode=media_mode,
         api_key=api_key,
         torrent_file=torrent_file,
@@ -52,17 +49,12 @@ def lst_uploader(
         anonymous=anonymous,
         personal_release=personal_release,
         opt_in_to_mod_queue=opt_in_to_mod_queue,
-        draft_queue_opt_in=draft_queue_opt_in,
-        featured=featured,
-        free=free,
-        double_up=double_up,
-        sticky=sticky,
     )
     return upload
 
 
-class LSTUploader(Unit3dBaseUploader):
-    """Upload torrents to LST"""
+class ShareIslandUploader(Unit3dBaseUploader):
+    """Upload torrents to ShareIsland"""
 
     __slots__ = ()
 
@@ -76,39 +68,29 @@ class LSTUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.LST,
-            base_url="https://lst.gg",
+            tracker_name=TrackerSelection.SHARE_ISLAND,
+            base_url="https://shareisland.org",
             media_mode=media_mode,
             api_key=api_key,
             torrent_file=torrent_file,
             file_input=file_input,
             mediainfo_obj=mediainfo_obj,
-            cat_enum=LSTCategory,
-            res_enum=LSTResolution,
-            type_enum=LSTType,
+            cat_enum=ShareIslandCategory,
+            res_enum=ShareIslandResolution,
+            type_enum=ShareIslandType,
             timeout=timeout,
         )
 
-    # def _get_category_id(self) -> str:  # TODO: detect TV here when support is added
-    #     return super()._get_category_id()
 
-    @override
-    def _get_resolution_id(self) -> str:
-        try:
-            return super()._get_resolution_id()
-        except TrackerError:
-            return LSTResolution.RES_OTHER.value
-
-
-class LSTSearch(Unit3dBaseSearch):
-    """Search LST"""
+class ShareIslandSearch(Unit3dBaseSearch):
+    """Search ShareIsland"""
 
     __slots__ = ()
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.LST,
-            base_url="https://lst.gg",
+            tracker_name=TrackerSelection.SHARE_ISLAND,
+            base_url="https://shareisland.org",
             api_key=api_key,
             timeout=timeout,
         )

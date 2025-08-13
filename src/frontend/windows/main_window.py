@@ -1,8 +1,10 @@
+from queue import Queue
 import webbrowser
 
 from PySide6.QtCore import QByteArray, QTimer, Slot
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -57,6 +59,7 @@ class MainWindow(QMainWindow):
         GSigs().main_window_hide.connect(self.hide_window)
         GSigs().main_window_open_log_dir.connect(self.open_log_directory)
         GSigs().main_window_open_log_file.connect(self.open_log)
+        GSigs().ask_prompt.connect(self.ask_prompt)
 
         # wizard (main stacked widget)
         self.wizard = MainWindowWizard(self.config, self)
@@ -180,6 +183,14 @@ class MainWindow(QMainWindow):
     @Slot(str)
     def update_status_label(self, data: str) -> None:
         self.status_profile_label.setText(data)
+
+    @Slot(str, str, object)
+    def ask_prompt(self, prompt_title: str, prompt: str, queue: Queue) -> None:
+        """Can be used anywhere in the program, thread safe way to get more data and return it via queue.put()"""
+        if not prompt_title or not prompt or not queue:
+            raise AttributeError("3 args we're expected (str, str, Queue)")
+        user_input, ok = QInputDialog.getText(self, prompt_title, prompt)
+        queue.put((ok, user_input))
 
     @Slot()
     def open_log(self) -> None:

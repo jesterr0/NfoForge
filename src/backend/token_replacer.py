@@ -232,27 +232,42 @@ class TokenReplacer:
             setattr(self.token_data, key, value)
 
     def _parse_user_input(self):
-        """Extract valid tokens from user input string, ignoring unknown tokens."""
+        """
+        Extract valid tokens from user input string, supporting |filter and :opt=x:.
+        Filters are always parsed and applied.
+        """
         valid_tokens = Tokens.get_tokens()
 
+        # match tokens with optional :opt=...: before or after, and filters using |filter
         matches = re.finditer(
-            r"{(?::opt=(.*?):)?(.*?)(?::opt=(.*?):)?}", self.token_string
+            r"{(?::opt=([^:}]*):)?([^}]+?)(?::opt=([^:}]*):)?}", self.token_string
         )
         parsed_tokens: set[TokenData] = set()
         for match in matches:
-            pre = match.group(1) if match.group(1) else ""
-            token_str = match.group(2)
-            post = match.group(3) if match.group(3) else ""
-            # accept built-in or user tokens only
-            if token_str in valid_tokens or (
-                token_str.startswith("usr_")
+            pre_opt = match.group(1) if match.group(1) else ""
+            token_and_filters = match.group(2)
+            post_opt = match.group(3) if match.group(3) else ""
+
+            # split token and filters
+            parts = [p.strip() for p in token_and_filters.split("|")]
+            base_token = parts[0]
+            filters = parts[1:] if len(parts) > 1 else []
+
+            # only accept built-in or user tokens
+            if base_token in valid_tokens or (
+                base_token.startswith("usr_")
                 and self.user_tokens
-                and token_str in self.user_tokens
+                and base_token in self.user_tokens
             ):
-                string_token_data = TokenData(
-                    pre, token_str, f"{{{token_str}}}", post, match.group()
+                token_data = TokenData(
+                    pre_token=pre_opt,
+                    token=base_token,
+                    bracket_token=f"{{{base_token}}}",
+                    post_token=post_opt,
+                    full_match=match.group(0),
+                    filters=tuple(filters),  # make filters a tuple for hash-ability
                 )
-                parsed_tokens.add(string_token_data)
+                parsed_tokens.add(token_data)
 
         return parsed_tokens
 
@@ -282,30 +297,28 @@ class TokenReplacer:
                 or token_data.token.startswith("prompt_")
             )
         ):
-            return self._optional_user_input(
+            value = self._optional_user_input(
                 self.user_tokens.get(token_data.token, ""), token_data
             )
 
-        # handle over ride tokens
-        if self.override_tokens and token_data.token in self.override_tokens:
-            return self._optional_user_input(
+        # handle override tokens
+        elif self.override_tokens and token_data.token in self.override_tokens:
+            value = self._optional_user_input(
                 self.override_tokens[token_data.token], token_data
             )
 
         # default token handling
-        if not self.token_type:
-            get_media_token = self._media_tokens(token_data)
-            if get_media_token:
-                return get_media_token
-            get_nfo_token = self._nfo_tokens(token_data)
-            if get_nfo_token:
-                return get_nfo_token
+        elif not self.token_type:
+            value = self._media_tokens(token_data)
+            if not value:
+                value = ""
         else:
             token_types = (
                 self.token_type
                 if isinstance(self.token_type, (list, set, tuple))
                 else [self.token_type]
             )
+            value = ""
             for token_type in token_types:
                 if token_type == FileToken:
                     if (
@@ -315,12 +328,46 @@ class TokenReplacer:
                         continue
                     get_token = self._media_tokens(token_data)
                     if get_token:
-                        return get_token
+                        value = get_token
                 elif token_type == NfoToken:
                     get_token = self._nfo_tokens(token_data)
                     if get_token:
-                        return get_token
-        return ""
+                        value = get_token
+
+        # apply filters only to the token value (not pre/post)
+        filtered_token_value = value
+        if token_data.filters and isinstance(filtered_token_value, str):
+            for f in token_data.filters:
+                f_lowered = f.lower()
+                if f_lowered == "upper":
+                    filtered_token_value = filtered_token_value.upper()
+                elif f_lowered == "lower":
+                    filtered_token_value = filtered_token_value.lower()
+                elif f_lowered == "title":
+                    filtered_token_value = filtered_token_value.title()
+                elif f_lowered == "swapcase":
+                    filtered_token_value = filtered_token_value.swapcase()
+                elif f_lowered == "capitalize":
+                    filtered_token_value = filtered_token_value.capitalize()
+                elif f_lowered.startswith("zfill(") and f_lowered.endswith(")"):
+                    m = re.match(r"zfill\((.*?)\)", f, re.IGNORECASE)
+                    if m:
+                        try:
+                            filtered_token_value = filtered_token_value.zfill(
+                                int(m.group(1).strip())
+                            )
+                        except ValueError:
+                            pass
+                elif f_lowered.startswith("replace(") and f_lowered.endswith(")"):
+                    # support replace('old', 'new') or replace("old", "new")
+                    m = re.match(r"replace\((['\"])(.*?)\1,\s*?(['\"])(.*?)\3\)", f)
+                    if m:
+                        old = m.group(2)
+                        new = m.group(4)
+                        filtered_token_value = filtered_token_value.replace(old, new)
+
+        # concatenate pre_token, filtered_token_value, post_token
+        return f"{token_data.pre_token}{filtered_token_value}{token_data.post_token}"
 
     def _media_tokens(self, token_data: TokenData) -> str:
         if token_data.bracket_token == Tokens.EDITION.token:
@@ -382,6 +429,9 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_ALL_ISO_639_2.token:
             return self._mi_audio_language_2_all_iso_639_x(2, True, token_data)
+
+        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_ALL_FULL.token:
+            return self._mi_audio_language_all_full(token_data)
 
         elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_DUAL.token:
             return self._mi_audio_language_dual(token_data)
@@ -899,6 +949,38 @@ class TokenReplacer:
                         language = "+".join(language_list)
 
         return self._optional_user_input(language, token_data)
+
+    def _mi_audio_language_all_full(self, token_data: TokenData) -> str:
+        all_lang = ""
+        guess_lang = self.guessit_language
+        if isinstance(guess_lang, list):
+            language_s = {
+                lang for x in guess_lang if (lang := get_full_language_str(x))
+            }
+            if language_s:
+                if len(language_s) == 1:
+                    all_lang = next(iter(language_s))
+                else:
+                    all_lang = " ".join(language_s)
+        else:
+            all_lang = get_full_language_str(guess_lang)
+
+        if self.media_info_obj and self.media_info_obj.audio_tracks:
+            language_set = {
+                lang
+                for track in self.media_info_obj.audio_tracks
+                if (lang := get_language_mi(track))
+            }
+
+            if language_set:
+                if len(language_set) == 1:
+                    all_lang = get_full_language_str(next(iter(language_set)))
+                else:
+                    all_lang = " ".join(
+                        [get_full_language_str(x) or "" for x in language_set]
+                    )
+
+        return self._optional_user_input(all_lang, token_data)
 
     def _mi_audio_language_dual(self, token_data: TokenData) -> str:
         dual = ""

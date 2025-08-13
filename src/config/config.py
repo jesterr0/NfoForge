@@ -45,8 +45,10 @@ from src.payloads.trackers import (
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
+    OnlyEncodesInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
+    ShareIslandInfo,
     TorrentLeechInfo,
     TrackerInfo,
 )
@@ -682,6 +684,136 @@ class Config:
                 self.cfg_payload.darkpeers_tracker.image_width
             )
 
+            # ShareIsland tracker
+            if "shareisland" not in tracker_data:
+                tracker_data["shareisland"] = tomlkit.table()
+            shareisland_data = tracker_data["shareisland"]
+            shareisland_data["upload_enabled"] = (
+                self.cfg_payload.shareisland_tracker.upload_enabled
+            )
+            shareisland_data["announce_url"] = (
+                self.cfg_payload.shareisland_tracker.announce_url
+            )
+            shareisland_data["enabled"] = self.cfg_payload.shareisland_tracker.enabled
+            shareisland_data["source"] = self.cfg_payload.shareisland_tracker.source
+            shareisland_data["comments"] = self.cfg_payload.shareisland_tracker.comments
+            shareisland_data["nfo_template"] = (
+                self.cfg_payload.shareisland_tracker.nfo_template
+            )
+            shareisland_data["max_piece_size"] = (
+                self.cfg_payload.shareisland_tracker.max_piece_size
+            )
+            shareisland_data["url_type"] = URLType(
+                self.cfg_payload.shareisland_tracker.url_type
+            ).value
+            shareisland_data["column_s"] = self.cfg_payload.shareisland_tracker.column_s
+            shareisland_data["column_space"] = (
+                self.cfg_payload.shareisland_tracker.column_space
+            )
+            shareisland_data["row_space"] = (
+                self.cfg_payload.shareisland_tracker.row_space
+            )
+            shareisland_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.shareisland_tracker.mvr_title_override_enabled
+            )
+            shareisland_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.shareisland_tracker.mvr_title_colon_replace
+            ).value
+            shareisland_data["mvr_title_token_override"] = (
+                self.cfg_payload.shareisland_tracker.mvr_title_token_override
+            )
+            shareisland_data["mvr_title_replace_map"] = (
+                self.cfg_payload.shareisland_tracker.mvr_title_replace_map
+            )
+            shareisland_data["api_key"] = self.cfg_payload.shareisland_tracker.api_key
+            shareisland_data["anonymous"] = (
+                self.cfg_payload.shareisland_tracker.anonymous
+            )
+            shareisland_data["internal"] = self.cfg_payload.shareisland_tracker.internal
+            shareisland_data["personal_release"] = (
+                self.cfg_payload.shareisland_tracker.personal_release
+            )
+            shareisland_data["opt_in_to_mod_queue"] = (
+                self.cfg_payload.shareisland_tracker.opt_in_to_mod_queue
+            )
+            shareisland_data["image_width"] = (
+                self.cfg_payload.shareisland_tracker.image_width
+            )
+
+            # UploadCX tracker
+            if "uploadcx" not in tracker_data:
+                tracker_data["uploadcx"] = tomlkit.table()
+            uploadcx_data = tracker_data["uploadcx"]
+            uploadcx_data["upload_enabled"] = (
+                self.cfg_payload.ulcx_tracker.upload_enabled
+            )
+            uploadcx_data["announce_url"] = self.cfg_payload.ulcx_tracker.announce_url
+            uploadcx_data["enabled"] = self.cfg_payload.ulcx_tracker.enabled
+            uploadcx_data["source"] = self.cfg_payload.ulcx_tracker.source
+            uploadcx_data["comments"] = self.cfg_payload.ulcx_tracker.comments
+            uploadcx_data["nfo_template"] = self.cfg_payload.ulcx_tracker.nfo_template
+            uploadcx_data["max_piece_size"] = (
+                self.cfg_payload.ulcx_tracker.max_piece_size
+            )
+            uploadcx_data["url_type"] = URLType(
+                self.cfg_payload.ulcx_tracker.url_type
+            ).value
+            uploadcx_data["column_s"] = self.cfg_payload.ulcx_tracker.column_s
+            uploadcx_data["column_space"] = self.cfg_payload.ulcx_tracker.column_space
+            uploadcx_data["row_space"] = self.cfg_payload.ulcx_tracker.row_space
+            uploadcx_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.ulcx_tracker.mvr_title_override_enabled
+            )
+            uploadcx_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.ulcx_tracker.mvr_title_colon_replace
+            ).value
+            uploadcx_data["mvr_title_token_override"] = (
+                self.cfg_payload.ulcx_tracker.mvr_title_token_override
+            )
+            uploadcx_data["mvr_title_replace_map"] = (
+                self.cfg_payload.ulcx_tracker.mvr_title_replace_map
+            )
+            uploadcx_data["api_key"] = self.cfg_payload.ulcx_tracker.api_key
+            uploadcx_data["anonymous"] = self.cfg_payload.ulcx_tracker.anonymous
+            uploadcx_data["internal"] = self.cfg_payload.ulcx_tracker.internal
+            uploadcx_data["personal_release"] = (
+                self.cfg_payload.ulcx_tracker.personal_release
+            )
+            uploadcx_data["image_width"] = self.cfg_payload.ulcx_tracker.image_width
+
+            # OnlyEncodes tracker
+            if "only_encodes" not in tracker_data:
+                tracker_data["only_encodes"] = tomlkit.table()
+            oe_data = tracker_data["only_encodes"]
+            oe_data["upload_enabled"] = self.cfg_payload.oe_tracker.upload_enabled
+            oe_data["announce_url"] = self.cfg_payload.oe_tracker.announce_url
+            oe_data["enabled"] = self.cfg_payload.oe_tracker.enabled
+            oe_data["source"] = self.cfg_payload.oe_tracker.source
+            oe_data["comments"] = self.cfg_payload.oe_tracker.comments
+            oe_data["nfo_template"] = self.cfg_payload.oe_tracker.nfo_template
+            oe_data["max_piece_size"] = self.cfg_payload.oe_tracker.max_piece_size
+            oe_data["url_type"] = URLType(self.cfg_payload.oe_tracker.url_type).value
+            oe_data["column_s"] = self.cfg_payload.oe_tracker.column_s
+            oe_data["column_space"] = self.cfg_payload.oe_tracker.column_space
+            oe_data["row_space"] = self.cfg_payload.oe_tracker.row_space
+            oe_data["mvr_title_override_enabled"] = (
+                self.cfg_payload.oe_tracker.mvr_title_override_enabled
+            )
+            oe_data["mvr_title_colon_replace"] = ColonReplace(
+                self.cfg_payload.oe_tracker.mvr_title_colon_replace
+            ).value
+            oe_data["mvr_title_token_override"] = (
+                self.cfg_payload.oe_tracker.mvr_title_token_override
+            )
+            oe_data["mvr_title_replace_map"] = (
+                self.cfg_payload.oe_tracker.mvr_title_replace_map
+            )
+            oe_data["api_key"] = self.cfg_payload.oe_tracker.api_key
+            oe_data["anonymous"] = self.cfg_payload.oe_tracker.anonymous
+            oe_data["internal"] = self.cfg_payload.oe_tracker.internal
+            oe_data["personal_release"] = self.cfg_payload.oe_tracker.personal_release
+            oe_data["image_width"] = self.cfg_payload.oe_tracker.image_width
+
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
 
@@ -1311,6 +1443,91 @@ class Config:
                 image_width=darkpeers_tracker_data["image_width"],
             )
 
+            shri_tracker_data = tracker_data["shareisland"]
+            shri_tracker = ShareIslandInfo(
+                upload_enabled=shri_tracker_data["upload_enabled"],
+                announce_url=shri_tracker_data["announce_url"],
+                enabled=shri_tracker_data["enabled"],
+                source=shri_tracker_data["source"],
+                comments=shri_tracker_data["comments"],
+                nfo_template=shri_tracker_data["nfo_template"],
+                max_piece_size=shri_tracker_data["max_piece_size"],
+                url_type=URLType(shri_tracker_data["url_type"]),
+                column_s=shri_tracker_data["column_s"],
+                column_space=shri_tracker_data["column_space"],
+                row_space=shri_tracker_data["row_space"],
+                mvr_title_override_enabled=shri_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    shri_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=shri_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=shri_tracker_data["mvr_title_replace_map"],
+                api_key=shri_tracker_data["api_key"],
+                anonymous=shri_tracker_data["anonymous"],
+                internal=shri_tracker_data["internal"],
+                personal_release=shri_tracker_data["personal_release"],
+                opt_in_to_mod_queue=shri_tracker_data["opt_in_to_mod_queue"],
+                image_width=shri_tracker_data["image_width"],
+            )
+
+            ulcx_tracker_data = tracker_data["uploadcx"]
+            ulcx_tracker = ShareIslandInfo(
+                upload_enabled=ulcx_tracker_data["upload_enabled"],
+                announce_url=ulcx_tracker_data["announce_url"],
+                enabled=ulcx_tracker_data["enabled"],
+                source=ulcx_tracker_data["source"],
+                comments=ulcx_tracker_data["comments"],
+                nfo_template=ulcx_tracker_data["nfo_template"],
+                max_piece_size=ulcx_tracker_data["max_piece_size"],
+                url_type=URLType(ulcx_tracker_data["url_type"]),
+                column_s=ulcx_tracker_data["column_s"],
+                column_space=ulcx_tracker_data["column_space"],
+                row_space=ulcx_tracker_data["row_space"],
+                mvr_title_override_enabled=ulcx_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    ulcx_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=ulcx_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=ulcx_tracker_data["mvr_title_replace_map"],
+                api_key=ulcx_tracker_data["api_key"],
+                anonymous=ulcx_tracker_data["anonymous"],
+                internal=ulcx_tracker_data["internal"],
+                personal_release=ulcx_tracker_data["personal_release"],
+                image_width=ulcx_tracker_data["image_width"],
+            )
+
+            oe_tracker_data = tracker_data["only_encodes"]
+            oe_tracker = OnlyEncodesInfo(
+                upload_enabled=oe_tracker_data["upload_enabled"],
+                announce_url=oe_tracker_data["announce_url"],
+                enabled=oe_tracker_data["enabled"],
+                source=oe_tracker_data["source"],
+                comments=oe_tracker_data["comments"],
+                nfo_template=oe_tracker_data["nfo_template"],
+                max_piece_size=oe_tracker_data["max_piece_size"],
+                url_type=URLType(oe_tracker_data["url_type"]),
+                column_s=oe_tracker_data["column_s"],
+                column_space=oe_tracker_data["column_space"],
+                row_space=oe_tracker_data["row_space"],
+                mvr_title_override_enabled=oe_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    oe_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=oe_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=oe_tracker_data["mvr_title_replace_map"],
+                api_key=oe_tracker_data["api_key"],
+                anonymous=oe_tracker_data["anonymous"],
+                internal=oe_tracker_data["internal"],
+                personal_release=oe_tracker_data["personal_release"],
+                image_width=oe_tracker_data["image_width"],
+            )
+
             # torrent clients
             torrent_client_data = toml_data["torrent_client"]
 
@@ -1408,6 +1625,9 @@ class Config:
                 huno_tracker=huno_tracker,
                 lst_tracker=lst_tracker,
                 darkpeers_tracker=darkpeers_tracker,
+                shareisland_tracker=shri_tracker,
+                ulcx_tracker=ulcx_tracker,
+                oe_tracker=oe_tracker,
                 qbittorrent=qbittorrent,
                 deluge=deluge,
                 rtorrent=rtorrent,
@@ -1601,6 +1821,15 @@ class Config:
             TrackerSelection.DARK_PEERS: self.cfg_payload.darkpeers_tracker
             if not defaults
             else self.cfg_payload_defaults.darkpeers_tracker,
+            TrackerSelection.SHARE_ISLAND: self.cfg_payload.shareisland_tracker
+            if not defaults
+            else self.cfg_payload_defaults.shareisland_tracker,
+            TrackerSelection.UPLOAD_CX: self.cfg_payload.ulcx_tracker
+            if not defaults
+            else self.cfg_payload_defaults.ulcx_tracker,
+            TrackerSelection.ONLY_ENCODES: self.cfg_payload.oe_tracker
+            if not defaults
+            else self.cfg_payload_defaults.oe_tracker,
         }
 
     def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:

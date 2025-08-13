@@ -20,10 +20,25 @@ from src.enums.trackers.darkpeers import (
 )
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
+from src.enums.trackers.onlyencodes import (
+    OnlyEncodesCategory,
+    OnlyEncodesResolution,
+    OnlyEncodesType,
+)
 from src.enums.trackers.reelflix import (
     ReelFlixCategory,
     ReelFlixResolution,
     ReelFlixType,
+)
+from src.enums.trackers.shareisland import (
+    ShareIslandCategory,
+    ShareIslandResolution,
+    ShareIslandType,
+)
+from src.enums.trackers.uploadcx import (
+    UploadCXCategory,
+    UploadCXResolution,
+    UploadCXType,
 )
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
@@ -31,7 +46,14 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 
 
 CategoryEnums = (
-    ReelFlixCategory | AitherCategory | HunoCategory | LSTCategory | DarkPeersCategory
+    ReelFlixCategory
+    | AitherCategory
+    | HunoCategory
+    | LSTCategory
+    | DarkPeersCategory
+    | ShareIslandCategory
+    | UploadCXCategory
+    | OnlyEncodesCategory
 )
 ResolutionEnums = (
     ReelFlixResolution
@@ -39,8 +61,20 @@ ResolutionEnums = (
     | HunoResolution
     | LSTResolution
     | DarkPeersResolution
+    | ShareIslandResolution
+    | UploadCXResolution
+    | OnlyEncodesResolution
 )
-TypeEnums = ReelFlixType | AitherType | HunoType | LSTType | DarkPeersType
+TypeEnums = (
+    ReelFlixType
+    | AitherType
+    | HunoType
+    | LSTType
+    | DarkPeersType
+    | ShareIslandType
+    | UploadCXType
+    | OnlyEncodesType
+)
 
 
 class Unit3dBaseUploader:
@@ -224,9 +258,13 @@ class Unit3dBaseUploader:
         # web
         if "web" in title_lowered:
             if re.match(r"web.?dl", title_lowered):
-                return self.type_enum.WEBDL.value
+                webdl_value = getattr(self.type_enum, "WEBDL", None)
+                if webdl_value:
+                    return webdl_value.value
             elif re.match(r"web.?rip", title_lowered):
-                return self.type_enum.WEBRIP.value
+                webrip_value = getattr(self.type_enum, "WEBRIP", None)
+                if webrip_value:
+                    return webrip_value.value
 
         # hdtv
         if "hdtv" in title_lowered or "hd-tv" in title_lowered:
@@ -244,7 +282,9 @@ class Unit3dBaseUploader:
                 "x265",
             )
         ):
-            return self.type_enum.ENCODE.value
+            encode_value = getattr(self.type_enum, "ENCODE", None)
+            if encode_value:
+                return encode_value.value
 
         raise TrackerError(f"Failed to determine 'Type ID' for {self.tracker_name}")
 
