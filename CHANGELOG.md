@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased] - 2025-?m-?d
+
+### Added
+
+- 
+
+### Changed
+
+- 
+
+### Fixed
+
+- Edge case where sync images could be out of sync in the ImageViewer Sync tab.
+
+### Removed
+
+- 
+
 ## [0.8.6] - 2025-08-12
 
 ### Added
