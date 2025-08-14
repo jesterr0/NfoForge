@@ -38,6 +38,7 @@ from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearc
 from src.frontend.global_signals import GSigs
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.logger.nfo_forge_logger import LOG
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -120,7 +121,14 @@ class MediaSearch(BaseWizardPage):
         self._on_finished_cb = on_finished_cb
 
         self.config = config
-        self.backend = MediaSearchBackEnd(api_key=self.config.cfg_payload.tmdb_api_key)
+        self.backend = MediaSearchBackEnd(
+            api_key=self.config.cfg_payload.tmdb_api_key,
+            language=self.config.cfg_payload.tmdb_language,
+        )
+
+        # listen for settings changes to update language
+        GSigs().settings_close.connect(self._update_backend_settings)
+
         self.queued_worker: QueuedWorker | None = None
         self.current_source = None
         self.loading_complete = False
@@ -358,6 +366,20 @@ class MediaSearch(BaseWizardPage):
         self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
         self.config.media_search_payload.tmdb_data = item_data.get("raw_data")
 
+        # title selection handled by backend with smart regional preferences
+        self.config.media_search_payload.title = item_data.get("title")
+        self.config.media_search_payload.year = item_data.get("year")
+        original_title = item_data.get("original_title")
+        self.config.media_search_payload.original_title = (
+            normalize_super_sub(original_title) if original_title else None
+        )
+
+        # set genres from TMDB data
+        genres = None
+        if isinstance(item_data.get("genre_ids"), list):
+            genres = item_data.get("genre_ids")
+        self.config.media_search_payload.genres = genres if genres else []
+
         if media_data:
             imdb_data = media_data.get("imdb_data")
             tvdb_data = media_data.get("tvdb_data")
@@ -367,26 +389,6 @@ class MediaSearch(BaseWizardPage):
             if imdb_data and imdb_data.get("success") is True:
                 imdb_data_result = imdb_data.get("result")
                 self.config.media_search_payload.imdb_data = imdb_data_result
-                self.config.media_search_payload.title = (
-                    normalize_super_sub(str(imdb_data_result.get("title")))
-                    if imdb_data_result.get("title")
-                    else None
-                )
-                try:
-                    self.config.media_search_payload.year = int(
-                        imdb_data_result.get("year")
-                    )
-                except ValueError:
-                    pass
-                self.config.media_search_payload.original_title = (
-                    normalize_super_sub(str(media_data.get("original title")))
-                    if media_data.get("original title")
-                    else None
-                )
-                genres = None
-                if isinstance(item_data.get("genre_ids"), list):
-                    genres = item_data.get("genre_ids")
-                self.config.media_search_payload.genres = genres if genres else []
 
             # tvdb data
             if tvdb_data and tvdb_data.get("success") is True:
@@ -422,6 +424,12 @@ class MediaSearch(BaseWizardPage):
                     self.mal_id_entry.setText(
                         str(self.config.media_search_payload.mal_id)
                     )
+        else:
+            # title selection handled by backend, no additional processing needed
+            LOG.info(
+                LOG.LOG_SOURCE.FE,
+                f"Using TMDB title selected by backend: '{self.config.media_search_payload.title}'",
+            )
 
     def _ask_user_for_id(self, id_source: str) -> int:
         value = 0
@@ -434,6 +442,13 @@ class MediaSearch(BaseWizardPage):
         if ask_user_ok and ask_user_id:
             value = ask_user_id
         return value
+
+    @Slot()
+    def _update_backend_settings(self) -> None:
+        """Update MediaSearchBackEnd when settings change"""
+        new_language = self.config.cfg_payload.tmdb_language
+        self.backend.update_language(new_language)
+        self.backend.update_api_key(self.config.cfg_payload.tmdb_api_key)
 
     def isComplete(self) -> bool:
         """Overrides isComplete method to control the next button"""

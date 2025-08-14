@@ -286,6 +286,7 @@ class Config:
                 self.cfg_payload.encode_media_ext_filter
             )
             general_data["releasers_name"] = self.cfg_payload.releasers_name
+            general_data["tmdb_language"] = self.cfg_payload.tmdb_language
             general_data["timeout"] = self.cfg_payload.timeout
             general_data["enable_prompt_overview"] = (
                 self.cfg_payload.enable_prompt_overview
@@ -1602,6 +1603,7 @@ class Config:
                     "encode_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
                 ),
                 releasers_name=general_data.get("releasers_name", ""),
+                tmdb_language=general_data.get("tmdb_language", "en-US"),
                 timeout=general_data.get("timeout", 60),
                 enable_prompt_overview=general_data.get("enable_prompt_overview", True),
                 enable_mkbrr=general_data.get("enable_mkbrr", True),

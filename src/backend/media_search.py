@@ -18,22 +18,25 @@ from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 
 
 class MediaSearchBackEnd:
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: str | None = None, language: str = "en-US"):
         self.media_data = dict()
         self.session = niquests.Session()
         self.params = {
             "api_key": api_key,
-            "language": "en-US",
+            "language": language,
             "include_adult": "false",
         }
 
     def update_api_key(self, api_key: str) -> None:
         self.params["api_key"] = api_key
 
+    def update_language(self, language: str) -> None:
+        self.params["language"] = language
+
     def _parse_tmdb_api(self, media_str: str):
         media_title, media_year = self._guessit(media_str)
 
-        # Create a list of URLs for movie and TV search
+        # create a list of URLs for movie and TV search
         movie_url = (
             f"https://api.themoviedb.org/3/search/movie?page=1&query={media_title}"
         )
@@ -59,6 +62,13 @@ class MediaSearchBackEnd:
                     and movie_imdb_id.content
                     and movie_result["release_date"]
                 ):
+                    # fetch movie details with alternative titles for smart title selection
+                    movie_details = self._fetch_tmdb_movie_details(movie_result["id"])
+                    alternative_titles_data = None
+                    if movie_details.ok and movie_details.content:
+                        details_json = movie_details.json()
+                        alternative_titles_data = details_json.get("alternative_titles")
+
                     release_date = str(movie_result["release_date"]).split("-")
                     full_release_date = (
                         f"{release_date[1]}-{release_date[2]}-{release_date[0]}"
@@ -75,7 +85,12 @@ class MediaSearchBackEnd:
                         full_release_date if full_release_date else ""
                     )
                     mv_year = release_date[0]
-                    mv_title = movie_result.get("title", "")
+                    # use smart title selection based on language preference
+                    tmdb_title = movie_result.get("title", "")
+                    original_language = movie_result.get("original_language", "")
+                    mv_title = self._select_preferred_title(
+                        tmdb_title, alternative_titles_data, original_language
+                    )
                     mv_original_title = movie_result.get("original_title", "")
                     mv_poster_path = movie_result.get("poster_path", "")
 
@@ -91,7 +106,7 @@ class MediaSearchBackEnd:
 
                     media_dict.update(
                         {
-                            f"{str(base_num)}) {movie_result['title']} ({release_date[0]})": {
+                            f"{str(base_num)}) {mv_title} ({release_date[0]})": {
                                 "tvdb_id": mv_tvdb_id,
                                 "imdb_id": mv_imdb_id,
                                 "plot": mv_plot,
@@ -111,6 +126,15 @@ class MediaSearchBackEnd:
             if tv_result:
                 tv_imdb_id = self._fetch_tmdb_external_ids(tv_result["id"])
                 if tv_imdb_id.ok and tv_imdb_id.content and tv_result["first_air_date"]:
+                    # fetch TV details with alternative titles for smart title selection
+                    tv_details = self._fetch_tmdb_tv_details(tv_result["id"])
+                    tv_alternative_titles_data = None
+                    if tv_details.ok and tv_details.content:
+                        tv_details_json = tv_details.json()
+                        tv_alternative_titles_data = tv_details_json.get(
+                            "alternative_titles"
+                        )
+
                     release_date = str(tv_result["first_air_date"]).split("-")
                     full_release_date = (
                         f"{release_date[1]}-{release_date[2]}-{release_date[0]}"
@@ -126,8 +150,15 @@ class MediaSearchBackEnd:
                         full_release_date if full_release_date else ""
                     )
                     tv_year = release_date[0]
-                    tv_title = tv_result.get("title", "")
-                    tv_original_title = tv_result.get("original_title", "")
+                    # use smart title selection based on language preference
+                    # TV shows use "name" instead of "title"
+                    tmdb_tv_title = tv_result.get("name", "")
+                    tv_original_language = tv_result.get("original_language", "")
+                    tv_title = self._select_preferred_title(
+                        tmdb_tv_title, tv_alternative_titles_data, tv_original_language
+                    )
+                    # TV shows use "original_name"
+                    tv_original_title = tv_result.get("original_name", "")
                     tv_poster_path = tv_result.get("poster_path", "")
                     tv_genre_ids = tv_result.get("genre_ids")
 
@@ -143,7 +174,7 @@ class MediaSearchBackEnd:
 
                     media_dict.update(
                         {
-                            f"{str(base_num)}) {tv_result['name']} ({release_date[0]})": {
+                            f"{str(base_num)}) {tv_title} ({release_date[0]})": {
                                 "tvdb_id": tv_tvdb_id,
                                 "imdb_id": tv_imdb_id,
                                 "plot": tv_plot,
@@ -172,10 +203,135 @@ class MediaSearchBackEnd:
         except niquests.exceptions.ConnectionError:
             return []
 
-    def _fetch_tmdb_external_ids(self, media_id):
+    def _fetch_tmdb_external_ids(self, media_id) -> niquests.Response:
         url = f"https://api.themoviedb.org/3/movie/{media_id}/external_ids"
         with self.session.get(url, params=self.params) as response:
             return response
+
+    def _fetch_tmdb_movie_details(self, media_id: str | int) -> niquests.Response:
+        """Fetch movie details with alternative titles"""
+        url = f"https://api.themoviedb.org/3/movie/{media_id}?append_to_response=alternative_titles"
+        with self.session.get(url, params=self.params) as response:
+            return response
+
+    def _fetch_tmdb_tv_details(self, media_id: str | int) -> niquests.Response:
+        """Fetch TV details with alternative titles"""
+        url = f"https://api.themoviedb.org/3/tv/{media_id}?append_to_response=alternative_titles"
+        with self.session.get(url, params=self.params) as response:
+            return response
+
+    def _select_preferred_title(
+        self,
+        tmdb_title: str,
+        alternative_titles_data: dict | None,
+        original_language: str = "",
+    ) -> str:
+        """Select the preferred title based on language setting with intelligent fallback hierarchy"""
+        if not alternative_titles_data:
+            return tmdb_title
+
+        current_language = self.params.get("language", "en-US")
+
+        # Parse language components from user's preference
+        language_parts = current_language.split("-")
+        base_language = language_parts[0].lower()  # e.g., "es" from "es-419"
+        country_code = language_parts[-1].upper() if len(language_parts) > 1 else None
+
+        from src.logger.nfo_forge_logger import LOG
+
+        # NEW: Check if user's language matches the original language
+        if original_language and base_language == original_language.lower():
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                f"Using original title for {current_language} - matches original language '{original_language}': '{tmdb_title}'",
+            )
+            return tmdb_title
+
+        titles = alternative_titles_data.get("titles", [])
+
+        # try exact language-country match (e.g., es-419)
+        if country_code:
+            for title_data in titles:
+                title_country = title_data.get("iso_3166_1", "").upper()
+                if title_country == country_code:
+                    exact_title = title_data.get("title", "").strip()
+                    if exact_title:
+                        LOG.info(
+                            LOG.LOG_SOURCE.BE,
+                            f"Exact match found for {current_language}: '{exact_title}' "
+                            f"(country: {country_code})",
+                        )
+                        return exact_title
+
+        # try language family match (e.g., any es-XX when looking for es-419)
+        if base_language != "en":  # skip this for English to maintain existing logic
+            language_family_titles = []
+            for title_data in titles:
+                title_country = title_data.get("iso_3166_1", "").upper()
+                family_title = title_data.get("title", "").strip()
+                if family_title and title_country:
+                    # collect all titles from the same language family
+                    language_family_titles.append((family_title, title_country))
+
+            if language_family_titles:
+                # use the first available title from the language family
+                family_title, family_country = language_family_titles[0]
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"Language family match for {current_language}: '{family_title}' "
+                    f"(from {base_language}-{family_country})",
+                )
+                return family_title
+
+        # English fallback logic (for English users or final fallback)
+        if current_language.startswith("en") or base_language == "en":
+            # extract country code from language (e.g., "en-US" -> "US")
+            en_country_code = country_code if country_code else "US"
+
+            # look for country-specific English title
+            for title_data in titles:
+                if title_data.get("iso_3166_1") == en_country_code:
+                    regional_title = title_data.get("title", "").strip()
+                    if regional_title:
+                        LOG.info(
+                            LOG.LOG_SOURCE.BE,
+                            f"Using {en_country_code} alternative title for {current_language}: "
+                            f"'{regional_title}' instead of TMDB: '{tmdb_title}'",
+                        )
+                        return regional_title
+
+            # if no exact English country match, try US as fallback
+            if en_country_code != "US":
+                for title_data in titles:
+                    if title_data.get("iso_3166_1") == "US":
+                        us_title = title_data.get("title", "").strip()
+                        if us_title:
+                            LOG.info(
+                                LOG.LOG_SOURCE.BE,
+                                f"Using US alternative title as fallback for {current_language}: "
+                                f"'{us_title}' instead of TMDB: '{tmdb_title}'",
+                            )
+                            return us_title
+
+        # final English fallback for non-English languages
+        elif base_language != "en":
+            for title_data in titles:
+                if title_data.get("iso_3166_1") == "US":
+                    en_fallback_title = title_data.get("title", "").strip()
+                    if en_fallback_title:
+                        LOG.info(
+                            LOG.LOG_SOURCE.BE,
+                            f"Using English fallback for {current_language}: '{en_fallback_title}' "
+                            f"(no {base_language} alternatives found)",
+                        )
+                        return en_fallback_title
+
+        # final fallback: use TMDB default title
+        LOG.info(
+            LOG.LOG_SOURCE.BE,
+            f"Using TMDB default title for {current_language}: '{tmdb_title}' (no alternatives found)",
+        )
+        return tmdb_title
 
     @staticmethod
     def _guessit(input_string: str) -> tuple[str | None, str]:

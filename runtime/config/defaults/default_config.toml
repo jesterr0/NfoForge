@@ -6,6 +6,7 @@ media_mode = 1
 source_media_ext_filter = [".mkv", ".mp4"]
 encode_media_ext_filter = [".mkv", ".mp4"]
 releasers_name = ""
+tmdb_language = "en-US"
 timeout = 60
 enable_prompt_overview = true
 enable_mkbrr = true

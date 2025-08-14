@@ -56,6 +56,7 @@ class ConfigPayload:
     source_media_ext_filter: list[str]
     encode_media_ext_filter: list[str]
     releasers_name: str
+    tmdb_language: str
     timeout: int
     enable_prompt_overview: bool
     enable_mkbrr: bool
