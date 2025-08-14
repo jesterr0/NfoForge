@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - 2025-?m-?d
+## [0.8.7] - 2025-08-14
 
 ### Added
 
@@ -31,10 +31,6 @@
 - Bug when working with VC-1 files and generating images due to auto crop and basic comparison mode.
 - Media search bug when stripping text is fixed.
 - Bug for template validation when it comes to Unit3D trackers.
-
-### Removed
-
--
 
 ## [0.8.6] - 2025-08-12
 
