@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -29,6 +30,7 @@ from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
 from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
+from src.enums.tmdb_languages import TMDBLanguage
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.global_signals import GSigs
@@ -156,6 +158,15 @@ class GeneralSettings(BaseSettings):
         self.global_timeout_spinbox.setRange(2, 120)
         self.global_timeout_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
 
+        tmdb_language_lbl = QLabel("TMDB Language", self)
+        tmdb_language_lbl.setToolTip(
+            "Sets the language for TMDB API responses (movie/tv metadata, plot text, etc.)"
+        )
+        self.tmdb_language_combo = CustomComboBox(
+            completer=True, completer_strict=True, disable_mouse_wheel=True, parent=self
+        )
+        self.tmdb_language_combo.activated.connect(self._handle_language_selection)
+
         prompt_overview = QLabel("Prompt for Overview", self)
         prompt_overview.setToolTip(
             "If enabled during processing an editable overview will pop up allowing the user to make final edits"
@@ -278,6 +289,8 @@ class GeneralSettings(BaseSettings):
             create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
+        self.add_layout(create_form_layout(tmdb_language_lbl, self.tmdb_language_combo))
+        self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(
             create_form_layout(prompt_overview, self.enable_prompt_overview)
         )
@@ -315,6 +328,7 @@ class GeneralSettings(BaseSettings):
         )
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
+        self._load_tmdb_language_combo(payload.tmdb_language)
         self.enable_prompt_overview.setChecked(payload.enable_prompt_overview)
         self.enable_mkbrr.setChecked(payload.enable_mkbrr)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
@@ -390,6 +404,98 @@ class GeneralSettings(BaseSettings):
             for item in self.config.ACCEPTED_EXTENSIONS:
                 accepted_files.append((item, True))
         filter_widget.update_items(accepted_files)
+
+    def _load_tmdb_language_combo(self, current_language: str) -> None:
+        """Load TMDB language options into the combo box and set current selection."""
+        self.tmdb_language_combo.clear()
+
+        # add all available languages
+        for language in TMDBLanguage:
+            self.tmdb_language_combo.addItem(language.display_name, language.code)
+
+        # add a separator and custom option
+        self.tmdb_language_combo.insertSeparator(self.tmdb_language_combo.count())
+        self.tmdb_language_combo.addItem("Custom Language Code...", "CUSTOM")
+
+        # set current selection
+        current_index = self.tmdb_language_combo.findData(current_language)
+        if current_index >= 0:
+            self.tmdb_language_combo.setCurrentIndex(current_index)
+        else:
+            # check if it's a custom language code not in our enum
+            if current_language != "en-US":  # not the default
+                # add the custom language as a temporary item
+                custom_display = f"Custom: {current_language}"
+                self.tmdb_language_combo.insertItem(
+                    self.tmdb_language_combo.count() - 2,  # before separator
+                    custom_display,
+                    current_language,
+                )
+                # select the custom item
+                custom_index = self.tmdb_language_combo.findData(current_language)
+                if custom_index >= 0:
+                    self.tmdb_language_combo.setCurrentIndex(custom_index)
+            else:
+                # default to English if not found
+                default_index = self.tmdb_language_combo.findData("en-US")
+                if default_index >= 0:
+                    self.tmdb_language_combo.setCurrentIndex(default_index)
+
+    @Slot(int)
+    def _handle_language_selection(self, index: int) -> None:
+        """Handle language selection, including custom input option."""
+        selected_data = self.tmdb_language_combo.itemData(index)
+
+        if selected_data == "CUSTOM":
+            text, ok = QInputDialog.getText(
+                self,
+                "Custom Language Code",
+                "Enter TMDB language code (e.g., 'es-MX', 'pt-BR'):\n\n"
+                "Format: language-COUNTRY (ISO 639-1 + ISO 3166-1)\n"
+                "Examples: en-US, fr-CA, zh-CN, ar-SA",
+                text="en-US",
+            )
+
+            if ok and text.strip():
+                custom_code = text.strip()
+                # validate basic format (language-COUNTRY or just language)
+                if (
+                    len(custom_code) >= 2
+                    and custom_code.replace("-", "").replace("_", "").isalpha()
+                ):
+                    # normalize format (replace underscores with hyphens)
+                    custom_code = custom_code.replace("_", "-")
+                    # remove any existing custom entries
+                    for i in range(self.tmdb_language_combo.count() - 1, -1, -1):
+                        item_data = self.tmdb_language_combo.itemData(i)
+                        if item_data and (
+                            item_data.startswith("Custom:")
+                            or (
+                                item_data not in [lang.code for lang in TMDBLanguage]
+                                and item_data != "CUSTOM"
+                            )
+                        ):
+                            self.tmdb_language_combo.removeItem(i)
+
+                    # add the new custom language
+                    custom_display = f"Custom: {custom_code}"
+                    insert_index = (
+                        self.tmdb_language_combo.count() - 2
+                    )  # Before separator
+                    self.tmdb_language_combo.insertItem(
+                        insert_index, custom_display, custom_code
+                    )
+                    self.tmdb_language_combo.setCurrentIndex(insert_index)
+                else:
+                    # invalid input, revert to previous selection
+                    self.tmdb_language_combo.setCurrentIndex(0)
+            else:
+                # user cancelled, revert to previous selection
+                self.tmdb_language_combo.setCurrentIndex(0)
+
+        GSigs().main_window_update_status_tip.emit(
+            "Apply changes to reflect TMDB localization in template preview", 10000
+        )
 
     @Slot(int)
     def _change_theme(self, _: int | None = None) -> None:
@@ -549,6 +655,7 @@ class GeneralSettings(BaseSettings):
         self.config.cfg_payload.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
+        self.config.cfg_payload.tmdb_language = self.tmdb_language_combo.currentData()
         self.config.cfg_payload.timeout = self.global_timeout_spinbox.value()
         self.config.cfg_payload.enable_prompt_overview = (
             self.enable_prompt_overview.isChecked()
@@ -582,6 +689,14 @@ class GeneralSettings(BaseSettings):
             user_settings=None, filter_widget=self.encode_ext_filter, defaults=True
         )
         self.releasers_name_entry.clear()
+        # Set TMDB language to default
+        for i in range(self.tmdb_language_combo.count()):
+            if (
+                self.tmdb_language_combo.itemData(i)
+                == self.config.cfg_payload_defaults.tmdb_language
+            ):
+                self.tmdb_language_combo.setCurrentIndex(i)
+                break
         self.global_timeout_spinbox.setValue(self.config.cfg_payload_defaults.timeout)
         self.enable_prompt_overview.setChecked(
             self.config.cfg_payload.enable_prompt_overview
