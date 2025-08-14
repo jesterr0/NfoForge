@@ -34,6 +34,7 @@
 | `{mi_video_dynamic_range_type}` | Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ) |
 | `{mi_video_dynamic_range_type_inc_sdr}` | Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) |
 | `{mi_video_dynamic_range_type_inc_sdr_over_1080}` | Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080 |
+| `{mi_video_format}` | Video format (AVC/HEVC/MPEG Video) |
 | `{mi_video_height}` | Video height (1040) |
 | `{mi_video_language_full}` | Video language (English) |
 | `{mi_video_language_iso_639_1}` | Video language (EN) |
