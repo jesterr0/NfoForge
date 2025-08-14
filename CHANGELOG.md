@@ -9,6 +9,7 @@
 - TMDB language settings.
   - Smart Language Selection: Added comprehensive TMDB language support with 69 languages including regional variants (en-US/en-GB, es-ES/es-MX, zh-CN/zh-TW, etc.).
   - Automatically uses original titles when user's language matches the movie's original language (e.g., Italian users get authentic Italian titles for Italian films).
+- New FileToken **{mi_video_format}**, returns the video format e.g. HEVC, AVC, MPEG Video.
 
 ### Changed
 

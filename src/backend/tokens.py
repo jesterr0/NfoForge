@@ -139,6 +139,9 @@ class Tokens:
         "{mi_video_dynamic_range_type_inc_sdr_over_1080}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
     )
+    MI_VIDEO_FORMAT = FileToken(
+        "{mi_video_format}", "Video format (AVC/HEVC/MPEG Video)"
+    )
     MI_VIDEO_HEIGHT = FileToken("{mi_video_height}", "Video height (1040)")
     MI_VIDEO_LANGUAGE_FULL = FileToken(
         "{mi_video_language_full}", "Video language (English)"

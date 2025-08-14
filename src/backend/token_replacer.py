@@ -481,6 +481,9 @@ class TokenReplacer:
                 token_data, include_sdr=True, uhd_only=True
             )
 
+        elif token_data.bracket_token == Tokens.MI_VIDEO_FORMAT.token:
+            return self._mi_video_format(token_data)
+
         elif token_data.bracket_token == Tokens.MI_VIDEO_HEIGHT.token:
             return self._mi_video_height(token_data)
 
@@ -1255,6 +1258,14 @@ class TokenReplacer:
                     dynamic_range_type = ""
 
         return self._optional_user_input(dynamic_range_type, token_data)
+
+    def _mi_video_format(self, token_data: TokenData) -> str:
+        v_format = ""
+        if self.media_info_obj and self.media_info_obj.video_tracks:
+            track = self.media_info_obj.video_tracks[0]
+            v_format = str(track.format) if track.format else ""
+
+        return self._optional_user_input(v_format, token_data)
 
     def _mi_video_height(self, token_data: TokenData) -> str:
         height = ""
