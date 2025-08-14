@@ -477,12 +477,14 @@ class TemplatesSettings(BaseSettings):
                 TrackerSelection.UPLOAD_CX,
                 TrackerSelection.ONLY_ENCODES,
             ):
-                rf_template = self.template_selector.backend.read_template(
-                    self.config.cfg_payload.rf_tracker.nfo_template
+                unit3d_template = self.template_selector.backend.read_template(
+                    self.config.tracker_map[cur_tracker].nfo_template
                 )
-                if rf_template:
+                if unit3d_template:
                     rf_match_rule = r"\{\{\s?screen_shots\s?\}\}"
-                    if not re.search(rf_match_rule, rf_template, flags=re.MULTILINE):
+                    if not re.search(
+                        rf_match_rule, unit3d_template, flags=re.MULTILINE
+                    ):
                         if (
                             QMessageBox.question(
                                 self,
