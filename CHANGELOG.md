@@ -18,6 +18,7 @@
   - Brings VC-1 image generation up to speed with other codecs.
 - Now automatically de-selects preview on template tab if we're swapping tabs in settings.
 - Optimized API calls to TMDB.
+- No longer overrides TMDB title with IMDb.
 
 ### Fixed
 
