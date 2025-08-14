@@ -1,7 +1,5 @@
 import asyncio
 import base64
-import concurrent.futures
-from itertools import zip_longest
 import re
 from typing import Any
 
@@ -36,160 +34,90 @@ class MediaSearchBackEnd:
     def _parse_tmdb_api(self, media_str: str):
         media_title, media_year = self._guessit(media_str)
 
-        # create a list of URLs for movie and TV search
-        movie_url = (
-            f"https://api.themoviedb.org/3/search/movie?page=1&query={media_title}"
+        multi_url = (
+            f"https://api.themoviedb.org/3/search/multi?page=1&query={media_title}"
         )
-        tv_url = f"https://api.themoviedb.org/3/search/tv?page=1&query={media_title}"
         if media_year:
-            movie_url += f"&year={media_year}"
-            tv_url += f"&year={media_year}"
+            multi_url += f"&year={media_year}"
 
-        # Execute requests concurrently
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            movie_results, tv_results = list(
-                executor.map(self._fetch_tmdb_results, [movie_url, tv_url])
-            )
+        multi_results = self._fetch_tmdb_results(multi_url)
 
         media_dict = {}
         base_num = 0
 
-        for movie_result, tv_result in zip_longest(movie_results, tv_results):
-            if movie_result:
-                movie_imdb_id = self._fetch_tmdb_external_ids(movie_result["id"])
-                if (
-                    movie_imdb_id.ok
-                    and movie_imdb_id.content
-                    and movie_result["release_date"]
-                ):
-                    # fetch movie details with alternative titles for smart title selection
-                    movie_details = self._fetch_tmdb_movie_details(movie_result["id"])
-                    alternative_titles_data = None
-                    if movie_details.ok and movie_details.content:
-                        details_json = movie_details.json()
-                        alternative_titles_data = details_json.get("alternative_titles")
+        for result in multi_results:
+            media_type = result.get("media_type")
 
-                    release_date = str(movie_result["release_date"]).split("-")
-                    full_release_date = (
-                        f"{release_date[1]}-{release_date[2]}-{release_date[0]}"
-                    )
-                    base_num += 1
+            # skip person results, only process movie and tv
+            if media_type not in ["movie", "tv"]:
+                continue
 
-                    mv_tvdb_id = str(movie_result.get("id", ""))
-                    mv_imdb_id = movie_imdb_id.json().get("imdb_id", "")
-                    mv_plot = movie_result.get("overview", "")
-                    mv_vote_average = str(movie_result.get("vote_average", ""))
-                    mv_vote_get = movie_result.get("vote_average")
-                    mv_vote_average = str(round(mv_vote_get, 1)) if mv_vote_get else ""
-                    mv_full_release_date = (
-                        full_release_date if full_release_date else ""
-                    )
-                    mv_year = release_date[0]
-                    # use smart title selection based on language preference
-                    tmdb_title = movie_result.get("title", "")
-                    original_language = movie_result.get("original_language", "")
-                    mv_title = self._select_preferred_title(
-                        tmdb_title, alternative_titles_data, original_language
-                    )
-                    mv_original_title = movie_result.get("original_title", "")
-                    mv_poster_path = movie_result.get("poster_path", "")
+            # check if the result has a valid release date and extract it
+            release_date = None
+            if media_type == "movie" and result.get("release_date"):
+                release_date = str(result["release_date"]).split("-")
+            elif media_type == "tv" and result.get("first_air_date"):
+                release_date = str(result["first_air_date"]).split("-")
 
-                    # get genre id's and convert them to enums
-                    get_mv_genre_ids = movie_result.get("genre_ids")
-                    mv_genre_ids = []
-                    if get_mv_genre_ids:
-                        for mv_genre in get_mv_genre_ids:
-                            try:
-                                mv_genre_ids.append(TMDBGenreIDsMovies(mv_genre))
-                            except ValueError:
-                                mv_genre_ids.append(TMDBGenreIDsMovies.UNDEFINED)
+            if not release_date:
+                continue
 
-                    media_dict.update(
-                        {
-                            f"{str(base_num)}) {mv_title} ({release_date[0]})": {
-                                "tvdb_id": mv_tvdb_id,
-                                "imdb_id": mv_imdb_id,
-                                "plot": mv_plot,
-                                "vote_average": mv_vote_average,
-                                "full_release_date": mv_full_release_date,
-                                "year": mv_year,
-                                "title": normalize_super_sub(mv_title),
-                                "original_title": mv_original_title,
-                                "poster_path": mv_poster_path,
-                                "genre_ids": mv_genre_ids,
-                                "media_type": "Movie",
-                                "raw_data": movie_result,
-                            }
-                        }
-                    )
+            full_release_date = f"{release_date[1]}-{release_date[2]}-{release_date[0]}"
+            base_num += 1
 
-            if tv_result:
-                tv_imdb_id = self._fetch_tmdb_external_ids(tv_result["id"])
-                if tv_imdb_id.ok and tv_imdb_id.content and tv_result["first_air_date"]:
-                    # fetch TV details with alternative titles for smart title selection
-                    tv_details = self._fetch_tmdb_tv_details(tv_result["id"])
-                    tv_alternative_titles_data = None
-                    if tv_details.ok and tv_details.content:
-                        tv_details_json = tv_details.json()
-                        tv_alternative_titles_data = tv_details_json.get(
-                            "alternative_titles"
-                        )
+            tmdb_id = str(result.get("id", ""))
+            plot = result.get("overview", "")
+            vote_get = result.get("vote_average")
+            vote_average = str(round(vote_get, 1)) if vote_get else ""
+            year = release_date[0]
 
-                    release_date = str(tv_result["first_air_date"]).split("-")
-                    full_release_date = (
-                        f"{release_date[1]}-{release_date[2]}-{release_date[0]}"
-                    )
-                    base_num += 1
+            if media_type == "movie":
+                title = result.get("title", "")
+                original_title = result.get("original_title", "")
+                genre_enum_class = TMDBGenreIDsMovies
+                display_media_type = "Movie"
+            else:
+                title = result.get("name", "")
+                original_title = result.get("original_name", "")
+                genre_enum_class = TMDBGenreIDsSeries
+                display_media_type = "Series"
 
-                    tv_tvdb_id = str(tv_result.get("id", ""))
-                    tv_imdb_id = tv_imdb_id.json().get("imdb_id", "")
-                    tv_plot = tv_result.get("overview", "")
-                    tv_vote_get = tv_result.get("vote_average")
-                    tv_vote_average = str(round(tv_vote_get, 1)) if tv_vote_get else ""
-                    tv_full_release_date = (
-                        full_release_date if full_release_date else ""
-                    )
-                    tv_year = release_date[0]
-                    # use smart title selection based on language preference
-                    # TV shows use "name" instead of "title"
-                    tmdb_tv_title = tv_result.get("name", "")
-                    tv_original_language = tv_result.get("original_language", "")
-                    tv_title = self._select_preferred_title(
-                        tmdb_tv_title, tv_alternative_titles_data, tv_original_language
-                    )
-                    # TV shows use "original_name"
-                    tv_original_title = tv_result.get("original_name", "")
-                    tv_poster_path = tv_result.get("poster_path", "")
-                    tv_genre_ids = tv_result.get("genre_ids")
+            poster_path = result.get("poster_path", "")
+            original_language = result.get("original_language", "")
 
-                    # get genre id's and convert them to enums
-                    get_tv_genre_ids = tv_result.get("genre_ids")
-                    tv_genre_ids = []
-                    if get_tv_genre_ids:
-                        for tv_genre in get_tv_genre_ids:
-                            try:
-                                tv_genre_ids.append(TMDBGenreIDsSeries(tv_genre))
-                            except ValueError:
-                                tv_genre_ids.append(TMDBGenreIDsSeries.UNDEFINED)
+            # convert genre IDs to enums
+            get_genre_ids = result.get("genre_ids")
+            genre_ids = []
+            if get_genre_ids:
+                for genre in get_genre_ids:
+                    try:
+                        genre_ids.append(genre_enum_class(genre))
+                    except ValueError:
+                        genre_ids.append(genre_enum_class.UNDEFINED)
 
-                    media_dict.update(
-                        {
-                            f"{str(base_num)}) {tv_title} ({release_date[0]})": {
-                                "tvdb_id": tv_tvdb_id,
-                                "imdb_id": tv_imdb_id,
-                                "plot": tv_plot,
-                                "vote_average": tv_vote_average,
-                                "full_release_date": tv_full_release_date,
-                                "year": tv_year,
-                                "title": normalize_super_sub(tv_title),
-                                "original_title": tv_original_title,
-                                "poster_path": tv_poster_path,
-                                "genre_ids": tv_genre_ids,
-                                "media_type": "Series",
-                                "raw_data": tv_result,
-                            }
-                        }
-                    )
+            # use smart title selection based on language preference
+            selected_title = self._select_preferred_title(
+                title, None, original_language
+            )
+
+            media_dict.update(
+                {
+                    f"{str(base_num)}) {selected_title} ({year})": {
+                        "tmdb_id": tmdb_id,
+                        "plot": plot,
+                        "vote_average": vote_average,
+                        "full_release_date": full_release_date,
+                        "year": year,
+                        "title": normalize_super_sub(selected_title),
+                        "original_title": original_title,
+                        "poster_path": poster_path,
+                        "genre_ids": genre_ids,
+                        "media_type": display_media_type,
+                        "raw_data": result,
+                        "original_language": original_language,
+                    }
+                }
+            )
         self.media_data.clear()
         self.media_data = media_dict
         self.session.close()
@@ -203,10 +131,22 @@ class MediaSearchBackEnd:
         except niquests.exceptions.ConnectionError:
             return []
 
-    def _fetch_tmdb_external_ids(self, media_id) -> niquests.Response:
-        url = f"https://api.themoviedb.org/3/movie/{media_id}/external_ids"
-        with self.session.get(url, params=self.params) as response:
-            return response
+    def _fetch_tmdb_external_ids(
+        self, media_id: str | int, media_type: str = "movie"
+    ) -> dict:
+        """Fetch external IDs for a movie or TV show"""
+        endpoint = "movie" if media_type.lower() == "movie" else "tv"
+        url = f"https://api.themoviedb.org/3/{endpoint}/{media_id}/external_ids"
+        try:
+            with self.session.get(url, params=self.params) as response:
+                response.raise_for_status()
+                return response.json()
+        except niquests.exceptions.ConnectionError:
+            return {}
+
+    def fetch_external_ids_for_selection(self, tmdb_id: str, media_type: str) -> dict:
+        """Public method to fetch external IDs when user makes final selection"""
+        return self._fetch_tmdb_external_ids(tmdb_id, media_type)
 
     def _fetch_tmdb_movie_details(self, media_id: str | int) -> niquests.Response:
         """Fetch movie details with alternative titles"""
@@ -351,11 +291,21 @@ class MediaSearchBackEnd:
         tmdb_year: int,
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
+        tmdb_id: str = "",
+        media_type: str = "",
     ) -> dict[str, Any]:
-        tasks = {
-            "imdb_data": asyncio.create_task(self.parse_imdb_data(imdb_id)),
-            "tvdb_data": asyncio.create_task(self.parse_tvdb_data(imdb_id)),
-        }
+        # if no IMDb ID provided but we have TMDB ID, fetch external IDs first
+        if not imdb_id and tmdb_id and media_type:
+            external_ids = self.fetch_external_ids_for_selection(
+                tmdb_id, media_type.lower()
+            )
+            imdb_id = external_ids.get("imdb_id", "")
+
+        tasks = {}
+
+        if imdb_id:
+            tasks["imdb_data"] = asyncio.create_task(self.parse_imdb_data(imdb_id))
+            tasks["tvdb_data"] = asyncio.create_task(self.parse_tvdb_data(imdb_id))
 
         # parse anime if needed
         if TMDBGenreIDsMovies.ANIMATION in tmdb_genres and original_language == "ja":

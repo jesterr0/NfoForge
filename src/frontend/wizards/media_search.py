@@ -73,6 +73,8 @@ class IDParseWorker(QThread):
         tmdb_year: int,
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
+        tmdb_id: str = "",
+        media_type: str = "",
         parent=None,
     ) -> None:
         super().__init__(parent=parent)
@@ -82,6 +84,8 @@ class IDParseWorker(QThread):
         self.tmdb_year = tmdb_year
         self.original_language = original_language
         self.tmdb_genres = tmdb_genres
+        self.tmdb_id = tmdb_id
+        self.media_type = media_type
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
@@ -94,6 +98,8 @@ class IDParseWorker(QThread):
                     self.tmdb_year,
                     self.original_language,
                     self.tmdb_genres,
+                    self.tmdb_id,
+                    self.media_type,
                 )
             )
             self.job_finished.emit(parse_other_ids)
@@ -161,6 +167,7 @@ class MediaSearch(BaseWizardPage):
         imdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         imdb_label.mousePressEvent = self._open_imdb_link
         self.imdb_id_entry = QLineEdit()
+        self.imdb_id_entry.setPlaceholderText("Automatic")
 
         tmdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tmdb.png").resolve()))
         tmdb_image = tmdb_image.scaled(
@@ -279,9 +286,7 @@ class MediaSearch(BaseWizardPage):
         self.main_layout.addWidget(search_box)
 
     def validatePage(self) -> bool:
-        invalid_entries = self._check_invalid_entries(
-            (self.tmdb_id_entry, self.imdb_id_entry)
-        )
+        invalid_entries = self._check_invalid_entries((self.tmdb_id_entry,))
         if invalid_entries:
             return False
         else:
@@ -331,6 +336,8 @@ class MediaSearch(BaseWizardPage):
                     "original_language"
                 ),
                 tmdb_genres=item_data.get("genre_ids", []),
+                tmdb_id=item_data.get("tmdb_id"),
+                media_type=item_data.get("media_type"),
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
@@ -361,6 +368,20 @@ class MediaSearch(BaseWizardPage):
         item_data = self.backend.media_data.get(current_item)
         if not item_data:
             raise MediaSearchError("Failed to parse TMDB")
+
+        # Fetch external IDs from TMDB now that user has made their final selection
+        tmdb_id = item_data.get("tmdb_id")
+        media_type = item_data.get("media_type")
+        if tmdb_id and media_type:
+            # Convert media_type to the format expected by TMDB API
+            tmdb_media_type = "movie" if media_type == "Movie" else "tv"
+            external_ids = self.backend.fetch_external_ids_for_selection(
+                tmdb_id, tmdb_media_type
+            )
+            # Update the IMDb ID in the UI and use it for the payload
+            imdb_id_from_tmdb = external_ids.get("imdb_id", "")
+            if imdb_id_from_tmdb and not self.imdb_id_entry.text().strip():
+                self.imdb_id_entry.setText(imdb_id_from_tmdb)
 
         self.config.media_search_payload.imdb_id = self.imdb_id_entry.text()
         self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
@@ -589,14 +610,20 @@ class MediaSearch(BaseWizardPage):
 
     @Slot()
     def _select_media(self) -> None:
-        item_data = self._get_current_item_data()
+        current_item = self.listbox.currentItem()
+        if not current_item:
+            return
+
+        item_key = current_item.text()
+        item_data = self.backend.media_data.get(item_key)
+
         if item_data:
-            self.imdb_id_entry.setText(item_data["imdb_id"])
-            self.tmdb_id_entry.setText(item_data["tvdb_id"])
-            self.plot_text.setPlainText(item_data["plot"])
-            self.rating_label.setText(item_data["vote_average"])
-            self.release_date_label.setText(item_data["full_release_date"])
-            self.media_type_label.setText(item_data["media_type"])
+            self.imdb_id_entry.setText(item_data.get("imdb_id", ""))
+            self.tmdb_id_entry.setText(item_data.get("tmdb_id", ""))
+            self.plot_text.setPlainText(item_data.get("plot", ""))
+            self.rating_label.setText(item_data.get("vote_average", ""))
+            self.release_date_label.setText(item_data.get("full_release_date", ""))
+            self.media_type_label.setText(item_data.get("media_type", ""))
 
     @Slot()
     def _open_imdb_link(self, _):
@@ -639,6 +666,7 @@ class MediaSearch(BaseWizardPage):
         self.listbox.clear()
         self.listbox.setDisabled(False)
         self.imdb_id_entry.clear()
+        self.imdb_id_entry.setPlaceholderText("Automatic")
         self.tmdb_id_entry.clear()
         self.tvdb_id_entry.clear()
         self.tvdb_id_entry.setPlaceholderText("Automatic")
