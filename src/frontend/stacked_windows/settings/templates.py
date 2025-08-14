@@ -734,5 +734,9 @@ class TemplatesSettings(BaseSettings):
 
     @Slot(int)
     def _on_tab_changed(self, _: int | None = None) -> None:
+        # uncheck previewed template on change if needed
+        if self.template_selector.preview_btn.isChecked():
+            self.template_selector.preview_btn.setChecked(False)
+            self.template_selector.preview_template()
         if self.template_selector.token_table_window:
             self.template_selector.token_table_window.close()
