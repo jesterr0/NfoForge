@@ -369,20 +369,6 @@ class MediaSearch(BaseWizardPage):
         if not item_data:
             raise MediaSearchError("Failed to parse TMDB")
 
-        # Fetch external IDs from TMDB now that user has made their final selection
-        tmdb_id = item_data.get("tmdb_id")
-        media_type = item_data.get("media_type")
-        if tmdb_id and media_type:
-            # Convert media_type to the format expected by TMDB API
-            tmdb_media_type = "movie" if media_type == "Movie" else "tv"
-            external_ids = self.backend.fetch_external_ids_for_selection(
-                tmdb_id, tmdb_media_type
-            )
-            # Update the IMDb ID in the UI and use it for the payload
-            imdb_id_from_tmdb = external_ids.get("imdb_id", "")
-            if imdb_id_from_tmdb and not self.imdb_id_entry.text().strip():
-                self.imdb_id_entry.setText(imdb_id_from_tmdb)
-
         self.config.media_search_payload.imdb_id = self.imdb_id_entry.text()
         self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
         self.config.media_search_payload.tmdb_data = item_data.get("raw_data")
@@ -402,6 +388,24 @@ class MediaSearch(BaseWizardPage):
         self.config.media_search_payload.genres = genres if genres else []
 
         if media_data:
+            # handle complete TMDB data first
+            tmdb_complete_data = media_data.get("tmdb_complete_data")
+            if tmdb_complete_data and tmdb_complete_data.get("success") is True:
+                complete_tmdb_result = tmdb_complete_data.get("result")
+                # use complete TMDB data as the primary tmdb_data
+                self.config.media_search_payload.tmdb_data = complete_tmdb_result
+
+                # extract and update IMDb ID from complete data if not already set
+                if (
+                    complete_tmdb_result
+                    and not self.config.media_search_payload.imdb_id
+                ):
+                    external_ids = complete_tmdb_result.get("external_ids", {})
+                    extracted_imdb_id = external_ids.get("imdb_id", "")
+                    if extracted_imdb_id:
+                        self.config.media_search_payload.imdb_id = extracted_imdb_id
+                        self.imdb_id_entry.setText(extracted_imdb_id)
+
             imdb_data = media_data.get("imdb_data")
             tvdb_data = media_data.get("tvdb_data")
             ani_list_data = media_data.get("ani_list_data")
@@ -572,7 +576,7 @@ class MediaSearch(BaseWizardPage):
         self.loading_complete = False
         self.completeChanged.emit()
 
-        if self.search_entry.text().strip != "":
+        if self.search_entry.text().strip() != "":
             self.reset_page(all_widgets=False)
             self.listbox.addItem("Loading please wait...")
             if self.queued_worker is not None and self.queued_worker.isRunning():

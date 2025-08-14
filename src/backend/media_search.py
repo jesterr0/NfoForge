@@ -16,9 +16,15 @@ from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 
 
 class MediaSearchBackEnd:
-    def __init__(self, api_key: str | None = None, language: str = "en-US"):
+    def __init__(
+        self,
+        api_key: str | None = None,
+        language: str = "en-US",
+        use_base_language_for_images: bool = True,
+    ):
         self.media_data = dict()
         self.session = niquests.Session()
+        self.use_base_language_for_images = use_base_language_for_images
         self.params = {
             "api_key": api_key,
             "language": language,
@@ -30,6 +36,15 @@ class MediaSearchBackEnd:
 
     def update_language(self, language: str) -> None:
         self.params["language"] = language
+
+    def close_session(self) -> None:
+        """Properly close the session when done"""
+        if hasattr(self, "session") and self.session:
+            self.session.close()
+
+    def __del__(self):
+        """Cleanup when object is destroyed"""
+        self.close_session()
 
     def _parse_tmdb_api(self, media_str: str):
         media_title, media_year = self._guessit(media_str)
@@ -95,10 +110,9 @@ class MediaSearchBackEnd:
                     except ValueError:
                         genre_ids.append(genre_enum_class.UNDEFINED)
 
-            # use smart title selection based on language preference
-            selected_title = self._select_preferred_title(
-                title, None, original_language
-            )
+            # use TMDB title directly since we don't have alternative titles at this stage
+            # proper title selection happens later with complete TMDB data
+            selected_title = title
 
             media_dict.update(
                 {
@@ -120,7 +134,6 @@ class MediaSearchBackEnd:
             )
         self.media_data.clear()
         self.media_data = media_dict
-        self.session.close()
         return self.media_data
 
     def _fetch_tmdb_results(self, url):
@@ -131,147 +144,48 @@ class MediaSearchBackEnd:
         except niquests.exceptions.ConnectionError:
             return []
 
-    def _fetch_tmdb_external_ids(
+    def _fetch_tmdb_complete_data(
         self, media_id: str | int, media_type: str = "movie"
     ) -> dict:
-        """Fetch external IDs for a movie or TV show"""
+        """
+        Fetch complete TMDB data with alternative titles, images, and external IDs
+
+        This method fetches comprehensive data from TMDB including:
+        - Basic movie/TV show information (title, overview, release date, etc.)
+        - Alternative titles for different regions/languages
+        - All available images (posters, backdrops, logos)
+        - External IDs (IMDb, TVDB, etc.)
+
+        Note: Uses base language (e.g., 'en' instead of 'en-US') for image requests
+        to ensure all images are returned, as TMDB filters images by specific regions
+        when using country-specific language codes.
+
+        Example URL: https://api.themoviedb.org/3/movie/603?append_to_response=alternative_titles,images,external_ids&language=en
+        """
         endpoint = "movie" if media_type.lower() == "movie" else "tv"
-        url = f"https://api.themoviedb.org/3/{endpoint}/{media_id}/external_ids"
+        url = f"https://api.themoviedb.org/3/{endpoint}/{media_id}?append_to_response=alternative_titles,images,external_ids"
+
+        # create modified params with base language for better image results
+        image_params = self.params.copy()
+
+        if self.use_base_language_for_images:
+            current_language = image_params.get("language", "en-US")
+            # extract base language (e.g., 'en' from 'en-US')
+            base_language = current_language.split("-")[0]
+            image_params["language"] = base_language
+
         try:
-            with self.session.get(url, params=self.params) as response:
+            with self.session.get(url, params=image_params) as response:
                 response.raise_for_status()
                 return response.json()
         except niquests.exceptions.ConnectionError:
             return {}
 
-    def fetch_external_ids_for_selection(self, tmdb_id: str, media_type: str) -> dict:
-        """Public method to fetch external IDs when user makes final selection"""
-        return self._fetch_tmdb_external_ids(tmdb_id, media_type)
-
-    def _fetch_tmdb_movie_details(self, media_id: str | int) -> niquests.Response:
-        """Fetch movie details with alternative titles"""
-        url = f"https://api.themoviedb.org/3/movie/{media_id}?append_to_response=alternative_titles"
-        with self.session.get(url, params=self.params) as response:
-            return response
-
-    def _fetch_tmdb_tv_details(self, media_id: str | int) -> niquests.Response:
-        """Fetch TV details with alternative titles"""
-        url = f"https://api.themoviedb.org/3/tv/{media_id}?append_to_response=alternative_titles"
-        with self.session.get(url, params=self.params) as response:
-            return response
-
-    def _select_preferred_title(
-        self,
-        tmdb_title: str,
-        alternative_titles_data: dict | None,
-        original_language: str = "",
-    ) -> str:
-        """Select the preferred title based on language setting with intelligent fallback hierarchy"""
-        if not alternative_titles_data:
-            return tmdb_title
-
-        current_language = self.params.get("language", "en-US")
-
-        # Parse language components from user's preference
-        language_parts = current_language.split("-")
-        base_language = language_parts[0].lower()  # e.g., "es" from "es-419"
-        country_code = language_parts[-1].upper() if len(language_parts) > 1 else None
-
-        from src.logger.nfo_forge_logger import LOG
-
-        # NEW: Check if user's language matches the original language
-        if original_language and base_language == original_language.lower():
-            LOG.info(
-                LOG.LOG_SOURCE.BE,
-                f"Using original title for {current_language} - matches original language '{original_language}': '{tmdb_title}'",
-            )
-            return tmdb_title
-
-        titles = alternative_titles_data.get("titles", [])
-
-        # try exact language-country match (e.g., es-419)
-        if country_code:
-            for title_data in titles:
-                title_country = title_data.get("iso_3166_1", "").upper()
-                if title_country == country_code:
-                    exact_title = title_data.get("title", "").strip()
-                    if exact_title:
-                        LOG.info(
-                            LOG.LOG_SOURCE.BE,
-                            f"Exact match found for {current_language}: '{exact_title}' "
-                            f"(country: {country_code})",
-                        )
-                        return exact_title
-
-        # try language family match (e.g., any es-XX when looking for es-419)
-        if base_language != "en":  # skip this for English to maintain existing logic
-            language_family_titles = []
-            for title_data in titles:
-                title_country = title_data.get("iso_3166_1", "").upper()
-                family_title = title_data.get("title", "").strip()
-                if family_title and title_country:
-                    # collect all titles from the same language family
-                    language_family_titles.append((family_title, title_country))
-
-            if language_family_titles:
-                # use the first available title from the language family
-                family_title, family_country = language_family_titles[0]
-                LOG.info(
-                    LOG.LOG_SOURCE.BE,
-                    f"Language family match for {current_language}: '{family_title}' "
-                    f"(from {base_language}-{family_country})",
-                )
-                return family_title
-
-        # English fallback logic (for English users or final fallback)
-        if current_language.startswith("en") or base_language == "en":
-            # extract country code from language (e.g., "en-US" -> "US")
-            en_country_code = country_code if country_code else "US"
-
-            # look for country-specific English title
-            for title_data in titles:
-                if title_data.get("iso_3166_1") == en_country_code:
-                    regional_title = title_data.get("title", "").strip()
-                    if regional_title:
-                        LOG.info(
-                            LOG.LOG_SOURCE.BE,
-                            f"Using {en_country_code} alternative title for {current_language}: "
-                            f"'{regional_title}' instead of TMDB: '{tmdb_title}'",
-                        )
-                        return regional_title
-
-            # if no exact English country match, try US as fallback
-            if en_country_code != "US":
-                for title_data in titles:
-                    if title_data.get("iso_3166_1") == "US":
-                        us_title = title_data.get("title", "").strip()
-                        if us_title:
-                            LOG.info(
-                                LOG.LOG_SOURCE.BE,
-                                f"Using US alternative title as fallback for {current_language}: "
-                                f"'{us_title}' instead of TMDB: '{tmdb_title}'",
-                            )
-                            return us_title
-
-        # final English fallback for non-English languages
-        elif base_language != "en":
-            for title_data in titles:
-                if title_data.get("iso_3166_1") == "US":
-                    en_fallback_title = title_data.get("title", "").strip()
-                    if en_fallback_title:
-                        LOG.info(
-                            LOG.LOG_SOURCE.BE,
-                            f"Using English fallback for {current_language}: '{en_fallback_title}' "
-                            f"(no {base_language} alternatives found)",
-                        )
-                        return en_fallback_title
-
-        # final fallback: use TMDB default title
-        LOG.info(
-            LOG.LOG_SOURCE.BE,
-            f"Using TMDB default title for {current_language}: '{tmdb_title}' (no alternatives found)",
-        )
-        return tmdb_title
+    def fetch_complete_tmdb_data_for_selection(
+        self, tmdb_id: str, media_type: str
+    ) -> dict:
+        """Public method to fetch complete TMDB data when user makes final selection"""
+        return self._fetch_tmdb_complete_data(tmdb_id, media_type)
 
     @staticmethod
     def _guessit(input_string: str) -> tuple[str | None, str]:
@@ -294,15 +208,20 @@ class MediaSearchBackEnd:
         tmdb_id: str = "",
         media_type: str = "",
     ) -> dict[str, Any]:
-        # if no IMDb ID provided but we have TMDB ID, fetch external IDs first
-        if not imdb_id and tmdb_id and media_type:
-            external_ids = self.fetch_external_ids_for_selection(
+        # fetch complete TMDB data if we have TMDB ID
+        tmdb_complete_data = None
+        if tmdb_id and media_type:
+            tmdb_complete_data = self.fetch_complete_tmdb_data_for_selection(
                 tmdb_id, media_type.lower()
             )
-            imdb_id = external_ids.get("imdb_id", "")
+            # extract IMDb ID from complete data if not already provided
+            if not imdb_id and tmdb_complete_data:
+                external_ids = tmdb_complete_data.get("external_ids", {})
+                imdb_id = external_ids.get("imdb_id", "")
 
         tasks = {}
 
+        # only add tasks if we have valid IMDb ID
         if imdb_id:
             tasks["imdb_data"] = asyncio.create_task(self.parse_imdb_data(imdb_id))
             tasks["tvdb_data"] = asyncio.create_task(self.parse_tvdb_data(imdb_id))
@@ -314,6 +233,14 @@ class MediaSearchBackEnd:
             )
 
         results = {}
+
+        # add complete TMDB data to results
+        if tmdb_complete_data:
+            results["tmdb_complete_data"] = {
+                "success": True,
+                "result": tmdb_complete_data,
+            }
+
         for key, task in tasks.items():
             try:
                 result = await task
