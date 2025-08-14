@@ -6,6 +6,9 @@
 
 - Ability to sync images in **Basic Comparison** screenshot mode.
   - Sync tab to image viewer.
+- TMDB language settings.
+  - Smart Language Selection: Added comprehensive TMDB language support with 69 languages including regional variants (en-US/en-GB, es-ES/es-MX, zh-CN/zh-TW, etc.).
+  - Automatically uses original titles when user's language matches the movie's original language (e.g., Italian users get authentic Italian titles for Italian films).
 
 ### Changed
 
@@ -13,6 +16,8 @@
 - Image generation for **Basic** and **Basic Comparison** modes have been re-worked.
   - For basic and basic comparison image generation we're looking at about a **80x** speed up for image generation.
   - Brings VC-1 image generation up to speed with other codecs.
+- Now automatically de-selects preview on template tab if we're swapping tabs in settings.
+- Optimized API calls to TMDB.
 
 ### Fixed
 
