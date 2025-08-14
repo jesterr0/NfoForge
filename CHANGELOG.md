@@ -19,12 +19,16 @@
 - Now automatically de-selects preview on template tab if we're swapping tabs in settings.
 - Optimized API calls to TMDB.
 - No longer overrides TMDB title with IMDb.
+- Improved speed of metadata initial search speed by around 70%.
+- IMDb ID isn't parsed until the user selects a title now (massively reduces requests for each title).
+- MediaSearchPayload now includes essentially **all** tmdb data from the api for the user to utilize in their templates if needed.
 
 ### Fixed
 
 - Edge case where sync images could be out of sync in the ImageViewer Sync tab.
 - Auto crop could fail in certain circumstances.
 - Bug when working with VC-1 files and generating images due to auto crop and basic comparison mode.
+- Media search bug when stripping text is fixed.
 
 ### Removed
 
