@@ -1,0 +1,55 @@
+Info
+Title:                  : Big Buck Bunny (2008)
+Format Profile          : High@L4.2
+Resolution              : 1080p
+Average Bitrate         : 3994 kbps
+
+[url=https://i.ibb.co/VYcyXyG2/b81e26a4a850.png][img=340]https://i.ibb.co/DfHX3XF5/b81e26a4a850.png[/img][/url]
+[url=https://i.ibb.co/DfNm7WkJ/ca45d57ee8fe.png][img=340]https://i.ibb.co/3mwV0dW3/ca45d57ee8fe.png[/img][/url]
+[url=https://i.ibb.co/svgNNKBD/34ef957a129e.png][img=340]https://i.ibb.co/Fbhyy5Pf/34ef957a129e.png[/img][/url]
+[url=https://i.ibb.co/7JqqVLBy/4f11bf7b7853.png][img=340]https://i.ibb.co/HDjjY3Rg/4f11bf7b7853.png[/img][/url]
+[url=https://i.ibb.co/BVJxkSgL/480a23e43e8f.png][img=340]https://i.ibb.co/bgVZt8r1/480a23e43e8f.png[/img][/url]
+[url=https://i.ibb.co/r233SG0B/c24fbb5b0575.png][img=340]https://i.ibb.co/nMBBvsmX/c24fbb5b0575.png[/img][/url]
+
+
+MediaInfo
+General
+Complete name                            : Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264.mp4
+File size                                : 339 MiB
+Duration                                 : 10 min 34 s
+Overall bit rate                         : 4 476 kb/s
+Frame rate                               : 30.000 FPS
+
+Video
+ID                                       : 1
+Format                                   : AVC
+Format profile                           : High@L4.2
+Duration                                 : 10 min 34 s
+Bit rate                                 : 4 000 kb/s
+Width                                    : 1 920 pixels
+Height                                   : 1 080 pixels
+Display aspect ratio                     : 16:9
+Frame rate                               : 30.000 FPS
+Color space                              : YUV
+Chroma subsampling                       : 4:2:0
+Bit depth                                : 8 bits
+
+Audio #1
+ID                                       : 2
+Commercial name                          : MPEG Audio
+Codec ID                                 : mp4a-6B
+Bit rate                                 : 160 kb/s
+Channel(s)                               : 2 channels
+Sampling rate                            : 48.0 kHz
+
+Audio #2
+ID                                       : 3
+Commercial name                          : Dolby Digital
+Codec ID                                 : ac-3
+Bit rate                                 : 320 kb/s
+Channel(s)                               : 6 channels
+ChannelLayout_Original                   : L R C LFE Ls Rs
+Sampling rate                            : 48.0 kHz
+
+
+Shared with [url=https://github.com/jesterr0/NfoForge]NfoForge v0.8.2[/url]

@@ -1,0 +1,939 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+      
+      
+      
+      <link rel="icon" href="../../images/hammer_merged.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.16">
+    
+    
+      
+        <title>File tokens - NfoForge Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.7e37652d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+        <script src="https://unpkg.com/iframe-worker/shim"></script>
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Montserrat:300,300i,400,400i,700,700i%7CFira+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Montserrat";--md-code-font:"Fira Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../index.html" title="NfoForge Documentation" class="md-header__button md-logo" aria-label="NfoForge Documentation" data-md-component="logo">
+      
+  <img src="../../images/hammer_merged.ico" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            NfoForge Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              File tokens
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../index.html" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../view/getting-started/install.html" class="md-tabs__link">
+          
+  
+  
+  Getting Started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../view/token-replacer/introduction.html" class="md-tabs__link">
+          
+  
+  
+  TokenReplacer
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../index.html" title="NfoForge Documentation" class="md-nav__button md-logo" aria-label="NfoForge Documentation" data-md-component="logo">
+      
+  <img src="../../images/hammer_merged.ico" alt="logo">
+
+    </a>
+    NfoForge Documentation
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../index.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Home
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Getting Started
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Getting Started
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/getting-started/install.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Install
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/getting-started/initial-setup.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Initial Setup
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/getting-started/using-the-wizard.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Using The Wizard
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    TokenReplacer
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            TokenReplacer
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/token-replacer/introduction.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Introduction
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/token-replacer/tokens.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tokens
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/token-replacer/flat.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Flat Strings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/token-replacer/multi-line.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Multi-Line Strings
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/token-replacer/prompt-tokens.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Prompt Tokens
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../view/token-replacer/advanced.html" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Advanced
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+  <h1>File tokens</h1>
+
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{edition}</code></td>
+<td>Edition</td>
+</tr>
+<tr>
+<td><code>{frame_size}</code></td>
+<td>Frame size (IMAX/Open Matte)</td>
+</tr>
+<tr>
+<td><code>{hybrid}</code></td>
+<td>HYBRID</td>
+</tr>
+<tr>
+<td><code>{imdb_id}</code></td>
+<td>IMDb ID</td>
+</tr>
+<tr>
+<td><code>{localization}</code></td>
+<td>Subbed/Dubbed</td>
+</tr>
+<tr>
+<td><code>{mal_id}</code></td>
+<td>MAL ID</td>
+</tr>
+<tr>
+<td><code>{mi_audio_bitrate}</code></td>
+<td>Audio bitrate (640000)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_bitrate_formatted}</code></td>
+<td>Audio bitrate formatted (640 kb/s)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_channel_s}</code></td>
+<td>Audio channels (5.1)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_channel_s_i}</code></td>
+<td>Audio channels (6)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_channel_s_layout}</code></td>
+<td>Audio channel layout (L R C LFE Ls Rs Lb Rb)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_codec}</code></td>
+<td>Audio codec</td>
+</tr>
+<tr>
+<td><code>{mi_audio_commercial_name}</code></td>
+<td>Audio commercial name (Dolby Digital Plus)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_compression}</code></td>
+<td>Audio compression (Lossy)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_format_info}</code></td>
+<td>Audio format info (Enhanced AC-3)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_1_full}</code></td>
+<td>Audio language (first track 'English')</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_1_iso_639_1}</code></td>
+<td>Audio language (first track 'EN')</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_1_iso_639_2}</code></td>
+<td>Audio language (first track 'ENG')</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_2_iso_639_1}</code></td>
+<td>Audio language (first two tracks EN+ES)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_2_iso_639_2}</code></td>
+<td>Audio languages (first two tracks ENG+SPA)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_all_full}</code></td>
+<td>All audio languages (all tracks English Spanish..)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_all_iso_639_1}</code></td>
+<td>All audio languages (all tracks EN+ES+etc..)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_all_iso_639_2}</code></td>
+<td>All audio languages (all tracks ENG+SPA+etc..)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_dual}</code></td>
+<td>Audio language ('Dual Audio' will be returned if there are 2 or more tracks with unique languages)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_language_multi}</code></td>
+<td>Audio languages ('Multi' will be returned if there are 3 or more tracks with unique languages)</td>
+</tr>
+<tr>
+<td><code>{mi_audio_sample_rate}</code></td>
+<td>Audio sample rate (48.0 kHz)</td>
+</tr>
+<tr>
+<td><code>{mi_video_3d}</code></td>
+<td>Video 3D</td>
+</tr>
+<tr>
+<td><code>{mi_video_bit_depth_dash}</code></td>
+<td>Video bit depth (8-Bit)</td>
+</tr>
+<tr>
+<td><code>{mi_video_bit_depth_space}</code></td>
+<td>Video bit depth (8 Bit)</td>
+</tr>
+<tr>
+<td><code>{mi_video_codec}</code></td>
+<td>Video codec</td>
+</tr>
+<tr>
+<td><code>{mi_video_dynamic_range}</code></td>
+<td>Video dynamic range (HDR/SDR)</td>
+</tr>
+<tr>
+<td><code>{mi_video_dynamic_range_type}</code></td>
+<td>Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ)</td>
+</tr>
+<tr>
+<td><code>{mi_video_dynamic_range_type_inc_sdr}</code></td>
+<td>Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR)</td>
+</tr>
+<tr>
+<td><code>{mi_video_dynamic_range_type_inc_sdr_over_1080}</code></td>
+<td>Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width &gt;= 1080</td>
+</tr>
+<tr>
+<td><code>{mi_video_format}</code></td>
+<td>Video format (AVC/HEVC/MPEG Video)</td>
+</tr>
+<tr>
+<td><code>{mi_video_height}</code></td>
+<td>Video height (1040)</td>
+</tr>
+<tr>
+<td><code>{mi_video_language_full}</code></td>
+<td>Video language (English)</td>
+</tr>
+<tr>
+<td><code>{mi_video_language_iso_639_1}</code></td>
+<td>Video language (EN)</td>
+</tr>
+<tr>
+<td><code>{mi_video_language_iso_639_2}</code></td>
+<td>Video language (ENG)</td>
+</tr>
+<tr>
+<td><code>{mi_video_width}</code></td>
+<td>Video width (1920)</td>
+</tr>
+<tr>
+<td><code>{movie_clean_title}</code></td>
+<td>Movie's clean title parsed from TMDB/IMDb</td>
+</tr>
+<tr>
+<td><code>{movie_exact_title}</code></td>
+<td>Movie's title parsed from TMDB/IMDb with no modifications</td>
+</tr>
+<tr>
+<td><code>{movie_title}</code></td>
+<td>Movie's title parsed from TMDB/IMDb with minimal formatting</td>
+</tr>
+<tr>
+<td><code>{original_filename}</code></td>
+<td>Original filename</td>
+</tr>
+<tr>
+<td><code>{re_release}</code></td>
+<td>Repack/Proper</td>
+</tr>
+<tr>
+<td><code>{release_group}</code></td>
+<td>Release group</td>
+</tr>
+<tr>
+<td><code>{release_year}</code></td>
+<td>Release year</td>
+</tr>
+<tr>
+<td><code>{release_year_parentheses}</code></td>
+<td>Release year with parentheses</td>
+</tr>
+<tr>
+<td><code>{releasers_name}</code></td>
+<td>Releaser's name (Anonymous)</td>
+</tr>
+<tr>
+<td><code>{remux}</code></td>
+<td>REMUX</td>
+</tr>
+<tr>
+<td><code>{resolution}</code></td>
+<td>Resolution (1080p)</td>
+</tr>
+<tr>
+<td><code>{source}</code></td>
+<td>Source media (BluRay/DVD)</td>
+</tr>
+<tr>
+<td><code>{tmdb_id}</code></td>
+<td>TMDB ID</td>
+</tr>
+<tr>
+<td><code>{tvdb_id}</code></td>
+<td>TVDB ID</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "../..", "features": ["content.code.copy", "search.highlight", "navigation.tabs", "navigation.footer"], "search": "../../assets/javascripts/workers/search.d50fe291.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.50899def.min.js"></script>
+      
+    
+  </body>
+</html>
