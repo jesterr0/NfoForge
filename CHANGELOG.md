@@ -7,6 +7,7 @@
 - MediaSearch missing inputs that are required now flashes yellow if missing.
 - Advanced input wizard page now flashes yellow for missing input(s).
 - Parse series from TVDB to get metadata as needed (full series support is not in the program yet).
+- Config selector on splash screen if there are 2 or more user configs available for easy selection.
 
 ### Changed
 
