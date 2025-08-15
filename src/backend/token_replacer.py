@@ -218,12 +218,16 @@ class TokenReplacer:
                 token.token: self._get_token_value(token)
                 for token in self.generate_all_tokens()
             }
+            # add user tokens to the context for jinja2 rendering
+            if self.user_tokens:
+                for key, value in self.user_tokens.items():
+                    filled_tokens[key] = value
             self._update_token_data(filled_tokens)
             if not self.jinja_engine:
                 raise AttributeError("Could not detect 'jinja_engine'")
             jinja_output = self.jinja_engine.render_from_str(
                 self.token_string,
-                filled_tokens | self.user_tokens if self.user_tokens else filled_tokens,
+                filled_tokens,
             )
             return jinja_output
 
