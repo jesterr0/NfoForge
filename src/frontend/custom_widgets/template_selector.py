@@ -269,6 +269,12 @@ class TemplateSelector(QWidget):
 
     @Slot(str)
     def save_template(self, _data: str | None = None) -> None:
+        # uncheck the preview button before safe if checked to prevent overwriting the template with
+        # the preview data
+        if self.preview_btn.isChecked():
+            self.preview_btn.setChecked(False)
+            self.preview_template()
+
         if self.template_combo.currentIndex() != -1:
             selected_template = self.backend.templates[
                 self.template_combo.currentText()
@@ -328,6 +334,7 @@ class TemplateSelector(QWidget):
 
     @Slot()
     def preview_template(self) -> None:
+        print("called")
         if self.template_combo.currentIndex() == -1:
             self.preview_btn.setChecked(False)
             return

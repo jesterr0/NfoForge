@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased] - 2025-m?-d?
+
+### Added
+
+- 
+
+### Changed
+
+- 
+
+### Fixed
+
+- User could save their previewed template in sandbox mode, overwriting their template. Now automatically unchecks the template on save.
+
+### Removed
+
+- 
+
 ## [0.8.7] - 2025-08-14
 
 ### Added
