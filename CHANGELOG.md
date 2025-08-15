@@ -22,6 +22,7 @@
 - Break up tooltip that was too long.
 - A bug when the user saved any changes in Config that would break **user plugin functions**.
 - ShareIsland default torrent source was **wrong**. You should modify this yourself and set the torrent source to **ShareIsland**. _Alternatively, you can reset the entire config if you desire._
+- Dupes we're not be accurately detected for numerous trackers since **v0.8.0**.
 
 ### Removed
 

@@ -170,7 +170,7 @@ class TLSearch:
         # else:
         #     search_movie = self._search_movie(file_input)
         results = []
-        search_movie = self._search_movie(Path(file_input).stem)
+        search_movie = self._search_movie(file_input.stem)
         if search_movie:
             LOG.info(LOG.LOG_SOURCE.BE, f"Total results found: {len(search_movie)}")
             LOG.debug(LOG.LOG_SOURCE.BE, f"Total results found: {search_movie}")

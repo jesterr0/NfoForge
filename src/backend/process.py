@@ -111,6 +111,8 @@ class ProcessBackEnd:
         processing_queue: list[str],
         media_search_payload: MediaSearchPayload,
     ) -> dict[str, tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]]:
+        # TODO: test this when we add disc & tv support, as this will likely require different
+        # checks to accurately obtain dupes
         tasks = []
         for tracker_name in processing_queue:
             tracker_sel = TrackerSelection(tracker_name)
@@ -311,7 +313,7 @@ class ProcessBackEnd:
         try:
             rf_search = ReelFlixSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if rf_search:
                 return TrackerSelection(tracker_name), True, rf_search
             else:
@@ -328,7 +330,7 @@ class ProcessBackEnd:
         try:
             aither_search = AitherSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if aither_search:
                 return TrackerSelection(tracker_name), True, aither_search
             else:
@@ -345,7 +347,7 @@ class ProcessBackEnd:
         try:
             huno_search = HunoSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if huno_search:
                 return TrackerSelection(tracker_name), True, huno_search
             else:
@@ -362,7 +364,7 @@ class ProcessBackEnd:
         try:
             lst_search = LSTSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if lst_search:
                 return TrackerSelection(tracker_name), True, lst_search
             else:
@@ -379,7 +381,7 @@ class ProcessBackEnd:
         try:
             dp_search = DarkPeersSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if dp_search:
                 return TrackerSelection(tracker_name), True, dp_search
             else:
@@ -396,7 +398,7 @@ class ProcessBackEnd:
         try:
             shri_search = ShareIslandSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if shri_search:
                 return TrackerSelection(tracker_name), True, shri_search
             else:
@@ -413,7 +415,7 @@ class ProcessBackEnd:
         try:
             shri_search = UploadCXSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if shri_search:
                 return TrackerSelection(tracker_name), True, shri_search
             else:
@@ -430,7 +432,7 @@ class ProcessBackEnd:
         try:
             shri_search = OnlyEncodesSearch(
                 api_key=api_key,
-            ).search(file_name=str(file_input))
+            ).search(file_name=file_input.name)
             if shri_search:
                 return TrackerSelection(tracker_name), True, shri_search
             else:
