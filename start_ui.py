@@ -1,21 +1,21 @@
 # relevant documentation
 # https://doc.qt.io/qtforpython-6/index.html#
-import os
-import traceback
-import sys
 from multiprocessing import freeze_support as mp_freeze_support
+import os
 from pathlib import Path
+import sys
+import traceback
 
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QTimer, QtMsgType, Slot, qInstallMessageHandler
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
-from PySide6.QtCore import QTimer, QtMsgType, qInstallMessageHandler, Slot
+from PySide6.QtWidgets import QApplication, QMessageBox
 
+from src.backend.utils.working_dir import IS_FROZEN, RUNTIME_DIR
 from src.config.config import Config
-from src.logger.nfo_forge_logger import LOG
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
-from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
 from src.frontend.windows.main_window import MainWindow
-from src.backend.utils.working_dir import RUNTIME_DIR, IS_FROZEN
+from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
+from src.logger.nfo_forge_logger import LOG
 
 DEV_MODE = False
 if DEV_MODE:
@@ -89,6 +89,16 @@ class NfoForge:
         self.app.setFont(font)
 
     def _init_app(self) -> None:
+        # check for multiple configs and show selector if needed
+        available_configs = self._get_available_configs()
+        if not self.config_file and available_configs and len(available_configs) > 1:
+            self.splash_screen.show_config_selector(available_configs)
+            self.splash_screen.config_selected.connect(self._on_config_selected)
+            return
+
+        self._continue_init()
+
+    def _continue_init(self) -> None:
         # setup config
         self.splash_screen.updateMessageBox("Initializing config")
         self.config = Config(self.config_file)
@@ -126,6 +136,22 @@ class NfoForge:
 
         self.splash_screen.close()
         self.main_window.show()
+
+    def _get_available_configs(self) -> list[str] | None:
+        """Get list of available config file names (without .toml extension)"""
+        try:
+            config_dir = Config.USER_CONFIG_DIR
+            if not config_dir.exists():
+                return
+            return sorted([x.stem for x in config_dir.glob("*.toml")])
+        except Exception:
+            pass
+
+    @Slot(str)
+    def _on_config_selected(self, selected_config: str) -> None:
+        """Handle profile selection from splash screen"""
+        self.config_file = selected_config
+        self._continue_init()
 
     def exception_handler(self, exc_type, exc_value, exc_traceback) -> None:
         """Global exception handler for unhandled Python exceptions."""
