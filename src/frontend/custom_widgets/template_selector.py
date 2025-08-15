@@ -1,7 +1,5 @@
 from os import PathLike
 from pathlib import Path
-import re
-import traceback
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal, Slot
@@ -426,16 +424,10 @@ class TemplateSelector(QWidget):
                     if not isinstance(nfo, str):
                         raise ValueError("NFO should be an instance of string")
             except TemplateSyntaxError as syntax_error:
-                broken_line_msg = ""
-                broken_line = re.search(
-                    r'File\s".+?",\sline\s(\d+), in template',
-                    traceback.format_exc(),
-                    flags=re.MULTILINE,
-                )
-                if broken_line:
-                    broken_line_msg = f"\n\nLine Number:\n{broken_line.group(1)}"
                 QMessageBox.warning(
-                    self, "Template Error", f"Error:\n{syntax_error}{broken_line_msg}"
+                    self,
+                    "Template Error",
+                    f"Syntax Error in template: {syntax_error.message} at line {syntax_error.lineno}",
                 )
                 self.preview_btn.setChecked(False)
                 self.text_edit.setReadOnly(False)
@@ -550,9 +542,9 @@ class SandBoxInput(QDialog):
         self.media_input = MediaInputBasic(
             self.config, self, on_finished_cb=self._handle_next
         )
-        self.media_input.media_dir_button.hide()
         self.media_input.main_layout.setContentsMargins(0, 0, 0, 0)
         self.media_input.file_loaded.connect(self._update_media_search)
+        self.media_input.file_tree.setMaximumHeight(130)
 
         self.media_search_lbl = QLabel("Search", self)
         self.media_search_lbl.setFont(bigger_font)

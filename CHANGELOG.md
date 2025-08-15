@@ -11,7 +11,9 @@
 
 ### Changed
 
--
+- Template sandbox mode changes.
+  - Improved syntax error line detection in templates.
+  - Directory button is now visible in the input.
 
 ### Fixed
 
