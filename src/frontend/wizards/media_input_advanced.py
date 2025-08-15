@@ -16,6 +16,7 @@ from src.backend.media_input import MediaInputBackEnd
 from src.config.config import Config
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.global_signals import GSigs
+from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -104,9 +105,8 @@ class MediaInputAdvanced(BaseWizardPage):
         for entry in required_entries:
             if entry.text().strip() == "" or entry.text() == entry.placeholderText():
                 invalid_entries = True
-                # TODO: Flash red or something once we theme it
-                # entry.setStyleSheet("QLineEdit {border: 1px solid red; border-radius: 3px;}")
                 entry.setPlaceholderText("Requires input")
+                QWidgetTempStyle().set_temp_style(widget=entry).start()
 
         if not invalid_entries:
             self._update_payload_data()

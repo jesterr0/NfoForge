@@ -4,7 +4,8 @@
 
 ### Added
 
-- 
+- MediaSearch missing inputs that are required now flashes yellow if missing.
+- Advanced input wizard page now flashes yellow for missing input(s).
 
 ### Changed
 

@@ -36,6 +36,7 @@ from src.config.config import Config
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
 from src.frontend.global_signals import GSigs
+from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
@@ -308,9 +309,8 @@ class MediaSearch(BaseWizardPage):
         for entry in entires:
             if entry.text().strip() == "" or entry.text() == entry.placeholderText():
                 invalid_entries = True
-                # TODO: Flash red or something once we theme it
-                # entry.setStyleSheet("QLineEdit {border: 1px solid red; border-radius: 3px;}")
                 entry.setPlaceholderText("Requires ID")
+                QWidgetTempStyle().set_temp_style(widget=entry).start()
             else:
                 # add id manually to payload if the user provides it
                 if entry is self.tvdb_id_entry:
