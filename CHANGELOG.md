@@ -20,7 +20,7 @@
 
 ### Removed
 
--
+- Un-needed print statement in code base.
 
 ## [0.8.7] - 2025-08-14
 

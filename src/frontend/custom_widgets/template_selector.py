@@ -334,7 +334,6 @@ class TemplateSelector(QWidget):
 
     @Slot()
     def preview_template(self) -> None:
-        print("called")
         if self.template_combo.currentIndex() == -1:
             self.preview_btn.setChecked(False)
             return
