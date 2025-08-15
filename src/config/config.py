@@ -1083,6 +1083,11 @@ class Config:
                 self.cfg_payload.keep_trailing_newline
             )
 
+            # sandbox template setting
+            template_settings["enable_sandbox_prompt_tokens"] = (
+                self.cfg_payload.enable_sandbox_prompt_tokens
+            )
+
             # release notes
             release_notes = self._toml_data["release_notes"]
             release_notes["enable_release_notes"] = (
@@ -1777,6 +1782,9 @@ class Config:
                 newline_sequence=template_settings.get("newline_sequence", "\\n"),
                 keep_trailing_newline=bool(
                     template_settings.get("keep_trailing_newline", 0)
+                ),
+                enable_sandbox_prompt_tokens=template_settings.get(
+                    "enable_sandbox_prompt_tokens", True
                 ),
                 enable_release_notes=release_notes.get("enable_release_notes", False),
                 last_used_release_note=release_notes.get("last_used_release_note", ""),

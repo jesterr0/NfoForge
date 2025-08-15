@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -48,12 +49,29 @@ class TemplateSelector(QWidget):
     hide_parent = Signal(bool)
 
     def __init__(
-        self, config: Config, sandbox: bool, main_window: "MainWindow", parent=None
+        self,
+        config: Config,
+        sandbox: bool,
+        main_window: "MainWindow",
+        parent=None,
+        toggle_prompt_tokens: QCheckBox | None = None,
     ) -> None:
+        """
+        Initialize the TemplateSelector.
+
+        Args:
+            config: Configuration object
+            sandbox: Whether this is running in sandbox mode
+            main_window: Reference to main window
+            parent: Parent widget
+            toggle_prompt_tokens: Checkbox that controls prompt token behavior in sandbox mode.
+                                Only used when sandbox=True.
+        """
         super().__init__(parent)
 
         self.config = config
         self.sandbox = sandbox
+        self.toggle_prompt_tokens = toggle_prompt_tokens
         self.main_window = main_window
         self.sorted_tokens = self._get_file_tokens()
         GSigs().token_state_changed.connect(self._token_state_changed)
@@ -359,38 +377,45 @@ class TemplateSelector(QWidget):
             self.old_text = self.text_edit.toPlainText()
 
             # gather prompt tokens
+            prompt_tokens = None
             if self.old_text:
-                prompt_tokens = get_prompt_tokens(self.old_text)
-                if prompt_tokens:
-                    # build dict (use cached value if present, else "")
-                    tokens_dict = {
-                        token: (
-                            self.cached_sandbox_prompt_tokens.get(token, "")
-                            if self.cached_sandbox_prompt_tokens
-                            else ""
-                        )
-                        for token in prompt_tokens
+                should_process_prompt_tokens = True
+
+                # in sandbox mode, check if prompt tokens are disabled
+                if self.sandbox and self.toggle_prompt_tokens:
+                    should_process_prompt_tokens = self.toggle_prompt_tokens.isChecked()
+
+                if should_process_prompt_tokens:
+                    prompt_tokens = get_prompt_tokens(self.old_text)
+
+            if prompt_tokens:
+                # build dict (use cached value if present, else "")
+                tokens_dict = {
+                    token: (
+                        self.cached_sandbox_prompt_tokens.get(token, "")
+                        if self.cached_sandbox_prompt_tokens
+                        else ""
+                    )
+                    for token in prompt_tokens
+                }
+                # remove any cached tokens not in the template
+                if self.cached_sandbox_prompt_tokens:
+                    self.cached_sandbox_prompt_tokens = {
+                        k: v
+                        for k, v in self.cached_sandbox_prompt_tokens.items()
+                        if k in prompt_tokens
                     }
-                    # remove any cached tokens not in the template
-                    if self.cached_sandbox_prompt_tokens:
-                        self.cached_sandbox_prompt_tokens = {
-                            k: v
-                            for k, v in self.cached_sandbox_prompt_tokens.items()
-                            if k in prompt_tokens
-                        }
-                    prompt = PromptTokenEditorDialog(tokens_dict, self)
-                    if prompt.exec() == QDialog.DialogCode.Accepted:
-                        prompt_results = prompt.get_results()
-                        self.cached_sandbox_prompt_tokens = prompt_results
-                        if prompt_results:
-                            user_tokens.update(prompt_results)
-                    else:
-                        self.text_edit.setPlainText(
-                            self.old_text if self.old_text else ""
-                        )
-                        self.preview_btn.setChecked(False)
-                        self.text_edit.setReadOnly(False)
-                        return
+                prompt = PromptTokenEditorDialog(tokens_dict, self)
+                if prompt.exec() == QDialog.DialogCode.Accepted:
+                    prompt_results = prompt.get_results()
+                    self.cached_sandbox_prompt_tokens = prompt_results
+                    if prompt_results:
+                        user_tokens.update(prompt_results)
+                else:
+                    self.text_edit.setPlainText(self.old_text if self.old_text else "")
+                    self.preview_btn.setChecked(False)
+                    self.text_edit.setReadOnly(False)
+                    return
 
             nfo = ""
             try:

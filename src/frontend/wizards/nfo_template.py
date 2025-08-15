@@ -1,13 +1,13 @@
 import re
 from typing import TYPE_CHECKING
 
-from PySide6.QtWidgets import QVBoxLayout, QMessageBox
+from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
 from src.config.config import Config
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
-from src.frontend.global_signals import GSigs
-from src.frontend.custom_widgets.template_selector import TemplateSelector
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
+from src.frontend.custom_widgets.template_selector import TemplateSelector
+from src.frontend.global_signals import GSigs
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -25,7 +25,7 @@ class NfoTemplate(BaseWizardPage):
         self.main_window = parent
 
         self.template_selector = TemplateSelector(
-            self.config, False, self.main_window, self
+            config=self.config, sandbox=False, main_window=self.main_window, parent=self
         )
         self.template_selector.popup_button.clicked.connect(self._reset_highlight)
         self.template_selector.hide_parent.connect(GSigs().main_window_hide)

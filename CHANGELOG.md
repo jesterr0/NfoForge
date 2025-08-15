@@ -8,6 +8,7 @@
 - Advanced input wizard page now flashes yellow for missing input(s).
 - Parse series from TVDB to get metadata as needed (full series support is not in the program yet).
 - Config selector on splash screen if there are 2 or more user configs available for easy selection.
+- Added a new checkbox to **Enabled Prompt Tokens on Preview in Sandbox**. This will allow the user to control rather or not they will be prompted while testing their templates by prompt tokens.
 
 ### Changed
 

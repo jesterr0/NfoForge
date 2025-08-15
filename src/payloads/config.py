@@ -177,6 +177,7 @@ class ConfigPayload:
     lstrip_blocks: bool
     newline_sequence: str
     keep_trailing_newline: bool
+    enable_sandbox_prompt_tokens: bool
 
     # release notes
     enable_release_notes: bool

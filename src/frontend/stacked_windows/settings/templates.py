@@ -223,7 +223,25 @@ class TemplatesSettings(BaseSettings):
         )
         self.newline_sequence.addItems(("\\r", "\\n", "\\r\\n"))
 
-        self.template_selector = TemplateSelector(self.config, True, main_window, self)
+        self.sandbox_enable_prompt_tokens = QCheckBox(
+            "Enabled Prompt Tokens on Preview in Sandbox", self
+        )
+        self.sandbox_enable_prompt_tokens.setToolTip(
+            "Enables prompt window for prompt tokens when using Sandbox.\nNote: "
+            "this does not effect prompt tokens during processing."
+        )
+
+        sandbox_toggle_layout = QHBoxLayout()
+        sandbox_toggle_layout.setContentsMargins(6, 0, 6, 0)
+        sandbox_toggle_layout.addWidget(self.sandbox_enable_prompt_tokens)
+
+        self.template_selector = TemplateSelector(
+            config=self.config,
+            sandbox=True,
+            main_window=main_window,
+            parent=self,
+            toggle_prompt_tokens=self.sandbox_enable_prompt_tokens,
+        )
         self.template_selector.setMinimumHeight(400)
         self.update_template_selector_syntax()
 
@@ -293,6 +311,8 @@ class TemplatesSettings(BaseSettings):
             create_form_layout(self.newline_sequence_lbl, self.newline_sequence)
         )
 
+        self.add_widget(build_h_line((6, 1, 6, 1)))
+        self.add_layout(sandbox_toggle_layout)
         self.add_widget(build_h_line((6, 1, 6, 1)))
         self.add_widget(self.template_selector)
 
@@ -369,6 +389,9 @@ class TemplatesSettings(BaseSettings):
         if get_newline_sequence_idx > -1:
             self.newline_sequence.setCurrentIndex(get_newline_sequence_idx)
         self.keep_trailing_newline_toggle.setChecked(payload.keep_trailing_newline)
+        self.sandbox_enable_prompt_tokens.setChecked(
+            payload.enable_sandbox_prompt_tokens
+        )
 
         self.template_selector.load_templates()
 
@@ -431,6 +454,9 @@ class TemplatesSettings(BaseSettings):
         self.config.cfg_payload.newline_sequence = self.newline_sequence.currentText()
         self.config.cfg_payload.keep_trailing_newline = (
             self.keep_trailing_newline_toggle.isChecked()
+        )
+        self.config.cfg_payload.enable_sandbox_prompt_tokens = (
+            self.sandbox_enable_prompt_tokens.isChecked()
         )
         self.update_jinja_engine_settings()
         self.updated_settings_applied.emit()
@@ -575,6 +601,9 @@ class TemplatesSettings(BaseSettings):
             self.newline_sequence.setCurrentIndex(1)
         self.keep_trailing_newline_toggle.setChecked(
             self.config.cfg_payload_defaults.keep_trailing_newline
+        )
+        self.sandbox_enable_prompt_tokens.setChecked(
+            self.config.cfg_payload_defaults.enable_sandbox_prompt_tokens
         )
         self.update_jinja_engine_settings()
 
