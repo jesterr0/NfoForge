@@ -203,8 +203,8 @@ class TemplatesSettings(BaseSettings):
             self.update_jinja_engine_settings
         )
         self.keep_trailing_newline_toggle.setToolTip(
-            "If set to True (checked), the trailing newline is preserved when rendering templates. If set to False (unchecked), a "
-            "single newline, if present, will be stripped from the end of the template. Default: False."
+            "If set to True (checked), the trailing newline is preserved when rendering templates.\nIf set to False (unchecked), a "
+            "single newline, if present, will be stripped from the end of the template.\nDefault: False."
         )
         toggle_layout = QHBoxLayout()
         toggle_layout.setContentsMargins(6, 0, 6, 0)
