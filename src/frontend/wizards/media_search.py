@@ -418,13 +418,15 @@ class MediaSearch(BaseWizardPage):
             # tvdb data
             if tvdb_data and tvdb_data.get("success") is True:
                 tvdb_data_result = tvdb_data.get("result")
-                tvdb_data_result_movie = tvdb_data_result.get("movie")
-                if not tvdb_data_result_movie:
+                tvdb_data_result_content = tvdb_data_result.get(
+                    "movie"
+                ) or tvdb_data_result.get("series")
+                if not tvdb_data_result_content:
                     tvdb_value = self._ask_user_for_id("TVDB")
-                    tvdb_data_result_movie = {"id": tvdb_value}
+                    tvdb_data_result_content = {"id": tvdb_value}
                 self.config.media_search_payload.tvdb_data = tvdb_data_result
                 self.config.media_search_payload.tvdb_id = str(
-                    tvdb_data_result_movie.get("id")
+                    tvdb_data_result_content.get("id")
                 )
                 if self.config.media_search_payload.tvdb_id:
                     self.tvdb_id_entry.setText(self.config.media_search_payload.tvdb_id)

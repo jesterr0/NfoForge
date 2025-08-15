@@ -6,10 +6,11 @@
 
 - MediaSearch missing inputs that are required now flashes yellow if missing.
 - Advanced input wizard page now flashes yellow for missing input(s).
+- Parse series from TVDB to get metadata as needed (full series support is not in the program yet).
 
 ### Changed
 
-- 
+-
 
 ### Fixed
 
@@ -18,7 +19,7 @@
 
 ### Removed
 
-- 
+-
 
 ## [0.8.7] - 2025-08-14
 
