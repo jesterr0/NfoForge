@@ -182,7 +182,7 @@ class SplashScreenLoader(QThread):
 
             if jinja2_functions:
                 for name, func in jinja2_functions.items():
-                    self.config.jinja_engine.add_global(name, func)
+                    self.config.jinja_engine.add_global(name, func, False)
 
 
 class SplashScreen(QWidget):

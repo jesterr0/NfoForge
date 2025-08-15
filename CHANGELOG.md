@@ -19,6 +19,7 @@
 
 - User could save their previewed template in sandbox mode, overwriting their template. Now automatically unchecks the template on save.
 - Break up tooltip that was too long.
+- A bug when the user saved any changes in Config that would break **user plugin functions**.
 
 ### Removed
 

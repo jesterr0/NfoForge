@@ -136,11 +136,13 @@ class Config:
         self.jinja_engine = Jinja2TemplateEngine(**self._jinja_env_settings())
 
         # expose payloads for use in the engine
-        self.jinja_engine.add_global("nf_shared_data", self.shared_data)
+        self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
         self.jinja_engine.add_global(
-            "nf_media_search_payload", self.media_search_payload
+            "nf_media_search_payload", self.media_search_payload, True
         )
-        self.jinja_engine.add_global("nf_media_input_payload", self.media_input_payload)
+        self.jinja_engine.add_global(
+            "nf_media_input_payload", self.media_input_payload, True
+        )
 
     def reset_config(self) -> None:
         """Reset the configuration payloads to their default values."""
@@ -150,12 +152,15 @@ class Config:
         self.media_input_payload.reset()
 
         self.jinja_engine.reset_added_globals()
+
         # re-expose payloads for use in the engine
-        self.jinja_engine.add_global("nf_shared_data", self.shared_data)
+        self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
         self.jinja_engine.add_global(
-            "nf_media_search_payload", self.media_search_payload
+            "nf_media_search_payload", self.media_search_payload, True
         )
-        self.jinja_engine.add_global("nf_media_input_payload", self.media_input_payload)
+        self.jinja_engine.add_global(
+            "nf_media_input_payload", self.media_input_payload, True
+        )
 
     def load_program_conf(self, config_file: str | None) -> None:
         """
