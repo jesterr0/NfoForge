@@ -227,8 +227,8 @@ class TemplatesSettings(BaseSettings):
             "Enabled Prompt Tokens on Preview in Sandbox", self
         )
         self.sandbox_enable_prompt_tokens.setToolTip(
-            "Enables prompt window for prompt tokens when using Sandbox.\nNote: "
-            "this does not effect prompt tokens during processing."
+            "Enables prompt window for prompt tokens when using Sandbox.\n\nNote: "
+            "Does not effect prompt tokens during processing."
         )
 
         sandbox_toggle_layout = QHBoxLayout()
