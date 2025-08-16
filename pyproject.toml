@@ -40,12 +40,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.9.6", "cython>=3.0.12"]
+dev = ["ruff>=0.9.6", "cython>=3.0.12", "pytest", "pytest-cov"]
 build = ["pyinstaller-hooks-contrib>=2025.1", "pyinstaller>=6.9.0"]
 docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [tool.ruff]
 line-length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short"]
 
 [tool.basedpyright]
 include = ["src", "plugins"]
