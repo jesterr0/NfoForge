@@ -67,6 +67,7 @@ class ConfigPayload:
 
     # dependencies
     ffmpeg: Path | None
+    ffprobe: Path | None
     frame_forge: Path | None
     mkbrr: Path | None
 

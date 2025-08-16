@@ -7,6 +7,7 @@ from src.enums import CaseInsensitiveEnum
 
 class Dependencies(CaseInsensitiveEnum):
     FFMPEG = auto_enum()
+    FFPROBE = auto_enum()
     FRAME_FORGE = auto_enum()
     MKBRR = auto_enum()
 
@@ -14,6 +15,7 @@ class Dependencies(CaseInsensitiveEnum):
     def __str__(self) -> str:
         dep_map = {
             Dependencies.FFMPEG: "FFMPEG",
+            Dependencies.FFPROBE: "FFPROBE",
             Dependencies.FRAME_FORGE: "FrameForge",
             Dependencies.MKBRR: "mkbrr",
         }
@@ -25,6 +27,11 @@ class Dependencies(CaseInsensitiveEnum):
                 "cfg_var": "ffmpeg",
                 "app_folder": "ffmpeg",
                 "executable": "ffmpeg",
+            },
+            Dependencies.FFPROBE: {
+                "cfg_var": "ffprobe",
+                "app_folder": "ffprobe",
+                "executable": "ffprobe",
             },
             Dependencies.FRAME_FORGE: {
                 "cfg_var": "frame_forge",

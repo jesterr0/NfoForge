@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased] - 2025-m?-d?
+
+### Added
+
+- **FFPROBE** detection. While NFoForge doesn't really *need* this to function, this will be nice for users to utilize in a plugin and detection can be handled by NfoForge.
+- Added informational hover labels to each dependency.
+
+### Changed
+
+- 
+
+### Fixed
+
+- 
+
+### Removed
+
+- 
+
 ## [0.8.8] - 2025-08-15
 
 ### Added

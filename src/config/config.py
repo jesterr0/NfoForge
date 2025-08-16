@@ -1139,6 +1139,11 @@ class Config:
                 if dependencies_data["ffmpeg"]
                 else None
             )
+            ffprobe = (
+                Path(dependencies_data["ffprobe"])
+                if dependencies_data["ffprobe"]
+                else None
+            )
             frame_forge = (
                 Path(dependencies_data["frame_forge"])
                 if dependencies_data["frame_forge"]
@@ -1625,6 +1630,7 @@ class Config:
                 if general_data.get("working_dir")
                 else self.default_working_dir(ensure_exists=True),
                 ffmpeg=ffmpeg,
+                ffprobe=ffprobe,
                 frame_forge=frame_forge,
                 mkbrr=mkbrr,
                 tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),

@@ -17,6 +17,7 @@ working_dir = ""
 
 [dependencies]
 ffmpeg = ""
+ffprobe = ""
 frame_forge = ""
 mkbrr = ""
 
