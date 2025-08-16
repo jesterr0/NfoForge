@@ -43,7 +43,7 @@ class QTAwesomeThemeSwapper(QObject):
 
     def register(
         self,
-        widget: QToolButton | QPushButton,
+        widget: QToolButton | QPushButton | qta.IconWidget,
         icon_name: str,
         icon_size: QSize | None = None,
         **icon_kwargs,
@@ -56,6 +56,9 @@ class QTAwesomeThemeSwapper(QObject):
         widget.setIcon(qta.icon(icon_name, **icon_kwargs))
         if icon_size:
             widget.setIconSize(icon_size)
+            # we must call update on IconWidgets to correctly update the size
+            if isinstance(widget, qta.IconWidget):
+                widget.update()
 
         # connect to widget's destroyed signal to de register automatically
         widget.destroyed.connect(partial(self.deregister, widget))
