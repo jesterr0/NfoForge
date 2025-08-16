@@ -559,10 +559,6 @@ class SandBoxInput(QDialog):
         GSigs().main_window_clear_status_tip.connect(self._clear_fake_status_bar)
 
         self.sandbox_lbl = QLabel("Input", self)
-        bigger_font = self.sandbox_lbl.font()
-        bigger_font.setWeight(bigger_font.Weight.Bold)
-        bigger_font.setPointSize(9)
-        self.sandbox_lbl.setFont(bigger_font)
 
         self.media_input = MediaInputBasic(
             self.config, self, on_finished_cb=self._handle_next
@@ -572,12 +568,11 @@ class SandBoxInput(QDialog):
         self.media_input.file_tree.setMaximumHeight(130)
 
         self.media_search_lbl = QLabel("Search", self)
-        self.media_search_lbl.setFont(bigger_font)
 
         self.media_search = MediaSearch(
             self.config, self, on_finished_cb=self._handle_next
         )
-        self.media_search.main_layout.setContentsMargins(6, 0, 0, 0)
+        self.media_search.main_layout.setContentsMargins(0, 0, 0, 0)
 
         self.accept_btn = QToolButton(self)
         self.accept_btn.setText("Accept")
