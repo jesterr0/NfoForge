@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.frontend.utils import set_top_parent_geometry
+from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
 HighlightKeywords = NamedTuple(
@@ -173,7 +174,6 @@ class CodeEditor(QPlainTextEdit):
                 "QPushButton:hover { background-color: rgba(31, 123, 228, 0.95); "
                 "border-radius: 2px; border: 1px solid #5f5f5fc9; }"
             )
-            from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
             QTAThemeSwap().register(
                 self.expand_icon,
