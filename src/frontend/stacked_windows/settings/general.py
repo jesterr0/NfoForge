@@ -74,6 +74,7 @@ class GeneralSettings(BaseSettings):
         self.ui_scale_factor_spinbox = QSpinBox(
             self, suffix="%", singleStep=10, minimum=50, maximum=300
         )
+        self.ui_scale_factor_spinbox.setToolTip(scale_factor_lbl.toolTip())
         self.ui_scale_factor_spinbox.lineEdit().setReadOnly(True)
         self.ui_scale_factor_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
         self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
