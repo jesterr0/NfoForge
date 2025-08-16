@@ -20,6 +20,7 @@ from src.enums.settings_window import SettingsTabs
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.settings import Settings
 from src.frontend.utils.main_window_utils import MainWindowWorker
+from src.frontend.utils.scaling_manager import FontScalingManager
 from src.frontend.wizards.wizard import MainWindowWizard
 from src.logger.nfo_forge_logger import LOG
 from src.version import __version__, program_name
@@ -61,6 +62,10 @@ class MainWindow(QMainWindow):
         GSigs().main_window_open_log_file.connect(self.open_log)
         GSigs().ask_prompt.connect(self.ask_prompt)
 
+        # timer for debounced config saving for scaling changes
+        self._config_save_timer = QTimer(self, singleShot=True)
+        self._config_save_timer.timeout.connect(self._save_config_debounced)
+
         # wizard (main stacked widget)
         self.wizard = MainWindowWizard(self.config, self)
 
@@ -73,6 +78,19 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.settings)
 
         self.setCentralWidget(self.stacked_widget)
+
+        # setup scaling manager for Electron-like zoom functionality
+        self.scaling_manager = FontScalingManager(
+            initial_scale_factor=config.cfg_payload.ui_scale_factor, parent=self
+        )
+        # setup shortcuts
+        self.scaling_manager.setup_shortcuts(self)
+        # connect to scaling manager signals
+        self.scaling_manager.scaling_changed_by_user.connect(self._on_scaling_changed)
+        # connect to settings scale factor changes (no auto-save)
+        GSigs().scale_factor_set_from_settings.connect(
+            self._on_scaling_changed_from_settings
+        )
 
         # key binds
         self.open_log_dir_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
@@ -94,6 +112,34 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def _toggle_state(self, state: bool) -> None:
         self.setDisabled(state)
+
+    @Slot(float)
+    def _on_scaling_changed(self, scale_factor: float) -> None:
+        """Save the new scaling factor to config when it changes."""
+        self.config.cfg_payload.ui_scale_factor = scale_factor
+
+        # emit global signal to sync UI elements in general settings
+        GSigs().scale_factor_changed.emit(scale_factor)
+
+        # use debounced saving to prevent multiple rapid config writes
+        self._config_save_timer.stop()
+        self._config_save_timer.start(1200)
+
+    @Slot(float)
+    def _on_scaling_changed_from_settings(self, scale_factor: float) -> None:
+        """Handle scaling changes from settings UI (no auto-save)."""
+        self.scaling_manager.set_scale_factor(scale_factor, user_initiated=False)
+
+    @Slot()
+    def _save_config_debounced(self) -> None:
+        """Debounced config save method to prevent excessive config writes."""
+        try:
+            self.config.save_config()
+            # show brief status message to indicate save
+            GSigs().main_window_update_status_tip.emit("Config saved", 1500)
+        except Exception as e:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to save config: {e}")
+            GSigs().main_window_update_status_tip.emit("Failed to save config", 3000)
 
     def _check_suffix(self) -> None:
         title = self.default_window_title
@@ -206,6 +252,11 @@ class MainWindow(QMainWindow):
 
     @Slot(object)
     def closeEvent(self, event: QCloseEvent) -> None:
+        # ensure any pending config save is completed before closing
+        if self._config_save_timer.isActive():
+            self._config_save_timer.stop()
+            self._save_config_debounced()
+
         kill_child_processes()
         self.save_window_settings()
         super().closeEvent(event)

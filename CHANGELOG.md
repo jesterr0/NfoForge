@@ -9,6 +9,13 @@
 - Parse series from TVDB to get metadata as needed (full series support is not in the program yet).
 - Config selector on splash screen if there are 2 or more user configs available for easy selection.
 - Added a new checkbox to **Enabled Prompt Tokens on Preview in Sandbox**. This will allow the user to control rather or not they will be prompted while testing their templates by prompt tokens.
+- UI scaling.
+  - Added UI scaling spinbox in **Settings -> General**.
+  - Can now modify scaling on the fly program wide with hotkeys.
+    - **CTRL and +** zooms in.
+    - **CTRL and -** zooms out.
+    - **CTRL and 0** resets zoom to defaults.
+    - Config is automatically updated after a couple seconds of using the hot keys.
 
 ### Changed
 

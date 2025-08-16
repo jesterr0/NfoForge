@@ -279,6 +279,7 @@ class Config:
             # general
             general_data = self._toml_data["general"]
             general_data["ui_suffix"] = self.cfg_payload.ui_suffix
+            general_data["ui_scale_factor"] = self.cfg_payload.ui_scale_factor
             general_data["nfo_forge_theme"] = NfoForgeTheme(
                 self.cfg_payload.nfo_forge_theme
             ).value
@@ -1603,6 +1604,7 @@ class Config:
             # build payload
             config_payload = ConfigPayload(
                 ui_suffix=general_data.get("ui_suffix", ""),
+                ui_scale_factor=general_data.get("ui_scale_factor", 1.0),
                 nfo_forge_theme=nfo_forge_theme,
                 profile=profile,
                 media_mode=media_mode,

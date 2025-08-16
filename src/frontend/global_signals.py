@@ -18,6 +18,11 @@ class GlobalSignals(QObject):
     main_window_open_log_dir = Signal()
     main_window_open_log_file = Signal()
 
+    # scaling
+    scale_factor_changed_by_user = Signal(float)  # user hotkey changes (auto-save)
+    scale_factor_changed = Signal(float)  # all changes (UI sync)
+    scale_factor_set_from_settings = Signal(float)  # settings UI changes (no auto-save)
+
     # settings
     settings_clicked = Signal()
     settings_refresh = Signal()

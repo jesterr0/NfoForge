@@ -1,5 +1,6 @@
 [general]
 ui_suffix = ""
+ui_scale_factor = 1.0
 nfo_forge_theme = 1
 profile = 1
 media_mode = 1

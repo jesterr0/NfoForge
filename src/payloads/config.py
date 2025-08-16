@@ -50,6 +50,7 @@ class ProgramConfigPayload:
 class ConfigPayload:
     # general
     ui_suffix: str
+    ui_scale_factor: float
     nfo_forge_theme: NfoForgeTheme
     profile: Profile
     media_mode: MediaMode

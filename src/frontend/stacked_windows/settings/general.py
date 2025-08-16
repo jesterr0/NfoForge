@@ -66,6 +66,18 @@ class GeneralSettings(BaseSettings):
         suffix_lbl.setToolTip("Adds a suffix to NfoForge")
         self.ui_suffix = QLineEdit(self)
 
+        scale_factor_lbl = QLabel("UI Scale Factor", self)
+        scale_factor_lbl.setToolTip(
+            "Adjusts the overall UI scaling (50% - 300%). Use Ctrl++ / Ctrl+- to change on the fly"
+        )
+        self.ui_scale_factor_spinbox = QSpinBox(
+            self, suffix="%", singleStep=10, minimum=50, maximum=300
+        )
+        self.ui_scale_factor_spinbox.lineEdit().setReadOnly(True)
+        self.ui_scale_factor_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
+        GSigs().scale_factor_changed.connect(self.sync_scale_factor_spinbox)
+
         theme_lbl = QLabel("Theme", self)
         theme_lbl.setToolTip("Sets theme")
         self.theme_combo = CustomComboBox(
@@ -274,6 +286,9 @@ class GeneralSettings(BaseSettings):
 
         self.add_layout(create_form_layout(config_lbl, config_widget))
         self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
+        self.add_layout(
+            create_form_layout(scale_factor_lbl, self.ui_scale_factor_spinbox)
+        )
         self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
         self.add_layout(create_form_layout(profile_lbl, self.profile_combo))
         self.add_layout(plugin_wizard_page_layout)
@@ -313,6 +328,7 @@ class GeneralSettings(BaseSettings):
         payload = self.config.cfg_payload
         self.load_selected_configs()
         self.ui_suffix.setText(payload.ui_suffix.strip())
+        self.ui_scale_factor_spinbox.setValue(int(payload.ui_scale_factor * 100))
         self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.nfo_forge_theme)
         self._change_theme()
         self.load_combo_box(self.profile_combo, Profile, payload.profile)
@@ -511,6 +527,20 @@ class GeneralSettings(BaseSettings):
             app.styleHints().unsetColorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
 
     @Slot(int)
+    def _on_scale_factor_changed(self, value: int) -> None:
+        """Handle UI scale factor changes from the spinbox."""
+        scale_factor = value / 100.0
+        # emit global signal to update scaling (no auto-save)
+        GSigs().scale_factor_set_from_settings.emit(scale_factor)
+
+    @Slot(float)
+    def sync_scale_factor_spinbox(self, scale_factor: float) -> None:
+        """Sync the spinbox value when scaling changes via hotkeys."""
+        self.ui_scale_factor_spinbox.valueChanged.disconnect()
+        self.ui_scale_factor_spinbox.setValue(int(scale_factor * 100))
+        self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
+
+    @Slot(int)
     def _change_profile(self, _: int | None = None) -> None:
         if self.profile_combo.currentData() == Profile.PLUGIN:
             for widget in self._plugin_widgets:
@@ -625,6 +655,9 @@ class GeneralSettings(BaseSettings):
     def _save_settings(self) -> None:
         self.config.program_conf.current_config = self.selected_config.currentText()
         self.config.cfg_payload.ui_suffix = self.ui_suffix.text().strip()
+        self.config.cfg_payload.ui_scale_factor = (
+            self.ui_scale_factor_spinbox.value() / 100.0
+        )
         self.config.cfg_payload.nfo_forge_theme = NfoForgeTheme(
             self.theme_combo.currentData()
         )
@@ -670,6 +703,9 @@ class GeneralSettings(BaseSettings):
     def apply_defaults(self) -> None:
         self.selected_config.setCurrentIndex(0)
         self.ui_suffix.clear()
+        self.ui_scale_factor_spinbox.setValue(
+            int(self.config.cfg_payload_defaults.ui_scale_factor * 100)
+        )
         self.theme_combo.setCurrentIndex(
             self.config.cfg_payload_defaults.nfo_forge_theme.value - 1
         )
