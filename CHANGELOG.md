@@ -6,6 +6,7 @@
 
 - **FFPROBE** detection. While NFoForge doesn't really *need* this to function, this will be nice for users to utilize in a plugin and detection can be handled by NfoForge.
 - Added informational hover labels to each dependency.
+- Now supports conditional prompt tokens.
 
 ### Changed
 
