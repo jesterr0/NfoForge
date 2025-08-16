@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - 2025-m?-d?
+## [0.8.8] - 2025-08-15
 
 ### Added
 
