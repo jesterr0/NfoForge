@@ -68,7 +68,8 @@ class GeneralSettings(BaseSettings):
 
         scale_factor_lbl = QLabel("UI Scale Factor", self)
         scale_factor_lbl.setToolTip(
-            "Adjusts the overall UI scaling (50% - 300%). Use Ctrl++ / Ctrl+- to change on the fly"
+            "Adjusts the overall UI scaling (50% - 300%).\n"
+            "Use Ctrl++ / Ctrl+- to zoom in and out on the fly.\n(CTRL+0 resets to default)"
         )
         self.ui_scale_factor_spinbox = QSpinBox(
             self, suffix="%", singleStep=10, minimum=50, maximum=300
