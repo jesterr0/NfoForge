@@ -3,7 +3,6 @@ import re
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QHBoxLayout,
     QLabel,
@@ -39,13 +38,12 @@ class TemplatesSettings(BaseSettings):
         GSigs().settings_close.connect(self._on_settings_closed)
 
         self.jinja_lbl = QLabel(
-            '<span>Powered by </span><a href="https://jinja.palletsprojects.com/en/stable/">jinja2</a>',
+            '<span style="font-size: small;">Powered by '
+            '<a href="https://jinja.palletsprojects.com/en/stable/">jinja2</a></span>',
             self,
         )
         self.jinja_lbl.setOpenExternalLinks(True)
-        smaller_font = QApplication.font()
-        smaller_font.setPointSize(7)
-        self.jinja_lbl.setFont(smaller_font)
+
         self.jinja_icon = build_auto_theme_svg_widget(
             str(RUNTIME_DIR / "svg" / "jinja.svg"), 20, 20, self
         )
