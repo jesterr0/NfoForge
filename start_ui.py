@@ -1,7 +1,6 @@
 # relevant documentation
 # https://doc.qt.io/qtforpython-6/index.html#
 from multiprocessing import freeze_support as mp_freeze_support
-import os
 from pathlib import Path
 import sys
 import traceback
@@ -17,15 +16,11 @@ from src.frontend.windows.main_window import MainWindow
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
 from src.logger.nfo_forge_logger import LOG
 
-DEV_MODE = False
-if DEV_MODE:
-    # This helps scale Linux desktop in vmware for development
-    os.environ["QT_SCALE_FACTOR"] = "1.3"
-
 
 class NfoForge:
     def __init__(self, arg_parse: tuple[str | None, str | None]) -> None:
         self.app = QApplication(sys.argv)
+
         self.app.setWindowIcon(
             QIcon(str(Path(RUNTIME_DIR / "images" / "hammer_merged.png")))
         )
