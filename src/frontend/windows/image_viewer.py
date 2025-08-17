@@ -154,12 +154,14 @@ class ImageViewer(QWidget):
         QTAThemeSwap().register(
             self.seek_left_btn, "ph.arrow-left-light", icon_size=QSize(24, 24)
         )
+        self.seek_left_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.seek_left_btn.clicked.connect(self._previous_image)
 
         self.seek_right_btn = QToolButton(self)
         QTAThemeSwap().register(
             self.seek_right_btn, "ph.arrow-right-light", icon_size=QSize(24, 24)
         )
+        self.seek_right_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.seek_right_btn.clicked.connect(self._next_image)
 
         left_btn_layout = QHBoxLayout()
@@ -176,6 +178,7 @@ class ImageViewer(QWidget):
             "ph.arrow-line-left-light",
             icon_size=QSize(24, 24),
         )
+        self.de_select_images_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if self.comparison_mode == ScreenShotMode.BASIC_SS_GEN:
             self.de_select_images_btn.clicked.connect(self._remove_single_image)
         else:
@@ -185,6 +188,7 @@ class ImageViewer(QWidget):
         QTAThemeSwap().register(
             self.select_images_btn, "ph.arrow-line-right-light", icon_size=QSize(24, 24)
         )
+        self.select_images_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if self.comparison_mode == ScreenShotMode.BASIC_SS_GEN:
             self.select_images_btn.clicked.connect(self._select_single_image)
         else:
@@ -194,6 +198,7 @@ class ImageViewer(QWidget):
         QTAThemeSwap().register(
             self.confirm_selection_btn, "ph.check-light", icon_size=QSize(24, 24)
         )
+        self.confirm_selection_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         if self.min_required_selected_screens != 0:
             self.confirm_selection_btn.setEnabled(False)
         self.confirm_selection_btn.clicked.connect(self.close)
@@ -548,20 +553,24 @@ class ImageViewer(QWidget):
         min_req = self.min_required_selected_screens
         max_req = self.max_required_selected_screens
 
-        # Select button logic
+        # select button logic
         if max_req != 0 and count >= max_req:
             self.select_images_btn.setEnabled(False)
         else:
             self.select_images_btn.setEnabled(True)
 
-        # Confirm button logic
+        # confirm button logic
         if min_req != 0:
             if (count < min_req) or (max_req != 0 and count > max_req):
                 self.confirm_selection_btn.setEnabled(False)
+                self.confirm_selection_btn.setStyleSheet("")
             else:
                 self.confirm_selection_btn.setEnabled(True)
         else:
             self.confirm_selection_btn.setEnabled(True)
+
+        if self.confirm_selection_btn.isEnabled():
+            self.confirm_selection_btn.setStyleSheet("background-color: #32CD32;")
 
     @Slot()
     def _update_preview_img(self):

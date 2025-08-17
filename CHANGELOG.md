@@ -10,7 +10,8 @@
 
 ### Changed
 
-- 
+- ImageViewer check button background now changes to green when required selected images are met.
+- ImageViewer buttons cursor are now pointing hand cursor for the mouse.
 
 ### Fixed
 
