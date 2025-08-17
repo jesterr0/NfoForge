@@ -162,19 +162,9 @@ class ConfigPayload:
     pre_upload: str | None
 
     # template settings
-    block_start_string: str
-    block_end_string: str
     block_syntax_color: str
-    variable_start_string: str
-    variable_end_string: str
     variable_syntax_color: str
-    comment_start_string: str
-    comment_end_string: str
     comment_syntax_color: str
-    line_statement_prefix: str
-    line_statement_syntax_color: str
-    line_comment_prefix: str
-    line_comment_syntax_color: str
     trim_blocks: bool
     lstrip_blocks: bool
     newline_sequence: str

@@ -18,7 +18,10 @@
 
 ### Removed
 
-- 
+- Jinja changes.
+  - Block, variable, and comment control. 
+  - Line statement prefix and line comment prefix. 
+  - All of the above added un-needed complexity that > 99% of users would never customize and this allows me to use add custom logic/tokens/unit tests easier.
 
 ## [0.8.8] - 2025-08-15
 

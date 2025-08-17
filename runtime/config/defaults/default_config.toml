@@ -542,19 +542,9 @@ token_replacer = ""
 pre_upload = ""
 
 [template_settings]
-block_start_string = "{%"
-block_end_string = "%}"
 block_syntax_color = "#A4036F"
-variable_start_string = "{{"
-variable_end_string = "}}"
 variable_syntax_color = "#048BA8"
-comment_start_string = "{#"
-comment_end_string = "#}"
 comment_syntax_color = "#16DB93"
-line_statement_prefix = ""
-line_statement_syntax_color = "#ff0000"
-line_comment_prefix = ""
-line_comment_syntax_color = "#00aaff"
 trim_blocks = 1
 lstrip_blocks = 1
 newline_sequence = '\\n'

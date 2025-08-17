@@ -59,19 +59,13 @@ class TemplatesSettings(BaseSettings):
 
         self.block_start_str_lbl = QLabel("Block Start String", self)
         self.block_start_str_lbl.setToolTip(
-            "The string marking the beginning of a block. Defaults to '{%'."
+            "The string marking the beginning of a block. '{%'"
         )
-        self.block_start_str_entry = QLineEdit(self)
-        self.block_start_str_entry.textChanged.connect(
-            self.update_jinja_engine_settings
-        )
+        self.block_start_str_entry = QLineEdit(self, text="{%", readOnly=True, frame=False)
 
         self.block_end_str_lbl = QLabel("Block End String", self)
-        self.block_end_str_lbl.setToolTip(
-            "The string marking the end of a block. Defaults to '%}'."
-        )
-        self.block_end_str_entry = QLineEdit(self)
-        self.block_end_str_entry.textChanged.connect(self.update_jinja_engine_settings)
+        self.block_end_str_lbl.setToolTip("The string marking the end of a block. '%}'")
+        self.block_end_str_entry = QLineEdit(self, text="%}", readOnly=True, frame=False)
         self.block_entries = (self.block_start_str_entry, self.block_end_str_entry)
 
         self.block_syntax_color = ColorSelectionShape(width=14, height=14, parent=self)
@@ -82,21 +76,15 @@ class TemplatesSettings(BaseSettings):
 
         self.variable_start_str_lbl = QLabel("Variable Start String", self)
         self.variable_start_str_lbl.setToolTip(
-            "The string marking the beginning of a print statement. Defaults to '{{'."
+            "The string marking the beginning of a print statement. '{{'"
         )
-        self.variable_start_str_entry = QLineEdit(self)
-        self.variable_start_str_entry.textChanged.connect(
-            self.update_jinja_engine_settings
-        )
+        self.variable_start_str_entry = QLineEdit(self, text="{{", readOnly=True, frame=False)
 
         self.variable_end_str_lbl = QLabel("Variable End String", self)
         self.variable_end_str_lbl.setToolTip(
-            "The string marking the end of a print statement. Defaults to '}}'."
+            "The string marking the end of a print statement. '}}'"
         )
-        self.variable_end_str_entry = QLineEdit(self)
-        self.variable_end_str_entry.textChanged.connect(
-            self.update_jinja_engine_settings
-        )
+        self.variable_end_str_entry = QLineEdit(self, text="}}", readOnly=True, frame=False)
         self.variable_entries = (
             self.variable_start_str_entry,
             self.variable_end_str_entry,
@@ -114,21 +102,15 @@ class TemplatesSettings(BaseSettings):
 
         self.comment_start_str_lbl = QLabel("Comment Start String", self)
         self.comment_start_str_lbl.setToolTip(
-            "The string marking the beginning of a comment. Defaults to '{#'."
+            "The string marking the beginning of a comment. '{#'"
         )
-        self.comment_start_str_entry = QLineEdit(self)
-        self.comment_start_str_entry.textChanged.connect(
-            self.update_jinja_engine_settings
-        )
+        self.comment_start_str_entry = QLineEdit(self, text="{#", readOnly=True, frame=False)
 
         self.comment_end_str_lbl = QLabel("Comment End String", self)
         self.comment_end_str_lbl.setToolTip(
-            "The string marking the end of a comment. Defaults to '#}'."
+            "The string marking the end of a comment. '#}'"
         )
-        self.comment_end_str_entry = QLineEdit(self)
-        self.comment_end_str_entry.textChanged.connect(
-            self.update_jinja_engine_settings
-        )
+        self.comment_end_str_entry = QLineEdit(self, text="#}", readOnly=True, frame=False)
         self.comment_entries = (
             self.comment_start_str_entry,
             self.comment_end_str_entry,
@@ -142,44 +124,6 @@ class TemplatesSettings(BaseSettings):
         )
         self.comment_syntax_color.color_changed.connect(
             self._update_comment_entry_text_color
-        )
-
-        self.line_statement_prefix_lbl = QLabel("Line Statement Prefix", self)
-        self.line_statement_prefix_lbl.setToolTip(
-            "Check the documentation for line statements and how they work."
-        )
-        self.line_statement_prefix_entry = QLineEdit(self)
-        self.line_statement_prefix_entry.textChanged.connect(
-            self.update_jinja_engine_settings
-        )
-
-        self.line_statement_syntax_color = ColorSelectionShape(
-            width=14, height=14, parent=self
-        )
-        self.line_statement_syntax_color.setToolTip(
-            "Sets syntax highlighting color for line statements"
-        )
-        self.line_statement_syntax_color.color_changed.connect(
-            self._update_line_statement_entry_text_color
-        )
-
-        self.line_comment_prefix_lbl = QLabel("Line Comment Prefix", self)
-        self.line_comment_prefix_lbl.setToolTip(
-            "Works like line statements, check the documentation for line statements and how they work."
-        )
-        self.line_comment_prefix_entry = QLineEdit(self)
-        self.line_comment_prefix_entry.textChanged.connect(
-            self.update_jinja_engine_settings
-        )
-
-        self.line_comment_syntax_color = ColorSelectionShape(
-            width=14, height=14, parent=self
-        )
-        self.line_comment_syntax_color.setToolTip(
-            "Sets syntax highlighting color for line comments"
-        )
-        self.line_comment_syntax_color.color_changed.connect(
-            self._update_line_comment_entry_text_color
         )
 
         self.trim_blocks_toggle = QCheckBox("Trim Blocks", self)
@@ -217,7 +161,7 @@ class TemplatesSettings(BaseSettings):
             "useful default\nfor Linux and OS X systems as well as web applications."
         )
         self.newline_sequence = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
+            completer=False, disable_mouse_wheel=True, parent=self
         )
         self.newline_sequence.addItems(("\\r", "\\n", "\\r\\n"))
 
@@ -287,23 +231,6 @@ class TemplatesSettings(BaseSettings):
             )
         )
 
-        self.add_layout(
-            self.combine_forms(
-                create_form_layout(
-                    self.combine_lbl_color_selection(
-                        self.line_statement_prefix_lbl, self.line_statement_syntax_color
-                    ),
-                    self.line_statement_prefix_entry,
-                ),
-                create_form_layout(
-                    self.combine_lbl_color_selection(
-                        self.line_comment_prefix_lbl, self.line_comment_syntax_color
-                    ),
-                    self.line_comment_prefix_entry,
-                ),
-            )
-        )
-
         self.add_layout(toggle_layout)
         self.add_layout(
             create_form_layout(self.newline_sequence_lbl, self.newline_sequence)
@@ -336,48 +263,20 @@ class TemplatesSettings(BaseSettings):
             self._update_text_color(widget, color)
         self.update_template_selector_syntax()
 
-    @Slot(object)
-    def _update_line_statement_entry_text_color(self, color: QColor) -> None:
-        self._update_text_color(self.line_statement_prefix_entry, color)
-        self.update_template_selector_syntax()
-
-    @Slot(object)
-    def _update_line_comment_entry_text_color(self, color: QColor) -> None:
-        self._update_text_color(self.line_comment_prefix_entry, color)
-        self.update_template_selector_syntax()
-
     @Slot()
     def _load_saved_settings(self) -> None:
         payload = self.config.cfg_payload
-        self.block_start_str_entry.setText(payload.block_start_string)
-        self.block_end_str_entry.setText(payload.block_end_string)
         block_color = QColor(self.config.cfg_payload.block_syntax_color)
         self._update_block_entry_text_color(block_color)
         self.block_syntax_color.update_color(block_color)
 
-        self.variable_start_str_entry.setText(payload.variable_start_string)
-        self.variable_end_str_entry.setText(payload.variable_end_string)
         variable_color = QColor(self.config.cfg_payload.variable_syntax_color)
         self._update_variable_entry_text_color(variable_color)
         self.variable_syntax_color.update_color(variable_color)
 
-        self.comment_start_str_entry.setText(payload.comment_start_string)
-        self.comment_end_str_entry.setText(payload.comment_end_string)
         comment_color = QColor(self.config.cfg_payload.comment_syntax_color)
         self._update_comment_entry_text_color(comment_color)
         self.comment_syntax_color.update_color(comment_color)
-
-        self.line_statement_prefix_entry.setText(payload.line_statement_prefix)
-        line_statement_color = QColor(
-            self.config.cfg_payload.line_statement_syntax_color
-        )
-        self._update_line_statement_entry_text_color(line_statement_color)
-        self.line_statement_syntax_color.update_color(line_statement_color)
-
-        self.line_comment_prefix_entry.setText(payload.line_comment_prefix)
-        line_comment_color = QColor(self.config.cfg_payload.line_comment_syntax_color)
-        self._update_line_comment_entry_text_color(line_comment_color)
-        self.line_comment_syntax_color.update_color(line_comment_color)
 
         self.trim_blocks_toggle.setChecked(payload.trim_blocks)
         self.lstrip_blocks_toggle.setChecked(payload.lstrip_blocks)
@@ -403,48 +302,14 @@ class TemplatesSettings(BaseSettings):
         if not self._save_inputs_valid():
             return
 
-        self.config.cfg_payload.block_start_string = (
-            self.block_start_str_entry.text().strip()
-        )
-        self.config.cfg_payload.block_end_string = (
-            self.block_end_str_entry.text().strip()
-        )
         self.config.cfg_payload.block_syntax_color = (
             self.block_syntax_color.get_hex_color()
-        )
-
-        self.config.cfg_payload.variable_start_string = (
-            self.variable_start_str_entry.text().strip()
-        )
-        self.config.cfg_payload.variable_end_string = (
-            self.variable_end_str_entry.text().strip()
         )
         self.config.cfg_payload.variable_syntax_color = (
             self.variable_syntax_color.get_hex_color()
         )
-
-        self.config.cfg_payload.comment_start_string = (
-            self.comment_start_str_entry.text().strip()
-        )
-        self.config.cfg_payload.comment_end_string = (
-            self.comment_end_str_entry.text().strip()
-        )
         self.config.cfg_payload.comment_syntax_color = (
             self.comment_syntax_color.get_hex_color()
-        )
-
-        self.config.cfg_payload.line_statement_prefix = (
-            self.line_statement_prefix_entry.text().strip()
-        )
-        self.config.cfg_payload.line_statement_syntax_color = (
-            self.line_statement_syntax_color.get_hex_color()
-        )
-
-        self.config.cfg_payload.line_comment_prefix = (
-            self.line_comment_prefix_entry.text().strip()
-        )
-        self.config.cfg_payload.line_comment_syntax_color = (
-            self.line_comment_syntax_color.get_hex_color()
         )
 
         self.config.cfg_payload.trim_blocks = self.trim_blocks_toggle.isChecked()
@@ -542,49 +407,17 @@ class TemplatesSettings(BaseSettings):
         return True
 
     def apply_defaults(self) -> None:
-        self.block_start_str_entry.setText(
-            self.config.cfg_payload_defaults.block_start_string
-        )
-        self.block_end_str_entry.setText(
-            self.config.cfg_payload_defaults.block_end_string
-        )
         block_color = QColor(self.config.cfg_payload_defaults.block_syntax_color)
         self._update_block_entry_text_color(block_color)
         self.block_syntax_color.update_color(block_color)
 
-        self.variable_start_str_entry.setText(
-            self.config.cfg_payload_defaults.variable_start_string
-        )
-        self.variable_end_str_entry.setText(
-            self.config.cfg_payload_defaults.variable_end_string
-        )
         variable_color = QColor(self.config.cfg_payload_defaults.variable_syntax_color)
         self._update_variable_entry_text_color(variable_color)
         self.variable_syntax_color.update_color(variable_color)
 
-        self.comment_start_str_entry.setText(
-            self.config.cfg_payload_defaults.comment_start_string
-        )
-        self.comment_end_str_entry.setText(
-            self.config.cfg_payload_defaults.comment_end_string
-        )
         comment_color = QColor(self.config.cfg_payload_defaults.comment_syntax_color)
         self._update_comment_entry_text_color(comment_color)
         self.comment_syntax_color.update_color(comment_color)
-
-        self.line_statement_prefix_entry.clear()
-        line_statement_color = QColor(
-            self.config.cfg_payload_defaults.line_statement_syntax_color
-        )
-        self._update_line_statement_entry_text_color(line_statement_color)
-        self.line_statement_syntax_color.update_color(line_statement_color)
-
-        self.line_comment_prefix_entry.clear()
-        line_comment_color = QColor(
-            self.config.cfg_payload_defaults.line_comment_syntax_color
-        )
-        self._update_line_comment_entry_text_color(line_comment_color)
-        self.line_comment_syntax_color.update_color(line_comment_color)
 
         self.trim_blocks_toggle.setChecked(self.config.cfg_payload_defaults.trim_blocks)
         self.lstrip_blocks_toggle.setChecked(
@@ -608,14 +441,6 @@ class TemplatesSettings(BaseSettings):
     @Slot(object)
     def update_jinja_engine_settings(self, _event=None) -> None:
         update_map = {
-            "block_start_string": self.block_start_str_entry.text().strip(),
-            "block_end_string": self.block_end_str_entry.text().strip(),
-            "variable_start_string": self.variable_start_str_entry.text().strip(),
-            "variable_end_string": self.variable_end_str_entry.text().strip(),
-            "comment_start_string": self.comment_start_str_entry.text().strip(),
-            "comment_end_string": self.comment_end_str_entry.text().strip(),
-            "line_statement_prefix": self.line_statement_prefix_entry.text().strip(),
-            "line_comment_prefix": self.line_comment_prefix_entry.text().strip(),
             "trim_blocks": self.trim_blocks_toggle.isChecked(),
             "lstrip_blocks": self.lstrip_blocks_toggle.isChecked(),
             "keep_trailing_newline": self.keep_trailing_newline_toggle.isChecked(),
@@ -627,7 +452,7 @@ class TemplatesSettings(BaseSettings):
                 setattr(
                     self.config.jinja_engine.environment,
                     attr,
-                    value if value != "" else None,
+                    value,
                 )
 
         # update highlights
@@ -642,84 +467,35 @@ class TemplatesSettings(BaseSettings):
     def jinja_syntax_highlights(self) -> list[HighlightKeywords]:
         syntax_highlights = []
 
-        block_start_txt = self.block_start_str_entry.text().strip()
-        block_end_txt = self.block_end_str_entry.text().strip()
-        if block_start_txt and block_end_txt:
-            block_color = self.block_syntax_color.get_hex_color()
-            if block_color:
-                syntax_highlights.append(
-                    HighlightKeywords(
-                        re.compile(
-                            re.escape(block_start_txt)
-                            + r".+?"
-                            + re.escape(block_end_txt)
-                        ),
-                        block_color,
-                        False,
-                    )
+        block_color = self.block_syntax_color.get_hex_color()
+        if block_color:
+            syntax_highlights.append(
+                HighlightKeywords(
+                    re.compile(r"\{%.*?%\}"),
+                    block_color,
+                    False,
                 )
+            )
 
-        variable_start_txt = self.variable_start_str_entry.text().strip()
-        variable_end_txt = self.variable_end_str_entry.text().strip()
-        if variable_start_txt and variable_end_txt:
-            variable_color = self.variable_syntax_color.get_hex_color()
-            if variable_color:
-                syntax_highlights.append(
-                    HighlightKeywords(
-                        re.compile(
-                            re.escape(variable_start_txt)
-                            + r".+?"
-                            + re.escape(variable_end_txt)
-                        ),
-                        variable_color,
-                        False,
-                    )
+        variable_color = self.variable_syntax_color.get_hex_color()
+        if variable_color:
+            syntax_highlights.append(
+                HighlightKeywords(
+                    re.compile(r"\{\{.*?\}\}"),
+                    variable_color,
+                    False,
                 )
+            )
 
-        comment_start_txt = self.comment_start_str_entry.text().strip()
-        comment_end_txt = self.comment_end_str_entry.text().strip()
-        if comment_start_txt and comment_end_txt:
-            comment_color = self.comment_syntax_color.get_hex_color()
-            if comment_color:
-                syntax_highlights.append(
-                    HighlightKeywords(
-                        re.compile(
-                            re.escape(comment_start_txt)
-                            + r".+?"
-                            + re.escape(comment_end_txt)
-                        ),
-                        comment_color,
-                        False,
-                    )
+        comment_color = self.comment_syntax_color.get_hex_color()
+        if comment_color:
+            syntax_highlights.append(
+                HighlightKeywords(
+                    re.compile(r"\{#.*?#\}"),
+                    comment_color,
+                    False,
                 )
-
-        line_statement_txt = self.line_statement_prefix_entry.text().strip()
-        if line_statement_txt:
-            line_statement_color = self.line_statement_syntax_color.get_hex_color()
-            if line_statement_color:
-                syntax_highlights.append(
-                    HighlightKeywords(
-                        re.compile(
-                            r"^" + re.escape(line_statement_txt) + r".+?(?:\n|$)"
-                        ),
-                        line_statement_color,
-                        False,
-                    )
-                )
-
-        line_comment_prefix_txt = self.line_comment_prefix_entry.text().strip()
-        if line_comment_prefix_txt:
-            line_comment_color = self.line_comment_syntax_color.get_hex_color()
-            if line_comment_color:
-                syntax_highlights.append(
-                    HighlightKeywords(
-                        re.compile(
-                            r"^" + re.escape(line_comment_prefix_txt) + r".+?(?:\n|$)"
-                        ),
-                        line_comment_color,
-                        False,
-                    )
-                )
+            )
 
         return syntax_highlights
 

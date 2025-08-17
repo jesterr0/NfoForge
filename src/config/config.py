@@ -1040,42 +1040,14 @@ class Config:
 
             # template settings
             template_settings = self._toml_data["template_settings"]
-            template_settings["block_start_string"] = (
-                self.cfg_payload.block_start_string
-            )
             template_settings["block_syntax_color"] = (
                 self.cfg_payload.block_syntax_color
-            )
-            template_settings["block_end_string"] = self.cfg_payload.block_end_string
-            template_settings["variable_start_string"] = (
-                self.cfg_payload.variable_start_string
-            )
-            template_settings["variable_end_string"] = (
-                self.cfg_payload.variable_end_string
             )
             template_settings["variable_syntax_color"] = (
                 self.cfg_payload.variable_syntax_color
             )
-            template_settings["comment_start_string"] = (
-                self.cfg_payload.comment_start_string
-            )
-            template_settings["comment_end_string"] = (
-                self.cfg_payload.comment_end_string
-            )
             template_settings["comment_syntax_color"] = (
                 self.cfg_payload.comment_syntax_color
-            )
-            template_settings["line_statement_prefix"] = (
-                self.cfg_payload.line_statement_prefix
-            )
-            template_settings["line_statement_syntax_color"] = (
-                self.cfg_payload.line_statement_syntax_color
-            )
-            template_settings["line_comment_prefix"] = (
-                self.cfg_payload.line_comment_prefix
-            )
-            template_settings["line_comment_syntax_color"] = (
-                self.cfg_payload.line_comment_syntax_color
             )
             template_settings["trim_blocks"] = int(self.cfg_payload.trim_blocks)
             template_settings["lstrip_blocks"] = int(self.cfg_payload.lstrip_blocks)
@@ -1756,34 +1728,14 @@ class Config:
                 wizard_page=plugins_settings.get("wizard_page"),
                 token_replacer=plugins_settings.get("token_replacer"),
                 pre_upload=plugins_settings.get("pre_upload"),
-                block_start_string=template_settings.get("block_start_string", "{%"),
                 block_syntax_color=template_settings.get(
                     "block_syntax_color", "#A4036F"
                 ),
-                block_end_string=template_settings.get("block_end_string", "%}"),
-                variable_start_string=template_settings.get(
-                    "variable_start_string", "{{"
-                ),
-                variable_end_string=template_settings.get("variable_end_string", "}}"),
                 variable_syntax_color=template_settings.get(
                     "variable_syntax_color", "#048BA8"
                 ),
-                comment_start_string=template_settings.get(
-                    "comment_start_string", "{#"
-                ),
-                comment_end_string=template_settings.get("comment_end_string", "#}"),
                 comment_syntax_color=template_settings.get(
                     "comment_syntax_color", "#16DB93"
-                ),
-                line_statement_prefix=template_settings.get(
-                    "line_statement_prefix", ""
-                ),
-                line_statement_syntax_color=template_settings.get(
-                    "line_statement_syntax_color", "#ff0000"
-                ),
-                line_comment_prefix=template_settings.get("line_comment_prefix", ""),
-                line_comment_syntax_color=template_settings.get(
-                    "line_comment_syntax_color", "#00aaff"
                 ),
                 trim_blocks=bool(template_settings.get("trim_blocks", 1)),
                 lstrip_blocks=bool(template_settings.get("lstrip_blocks", 1)),
@@ -1883,22 +1835,10 @@ class Config:
 
     def _jinja_env_settings(self) -> dict:
         env_settings = {
-            "block_start_string": self.cfg_payload.block_start_string,
-            "block_end_string": self.cfg_payload.block_end_string,
-            "variable_start_string": self.cfg_payload.variable_start_string,
-            "variable_end_string": self.cfg_payload.variable_end_string,
-            "comment_start_string": self.cfg_payload.comment_start_string,
-            "comment_end_string": self.cfg_payload.comment_end_string,
             "trim_blocks": self.cfg_payload.trim_blocks,
             "lstrip_blocks": self.cfg_payload.lstrip_blocks,
             "keep_trailing_newline": self.cfg_payload.keep_trailing_newline,
         }
-        if self.cfg_payload.line_statement_prefix:
-            env_settings["line_statement_prefix"] = (
-                self.cfg_payload.line_statement_prefix
-            )
-        if self.cfg_payload.line_comment_prefix:
-            env_settings["line_comment_prefix"] = self.cfg_payload.line_comment_prefix
         return env_settings
 
     @staticmethod
