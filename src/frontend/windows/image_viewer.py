@@ -305,7 +305,7 @@ class ImageViewer(QWidget):
                         - 1
                     )
 
-            if not selected_index_var:
+            if selected_index_var is None:
                 raise AttributeError("Failed to find selected_index_var")
 
             self._move_image_cleanup(selected_index_var)

@@ -14,7 +14,7 @@
 
 ### Fixed
 
-- 
+- ImageViewer error when moving images starting at index 0.
 
 ### Removed
 
