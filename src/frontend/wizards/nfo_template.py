@@ -53,64 +53,29 @@ class NfoTemplate(BaseWizardPage):
 
     def get_syntax_highlights(self) -> list[HighlightKeywords]:
         payload = self.config.cfg_payload
-        syntax_highlights = []
-        if payload.block_start_string and payload.block_end_string:
-            syntax_highlights.append(
+        return [
+            (
                 HighlightKeywords(
-                    re.compile(
-                        re.escape(payload.block_start_string)
-                        + r".+?"
-                        + re.escape(payload.block_end_string)
-                    ),
+                    re.compile(r"\{%.*?%\}"),
                     payload.block_syntax_color,
                     False,
                 )
-            )
-        if payload.variable_start_string and payload.variable_end_string:
-            syntax_highlights.append(
+            ),
+            (
                 HighlightKeywords(
-                    re.compile(
-                        re.escape(payload.variable_start_string)
-                        + r".+?"
-                        + re.escape(payload.variable_end_string)
-                    ),
+                    re.compile(r"\{\{.*?\}\}"),
                     payload.variable_syntax_color,
                     False,
                 )
-            )
-        if payload.comment_start_string and payload.comment_end_string:
-            syntax_highlights.append(
+            ),
+            (
                 HighlightKeywords(
-                    re.compile(
-                        re.escape(payload.comment_start_string)
-                        + r".+?"
-                        + re.escape(payload.comment_end_string)
-                    ),
+                    re.compile(r"\{#.*?#\}"),
                     payload.comment_syntax_color,
                     False,
                 )
-            )
-        if payload.line_comment_prefix:
-            syntax_highlights.append(
-                HighlightKeywords(
-                    re.compile(
-                        r"^" + re.escape(payload.line_statement_prefix) + r".+?(?:\n|$)"
-                    ),
-                    payload.line_statement_syntax_color,
-                    False,
-                )
-            )
-        if payload.line_comment_prefix:
-            syntax_highlights.append(
-                HighlightKeywords(
-                    re.compile(
-                        r"^" + re.escape(payload.line_comment_prefix) + r".+?(?:\n|$)"
-                    ),
-                    payload.line_comment_syntax_color,
-                    False,
-                )
-            )
-        return syntax_highlights
+            ),
+        ]
 
     def validatePage(self) -> bool:
         if not self._validate_tracker_selection():
