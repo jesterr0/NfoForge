@@ -26,8 +26,8 @@ from src.backend.utils.media_info_utils import (
 )
 from src.backend.utils.rename_normalizations import EDITION_INFO
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.backend.utils.video_codecs import VideoCodecs
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -40,6 +40,7 @@ class TokenReplacer:
     FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
 
     __slots__ = (
+        # __init__
         "media_input",
         "token_string",
         "source_file",
@@ -73,6 +74,7 @@ class TokenReplacer:
         "movie_clean_title_rules",
         "override_title_rules",
         "mi_video_dynamic_range",
+        # vars
         "token_data",
     )
 
@@ -189,6 +191,8 @@ class TokenReplacer:
         self.parse_filename_attributes = parse_filename_attributes
         self.override_tokens = override_tokens
         self.user_tokens = user_tokens
+
+        # vars
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
         if not self.flatten and not self.jinja_engine:
@@ -320,7 +324,7 @@ class TokenReplacer:
         if self.flatten and token_data.filters and isinstance(raw_value, str):
             raw_value = self._apply_custom_filters(raw_value, token_data.filters)
 
-        return f"{token_data.pre_token}{raw_value}{token_data.post_token}"
+        return raw_value
 
     def _get_raw_token_value(self, token_data: TokenData) -> str | Sequence[Any] | None:
         """Get the raw token value without filters or pre/post tokens."""
@@ -1086,8 +1090,73 @@ class TokenReplacer:
         return self._optional_user_input(color_depth, token_data)
 
     def _mi_video_codec(self, token_data: TokenData) -> str:
-        codec = VideoCodecs().get_codec(self.media_info_obj, self.guess_name)
+        current_quality = self._get_source_quality()
+        codec = self._get_video_codec(current_quality)
         return self._optional_user_input(codec, token_data)
+
+    def _get_video_codec(self, quality: QualitySelection) -> str:
+        """Get video codec with source-aware logic."""
+        parse_guessit = self._guessit_codec()
+        parse_media_info = self._mediainfo_codec(quality)
+
+        # prefer MediaInfo result, fallback to guessit
+        if parse_media_info:
+            return parse_media_info
+        return parse_guessit if parse_guessit else ""
+
+    def _guessit_codec(self) -> str:
+        """Extract codec from guessit."""
+        video_codec = self.guess_name.get("video_codec", "")
+        if video_codec in ["H.264", "H.265"]:
+            video_codec = video_codec.replace("H.", "x")
+        return video_codec
+
+    def _mediainfo_codec(self, quality: QualitySelection) -> str:
+        """Extract codec from MediaInfo with source awareness."""
+        if not (self.media_info_obj and self.media_info_obj.video_tracks):
+            return ""
+
+        # we'll check to see if we have a remux in the filename or in the override tokens
+        is_remux = self.override_tokens and "remux" in self.override_tokens
+
+        track = self.media_info_obj.video_tracks[0]
+        detect_video_codec = track.format
+
+        if not detect_video_codec:
+            return ""
+
+        if detect_video_codec == "AV1":
+            return track.format
+        elif detect_video_codec == "AVC":
+            if is_remux:
+                return "AVC"
+            elif quality in (QualitySelection.WEB_DL, QualitySelection.HDTV):
+                return "H.264"
+            else:
+                return "x264"
+        elif detect_video_codec == "HEVC":
+            if is_remux:
+                return "HEVC"
+            elif quality in (QualitySelection.WEB_DL, QualitySelection.HDTV):
+                return "H.265"
+            else:
+                return "x265"
+        elif detect_video_codec == "MPEG Video":
+            return self._mpeg_codec(track)
+        elif detect_video_codec == "VC-1":
+            return track.format
+        elif detect_video_codec in ["VP8", "VP9"]:
+            return track.format
+
+        return ""
+
+    def _mpeg_codec(self, track: Track) -> str:
+        """Get MPEG codec name."""
+        if track.format_version:
+            version_num = re.search(r"\d", track.format_version)
+            if version_num and int(version_num.group()) > 1:
+                return f"MPEG-{version_num.group()}"
+        return "MPEG"
 
     def _mi_video_dynamic_range(self, token_data: TokenData) -> str:
         hdr_string = ""
@@ -1365,8 +1434,8 @@ class TokenReplacer:
         return self._optional_user_input(self.media_input.stem, token_data)
 
     def _release_group(self, token_data: TokenData) -> str:
-        release_group = self.guess_name.get("release_group", "")
-        return self._optional_user_input(release_group, token_data)
+        release_group = str(self.guess_name.get("release_group", ""))
+        return self._optional_user_input(release_group.lstrip("-"), token_data)
 
     def _releasers_name(self, token_data: TokenData) -> str:
         releasers_name = "Anonymous"
@@ -1410,27 +1479,52 @@ class TokenReplacer:
 
         return self._optional_user_input(re_release_str, token_data)
 
-    def _source(self, token_data: TokenData) -> str:
-        source = self.guess_name.get("source", "")
+    def _get_source_quality(self) -> QualitySelection:
+        """Get the detected source quality."""
+        # check if source is being overridden first
+        if self.override_tokens and "source" in self.override_tokens:
+            override_source = self.override_tokens["source"].lower()
+            # map the override value to QualitySelection
+            if override_source == "webdl":
+                return QualitySelection.WEB_DL
+            elif override_source == "webrip":
+                return QualitySelection.WEB_RIP
+            elif override_source == "bluray":
+                return QualitySelection.BLURAY
+            elif override_source == "uhd bluray":
+                return QualitySelection.UHD_BLURAY
+            elif override_source == "dvd":
+                return QualitySelection.DVD
+            elif override_source == "hdtv":
+                return QualitySelection.HDTV
 
-        # if we have access to the source file let's instead parse that
+        # base source
+        source_quality = self.guess_name.get("source", "").lower()
+
+        # if we have a source file as well use that instead
         if self.guess_source_name:
-            check_source_file = self.guess_source_name.get("source", "")
+            check_source_file = self.guess_source_name.get("source", "").lower()
             if check_source_file:
-                source = check_source_file
+                source_quality = check_source_file
 
-        if "Ultra HD Blu-ray" in source:
-            source = "UHD BluRay"
-        elif "Blu-ray" in source:
-            source = "BluRay"
-        elif "DVD" in source:
-            source = "DVD"
-        elif "HDTV" in source:
-            source = "HDTV"
-        elif "Web" in source:
-            source = "Web"
+        if "ultra hd blu-ray" in source_quality:
+            source_quality = QualitySelection.UHD_BLURAY
+        elif "blu-ray" in source_quality:
+            source_quality = QualitySelection.BLURAY
+        elif "dvd" in source_quality:
+            source_quality = QualitySelection.DVD
+        elif "hdtv" in source_quality:
+            source_quality = QualitySelection.HDTV
+        elif "web" in source_quality:
+            if re.search(r"web[-_\.]?dl", self.media_input.name, flags=re.I):
+                source_quality = QualitySelection.WEB_DL
+            else:
+                source_quality = QualitySelection.WEB_RIP
+        # if we can't detect we'll default to BluRay
+        else:
+            source_quality = QualitySelection.BLURAY
 
-        if not source or source == "BluRay":
+        if not source_quality or source_quality is QualitySelection.BLURAY:
             track = None
             resolution_value = 0
             if self.source_file_mi_obj and self.source_file_mi_obj.video_tracks:
@@ -1453,16 +1547,16 @@ class TokenReplacer:
                     if video_format == "AVC" or (
                         video_format == "HEVC" and "HDR" not in dynamic_range
                     ):
-                        source = "BluRay"
+                        source_quality = QualitySelection.BLURAY
                     elif video_format == "HEVC" and "HDR" in dynamic_range:
-                        source = "UHD BluRay"
+                        source_quality = QualitySelection.UHD_BLURAY
                 elif resolution_value > 1080 and video_format == "HEVC":
-                    source = "UHD BluRay"
+                    source_quality = QualitySelection.UHD_BLURAY
 
-        # TODO: this will need some work potentially, we'll need to attempt
-        # to detect some specific things if possible to fine tune this result
-        # or maybe take input from the front end
-        return self._optional_user_input(source, token_data)
+        return source_quality
+
+    def _source(self, token_data: TokenData) -> str:
+        return self._optional_user_input(str(self._get_source_quality()), token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:
         chapter_type = ""
@@ -1827,10 +1921,11 @@ class TokenReplacer:
         )
 
     def _optional_user_input(self, token_str: str | None, token_data: TokenData) -> str:
+        output = ""
         if token_str:
             pre = token_data.pre_token
             post = token_data.post_token
-            token_str = f"{pre}{token_str}{post}"
+            output = f"{pre}{token_str}{post}"
 
         # strip optional strings from user token
         if token_data.full_match and token_data.bracket_token:
@@ -1838,7 +1933,7 @@ class TokenReplacer:
                 token_data.full_match, token_data.bracket_token
             )
 
-        return token_str if token_str else ""
+        return output if output else ""
 
     def _detect_resolution(self, mi_obj: MediaInfo | None, remove_scan: bool) -> str:
         resolution = self.guess_name.get("screen_size", "")
