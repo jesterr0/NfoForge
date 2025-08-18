@@ -22,6 +22,7 @@
 - An issue bug for flat strings when using **opt**, this would have gave duplicate optional values.
 - An issue in rename window for jinja added globals.
 - Rename window remux checkbox was disabled on UHD BluRay quality selection.
+- BeyondHD dupe checks for directories has been fixed.
 
 ### Removed
 

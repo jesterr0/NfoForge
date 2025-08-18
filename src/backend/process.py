@@ -264,7 +264,7 @@ class ProcessBackEnd:
                 api_key=api_key,
                 rss_key=rss_key,
                 timeout=self.config.cfg_payload.timeout,
-            ).search(file_input.stem)
+            ).search(file_input)
             if bhd_search:
                 return TrackerSelection(tracker_name), True, bhd_search
             else:

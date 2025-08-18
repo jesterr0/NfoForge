@@ -276,8 +276,8 @@ class BHDSearch:
         self._rss_key = rss_key
         self._timeout = timeout
 
-    def search(self, title: str) -> list[TrackerSearchResult]:
-        payload = {"action": "search", "search": title}
+    def search(self, title: Path) -> list[TrackerSearchResult]:
+        payload = {"action": "search", "file_name": title.name}
         if self._rss_key:
             payload["rsskey"] = self._rss_key
 
