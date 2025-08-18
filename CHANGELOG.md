@@ -4,11 +4,12 @@
 
 ### Added
 
-- **FFPROBE** detection. While NFoForge doesn't really *need* this to function, this will be nice for users to utilize in a plugin and detection can be handled by NfoForge.
+- **FFPROBE** detection. While NFoForge doesn't really _need_ this to function, this will be nice for users to utilize in a plugin and detection can be handled by NfoForge.
 - Added informational hover labels to each dependency.
 - Now supports conditional prompt tokens.
 - In template sandbox mode a new button menu has been added and will be visible when a source is loaded. This allows the user to clear the input or clear the input and tokens without leaving this screen. This way they can test multiple inputs/configurations more easily.
 - Rename window auto detects remux now.
+- TokenReplacer detects rather or the token **{mi_video_codec}** should be H.264, x264, or AVC (and HEVC equivalents now) intelligently.
 
 ### Changed
 
@@ -25,8 +26,8 @@
 ### Removed
 
 - Jinja changes.
-  - Block, variable, and comment control. 
-  - Line statement prefix and line comment prefix. 
+  - Block, variable, and comment control.
+  - Line statement prefix and line comment prefix.
   - All of the above added un-needed complexity that > 99% of users would never customize and this allows me to use add custom logic/tokens/unit tests easier.
 
 ## [0.8.8] - 2025-08-15
