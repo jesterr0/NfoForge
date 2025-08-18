@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt, Signal, Slot
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 from guessit import guessit
 from jinja2.exceptions import TemplateSyntaxError
+from qtpy.QtWidgets import QMenu
 
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
@@ -121,7 +123,7 @@ class TemplateSelector(QWidget):
         self.del_btn.setToolTip("Delete current template")
         self.del_btn.clicked.connect(self.delete_template)
 
-        v_line = QFrame()
+        v_line = QFrame(self)
         v_line.setFrameShape(QFrame.Shape.VLine)
         v_line.setFrameShadow(QFrame.Shadow.Raised)
 
@@ -137,6 +139,32 @@ class TemplateSelector(QWidget):
             )
         self.preview_btn.setCheckable(True)
         self.preview_btn.clicked.connect(self.preview_template)
+
+        # sandbox reset control
+        self.reset_sandbox_cache = QToolButton(self)
+        self.reset_sandbox_cache.setPopupMode(
+            QToolButton.ToolButtonPopupMode.InstantPopup
+        )
+        QTAThemeSwap().register(
+            self.reset_sandbox_cache, "ph.list-light", icon_size=QSize(24, 24)
+        )
+        self.reset_sandbox_cache.setToolTip(
+            "Reset input file to allow sandbox to open a new file"
+        )
+        self.reset_sandbox_cache.hide()
+
+        reset_cache_menu = QMenu(self.reset_sandbox_cache)
+        self.reset_sandbox_cache.setMenu(reset_cache_menu)
+        clear_sandbox_input = QAction("Clear Sandbox Input", self)
+        clear_sandbox_input.triggered.connect(self.reset_sandbox_preview_cache)
+        clear_sandbox_input_and_cache = QAction(
+            "Clear Sandbox Input + Prompt Tokens", self
+        )
+        clear_sandbox_input_and_cache.triggered.connect(
+            self._clear_sandbox_input_prompt_tokens_cache
+        )
+        reset_cache_menu.addAction(clear_sandbox_input)
+        reset_cache_menu.addAction(clear_sandbox_input_and_cache)
 
         self.max_btn = QToolButton(self)
         QTAThemeSwap().register(
@@ -155,6 +183,7 @@ class TemplateSelector(QWidget):
         self.template_control_layout.addWidget(self.del_btn)
         self.template_control_layout.addWidget(v_line)
         self.template_control_layout.addWidget(self.preview_btn)
+        self.template_control_layout.addWidget(self.reset_sandbox_cache)
         self.template_control_layout.addWidget(self.max_btn)
 
         self.text_edit = CodeEditor(
@@ -369,6 +398,9 @@ class TemplateSelector(QWidget):
             if not self.config.media_input_payload.encode_file:
                 raise FileNotFoundError("No input file to check template")
 
+            if not self.reset_sandbox_cache.isVisible():
+                self.reset_sandbox_cache.show()
+
             user_tokens = {
                 k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
             }
@@ -543,6 +575,21 @@ class TemplateSelector(QWidget):
             for k in self.config.cfg_payload.user_tokens.keys()
         ]
         return sorted(Tokens().get_token_objects()) + user_tokens
+
+    @Slot(bool)
+    def _clear_sandbox_input_prompt_tokens_cache(self, _) -> None:
+        self.reset_sandbox_preview_cache(True)
+
+    def reset_sandbox_preview_cache(self, reset_tokens: bool = False):
+        if self.preview_btn.isChecked():
+            self.preview_btn.setChecked(False)
+            self.preview_template()
+
+        self.config.media_input_payload.encode_file = None
+        self.config.media_search_payload.title = None
+        if reset_tokens:
+            self.cached_sandbox_prompt_tokens = None
+        self.reset_sandbox_cache.hide()
 
 
 class SandBoxInput(QDialog):

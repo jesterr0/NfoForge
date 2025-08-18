@@ -61,11 +61,15 @@ class TemplatesSettings(BaseSettings):
         self.block_start_str_lbl.setToolTip(
             "The string marking the beginning of a block. '{%'"
         )
-        self.block_start_str_entry = QLineEdit(self, text="{%", readOnly=True, frame=False)
+        self.block_start_str_entry = QLineEdit(
+            self, text="{%", readOnly=True, frame=False
+        )
 
         self.block_end_str_lbl = QLabel("Block End String", self)
         self.block_end_str_lbl.setToolTip("The string marking the end of a block. '%}'")
-        self.block_end_str_entry = QLineEdit(self, text="%}", readOnly=True, frame=False)
+        self.block_end_str_entry = QLineEdit(
+            self, text="%}", readOnly=True, frame=False
+        )
         self.block_entries = (self.block_start_str_entry, self.block_end_str_entry)
 
         self.block_syntax_color = ColorSelectionShape(width=14, height=14, parent=self)
@@ -78,13 +82,17 @@ class TemplatesSettings(BaseSettings):
         self.variable_start_str_lbl.setToolTip(
             "The string marking the beginning of a print statement. '{{'"
         )
-        self.variable_start_str_entry = QLineEdit(self, text="{{", readOnly=True, frame=False)
+        self.variable_start_str_entry = QLineEdit(
+            self, text="{{", readOnly=True, frame=False
+        )
 
         self.variable_end_str_lbl = QLabel("Variable End String", self)
         self.variable_end_str_lbl.setToolTip(
             "The string marking the end of a print statement. '}}'"
         )
-        self.variable_end_str_entry = QLineEdit(self, text="}}", readOnly=True, frame=False)
+        self.variable_end_str_entry = QLineEdit(
+            self, text="}}", readOnly=True, frame=False
+        )
         self.variable_entries = (
             self.variable_start_str_entry,
             self.variable_end_str_entry,
@@ -104,13 +112,17 @@ class TemplatesSettings(BaseSettings):
         self.comment_start_str_lbl.setToolTip(
             "The string marking the beginning of a comment. '{#'"
         )
-        self.comment_start_str_entry = QLineEdit(self, text="{#", readOnly=True, frame=False)
+        self.comment_start_str_entry = QLineEdit(
+            self, text="{#", readOnly=True, frame=False
+        )
 
         self.comment_end_str_lbl = QLabel("Comment End String", self)
         self.comment_end_str_lbl.setToolTip(
             "The string marking the end of a comment. '#}'"
         )
-        self.comment_end_str_entry = QLineEdit(self, text="#}", readOnly=True, frame=False)
+        self.comment_end_str_entry = QLineEdit(
+            self, text="#}", readOnly=True, frame=False
+        )
         self.comment_entries = (
             self.comment_start_str_entry,
             self.comment_end_str_entry,
@@ -533,8 +545,7 @@ class TemplatesSettings(BaseSettings):
 
     @Slot()
     def _on_settings_closed(self) -> None:
-        if self.template_selector.cached_sandbox_prompt_tokens:
-            self.template_selector.cached_sandbox_prompt_tokens.clear()
+        self.template_selector.reset_sandbox_preview_cache(True)
         self._on_tab_changed()
 
     @Slot(int)

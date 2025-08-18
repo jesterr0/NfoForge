@@ -7,6 +7,7 @@
 - **FFPROBE** detection. While NFoForge doesn't really *need* this to function, this will be nice for users to utilize in a plugin and detection can be handled by NfoForge.
 - Added informational hover labels to each dependency.
 - Now supports conditional prompt tokens.
+- In template sandbox mode a new button menu has been added and will be visible when a source is loaded. This allows the user to clear the input or clear the input and tokens without leaving this screen. This way they can test multiple inputs/configurations more easily.
 
 ### Changed
 
