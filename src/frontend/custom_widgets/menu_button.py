@@ -1,17 +1,18 @@
-import sys
 from collections.abc import Sequence
+import sys
+
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QCloseEvent, QCursor, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
-    QMainWindow,
     QListWidget,
     QListWidgetItem,
-    QVBoxLayout,
-    QWidget,
+    QMainWindow,
     QSizePolicy,
     QToolButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QCursor, QCloseEvent, QShowEvent
 
 
 class CustomPopup(QWidget):
@@ -144,25 +145,23 @@ class CustomButtonMenu(QToolButton):
         )
 
 
-examples = [
-    ("Value1", True),
-    ("Value2", False),
-]
-
-
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-
-        self.setWindowTitle("Custom Popup Example")
-        self.setGeometry(100, 100, 400, 300)
-
-        button_menu = CustomButtonMenu("Click", False, parent=self)
-        button_menu.update_items(examples)
-        button_menu.get_checked_items()
-
-
 if __name__ == "__main__":
+    examples = [
+        ("Value1", True),
+        ("Value2", False),
+    ]
+
+    class MainWindow(QMainWindow):
+        def __init__(self):
+            super().__init__()
+
+            self.setWindowTitle("Custom Popup Example")
+            self.setGeometry(100, 100, 400, 300)
+
+            button_menu = CustomButtonMenu("Click", False, parent=self)
+            button_menu.update_items(examples)
+            button_menu.get_checked_items()
+
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     window = MainWindow()
