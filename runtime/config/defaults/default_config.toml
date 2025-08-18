@@ -556,3 +556,6 @@ enable_release_notes = false
 last_used_release_note = ""
 
 [release_notes.notes]
+
+[widget_settings]
+prompt_token_editor_warn_on_missing = true

@@ -437,8 +437,20 @@ class TemplateSelector(QWidget):
                         for k, v in self.cached_sandbox_prompt_tokens.items()
                         if k in prompt_tokens
                     }
-                prompt = PromptTokenEditorDialog(tokens_dict, self)
+                prompt = PromptTokenEditorDialog(
+                    items=tokens_dict,
+                    warn_missing=self.config.cfg_payload.prompt_token_editor_warn_on_missing,
+                    parent=self,
+                )
                 if prompt.exec() == QDialog.DialogCode.Accepted:
+                    if (
+                        prompt.warn_on_missing.isChecked()
+                        != self.config.cfg_payload.prompt_token_editor_warn_on_missing
+                    ):
+                        self.config.cfg_payload.prompt_token_editor_warn_on_missing = (
+                            prompt.warn_on_missing.isChecked()
+                        )
+                        self.config.save_config()
                     prompt_results = prompt.get_results()
                     self.cached_sandbox_prompt_tokens = prompt_results
                     if prompt_results:

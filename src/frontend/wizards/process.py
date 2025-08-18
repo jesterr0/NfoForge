@@ -518,8 +518,20 @@ class ProcessPage(BaseWizardPage):
     @Slot(object)
     def _on_prompt_tokens_signal(self, tokens: Sequence[str]) -> None:
         prompt_tokens = None
-        prompt = PromptTokenEditorDialog(tokens, self)
+        prompt = PromptTokenEditorDialog(
+            items=tokens,
+            warn_missing=self.config.cfg_payload.prompt_token_editor_warn_on_missing,
+            parent=self,
+        )
         if prompt.exec() == QDialog.DialogCode.Accepted:
+            if (
+                prompt.warn_on_missing.isChecked()
+                != self.config.cfg_payload.prompt_token_editor_warn_on_missing
+            ):
+                self.config.cfg_payload.prompt_token_editor_warn_on_missing = (
+                    prompt.warn_on_missing.isChecked()
+                )
+                self.config.save_config()
             prompt_tokens = prompt.get_results()
         GSigs().prompt_tokens_response.emit(prompt_tokens)
 

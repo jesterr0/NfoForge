@@ -1071,6 +1071,12 @@ class Config:
             )
             release_notes["notes"] = self.cfg_payload.release_notes
 
+            # widget settings
+            widget_settings = self._toml_data["widget_settings"]
+            widget_settings["prompt_token_editor_warn_on_missing"] = (
+                self.cfg_payload.prompt_token_editor_warn_on_missing
+            )
+
             # if last data does not equal current data, we'll write the changes to file while also updating
             # the last data variable with the latest data
             if (
@@ -1578,6 +1584,9 @@ class Config:
             # release notes
             release_notes = toml_data["release_notes"]
 
+            # widget settings
+            widget_settings = toml_data["widget_settings"]
+
             # build payload
             config_payload = ConfigPayload(
                 ui_suffix=general_data.get("ui_suffix", ""),
@@ -1749,6 +1758,9 @@ class Config:
                 enable_release_notes=release_notes.get("enable_release_notes", False),
                 last_used_release_note=release_notes.get("last_used_release_note", ""),
                 release_notes=release_notes.get("notes", {}),
+                prompt_token_editor_warn_on_missing=widget_settings.get(
+                    "prompt_token_editor_warn_on_missing", True
+                ),
             )
 
             # check where to store the built payload

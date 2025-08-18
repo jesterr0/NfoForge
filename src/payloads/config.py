@@ -175,3 +175,6 @@ class ConfigPayload:
     enable_release_notes: bool
     last_used_release_note: str
     release_notes: dict[str, str]
+
+    # widget settings
+    prompt_token_editor_warn_on_missing: bool
