@@ -8,6 +8,7 @@
 - Added informational hover labels to each dependency.
 - Now supports conditional prompt tokens.
 - In template sandbox mode a new button menu has been added and will be visible when a source is loaded. This allows the user to clear the input or clear the input and tokens without leaving this screen. This way they can test multiple inputs/configurations more easily.
+- Rename window auto detects remux now.
 
 ### Changed
 
@@ -17,6 +18,9 @@
 ### Fixed
 
 - ImageViewer error when moving images starting at index 0.
+- An issue bug for flat strings when using **opt**, this would have gave duplicate optional values.
+- An issue in rename window for jinja added globals.
+- Rename window remux checkbox was disabled on UHD BluRay quality selection.
 
 ### Removed
 

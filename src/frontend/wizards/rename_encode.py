@@ -366,6 +366,11 @@ class RenameEncode(BaseWizardPage):
         select_combo_by_regex(LOCALIZATION_INFO, self.localization_combo)
         select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
 
+    def _auto_check_remux_checkbox(self) -> None:
+        fp = self.config.media_input_payload.encode_file
+        if fp and "remux" in fp.stem.lower():
+            self.remux_checkbox.setChecked(True)
+
     @Slot(bool)
     def _on_override_group_toggled(self, checked: bool) -> None:
         if not checked:
@@ -479,11 +484,11 @@ class RenameEncode(BaseWizardPage):
 
         for global_name, (combo_text, pattern) in combo_to_global_map.items():
             if combo_text:
-                self.config.jinja_engine.add_global(global_name, combo_text)
+                self.config.jinja_engine.add_global(global_name, combo_text, True)
                 match = re.search(pattern, final_output_text, flags=re.I)
                 if match:
                     self.config.jinja_engine.add_global(
-                        global_name.replace("_reason", "_n"), match.group(1)
+                        global_name.replace("_reason", "_n"), match.group(1), True
                     )
                 # ensure only one combo box is processed
                 break
@@ -513,11 +518,13 @@ class RenameEncode(BaseWizardPage):
             if QualitySelection(cur_text) not in {
                 QualitySelection.DVD,
                 QualitySelection.BLURAY,
+                QualitySelection.UHD_BLURAY,
             }:
                 self.remux_checkbox.setChecked(False)
                 self.remux_checkbox.setEnabled(False)
             else:
                 self.remux_checkbox.setEnabled(True)
+                self._auto_check_remux_checkbox()
 
         # update override
         self._update_override_tokens("source", cur_text, False if cur_text else True)
