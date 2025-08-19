@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QStackedWidget,
     QStatusBar,
-    QWidget,
 )
 
 from src.backend.main_window import kill_child_processes
