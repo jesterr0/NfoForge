@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QWidget, QApplication
-from PySide6.QtGui import QPainter, QTransform, QImage
 from PySide6.QtCore import QPointF
+from PySide6.QtGui import QImage, QPainter, QTransform
+from PySide6.QtWidgets import QApplication, QWidget
 
 
 class ImageLabel(QWidget):
@@ -9,9 +9,9 @@ class ImageLabel(QWidget):
     def __init__(self, parent=None):
         """Initialize the ImageLabel widget."""
         super().__init__(parent)
-        self._image = None
+        self._image: QImage | None = None
 
-    def setImage(self, image):
+    def setImage(self, image: QImage):
         """Set the image to be displayed."""
         self._image = image
         self.update()
