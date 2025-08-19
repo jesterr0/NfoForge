@@ -8,6 +8,8 @@ class GlobalSignals(QObject):
 
     ########### SIGNALS ###########
     ask_prompt = Signal(str, str, object)  # prompt title, prompt, Queue
+    ask_multi_prompt = Signal(str, object, object)  # prompt title, Sequence[str], Queue
+    ask_custom_prompt = Signal(object, object)  # CustomPromptDialog | QDialog, Queue
 
     # main window
     main_window_set_disabled = Signal(bool)

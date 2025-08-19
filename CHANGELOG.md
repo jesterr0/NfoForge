@@ -10,6 +10,9 @@
 - In template sandbox mode a new button menu has been added and will be visible when a source is loaded. This allows the user to clear the input or clear the input and tokens without leaving this screen. This way they can test multiple inputs/configurations more easily.
 - Rename window auto detects remux now.
 - TokenReplacer detects rather or the token **{mi_video_codec}** should be H.264, x264, or AVC (and HEVC equivalents now) intelligently.
+- Added some more plugin functionality _(documentation for plugins doesn't exist right now, this will come in the future)_.
+  - Added `ask_thread_safe_prompt`, `ask_thread_safe_multi_prompt` and `ask_thread_safe_custom_prompt`.
+    - These are helper functions that can be called from any where in the program, other threads, or multi processes and safely talk to the GUI (ideal for plugins).
 
 ### Changed
 

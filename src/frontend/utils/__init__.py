@@ -1,7 +1,8 @@
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from queue import Queue
-from typing import Any
+from typing import Any, Type
 import weakref
 
 from PySide6.QtCore import QSize, QTimer, Qt, Slot
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.frontend.global_signals import GSigs
+from src.plugins.plugin_prompt_dialog import PluginPromptDialog
 
 
 def icon_button_factory(base_class):
@@ -293,9 +295,65 @@ def set_top_parent_geometry(widget: QWidget, delay: int = 1) -> None:
 
 
 def ask_thread_safe_prompt(title: str, prompt: str) -> tuple[bool, str]:
-    """Uses a queue to wait for a message from where ever sent over QT signals"""
+    """Uses a queue to wait for a message from where ever sent over QT signals
+
+    Args:
+        title (str): Title of prompt window.
+        prompt (str): Prompt to ask user for input.
+
+    Returns:
+        tuple[bool, str]: bool = user pressed Ok, str = user input
+    """
     q = Queue()
     GSigs().ask_prompt.emit(title, prompt, q)
+    result = q.get()
+    q.task_done()
+    return result
+
+
+def ask_thread_safe_multi_prompt(
+    title: str, prompts: Sequence[str]
+) -> tuple[bool, dict[str, str]]:
+    """Uses a queue to wait for a message from where ever sent over QT signals
+
+    Args:
+        title (str): Title of prompt window.
+        prompt (Sequence[str]): Prompts to ask user for input.
+
+    Returns:
+        tuple[bool, dict[str, str]]: bool = user pressed Ok, dict = user input with keys from the prompts.
+    """
+    q = Queue()
+    GSigs().ask_multi_prompt.emit(title, prompts, q)
+    result = q.get()
+    q.task_done()
+    return result
+
+
+def ask_thread_safe_custom_prompt(widget: Type[PluginPromptDialog]) -> Any:
+    """Uses a queue to wait for a message from where ever sent over QT signals
+
+    Args:
+        widget (PluginPromptDialog): Users custom PluginPromptDialog or QDialog (not instance).
+
+    Widget should include a `results` instance variable, this can be what ever
+    the user wants. By the time you close your PluginPromptDialog widget, it should have filled
+    the `results` instance variable to pass back.
+
+    ```python
+    class UserDialog(PluginPromptDialog):
+        def __init__(self, parent=None) -> None:
+            super().__init__(parent=parent)
+            self.setWindowTitle("User Custom Title")
+
+            self.results = {"Blah", 123}
+    ```
+
+    Returns:
+        Any: What ever the users widget returns from `results`.
+    """
+    q = Queue()
+    GSigs().ask_custom_prompt.emit(widget, q)
     result = q.get()
     q.task_done()
     return result
