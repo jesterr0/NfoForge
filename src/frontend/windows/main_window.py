@@ -1,15 +1,19 @@
+from collections.abc import Sequence
 from queue import Queue
+from typing import Type
 import webbrowser
 
 from PySide6.QtCore import QByteArray, QTimer, Slot
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QDialog,
     QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
     QStackedWidget,
     QStatusBar,
+    QWidget,
 )
 
 from src.backend.main_window import kill_child_processes
@@ -17,6 +21,7 @@ from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
 from src.config.config import Config
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
+from src.frontend.custom_widgets.multi_prompt_dialog import MultiPromptDialog
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.settings import Settings
 from src.frontend.utils.main_window_utils import MainWindowWorker
@@ -60,7 +65,11 @@ class MainWindow(QMainWindow):
         GSigs().main_window_hide.connect(self.hide_window)
         GSigs().main_window_open_log_dir.connect(self.open_log_directory)
         GSigs().main_window_open_log_file.connect(self.open_log)
+
+        # thread safe prompts
         GSigs().ask_prompt.connect(self.ask_prompt)
+        GSigs().ask_multi_prompt.connect(self.ask_multi_prompt)
+        GSigs().ask_custom_prompt.connect(self.ask_custom_prompt)
 
         # timer for debounced config saving for scaling changes
         self._config_save_timer = QTimer(self, singleShot=True)
@@ -230,14 +239,6 @@ class MainWindow(QMainWindow):
     def update_status_label(self, data: str) -> None:
         self.status_profile_label.setText(data)
 
-    @Slot(str, str, object)
-    def ask_prompt(self, prompt_title: str, prompt: str, queue: Queue) -> None:
-        """Can be used anywhere in the program, thread safe way to get more data and return it via queue.put()"""
-        if not prompt_title or not prompt or not queue:
-            raise AttributeError("3 args we're expected (str, str, Queue)")
-        user_input, ok = QInputDialog.getText(self, prompt_title, prompt)
-        queue.put((ok, user_input))
-
     @Slot()
     def open_log(self) -> None:
         if LOG.log_file.exists():
@@ -277,3 +278,23 @@ class MainWindow(QMainWindow):
             self.hide()
         else:
             self.show()
+
+    @Slot(str, str, object)
+    def ask_prompt(self, prompt_title: str, prompt: str, queue: Queue) -> None:
+        """Can be used anywhere in the program, thread safe way to get more data and return it via queue.put()"""
+        user_input, ok = QInputDialog.getText(self, prompt_title, prompt)
+        queue.put((ok, user_input))
+
+    @Slot(str, object, object)
+    def ask_multi_prompt(
+        self, prompt_title: str, prompts: Sequence[str], queue: Queue
+    ) -> None:
+        result = MultiPromptDialog(prompt_title, prompts, self).get_results()
+        queue.put(result)
+
+    @Slot(object, object)
+    def ask_custom_prompt(self, widget: Type[QDialog], queue: Queue) -> None:
+        usr_widget = widget(self)
+        usr_widget.exec()
+        results = getattr(usr_widget, "results", None)
+        queue.put(results)
