@@ -13,6 +13,7 @@
 - Added some more plugin functionality _(documentation for plugins doesn't exist right now, this will come in the future)_.
   - Added `ask_thread_safe_prompt`, `ask_thread_safe_multi_prompt` and `ask_thread_safe_custom_prompt`.
     - These are helper functions that can be called from any where in the program, other threads, or multi processes and safely talk to the GUI (ideal for plugins).
+  - Built new plugin base `PluginPromptDialog` for `ask_thread_safe_custom_prompt`.
 
 ### Changed
 
