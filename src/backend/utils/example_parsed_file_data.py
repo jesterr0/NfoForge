@@ -1,11 +1,15 @@
-from pymediainfo import MediaInfo
-from src.payloads.media_search import MediaSearchPayload
 from datetime import datetime
+
+from pymediainfo import MediaInfo
+
+from src.enums.media_type import MediaType
+from src.payloads.media_search import MediaSearchPayload
 
 current_year = datetime.now().year
 
 EXAMPLE_FILE_NAME = f"Movie.Name.{current_year}.Directors.Cut.IMAX.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-SomeGroup.mkv"
 
+# fmt: off
 _EXAMPLE_MEDIAINFO_XML_DATA = f"""\
 <Mediainfo version="23.10">
 <File>
@@ -1177,10 +1181,11 @@ _EXAMPLE_MEDIAINFO_XML_DATA = f"""\
 </track>
 </File>
 </Mediainfo>"""
+# fmt: on
 
 EXAMPLE_MEDIAINFO_OBJ = MediaInfo(_EXAMPLE_MEDIAINFO_XML_DATA)
 
-
+# fmt: off
 EXAMPLE_MEDIAINFO_OUTPUT_STR = f"""\
 General
 -------
@@ -2369,9 +2374,10 @@ _01_39_19954                                      : en:Chapter 22
 _01_44_22506                                      : en:Chapter 23
 _01_46_13993                                      : en:Chapter 24
 """
-
+# fmt: on
 
 EXAMPLE_SEARCH_PAYLOAD = MediaSearchPayload(
+    media_type=MediaType.MOVIES,
     imdb_id="tt6264654",
     tmdb_id="550988",
     tmdb_data={
