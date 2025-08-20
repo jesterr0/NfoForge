@@ -3,7 +3,7 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
 from src.exceptions import TrackerError
@@ -11,7 +11,7 @@ from src.payloads.media_search import MediaSearchPayload
 
 
 def aither_uploader(
-    media_mode: MediaMode,
+    media_type: MediaType,
     api_key: str,
     torrent_file: Path,
     file_input: Path,
@@ -33,7 +33,7 @@ def aither_uploader(
     torrent_file = Path(torrent_file)
     file_input = Path(file_input)
     uploader = AitherUploader(
-        media_mode=media_mode,
+        media_type=media_type,
         api_key=api_key,
         torrent_file=torrent_file,
         file_input=file_input,
@@ -66,7 +66,7 @@ class AitherUploader(Unit3dBaseUploader):
 
     def __init__(
         self,
-        media_mode: MediaMode,
+        media_type: MediaType,
         api_key: str,
         torrent_file: Path,
         file_input: Path,
@@ -76,7 +76,7 @@ class AitherUploader(Unit3dBaseUploader):
         super().__init__(
             tracker_name=TrackerSelection.AITHER,
             base_url="https://aither.cc",
-            media_mode=media_mode,
+            media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
             file_input=file_input,

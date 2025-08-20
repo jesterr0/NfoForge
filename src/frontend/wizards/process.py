@@ -25,7 +25,7 @@ from src.backend.process import ProcessBackEnd
 from src.backend.utils.file_utilities import open_explorer
 from src.config.config import Config
 from src.enums.image_host import ImageHost, ImageSource
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
 from src.exceptions import ProcessError
@@ -115,7 +115,7 @@ class ProcessWorker(BaseWorker):
         tracker_data: dict[str, Any],
         mediainfo_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
-        media_mode: MediaMode,
+        media_type: MediaType,
         media_search_payload: MediaSearchPayload,
         releasers_name: str,
         encode_file_dir: Path | None,
@@ -129,7 +129,7 @@ class ProcessWorker(BaseWorker):
         self.tracker_data = tracker_data
         self.mediainfo_obj = mediainfo_obj
         self.source_file_mi_obj = source_file_mi_obj
-        self.media_mode = media_mode
+        self.media_type = media_type
         self.media_search_payload = media_search_payload
         self.releasers_name = releasers_name
         self.encode_file_dir = encode_file_dir
@@ -151,7 +151,7 @@ class ProcessWorker(BaseWorker):
                 caught_error=self.caught_error,
                 mediainfo_obj=self.mediainfo_obj,
                 source_file_mi_obj=self.source_file_mi_obj,
-                media_mode=self.media_mode,
+                media_type=self.media_type,
                 media_search_payload=self.media_search_payload,
                 releasers_name=self.releasers_name,
                 encode_file_dir=self.encode_file_dir,
@@ -323,6 +323,9 @@ class ProcessPage(BaseWizardPage):
                 self.save_config = False
                 self._update_last_used_host()
 
+            if not self.config.media_search_payload.media_type:
+                raise AttributeError("Failed to determine MediaType")
+
             self.process_worker = ProcessWorker(
                 backend=self.backend,
                 media_input=detected_input,
@@ -331,7 +334,7 @@ class ProcessPage(BaseWizardPage):
                 tracker_data=tracker_data,
                 mediainfo_obj=mediainfo_obj,
                 source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
-                media_mode=self.config.cfg_payload.media_mode,
+                media_type=self.config.media_search_payload.media_type,
                 media_search_payload=self.config.media_search_payload,
                 releasers_name=self.config.cfg_payload.releasers_name,
                 encode_file_dir=encode_file_dir,

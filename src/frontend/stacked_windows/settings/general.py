@@ -26,7 +26,6 @@ from src.backend.utils.file_utilities import (
     open_explorer,
 )
 from src.enums.logging_settings import LogLevel
-from src.enums.media_mode import MediaMode
 from src.enums.profile import Profile
 from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
@@ -139,16 +138,6 @@ class GeneralSettings(BaseSettings):
             plugin_pre_upload_lbl,
             self.plugin_pre_upload_combo,
         )
-
-        media_mode_lbl = QLabel("Media Mode", self)
-        media_mode_lbl.setToolTip(
-            "Sets media processing mode (locked to 'Movies' until support is added)"
-        )
-        self.media_mode_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        # TODO: remove when TV support is added and modify tooltip
-        self.media_mode_combo.setDisabled(True)
 
         self.source_ext_filter = ExtFilterWidget(
             label_text="Filter Source Media Extensions (Basic 'Input')",
@@ -296,7 +285,6 @@ class GeneralSettings(BaseSettings):
         self.add_layout(plugin_wizard_page_layout)
         self.add_layout(plugin_token_replacer_layout)
         self.add_layout(pre_upload_processing_layout)
-        self.add_layout(create_form_layout(media_mode_lbl, self.media_mode_combo))
         self.add_widget(self.source_ext_filter)
         self.add_widget(self.encode_ext_filter)
         self.add_layout(
@@ -335,7 +323,6 @@ class GeneralSettings(BaseSettings):
         self._change_theme()
         self.load_combo_box(self.profile_combo, Profile, payload.profile)
         self._change_profile()
-        self.load_combo_box(self.media_mode_combo, MediaMode, payload.media_mode)
         self._load_filter_widget(
             user_settings=payload.source_media_ext_filter,
             filter_widget=self.source_ext_filter,
@@ -678,9 +665,6 @@ class GeneralSettings(BaseSettings):
             self.config.cfg_payload.wizard_page = ""
             self.config.cfg_payload.token_replacer = ""
             self.config.cfg_payload.pre_upload = ""
-        self.config.cfg_payload.media_mode = MediaMode(
-            self.media_mode_combo.currentData()
-        )
         self.config.cfg_payload.source_media_ext_filter = (
             self.source_ext_filter.get_accepted_items()
         )
@@ -717,9 +701,6 @@ class GeneralSettings(BaseSettings):
         self._change_profile()
         self.plugin_wizard_page_combo.clear()
         self.plugin_token_replacer_combo.clear()
-        self.media_mode_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.media_mode.value - 1
-        )
         self._load_filter_widget(
             user_settings=None, filter_widget=self.source_ext_filter, defaults=True
         )
@@ -727,7 +708,7 @@ class GeneralSettings(BaseSettings):
             user_settings=None, filter_widget=self.encode_ext_filter, defaults=True
         )
         self.releasers_name_entry.clear()
-        # Set TMDB language to default
+        # set TMDB language to default
         for i in range(self.tmdb_language_combo.count()):
             if (
                 self.tmdb_language_combo.itemData(i)

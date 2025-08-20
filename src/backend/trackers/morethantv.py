@@ -17,7 +17,7 @@ from unidecode import unidecode
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.audio_formats import AudioFormats
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.trackers.morethantv import (
     MTVAudioTags,
@@ -43,7 +43,7 @@ def mtv_uploader(
     tracker_title: str | None,
     mediainfo_obj: MediaInfo,
     genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-    media_mode: MediaMode,
+    media_type: MediaType,
     anonymous: bool,
     source_origin: MTVSourceOrigin,
     cookie_dir: Path,
@@ -69,7 +69,7 @@ def mtv_uploader(
         nfo=nfo,
         group_desc=group_desc,
         genre_ids=genre_ids,
-        media_mode=media_mode,
+        media_type=media_type,
         anonymous=anonymous,
         source_origin=source_origin,
     )
@@ -274,7 +274,7 @@ class MTVUploader:
         nfo: str,
         group_desc: str | None,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-        media_mode: MediaMode,
+        media_type: MediaType,
         anonymous: bool,
         source_origin: MTVSourceOrigin,
     ) -> Path:
@@ -310,7 +310,7 @@ class MTVUploader:
             resolution=get_resolution,
             file_input=file_input,
             genre_ids=genre_ids,
-            media_mode=media_mode,
+            media_type=media_type,
         )
         if tags:
             data["taglist"] = " ".join(tags)
@@ -494,13 +494,13 @@ class MTVUploader:
         resolution: str,
         file_input: Path,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-        media_mode: MediaMode,
+        media_type: MediaType,
     ) -> set:
         tags = self.find_audio_tags(self.mediainfo_obj)
         tags.update(self.find_genre_tags(genre_ids))
         tags.update(self.find_resolution_tags(resolution))
         tags.update(self.find_type_source_tags(file_input))
-        tags.update(self.find_type_tags(media_mode, resolution))
+        tags.update(self.find_type_tags(media_type, resolution))
         tags.update(self.find_video_codec_tags(self.mediainfo_obj))
         tags.update(self.find_release_group_tags(file_input))
         tags.update(self.has_subtitles_tags(self.mediainfo_obj))
@@ -576,10 +576,10 @@ class MTVUploader:
         return type_source
 
     @staticmethod
-    def find_type_tags(media_mode: MediaMode, resolution: str) -> set:
-        if media_mode == MediaMode.MOVIES:
+    def find_type_tags(media_type: MediaType, resolution: str) -> set:
+        if media_type == MediaType.MOVIES:
             return MTVUploader.find_movies_tags(resolution)
-        elif media_mode == MediaMode.SERIES:
+        elif media_type == MediaType.SERIES:
             return MTVUploader.find_movies_tags(resolution)
 
     @staticmethod

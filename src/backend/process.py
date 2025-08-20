@@ -70,7 +70,7 @@ from src.backend.utils.images import (
 )
 from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ImageHostError, TrackerError
@@ -453,7 +453,7 @@ class ProcessBackEnd:
         caught_error: SignalInstance,
         mediainfo_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
-        media_mode: MediaMode,
+        media_type: MediaType,
         media_search_payload: MediaSearchPayload,
         releasers_name: str,
         encode_file_dir: Path | None = None,
@@ -771,7 +771,7 @@ class ProcessBackEnd:
                         torrent_file=torrent_path,
                         file_input=Path(media_input),
                         mediainfo_obj=mediainfo_obj,
-                        media_mode=media_mode,
+                        media_type=media_type,
                         media_search_payload=media_search_payload,
                         nfo=nfo,
                         tracker_title=cur_tracker_title,
@@ -1204,7 +1204,7 @@ class ProcessBackEnd:
         torrent_file: Path,
         file_input: Path,
         mediainfo_obj: MediaInfo,
-        media_mode: MediaMode,
+        media_type: MediaType,
         media_search_payload: MediaSearchPayload,
         nfo: str,
         tracker_title: str,
@@ -1224,7 +1224,7 @@ class ProcessBackEnd:
                 tracker_title=tracker_title,
                 mediainfo_obj=mediainfo_obj,
                 genre_ids=media_search_payload.genres,
-                media_mode=media_mode,
+                media_type=media_type,
                 anonymous=bool(tracker_payload.anonymous),
                 source_origin=tracker_payload.source_origin,
                 cookie_dir=self.config.TRACKER_COOKIE_PATH,
@@ -1251,7 +1251,7 @@ class ProcessBackEnd:
                 torrent_file=torrent_file,
                 file_input=file_input,
                 tracker_title=tracker_title,
-                media_mode=media_mode,
+                media_type=media_type,
                 imdb_id=media_search_payload.imdb_id,
                 tmdb_id=media_search_payload.tmdb_id,
                 nfo=nfo,
@@ -1295,7 +1295,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for ReelFliX")
             return rf_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -1319,7 +1319,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for Aither")
             return aither_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -1343,7 +1343,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for HUNO")
             return huno_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -1361,7 +1361,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for LST")
             return lst_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -1385,7 +1385,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for DarkPeers")
             return dp_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -1402,7 +1402,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for ShareIsland")
             return shri_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -1421,7 +1421,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for UploadCX")
             return ulcx_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,
@@ -1439,7 +1439,7 @@ class ProcessBackEnd:
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for OnlyEncodes")
             return oe_uploader(
-                media_mode=media_mode,
+                media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
                 file_input=file_input,

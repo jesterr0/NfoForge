@@ -10,7 +10,7 @@ import regex
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
 from src.enums.trackers.darkpeers import (
@@ -84,7 +84,7 @@ class Unit3dBaseUploader:
         "tracker_name",
         "upload_url",
         "base_url",
-        "media_mode",
+        "media_type",
         "api_key",
         "torrent_file",
         "file_input",
@@ -101,7 +101,7 @@ class Unit3dBaseUploader:
         self,
         tracker_name: TrackerSelection,
         base_url: str,
-        media_mode: MediaMode,
+        media_type: MediaType,
         api_key: str,
         torrent_file: Path,
         file_input: Path,
@@ -113,7 +113,7 @@ class Unit3dBaseUploader:
     ) -> None:
         self.tracker_name = tracker_name
         self.upload_url = f"{cleanse_base_url(base_url)}/api/torrents/upload"
-        self.media_mode = media_mode
+        self.media_type = media_type
         self.api_key = api_key
         self.torrent_file = torrent_file
         self.file_input = file_input
@@ -174,7 +174,7 @@ class Unit3dBaseUploader:
             upload_payload["imdb"] = int(imdb_id.replace("t", ""))
         if tmdb_id:
             upload_payload["tmdb"] = tmdb_id
-        if self.media_mode is MediaMode.SERIES and tvdb_id:
+        if self.media_type is MediaType.SERIES and tvdb_id:
             upload_payload["tvdb"] = tvdb_id
         if mal_id:
             upload_payload["mal"] = mal_id

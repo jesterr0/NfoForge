@@ -8,7 +8,7 @@ import regex
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.media_info_utils import MinimalMediaInfo
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.trackers.beyondhd import (
     BHDCategoryID,
     BHDLiveRelease,
@@ -26,7 +26,7 @@ def bhd_uploader(
     torrent_file: PathLike[str] | Path,
     file_input: PathLike[str] | Path,
     tracker_title: str | None,
-    media_mode: MediaMode,
+    media_type: MediaType,
     imdb_id: str | None,
     tmdb_id: str | None,
     nfo: str,
@@ -40,7 +40,7 @@ def bhd_uploader(
         api_key=api_key,
         torrent_file=torrent_file,
         file_input=file_input,
-        media_mode=media_mode,
+        media_type=media_type,
         timeout=timeout,
     )
     return uploader.upload(
@@ -63,13 +63,13 @@ class BHDUploader:
         api_key: str,
         torrent_file: PathLike[str] | Path,
         file_input: PathLike[str] | Path,
-        media_mode: MediaMode,
+        media_type: MediaType,
         timeout: int = 60,
     ) -> None:
         self._upload_url = f"https://beyond-hd.me/api/upload/{api_key}"
         self.torrent_file = Path(torrent_file)
         self.file_input = Path(file_input)
-        self.media_mode = media_mode
+        self.media_type = media_type
         self.timeout = timeout
 
     def upload(
@@ -150,9 +150,9 @@ class BHDUploader:
             raise TrackerError(requests_exc_error_msg)
 
     def _category_id(self) -> int | None:
-        if self.media_mode == MediaMode.MOVIES:
+        if self.media_type == MediaType.MOVIES:
             return BHDCategoryID.MOVIE.value
-        elif self.media_mode == MediaMode.SERIES:
+        elif self.media_type == MediaType.SERIES:
             return BHDCategoryID.TV.value
 
     def _type(self) -> str:
