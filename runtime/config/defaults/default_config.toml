@@ -3,7 +3,6 @@ ui_suffix = ""
 ui_scale_factor = 1.0
 nfo_forge_theme = 1
 profile = 1
-media_mode = 1
 source_media_ext_filter = [".mkv", ".mp4"]
 encode_media_ext_filter = [".mkv", ".mp4"]
 releasers_name = ""
