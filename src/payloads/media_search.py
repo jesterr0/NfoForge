@@ -1,10 +1,14 @@
 from dataclasses import dataclass, field
+
 from imdb.Movie import Movie
+
+from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 
 
 @dataclass(slots=True)
 class MediaSearchPayload:
+    media_type: MediaType | None = None
     imdb_id: str | None = None
     imdb_data: Movie | None = None
     tmdb_id: str | None = None
@@ -20,6 +24,7 @@ class MediaSearchPayload:
     genres: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries] = field(default_factory=list)
 
     def reset(self) -> None:
+        self.media_type = None
         self.imdb_id = None
         self.imdb_data = None
         self.tmdb_id = None
