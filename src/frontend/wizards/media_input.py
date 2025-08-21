@@ -29,8 +29,7 @@ if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
-# TODO: change name of this and module name
-class MediaInputBasic(BaseWizardPage):
+class MediaInput(BaseWizardPage):
     DEF_INPUT_ENTRY_TXT = "Open file or directory..."
 
     progress_signal = Signal(int, int, int)  # progress, completed files, total files
@@ -45,7 +44,7 @@ class MediaInputBasic(BaseWizardPage):
         on_finished_cb: Callable | None = None,
     ) -> None:
         super().__init__(config, parent)
-        self.setObjectName("mediaInputBasic")
+        self.setObjectName("mediaInput")
         self.setTitle("Input")
         self.setCommitPage(True)
 
