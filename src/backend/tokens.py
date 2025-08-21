@@ -5,7 +5,7 @@ from typing import Any, NamedTuple, Type
 from src.enums import CaseInsensitiveStrEnum
 
 
-MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
+TITLE_CLEAN_REPLACE_DEF = [
     (r"", r"[unidecode]"),
     (r"&", r"and"),
     (r"'", r"[remove]"),
@@ -59,100 +59,92 @@ class Tokens:
     FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
     HYBRID = FileToken("{hybrid}", "HYBRID")
     LOCALIZATION = FileToken("{localization}", "Subbed/Dubbed")
-    MI_AUDIO_BITRATE = FileToken("{mi_audio_bitrate}", "Audio bitrate (640000)")
-    MI_AUDIO_BITRATE_FORMATTED = FileToken(
-        "{mi_audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
+    AUDIO_BITRATE = FileToken("{audio_bitrate}", "Audio bitrate (640000)")
+    AUDIO_BITRATE_FORMATTED = FileToken(
+        "{audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
     )
-    MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels (5.1)")
-    MI_AUDIO_CHANNEL_S_I = FileToken("{mi_audio_channel_s_i}", "Audio channels (6)")
-    MI_AUDIO_CHANNEL_S_LAYOUT = FileToken(
-        "{mi_audio_channel_s_layout}", "Audio channel layout (L R C LFE Ls Rs Lb Rb)"
+    AUDIO_CHANNEL_S = FileToken("{audio_channel_s}", "Audio channels (5.1)")
+    AUDIO_CHANNEL_S_I = FileToken("{audio_channel_s_i}", "Audio channels (6)")
+    AUDIO_CHANNEL_S_LAYOUT = FileToken(
+        "{audio_channel_s_layout}", "Audio channel layout (L R C LFE Ls Rs Lb Rb)"
     )
-    MI_AUDIO_CODEC = FileToken("{mi_audio_codec}", "Audio codec")
-    MI_AUDIO_COMMERCIAL_NAME = FileToken(
-        "{mi_audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
+    AUDIO_CODEC = FileToken("{audio_codec}", "Audio codec")
+    AUDIO_COMMERCIAL_NAME = FileToken(
+        "{audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
     )
-    MI_AUDIO_COMPRESSION = FileToken(
-        "{mi_audio_compression}", "Audio compression (Lossy)"
+    AUDIO_COMPRESSION = FileToken("{audio_compression}", "Audio compression (Lossy)")
+    AUDIO_FORMAT_INFO = FileToken(
+        "{audio_format_info}", "Audio format info (Enhanced AC-3)"
     )
-    MI_AUDIO_FORMAT_INFO = FileToken(
-        "{mi_audio_format_info}", "Audio format info (Enhanced AC-3)"
+    AUDIO_LANGUAGE_1_FULL = FileToken(
+        "{audio_language_1_full}", "Audio language (first track 'English')"
     )
-    MI_AUDIO_LANGUAGE_1_FULL = FileToken(
-        "{mi_audio_language_1_full}", "Audio language (first track 'English')"
+    AUDIO_LANGUAGE_1_ISO_639_1 = FileToken(
+        "{audio_language_1_iso_639_1}", "Audio language (first track 'EN')"
     )
-    MI_AUDIO_LANGUAGE_1_ISO_639_1 = FileToken(
-        "{mi_audio_language_1_iso_639_1}", "Audio language (first track 'EN')"
+    AUDIO_LANGUAGE_1_ISO_639_2 = FileToken(
+        "{audio_language_1_iso_639_2}", "Audio language (first track 'ENG')"
     )
-    MI_AUDIO_LANGUAGE_1_ISO_639_2 = FileToken(
-        "{mi_audio_language_1_iso_639_2}", "Audio language (first track 'ENG')"
+    AUDIO_LANGUAGE_2_ISO_639_1 = FileToken(
+        "{audio_language_2_iso_639_1}", "Audio language (first two tracks EN+ES)"
     )
-    MI_AUDIO_LANGUAGE_2_ISO_639_1 = FileToken(
-        "{mi_audio_language_2_iso_639_1}", "Audio language (first two tracks EN+ES)"
+    AUDIO_LANGUAGE_2_ISO_639_2 = FileToken(
+        "{audio_language_2_iso_639_2}", "Audio languages (first two tracks ENG+SPA)"
     )
-    MI_AUDIO_LANGUAGE_2_ISO_639_2 = FileToken(
-        "{mi_audio_language_2_iso_639_2}", "Audio languages (first two tracks ENG+SPA)"
-    )
-    MI_AUDIO_LANGUAGE_ALL_ISO_639_1 = FileToken(
-        "{mi_audio_language_all_iso_639_1}",
+    AUDIO_LANGUAGE_ALL_ISO_639_1 = FileToken(
+        "{audio_language_all_iso_639_1}",
         "All audio languages (all tracks EN+ES+etc..)",
     )
-    MI_AUDIO_LANGUAGE_ALL_ISO_639_2 = FileToken(
-        "{mi_audio_language_all_iso_639_2}",
+    AUDIO_LANGUAGE_ALL_ISO_639_2 = FileToken(
+        "{audio_language_all_iso_639_2}",
         "All audio languages (all tracks ENG+SPA+etc..)",
     )
-    MI_AUDIO_LANGUAGE_ALL_FULL = FileToken(
-        "{mi_audio_language_all_full}",
+    AUDIO_LANGUAGE_ALL_FULL = FileToken(
+        "{audio_language_all_full}",
         "All audio languages (all tracks English Spanish..)",
     )
-    MI_AUDIO_LANGUAGE_DUAL = FileToken(
-        "{mi_audio_language_dual}",
+    AUDIO_LANGUAGE_DUAL = FileToken(
+        "{audio_language_dual}",
         "Audio language ('Dual Audio' will be returned if there are 2 or more tracks with unique languages)",
     )
-    MI_AUDIO_LANGUAGE_MULTI = FileToken(
-        "{mi_audio_language_multi}",
+    AUDIO_LANGUAGE_MULTI = FileToken(
+        "{audio_language_multi}",
         "Audio languages ('Multi' will be returned if there are 3 or more tracks with unique languages)",
     )
-    MI_AUDIO_SAMPLE_RATE = FileToken(
-        "{mi_audio_sample_rate}", "Audio sample rate (48.0 kHz)"
+    AUDIO_SAMPLE_RATE = FileToken("{audio_sample_rate}", "Audio sample rate (48.0 kHz)")
+    VIDEO_3D = FileToken("{video_3d}", "Video 3D")
+    VIDEO_BIT_DEPTH_SPACE = FileToken(
+        "{video_bit_depth_space}", "Video bit depth (8 Bit)"
     )
-    MI_VIDEO_3D = FileToken("{mi_video_3d}", "Video 3D")
-    MI_VIDEO_BIT_DEPTH_SPACE = FileToken(
-        "{mi_video_bit_depth_space}", "Video bit depth (8 Bit)"
+    VIDEO_BIT_DEPTH_DASH = FileToken(
+        "{video_bit_depth_dash}", "Video bit depth (8-Bit)"
     )
-    MI_VIDEO_BIT_DEPTH_DASH = FileToken(
-        "{mi_video_bit_depth_dash}", "Video bit depth (8-Bit)"
+    VIDEO_CODEC = FileToken("{video_codec}", "Video codec")
+    VIDEO_DYNAMIC_RANGE = FileToken(
+        "{video_dynamic_range}", "Video dynamic range (HDR/SDR)"
     )
-    MI_VIDEO_CODEC = FileToken("{mi_video_codec}", "Video codec")
-    MI_VIDEO_DYNAMIC_RANGE = FileToken(
-        "{mi_video_dynamic_range}", "Video dynamic range (HDR/SDR)"
-    )
-    MI_VIDEO_DYNAMIC_RANGE_TYPE = FileToken(
-        "{mi_video_dynamic_range_type}",
+    VIDEO_DYNAMIC_RANGE_TYPE = FileToken(
+        "{video_dynamic_range_type}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ)",
     )
-    MI_VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR = FileToken(
-        "{mi_video_dynamic_range_type_inc_sdr}",
+    VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR = FileToken(
+        "{video_dynamic_range_type_inc_sdr}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR)",
     )
-    MI_VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080 = FileToken(
-        "{mi_video_dynamic_range_type_inc_sdr_over_1080}",
+    VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080 = FileToken(
+        "{video_dynamic_range_type_inc_sdr_over_1080}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
     )
-    MI_VIDEO_FORMAT = FileToken(
-        "{mi_video_format}", "Video format (AVC/HEVC/MPEG Video)"
+    VIDEO_FORMAT = FileToken("{video_format}", "Video format (AVC/HEVC/MPEG Video)")
+    VIDEO_HEIGHT = FileToken("{video_height}", "Video height (1040)")
+    VIDEO_LANGUAGE_FULL = FileToken("{video_language_full}", "Video language (English)")
+    VIDEO_LANGUAGE_ISO_639_1 = FileToken(
+        "{video_language_iso_639_1}", "Video language (EN)"
     )
-    MI_VIDEO_HEIGHT = FileToken("{mi_video_height}", "Video height (1040)")
-    MI_VIDEO_LANGUAGE_FULL = FileToken(
-        "{mi_video_language_full}", "Video language (English)"
+    VIDEO_LANGUAGE_ISO_639_2 = FileToken(
+        "{video_language_iso_639_2}", "Video language (ENG)"
     )
-    MI_VIDEO_LANGUAGE_ISO_639_1 = FileToken(
-        "{mi_video_language_iso_639_1}", "Video language (EN)"
-    )
-    MI_VIDEO_LANGUAGE_ISO_639_2 = FileToken(
-        "{mi_video_language_iso_639_2}", "Video language (ENG)"
-    )
-    MI_VIDEO_WIDTH = FileToken("{mi_video_width}", "Video width (1920)")
+    VIDEO_WIDTH = FileToken("{video_width}", "Video width (1920)")
     TITLE = FileToken(
         "{title}", "Title parsed from media databases with minimal formatting"
     )
@@ -194,11 +186,11 @@ class Tokens:
     MEDIA_INFO_SHORT = NfoToken(
         "{media_info_short}", "Shortened Mediainfo output with filepath cleansed"
     )
-    MI_VIDEO_BIT_RATE = NfoToken(
-        "{mi_video_bit_rate}", "Average video bit-rate in kbps (9975 kbps)"
+    VIDEO_BIT_RATE = NfoToken(
+        "{video_bit_rate}", "Average video bit-rate in kbps (9975 kbps)"
     )
-    MI_VIDEO_BIT_RATE_NUM_ONLY = NfoToken(
-        "{mi_video_bit_rate_num_only}",
+    VIDEO_BIT_RATE_NUM_ONLY = NfoToken(
+        "{video_bit_rate_num_only}",
         "Average video bit-rate in kbps, numbers only (9975)",
     )
     RELEASE_NOTES = NfoToken(

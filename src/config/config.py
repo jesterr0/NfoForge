@@ -881,32 +881,35 @@ class Config:
                 else ""
             )
 
-            # movie rename
-            movie_rename = self._toml_data["movie_rename"]
-            movie_rename["mvr_enabled"] = self.cfg_payload.mvr_enabled
-            movie_rename["mvr_replace_illegal_chars"] = (
+            # movie management
+            movie_management = self._toml_data["movie_management"]
+            movie_management["mvr_enabled"] = self.cfg_payload.mvr_enabled
+            movie_management["mvr_replace_illegal_chars"] = (
                 self.cfg_payload.mvr_replace_illegal_chars
             )
-            movie_rename["mvr_colon_replace_filename"] = ColonReplace(
+            movie_management["mvr_colon_replace_filename"] = ColonReplace(
                 self.cfg_payload.mvr_colon_replace_filename
             ).value
-            movie_rename["mvr_colon_replace_title"] = ColonReplace(
+            movie_management["mvr_colon_replace_title"] = ColonReplace(
                 self.cfg_payload.mvr_colon_replace_title
             ).value
-            movie_rename["mvr_parse_filename_attributes"] = (
+            movie_management["mvr_parse_filename_attributes"] = (
                 self.cfg_payload.mvr_parse_filename_attributes
             )
-            movie_rename["mvr_token"] = self.cfg_payload.mvr_token
-            movie_rename["mvr_title_token"] = self.cfg_payload.mvr_title_token
-            movie_rename["mvr_clean_title_rules"] = (
-                self.cfg_payload.mvr_clean_title_rules
+            movie_management["mvr_token"] = self.cfg_payload.mvr_token
+            movie_management["mvr_title_token"] = self.cfg_payload.mvr_title_token
+            movie_management["mvr_release_group"] = self.cfg_payload.mvr_release_group
+
+            # series management
+
+            # global management
+            global_management = self._toml_data["global_management"]
+            global_management["title_clean_rules"] = self.cfg_payload.title_clean_rules
+            global_management["title_clean_rules_modified"] = (
+                self.cfg_payload.title_clean_rules_modified
             )
-            movie_rename["mvr_clean_title_rules_modified"] = (
-                self.cfg_payload.mvr_clean_title_rules_modified
-            )
-            movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
-            movie_rename["mvr_mi_video_dynamic_range"] = (
-                self.cfg_payload.mvr_mi_video_dynamic_range
+            global_management["video_dynamic_range"] = (
+                self.cfg_payload.video_dynamic_range
             )
 
             # user tokens
@@ -1550,8 +1553,13 @@ class Config:
             # watch folder
             watch_folder = WatchFolder(**toml_data["watch_folder"])
 
-            # movie rename
-            movie_rename = toml_data["movie_rename"]
+            # movie management
+            movie_management = toml_data["movie_management"]
+
+            # series management
+
+            # global management
+            global_management = toml_data["global_management"]
 
             # user token data
             user_token_data = toml_data["user_tokens"]
@@ -1630,28 +1638,28 @@ class Config:
                 rtorrent=rtorrent,
                 transmission=transmission,
                 watch_folder=watch_folder,
-                mvr_enabled=movie_rename.get("mvr_enabled", False),
-                mvr_replace_illegal_chars=movie_rename.get(
+                mvr_enabled=movie_management.get("mvr_enabled", False),
+                mvr_replace_illegal_chars=movie_management.get(
                     "mvr_replace_illegal_chars", True
                 ),
                 mvr_colon_replace_filename=ColonReplace(
-                    movie_rename.get("mvr_colon_replace_filename", 3)
+                    movie_management.get("mvr_colon_replace_filename", 3)
                 ),
                 mvr_colon_replace_title=ColonReplace(
-                    movie_rename.get("mvr_colon_replace_title", 3)
+                    movie_management.get("mvr_colon_replace_title", 3)
                 ),
-                mvr_parse_filename_attributes=movie_rename[
+                mvr_parse_filename_attributes=movie_management[
                     "mvr_parse_filename_attributes"
                 ],
-                mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
-                mvr_clean_title_rules_modified=movie_rename[
-                    "mvr_clean_title_rules_modified"
-                ],
-                mvr_token=movie_rename.get("mvr_token"),
-                mvr_title_token=movie_rename.get("mvr_title_token"),
-                mvr_release_group=movie_rename.get("mvr_release_group", ""),
-                mvr_mi_video_dynamic_range=movie_rename.get(
-                    "mvr_mi_video_dynamic_range",
+                mvr_token=movie_management.get("mvr_token"),
+                mvr_title_token=movie_management.get("mvr_title_token"),
+                mvr_release_group=movie_management.get("mvr_release_group", ""),
+                title_clean_rules=global_management.get("title_clean_rules"),
+                title_clean_rules_modified=global_management.get(
+                    "title_clean_rules_modified"
+                ),
+                video_dynamic_range=global_management.get(
+                    "video_dynamic_range",
                     {
                         "resolutions": {"720p": False, "1080p": False, "2160p": True},
                         "hdr_types": {

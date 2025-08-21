@@ -97,7 +97,7 @@ class ConfigPayload:
     # watch folder
     watch_folder: WatchFolder
 
-    # movie renamer settings
+    # movie management settings
     mvr_enabled: bool
     mvr_replace_illegal_chars: bool
     mvr_colon_replace_filename: ColonReplace
@@ -105,10 +105,12 @@ class ConfigPayload:
     mvr_parse_filename_attributes: bool
     mvr_token: str
     mvr_title_token: str
-    mvr_clean_title_rules: list[tuple[str, str]]
-    mvr_clean_title_rules_modified: bool
     mvr_release_group: str
-    mvr_mi_video_dynamic_range: dict[str, Any]
+
+    # global management
+    title_clean_rules: list[tuple[str, str]]
+    title_clean_rules_modified: bool
+    video_dynamic_range: dict[str, Any]
 
     # user tokens
     user_tokens: dict[str, tuple[str, str]]

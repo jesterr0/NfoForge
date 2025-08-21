@@ -71,9 +71,9 @@ class TokenReplacer:
         "user_tokens",
         "edition_override",
         "frame_size_override",
-        "movie_clean_title_rules",
+        "title_clean_rules",
         "override_title_rules",
-        "mi_video_dynamic_range",
+        "video_dynamic_range",
         # vars
         "token_data",
     )
@@ -97,9 +97,9 @@ class TokenReplacer:
         user_tokens: dict[str, str] | None = None,
         edition_override: str | None = None,
         frame_size_override: str | None = None,
-        movie_clean_title_rules: list[tuple[str, str]] | None = None,
+        title_clean_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
-        mi_video_dynamic_range: dict[str, Any] | None = None,
+        video_dynamic_range: dict[str, Any] | None = None,
         screen_shots: str | None = None,
         screen_shots_comparison: str | None = None,
         screen_shots_even_obj: Sequence[ImageUploadData] | None = None,
@@ -135,9 +135,9 @@ class TokenReplacer:
             user_tokens (Optional[dict[str, str]]): User tokens (must be prefixed with usr_).
             edition_override (Optional[str]): Edition override.
             frame_size_override (Optional[str]): Frame size override.
-            movie_clean_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'movie_clean_title' token.
+            title_clean_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'title_clean' token.
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
-            mi_video_dynamic_range: (Optional[dict[str, Any]]: Rules to control formatting of video dynamic range.
+            video_dynamic_range: (Optional[dict[str, Any]]: Rules to control formatting of video dynamic range.
             screen_shots (Optional[str]): Screenshots.
             screen_shots_comparison (Optional[str]): Screenshots in comparison mode
               (raw URLs only; user must add comparison tags).
@@ -177,9 +177,9 @@ class TokenReplacer:
         self.releasers_name = releasers_name
         self.edition_override = edition_override
         self.frame_size_override = frame_size_override
-        self.movie_clean_title_rules = movie_clean_title_rules
+        self.title_clean_rules = title_clean_rules
         self.override_title_rules = override_title_rules
-        self.mi_video_dynamic_range = mi_video_dynamic_range
+        self.video_dynamic_range = video_dynamic_range
         self.screen_shots = screen_shots
         self.screen_shots_comparison = screen_shots_comparison
         self.screen_shots_even_obj = screen_shots_even_obj
@@ -398,114 +398,112 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.LOCALIZATION.token:
             return self._localization(token_data)
 
-        if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE.token:
-            return self._mi_audio_bitrate(token_data, False)
+        if token_data.bracket_token == Tokens.AUDIO_BITRATE.token:
+            return self._audio_bitrate(token_data, False)
 
-        if token_data.bracket_token == Tokens.MI_AUDIO_BITRATE_FORMATTED.token:
-            return self._mi_audio_bitrate(token_data, True)
+        if token_data.bracket_token == Tokens.AUDIO_BITRATE_FORMATTED.token:
+            return self._audio_bitrate(token_data, True)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S.token:
-            return self._mi_audio_channel_s(token_data, True)
+        elif token_data.bracket_token == Tokens.AUDIO_CHANNEL_S.token:
+            return self._audio_channel_s(token_data, True)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S_I.token:
-            return self._mi_audio_channel_s(token_data, False)
+        elif token_data.bracket_token == Tokens.AUDIO_CHANNEL_S_I.token:
+            return self._audio_channel_s(token_data, False)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_CHANNEL_S_LAYOUT.token:
-            return self._mi_audio_channel_s_layout(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_CHANNEL_S_LAYOUT.token:
+            return self._audio_channel_s_layout(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_CODEC.token:
-            return self._mi_audio_codec(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_CODEC.token:
+            return self._audio_codec(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_COMMERCIAL_NAME.token:
-            return self._mi_audio_commercial_name(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_COMMERCIAL_NAME.token:
+            return self._audio_commercial_name(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_COMPRESSION.token:
-            return self._mi_audio_compression(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_COMPRESSION.token:
+            return self._audio_compression(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_FORMAT_INFO.token:
-            return self._mi_audio_format_info(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_FORMAT_INFO.token:
+            return self._audio_format_info(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_FULL.token:
-            return self._mi_audio_language_1_full(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_1_FULL.token:
+            return self._audio_language_1_full(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_ISO_639_1.token:
-            return self._mi_audio_language_1_iso_639_x(1, token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_1_ISO_639_1.token:
+            return self._audio_language_1_iso_639_x(1, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_1_ISO_639_2.token:
-            return self._mi_audio_language_1_iso_639_x(2, token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_1_ISO_639_2.token:
+            return self._audio_language_1_iso_639_x(2, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_2_ISO_639_1.token:
-            return self._mi_audio_language_2_all_iso_639_x(1, False, token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_2_ISO_639_1.token:
+            return self._audio_language_2_all_iso_639_x(1, False, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_2_ISO_639_2.token:
-            return self._mi_audio_language_2_all_iso_639_x(2, False, token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_2_ISO_639_2.token:
+            return self._audio_language_2_all_iso_639_x(2, False, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_ALL_ISO_639_1.token:
-            return self._mi_audio_language_2_all_iso_639_x(1, True, token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_ALL_ISO_639_1.token:
+            return self._audio_language_2_all_iso_639_x(1, True, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_ALL_ISO_639_2.token:
-            return self._mi_audio_language_2_all_iso_639_x(2, True, token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_ALL_ISO_639_2.token:
+            return self._audio_language_2_all_iso_639_x(2, True, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_ALL_FULL.token:
-            return self._mi_audio_language_all_full(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_ALL_FULL.token:
+            return self._audio_language_all_full(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_DUAL.token:
-            return self._mi_audio_language_dual(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_DUAL.token:
+            return self._audio_language_dual(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_LANGUAGE_MULTI.token:
-            return self._mi_audio_language_multi(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_LANGUAGE_MULTI.token:
+            return self._audio_language_multi(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_AUDIO_SAMPLE_RATE.token:
-            return self._mi_audio_sample_rate(token_data)
+        elif token_data.bracket_token == Tokens.AUDIO_SAMPLE_RATE.token:
+            return self._audio_sample_rate(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_3D.token:
+        elif token_data.bracket_token == Tokens.VIDEO_3D.token:
             return self._3d(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_BIT_DEPTH_SPACE.token:
-            return self._mi_video_bit_depth_x(False, token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_BIT_DEPTH_SPACE.token:
+            return self._video_bit_depth_x(False, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_BIT_DEPTH_DASH.token:
-            return self._mi_video_bit_depth_x(True, token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_BIT_DEPTH_DASH.token:
+            return self._video_bit_depth_x(True, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_CODEC.token:
-            return self._mi_video_codec(token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_CODEC.token:
+            return self._video_codec(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_DYNAMIC_RANGE.token:
-            return self._mi_video_dynamic_range(token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_DYNAMIC_RANGE.token:
+            return self._video_dynamic_range(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_DYNAMIC_RANGE_TYPE.token:
-            return self._mi_video_dynamic_range_type(token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_DYNAMIC_RANGE_TYPE.token:
+            return self._video_dynamic_range_type(token_data)
 
-        elif (
-            token_data.bracket_token == Tokens.MI_VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR.token
-        ):
-            return self._mi_video_dynamic_range_type(token_data, include_sdr=True)
+        elif token_data.bracket_token == Tokens.VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR.token:
+            return self._video_dynamic_range_type(token_data, include_sdr=True)
 
         elif (
             token_data.bracket_token
-            == Tokens.MI_VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080.token
+            == Tokens.VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080.token
         ):
-            return self._mi_video_dynamic_range_type(
+            return self._video_dynamic_range_type(
                 token_data, include_sdr=True, uhd_only=True
             )
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_FORMAT.token:
-            return self._mi_video_format(token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_FORMAT.token:
+            return self._video_format(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_HEIGHT.token:
-            return self._mi_video_height(token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_HEIGHT.token:
+            return self._video_height(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_FULL.token:
-            return self._mi_video_language_full(token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_LANGUAGE_FULL.token:
+            return self._video_language_full(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_ISO_639_1.token:
-            return self._mi_video_language_iso_639_x(1, token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_LANGUAGE_ISO_639_1.token:
+            return self._video_language_iso_639_x(1, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_LANGUAGE_ISO_639_2.token:
-            return self._mi_video_language_iso_639_x(2, token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_LANGUAGE_ISO_639_2.token:
+            return self._video_language_iso_639_x(2, token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_WIDTH.token:
-            return self._mi_video_width(token_data)
+        elif token_data.bracket_token == Tokens.VIDEO_WIDTH.token:
+            return self._video_width(token_data)
 
         elif token_data.bracket_token == Tokens.TITLE.token:
             return self._title(token_data)
@@ -582,11 +580,11 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MEDIA_INFO_SHORT.token:
             return self._media_info_short(token_data)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_BIT_RATE.token:
-            return self._mi_video_bit_rate(token_data, False)
+        elif token_data.bracket_token == Tokens.VIDEO_BIT_RATE.token:
+            return self._video_bit_rate(token_data, False)
 
-        elif token_data.bracket_token == Tokens.MI_VIDEO_BIT_RATE_NUM_ONLY.token:
-            return self._mi_video_bit_rate(token_data, True)
+        elif token_data.bracket_token == Tokens.VIDEO_BIT_RATE_NUM_ONLY.token:
+            return self._video_bit_rate(token_data, True)
 
         elif token_data.bracket_token == Tokens.REPACK.token:
             return self._repack(token_data)
@@ -825,7 +823,7 @@ class TokenReplacer:
             localization = "Dubbed"
         return self._optional_user_input(localization, token_data)
 
-    def _mi_audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
+    def _audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
         bitrate = ""
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             a_track = self.media_info_obj.audio_tracks[0]
@@ -836,9 +834,7 @@ class TokenReplacer:
 
         return self._optional_user_input(bitrate, token_data)
 
-    def _mi_audio_channel_s(
-        self, token_data: TokenData, convert_to_layout: bool
-    ) -> str:
+    def _audio_channel_s(self, token_data: TokenData, convert_to_layout: bool) -> str:
         # TODO: might need to handle multiple audio tracks instead of just 0
         audio_channel_s = self.guess_name.get("audio_channels", "")
         if self.media_info_obj and self.media_info_obj.audio_tracks:
@@ -853,7 +849,7 @@ class TokenReplacer:
 
         return self._optional_user_input(audio_channel_s, token_data)
 
-    def _mi_audio_channel_s_layout(self, token_data: TokenData) -> str:
+    def _audio_channel_s_layout(self, token_data: TokenData) -> str:
         layout = ""
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_channel_layout = self.media_info_obj.audio_tracks[0].channel_layout
@@ -862,7 +858,7 @@ class TokenReplacer:
 
         return self._optional_user_input(layout, token_data)
 
-    def _mi_audio_codec(self, token_data: TokenData) -> str:
+    def _audio_codec(self, token_data: TokenData) -> str:
         audio_codec = self.guess_name.get("audio_codec", "")
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             audio_codecs = AudioCodecs()
@@ -877,7 +873,7 @@ class TokenReplacer:
 
         return self._optional_user_input(audio_codec, token_data)
 
-    def _mi_audio_commercial_name(self, token_data: TokenData) -> str:
+    def _audio_commercial_name(self, token_data: TokenData) -> str:
         commercial_name = ""
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_commercial_name = self.media_info_obj.audio_tracks[0].commercial_name
@@ -886,7 +882,7 @@ class TokenReplacer:
 
         return self._optional_user_input(commercial_name, token_data)
 
-    def _mi_audio_compression(self, token_data: TokenData) -> str:
+    def _audio_compression(self, token_data: TokenData) -> str:
         compression = ""
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_compression = self.media_info_obj.audio_tracks[0].compression_mode
@@ -895,7 +891,7 @@ class TokenReplacer:
 
         return self._optional_user_input(compression, token_data)
 
-    def _mi_audio_format_info(self, token_data: TokenData) -> str:
+    def _audio_format_info(self, token_data: TokenData) -> str:
         format_info = ""
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_format_info = self.media_info_obj.audio_tracks[0].channel_s
@@ -904,7 +900,7 @@ class TokenReplacer:
 
         return self._optional_user_input(format_info, token_data)
 
-    def _mi_audio_language_1_full(self, token_data: TokenData) -> str:
+    def _audio_language_1_full(self, token_data: TokenData) -> str:
         language = ""
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             detect_language_code = get_language_mi(self.media_info_obj.audio_tracks[0])
@@ -915,9 +911,7 @@ class TokenReplacer:
 
         return self._optional_user_input(language, token_data)
 
-    def _mi_audio_language_1_iso_639_x(
-        self, char_code: int, token_data: TokenData
-    ) -> str:
+    def _audio_language_1_iso_639_x(self, char_code: int, token_data: TokenData) -> str:
         language = self.guessit_language
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             detect_language = get_language_mi(
@@ -928,7 +922,7 @@ class TokenReplacer:
 
         return self._optional_user_input(language, token_data)
 
-    def _mi_audio_language_2_all_iso_639_x(
+    def _audio_language_2_all_iso_639_x(
         self, char_code: int, all_languages: bool, token_data: TokenData
     ) -> str:
         language = ""
@@ -966,7 +960,7 @@ class TokenReplacer:
 
         return self._optional_user_input(language, token_data)
 
-    def _mi_audio_language_all_full(self, token_data: TokenData) -> str:
+    def _audio_language_all_full(self, token_data: TokenData) -> str:
         all_lang = ""
         guess_lang = self.guessit_language
         if isinstance(guess_lang, list):
@@ -998,7 +992,7 @@ class TokenReplacer:
 
         return self._optional_user_input(all_lang, token_data)
 
-    def _mi_audio_language_dual(self, token_data: TokenData) -> str:
+    def _audio_language_dual(self, token_data: TokenData) -> str:
         dual = ""
         other_attributes = self.guess_name.get("other")
 
@@ -1017,7 +1011,7 @@ class TokenReplacer:
 
         return self._optional_user_input(dual, token_data)
 
-    def _mi_audio_language_multi(self, token_data: TokenData) -> str:
+    def _audio_language_multi(self, token_data: TokenData) -> str:
         multi = ""
         language = self.guessit_language
         if isinstance(language, list):
@@ -1040,7 +1034,7 @@ class TokenReplacer:
 
         return self._optional_user_input(multi, token_data)
 
-    def _mi_audio_sample_rate(self, token_data: TokenData) -> str:
+    def _audio_sample_rate(self, token_data: TokenData) -> str:
         sample_rate = ""
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_sample_rate = self.media_info_obj.audio_tracks[0].other_sampling_rate
@@ -1071,7 +1065,7 @@ class TokenReplacer:
 
         return self._optional_user_input(three_dimension, token_data)
 
-    def _mi_video_bit_depth_x(self, dash: bool, token_data: TokenData) -> str:
+    def _video_bit_depth_x(self, dash: bool, token_data: TokenData) -> str:
         color_depth = self.guess_name.get("color_depth", "")
 
         if self.media_info_obj and self.media_info_obj.video_tracks:
@@ -1086,7 +1080,7 @@ class TokenReplacer:
 
         return self._optional_user_input(color_depth, token_data)
 
-    def _mi_video_codec(self, token_data: TokenData) -> str:
+    def _video_codec(self, token_data: TokenData) -> str:
         current_quality = self._get_source_quality()
         codec = self._get_video_codec(current_quality)
         return self._optional_user_input(codec, token_data)
@@ -1155,11 +1149,11 @@ class TokenReplacer:
                 return f"MPEG-{version_num.group()}"
         return "MPEG"
 
-    def _mi_video_dynamic_range(self, token_data: TokenData) -> str:
+    def _video_dynamic_range(self, token_data: TokenData) -> str:
         hdr_string = ""
 
         if (
-            self.mi_video_dynamic_range
+            self.video_dynamic_range
             and self.media_info_obj
             and self.media_info_obj.video_tracks
         ):
@@ -1185,16 +1179,16 @@ class TokenReplacer:
                 (v for k, v in res_map.items() if abs(resolution - k) < 100), None
             )
 
-            if not res_key or not self.mi_video_dynamic_range["resolutions"].get(
+            if not res_key or not self.video_dynamic_range["resolutions"].get(
                 res_key, False
             ):
                 return self._optional_user_input("", token_data)
 
             # get data from dict
             enabled_hdr_types = [
-                k for k, v in self.mi_video_dynamic_range["hdr_types"].items() if v
+                k for k, v in self.video_dynamic_range["hdr_types"].items() if v
             ]
-            custom_strings = self.mi_video_dynamic_range.get("custom_strings", {})
+            custom_strings = self.video_dynamic_range.get("custom_strings", {})
             enabled_hdr_types_sorted = sorted(enabled_hdr_types, key=len, reverse=True)
             norm_enabled_types = {normalize(k): k for k in enabled_hdr_types_sorted}
 
@@ -1276,7 +1270,7 @@ class TokenReplacer:
 
         return self._optional_user_input(hdr_string, token_data)
 
-    def _mi_video_dynamic_range_type(
+    def _video_dynamic_range_type(
         self, token_data: TokenData, include_sdr: bool = False, uhd_only: bool = False
     ) -> str:
         if uhd_only:
@@ -1329,7 +1323,7 @@ class TokenReplacer:
 
         return self._optional_user_input(dynamic_range_type, token_data)
 
-    def _mi_video_format(self, token_data: TokenData) -> str:
+    def _video_format(self, token_data: TokenData) -> str:
         v_format = ""
         if self.media_info_obj and self.media_info_obj.video_tracks:
             track = self.media_info_obj.video_tracks[0]
@@ -1337,7 +1331,7 @@ class TokenReplacer:
 
         return self._optional_user_input(v_format, token_data)
 
-    def _mi_video_height(self, token_data: TokenData) -> str:
+    def _video_height(self, token_data: TokenData) -> str:
         height = ""
         if self.media_info_obj and self.media_info_obj.video_tracks:
             track = self.media_info_obj.video_tracks[0]
@@ -1345,7 +1339,7 @@ class TokenReplacer:
 
         return self._optional_user_input(height, token_data)
 
-    def _mi_video_language_full(self, token_data: TokenData) -> str:
+    def _video_language_full(self, token_data: TokenData) -> str:
         language = ""
         if self.media_info_obj and self.media_info_obj.video_tracks:
             detect_language_code = get_language_mi(self.media_info_obj.video_tracks[0])
@@ -1356,9 +1350,7 @@ class TokenReplacer:
 
         return self._optional_user_input(language, token_data)
 
-    def _mi_video_language_iso_639_x(
-        self, char_code: int, token_data: TokenData
-    ) -> str:
+    def _video_language_iso_639_x(self, char_code: int, token_data: TokenData) -> str:
         detect_language = ""
         if self.media_info_obj and self.media_info_obj.video_tracks:
             track = self.media_info_obj.video_tracks[0]
@@ -1366,7 +1358,7 @@ class TokenReplacer:
 
         return self._optional_user_input(detect_language, token_data)
 
-    def _mi_video_width(self, token_data: TokenData) -> str:
+    def _video_width(self, token_data: TokenData) -> str:
         width = ""
         if self.media_info_obj and self.media_info_obj.video_tracks:
             track = self.media_info_obj.video_tracks[0]
@@ -1392,8 +1384,8 @@ class TokenReplacer:
             if self.media_search_obj.title
             else self.guess_name.get("title", "")
         )
-        if title and self.movie_clean_title_rules:
-            for replace, replace_with in self.movie_clean_title_rules:
+        if title and self.title_clean_rules:
+            for replace, replace_with in self.title_clean_rules:
                 if replace_with == "[unidecode]":
                     title = unidecode.unidecode(title)
                 else:
@@ -1610,7 +1602,7 @@ class TokenReplacer:
             media_info_str = MinimalMediaInfo(self.media_input).get_minimal_mi_str()
         return self._optional_user_input(media_info_str, token_data)
 
-    def _mi_video_bit_rate(self, token_data: TokenData, num_only: bool) -> str:
+    def _video_bit_rate(self, token_data: TokenData, num_only: bool) -> str:
         mi_bit_rate = calculate_avg_video_bit_rate(self.media_info_obj)
         if mi_bit_rate:
             if num_only:
@@ -1762,28 +1754,6 @@ class TokenReplacer:
             except IndexError:
                 pass
         return self._optional_user_input(duration_str, token_data)
-
-    def _video_width(self, token_data: TokenData) -> str:
-        width = ""
-        try:
-            if self.media_info_obj and self.media_info_obj.video_tracks:
-                get_width = self.media_info_obj.video_tracks[0].width
-                if get_width:
-                    width = str(get_width)
-        except IndexError:
-            pass
-        return self._optional_user_input(width, token_data)
-
-    def _video_height(self, token_data: TokenData) -> str:
-        height = ""
-        try:
-            if self.media_info_obj and self.media_info_obj.video_tracks:
-                get_height = self.media_info_obj.video_tracks[0].height
-                if get_height:
-                    height = str(get_height)
-        except IndexError:
-            pass
-        return self._optional_user_input(height, token_data)
 
     def _aspect_ratio(self, token_data: TokenData) -> str:
         aspect_ratio = ""

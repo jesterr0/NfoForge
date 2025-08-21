@@ -12,6 +12,7 @@
   - `{movie_title}` has been replaced with `{title}`.
   - `{movie_clean_title}` has been replaced with `{title_clean}`.
   - `{movie_exact_title}` has been replaced with `{title_exact}`.
+  - All MediaInfo tokens have had the `mi_` prefix removed (e.g., `{mi_audio_codec}` is now `{audio_codec}`, `{mi_video_width}` is now `{video_width}`).
 - FileTree widget will now display system icons before using any custom defined icons.
 - MediaInput backend has been reworked.
   - Now supports series.

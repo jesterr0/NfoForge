@@ -161,7 +161,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -198,7 +198,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {mi_video_codec} {mi_video_dynamic_range} {mi_audio_codec} {mi_audio_channel_s} {mi_audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
+mvr_title_token_override = "{title_clean} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {video_codec} {video_dynamic_range} {audio_codec} {audio_channel_s} {audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -229,7 +229,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -266,7 +266,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -297,7 +297,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {mi_audio_language_all_full|upper|replace(' ',' - ')} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {audio_language_all_full|upper|replace(' ',' - ')} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -329,7 +329,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -360,7 +360,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -416,15 +416,19 @@ specific_params = { "label" = "", "path" = "" }
 enabled = false
 path = ""
 
-[movie_rename]
+[movie_management]
 mvr_enabled = true
 mvr_replace_illegal_chars = true
 mvr_colon_replace_filename = 3
 mvr_colon_replace_title = 3
 mvr_parse_filename_attributes = true
-mvr_token = "{title_clean} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
-mvr_title_token = "{title_clean} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
-mvr_clean_title_rules = [
+mvr_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+mvr_title_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+# TODO: move to global at the top?
+mvr_release_group = ""
+
+[global_management]
+title_clean_rules = [
     [
         "",
         "[unidecode]",
@@ -446,15 +450,14 @@ mvr_clean_title_rules = [
         "[space]",
     ],
 ]
-mvr_clean_title_rules_modified = false
-mvr_release_group = ""
+title_clean_rules_modified = false
 
-[movie_rename.mvr_mi_video_dynamic_range.resolutions]
+[global_management.video_dynamic_range.resolutions]
 720p = false
 1080p = false
 2160p = true
 
-[movie_rename.mvr_mi_video_dynamic_range.hdr_types]
+[global_management.video_dynamic_range.hdr_types]
 SDR = true
 PQ = false
 HLG = false
@@ -464,7 +467,7 @@ DV = true
 "DV HDR10" = true
 "DV HDR10+" = true
 
-[movie_rename.mvr_mi_video_dynamic_range.custom_strings]
+[global_management.video_dynamic_range.custom_strings]
 SDR = "SDR"
 PQ = ""
 HLG = ""
