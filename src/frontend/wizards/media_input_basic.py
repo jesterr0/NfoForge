@@ -2,12 +2,13 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Signal, Slot
+from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
     QMessageBox,
+    QProgressBar,
     QToolButton,
     QVBoxLayout,
 )
@@ -15,7 +16,6 @@ from pymediainfo import MediaInfo
 
 from src.backend.media_input import MediaInputBackEnd
 from src.config.config import Config
-from src.enums.media_mode import MediaMode
 from src.exceptions import MediaFileNotFoundError
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
@@ -29,9 +29,13 @@ if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
+# TODO: change name of this and module name
 class MediaInputBasic(BaseWizardPage):
     DEF_INPUT_ENTRY_TXT = "Open file or directory..."
 
+    progress_signal = Signal(int, int, int)  # progress, completed files, total files
+
+    # used in sandbox
     file_loaded = Signal(str)
 
     def __init__(
@@ -47,7 +51,7 @@ class MediaInputBasic(BaseWizardPage):
 
         self._on_finished_cb = on_finished_cb
 
-        self.backend = MediaInputBackEnd()
+        self.backend = MediaInputBackEnd(self.progress_signal)
         self.worker: GeneralWorker | None = None
         self._loading_completed = False
 
@@ -78,18 +82,24 @@ class MediaInputBasic(BaseWizardPage):
             lambda: self.open_dir_dialog(self.input_entry)
         )
 
-        self.file_tree = FileSystemTreeView(parent=self)
-        self.file_tree.hide()
-
         button_layout = QHBoxLayout()
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.addWidget(self.input_entry, stretch=1)
         button_layout.addWidget(self.media_button)
         button_layout.addWidget(self.media_dir_button)
 
+        self.file_tree = FileSystemTreeView(parent=self)
+        self.file_tree.hide()
+
+        self.progress_bar = QProgressBar(self, minimum=0, maximum=100, textVisible=True)
+        self.progress_bar.hide()
+
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addLayout(button_layout)
         self.main_layout.addWidget(self.file_tree, stretch=1)
+        self.main_layout.addWidget(
+            self.progress_bar, alignment=Qt.AlignmentFlag.AlignBottom
+        )
         self.main_layout.addStretch()
 
     def validatePage(self) -> bool:
@@ -127,62 +137,60 @@ class MediaInputBasic(BaseWizardPage):
 
     def update_payload_data(self) -> None:
         entry_data = Path(self.input_entry.text())
-        if self.config.cfg_payload.media_mode == MediaMode.MOVIES:
-            # handle file
-            if entry_data.is_file():
-                self.config.media_input_payload.encode_file = (
-                    Path(entry_data) if entry_data else None
-                )
-            # handle directory
-            elif entry_data.is_dir():
-                checked_items: list[dict[str, Any]] = (
-                    self.file_tree.get_checked_items() or []
-                )
-                supported_files: list[dict[str, Any]] = [
-                    item
+
+        # handle single file
+        if entry_data.is_file():
+            self.config.media_input_payload.file_list = [entry_data]
+
+        # handle directory
+        elif entry_data.is_dir():
+            checked_items: list[dict[str, Any]] = self.file_tree.get_checked_items()
+            supported_files = sorted(
+                [
+                    Path(item["path"])
                     for item in checked_items
-                    if isinstance(item, dict)
-                    and not item.get("is_dir", False)
-                    and Path(item.get("path", "")).suffix.lower()
-                    in self.config.cfg_payload.source_media_ext_filter
+                    if not item.get("is_dir", False)
+                    and Path(item["path"]).suffix.lower() in self.extensions
                 ]
-                if not supported_files:
-                    raise MediaFileNotFoundError(
-                        "No supported media files selected in directory "
-                        f"({', '.join(self.config.cfg_payload.source_media_ext_filter)})"
-                    )
-                largest_file = max(supported_files, key=lambda x: x.get("size", 0))
-                self.config.media_input_payload.encode_file = Path(largest_file["path"])
-                self.config.media_input_payload.encode_file_dir = entry_data
-            self._run_worker()
-        elif self.config.cfg_payload.media_mode == MediaMode.SERIES:
-            # TODO: add support for SERIES
-            raise NotImplementedError("No support for series yet")
+            )
+            if not supported_files:
+                raise MediaFileNotFoundError(
+                    "No supported media files selected in directory "
+                    f"({', '.join(self.config.cfg_payload.source_media_ext_filter)})"
+                )
+
+            self.config.media_input_payload.input_path = entry_data
+            self.config.media_input_payload.file_list = supported_files
+
+        self._run_worker()
 
     def _run_worker(self) -> None:
-        file_path = self.config.media_input_payload.encode_file
-        if not file_path:
-            raise FileNotFoundError("Failed to detect input path")
+        input_path = self.config.media_input_payload.input_path
+        file_list = self.config.media_input_payload.file_list
+        if not input_path or not file_list:
+            raise FileNotFoundError("Failed to detect input path or file list")
         self.set_working_dir(
-            self.config.cfg_payload.working_dir / self.gen_unique_date_name(file_path)
+            self.config.cfg_payload.working_dir / self.gen_unique_date_name(input_path)
         )
         self.worker = GeneralWorker(
-            func=self.backend.get_media_info, file_input=file_path, parent=self
+            func=self.backend.get_media_info_files, files=file_list, parent=self
         )
         self.worker.job_failed.connect(self._worker_failed)
         self.worker.job_finished.connect(self._worker_finished)
         GSigs().main_window_set_disabled.emit(True)
         GSigs().main_window_update_status_tip.emit("Parsing MediaInfo", 0)
+        self.progress_signal.connect(self._handle_progress)
         self.worker.start()
 
     @Slot(object)
-    def _worker_finished(self, mi_obj: MediaInfo | None) -> None:
-        if not mi_obj or (mi_obj and not isinstance(mi_obj, MediaInfo)):
+    def _worker_finished(self, files_mi_data: dict[Path, MediaInfo]) -> None:
+        if not files_mi_data:
             raise AttributeError("Failed to detect MediaInfo")
-        self.config.media_input_payload.encode_file_mi_obj = mi_obj
+        self.config.media_input_payload.file_mediainfo_list = files_mi_data
         self._loading_completed = True
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
+        self.progress_signal.disconnect(self._handle_progress)
         # if finished has a cb, utilize that instead of emit (for sandbox)
         if self._on_finished_cb:
             self._on_finished_cb()
@@ -194,6 +202,7 @@ class MediaInputBasic(BaseWizardPage):
         QMessageBox.critical(self, "Error", msg)
         self._loading_completed = False
         GSigs().main_window_set_disabled.emit(False)
+        self.progress_signal.disconnect(self._handle_progress)
 
     @Slot()
     def open_media_dialog(
@@ -253,11 +262,29 @@ class MediaInputBasic(BaseWizardPage):
         widget.setText(file_path)
         self.file_loaded.emit(file_path)
 
+    @Slot(int, int, int)
+    def _handle_progress(self, progress: int, completed: int, total: int) -> None:
+        # handle invalid progress values
+        if progress is None or progress < 0:
+            return
+
+        if not self.progress_bar.isVisible():
+            self.progress_bar.show()
+
+        # show progress if greater than 0
+        elif progress > 0:
+            self.progress_bar.setValue(progress)
+            self.progress_bar.setFormat(
+                f"Parsed {completed} of {total} file(s) - {int(progress)}%"
+            )
+
     @Slot()
     def reset_page(self) -> None:
         self.input_entry.clear()
         self.input_entry.setPlaceholderText(self.DEF_INPUT_ENTRY_TXT)
         self.file_tree.hide()
         self.file_tree.clear_tree()
+        self.progress_bar.reset()
+        self.progress_bar.hide()
         self.worker = None
         self._loading_completed = False
