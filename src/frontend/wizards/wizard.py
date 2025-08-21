@@ -9,8 +9,8 @@ from src.enums.profile import Profile
 from src.enums.wizard import WizardPages
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.images import ImagesPage
+from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.media_input_advanced import MediaInputAdvanced
-from src.frontend.wizards.media_input_basic import MediaInputBasic
 from src.frontend.wizards.media_search import MediaSearch
 from src.frontend.wizards.nfo_template import NfoTemplate
 from src.frontend.wizards.process import ProcessPage
@@ -39,7 +39,7 @@ class MainWindowWizard(QWizard):
         self.main_window = parent
 
         self._PAGES = [
-            MediaInputBasic(self.config, self.main_window),
+            MediaInput(self.config, self.main_window),
             MediaInputAdvanced(self.config, self.main_window),
             DummyWizardPage(self.config, self.main_window),
             MediaSearch(self.config, self.main_window),
