@@ -8,6 +8,7 @@
 
 ### Changed
 
+- FileTree widget will now display system icons before using any custom defined icons.
 - MediaInput backend has been reworked.
   - Now supports series.
   - Now utilizes async to parse MediaInfo of multiple files concurrently, this greatly speeds up read speeds for anything over a single file.

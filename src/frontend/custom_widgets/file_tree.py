@@ -117,7 +117,7 @@ class FileSystemTreeView(QTreeView):
         if item_path.is_dir():
             item.setIcon(self.icon_provider.icon(QFileIconProvider.IconType.Folder))
         else:
-            item.setIcon(self.get_custom_icon(item_path))
+            item.setIcon(self.get_icon(item_path))
         return item
 
     @Slot(QStandardItem)
@@ -191,8 +191,21 @@ class FileSystemTreeView(QTreeView):
                 item, checked_items, root_path, treat_all_checked
             )
 
-    def get_custom_icon(self, item_path: Path) -> QIcon:
+    def get_icon(self, item_path: Path) -> QIcon:
         """Returns the appropriate icon for the given file based on its extension."""
+        from PySide6.QtCore import QFileInfo
+
+        # first try to get the actual system icon
+        try:
+            file_info = QFileInfo(str(item_path))
+            system_icon = self.icon_provider.icon(file_info)
+            # check if we got a meaningful icon (not just the generic file icon)
+            if not system_icon.isNull():
+                return system_icon
+        except Exception:
+            pass
+
+        # fallback to custom icons for specific types
         try:
             if self.IMAGE_DIR.exists():
                 icon_path = None
@@ -215,6 +228,8 @@ class FileSystemTreeView(QTreeView):
                     return QIcon(str(icon_path))
         except FileNotFoundError:
             pass
+
+        # final fallback to generic file icon
         return self.icon_provider.icon(QFileIconProvider.IconType.File)
 
     @staticmethod
