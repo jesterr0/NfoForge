@@ -38,14 +38,14 @@ from src.frontend.utils import build_h_line, create_form_layout
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
-class MoviesSettings(BaseSettings):
+class MoviesManagementSettings(BaseSettings):
     """Movie specific settings"""
 
     TRACKERS_OVERRIDE_NOT_SUPPORTED = (TrackerSelection.PASS_THE_POPCORN,)
 
     def __init__(self, config, main_window, parent) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
-        self.setObjectName("movieSettings")
+        self.setObjectName("movieManagementSettings")
 
         # hook up signals
         self.load_saved_settings.connect(self._load_saved_settings)
