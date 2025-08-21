@@ -21,9 +21,17 @@ from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.stacked_windows.settings.clients import ClientsSettings
 from src.frontend.stacked_windows.settings.dependencies import DependencySettings
 from src.frontend.stacked_windows.settings.general import GeneralSettings
-from src.frontend.stacked_windows.settings.movies import MoviesSettings
+from src.frontend.stacked_windows.settings.global_management import (
+    GlobalManagementSettings,
+)
+from src.frontend.stacked_windows.settings.movies_management import (
+    MoviesManagementSettings,
+)
 from src.frontend.stacked_windows.settings.screenshots import ScreenShotSettings
 from src.frontend.stacked_windows.settings.security import SecuritySettings
+from src.frontend.stacked_windows.settings.series_management import (
+    SeriesManagementSettings,
+)
 from src.frontend.stacked_windows.settings.templates import TemplatesSettings
 from src.frontend.stacked_windows.settings.trackers import TrackersSettings
 from src.frontend.stacked_windows.settings.user_tokens import UserTokenSettings
@@ -50,10 +58,15 @@ class Settings(QWidget):
         self.general_settings_content = GeneralSettings(
             self.config, self.main_window, self
         )
-        self.movies_settings_content = MoviesSettings(
+        self.movies_settings_content = MoviesManagementSettings(
             self.config, self.main_window, self
         )
-        # self.series_settings_content = SeriesSettings()
+        self.series_settings_content = SeriesManagementSettings(
+            self.config, self.main_window, self
+        )
+        self.global_settings_content = GlobalManagementSettings(
+            self.config, self.main_window, self
+        )
         self.template_settings_content = TemplatesSettings(
             self.config, self.main_window, self
         )
@@ -80,9 +93,10 @@ class Settings(QWidget):
         self.settings_map: dict[SettingsTabs, BaseSettings] = {
             SettingsTabs.GENERAL_SETTINGS: self.general_settings_content,
             SettingsTabs.MOVIES_SETTINGS: self.movies_settings_content,
-            # SettingsTabs.SERIES_SETTINGS: self.series_settings_content,
+            SettingsTabs.SERIES_SETTINGS: self.series_settings_content,
+            SettingsTabs.GLOBAL_SETTINGS: self.global_settings_content,
             SettingsTabs.TEMPLATES_SETTINGS: self.template_settings_content,
-            SettingsTabs.TEMPLATES_SETTINGS: self.user_token_settings_content,
+            SettingsTabs.USER_TOKENS_SETTINGS: self.user_token_settings_content,
             SettingsTabs.SECURITY_SETTINGS: self.security_settings_content,
             SettingsTabs.CLIENTS_SETTINGS: self.clients_settings_content,
             SettingsTabs.TRACKERS_SETTINGS: self.trackers_settings_content,
@@ -99,8 +113,9 @@ class Settings(QWidget):
         self.tab_widget = QTabWidget()
         self.tab_widget.currentChanged.connect(GSigs().settings_tab_changed.emit)
         self.tab_widget.addTab(self.general_settings_content, "General")
-        self.tab_widget.addTab(self.movies_settings_content, "Movies")
-        # self.tab_widget.addTab(self.series_settings_content, "Series")
+        self.tab_widget.addTab(self.movies_settings_content, "Movies Management")
+        self.tab_widget.addTab(self.series_settings_content, "Series Management")
+        self.tab_widget.addTab(self.global_settings_content, "Global Management")
         self.tab_widget.addTab(self.template_settings_content, "Templates")
         self.tab_widget.addTab(self.user_token_settings_content, "User Tokens")
         self.tab_widget.addTab(self.security_settings_content, "Security")
@@ -166,6 +181,8 @@ class Settings(QWidget):
         self._save_approved_counter = 0
         self.general_settings_content.update_saved_settings.emit()
         self.movies_settings_content.update_saved_settings.emit()
+        self.series_settings_content.update_saved_settings.emit()
+        self.global_settings_content.update_saved_settings.emit()
         self.template_settings_content.update_saved_settings.emit()
         self.user_token_settings_content.update_saved_settings.emit()
         self.security_settings_content.update_saved_settings.emit()
@@ -191,6 +208,8 @@ class Settings(QWidget):
         self._save_approved_counter = 0
         self.general_settings_content.load_saved_settings.emit()
         self.movies_settings_content.load_saved_settings.emit()
+        self.series_settings_content.load_saved_settings.emit()
+        self.global_settings_content.load_saved_settings.emit()
         self.template_settings_content.load_saved_settings.emit()
         self.user_token_settings_content.load_saved_settings.emit()
         self.security_settings_content.load_saved_settings.emit()
