@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased] - 2025-m?-d?
+
+### Added
+
+-
+
+### Changed
+
+- MediaInput backend has been reworked.
+  - Now supports series.
+  - Now utilizes async to parse MediaInfo of multiple files concurrently, this greatly speeds up read speeds for anything over a single file.
+
+### Fixed
+
+-
+
+### Removed
+
+-
+
 ## [0.8.9] - 2025-08-19
 
 ### Added
