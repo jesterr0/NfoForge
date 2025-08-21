@@ -202,19 +202,9 @@ class MoviesManagementSettings(BaseSettings):
 
         # token table
         self.token_table = TokenTable(
-            self._get_file_tokens(), allow_edits=True, parent=self
+            self._get_file_tokens(), allow_edits=False, parent=self
         )
         self.token_table.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.mvr_clean_title_rules_modified = False
-        self.token_table.replacement_list_widget.rows_changed.connect(
-            self._mvr_clean_title_rules_user_change
-        )
-        self.token_table.replacement_list_widget.defaults_applied.connect(
-            self._mvr_clean_title_rules_defaults_applied
-        )
-        self.token_table.mi_video_dynamic_range.state_changed.connect(
-            self._mi_video_dynamic_range_update_live_cfg
-        )
 
         self.token_table_box = QGroupBox("Tokens")
         self.token_table_layout = QVBoxLayout(self.token_table_box)
@@ -285,8 +275,8 @@ class MoviesManagementSettings(BaseSettings):
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             releasers_name=self.config.cfg_payload.releasers_name,
-            movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+            title_clean_rules=self.config.cfg_payload.title_clean_rules,
+            video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
@@ -344,10 +334,6 @@ class MoviesManagementSettings(BaseSettings):
         self.title_colon_replace.blockSignals(True)
         for over_ride_widget in self.tracker_override_map.values():
             over_ride_widget.blockSignals(True)
-        self.mvr_clean_title_rules_modified = (
-            self.config.cfg_payload.mvr_clean_title_rules_modified
-        )
-        self.token_table.replacement_list_widget.blockSignals(True)
 
         # load settings
         self.rename_check_box.setChecked(self.config.cfg_payload.mvr_enabled)
@@ -403,13 +389,6 @@ class MoviesManagementSettings(BaseSettings):
             # override the others will be updated as they are clicked through
             if idx == 0:
                 self._update_tracker_override_example(over_ride_widget)
-        self.token_table.load_replacement_rules(
-            self.config.cfg_payload.mvr_clean_title_rules
-        )
-        self.token_table.mi_video_dynamic_range.from_dict(
-            self.config.cfg_payload.mvr_mi_video_dynamic_range
-        )
-        self._mvr_default_update_check()
 
         # unblock signals
         self.format_file_name_token_input.blockSignals(False)
@@ -418,7 +397,6 @@ class MoviesManagementSettings(BaseSettings):
         self.title_colon_replace.blockSignals(False)
         self._update_all_examples()
         QTimer.singleShot(1, self._delayed_unblock_override_widgets)
-        self.token_table.replacement_list_widget.blockSignals(False)
 
     def _delayed_unblock_override_widgets(self):
         """
@@ -427,19 +405,6 @@ class MoviesManagementSettings(BaseSettings):
         """
         for over_ride_widget in self.tracker_override_map.values():
             over_ride_widget.blockSignals(False)
-
-    @Slot(list)
-    def _mvr_clean_title_rules_user_change(self, _data: list) -> None:
-        self.mvr_clean_title_rules_modified = True
-
-    @Slot()
-    def _mvr_clean_title_rules_defaults_applied(self) -> None:
-        self.mvr_clean_title_rules_modified = False
-
-    @Slot(object)
-    def _mi_video_dynamic_range_update_live_cfg(self, data: dict) -> None:
-        if data:
-            self.config.cfg_payload.mvr_mi_video_dynamic_range = data
 
     @Slot()
     def _save_settings(self) -> None:
@@ -477,46 +442,7 @@ class MoviesManagementSettings(BaseSettings):
             ].mvr_title_replace_map = (
                 over_ride_widget.over_ride_replacement_table.get_replacements()
             )
-        self.config.cfg_payload.mvr_clean_title_rules_modified = (
-            self.mvr_clean_title_rules_modified
-        )
-        self._mvr_clean_title_rules_save()
-        self.config.cfg_payload.mvr_mi_video_dynamic_range = (
-            self.token_table.mi_video_dynamic_range.to_dict()
-        )
         self.updated_settings_applied.emit()
-
-    def _mvr_default_update_check(self) -> None:
-        """
-        Checks to see if defaults have been changed on the program level and updates users config if their
-        config was not modified before.
-        """
-        if not self.config.cfg_payload.mvr_clean_title_rules_modified:
-            replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
-            defaults = self.token_table.replacement_list_widget.default_rules
-            if not defaults:
-                raise ValueError(
-                    "Cannot detect 'replacement_list_widget' default rules"
-                )
-            if set(replacements) != set(defaults):
-                self.config.cfg_payload.mvr_clean_title_rules = defaults
-                self.token_table.reset()
-                self.config.save_config()
-
-    def _mvr_clean_title_rules_save(self) -> None:
-        replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
-        defaults = self.token_table.replacement_list_widget.default_rules
-        if not defaults:
-            raise ValueError("Cannot detect 'replacement_list_widget' default rules")
-        if not self.config.cfg_payload.mvr_clean_title_rules_modified:
-            self.config.cfg_payload.mvr_clean_title_rules = defaults
-        else:
-            self.config.cfg_payload.mvr_clean_title_rules = replacements
-
-        if set(replacements) != set(defaults):
-            self.config.cfg_payload.mvr_clean_title_rules_modified = True
-        else:
-            self.config.cfg_payload.mvr_clean_title_rules_modified = False
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.cfg_payload_defaults.mvr_enabled)
@@ -540,13 +466,6 @@ class MoviesManagementSettings(BaseSettings):
         )
         self._apply_override_defaults()
         self.token_table.reset()
-        self.config.cfg_payload.mvr_clean_title_rules_modified = (
-            self.config.cfg_payload_defaults.mvr_clean_title_rules_modified
-        )
-        self.token_table.mi_video_dynamic_range.from_dict(
-            self.config.cfg_payload_defaults.mvr_mi_video_dynamic_range
-        )
-        self.mvr_clean_title_rules_modified = False
 
     def _apply_override_defaults(self) -> None:
         for tracker in self.tracker_override_map.keys():

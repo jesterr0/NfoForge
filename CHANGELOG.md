@@ -26,6 +26,7 @@
 ### Removed
 
 - `{movie_full_title}` as been removed (`{title_exact}` token replaces it).
+- Movie settings page no longer has controls for clean title token and dynamic range control (this is now handled in Global Management).
 
 ## [0.8.9] - 2025-08-19
 
