@@ -153,20 +153,18 @@ class Tokens:
         "{mi_video_language_iso_639_2}", "Video language (ENG)"
     )
     MI_VIDEO_WIDTH = FileToken("{mi_video_width}", "Video width (1920)")
-    MOVIE_TITLE = FileToken(
-        "{movie_title}", "Movie's title parsed from TMDB/IMDb with minimal formatting"
+    TITLE = FileToken(
+        "{title}", "Title parsed from media databases with minimal formatting"
     )
-    MOVIE_CLEAN_TITLE = FileToken(
-        "{movie_clean_title}", "Movie's clean title parsed from TMDB/IMDb"
+    TITLE_CLEAN = FileToken("{title_clean}", "Clean title parsed from media databases")
+    TITLE_EXACT = FileToken(
+        "{title_exact}",
+        "Title parsed from media databases with no modifications",
     )
-    MOVIE_EXACT_TITLE = FileToken(
-        "{movie_exact_title}",
-        "Movie's title parsed from TMDB/IMDb with no modifications",
-    )
-    MOVIE_IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
-    MOVIE_TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
-    MOVIE_TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
-    MOVIE_MAL_ID = FileToken("{mal_id}", "MAL ID")
+    IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
+    TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
+    TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
+    MAL_ID = FileToken("{mal_id}", "MAL ID")
     ORIGINAL_FILENAME = FileToken("{original_filename}", "Original filename")
     RELEASE_GROUP = FileToken("{release_group}", "Release group")
     RELEASERS_NAME = FileToken("{releasers_name}", "Releaser's name (Anonymous)")
@@ -187,9 +185,6 @@ class Tokens:
     MEDIA_FILE = NfoToken("{media_file}", "Media filename with extension")
     MEDIA_FILE_NO_EXT = NfoToken(
         "{media_file_no_ext}", "Media filename without extension"
-    )
-    MOVIE_FULL_TITLE = NfoToken(
-        "{movie_full_title}", "Movie's full title with no formatting removed"
     )
     SOURCE_FILE = NfoToken("{source_file}", "Source filename with extension")
     SOURCE_FILE_NO_EXT = NfoToken(

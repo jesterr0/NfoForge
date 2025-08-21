@@ -15,7 +15,7 @@ For multi-line strings **both** [FileTokens](introduction.md) and [NfoTokens](in
 
 <!-- prettier-ignore -->
 !!! tip
-    Whitespace inside the tokens is not required *(is ignored)*, but by convention, your tokens should have a space before the text inside the token. e.g., `{{ movie_title }}` instead of `{{movie_title}}`.
+    Whitespace inside the tokens is not required *(is ignored)*, but by convention, your tokens should have a space before the text inside the token. e.g., `{{ title }}` instead of `{{title}}`.
 
 ### Usage
 

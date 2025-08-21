@@ -9,7 +9,7 @@ NfoForge will automatically use the formatter in **flat** mode for paths (files 
 
 ### Format
 
-[FileTokens](introduction.md) are only available in **flat** mode when used directly in NfoForge. You'll notice that flat tokens have a single set of brackets, e.g., `{movie_title}`.
+[FileTokens](introduction.md) are only available in **flat** mode when used directly in NfoForge. You'll notice that flat tokens have a single set of brackets, e.g., `{title}`.
 
 ### Usage
 
@@ -22,7 +22,7 @@ A token string is simply a combination of tokens and text.
 **Example of a token string:**
 
 ```text
-{movie_clean_title} {release_year} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
+{title_clean} {release_year} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
 ```
 
 **When filled:**
@@ -40,7 +40,7 @@ You can use tokens with an optional syntax to only add text **if** the token is 
 **Example of a token string with opt syntax:**
 
 ```text
-{movie_clean_title} {:opt=(:release_year:opt=):} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
+{title_clean} {:opt=(:release_year:opt=):} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
 ```
 
 Note the token `{:opt=(:release_year:opt=):}`. We're using `:opt=(:` and `:opt=):` to wrap the year with parentheses. This allows for many use cases and enables a high degree of customization.

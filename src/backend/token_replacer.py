@@ -507,26 +507,26 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.MI_VIDEO_WIDTH.token:
             return self._mi_video_width(token_data)
 
-        elif token_data.bracket_token == Tokens.MOVIE_TITLE.token:
-            return self._movie_title(token_data)
+        elif token_data.bracket_token == Tokens.TITLE.token:
+            return self._title(token_data)
 
-        elif token_data.bracket_token == Tokens.MOVIE_CLEAN_TITLE.token:
-            return self._movie_clean_title(token_data)
+        elif token_data.bracket_token == Tokens.TITLE_CLEAN.token:
+            return self._title_clean(token_data)
 
-        elif token_data.bracket_token == Tokens.MOVIE_EXACT_TITLE.token:
-            return self._movie_exact_title(token_data)
+        elif token_data.bracket_token == Tokens.TITLE_EXACT.token:
+            return self._title_exact(token_data)
 
-        elif token_data.bracket_token == Tokens.MOVIE_IMDB_ID.token:
-            return self._movie_imdb_id(token_data)
+        elif token_data.bracket_token == Tokens.IMDB_ID.token:
+            return self._imdb_id(token_data)
 
-        elif token_data.bracket_token == Tokens.MOVIE_TMDB_ID.token:
-            return self._movie_tmdb_id(token_data)
+        elif token_data.bracket_token == Tokens.TMDB_ID.token:
+            return self._tmdb_id(token_data)
 
-        elif token_data.bracket_token == Tokens.MOVIE_TVDB_ID.token:
-            return self._movie_tvdb_id(token_data)
+        elif token_data.bracket_token == Tokens.TVDB_ID.token:
+            return self._tvdb_id(token_data)
 
-        elif token_data.bracket_token == Tokens.MOVIE_MAL_ID.token:
-            return self._movie_mal_id(token_data)
+        elif token_data.bracket_token == Tokens.MAL_ID.token:
+            return self._mal_id(token_data)
 
         elif token_data.bracket_token == Tokens.ORIGINAL_FILENAME.token:
             return self._original_filename(token_data)
@@ -569,9 +569,6 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.MEDIA_FILE_NO_EXT.token:
             return self._media_file_no_ext(token_data)
-
-        elif token_data.bracket_token == Tokens.MOVIE_FULL_TITLE.token:
-            return self._movie_full_title(token_data)
 
         elif token_data.bracket_token == Tokens.SOURCE_FILE.token:
             return self._source_file(token_data)
@@ -690,7 +687,7 @@ class TokenReplacer:
             # apply specific formatting for 'movie_clean_title'
             if "movie_clean_title" in formatted_title and filled_tokens:
                 formatted_title = formatted_title.replace(
-                    "{movie_clean_title}", filled_tokens["movie_clean_title"]
+                    "{title_clean}", filled_tokens["movie_clean_title"]
                 )
 
             # remove unfilled tokens if needed
@@ -1377,7 +1374,7 @@ class TokenReplacer:
 
         return self._optional_user_input(width, token_data)
 
-    def _movie_title(self, token_data: TokenData) -> str:
+    def _title(self, token_data: TokenData) -> str:
         title = (
             self.media_search_obj.title
             if self.media_search_obj.title
@@ -1389,7 +1386,7 @@ class TokenReplacer:
             title = re.sub(r"\s{2,}", " ", title)
         return self._optional_user_input(title, token_data)
 
-    def _movie_clean_title(self, token_data: TokenData) -> str:
+    def _title_clean(self, token_data: TokenData) -> str:
         title = (
             self.media_search_obj.title
             if self.media_search_obj.title
@@ -1406,7 +1403,7 @@ class TokenReplacer:
                     title = re.sub(rf"{replace}", rf"{replace_with}", title)
         return self._optional_user_input(title, token_data)
 
-    def _movie_exact_title(self, token_data: TokenData) -> str:
+    def _title_exact(self, token_data: TokenData) -> str:
         title = (
             self.media_search_obj.title
             if self.media_search_obj.title
@@ -1414,19 +1411,19 @@ class TokenReplacer:
         )
         return self._optional_user_input(title, token_data)
 
-    def _movie_imdb_id(self, token_data: TokenData) -> str:
+    def _imdb_id(self, token_data: TokenData) -> str:
         imdb_id = self.media_search_obj.imdb_id if self.media_search_obj.imdb_id else ""
         return self._optional_user_input(imdb_id, token_data)
 
-    def _movie_tmdb_id(self, token_data: TokenData) -> str:
+    def _tmdb_id(self, token_data: TokenData) -> str:
         tmdb_id = self.media_search_obj.tmdb_id if self.media_search_obj.tmdb_id else ""
         return self._optional_user_input(tmdb_id, token_data)
 
-    def _movie_tvdb_id(self, token_data: TokenData) -> str:
+    def _tvdb_id(self, token_data: TokenData) -> str:
         tvdb_id = self.media_search_obj.tvdb_id if self.media_search_obj.tvdb_id else ""
         return self._optional_user_input(tvdb_id, token_data)
 
-    def _movie_mal_id(self, token_data: TokenData) -> str:
+    def _mal_id(self, token_data: TokenData) -> str:
         mal_id = self.media_search_obj.mal_id if self.media_search_obj.mal_id else ""
         return self._optional_user_input(mal_id, token_data)
 
@@ -1590,16 +1587,6 @@ class TokenReplacer:
 
     def _media_file_no_ext(self, token_data: TokenData) -> str:
         return self._optional_user_input(self.media_input.stem, token_data)
-
-    def _movie_full_title(self, token_data: TokenData) -> str:
-        title = (
-            self.media_search_obj.title
-            if self.media_search_obj.title
-            else self.guess_name.get("title", "")
-        )
-        if title:
-            title = re.sub(r"\s{2,}", " ", title)
-        return self._optional_user_input(title, token_data)
 
     def _source_file(self, token_data: TokenData) -> str:
         return self._optional_user_input(

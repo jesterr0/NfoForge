@@ -8,6 +8,10 @@
 
 ### Changed
 
+- Token changes.
+  - `{movie_title}` has been replaced with `{title}`.
+  - `{movie_clean_title}` has been replaced with `{title_clean}`.
+  - `{movie_exact_title}` has been replaced with `{title_exact}`.
 - FileTree widget will now display system icons before using any custom defined icons.
 - MediaInput backend has been reworked.
   - Now supports series.
@@ -19,7 +23,7 @@
 
 ### Removed
 
--
+- `{movie_full_title}` as been removed (`{title_exact}` token replaces it).
 
 ## [0.8.9] - 2025-08-19
 
