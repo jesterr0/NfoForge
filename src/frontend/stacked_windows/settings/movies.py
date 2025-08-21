@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import ColonReplace, TokenReplacer, UnfilledTokenRemoval
 from src.backend.tokens import FileToken, TokenSelection, TokenType, Tokens
-from src.backend.utils.example_parsed_file_data import (
+from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
     EXAMPLE_MEDIAINFO_OBJ,
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
