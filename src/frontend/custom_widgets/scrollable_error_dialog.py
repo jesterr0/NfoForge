@@ -1,14 +1,17 @@
 import sys
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
-    QVBoxLayout,
-    QPushButton,
     QHBoxLayout,
+    QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
+from src.frontend.utils import set_top_parent_geometry
 
 
 class ScrollableErrorDialog(QDialog):
@@ -24,11 +27,12 @@ class ScrollableErrorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setModal(True)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self.resize(*self.DEFAULT_SIZE)
 
         # if parent update size
         if parent:
-            self.resize(*self._calculate_size(parent_percentage, parent))
+            set_top_parent_geometry(self)
 
         self.text_edit = CodeEditor(
             line_numbers=False, wrap_text=True, mono_font=True, parent=self
@@ -54,13 +58,6 @@ class ScrollableErrorDialog(QDialog):
     def copy_to_clipboard(self) -> None:
         clipboard = QApplication.clipboard()
         clipboard.setText(self.text_edit.toPlainText())
-
-    @staticmethod
-    def _calculate_size(percentage: int, parent: QWidget) -> tuple[int, int]:
-        geometry = parent.geometry()
-        width = geometry.width()
-        height = geometry.height()
-        return int((percentage / 100) * width), int((percentage / 100) * height)
 
 
 if __name__ == "__main__":
