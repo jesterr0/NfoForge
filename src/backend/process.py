@@ -598,8 +598,8 @@ class ProcessBackEnd:
                         "override_tokens"
                     ),
                     user_tokens=user_tokens,
-                    movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+                    title_clean_rules=self.config.cfg_payload.title_clean_rules,
+                    video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
                 ).get_output()
                 if not isinstance(nfo, str):
                     raise ValueError("NFO should be a string")
@@ -1497,10 +1497,10 @@ class ProcessBackEnd:
                 "frame_size_override"
             ),
             override_tokens=self.config.shared_data.dynamic_data.get("override_tokens"),
-            movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            title_clean_rules=self.config.cfg_payload.title_clean_rules,
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
-            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+            video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
         )
         output = format_str.get_output()
         return output if output else None

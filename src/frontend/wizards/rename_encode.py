@@ -590,8 +590,8 @@ class RenameEncode(BaseWizardPage):
             media_search_payload=self.config.media_search_payload,
             media_info_obj=media_info_obj,
             source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
-            movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+            title_clean_rules=self.config.cfg_payload.title_clean_rules,
+            video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
             user_tokens=user_tokens,
         )
 

@@ -27,8 +27,8 @@ class RenameEncodeBackEnd:
         media_search_payload: MediaSearchPayload,
         media_info_obj: MediaInfo,
         source_file_mi_obj: MediaInfo | None,
-        movie_clean_title_rules: list[tuple[str, str]] | None,
-        mi_video_dynamic_range: dict[str, Any] | None,
+        title_clean_rules: list[tuple[str, str]] | None,
+        video_dynamic_range: dict[str, Any] | None,
         user_tokens: dict[str, str] | None,
     ) -> Path | None:
         # print(movie_clean_title_rules)
@@ -45,8 +45,8 @@ class RenameEncodeBackEnd:
             file_name_mode=True,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            movie_clean_title_rules=movie_clean_title_rules,
-            mi_video_dynamic_range=mi_video_dynamic_range,
+            title_clean_rules=title_clean_rules,
+            video_dynamic_range=video_dynamic_range,
             override_tokens=self.override_tokens,
             user_tokens=user_tokens,
         )

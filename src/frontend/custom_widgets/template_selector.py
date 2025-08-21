@@ -39,7 +39,7 @@ from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
-from src.frontend.wizards.media_input_basic import MediaInputBasic
+from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.media_search import MediaSearch
 
 if TYPE_CHECKING:
@@ -483,8 +483,8 @@ class TemplateSelector(QWidget):
                     frame_size_override=self.config.shared_data.dynamic_data.get(
                         "frame_size_override"
                     ),
-                    movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+                    title_clean_rules=self.config.cfg_payload.title_clean_rules,
+                    video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
                     user_tokens=user_tokens,
                 )
                 output = token_replacer.get_output()
@@ -619,7 +619,7 @@ class SandBoxInput(QDialog):
 
         self.sandbox_lbl = QLabel("Input", self)
 
-        self.media_input = MediaInputBasic(
+        self.media_input = MediaInput(
             self.config, self, on_finished_cb=self._handle_next
         )
         self.media_input.main_layout.setContentsMargins(0, 0, 0, 0)
