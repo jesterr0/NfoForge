@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.tokens import MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS
+from src.backend.tokens import TITLE_CLEAN_REPLACE_DEF
 from src.frontend.custom_widgets.dynamic_range_widget import DynamicRangeWidget
 from src.frontend.custom_widgets.replacement_list_widget import (
     LoadedReplacementListWidget,
@@ -25,43 +25,50 @@ from src.frontend.utils import build_h_line
 class TokenTable(QWidget):
     def __init__(
         self,
-        tokens: list,
+        tokens: list | None = None,
         remove_brackets: bool = False,
+        show_tokens: bool = True,
         allow_edits: bool = False,
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.search_bar = QLineEdit(self)
-        self.search_bar.setPlaceholderText("Search tokens...")
-        self.search_bar.textChanged.connect(self.filter_table)
 
         self.allow_edits = allow_edits
 
-        self.table = QTableWidget(self)
-        self.table.setColumnCount(2)
-        self.table.setMinimumHeight(180)
-        self.table.setHorizontalHeaderLabels(("Token", "Description"))
-        self.table.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        self.populate_table(tokens, remove_brackets)
-        self.setup_table_properties()
-
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.addWidget(self.search_bar)
-        self.main_layout.addWidget(self.table)
+
+        if tokens and show_tokens:
+            self.search_bar = QLineEdit(self)
+            self.search_bar.setPlaceholderText("Search tokens...")
+            self.search_bar.textChanged.connect(self.filter_table)
+
+            self.table = QTableWidget(self)
+            self.table.setColumnCount(2)
+            self.table.setMinimumHeight(180)
+            self.table.setHorizontalHeaderLabels(("Token", "Description"))
+            self.table.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+            self.populate_table(tokens, remove_brackets)
+            self.setup_table_properties()
+
+            self.main_layout.addWidget(self.search_bar)
+            self.main_layout.addWidget(self.table)
+
+        if show_tokens and allow_edits:
+            self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
 
         if self.allow_edits:
             movie_clean_title_custom_str = """\
                 <h4 style="margin: 0; margin-bottom: 6px;">Character Map</h4>
                 <span>The character map allows users to customize any necessary character replacements required 
-                for use with the <span style="font-weight: 500;">{movie_clean_title}</span> token. The default 
-                rules are already added, and can be restored with the <span style="font-weight: 500;">Reset</span> button.</span> 
+                for use with the <span style="font-weight: bold;">{title_clean}</span> token. The default 
+                rules are already added, and can be restored with the <span style="font-weight: bold;">Reset</span> button.</span> 
                 <br><br>
                 The table requires the use of regex, except for the special characters identified here:
                 <ul style="margin: 0; padding-left: 20px;">
-                    <li style="margin-top: 4px;"><span style="font-weight: 500;">[unidecode]</span> - Unidecode input (should only be used alone).</li>
-                    <li><span style="font-weight: 500;">[space]</span> - Adds a single space.</li>
-                    <li><span style="font-weight: 500;">[remove]</span> - Replaces characters with nothing.</li>
+                    <li style="margin-top: 4px;"><span style="font-weight: bold;">[unidecode]</span> - Unidecode input (should only be used alone).</li>
+                    <li><span style="font-weight: bold;">[space]</span> - Adds a single space.</li>
+                    <li><span style="font-weight: bold;">[remove]</span> - Replaces characters with nothing.</li>
                 </ul>
                 <br>
                 <span style="font-style: italic; font-size: small;">Rules are processed in row order from top to bottom. 
@@ -70,26 +77,25 @@ class TokenTable(QWidget):
                 movie_clean_title_custom_str, parent=self, wordWrap=True
             )
             self.replacement_list_widget = LoadedReplacementListWidget(
-                MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS, self
+                TITLE_CLEAN_REPLACE_DEF, self
             )
-            self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
             self.main_layout.addWidget(replacement_list_widget_lbl)
             self.main_layout.addWidget(self.replacement_list_widget)
 
-            mi_video_dynamic_range_lbl_str = """\
+            video_dynamic_range_lbl_str = """\
                 <h4 style="margin: 0; margin-bottom: 6px;">Dynamic Range Token</h4>
                 <span>
                     Allows fine grain customization of what 
-                    <span style="font-weight: bold;">{mi_video_dynamic_range}</span> returns. 
+                    <span style="font-weight: bold;">{video_dynamic_range}</span> returns. 
                 </span>"""
-            mi_video_dynamic_range_lbl = QLabel(
-                mi_video_dynamic_range_lbl_str, parent=self, wordWrap=True
+            video_dynamic_range_lbl = QLabel(
+                video_dynamic_range_lbl_str, parent=self, wordWrap=True
             )
-            self.mi_video_dynamic_range = DynamicRangeWidget(parent=self)
-            self.mi_video_dynamic_range.main_layout.setContentsMargins(0, 0, 0, 0)
+            self.video_dynamic_range = DynamicRangeWidget(parent=self)
+            self.video_dynamic_range.main_layout.setContentsMargins(0, 0, 0, 0)
             self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
-            self.main_layout.addWidget(mi_video_dynamic_range_lbl)
-            self.main_layout.addWidget(self.mi_video_dynamic_range)
+            self.main_layout.addWidget(video_dynamic_range_lbl)
+            self.main_layout.addWidget(self.video_dynamic_range)
 
     def populate_table(self, tokens: list, remove_brackets: bool) -> None:
         self.table.setRowCount(0)

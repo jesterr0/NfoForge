@@ -21,7 +21,7 @@
 
 ### Fixed
 
--
+- TokenTable widget labels had the wrong weight of bold.
 
 ### Removed
 
