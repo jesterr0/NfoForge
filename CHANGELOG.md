@@ -20,9 +20,11 @@
   - Now utilizes async to parse MediaInfo of multiple files concurrently, this greatly speeds up read speeds for anything over a single file.
 - Error dialog can now be maximized and grows to it's parent geometry on error.
 - Movie management settings changes:
-  - Example indentation has been increased.
+  - Example indentation has been adjusted.
   - Example input boxes are now frameless and set to readonly instead of disabled.
   - Modify labels.
+  - Move example preview button to top right of controls box (removes multiple buttons that did the same thing for each example section).
+  - Example mediainfo/file input info window will now be the exact same size as the parent when opened.
 
 ### Fixed
 

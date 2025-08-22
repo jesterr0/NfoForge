@@ -1,9 +1,8 @@
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QSize, QTimer, Slot
-from PySide6.QtGui import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -34,7 +33,7 @@ from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_h_line
+from src.frontend.utils import build_h_line, set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
@@ -66,6 +65,19 @@ class MoviesManagementSettings(BaseSettings):
             "Will use the existing file name if renaming is disabled"
         )
 
+        preview_example_data_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            preview_example_data_btn, "ph.eye-light", icon_size=QSize(20, 20)
+        )
+        preview_example_data_btn.setToolTip("Preview example filename and MediaInfo")
+        preview_example_data_btn.clicked.connect(self._show_example_input_data)
+
+        control_top_layout = QHBoxLayout()
+        control_top_layout.setContentsMargins(0, 0, 0, 0)
+        control_top_layout.addWidget(self.rename_check_box)
+        control_top_layout.addStretch()
+        control_top_layout.addWidget(preview_example_data_btn)
+
         # replace illegal chars
         self.replace_illegal_chars = QCheckBox("Replace Illegal Characters", self)
         self.replace_illegal_chars.setToolTip(
@@ -75,7 +87,7 @@ class MoviesManagementSettings(BaseSettings):
         # layout
         self.controls_box = QGroupBox("Controls")
         self.controls_layout = QVBoxLayout(self.controls_box)
-        self.controls_layout.addWidget(self.rename_check_box)
+        self.controls_layout.addLayout(control_top_layout)
         self.controls_layout.addWidget(self.replace_illegal_chars)
 
         # format file name
@@ -106,11 +118,9 @@ class MoviesManagementSettings(BaseSettings):
             self._update_file_token_example
         )
 
-        format_file_name_token_example_layout = self._build_example_layout(
-            self._show_example_input_data
-        )
-        self.format_file_name_token_example = (
-            self._build_flat_read_only_example_qline_edit(self)
+        format_file_name_token_example_lbl = QLabel("Example", self)
+        self.format_file_name_token_example = QLineEdit(
+            parent=parent, readOnly=True, frame=False
         )
 
         # layout
@@ -121,7 +131,7 @@ class MoviesManagementSettings(BaseSettings):
         self.filename_box = QGroupBox()
 
         filename_example_section = self._build_indented_example_section(
-            format_file_name_token_example_layout, self.format_file_name_token_example
+            format_file_name_token_example_lbl, self.format_file_name_token_example
         )
 
         self.format_file_name_layout = self._build_token_layout(
@@ -155,11 +165,9 @@ class MoviesManagementSettings(BaseSettings):
             self._update_title_token_example
         )
 
-        format_release_title_example_layout = self._build_example_layout(
-            self._show_example_input_data
-        )
-        self.format_release_title_example = (
-            self._build_flat_read_only_example_qline_edit(self)
+        format_release_title_example_layout_lbl = QLabel("Example", self)
+        self.format_release_title_example = QLineEdit(
+            parent=parent, readOnly=True, frame=False
         )
 
         title_box_lbl = QLabel(
@@ -169,7 +177,7 @@ class MoviesManagementSettings(BaseSettings):
         self.title_box = QGroupBox()
 
         title_example_section = self._build_indented_example_section(
-            format_release_title_example_layout, self.format_release_title_example
+            format_release_title_example_layout_lbl, self.format_release_title_example
         )
 
         self.format_release_title_layout = self._build_token_layout(
@@ -507,7 +515,7 @@ class MoviesManagementSettings(BaseSettings):
     @Slot()
     def _show_example_input_data(self) -> None:
         window = QDialog(self)
-        window.resize(self.geometry().size())
+        set_top_parent_geometry(window)
 
         example_fn = QLineEdit(window)
         example_fn.setReadOnly(True)
@@ -532,27 +540,14 @@ class MoviesManagementSettings(BaseSettings):
         window.setLayout(layout)
         window.exec()
 
-    def _build_example_layout(self, btn_signal: Callable) -> QWidget:
-        layout = QHBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        widget = QWidget()
-        widget.setLayout(layout)
-        layout.addWidget(QLabel("Example", self))
-        btn = QToolButton(self)
-        QTAThemeSwap().register(btn, "ph.eye-light", icon_size=QSize(20, 20))
-        btn.setToolTip("Preview example filename and MediaInfo")
-        btn.clicked.connect(btn_signal)
-        layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
-        return widget
-
     def _build_indented_example_section(
         self, example_layout: QWidget, example_input: QWidget
     ) -> QWidget:
         """Create an indented section for example layout and input"""
         container = QWidget()
         container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(20, 0, 0, 0)
-        container_layout.setSpacing(2)
+        container_layout.setContentsMargins(12, 0, 0, 0)
+        container_layout.setSpacing(4)
         container_layout.addWidget(example_layout)
         container_layout.addWidget(example_input)
         return container
@@ -634,6 +629,7 @@ class MoviesManagementSettings(BaseSettings):
                 layout.addWidget(hw)
         layout.addWidget(colon_replace_lbl)
         layout.addWidget(colon_replace)
+        layout.addWidget(build_h_line((6, 1, 6, 1)))
         layout.addWidget(widget_1)
         layout.addWidget(widget_2)
         layout.addWidget(example_section)
@@ -641,11 +637,6 @@ class MoviesManagementSettings(BaseSettings):
             for fw in footer_widgets:
                 layout.addWidget(fw)
         return layout
-
-    @staticmethod
-    def _build_flat_read_only_example_qline_edit(parent=None) -> QLineEdit:
-        """Builds a disabled qline edit and returns it"""
-        return QLineEdit(parent=parent, readOnly=True, frame=False)
 
     @staticmethod
     def _update_qline_cursor_0(widget: QLineEdit, txt: str) -> None:
