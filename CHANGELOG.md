@@ -4,7 +4,7 @@
 
 ### Added
 
--
+- Real-time token example updates in Movie Management settings when Global Management settings change (title clean rules and video dynamic range).
 
 ### Changed
 

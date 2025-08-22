@@ -32,6 +32,7 @@ class GlobalSignals(QObject):
     settings_tab_changed = Signal(int)  # new index or -1 if not new
     settings_swap_tab = Signal(object)  # SettingsTabs (enum)
     token_state_changed = Signal()
+    global_management_state_changed = Signal(object)
 
     # wizard
     wizard_next = Signal()

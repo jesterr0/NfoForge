@@ -51,6 +51,13 @@ class MoviesManagementSettings(BaseSettings):
         self.load_saved_settings.connect(self._load_saved_settings)
         self.update_saved_settings.connect(self._save_settings)
         GSigs().token_state_changed.connect(self._token_state_changed)
+        GSigs().global_management_state_changed.connect(
+            self._global_management_state_changed
+        )
+
+        # live state cache for real-time updates
+        self._live_title_clean_rules = None
+        self._live_video_dynamic_range = None
 
         # controls
         # rename
@@ -275,8 +282,8 @@ class MoviesManagementSettings(BaseSettings):
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             releasers_name=self.config.cfg_payload.releasers_name,
-            title_clean_rules=self.config.cfg_payload.title_clean_rules,
-            video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
+            title_clean_rules=self._get_live_title_clean_rules(),
+            video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
@@ -336,6 +343,10 @@ class MoviesManagementSettings(BaseSettings):
             over_ride_widget.blockSignals(True)
 
         # load settings
+        # initialize live cache with current config values
+        self._live_title_clean_rules = None
+        self._live_video_dynamic_range = None
+
         self.rename_check_box.setChecked(self.config.cfg_payload.mvr_enabled)
         self.replace_illegal_chars.setChecked(
             self.config.cfg_payload.mvr_replace_illegal_chars
@@ -531,6 +542,15 @@ class MoviesManagementSettings(BaseSettings):
         self.token_table.populate_table(self._get_file_tokens(), False)
         self._update_file_token_example()
 
+    @Slot(object)
+    def _global_management_state_changed(self, data: dict) -> None:
+        """Handle real-time updates from global management settings"""
+        if "title_clean_rules" in data:
+            self._live_title_clean_rules = data["title_clean_rules"]
+        if "video_dynamic_range" in data:
+            self._live_video_dynamic_range = data["video_dynamic_range"]
+        self._update_all_examples()
+
     def _get_file_tokens(self) -> list[TokenType]:
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
@@ -538,6 +558,22 @@ class MoviesManagementSettings(BaseSettings):
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         ]
         return sorted(Tokens().get_token_objects(FileToken)) + user_tokens
+
+    def _get_live_title_clean_rules(self) -> list[tuple[str, str]]:
+        """Get live title clean rules (from cache if available, otherwise from config)"""
+        return (
+            self._live_title_clean_rules
+            if self._live_title_clean_rules is not None
+            else self.config.cfg_payload.title_clean_rules
+        )
+
+    def _get_live_video_dynamic_range(self) -> dict:
+        """Get live video dynamic range (from cache if available, otherwise from config)"""
+        return (
+            self._live_video_dynamic_range
+            if self._live_video_dynamic_range is not None
+            else self.config.cfg_payload.video_dynamic_range
+        )
 
     @staticmethod
     def _build_colon_replace_combo(

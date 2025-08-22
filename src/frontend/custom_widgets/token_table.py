@@ -1,6 +1,6 @@
 import weakref
 
-from PySide6.QtCore import QTimer, Slot
+from PySide6.QtCore import QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QCursor, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -23,14 +23,30 @@ from src.frontend.utils import build_h_line
 
 
 class TokenTable(QWidget):
+    # signals for debounced state changes
+    replacement_rules_changed = Signal(list)
+    video_dynamic_range_changed = Signal(object)  # dict
+
     def __init__(
         self,
         tokens: list | None = None,
         remove_brackets: bool = False,
         show_tokens: bool = True,
         allow_edits: bool = False,
+        debounce_delay: int = 300,
         parent=None,
     ) -> None:
+        """
+        Initialize TokenTable widget.
+
+        Args:
+            tokens: List of tokens to display
+            remove_brackets: Whether to remove {} from token names
+            show_tokens: Whether to show the token table
+            allow_edits: Whether to allow editing of replacement rules and dynamic range
+            debounce_delay: Delay in milliseconds before emitting change signals
+            parent: Parent widget
+        """
         super().__init__(parent)
 
         self.allow_edits = allow_edits
@@ -58,6 +74,21 @@ class TokenTable(QWidget):
             self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
 
         if self.allow_edits:
+            # debounce timers for change detection
+            self._replacement_rules_timer = QTimer(
+                self, singleShot=True, interval=debounce_delay
+            )
+            self._replacement_rules_timer.timeout.connect(
+                self._emit_replacement_rules_changed
+            )
+
+            self._video_dynamic_range_timer = QTimer(
+                self, singleShot=True, interval=debounce_delay
+            )
+            self._video_dynamic_range_timer.timeout.connect(
+                self._emit_video_dynamic_range_changed
+            )
+
             movie_clean_title_custom_str = """\
                 <h4 style="margin: 0; margin-bottom: 6px;">Character Map</h4>
                 <span>The character map allows users to customize any necessary character replacements required 
@@ -79,6 +110,17 @@ class TokenTable(QWidget):
             self.replacement_list_widget = LoadedReplacementListWidget(
                 TITLE_CLEAN_REPLACE_DEF, self
             )
+
+            self.replacement_list_widget.rows_changed.connect(
+                self._on_replacement_rules_changed
+            )
+            self.replacement_list_widget.cell_changed.connect(
+                self._on_replacement_cell_changed
+            )
+            self.replacement_list_widget.defaults_applied.connect(
+                self._on_replacement_defaults_applied
+            )
+
             self.main_layout.addWidget(replacement_list_widget_lbl)
             self.main_layout.addWidget(self.replacement_list_widget)
 
@@ -93,6 +135,10 @@ class TokenTable(QWidget):
             )
             self.video_dynamic_range = DynamicRangeWidget(parent=self)
             self.video_dynamic_range.main_layout.setContentsMargins(0, 0, 0, 0)
+            self.video_dynamic_range.state_changed.connect(
+                self._on_video_dynamic_range_changed
+            )
+
             self.main_layout.addWidget(build_h_line((1, 6, 1, 6)))
             self.main_layout.addWidget(video_dynamic_range_lbl)
             self.main_layout.addWidget(self.video_dynamic_range)
@@ -180,3 +226,37 @@ class TokenTable(QWidget):
         if self.allow_edits:
             self.replacement_list_widget.reset()
             self.replacement_list_widget.apply_defaults()
+
+    @Slot(list)
+    def _on_replacement_rules_changed(self, _rules: list) -> None:
+        """Handle changes to replacement rules with debouncing"""
+        self._replacement_rules_timer.start()
+
+    @Slot(int, int)
+    def _on_replacement_cell_changed(self, _row: int, _column: int) -> None:
+        """Handle individual cell changes in replacement rules with debouncing"""
+        self._replacement_rules_timer.start()
+
+    @Slot()
+    def _on_replacement_defaults_applied(self) -> None:
+        """Handle when defaults are applied to replacement rules"""
+        self._emit_replacement_rules_changed()
+
+    @Slot(object)
+    def _on_video_dynamic_range_changed(self, _data: dict) -> None:
+        """Handle changes to video dynamic range with debouncing"""
+        self._video_dynamic_range_timer.start()
+
+    def _emit_replacement_rules_changed(self) -> None:
+        """Emit the debounced replacement rules changed signal"""
+        if self.allow_edits:
+            rules = (
+                self.replacement_list_widget.replacement_list_widget.get_replacements()
+            )
+            self.replacement_rules_changed.emit(rules)
+
+    def _emit_video_dynamic_range_changed(self) -> None:
+        """Emit the debounced video dynamic range changed signal"""
+        if self.allow_edits:
+            data = self.video_dynamic_range.to_dict()
+            self.video_dynamic_range_changed.emit(data)
