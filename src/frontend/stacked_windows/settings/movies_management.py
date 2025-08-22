@@ -34,7 +34,7 @@ from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_h_line, create_form_layout
+from src.frontend.utils import build_h_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 
@@ -119,13 +119,17 @@ class MoviesManagementSettings(BaseSettings):
             self,
         )
         self.filename_box = QGroupBox()
+
+        filename_example_section = self._build_indented_example_section(
+            format_file_name_token_example_layout, self.format_file_name_token_example
+        )
+
         self.format_file_name_layout = self._build_token_layout(
             fn_colon_replace_lbl,
             self.fn_colon_replace,
             format_file_name_lbl,
             self.format_file_name_token_input,
-            format_file_name_token_example_layout,
-            self.format_file_name_token_example,
+            filename_example_section,
             header_widgets=(self.parse_input_file_attributes,),
         )
         self.filename_box.setLayout(self.format_file_name_layout)
@@ -163,13 +167,17 @@ class MoviesManagementSettings(BaseSettings):
             self,
         )
         self.title_box = QGroupBox()
+
+        title_example_section = self._build_indented_example_section(
+            format_release_title_example_layout, self.format_release_title_example
+        )
+
         self.format_release_title_layout = self._build_token_layout(
             title_colon_replace_lbl,
             self.title_colon_replace,
             format_release_title_lbl,
             self.format_release_title_input,
-            format_release_title_example_layout,
-            self.format_release_title_example,
+            title_example_section,
         )
         self.title_box.setLayout(self.format_release_title_layout)
         self.title_nested_layout = self._build_nested_groupbox_layout(
@@ -537,6 +545,18 @@ class MoviesManagementSettings(BaseSettings):
         layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignRight)
         return widget
 
+    def _build_indented_example_section(
+        self, example_layout: QWidget, example_input: QWidget
+    ) -> QWidget:
+        """Create an indented section for example layout and input"""
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(20, 0, 0, 0)
+        container_layout.setSpacing(2)
+        container_layout.addWidget(example_layout)
+        container_layout.addWidget(example_input)
+        return container
+
     @Slot()
     def _token_state_changed(self) -> None:
         self.token_table.populate_table(self._get_file_tokens(), False)
@@ -600,8 +620,7 @@ class MoviesManagementSettings(BaseSettings):
         colon_replace: QComboBox,
         widget_1: QWidget,
         widget_2: QWidget,
-        widget_t1: QWidget,
-        widget_t2: QWidget,
+        example_section: QWidget,
         header_widgets: Sequence[QWidget] | None = None,
         footer_widgets: Sequence[QWidget] | None = None,
         margins: tuple[int, int, int, int] | None = None,
@@ -617,7 +636,7 @@ class MoviesManagementSettings(BaseSettings):
         layout.addWidget(colon_replace)
         layout.addWidget(widget_1)
         layout.addWidget(widget_2)
-        layout.addLayout(create_form_layout(widget_t1, widget_t2))
+        layout.addWidget(example_section)
         if footer_widgets:
             for fw in footer_widgets:
                 layout.addWidget(fw)
