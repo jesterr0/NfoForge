@@ -21,6 +21,7 @@
 - Error dialog can now be maximized and grows to it's parent geometry on error.
 - Movie management settings changes:
   - Example indentation has been increased.
+  - Example input boxes are now frameless and set to readonly instead of disabled.
   - Modify labels.
 
 ### Fixed

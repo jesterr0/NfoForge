@@ -109,8 +109,8 @@ class MoviesManagementSettings(BaseSettings):
         format_file_name_token_example_layout = self._build_example_layout(
             self._show_example_input_data
         )
-        self.format_file_name_token_example = self._build_disabled_example_qline_edit(
-            self
+        self.format_file_name_token_example = (
+            self._build_flat_read_only_example_qline_edit(self)
         )
 
         # layout
@@ -158,8 +158,8 @@ class MoviesManagementSettings(BaseSettings):
         format_release_title_example_layout = self._build_example_layout(
             self._show_example_input_data
         )
-        self.format_release_title_example = self._build_disabled_example_qline_edit(
-            self
+        self.format_release_title_example = (
+            self._build_flat_read_only_example_qline_edit(self)
         )
 
         title_box_lbl = QLabel(
@@ -643,10 +643,9 @@ class MoviesManagementSettings(BaseSettings):
         return layout
 
     @staticmethod
-    def _build_disabled_example_qline_edit(parent=None) -> QLineEdit:
+    def _build_flat_read_only_example_qline_edit(parent=None) -> QLineEdit:
         """Builds a disabled qline edit and returns it"""
-        line_edit = QLineEdit(parent)
-        line_edit.setDisabled(True)
+        line_edit = QLineEdit(parent=parent, readOnly=True, frame=False)
         return line_edit
 
     @staticmethod
