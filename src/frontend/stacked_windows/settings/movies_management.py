@@ -645,8 +645,7 @@ class MoviesManagementSettings(BaseSettings):
     @staticmethod
     def _build_flat_read_only_example_qline_edit(parent=None) -> QLineEdit:
         """Builds a disabled qline edit and returns it"""
-        line_edit = QLineEdit(parent=parent, readOnly=True, frame=False)
-        return line_edit
+        return QLineEdit(parent=parent, readOnly=True, frame=False)
 
     @staticmethod
     def _update_qline_cursor_0(widget: QLineEdit, txt: str) -> None:
