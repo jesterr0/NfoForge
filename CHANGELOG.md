@@ -25,6 +25,7 @@
   - Modify labels.
   - Move example preview button to top right of controls box (removes multiple buttons that did the same thing for each example section).
   - Example mediainfo/file input info window will now be the exact same size as the parent when opened.
+  - Colon replace drop downs now stretch to the width of the parent.
 
 ### Fixed
 

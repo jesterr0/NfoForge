@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -602,9 +601,6 @@ class MoviesManagementSettings(BaseSettings):
         colon_replacement_combo = CustomComboBox(
             disable_mouse_wheel=True, parent=parent
         )
-        colon_replacement_combo.setSizePolicy(
-            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
-        )
         for colon_enum in ColonReplace:
             colon_replacement_combo.addItem(str(colon_enum), colon_enum.value)
         return colon_replacement_lbl, colon_replacement_combo
@@ -628,7 +624,7 @@ class MoviesManagementSettings(BaseSettings):
             for hw in header_widgets:
                 layout.addWidget(hw)
         layout.addWidget(colon_replace_lbl)
-        layout.addWidget(colon_replace)
+        layout.addWidget(colon_replace, stretch=1)
         layout.addWidget(build_h_line((6, 1, 6, 1)))
         layout.addWidget(widget_1)
         layout.addWidget(widget_2)
