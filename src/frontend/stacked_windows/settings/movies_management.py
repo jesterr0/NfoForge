@@ -115,7 +115,7 @@ class MoviesManagementSettings(BaseSettings):
 
         # layout
         filename_box_lbl = QLabel(
-            """<span>Format <span style="font-weight: bold;">Filename</span> Token</span>""",
+            """<span>Format <span style="font-weight: bold;">Filename</span> Tokens</span>""",
             self,
         )
         self.filename_box = QGroupBox()
@@ -163,7 +163,7 @@ class MoviesManagementSettings(BaseSettings):
         )
 
         title_box_lbl = QLabel(
-            """<span>Format <span style="font-weight: bold;">Title</span> Token</span>""",
+            """<span>Format <span style="font-weight: bold;">Title</span> Tokens</span>""",
             self,
         )
         self.title_box = QGroupBox()

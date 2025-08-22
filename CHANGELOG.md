@@ -19,7 +19,9 @@
   - Now supports series.
   - Now utilizes async to parse MediaInfo of multiple files concurrently, this greatly speeds up read speeds for anything over a single file.
 - Error dialog can now be maximized and grows to it's parent geometry on error.
-- Media Management Settings example indentation has been increased.
+- Movie management settings changes:
+  - Example indentation has been increased.
+  - Modify labels.
 
 ### Fixed
 
