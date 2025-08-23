@@ -136,6 +136,7 @@ class MediaInput(BaseWizardPage):
 
     def update_payload_data(self) -> None:
         entry_data = Path(self.input_entry.text())
+        self.config.media_input_payload.input_path = entry_data
 
         # handle single file
         if entry_data.is_file():
@@ -158,7 +159,6 @@ class MediaInput(BaseWizardPage):
                     f"({', '.join(self.config.cfg_payload.source_media_ext_filter)})"
                 )
 
-            self.config.media_input_payload.input_path = entry_data
             self.config.media_input_payload.file_list = supported_files
 
         self._run_worker()
