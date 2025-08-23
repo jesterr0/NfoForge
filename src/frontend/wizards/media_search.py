@@ -347,7 +347,7 @@ class MediaSearch(BaseWizardPage):
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
             self.id_parse_worker.job_failed.connect(self._failed_search)
             GSigs().main_window_update_status_tip.emit(
-                "Parsing IMDb/TVDb/Anilist data, please wait...", 0
+                "Parsing metadata, please wait...", 0
             )
             self.id_parse_worker.start()
 
@@ -459,8 +459,6 @@ class MediaSearch(BaseWizardPage):
                 LOG.LOG_SOURCE.FE,
                 f"Using TMDB title selected by backend: '{self.config.media_search_payload.title}'",
             )
-
-        print(self.config.media_search_payload)
 
     def _ask_user_for_id(self, id_source: str) -> int:
         value = 0

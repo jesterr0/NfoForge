@@ -31,6 +31,7 @@
   - Now returns **extended** data from TVDB's API for the series to the media search payload (useful for NfoForge internally/plugins).
   - Small optimization for un-needed calls to the API.
   - Added some logging for TVDB API related errors.
+  - Now simply just says **Parsing metadata, please wait...** instead of **Parsing IMDB/TVDb...** since this is now dynamic based on media type.
 
 ### Fixed
 
