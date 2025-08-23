@@ -33,6 +33,7 @@ from src.backend.utils.filter_title import edition_and_title_extractor as extrac
 from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import Config
+from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
 from src.frontend.global_signals import GSigs
@@ -69,24 +70,24 @@ class IDParseWorker(QThread):
     def __init__(
         self,
         backend: MediaSearchBackEnd,
+        media_type: MediaType,
         imdb_id: str,
         tmdb_title: str,
         tmdb_year: int,
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
         tmdb_id: str = "",
-        media_type: str = "",
         parent=None,
     ) -> None:
         super().__init__(parent=parent)
         self.backend = backend
+        self.media_type = media_type
         self.imdb_id = imdb_id
         self.tmdb_title = tmdb_title
         self.tmdb_year = tmdb_year
         self.original_language = original_language
         self.tmdb_genres = tmdb_genres
         self.tmdb_id = tmdb_id
-        self.media_type = media_type
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
@@ -94,13 +95,13 @@ class IDParseWorker(QThread):
         try:
             parse_other_ids = async_loop.run_until_complete(
                 self.backend.parse_other_ids(
+                    self.media_type,
                     self.imdb_id,
                     self.tmdb_title,
                     self.tmdb_year,
                     self.original_language,
                     self.tmdb_genres,
                     self.tmdb_id,
-                    self.media_type,
                 )
             )
             self.job_finished.emit(parse_other_ids)
@@ -137,7 +138,6 @@ class MediaSearch(BaseWizardPage):
         GSigs().settings_close.connect(self._update_backend_settings)
 
         self.queued_worker: QueuedWorker | None = None
-        self.current_source = None
         self.loading_complete = False
         self.id_parse_worker: IDParseWorker | None = None
         self.other_ids_parsed = False
@@ -295,7 +295,10 @@ class MediaSearch(BaseWizardPage):
                 self.listbox.setDisabled(True)
                 self._search_other_ids()
                 return False
-            elif self.other_ids_parsed:
+            elif (
+                self.config.media_search_payload.media_type is MediaType.SERIES
+                and self.other_ids_parsed
+            ):
                 if self._check_invalid_entries((self.tvdb_id_entry,)):
                     GSigs().wizard_next_button_reset_txt.emit()
                     return False
@@ -329,6 +332,8 @@ class MediaSearch(BaseWizardPage):
         if item_data:
             self.id_parse_worker = IDParseWorker(
                 backend=self.backend,
+                media_type=MediaType.search_type(item_data.get("media_type"))
+                or MediaType.MOVIE,
                 imdb_id=self.imdb_id_entry.text().strip(),
                 tmdb_title=item_data.get("title"),
                 tmdb_year=int(item_data.get("year")),
@@ -337,7 +342,6 @@ class MediaSearch(BaseWizardPage):
                 ),
                 tmdb_genres=item_data.get("genre_ids", []),
                 tmdb_id=item_data.get("tmdb_id"),
-                media_type=item_data.get("media_type"),
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
@@ -369,6 +373,10 @@ class MediaSearch(BaseWizardPage):
         if not item_data:
             raise MediaSearchError("Failed to parse TMDB")
 
+        # update both payloads with the correct MediaType
+        self.config.media_input_payload.media_type = (
+            self.config.media_search_payload.media_type
+        ) = MediaType.search_type(val=item_data.get("media_type"), strict=True)
         self.config.media_search_payload.imdb_id = self.imdb_id_entry.text()
         self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
         self.config.media_search_payload.tmdb_data = item_data.get("raw_data")
@@ -418,15 +426,9 @@ class MediaSearch(BaseWizardPage):
             # tvdb data
             if tvdb_data and tvdb_data.get("success") is True:
                 tvdb_data_result = tvdb_data.get("result")
-                tvdb_data_result_content = tvdb_data_result.get(
-                    "movie"
-                ) or tvdb_data_result.get("series")
-                if not tvdb_data_result_content:
-                    tvdb_value = self._ask_user_for_id("TVDB")
-                    tvdb_data_result_content = {"id": tvdb_value}
                 self.config.media_search_payload.tvdb_data = tvdb_data_result
                 self.config.media_search_payload.tvdb_id = str(
-                    tvdb_data_result_content.get("id")
+                    tvdb_data_result.get("id")
                 )
                 if self.config.media_search_payload.tvdb_id:
                     self.tvdb_id_entry.setText(self.config.media_search_payload.tvdb_id)
@@ -458,6 +460,8 @@ class MediaSearch(BaseWizardPage):
                 f"Using TMDB title selected by backend: '{self.config.media_search_payload.title}'",
             )
 
+        print(self.config.media_search_payload)
+
     def _ask_user_for_id(self, id_source: str) -> int:
         value = 0
         ask_user_id, ask_user_ok = QInputDialog.getInt(
@@ -487,23 +491,16 @@ class MediaSearch(BaseWizardPage):
                 QTimer.singleShot(1, self.main_window.wizard.reset_wizard)
             return
 
-        path_obj = self.config.media_input_payload.source_file
-        if not path_obj:
-            path_obj = self.config.media_input_payload.encode_file
-        if not path_obj:
+        input_path = self.config.media_input_payload.input_path
+        if not input_path:
             raise MediaFileNotFoundError("Failed to load input path")
-        path_obj = Path(path_obj)
+        input_path = Path(input_path)
 
-        source_name = path_obj.name
-        self.search_label.setText(f"Input: {source_name}")
-        self.search_label.setToolTip(source_name)
-        self.search_entry.setText(self._get_title_only(path_obj))
+        self.search_label.setText(f"Input: {input_path.name}")
+        self.search_label.setToolTip(input_path.name)
+        self.search_entry.setText(self._get_title_only(input_path))
 
-        if not self.current_source:
-            self._search_tmdb_api()
-        else:
-            if self.current_source != source_name:
-                self._search_tmdb_api()
+        self._search_tmdb_api()
 
         QTimer.singleShot(1, self._after_initialization)
 
@@ -683,7 +680,6 @@ class MediaSearch(BaseWizardPage):
         self.plot_text.clear()
 
         self.queued_worker = None
-        self.current_source = None
         self.loading_complete = False
         self.id_parse_worker = None
         self.other_ids_parsed = False

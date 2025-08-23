@@ -9,13 +9,13 @@
 
 ### Changed
 
-- Token changes.
+- Token changes:
   - `{movie_title}` has been replaced with `{title}`.
   - `{movie_clean_title}` has been replaced with `{title_clean}`.
   - `{movie_exact_title}` has been replaced with `{title_exact}`.
   - All MediaInfo tokens have had the `mi_` prefix removed (e.g., `{mi_audio_codec}` is now `{audio_codec}`, `{mi_video_width}` is now `{video_width}`).
 - FileTree widget will now display system icons before using any custom defined icons.
-- MediaInput backend has been reworked.
+- MediaInput backend has been reworked:
   - Now supports series.
   - Now utilizes async to parse MediaInfo of multiple files concurrently, this greatly speeds up read speeds for anything over a single file.
 - Error dialog can now be maximized and grows to it's parent geometry on error.
@@ -26,6 +26,11 @@
   - Move example preview button to top right of controls box (removes multiple buttons that did the same thing for each example section).
   - Example mediainfo/file input info window will now be the exact same size as the parent when opened.
   - Colon replace drop downs now stretch to the width of the parent.
+- Media Search changes:
+  - For movies TVDB is no longer accessed.
+  - Now returns **extended** data from TVDB's API for the series to the media search payload (useful for NfoForge internally/plugins).
+  - Small optimization for un-needed calls to the API.
+  - Added some logging for TVDB API related errors.
 
 ### Fixed
 

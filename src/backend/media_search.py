@@ -12,7 +12,9 @@ import tvdb_v4_official
 from unidecode import unidecode
 
 from src.backend.utils.super_sub import normalize_super_sub
+from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from src.logger.nfo_forge_logger import LOG
 
 
 class MediaSearchBackEnd:
@@ -144,8 +146,8 @@ class MediaSearchBackEnd:
         except niquests.exceptions.ConnectionError:
             return []
 
-    def _fetch_tmdb_complete_data(
-        self, media_id: str | int, media_type: str = "movie"
+    def fetch_complete_tmdb_data_for_selection(
+        self, media_id: str | int, media_type: MediaType
     ) -> dict:
         """
         Fetch complete TMDB data with alternative titles, images, and external IDs
@@ -162,8 +164,11 @@ class MediaSearchBackEnd:
 
         Example URL: https://api.themoviedb.org/3/movie/603?append_to_response=alternative_titles,images,external_ids&language=en
         """
-        endpoint = "movie" if media_type.lower() == "movie" else "tv"
-        url = f"https://api.themoviedb.org/3/{endpoint}/{media_id}?append_to_response=alternative_titles,images,external_ids"
+        endpoint = "movie" if media_type is MediaType.MOVIE else "tv"
+        url = (
+            f"https://api.themoviedb.org/3/{endpoint}/{media_id}?"
+            "append_to_response=alternative_titles,images,external_ids"
+        )
 
         # create modified params with base language for better image results
         image_params = self.params.copy()
@@ -181,12 +186,6 @@ class MediaSearchBackEnd:
         except niquests.exceptions.ConnectionError:
             return {}
 
-    def fetch_complete_tmdb_data_for_selection(
-        self, tmdb_id: str, media_type: str
-    ) -> dict:
-        """Public method to fetch complete TMDB data when user makes final selection"""
-        return self._fetch_tmdb_complete_data(tmdb_id, media_type)
-
     @staticmethod
     def _guessit(input_string: str) -> tuple[str | None, str]:
         get_info = guessit(input_string)
@@ -200,31 +199,38 @@ class MediaSearchBackEnd:
 
     async def parse_other_ids(
         self,
+        media_type: MediaType,
         imdb_id: str,
         tmdb_title: str,
         tmdb_year: int,
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
         tmdb_id: str = "",
-        media_type: str = "",
     ) -> dict[str, Any]:
         # fetch complete TMDB data if we have TMDB ID
         tmdb_complete_data = None
-        if tmdb_id and media_type:
+        tvdb_id = None
+        if tmdb_id:
             tmdb_complete_data = self.fetch_complete_tmdb_data_for_selection(
-                tmdb_id, media_type.lower()
+                tmdb_id, media_type
             )
             # extract IMDb ID from complete data if not already provided
             if not imdb_id and tmdb_complete_data:
                 external_ids = tmdb_complete_data.get("external_ids", {})
-                imdb_id = external_ids.get("imdb_id", "")
+                imdb_id = external_ids.get("imdb_id")
+                tvdb_id = external_ids.get("tvdb_id")
 
         tasks = {}
 
         # only add tasks if we have valid IMDb ID
         if imdb_id:
             tasks["imdb_data"] = asyncio.create_task(self.parse_imdb_data(imdb_id))
-            tasks["tvdb_data"] = asyncio.create_task(self.parse_tvdb_data(imdb_id))
+
+        # only add tvdb task if we're in a series and we have imdb or tvdb id
+        if media_type is MediaType.SERIES and (imdb_id or tvdb_id):
+            tasks["tvdb_data"] = asyncio.create_task(
+                self.parse_tvdb_data(imdb_id, tvdb_id)
+            )
 
         # parse anime if needed
         if TMDBGenreIDsMovies.ANIMATION in tmdb_genres and original_language == "ja":
@@ -249,11 +255,30 @@ class MediaSearchBackEnd:
                 results[key] = {"success": False, "error": str(e)}
         return results
 
-    async def parse_tvdb_data(self, imdb_id: str) -> dict | None:
+    async def parse_tvdb_data(
+        self, imdb_id: str | None, tvdb_id: int | None
+    ) -> dict | None:
         tvdb_parse = tvdb_v4_official.TVDB(self._get_tvdb_k())
-        data = tvdb_parse.search_by_remote_id(imdb_id)
-        if data and isinstance(data, list):
-            return data[0]
+
+        # if we have imdb_id but failed to detect tvdb_id we'll use tvdb api to find the id
+        if not tvdb_id and imdb_id:
+            find_tvdb_id = tvdb_parse.search_by_remote_id(imdb_id)
+            if find_tvdb_id and isinstance(find_tvdb_id, list):
+                tvdb_id_data = find_tvdb_id[0].get("movie", "series")
+                if tvdb_id_data:
+                    tvdb_id = tvdb_id_data.get("id")
+
+        # if we failed to determine tvdb id log it and return early
+        if not tvdb_id:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Failed to determine TVDB_ID from API (IMDbID = {imdb_id}, TVDBID = {tvdb_id})",
+            )
+            return
+
+        # now we can extensively parse the data from the API
+        if tvdb_id:
+            return tvdb_parse.get_series_extended(tvdb_id, short=True)
 
     @staticmethod
     def _get_tvdb_k() -> str:
@@ -273,7 +298,9 @@ class MediaSearchBackEnd:
         return base64.b64decode(b64_bytes).decode()
 
     @staticmethod
-    async def parse_imdb_data(imdb_id: str) -> Movie | None:
+    async def parse_imdb_data(imdb_id: str | None) -> Movie | None:
+        if not imdb_id:
+            return
         imdb_parse = Cinemagoer()
         get_movie = imdb_parse.get_movie(imdb_id.replace("t", ""))
         if get_movie:
