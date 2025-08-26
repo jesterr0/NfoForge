@@ -13,9 +13,6 @@
 | `{{ media_file_no_ext }}` | Media filename without extension |
 | `{{ media_info }}` | Mediainfo output with filepath cleansed |
 | `{{ media_info_short }}` | Shortened Mediainfo output with filepath cleansed |
-| `{{ mi_video_bit_rate }}` | Average video bit-rate in kbps (9975 kbps) |
-| `{{ mi_video_bit_rate_num_only }}` | Average video bit-rate in kbps, numbers only (9975) |
-| `{{ movie_full_title }}` | Movie's full title with no formatting removed |
 | `{{ program_info }}` | NfoForge vx.x.x |
 | `{{ proper }}` | Returns 'PROPER' if proper was detected |
 | `{{ proper_n }}` | Proper and proper number if exists (PROPER2) |
@@ -36,6 +33,10 @@
 | `{{ source_file }}` | Source filename with extension |
 | `{{ source_file_no_ext }}` | Source filename without extension |
 | `{{ subtitle_s }}` | English, French, ... |
+| `{{ total_episodes }}` | Total episodes in season/series |
+| `{{ total_seasons }}` | Total seasons in series |
+| `{{ video_bit_rate }}` | Average video bit-rate in kbps (9975 kbps) |
+| `{{ video_bit_rate_num_only }}` | Average video bit-rate in kbps, numbers only (9975) |
 | `{{ video_frame_rate }}` | FPS (23.976) |
 | `{{ video_height }}` | Video height (1080) |
 | `{{ video_width }}` | Video width (1920) |
