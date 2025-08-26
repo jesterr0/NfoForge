@@ -31,7 +31,6 @@ class ComparisonFileMatcher(QWidget):
         self.source_line_edit = DNDLineEdit(
             self, readOnly=True, placeholderText="Open source file..."
         )
-        self.source_line_edit.setPlaceholderText("Open source file...")
         self.source_line_edit.set_extensions(("*",))
         self.source_line_edit.dropped.connect(self._dropped_file_source)
 
