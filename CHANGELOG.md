@@ -34,6 +34,7 @@
   - Added some logging for TVDB API related errors.
   - Now simply just says **Parsing metadata, please wait...** instead of **Parsing IMDB/TVDb...** since this is now dynamic based on media type.
 - Removed **cinemagoer** dependency and replaced it with **imdbinfo**.
+- Update niquests.
 
 ### Fixed
 
@@ -41,7 +42,7 @@
 
 ### Removed
 
-- `{movie_full_title}` as been removed (`{title_exact}` token replaces it).
+- `{movie_full_title}` has been removed (`{title_exact}` token replaces it).
 - Movie settings page no longer has controls for clean title token and dynamic range control (this is now handled in Global Management).
 
 ## [0.8.9] - 2025-08-19
