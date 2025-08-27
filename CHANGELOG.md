@@ -16,6 +16,13 @@
   - `{movie_exact_title}` has been replaced with `{title_exact}`.
   - All MediaInfo tokens have had the `mi_` prefix removed (e.g., `{mi_audio_codec}` is now `{audio_codec}`, `{mi_video_width}` is now `{video_width}`).
 - FileTree widget will now display system icons before using any custom defined icons.
+- MediaInput wizard page has been been modified:
+  - No longer considered **Basic** input, this wizard page will handle all inputs _(besides plugin wizard pages)_.
+  - Can accept any input, single, comparison etc.
+  - Added a new button to enable comparison mode:
+    - This allows the user to open a **source** and click the matching file from the input file-tree below.
+  - Now tells how many files are being parsed when the user is clicking next in the status bar.
+  - File tree now shows up regardless if it's a single file or directory input.
 - MediaInput backend has been reworked:
   - Now supports series.
   - Now utilizes async to parse MediaInfo of multiple files concurrently, this greatly speeds up read speeds for anything over a single file.
