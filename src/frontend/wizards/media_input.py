@@ -212,7 +212,7 @@ class MediaInput(BaseWizardPage):
 
         # handle single file
         if entry_data.is_file():
-            self.config.media_input_payload.file_list = [entry_data]
+            self.config.media_input_payload.file_list.append(entry_data)
 
         # handle directory
         elif entry_data.is_dir():
@@ -231,7 +231,7 @@ class MediaInput(BaseWizardPage):
                     f"({', '.join(self.config.cfg_payload.source_media_ext_filter)})"
                 )
 
-            self.config.media_input_payload.file_list = supported_files
+            self.config.media_input_payload.file_list.extend(supported_files)
 
         # store comparison match data if comparison mode is enabled
         comparison_pair = self.get_comparison_pair()
