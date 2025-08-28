@@ -27,7 +27,9 @@ from src.backend.utils.media_info_utils import (
 from src.backend.utils.rename_normalizations import EDITION_INFO
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.enums.media_type import MediaType
 from src.enums.rename import QualitySelection
+from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -46,9 +48,6 @@ class TokenReplacer:
         "source_file",
         "jinja_engine",
         "colon_replace",
-        "guess_name",
-        "guess_source_name",
-        "guessit_language",
         "media_search_obj",
         "media_info_obj",
         "source_file_mi_obj",
@@ -57,16 +56,6 @@ class TokenReplacer:
         "token_type",
         "unfilled_token_mode",
         "releasers_name",
-        "screen_shots",
-        "screen_shots_comparison",
-        "screen_shots_even_obj",
-        "screen_shots_odd_obj",
-        "screen_shots_even_str",
-        "screen_shots_odd_str",
-        "odd_screens",
-        "release_notes",
-        "dummy_screen_shots",
-        "parse_filename_attributes",
         "override_tokens",
         "user_tokens",
         "edition_override",
@@ -74,8 +63,26 @@ class TokenReplacer:
         "title_clean_rules",
         "override_title_rules",
         "video_dynamic_range",
-        # vars
+        "screen_shots",
+        "screen_shots_comparison",
+        "screen_shots_even_obj",
+        "screen_shots_odd_obj",
+        "screen_shots_even_str",
+        "screen_shots_odd_str",
+        "release_notes",
+        "dummy_screen_shots",
+        "parse_filename_attributes",
+        # series exclusive args
+        "season_number",
+        "episode_number",
+        "episode_format",
+        # vars (set during __init__)
+        "guess_name",
+        "guess_source_name",
+        "guessit_language",
         "token_data",
+        # series vars
+        "_series_cache",
     )
 
     def __init__(
@@ -109,6 +116,9 @@ class TokenReplacer:
         release_notes: str | None = "",
         dummy_screen_shots: bool = False,
         parse_filename_attributes: bool = False,
+        season_number: int | None = None,
+        episode_number: int | None = None,
+        episode_format: EpisodeFormat | None = None,
     ):
         """
         Takes an input string with tokens and outputs a new string with formatted data based
@@ -121,8 +131,8 @@ class TokenReplacer:
             jinja_engine (Optional[Jinja2TemplateEngine]): JinjaEngine class.
             colon_replace (ColonReplace): What to do with colons.
             media_search_obj (Optional[MediaSearchPayload], optional): Payload.
-            media_info_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
-            source_file_mi_obj (Optional[MediaInfo.parse], optional): MediaInfo object.
+            media_info_obj (Optional[MediaInfo], optional): MediaInfo object.
+            source_file_mi_obj (Optional[MediaInfo], optional): MediaInfo object.
             flatten (Optional[bool]): Rather or not to flatten the data to a single string
             file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
               with no newlines or extra white space (used for filenames). `colon_replace` is ignored
@@ -154,15 +164,13 @@ class TokenReplacer:
               screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
             parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
               detected from the filename.
+            season_number (Optional[int]): Season number.
+            episode_number (Optional[int]): Episode number.
+            episode_format (Optional[EpisodeFormat]): Episode format (Standard, Daily, Anime).
         """
         self.media_input = Path(media_input)
         self.jinja_engine = jinja_engine
         self.source_file = Path(source_file) if source_file else None
-        self.guess_name = guessit(self.media_input.name)
-        self.guess_source_name: dict[str, Any] | None = None
-        if self.source_file:
-            self.guess_source_name = guessit(self.source_file.name)
-        self.guessit_language = self._guessit_language()
         self.token_string = token_string
         self.colon_replace = ColonReplace(colon_replace)
         self.media_search_obj = (
@@ -175,6 +183,8 @@ class TokenReplacer:
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
         self.releasers_name = releasers_name
+        self.override_tokens = override_tokens
+        self.user_tokens = user_tokens
         self.edition_override = edition_override
         self.frame_size_override = frame_size_override
         self.title_clean_rules = title_clean_rules
@@ -189,11 +199,21 @@ class TokenReplacer:
         self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
         self.parse_filename_attributes = parse_filename_attributes
-        self.override_tokens = override_tokens
-        self.user_tokens = user_tokens
+        # series exclusive args
+        self.season_number = season_number
+        self.episode_number = episode_number
+        self.episode_format = episode_format
 
         # vars
+        self.guess_name = guessit(self.media_input.name)
+        self.guess_source_name: dict[str, Any] | None = None
+        if self.source_file:
+            self.guess_source_name = guessit(self.source_file.name)
+        self.guessit_language = self._guessit_language()
         self.token_data = Tokens.generate_token_dataclass(token_type)
+
+        # series cache
+        self._series_cache = {}
 
         if not self.flatten and not self.jinja_engine:
             raise AttributeError(
@@ -389,19 +409,19 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.EDITION.token:
             return self._edition(token_data)
 
-        if token_data.bracket_token == Tokens.FRAME_SIZE.token:
+        elif token_data.bracket_token == Tokens.FRAME_SIZE.token:
             return self._frame_size(token_data)
 
-        if token_data.bracket_token == Tokens.HYBRID.token:
+        elif token_data.bracket_token == Tokens.HYBRID.token:
             return self._hybrid(token_data)
 
-        if token_data.bracket_token == Tokens.LOCALIZATION.token:
+        elif token_data.bracket_token == Tokens.LOCALIZATION.token:
             return self._localization(token_data)
 
-        if token_data.bracket_token == Tokens.AUDIO_BITRATE.token:
+        elif token_data.bracket_token == Tokens.AUDIO_BITRATE.token:
             return self._audio_bitrate(token_data, False)
 
-        if token_data.bracket_token == Tokens.AUDIO_BITRATE_FORMATTED.token:
+        elif token_data.bracket_token == Tokens.AUDIO_BITRATE_FORMATTED.token:
             return self._audio_bitrate(token_data, True)
 
         elif token_data.bracket_token == Tokens.AUDIO_CHANNEL_S.token:
@@ -517,6 +537,15 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.IMDB_ID.token:
             return self._imdb_id(token_data)
 
+        elif token_data.bracket_token == Tokens.IMDB_AKA.token:
+            return self._imdb_aka(token_data)
+
+        elif token_data.bracket_token == Tokens.IMDB_AKA_FALLBACK_TITLE.token:
+            return self._imdb_aka(token_data, True)
+
+        elif token_data.bracket_token == Tokens.IMDB_AKA_FALLBACK_TITLE_CLEAN.token:
+            return self._imdb_aka(token_data, True, True)
+
         elif token_data.bracket_token == Tokens.TMDB_ID.token:
             return self._tmdb_id(token_data)
 
@@ -529,8 +558,20 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.ORIGINAL_FILENAME.token:
             return self._original_filename(token_data)
 
+        elif token_data.bracket_token == Tokens.ORIGINAL_LANGUAGE.token:
+            return self._original_language(token_data)
+
+        elif token_data.bracket_token == Tokens.ORIGINAL_LANGUAGE_ISO_639_1.token:
+            return self._original_language(token_data, 1)
+
+        elif token_data.bracket_token == Tokens.ORIGINAL_LANGUAGE_ISO_639_2.token:
+            return self._original_language(token_data, 2)
+
         elif token_data.bracket_token == Tokens.RELEASE_GROUP.token:
             return self._release_group(token_data)
+
+        elif token_data.bracket_token == Tokens.RELEASE_DATE.token:
+            return self._release_date(token_data)
 
         elif token_data.bracket_token == Tokens.RELEASERS_NAME.token:
             return self._releasers_name(token_data)
@@ -552,6 +593,30 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.SOURCE.token:
             return self._source(token_data)
+
+        elif token_data.bracket_token == Tokens.AIR_DATE.token:
+            return self._air_date(token_data)
+
+        elif token_data.bracket_token == Tokens.SEASON_NUMBER.token:
+            return self._season_number(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_AIR_DATE.token:
+            return self._episode_air_date(token_data)
+
+        elif token_data.bracket_token in {
+            Tokens.EPISODE_NUMBER.token,
+            Tokens.EPISODE_NUMBER_ABSOLUTE.token,
+        }:
+            return self._episode_number(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_TITLE.token:
+            return self._episode_title(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_TITLE_CLEAN.token:
+            return self._episode_title_clean(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_TITLE_EXACT.token:
+            return self._episode_title_exact(token_data)
 
         return ""
 
@@ -658,6 +723,13 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.PROPER_REASON.token:
             return self._proper_reason(token_data)
 
+        elif token_data.bracket_token == Tokens.TOTAL_SEASONS.token:
+            return self._total_seasons(token_data)
+
+        elif token_data.bracket_token == Tokens.TOTAL_EPISODES.token:
+            return self._total_episodes(token_data)
+
+        # nfo forge specific tokens
         elif token_data.bracket_token == Tokens.PROGRAM_INFO.token:
             return self._program_info(token_data)
 
@@ -676,17 +748,27 @@ class TokenReplacer:
         try:
             formatted_title = self.token_string
             for key, value in filled_tokens.items():
-                if key != "movie_clean_title":
+                if "title_clean" not in key:  # this covers all '*title_clean' tokens
                     formatted_title = formatted_title.replace(f"{{{key}}}", value)
                     formatted_title = self._colon_replace(
                         self.colon_replace, formatted_title
                     )
 
-            # apply specific formatting for 'movie_clean_title'
-            if "movie_clean_title" in formatted_title and filled_tokens:
-                formatted_title = formatted_title.replace(
-                    "{title_clean}", filled_tokens["movie_clean_title"]
-                )
+            # apply specific formatting for 'title_clean' tokens
+            if filled_tokens:
+                if "title_clean" in formatted_title:
+                    formatted_title = formatted_title.replace(
+                        "{title_clean}", filled_tokens["title_clean"]
+                    )
+                if "episode_title_clean" in formatted_title:
+                    formatted_title = formatted_title.replace(
+                        "{episode_title_clean}", filled_tokens["episode_title_clean"]
+                    )
+                if "imdb_aka_fallback_title_clean" in formatted_title:
+                    formatted_title = formatted_title.replace(
+                        "{imdb_aka_fallback_title_clean}",
+                        filled_tokens["imdb_aka_fallback_title_clean"],
+                    )
 
             # remove unfilled tokens if needed
             formatted_title = self._remove_unfilled_tokens(formatted_title)
@@ -727,6 +809,17 @@ class TokenReplacer:
             return re.sub(r"(\b.*?{.+}*?\n)", "", formatted_title, flags=re.MULTILINE)
         else:
             raise InvalidTokenError("Invalid 'unfilled_token_mode'")
+
+    def _air_date(self, token_data: TokenData) -> str:
+        if self.media_search_obj.media_type is not MediaType.SERIES:
+            return ""
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+        episode_data = self._get_tvdb_episode_dict(*get_info)
+        if not episode_data:
+            return ""
+        return self._optional_user_input(episode_data.get("aired", ""), token_data)
 
     def _edition(self, token_data: TokenData) -> str:
         if self.edition_override:
@@ -1372,10 +1465,7 @@ class TokenReplacer:
             if self.media_search_obj.title
             else self.guess_name.get("title", "")
         )
-        if title:
-            title = unidecode.unidecode(title)
-            title = re.sub(r'[:\\/<>\?*"|]', " ", title)
-            title = re.sub(r"\s{2,}", " ", title)
+        title = self._title_formatting_standard(title)
         return self._optional_user_input(title, token_data)
 
     def _title_clean(self, token_data: TokenData) -> str:
@@ -1384,15 +1474,7 @@ class TokenReplacer:
             if self.media_search_obj.title
             else self.guess_name.get("title", "")
         )
-        if title and self.title_clean_rules:
-            for replace, replace_with in self.title_clean_rules:
-                if replace_with == "[unidecode]":
-                    title = unidecode.unidecode(title)
-                else:
-                    replace_with = replace_with.replace("[remove]", "").replace(
-                        "[space]", " "
-                    )
-                    title = re.sub(rf"{replace}", rf"{replace_with}", title)
+        title = self._title_formatting_cleaned(title, self.title_clean_rules)
         return self._optional_user_input(title, token_data)
 
     def _title_exact(self, token_data: TokenData) -> str:
@@ -1406,6 +1488,32 @@ class TokenReplacer:
     def _imdb_id(self, token_data: TokenData) -> str:
         imdb_id = self.media_search_obj.imdb_id if self.media_search_obj.imdb_id else ""
         return self._optional_user_input(imdb_id, token_data)
+
+    def _imdb_aka(
+        self,
+        token_data: TokenData,
+        fallback: bool = False,
+        cleaned_fallback: bool = False,
+    ) -> str:
+        # attempt to get AKA from IMDb data
+        if self.media_search_obj.imdb_data and self.media_search_obj.imdb_data.title:
+            aka = self.media_search_obj.imdb_data.title
+            return self._optional_user_input(aka, token_data)
+
+        # if no fall back return nothing
+        if not fallback:
+            return ""
+
+        # fallback to tmdb title if we can
+        aka = ""
+        if self.media_search_obj.title:
+            if not cleaned_fallback:
+                aka = self._title_formatting_standard(self.media_search_obj.title)
+            else:
+                aka = self._title_formatting_cleaned(
+                    self.media_search_obj.title, self.title_clean_rules
+                )
+        return self._optional_user_input(aka, token_data)
 
     def _tmdb_id(self, token_data: TokenData) -> str:
         tmdb_id = self.media_search_obj.tmdb_id if self.media_search_obj.tmdb_id else ""
@@ -1422,9 +1530,50 @@ class TokenReplacer:
     def _original_filename(self, token_data: TokenData) -> str:
         return self._optional_user_input(self.media_input.stem, token_data)
 
+    def _original_language(self, token_data: TokenData, char: int | None = None) -> str:
+        lang = ""
+        # if media type is movie we'll use tmdb
+        if self.media_search_obj.media_type is MediaType.MOVIE:
+            tmdb_data = self.media_search_obj.tmdb_data
+            if not tmdb_data:
+                return ""
+            lang = tmdb_data.get("original_language", "")
+
+        # if not a movie we'll use tvdb
+        else:
+            tvdb_data = self.media_search_obj.tvdb_data
+            if not tvdb_data:
+                return ""
+            lang = tvdb_data.get("originalLanguage", "")
+
+        # convert lang to the required format
+        if not lang:
+            return ""
+        if char is None:
+            return self._optional_user_input(
+                get_full_language_str(lang) or "", token_data
+            )
+        elif char == 1:
+            return self._optional_user_input(
+                get_language_str(lang, 1) or "", token_data
+            )
+        else:
+            return self._optional_user_input(
+                get_language_str(lang, 2) or "", token_data
+            )
+
     def _release_group(self, token_data: TokenData) -> str:
         release_group = str(self.guess_name.get("release_group", ""))
         return self._optional_user_input(release_group.lstrip("-"), token_data)
+
+    def _release_date(self, token_data: TokenData) -> str:
+        if self.media_search_obj.media_type is not MediaType.MOVIE:
+            return ""
+        if not self.media_search_obj.tmdb_data:
+            return ""
+        return self._optional_user_input(
+            self.media_search_obj.tmdb_data.get("release_date", ""), token_data
+        )
 
     def _releasers_name(self, token_data: TokenData) -> str:
         releasers_name = "Anonymous"
@@ -1546,6 +1695,66 @@ class TokenReplacer:
 
     def _source(self, token_data: TokenData) -> str:
         return self._optional_user_input(str(self._get_source_quality()), token_data)
+
+    def _season_number(self, token_data: TokenData) -> str:
+        int_val = str(self._validate_int_var(self.season_number)) or ""
+        return self._optional_user_input(int_val, token_data)
+
+    def _episode_air_date(self, token_data: TokenData) -> str:
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+
+        # get episode dict
+        air_date = ""
+        episode_data = self._get_tvdb_episode_dict(*get_info)
+        if episode_data:
+            air_date = episode_data.get("aired", "")
+        return self._optional_user_input(air_date, token_data)
+
+    def _episode_number(self, token_data: TokenData) -> str:
+        int_val = str(self._validate_int_var(self.episode_number)) or ""
+        return self._optional_user_input(int_val, token_data)
+
+    def _episode_title(self, token_data: TokenData) -> str:
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+
+        # get episode dict
+        title = ""
+        episode_data = self._get_tvdb_episode_dict(*get_info)
+        if episode_data:
+            title = episode_data.get("name", "")
+
+        # apply basic formatting
+        title = self._title_formatting_standard(title)
+        return self._optional_user_input(title, token_data)
+
+    def _episode_title_clean(self, token_data: TokenData) -> str:
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+
+        # get episode dict
+        title = ""
+        episode_data = self._get_tvdb_episode_dict(*get_info)
+        if episode_data:
+            title = episode_data.get("name", "")
+        title = self._title_formatting_cleaned(title, self.title_clean_rules)
+        return self._optional_user_input(title, token_data)
+
+    def _episode_title_exact(self, token_data: TokenData) -> str:
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+
+        # get episode dict
+        title = ""
+        episode_data = self._get_tvdb_episode_dict(*get_info)
+        if episode_data:
+            title = episode_data.get("name", "")
+        return self._optional_user_input(title, token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:
         chapter_type = ""
@@ -1827,6 +2036,36 @@ class TokenReplacer:
             )
         return self._optional_user_input(proper_reason, token_data)
 
+    def _get_tvdb_data_count(
+        self, data_key: str, cache_key: str, token_data: TokenData
+    ) -> str:
+        """Helper method to get count from TVDB data with caching."""
+        # check cache first
+        if cache_key in self._series_cache:
+            return self._optional_user_input(
+                str(self._series_cache[cache_key]), token_data
+            )
+
+        # early return if no TVDB data
+        if not self.media_search_obj or not self.media_search_obj.tvdb_data:
+            return self._optional_user_input("", token_data)
+
+        # get data from TVDB
+        data = self.media_search_obj.tvdb_data.get(data_key)
+        if not data:
+            return self._optional_user_input("", token_data)
+
+        # cache and return count
+        count = len(data)
+        self._series_cache[cache_key] = count
+        return self._optional_user_input(str(count), token_data)
+
+    def _total_seasons(self, token_data: TokenData) -> str:
+        return self._get_tvdb_data_count("seasons", "total_seasons", token_data)
+
+    def _total_episodes(self, token_data: TokenData) -> str:
+        return self._get_tvdb_data_count("episodes", "total_episodes", token_data)
+
     def _program_info(self, token_data: TokenData) -> str:
         return self._optional_user_input(f"{program_name} v{__version__}", token_data)
 
@@ -1972,6 +2211,85 @@ class TokenReplacer:
 
         return final_results if final_results else ""
 
+    def _verify_series_info(self) -> tuple[int, int] | None:
+        """Checks to ensure we have season/episode number and return them in a tuple."""
+        # if season/episode num is missing return
+        season_num = self._validate_int_var(self.season_number)
+        episode_num = self._validate_int_var(self.episode_number)
+        if season_num is None or episode_num is None:
+            return
+
+        # if no valid object return
+        tvdb_data = self.media_search_obj.tvdb_data
+        if not tvdb_data:
+            return
+
+        return season_num, episode_num
+
+    def _get_tvdb_episode_dict(
+        self, season: int, episode: int
+    ) -> dict[str, Any] | None:
+        """
+        Iterate TVDB data and return episode data as a dictionary or None.
+
+        Example output:
+        ```python
+        {'id': 3436461, 'seriesId': 121361, 'name': 'You Win or You Die', 'aired': '2011-05-29',
+        'runtime': 57, 'nameTranslations': None, 'overview': "Ned confronts...",
+        'overviewTranslations': None, 'image': '/banners/episodes/121361/65970f51c2923.jpg',
+        'imageType': 11, 'isMovie': 0, 'seasons': None, 'number': 7, 'absoluteNumber': 7,
+        'seasonNumber': 1, 'lastUpdated': '2024-01-04 20:05:52', 'finaleType': None, 'year': '2011'}
+        ```
+        """
+        # check cache first for a faster lookup
+        if self._series_cache:
+            cached_data = self._series_cache.get(season, {}).get(episode)
+            if cached_data:
+                return cached_data
+
+        if not self.media_search_obj or not self.media_search_obj.tvdb_data:
+            return None
+
+        # search through TVDB data
+        for ep in self.media_search_obj.tvdb_data:
+            s = ep.get("seasonNumber")
+            e = ep.get("number")
+            if s is None or e is None:
+                continue
+            try:
+                if int(s) == season and int(e) == episode:
+                    self._series_cache[season][episode] = ep
+                    return ep
+            except ValueError:
+                continue
+
+        return None
+
+    @staticmethod
+    def _title_formatting_standard(title: str) -> str:
+        if not title:
+            return ""
+        title = unidecode.unidecode(title)
+        title = re.sub(r'[:\\/<>\?*"|]', " ", title)
+        title = re.sub(r"\s{2,}", " ", title)
+        return title
+
+    @staticmethod
+    def _title_formatting_cleaned(
+        title: str, title_clean_rules: list[tuple[str, str]] | None
+    ) -> str:
+        if not title or not title_clean_rules:
+            return ""
+        for replace, replace_with in title_clean_rules:
+            if replace_with == "[unidecode]":
+                title = unidecode.unidecode(title)
+            else:
+                replace_with = replace_with.replace("[remove]", "").replace(
+                    "[space]", " "
+                )
+                title = re.sub(rf"{replace}", rf"{replace_with}", title)
+        return title
+
     @staticmethod
     def _colon_replace(colon_replace: ColonReplace, media_str: str) -> str:
         if colon_replace == ColonReplace.KEEP:
@@ -1984,3 +2302,13 @@ class TokenReplacer:
             return media_str.replace(":", " -")
         elif colon_replace == ColonReplace.REPLACE_WITH_SPACE_DASH_SPACE:
             return media_str.replace(":", " - ")
+
+    @staticmethod
+    def _validate_int_var(val: Any, allow_negative: bool = False) -> int | None:
+        """Accept any input and return it if it's a valid int"""
+        if val is None:
+            return
+        if isinstance(val, int):
+            if not allow_negative and val < 0:
+                return
+            return val

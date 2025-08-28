@@ -7,6 +7,27 @@
 - Real-time token example updates in Movie Management settings when Global Management settings change (title clean rules and video dynamic range).
 - Added new settings tab **Global Management**. This tab will hold global rename settings for both Series/Movies.
 - New custom widget - ComparisonFileMatcher. This will be used to select a matching **source** file for movies/series.
+- Tokens:
+  - **FileTokens**:
+    - `{imdb_aka}` - IMDb AKA filename.
+    - `{imdb_aka_fallback_title}` - IMDb AKA filename with a fallback to {title}.
+    - `{imdb_aka_fallback_title_clean}` - IMDb AKA filename with a fallback to {title_clean}.
+    - `{original_language}` - Original language (English).
+    - `{original_language_iso_639_1}` - Original language (EN).
+    - `{original_language_iso_639_2}`- Original language (ENG).
+    - `{release_date}`- Release date (movies - UTC).
+    - `{air_date}`- Air date (series - UTC).
+    - `{season_number}`- Season number (1, 2, 3, etc.).
+    - `{episode_air_date}`- Episode air date (UTC).
+    - `{episode_number}`- Episode number (1, 2, 3, etc.).
+    - `{episode_number_absolute}`- Episode number (1, 2, 3, etc.).
+    - `{episode_title}`- Title parsed from media databases with minimal formatting.
+    - `{episode_title_clean}`- Clean title parsed from media databases.
+    - `{episode_title_exact}`- Title parsed from media databases with no modifications.
+    - `{episode_title_exact}`- Title parsed from media databases with no modifications.
+  - **NfoTokens**:
+    - `{total_seasons}`- Total seasons in series.
+    - `{total_episodes}`- Total episodes in season/series.
 
 ### Changed
 

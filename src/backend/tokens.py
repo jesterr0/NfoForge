@@ -154,11 +154,30 @@ class Tokens:
         "Title parsed from media databases with no modifications",
     )
     IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
+    IMDB_AKA = FileToken("{imdb_aka}", "IMDb AKA title")
+    IMDB_AKA_FALLBACK_TITLE = FileToken(
+        "{imdb_aka_fallback_title}",
+        "IMDb AKA title (if not available fallback to {title})",
+    )
+    IMDB_AKA_FALLBACK_TITLE_CLEAN = FileToken(
+        "{imdb_aka_fallback_title_clean}",
+        "IMDb AKA title (if not available fallback to {title_clean})",
+    )
     TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
     TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
     MAL_ID = FileToken("{mal_id}", "MAL ID")
     ORIGINAL_FILENAME = FileToken("{original_filename}", "Original filename")
+    ORIGINAL_LANGUAGE = FileToken("{original_language}", "Original language (English)")
+    ORIGINAL_LANGUAGE_ISO_639_1 = FileToken(
+        "{original_language_iso_639_1}",
+        "Original language (EN)",
+    )
+    ORIGINAL_LANGUAGE_ISO_639_2 = FileToken(
+        "{original_language_iso_639_2}",
+        "Original language (ENG)",
+    )
     RELEASE_GROUP = FileToken("{release_group}", "Release group")
+    RELEASE_DATE = FileToken("{release_date}", "Release date (movies - UTC)")
     RELEASERS_NAME = FileToken("{releasers_name}", "Releaser's name (Anonymous)")
     RELEASE_YEAR = FileToken("{release_year}", "Release year")
     RELEASE_YEAR_PARENTHESES = FileToken(
@@ -168,6 +187,24 @@ class Tokens:
     RESOLUTION = FileToken("{resolution}", "Resolution (1080p)")
     REMUX = FileToken("{remux}", "REMUX")
     SOURCE = FileToken("{source}", "Source media (BluRay/DVD)")
+    # series exclusive FileTokens
+    AIR_DATE = FileToken("{air_date}", "Air date (series - UTC)")
+    SEASON_NUMBER = FileToken("{season_number}", "Season number (1, 2, 3, etc.)")
+    EPISODE_AIR_DATE = FileToken("{episode_air_date}", "Episode air date (UTC)")
+    EPISODE_NUMBER = FileToken("{episode_number}", "Episode number (1, 2, 3, etc.)")
+    EPISODE_NUMBER_ABSOLUTE = FileToken(
+        "{episode_number_absolute}", "Episode number (1, 2, 3, etc.)"
+    )
+    EPISODE_TITLE = FileToken(
+        "{episode_title}", "Title parsed from media databases with minimal formatting"
+    )
+    EPISODE_TITLE_CLEAN = FileToken(
+        "{episode_title_clean}", "Clean title parsed from media databases"
+    )
+    EPISODE_TITLE_EXACT = FileToken(
+        "{episode_title_exact}",
+        "Title parsed from media databases with no modifications",
+    )
 
     # NFO Tokens
     CHAPTER_TYPE = NfoToken(
@@ -237,6 +274,9 @@ class Tokens:
     PROPER = NfoToken("{proper}", "Returns 'PROPER' if proper was detected")
     PROPER_N = NfoToken("{proper_n}", "Proper and proper number if exists (PROPER2)")
     PROPER_REASON = NfoToken("{proper_reason}", "Reason for PROPER if provided")
+    # series exclusive NfoToken
+    TOTAL_SEASONS = NfoToken("{total_seasons}", "Total seasons in series")
+    TOTAL_EPISODES = NfoToken("{total_episodes}", "Total episodes in season/series")
 
     # nfo forge specific tokens
     PROGRAM_INFO = NfoToken("{program_info}", "NfoForge vx.x.x")
