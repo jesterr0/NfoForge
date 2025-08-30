@@ -2377,7 +2377,7 @@ _01_46_13993                                      : en:Chapter 24
 # fmt: on
 
 EXAMPLE_SEARCH_PAYLOAD = MediaSearchPayload(
-    media_type=MediaType.MOVIES,
+    media_type=MediaType.MOVIE,
     imdb_id="tt6264654",
     tmdb_id="550988",
     tmdb_data={
