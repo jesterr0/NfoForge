@@ -6,7 +6,7 @@
 
 - Real-time token example updates in Movie Management settings when Global Management settings change (title clean rules and video dynamic range).
 - Added new settings tab **Global Management**. This tab will hold global rename settings for both Series/Movies.
-- New custom widget - ComparisonFileMatcher. This will be used to select a matching **source** file for movies/series.
+- New custom widget - ComparisonFileMatcher. This will be used to select a matching **source** file for movies/series. # TODO: remove this if we're not going to use it?
 - Tokens:
   - **FileTokens**:
     - `{imdb_aka}` - IMDb AKA filename.
@@ -28,6 +28,8 @@
   - **NfoTokens**:
     - `{total_seasons}`- Total seasons in series.
     - `{total_episodes}`- Total episodes in season/series.
+- Built **Series Mapper** _(for series)_:
+  - New widget that will allow the user to match their episode(s) with aired, dvd, or absolute data parsed from **TVDB**. This data will allow NfoForge to accurately rename/manage files throughout the rest of the work flow.
 
 ### Changed
 
