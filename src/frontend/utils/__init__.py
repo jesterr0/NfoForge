@@ -165,9 +165,7 @@ def build_h_line(values: tuple[int, int, int, int]) -> QFrame:
 
     (left, top, right, bottom)
     """
-    h_line = QFrame()
-    h_line.setFrameShape(QFrame.Shape.HLine)
-    h_line.setFrameShadow(QFrame.Shadow.Sunken)
+    h_line = QFrame(frameShape=QFrame.Shape.HLine, frameShadow=QFrame.Shadow.Sunken)
     h_line.setContentsMargins(*values)
     return h_line
 
@@ -178,9 +176,7 @@ def build_v_line(values: tuple[int, int, int, int]) -> QFrame:
 
     (left, top, right, bottom)
     """
-    h_line = QFrame()
-    h_line.setFrameShape(QFrame.Shape.VLine)
-    h_line.setFrameShadow(QFrame.Shadow.Sunken)
+    h_line = QFrame(frameShape=QFrame.Shape.VLine, frameShadow=QFrame.Shadow.Sunken)
     h_line.setContentsMargins(*values)
     return h_line
 
