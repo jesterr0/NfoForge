@@ -308,7 +308,7 @@ class SeriesEpisodeMapper(QWidget):
         self.media_input_payload = media_input_payload
         self.media_search_payload = media_search_payload
 
-        # Load and populate data
+        # load and populate data
         self._load_episode_data()
         self._populate_files_table()
         self._auto_match_files()
@@ -318,13 +318,13 @@ class SeriesEpisodeMapper(QWidget):
         self.media_input_payload = None
         self.media_search_payload = None
 
-        # Clear all data structures
+        # clear all data structures
         self.available_episodes.clear()
         self.episodes_by_type.clear()
         self.file_episode_mappings.clear()
         self.episode_items.clear()
 
-        # Clear UI elements
+        # clear UI elements
         self.files_table.setRowCount(0)
         self.episodes_tree.clear()
         self.episode_order_combo.clear()
@@ -332,7 +332,7 @@ class SeriesEpisodeMapper(QWidget):
         self.episode_filter_combo.addItem("All Seasons", "all")
         self.episode_search_box.clear()
 
-        # Update stats
+        # update stats
         self._update_all_stats()
 
     def _load_episode_data(self):
@@ -405,10 +405,10 @@ class SeriesEpisodeMapper(QWidget):
             # store the type ID in the combo item data for easy lookup
             self.episode_order_combo.addItem(display_name, type_id)
 
-        # Set the first item as default selection
+        # set the first item as default selection
         if self.episode_order_combo.count() > 0:
             self.episode_order_combo.setCurrentIndex(0)
-            # Explicitly trigger episodes loading since setCurrentIndex might not emit signal
+            # explicitly trigger episodes loading since setCurrentIndex might not emit signal
             self._load_episodes_with_ordering()
 
     def _populate_files_table(self) -> None:
