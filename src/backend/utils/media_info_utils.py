@@ -1,7 +1,8 @@
-import re
 from os import PathLike
-from typing import Optional
 from pathlib import Path
+import re
+from typing import Optional
+
 from pymediainfo import MediaInfo
 
 
@@ -38,15 +39,26 @@ class MinimalMediaInfo:
     def get_full_mi_str(self, cleansed: bool = False) -> str:
         if cleansed:
             return self.cleanse_mi(
-                str(MediaInfo.parse(self.file_input, full=False, output=""))
+                str(
+                    MediaInfo.parse(
+                        self.file_input,
+                        full=False,
+                        output="",
+                        legacy_stream_display=True,
+                    )
+                )
             )
-        return str(MediaInfo.parse(self.file_input, full=False, output=""))
+        return str(
+            MediaInfo.parse(
+                self.file_input, full=False, output="", legacy_stream_display=True
+            )
+        )
 
     def get_minimal_mi_str(self) -> str:
         """Mocks MediaInfo's normal output with stripped down information"""
         LENGTH = 41
         mi_str = ""
-        media_info_obj = MediaInfo.parse(self.file_input)
+        media_info_obj = MediaInfo.parse(self.file_input, legacy_stream_display=True)
 
         if not isinstance(media_info_obj, MediaInfo):
             raise TypeError("Should be of type 'MediaInfo'")

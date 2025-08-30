@@ -84,5 +84,5 @@ class MediaInputBackEnd:
 
     @staticmethod
     def get_media_info(file_input: Path) -> MediaInfo | None:
-        data = MediaInfo.parse(file_input)
+        data = MediaInfo.parse(file_input, legacy_stream_display=True)
         return data if isinstance(data, MediaInfo) else None

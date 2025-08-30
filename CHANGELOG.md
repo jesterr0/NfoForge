@@ -66,6 +66,7 @@
   - Now simply just says **Parsing metadata, please wait...** instead of **Parsing IMDB/TVDb...** since this is now dynamic based on media type.
 - Removed **cinemagoer** dependency and replaced it with **imdbinfo**.
 - Update niquests.
+- All calls to mediainfo includes legacy stream data now _(to detect DTS core)_.
 
 ### Fixed
 
