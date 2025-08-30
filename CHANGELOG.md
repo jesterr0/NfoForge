@@ -36,6 +36,7 @@
 
 - Sandbox changes:
   - Rebuilt the input for sandbox, it is not a _mini wizard_ that works very similarly to the normal work flow. For series we needed more widgets to gather input from the user, so this allows a nice easy to use flow for the user.
+  - When the user is opening a series, the user will now see **Series Episode Matcher** page, to allow them to confirm/match their episodes with TVDB data.
 - Token changes:
   - `{movie_title}` has been replaced with `{title}`.
   - `{movie_clean_title}` has been replaced with `{title_clean}`.
