@@ -2,7 +2,7 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Qt, Signal, Slot
+from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -11,15 +11,11 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QLabel,
     QMessageBox,
-    QSizePolicy,
-    QSpacerItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
-from guessit import guessit
 from jinja2.exceptions import TemplateSyntaxError
 from qtpy.QtWidgets import QMenu
 
@@ -37,10 +33,8 @@ from src.frontend.custom_widgets.prompt_token_editor_dialog import (
 )
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
-from src.frontend.wizards.media_input import MediaInput
-from src.frontend.wizards.media_search import MediaSearch
+from src.frontend.wizards.sandbox_wizard import SandboxMainWindow
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -83,6 +77,8 @@ class TemplateSelector(QWidget):
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
         self.cached_sandbox_prompt_tokens: dict[str, str] | None = None
+        self._del_timer = QTimer(self, singleShot=True, interval=3000)
+        self._del_timer.timeout.connect(self._del_timer_done)
 
         self.token_btn = QToolButton(self)
         QTAThemeSwap().register(
@@ -295,6 +291,7 @@ class TemplateSelector(QWidget):
         self.old_text = None
         self.read_template()
         self._update_tracker_toggles()
+        self._del_timer_stop()
 
     @Slot()
     def new_template(self) -> None:
@@ -332,12 +329,31 @@ class TemplateSelector(QWidget):
         if self.template_combo.currentIndex() == -1:
             return
 
-        selected_template = self.backend.templates[self.template_combo.currentText()]
-        if not self._template_in_use(selected_template):
-            return
-        self.backend.delete_template(selected_template)
-        self.load_templates()
-        self.template_combo.setCurrentIndex(0)
+        if self._del_timer.isActive():
+            self._del_timer.stop()
+            self._del_timer_done()
+            selected_template = self.backend.templates[
+                self.template_combo.currentText()
+            ]
+            if not self._template_in_use(selected_template):
+                return
+            self.backend.delete_template(selected_template)
+            self.load_templates()
+            self.template_combo.setCurrentIndex(0)
+        else:
+            self._del_timer.start()
+            self.del_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            self.del_btn.setText("Confirm?")
+
+    def _del_timer_stop(self) -> None:
+        if self._del_timer.isActive():
+            self._del_timer.stop()
+            self._del_timer_done()
+
+    @Slot()
+    def _del_timer_done(self) -> None:
+        self.del_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.del_btn.setText("")
 
     def template_edited(self) -> bool:
         get_template = self.backend.read_template(
@@ -386,17 +402,17 @@ class TemplateSelector(QWidget):
         if self.preview_btn.isChecked():
             if self.sandbox:
                 if (
-                    not self.config.media_input_payload.encode_file
+                    not self.config.media_input_payload.input_path
                     or not self.config.media_search_payload.title
                 ):
-                    self.sandbox_input = SandBoxInput(self.config, self)
-                    if self.sandbox_input.exec() == QDialog.DialogCode.Rejected:
+                    self.sandbox_wizard = SandboxMainWindow(self.config, self)
+                    if self.sandbox_wizard.exec() == QDialog.DialogCode.Rejected:
                         self.preview_btn.setChecked(False)
                         self.text_edit.setReadOnly(False)
                         return
 
-            if not self.config.media_input_payload.encode_file:
-                raise FileNotFoundError("No input file to check template")
+            if not self.config.media_input_payload.input_path:
+                raise FileNotFoundError("No input path to check template")
 
             if not self.reset_sandbox_cache.isVisible():
                 self.reset_sandbox_cache.show()
@@ -464,13 +480,10 @@ class TemplateSelector(QWidget):
             nfo = ""
             try:
                 token_replacer = TokenReplacer(
-                    media_input=self.config.media_input_payload.encode_file,
+                    media_input_obj=self.config.media_input_payload,
                     jinja_engine=self.config.jinja_engine,
-                    source_file=self.config.media_input_payload.source_file,
                     token_string=self.old_text,
                     media_search_obj=self.config.media_search_payload,
-                    media_info_obj=self.config.media_input_payload.encode_file_mi_obj,
-                    source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
                     releasers_name=self.config.cfg_payload.releasers_name,
                     dummy_screen_shots=False
                     if self.config.shared_data.url_data
@@ -596,96 +609,9 @@ class TemplateSelector(QWidget):
         if self.preview_btn.isChecked():
             self.preview_btn.setChecked(False)
             self.preview_template()
-
-        self.config.media_input_payload.encode_file = None
-        self.config.media_search_payload.title = None
+        self.config.media_input_payload.reset()
+        self.config.media_search_payload.reset()
         if reset_tokens:
             self.cached_sandbox_prompt_tokens = None
         self.reset_sandbox_cache.hide()
-
-
-class SandBoxInput(QDialog):
-    def __init__(self, config: Config, parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Sandbox Input")
-        set_top_parent_geometry(self)
-
-        self.config = config
-        self._wizard_next_count = 0
-
-        GSigs().main_window_set_disabled.connect(self._set_disabled)
-        GSigs().main_window_update_status_tip.connect(self._update_fake_status_bar)
-        GSigs().main_window_clear_status_tip.connect(self._clear_fake_status_bar)
-
-        self.sandbox_lbl = QLabel("Input", self)
-
-        self.media_input = MediaInput(
-            self.config, self, on_finished_cb=self._handle_next
-        )
-        self.media_input.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.media_input.file_loaded.connect(self._update_media_search)
-        self.media_input.file_tree.setMaximumHeight(130)
-
-        self.media_search_lbl = QLabel("Search", self)
-
-        self.media_search = MediaSearch(
-            self.config, self, on_finished_cb=self._handle_next
-        )
-        self.media_search.main_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.accept_btn = QToolButton(self)
-        self.accept_btn.setText("Accept")
-        self.accept_btn.clicked.connect(self._accept)
-
-        self.fake_status_bar = QLabel(self)
-
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.addWidget(self.sandbox_lbl)
-        self.main_layout.addWidget(self.media_input)
-        self.main_layout.addWidget(self.media_search_lbl)
-        self.main_layout.addWidget(self.media_search, stretch=5)
-        self.main_layout.addWidget(
-            self.accept_btn, alignment=Qt.AlignmentFlag.AlignRight
-        )
-        self.main_layout.addSpacerItem(
-            QSpacerItem(
-                1, 20, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
-            )
-        )
-        self.main_layout.addWidget(self.fake_status_bar)
-
-    @Slot(str)
-    def _update_media_search(self, file_path: str) -> None:
-        guess = guessit(Path(file_path).name)
-        guessed_title = guess.get("title", "")
-        year = guess.get("year", "")
-        if year:
-            guessed_title = f"{guessed_title} {year}"
-
-        self.media_search.search_entry.setText(guessed_title)
-        self.media_search._search_tmdb_api()
-
-    @Slot()
-    def _accept(self) -> None:
-        self.media_input.validatePage()
-
-    @Slot()
-    def _handle_next(self) -> None:
-        if self._wizard_next_count == 0:
-            self.media_search.validatePage()
-            self._wizard_next_count += 1
-        else:
-            # closes the dialogue
-            self.accept()
-
-    @Slot(bool)
-    def _set_disabled(self, disable: bool) -> None:
-        self.setDisabled(disable)
-
-    @Slot(str, int)
-    def _update_fake_status_bar(self, msg: str, _timer: int) -> None:
-        self.fake_status_bar.setText(msg)
-
-    @Slot()
-    def _clear_fake_status_bar(self) -> None:
-        self.fake_status_bar.clear()
+        self._del_timer_stop()
