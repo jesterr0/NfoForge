@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 
 class SeriesMatch(BaseWizardPage):
-    def __init__(self, config: Config, parent: "MainWindow"):
+    def __init__(self, config: Config, parent: "MainWindow") -> None:
         super().__init__(config, parent)
         self.setTitle("Series Match")
         self.setObjectName("seriesMatch")
@@ -21,8 +21,8 @@ class SeriesMatch(BaseWizardPage):
 
         self.series_mapper = SeriesEpisodeMapper(parent=self)
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.series_mapper)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.addWidget(self.series_mapper)
 
     def initializePage(self):
         """Initialize the page and load data into the series mapper"""
