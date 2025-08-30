@@ -30,6 +30,7 @@
     - `{total_episodes}`- Total episodes in season/series.
 - Built **Series Mapper** _(for series)_:
   - New widget that will allow the user to match their episode(s) with aired, dvd, or absolute data parsed from **TVDB**. This data will allow NfoForge to accurately rename/manage files throughout the rest of the work flow.
+  - New wizard page for the user to access this during the workflow.
 
 ### Changed
 
