@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from imdb.Movie import Movie
+from imdbinfo.models import MovieDetail
 
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
@@ -10,7 +10,7 @@ from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 class MediaSearchPayload:
     media_type: MediaType | None = None
     imdb_id: str | None = None
-    imdb_data: Movie | None = None
+    imdb_data: MovieDetail | None = None
     tmdb_id: str | None = None
     tmdb_data: dict | None = None
     tvdb_id: str | None = None
