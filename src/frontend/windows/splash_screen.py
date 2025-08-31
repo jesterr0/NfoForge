@@ -156,10 +156,6 @@ class SplashScreenLoader(QThread):
                 name="Input (built in, external plugin slot disabled)",
                 wizard=MediaInput,
             ),
-            # "Advanced (built in, external plugin slot disabled)": PluginPayload(
-            #     name="Advanced (built in, external plugin slot disabled)",
-            #     wizard=MediaInputAdvanced,
-            # ),
             "Default Token Replacer (built in, external plugin slot disabled)": PluginPayload(
                 name="Token Replacer (built in, external plugin slot disabled)",
                 token_replacer=False,
