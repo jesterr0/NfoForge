@@ -275,6 +275,16 @@ class Tokens:
     PROPER_N = NfoToken("{proper_n}", "Proper and proper number if exists (PROPER2)")
     PROPER_REASON = NfoToken("{proper_reason}", "Reason for PROPER if provided")
     # series exclusive NfoToken
+    EPISODE_MEDIAINFO = NfoToken(
+        "{episode_mediainfo}", "Synopsis of all episodes mediainfo"
+    )
+    EPISODE_METADATA = NfoToken(
+        "{episode_metadata}", "Synopsis of all episodes metadata"
+    )
+    EPISODE_METADATA_MEDIAINFO = NfoToken(
+        "{episode_metadata_mediainfo}",
+        "Synopsis of all episodes metadata + mediainfo",
+    )
     TOTAL_SEASONS = NfoToken("{total_seasons}", "Total seasons in series")
     TOTAL_EPISODES = NfoToken("{total_episodes}", "Total episodes in season/series")
 

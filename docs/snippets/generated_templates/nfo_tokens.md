@@ -6,6 +6,9 @@
 | `{{ duration_long }}` | Duration (2 h 14 min 34 s 65 ms) |
 | `{{ duration_milliseconds }}` | Duration in milliseconds (8469985859) |
 | `{{ duration_short }}` | Duration (2 h 14 min) |
+| `{{ episode_mediainfo }}` | Synopsis of all episodes mediainfo |
+| `{{ episode_metadata }}` | Synopsis of all episodes metadata |
+| `{{ episode_metadata_mediainfo }}` | Synopsis of all episodes metadata + mediainfo |
 | `{{ file_size }}` | File size (7.89 GiB) |
 | `{{ file_size_bytes }}` | File size in bytes (8469985859) |
 | `{{ format_profile }}` | Format Profile (Main@L4) |
