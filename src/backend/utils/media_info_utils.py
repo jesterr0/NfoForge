@@ -3,7 +3,17 @@ from pathlib import Path
 import re
 from typing import Optional
 
-from pymediainfo import MediaInfo
+from pymediainfo import MediaInfo, Track
+
+
+def calculate_avg_bitrate(mi_track: Track) -> int | None:
+    if mi_track.stream_size and mi_track.duration:
+        avg_bitrate = round(
+            (float(mi_track.stream_size) / 1000)
+            / ((float(mi_track.duration) / 60000) * 0.0075)
+            / 1000
+        )
+        return avg_bitrate
 
 
 def calculate_avg_video_bit_rate(mi_object: Optional[MediaInfo]) -> Optional[int]:
