@@ -34,6 +34,7 @@
 - Built **Series Mapper** _(for series)_:
   - New widget that will allow the user to match their episode(s) with aired, dvd, or absolute data parsed from **TVDB**. This data will allow NfoForge to accurately rename/manage files throughout the rest of the work flow.
   - New wizard page for the user to access this during the workflow.
+- Support for plugin **filters** and **functions** for flat strings _(no documentation yet on this https://github.com/jesterr0/NfoForge/issues/97)_.
 
 ### Changed
 

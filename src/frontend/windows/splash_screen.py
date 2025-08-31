@@ -17,8 +17,7 @@ from PySide6.QtWidgets import (
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import Config
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.wizards.media_input_advanced import MediaInputAdvanced
-from src.frontend.wizards.media_input_basic import MediaInputBasic
+from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.plugins.loader import PluginLoader
 from src.plugins.plugin_payload import PluginPayload
@@ -141,7 +140,7 @@ class SplashScreenLoader(QThread):
         plugin_loader = PluginLoader(self.update_splash_msg)
         plugins = plugin_loader.load_plugins()
         self.config.loaded_plugins.update(plugins)
-        self._update_jinja2_engine_with_plugins()
+        self._update_filter_engines_with_plugins()
 
         # check if we have missing keys and remove them from the running config
         plugins = self.config.loaded_plugins.keys()
@@ -153,14 +152,14 @@ class SplashScreenLoader(QThread):
 
     def _update_built_in_plugins(self) -> None:
         built_in_plugins = {
-            "Basic (built in, external plugin slot disabled)": PluginPayload(
-                name="Basic (built in, external plugin slot disabled)",
-                wizard=MediaInputBasic,
+            "Input (built in, external plugin slot disabled)": PluginPayload(
+                name="Input (built in, external plugin slot disabled)",
+                wizard=MediaInput,
             ),
-            "Advanced (built in, external plugin slot disabled)": PluginPayload(
-                name="Advanced (built in, external plugin slot disabled)",
-                wizard=MediaInputAdvanced,
-            ),
+            # "Advanced (built in, external plugin slot disabled)": PluginPayload(
+            #     name="Advanced (built in, external plugin slot disabled)",
+            #     wizard=MediaInputAdvanced,
+            # ),
             "Default Token Replacer (built in, external plugin slot disabled)": PluginPayload(
                 name="Token Replacer (built in, external plugin slot disabled)",
                 token_replacer=False,
@@ -172,8 +171,14 @@ class SplashScreenLoader(QThread):
         }
         self.config.loaded_plugins.update(built_in_plugins)
 
-    def _update_jinja2_engine_with_plugins(self) -> None:
+    def _update_filter_engines_with_plugins(self) -> None:
         for plugin in self.config.loaded_plugins.values():
+            # flat filters
+            flat_filters = getattr(plugin, "flat_filters", None)
+            if flat_filters:
+                self.config.loaded_flat_filters.update(flat_filters)
+
+            # jinja filters/functions
             jinja2_filters = getattr(plugin, "jinja2_filters", None)
             jinja2_functions = getattr(plugin, "jinja2_functions", None)
             if jinja2_filters:

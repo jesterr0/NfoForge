@@ -19,3 +19,4 @@ class PluginPayload:
     pre_upload: Callable[..., bool] | bool | None = None
     jinja2_filters: dict[str, Callable[..., str]] | None = None
     jinja2_functions: dict[str, Callable[..., str]] | None = None
+    flat_filters: dict[str, Callable[..., str]] | None = None

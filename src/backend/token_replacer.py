@@ -1,4 +1,5 @@
-from collections.abc import Iterable, Sequence
+from ast import literal_eval
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 import re
 from typing import Any, Type
@@ -52,6 +53,7 @@ class TokenReplacer:
         "colon_replace",
         "media_search_obj",
         "flatten",
+        "flat_filters",
         "file_name_mode",
         "token_type",
         "unfilled_token_mode",
@@ -98,6 +100,7 @@ class TokenReplacer:
         colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH,
         media_search_obj: MediaSearchPayload | None = None,
         flatten: bool | None = False,
+        flat_filters: dict[str, Callable[..., str]] | None = None,
         file_name_mode: bool = True,
         token_type: Iterable[TokenType] | Type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
@@ -165,6 +168,8 @@ class TokenReplacer:
             season_number (Optional[int]): Season number.
             episode_number (Optional[int]): Episode number.
             episode_format (Optional[EpisodeFormat]): Episode format (Standard, Daily, Anime).
+            flat_filters (Optional[dict[str, Callable[..., str]]]): Custom filters for flat mode.
+                Dictionary mapping filter names to callable functions that take (value, *args) and return str.
         """
         self.media_input_obj = media_input_obj
         self.token_string = token_string
@@ -174,6 +179,7 @@ class TokenReplacer:
             media_search_obj if media_search_obj else MediaSearchPayload()
         )
         self.flatten = flatten
+        self.flat_filters = flat_filters
         self.file_name_mode = file_name_mode
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
@@ -718,6 +724,57 @@ class TokenReplacer:
                     old = m.group(2)
                     new = m.group(4)
                     value = value.replace(old, new)
+            # extensible filters (supporting both simple filters and functions with parameters)
+            else:
+                value = self._apply_extensible_filter(value, f)
+
+        return value
+
+    def _apply_extensible_filter(self, value: str, filter_expr: str) -> str:
+        """Apply extensible filters with argument parsing."""
+        if not self.flat_filters:
+            return value
+
+        # parse filter name and arguments
+        if "(" in filter_expr and filter_expr.endswith(")"):
+            filter_name = filter_expr[: filter_expr.index("(")]
+            args_str = filter_expr[filter_expr.index("(") + 1 : -1]
+
+            # parse arguments safely
+            try:
+                # handle common cases
+                if not args_str.strip():
+                    args = None
+                else:
+                    # try to parse as Python literals (strings, numbers, booleans)
+                    if len(args_str) > 200:
+                        args = (args_str,)
+                    else:
+                        args = literal_eval(f"[{args_str}]")
+            except (ValueError, SyntaxError):
+                # fallback: treat as single string argument (remove quotes if present)
+                args_str = args_str.strip()
+                if (args_str.startswith('"') and args_str.endswith('"')) or (
+                    args_str.startswith("'") and args_str.endswith("'")
+                ):
+                    args = [args_str[1:-1]]
+                else:
+                    args = (args_str,)
+        else:
+            filter_name = filter_expr
+            args = None
+
+        # apply registered filter
+        if filter_name in self.flat_filters:
+            try:
+                if args:
+                    return self.flat_filters[filter_name](value, *args)
+                return self.flat_filters[filter_name](value)
+            except Exception:
+                # return original value if filter fails
+                return value
+
+        # unknown filter: return unchanged (graceful degradation)
         return value
 
     def _media_tokens(self, token_data: TokenData) -> str:

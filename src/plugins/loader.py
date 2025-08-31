@@ -94,6 +94,12 @@ class PluginLoader:
                     "'PluginPayload.jinja2_functions' should be a dictionary of {str: Callable}"
                 )
 
+        if plugin_payload.flat_filters:
+            if not isinstance(plugin_payload.flat_filters, dict):
+                raise PluginError(
+                    "'PluginPayload.flat_filters' should be a dictionary of {str: Callable}"
+                )
+
         self._validate_plugin_functions(
             plugin_payload,
             {
