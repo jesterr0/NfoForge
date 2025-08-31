@@ -1,13 +1,17 @@
 from datetime import datetime
+from pathlib import Path
 
 from pymediainfo import MediaInfo
 
 from src.enums.media_type import MediaType
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 
 current_year = datetime.now().year
 
-EXAMPLE_FILE_NAME = f"Movie.Name.{current_year}.Directors.Cut.IMAX.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-SomeGroup.mkv"
+EXAMPLE_FILE_NAME = Path(
+    f"Movie.Name.{current_year}.Directors.Cut.IMAX.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.HYBRID.REMUX-SomeGroup.mkv"
+)
 
 # fmt: off
 _EXAMPLE_MEDIAINFO_XML_DATA = f"""\
@@ -2375,6 +2379,13 @@ _01_44_22506                                      : en:Chapter 23
 _01_46_13993                                      : en:Chapter 24
 """
 # fmt: on
+
+EXAMPLE_MEDIA_INPUT_PAYLOAD = MediaInputPayload(
+    input_path=EXAMPLE_FILE_NAME,
+    file_list=[EXAMPLE_FILE_NAME],
+    file_list_mediainfo={EXAMPLE_FILE_NAME: EXAMPLE_MEDIAINFO_OBJ},
+    media_type=MediaType.MOVIE,
+)
 
 EXAMPLE_SEARCH_PAYLOAD = MediaSearchPayload(
     media_type=MediaType.MOVIE,

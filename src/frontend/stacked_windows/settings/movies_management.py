@@ -1,6 +1,5 @@
 from collections.abc import Sequence
 from functools import partial
-from pathlib import Path
 
 from PySide6.QtCore import QSize, QTimer, Slot
 from PySide6.QtWidgets import (
@@ -20,8 +19,8 @@ from src.backend.token_replacer import ColonReplace, TokenReplacer, UnfilledToke
 from src.backend.tokens import FileToken, TokenSelection, TokenType, Tokens
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
-    EXAMPLE_MEDIAINFO_OBJ,
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
+    EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
 from src.enums.tracker_selection import TrackerSelection
@@ -285,13 +284,11 @@ class MoviesManagementSettings(BaseSettings):
             if TokenSelection(ts) is TokenSelection.FILE_TOKEN
         }
         format_str = TokenReplacer(
-            media_input=Path(EXAMPLE_FILE_NAME),
-            jinja_engine=None,
-            source_file=None,
+            media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
             token_string=token_str,
+            jinja_engine=None,
             colon_replace=colon_replace,
             media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
-            media_info_obj=EXAMPLE_MEDIAINFO_OBJ,
             flatten=True,
             file_name_mode=file_name_mode,
             token_type=FileToken,
@@ -302,6 +299,7 @@ class MoviesManagementSettings(BaseSettings):
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
+            flat_filters=self.config.loaded_flat_filters,
         )
         example_txt = qline.text()
         output = format_str.get_output()
@@ -516,9 +514,7 @@ class MoviesManagementSettings(BaseSettings):
         window = QDialog(self)
         set_top_parent_geometry(window)
 
-        example_fn = QLineEdit(window)
-        example_fn.setReadOnly(True)
-        example_fn.setText(EXAMPLE_FILE_NAME)
+        example_fn = QLineEdit(window, readOnly=True, text=str(EXAMPLE_FILE_NAME))
 
         example_mi = CodeEditor(
             line_numbers=False, wrap_text=False, mono_font=True, parent=window
