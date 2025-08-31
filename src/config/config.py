@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.logging_settings import LogLevel
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.profile import Profile
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
@@ -95,6 +97,7 @@ class Config:
 
         # keep track of plugins
         self.loaded_plugins: dict[str, "PluginPayload"] = {}
+        self.loaded_flat_filters: dict[str, Callable[..., str]] = {}
 
         # load program config
         self.program_conf = ProgramConfigPayload()
@@ -901,6 +904,30 @@ class Config:
             movie_management["mvr_release_group"] = self.cfg_payload.mvr_release_group
 
             # series management
+            # series_management = self._toml_data["series_management"]
+            # series_management["tvr_enabled"] = self.cfg_payload.tvr_enabled
+            # series_management["tvr_replace_illegal_chars"] = (
+            #     self.cfg_payload.tvr_replace_illegal_chars
+            # )
+            # series_management["tvr_colon_replace_filename"] = ColonReplace(
+            #     self.cfg_payload.tvr_colon_replace_filename
+            # ).value
+            # series_management["tvr_colon_replace_title"] = ColonReplace(
+            #     self.cfg_payload.tvr_colon_replace_title
+            # ).value
+            # series_management["tvr_parse_filename_attributes"] = (
+            #     self.cfg_payload.tvr_parse_filename_attributes
+            # )
+            # series_management["tvr_standard_episode_token"] = self.cfg_payload.tvr_standard_episode_token
+            # series_management["tvr_daily_episode_token"] = self.cfg_payload.tvr_daily_episode_token
+            # series_management["tvr_anime_episode_token"] = self.cfg_payload.tvr_anime_episode_token
+            # series_management["tvr_season_folder_token"] = self.cfg_payload.tvr_season_folder_token
+            # series_management["tvr_multi_episode_style"] = self.cfg_payload.tvr_multi_episode_style.value
+            # series_management["tvr_standard_title_token"] = self.cfg_payload.tvr_standard_title_token
+            # series_management["tvr_daily_title_token"] = self.cfg_payload.tvr_daily_title_token
+            # series_management["tvr_anime_title_token"] = self.cfg_payload.tvr_anime_title_token
+            # series_management["tvr_title_token"] = self.cfg_payload.tvr_title_token
+            # series_management["tvr_release_group"] = self.cfg_payload.tvr_release_group
 
             # global management
             global_management = self._toml_data["global_management"]
@@ -1557,6 +1584,7 @@ class Config:
             movie_management = toml_data["movie_management"]
 
             # series management
+            # series_management = toml_data.get("series_management", {})
 
             # global management
             global_management = toml_data["global_management"]
@@ -1654,6 +1682,46 @@ class Config:
                 mvr_token=movie_management.get("mvr_token"),
                 mvr_title_token=movie_management.get("mvr_title_token"),
                 mvr_release_group=movie_management.get("mvr_release_group", ""),
+                # tvr_enabled=series_management.get("tvr_enabled", True),
+                # tvr_replace_illegal_chars=series_management.get("tvr_replace_illegal_chars", True),
+                # tvr_colon_replace_filename=ColonReplace(
+                #     series_management.get("tvr_colon_replace_filename", 3)
+                # ),
+                # tvr_colon_replace_title=ColonReplace(
+                #     series_management.get("tvr_colon_replace_title", 3)
+                # ),
+                # tvr_parse_filename_attributes=series_management.get("tvr_parse_filename_attributes", True),
+                # tvr_standard_episode_token=series_management.get(
+                #     "tvr_standard_episode_token",
+                #     "{series_title_clean} - S{season:02d}E{episode:02d} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
+                # ),
+                # tvr_daily_episode_token=series_management.get(
+                #     "tvr_daily_episode_token",
+                #     "{series_title_clean} - {air_date} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
+                # ),
+                # tvr_anime_episode_token=series_management.get(
+                #     "tvr_anime_episode_token",
+                #     "{series_title_clean} - S{season:02d}E{episode:02d} - {absolute_episode:03d} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
+                # ),
+                # tvr_season_folder_token=series_management.get("tvr_season_folder_token", "Season {season}"),
+                # tvr_multi_episode_style=MultiEpisodeStyle(series_management.get("tvr_multi_episode_style", 4)),
+                # tvr_standard_title_token=series_management.get(
+                #     "tvr_standard_title_token",
+                #     "{series_title_clean} S{season:02d}E{episode:02d} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
+                # ),
+                # tvr_daily_title_token=series_management.get(
+                #     "tvr_daily_title_token",
+                #     "{series_title_clean} {air_date} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
+                # ),
+                # tvr_anime_title_token=series_management.get(
+                #     "tvr_anime_title_token",
+                #     "{series_title_clean} S{season:02d}E{episode:02d} {absolute_episode:03d} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
+                # ),
+                # tvr_title_token=series_management.get(
+                #     "tvr_title_token",
+                #     "{series_title_clean} S{season:02d}E{episode:02d} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
+                # ),
+                # tvr_release_group=series_management.get("tvr_release_group", ""),
                 title_clean_rules=global_management.get("title_clean_rules"),
                 title_clean_rules_modified=global_management.get(
                     "title_clean_rules_modified"
