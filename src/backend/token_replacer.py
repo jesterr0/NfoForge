@@ -22,6 +22,7 @@ from src.backend.utils.language import (
 )
 from src.backend.utils.media_info_utils import (
     MinimalMediaInfo,
+    calculate_avg_bitrate,
     calculate_avg_video_bit_rate,
 )
 from src.backend.utils.rename_normalizations import EDITION_INFO
@@ -34,6 +35,8 @@ from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledToken
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import ImageUploadData
+from src.packages.custom_types import ComparisonPair
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.version import __version__, program_name, program_url
 
@@ -43,14 +46,11 @@ class TokenReplacer:
 
     __slots__ = (
         # __init__
-        "media_input",
+        "media_input_obj",
         "token_string",
-        "source_file",
         "jinja_engine",
         "colon_replace",
         "media_search_obj",
-        "media_info_obj",
-        "source_file_mi_obj",
         "flatten",
         "file_name_mode",
         "token_type",
@@ -76,6 +76,11 @@ class TokenReplacer:
         "season_number",
         "episode_number",
         "episode_format",
+        # derived properties (computed from payload)
+        "primary_file",
+        "source_file",
+        "media_info_obj",
+        "source_file_mi_obj",
         # vars (set during __init__)
         "guess_name",
         "guess_source_name",
@@ -87,14 +92,11 @@ class TokenReplacer:
 
     def __init__(
         self,
-        media_input: Path,
+        media_input_obj: MediaInputPayload,
         token_string: str,
-        source_file: Path | None = None,
         jinja_engine: Jinja2TemplateEngine | None = None,
         colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH,
         media_search_obj: MediaSearchPayload | None = None,
-        media_info_obj: MediaInfo | None = None,
-        source_file_mi_obj: MediaInfo | None = None,
         flatten: bool | None = False,
         file_name_mode: bool = True,
         token_type: Iterable[TokenType] | Type[TokenType] | None = None,
@@ -121,18 +123,14 @@ class TokenReplacer:
         episode_format: EpisodeFormat | None = None,
     ):
         """
-        Takes an input string with tokens and outputs a new string with formatted data based
-        on the tokens used.
+        Takes a MediaInputPayload and outputs formatted strings based on tokens.
 
         Args:
-            media_input (Path): File path.
+            media_input_obj (MediaInputPayload): Payload containing all file information.
             token_string (str): Token string.
-            source_file (Optional[Path]): File path for 'source' file.
             jinja_engine (Optional[Jinja2TemplateEngine]): JinjaEngine class.
             colon_replace (ColonReplace): What to do with colons.
             media_search_obj (Optional[MediaSearchPayload], optional): Payload.
-            media_info_obj (Optional[MediaInfo], optional): MediaInfo object.
-            source_file_mi_obj (Optional[MediaInfo], optional): MediaInfo object.
             flatten (Optional[bool]): Rather or not to flatten the data to a single string
             file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
               with no newlines or extra white space (used for filenames). `colon_replace` is ignored
@@ -168,16 +166,13 @@ class TokenReplacer:
             episode_number (Optional[int]): Episode number.
             episode_format (Optional[EpisodeFormat]): Episode format (Standard, Daily, Anime).
         """
-        self.media_input = Path(media_input)
-        self.jinja_engine = jinja_engine
-        self.source_file = Path(source_file) if source_file else None
+        self.media_input_obj = media_input_obj
         self.token_string = token_string
+        self.jinja_engine = jinja_engine
         self.colon_replace = ColonReplace(colon_replace)
         self.media_search_obj = (
             media_search_obj if media_search_obj else MediaSearchPayload()
         )
-        self.media_info_obj = media_info_obj
-        self.source_file_mi_obj = source_file_mi_obj
         self.flatten = flatten
         self.file_name_mode = file_name_mode
         self.token_type = token_type
@@ -204,8 +199,14 @@ class TokenReplacer:
         self.episode_number = episode_number
         self.episode_format = episode_format
 
+        # derive file references from payload
+        self.primary_file = self._get_primary_file()
+        self.source_file = self._get_source_file()
+        self.media_info_obj = self._get_primary_mediainfo()
+        self.source_file_mi_obj = self._get_source_mediainfo()
+
         # vars
-        self.guess_name = guessit(self.media_input.name)
+        self.guess_name = guessit(self.primary_file.name)
         self.guess_source_name: dict[str, Any] | None = None
         if self.source_file:
             self.guess_source_name = guessit(self.source_file.name)
@@ -219,6 +220,320 @@ class TokenReplacer:
             raise AttributeError(
                 "You must pass in 'jinja_engine' if you are not flattening your output string"
             )
+
+    def _get_primary_file(self) -> Path:
+        """Determine the primary file for token analysis based on context."""
+        # if comparison mode, use the media file (not source)
+        if self.media_input_obj.comparison_pair:
+            return self.media_input_obj.comparison_pair.media
+
+        # use first file in list
+        if self.media_input_obj.file_list:
+            return self.media_input_obj.file_list[0]
+
+        # fallback to input path if it's a file
+        if (
+            self.media_input_obj.input_path
+            and self.media_input_obj.input_path.is_file()
+        ):
+            return self.media_input_obj.input_path
+
+        raise ValueError("No valid primary file found in MediaInputPayload")
+
+    def _get_source_file(self) -> Path | None:
+        """Determine the source file based on context."""
+        # if comparison mode, use the source from comparison pair
+        if self.media_input_obj.comparison_pair:
+            return self.media_input_obj.comparison_pair.source
+
+    def _get_primary_mediainfo(self) -> MediaInfo | None:
+        """Get MediaInfo for the primary file."""
+        if not self.media_input_obj.file_list_mediainfo:
+            return None
+        return self.media_input_obj.file_list_mediainfo.get(self.primary_file)
+
+    # def set_active_file(self, file_path: Path) -> None:
+    #     """
+    #     Set the active file for token processing.
+
+    #     Args:
+    #         file_path: Path to the file to make active
+    #     """
+    #     if file_path not in self.media_input_obj.file_list:
+    #         raise ValueError(f"File {file_path} not found in media input file list")
+
+    #     # Update primary file and related properties
+    #     self.primary_file = file_path
+    #     self.media_info_obj = (
+    #         self.media_input_obj.file_list_mediainfo.get(file_path)
+    #         if self.media_input_obj.file_list_mediainfo
+    #         else None
+    #     )
+    #     self.guess_name = guessit(file_path.name)
+
+    #     # For series, extract episode info from filename
+    #     if self.is_series_mode:
+    #         self._update_episode_info_from_file(file_path)
+
+    # def get_output_for_file(self, file_path: Path) -> str | None:
+    #     """
+    #     Generate output for a specific file without permanently changing context.
+
+    #     Args:
+    #         file_path: Path to the file to process
+
+    #     Returns:
+    #         Formatted string for the file
+    #     """
+    #     # Store original state
+    #     original_primary = self.primary_file
+    #     original_media_info = self.media_info_obj
+    #     original_guess = self.guess_name
+    #     original_season = self.season_number
+    #     original_episode = self.episode_number
+
+    #     try:
+    #         # Temporarily set the active file
+    #         self.set_active_file(file_path)
+
+    #         # Generate output
+    #         return self.get_output()
+
+    #     finally:
+    #         # Restore original state
+    #         self.primary_file = original_primary
+    #         self.media_info_obj = original_media_info
+    #         self.guess_name = original_guess
+    #         self.season_number = original_season
+    #         self.episode_number = original_episode
+
+    # def get_output_for_all_files(self) -> dict[Path, str]:
+    #     """
+    #     Generate outputs for all files in the file list.
+
+    #     Returns:
+    #         Dictionary mapping file paths to their formatted outputs
+    #     """
+    #     outputs = {}
+    #     for file_path in self.media_input_obj.file_list:
+    #         try:
+    #             output = self.get_output_for_file(file_path)
+    #             if output:
+    #                 outputs[file_path] = output
+    #         except Exception as e:
+    #             # Log error but continue with other files
+    #             print(f"Error processing {file_path}: {e}")
+
+    #     return outputs
+
+    def _get_source_mediainfo(self) -> MediaInfo | None:
+        """Get MediaInfo for the source file."""
+        if not self.source_file:
+            return None
+
+        # Get from file_list_mediainfo if available
+        if self.media_input_obj.file_list_mediainfo:
+            return self.media_input_obj.file_list_mediainfo.get(self.source_file)
+
+        return None
+
+        # Get from file_list_mediainfo if available
+        if self.media_input_obj.file_list_mediainfo:
+            return self.media_input_obj.file_list_mediainfo.get(self.source_file)
+
+        return None
+
+    # def get_batch_outputs(
+    #     self, template_per_file: dict[Path, str] | None = None
+    # ) -> dict[Path, str]:
+    #     """
+    #     Generate outputs for multiple files, optionally with different templates per file.
+
+    #     Args:
+    #         template_per_file: Optional dict mapping file paths to specific token strings.
+    #                           If None, uses the instance's token_string for all files.
+
+    #     Returns:
+    #         Dictionary mapping file paths to their formatted outputs
+    #     """
+    #     outputs = {}
+    #     original_token_string = self.token_string
+
+    #     for file_path in self.media_input_obj.file_list:
+    #         try:
+    #             # Set custom template if provided
+    #             if template_per_file and file_path in template_per_file:
+    #                 self.token_string = template_per_file[file_path]
+
+    #             output = self.get_output_for_file(file_path)
+    #             if output:
+    #                 outputs[file_path] = output
+
+    #         except Exception as e:
+    #             print(f"Error processing {file_path}: {e}")
+    #         finally:
+    #             # Restore original template
+    #             self.token_string = original_token_string
+
+    #     return outputs
+
+    # @property
+    # def active_file_info(self) -> dict[str, Any]:
+    #     """
+    #     Get information about the currently active file.
+
+    #     Returns:
+    #         Dictionary with current file context information
+    #     """
+    #     return {
+    #         "file_path": self.primary_file,
+    #         "has_mediainfo": self.media_info_obj is not None,
+    #         "season_number": self.season_number,
+    #         "episode_number": self.episode_number,
+    #         "guessit_info": self.guess_name,
+    #         "is_series_mode": self.is_series_mode,
+    #         "is_comparison_mode": self.is_comparison_mode,
+    #     }
+
+    @property
+    def media_input(self) -> Path:
+        """Backward compatibility property."""
+        return self.primary_file
+
+    # @property
+    # def is_comparison_mode(self) -> bool:
+    #     """Check if we're in comparison mode."""
+    #     return self.media_input_obj.comparison_pair is not None
+
+    @property
+    def is_series_mode(self) -> bool:
+        """Check if we're processing a series."""
+        return self.media_input_obj.media_type == MediaType.SERIES
+
+    # @property
+    # def is_movie_mode(self) -> bool:
+    #     """Check if we're processing a movie."""
+    #     return self.media_input_obj.media_type == MediaType.MOVIE
+
+    # def get_series_output(self, episode_file: Path) -> str | None:
+    #     """
+    #     Generate output for a specific episode file in a series.
+
+    #     Args:
+    #         episode_file: Specific episode file to process
+
+    #     Returns:
+    #         Formatted string for the episode
+    #     """
+    #     if not self.is_series_mode:
+    #         raise ValueError(
+    #             "get_series_output can only be used with series media type"
+    #         )
+
+    #     # Temporarily update context for this episode
+    #     original_primary = self.primary_file
+    #     original_media_info = self.media_info_obj
+    #     original_guess = self.guess_name
+
+    #     try:
+    #         # Update to episode-specific data
+    #         self.primary_file = episode_file
+    #         self.media_info_obj = (
+    #             self.media_input_obj.file_list_mediainfo.get(episode_file)
+    #             if self.media_input_obj.file_list_mediainfo
+    #             else None
+    #         )
+    #         self.guess_name = guessit(episode_file.name)
+
+    #         # Extract episode info from filename
+    #         self._update_episode_info_from_file(episode_file)
+
+    #         # Generate output
+    #         return self.get_output()
+
+    #     finally:
+    #         # Restore original values
+    #         self.primary_file = original_primary
+    #         self.media_info_obj = original_media_info
+    #         self.guess_name = original_guess
+
+    # def get_all_series_outputs(self) -> dict[Path, str]:
+    #     """Generate outputs for all episodes in a series."""
+    #     if not self.is_series_mode:
+    #         raise ValueError(
+    #             "get_all_series_outputs can only be used with series media type"
+    #         )
+
+    #     outputs = {}
+    #     for episode_file in self.media_input_obj.file_list:
+    #         try:
+    #             output = self.get_series_output(episode_file)
+    #             if output:
+    #                 outputs[episode_file] = output
+    #         except Exception as e:
+    #             # Log error but continue with other episodes
+    #             print(f"Error processing {episode_file}: {e}")
+
+    #     return outputs
+
+    # def _update_episode_info_from_file(self, episode_file: Path) -> None:
+    #     """Extract season and episode numbers from filename."""
+    #     guess_info = guessit(episode_file.name)
+
+    #     # Update season/episode numbers if found
+    #     if "season" in guess_info:
+    #         self.season_number = guess_info["season"]
+    #     if "episode" in guess_info:
+    #         self.episode_number = guess_info["episode"]
+
+    # @classmethod
+    # def from_legacy_inputs(  # TODO: remove i doubt we will ever need this
+    #     cls,
+    #     media_input: Path,
+    #     token_string: str,
+    #     source_file: Path | None = None,
+    #     media_info_obj: MediaInfo | None = None,
+    #     source_file_mi_obj: MediaInfo | None = None,
+    #     **kwargs,
+    # ) -> "TokenReplacer":
+    #     """
+    #     Create TokenReplacer from legacy single-file inputs.
+    #     Provides backward compatibility.
+    #     """
+    #     # create MediaInputPayload from legacy inputs
+    #     file_list = [media_input] if media_input.is_file() else []
+
+    #     # build file_list_mediainfo
+    #     file_list_mediainfo = {}
+    #     if media_info_obj:
+    #         file_list_mediainfo[media_input] = media_info_obj
+    #     elif media_input.exists():
+    #         media_info = MediaInfo.parse(str(media_input))
+    #         file_list_mediainfo[media_input] = media_info
+
+    #     # add source file to file list and mediainfo if provided
+    #     if source_file:
+    #         file_list.append(source_file)
+    #         if source_file_mi_obj:
+    #             file_list_mediainfo[source_file] = source_file_mi_obj
+    #         elif source_file.exists():
+    #             media_info = MediaInfo.parse(str(source_file))
+    #             file_list_mediainfo[source_file] = media_info
+
+    #     # create comparison pair if we have both source and media files
+    #     comparison_pair = None
+    #     if source_file:
+    #         comparison_pair = ComparisonPair(source=source_file, media=media_input)
+
+    #     payload = MediaInputPayload(
+    #         input_path=media_input,
+    #         file_list=file_list,
+    #         file_list_mediainfo=file_list_mediainfo if file_list_mediainfo else None,
+    #         comparison_pair=comparison_pair,
+    #         media_type=MediaType.MOVIE,  # Default to movie for legacy
+    #     )
+
+    #     return cls(payload, token_string, **kwargs)
 
     def get_output(self) -> str | None:
         """
@@ -722,6 +1037,15 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.PROPER_REASON.token:
             return self._proper_reason(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_MEDIAINFO.token:
+            return self._episode_mediainfo(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_METADATA.token:
+            return self._episode_metadata(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_METADATA_MEDIAINFO.token:
+            return self._episode_metadata_mediainfo(token_data)
 
         elif token_data.bracket_token == Tokens.TOTAL_SEASONS.token:
             return self._total_seasons(token_data)
@@ -1528,7 +1852,14 @@ class TokenReplacer:
         return self._optional_user_input(mal_id, token_data)
 
     def _original_filename(self, token_data: TokenData) -> str:
-        return self._optional_user_input(self.media_input.stem, token_data)
+        # For series, use directory name or episode filename based on context
+        if self.is_series_mode and self.media_input_obj.input_path:
+            if self.media_input_obj.input_path.is_dir():
+                return self._optional_user_input(
+                    self.media_input_obj.input_path.name, token_data
+                )
+
+        return self._optional_user_input(self.primary_file.stem, token_data)
 
     def _original_language(self, token_data: TokenData, char: int | None = None) -> str:
         lang = ""
@@ -2036,6 +2367,277 @@ class TokenReplacer:
             )
         return self._optional_user_input(proper_reason, token_data)
 
+    def _episode_mediainfo(self, token_data: TokenData) -> str:
+        if (
+            not self.is_series_mode
+            or not self.media_input_obj.file_list
+            or not self.media_input_obj.file_list_mediainfo
+        ):
+            return ""
+
+        output = []
+        for file_path in self.media_input_obj.file_list:
+            mi_obj = self.media_input_obj.file_list_mediainfo.get(file_path)
+            if mi_obj:
+                get_synopsis = self.get_mi_synopsis(mi_obj)
+                if not get_synopsis:
+                    continue
+                output.append(f"{file_path.stem}\n{get_synopsis}")
+
+        return self._optional_user_input(
+            "\n\n".join(output) if output else "", token_data
+        )
+
+    def get_mi_synopsis(self, mi_obj: MediaInfo) -> str:
+        output = ""
+
+        # video
+        v_track = mi_obj.video_tracks[0]
+        v_avg_bitrate = calculate_avg_bitrate(v_track)
+        resolution = VideoResolutionAnalyzer(mi_obj).get_resolution()
+        video_data = (
+            v_track.format,
+            f"{v_avg_bitrate} kbps" if v_avg_bitrate else None,
+            resolution if resolution else None,
+            f"{v_track.frame_rate} FPS" if v_track.frame_rate else "",
+            v_track.other_display_aspect_ratio[0]
+            if v_track.other_display_aspect_ratio
+            else None,
+            v_track.format_profile,
+        )
+        output += " / ".join((str(x) for x in video_data if x))
+
+        # audios
+        audio_s = []
+        for a_track in mi_obj.audio_tracks:
+            a_channel_s = ParseAudioChannels.get_channel_layout(a_track)
+            a_lang = None
+            detect_language_code = get_language_mi(a_track)
+            if detect_language_code:
+                a_lang = get_full_language_str(detect_language_code)
+            a_avg_bitrate = calculate_avg_bitrate(a_track)
+            audio_data = (
+                f"{a_track.format} {a_channel_s}",
+                a_lang if a_lang else None,
+                a_track.other_sampling_rate[0] if a_track.other_sampling_rate else None,
+                f"{a_avg_bitrate} kbps" if a_avg_bitrate else None,
+            )
+            audio_s.append(audio_data)
+
+        output += "\n" + "\n".join(" / ".join(str(x) for x in a if x) for a in audio_s)
+        return output
+
+    def _episode_metadata(self, token_data: TokenData) -> str:
+        if not self.is_series_mode or not self.media_input_obj.series_episode_map:
+            return ""
+
+        epi_data = []
+        for episode, episode_data in self.media_input_obj.series_episode_map.items():
+            # `episode` is expected to be a Path (filename) in the map keys
+            season_episode_str = ""
+            season_num = episode_data.get("season")
+            episode_num = episode_data.get("episode")
+            if season_num:
+                season_episode_str += f"Season {str(season_num).zfill(2)}"
+            if episode_num:
+                season_episode_str += (
+                    f" Episode {str(episode_num).zfill(2)}"
+                    if season_num
+                    else f"Episode {str(episode_num).zfill(2)}"
+                )
+
+            air_date = ""
+            get_air_date = episode_data.get("episode_data")
+            if get_air_date and get_air_date.get("aired"):
+                air_date = get_air_date.get("aired")
+
+            data = (
+                season_episode_str,
+                episode_data.get("episode_name"),
+                air_date if air_date else None,
+            )
+            # prepend filename/stem to the metadata block so the filename is shown at the top
+            # use `episode.stem` if `episode` looks like a Path-like object, otherwise fall back
+            filename_header = ""
+            try:
+                # path-like objects have .stem
+                filename_header = episode.stem
+            except Exception:
+                # fallback to string cast
+                filename_header = str(episode)
+
+            if data:
+                meta_block = "\n".join((str(x) for x in data if x))
+                if meta_block:
+                    epi_data.append(f"{filename_header}\n{meta_block}")
+
+        return self._optional_user_input(
+            "\n\n".join(epi_data) if epi_data else "", token_data
+        )
+
+    def _episode_metadata_mediainfo(self, token_data: TokenData) -> str:
+        """Combined token: filename once, then mediainfo synopsis, then metadata.
+
+        <filename>
+        <video / audio lines...>
+        Season XX Episode XX
+        Episode Name
+        Air Date
+        """
+        if (
+            not self.is_series_mode
+            or not self.media_input_obj
+            or not self.media_input_obj.file_list
+        ):
+            return ""
+
+        output_blocks: list[str] = []
+
+        for file_path in self.media_input_obj.file_list:
+            block_lines: list[str] = []
+
+            # filename header
+            try:
+                filename_header = file_path.stem
+            except Exception:
+                filename_header = str(file_path)
+            block_lines.append(filename_header)
+
+            # mediainfo (if present)
+            mi_obj = (
+                self.media_input_obj.file_list_mediainfo.get(file_path)
+                if self.media_input_obj.file_list_mediainfo
+                else None
+            )
+            if mi_obj:
+                synopsis = self.get_mi_synopsis(mi_obj)
+                if synopsis:
+                    # synopsis may be multi-line; extend lines
+                    block_lines.extend(synopsis.splitlines())
+
+            # metadata (if present)
+            episode_data = (
+                self.media_input_obj.series_episode_map.get(file_path)
+                if self.media_input_obj.series_episode_map
+                else None
+            )
+
+            if episode_data:
+                season_episode_str = ""
+                season_num = episode_data.get("season")
+                episode_num = episode_data.get("episode")
+                if season_num:
+                    season_episode_str += f"Season {str(season_num).zfill(2)}"
+                if episode_num:
+                    season_episode_str += (
+                        f" Episode {str(episode_num).zfill(2)}"
+                        if season_num
+                        else f"Episode {str(episode_num).zfill(2)}"
+                    )
+
+                if season_episode_str:
+                    block_lines.append(season_episode_str)
+
+                episode_name = episode_data.get("episode_name")
+                if episode_name:
+                    block_lines.append(str(episode_name))
+
+                air_date = ""
+                get_air_date = episode_data.get("episode_data")
+                if get_air_date and get_air_date.get("aired"):
+                    air_date = get_air_date.get("aired")
+                if air_date:
+                    block_lines.append(str(air_date))
+
+            # only include the file if we have more than the filename alone
+            if len(block_lines) > 1:
+                output_blocks.append("\n".join(block_lines))
+
+        return self._optional_user_input(
+            "\n\n".join(output_blocks) if output_blocks else "", token_data
+        )
+
+    def get_metadata_synopsis(self):
+        """Build a combined metadata + mediainfo synopsis per-file.
+
+        Output format (per file):
+        <filename>
+        <season/episode line>
+        <episode name>
+        <air date>
+        <mediainfo synopsis block>
+
+        Files are separated by a blank line.
+        """
+        # ensure we have files to work with
+        if (
+            not self.is_series_mode
+            or not self.media_input_obj
+            or not self.media_input_obj.file_list
+        ):
+            return ""
+
+        combined = []
+        for file_path in self.media_input_obj.file_list:
+            parts: list[str] = []
+
+            # filename header
+            try:
+                filename_header = file_path.stem
+            except Exception:
+                filename_header = str(file_path)
+            parts.append(filename_header)
+
+            # metadata (if present)
+            episode_data = (
+                self.media_input_obj.series_episode_map.get(file_path)
+                if self.media_input_obj.series_episode_map
+                else None
+            )
+            if episode_data:
+                season_episode_str = ""
+                season_num = episode_data.get("season")
+                episode_num = episode_data.get("episode")
+                if season_num:
+                    season_episode_str += f"Season {str(season_num).zfill(2)}"
+                if episode_num:
+                    season_episode_str += (
+                        f" Episode {str(episode_num).zfill(2)}"
+                        if season_num
+                        else f"Episode {str(episode_num).zfill(2)}"
+                    )
+
+                if season_episode_str:
+                    parts.append(season_episode_str)
+
+                episode_name = episode_data.get("episode_name")
+                if episode_name:
+                    parts.append(str(episode_name))
+
+                air_date = ""
+                get_air_date = episode_data.get("episode_data")
+                if get_air_date and get_air_date.get("aired"):
+                    air_date = get_air_date.get("aired")
+                if air_date:
+                    parts.append(str(air_date))
+
+            # mediainfo (if present)
+            mi_obj = (
+                self.media_input_obj.file_list_mediainfo.get(file_path)
+                if self.media_input_obj.file_list_mediainfo
+                else None
+            )
+            if mi_obj:
+                synopsis = self.get_mi_synopsis(mi_obj)
+                if synopsis:
+                    parts.append(synopsis)
+
+            # only include files that had some useful info (beyond filename)
+            if len(parts) > 1:
+                combined.append("\n".join(parts))
+
+        return "\n\n".join(combined)
+
     def _get_tvdb_data_count(
         self, data_key: str, cache_key: str, token_data: TokenData
     ) -> str:
@@ -2312,3 +2914,24 @@ class TokenReplacer:
             if not allow_negative and val < 0:
                 return
             return val
+
+
+# Individual File Processing
+# Process a specific file temporarily
+# output = token_replacer.get_output_for_file(Path("S01E01.mkv"))
+
+# Or set a file as the active context
+# token_replacer.set_active_file(Path("S01E01.mkv"))
+# output = token_replacer.get_output()
+
+
+# Batch Processing
+# Process all files with the same template
+# all_outputs = token_replacer.get_output_for_all_files()
+
+# Process files with different templates per file
+# templates = {
+#     Path("S01E01.mkv"): "{title} S{season_number:02d}E{episode_number:02d}",
+#     Path("S01E02.mkv"): "{title} - {episode_title}",
+# }
+# outputs = token_replacer.get_batch_outputs(templates)
