@@ -15,8 +15,6 @@ from src.frontend.wizards.nfo_template import NfoTemplate
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.release_notes import ReleaseNotes
 from src.frontend.wizards.rename_encode import RenameEncode
-
-# from src.frontend.wizards.rename_encode_series import RenameEncodeSeries
 from src.frontend.wizards.series_match import SeriesMatch
 from src.frontend.wizards.trackers import TrackersPage
 from src.frontend.wizards.wizard_base_page import DummyWizardPage
@@ -236,7 +234,10 @@ class MainWindowWizard(QWizard):
             else:
                 if self.config.cfg_payload.mvr_enabled:
                     return WizardPages.RENAME_ENCODE_PAGE.value
-                elif self.config.cfg_payload.screenshots_enabled:
+                elif (
+                    not self.config.cfg_payload.mvr_enabled
+                    and self.config.cfg_payload.screenshots_enabled
+                ):
                     return WizardPages.IMAGES_PAGE.value
                 return WizardPages.TRACKERS_PAGE.value
 

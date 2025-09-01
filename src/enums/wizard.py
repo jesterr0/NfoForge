@@ -9,7 +9,7 @@ class WizardPages(Enum):
     MEDIA_SEARCH_PAGE = auto_enum()
     SERIES_MATCHER_PAGE = auto_enum()
     RENAME_ENCODE_PAGE = auto_enum()
-    RENAME_ENCODE_SERIES_PAGE = auto_enum()
+    # RENAME_ENCODE_SERIES_PAGE = auto_enum()
     IMAGES_PAGE = auto_enum()
     TRACKERS_PAGE = auto_enum()
     RELEASE_NOTES_PAGE = auto_enum()
