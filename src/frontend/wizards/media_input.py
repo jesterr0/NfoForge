@@ -132,9 +132,40 @@ class MediaInput(BaseWizardPage):
         source_input_layout.addWidget(self.comparison_source_entry, stretch=1)
         source_input_layout.addWidget(self.comparison_browse_btn)
 
+        script_label = QLabel(
+            '<span>You can <span style="font-weight: bold;">optionally</span> supply a script '
+            "<i>(.vpy, .avs)</i>. It will be used to read crop information and apply those crops "
+            "in comparison image workflows</span>",
+            self.comparison_widget,
+            wordWrap=True,
+        )
+
+        self.script_entry = DNDLineEdit(
+            parent=self.comparison_widget,
+            readOnly=True,
+            placeholderText="Optionally select script file...",
+        )
+        self.script_entry.set_extensions(("*.vpy", "*.avs", "*.txt"))
+        self.script_entry.dropped.connect(self._dropped_comparison_source)
+
+        self.browse_script_btn = QToolButton(self.comparison_widget)
+        self.browse_script_btn.setToolTip("Browse script file")
+        QTAThemeSwap().register(
+            self.browse_script_btn,
+            "ph.file-arrow-down-light",
+            icon_size=QSize(24, 24),
+        )
+        self.browse_script_btn.clicked.connect(self._browse_script)
+
+        script_layout = QHBoxLayout()
+        script_layout.addWidget(self.script_entry, stretch=1)
+        script_layout.addWidget(self.browse_script_btn)
+
         comparison_layout = QVBoxLayout(self.comparison_widget)
         comparison_layout.addWidget(source_file_label)
         comparison_layout.addLayout(source_input_layout)
+        comparison_layout.addWidget(script_label)
+        comparison_layout.addLayout(script_layout)
 
         self.file_tree = FileSystemTreeView(parent=self)
         self.file_tree.hide()
@@ -376,11 +407,34 @@ class MediaInput(BaseWizardPage):
     @Slot()
     def _browse_comparison_source(self) -> None:
         """Browse for comparison source file."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self, "Select Source File", "", "All Files (*.*)"
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Source File",
+            self._get_dialog_dir_path() or "",
+            "All Files (*.*)",
         )
-        if file_path:
-            self.comparison_source_entry.setText(file_path)
+        if path:
+            self.comparison_source_entry.setText(path)
+
+    @Slot()
+    def _browse_script(self) -> None:
+        """Browse for comparison source script file."""
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Script File",
+            self._get_dialog_dir_path() or "",
+            "All Files (*.vpy *.avs *.txt)",
+        )
+        if path:
+            self.script_entry.setText(path)
+
+    def _get_dialog_dir_path(self) -> str | None:
+        """Return string path directory."""
+        path = Path(self.input_entry.text()) if self.input_entry.text() else None
+        if path and path.is_dir():
+            return str(path)
+        elif path and path.is_file():
+            return str(path.parent)
 
     @Slot(bool)
     def _toggle_comparison_mode(self, enabled: bool) -> None:
@@ -420,11 +474,16 @@ class MediaInput(BaseWizardPage):
         if not self.comparison_toggle_btn.isChecked():
             return None
 
-        source_file = self.comparison_source_entry.text().strip()
+        source_file = self.comparison_source_entry.text()
         selected_file = self._get_selected_comparison_file()
+        script_file = self.script_entry.text()
 
         if source_file and selected_file:
-            return ComparisonPair(source=Path(source_file), media=Path(selected_file))
+            return ComparisonPair(
+                source=Path(source_file),
+                media=Path(selected_file),
+                script=Path(script_file) if script_file else None,
+            )
 
     @Slot()
     def reset_page(self) -> None:

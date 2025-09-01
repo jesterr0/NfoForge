@@ -54,6 +54,7 @@
   - Can accept any input, single, comparison etc.
   - Added a new button to enable comparison mode:
     - This allows the user to open a **source** and click the matching file from the input file-tree below.
+    - Allows **script** files _(.vpy, .avs, or .txt)_ files to be opened to read the crop for comparison image workflows.
   - Now tells how many files are being parsed when the user is clicking next in the status bar.
   - File tree now shows up regardless if it's a single file or directory input.
 - MediaInput backend has been reworked:
