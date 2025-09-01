@@ -251,8 +251,7 @@ class MediaInput(BaseWizardPage):
             )
             if not supported_files:
                 raise MediaFileNotFoundError(
-                    "No supported media files selected in directory "
-                    f"({', '.join(self.config.cfg_payload.source_media_ext_filter)})"
+                    "No supported media files selected in directory"
                 )
 
             self.config.media_input_payload.file_list.extend(supported_files)

@@ -69,8 +69,6 @@ class Config:
 
     DEV_MODE: bool = False
 
-    ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
-
     QBIT_SPECIFIC = ("category",)
 
     DELUGE_SPECIFIC = ("label", "path")
@@ -285,12 +283,6 @@ class Config:
                 self.cfg_payload.nfo_forge_theme
             ).value
             general_data["enable_plugins"] = self.cfg_payload.enable_plugins
-            general_data["source_media_ext_filter"] = (
-                self.cfg_payload.source_media_ext_filter
-            )
-            general_data["encode_media_ext_filter"] = (
-                self.cfg_payload.encode_media_ext_filter
-            )
             general_data["releasers_name"] = self.cfg_payload.releasers_name
             general_data["tmdb_language"] = self.cfg_payload.tmdb_language
             general_data["timeout"] = self.cfg_payload.timeout
@@ -1624,12 +1616,6 @@ class Config:
                 ui_scale_factor=general_data.get("ui_scale_factor", 1.0),
                 nfo_forge_theme=nfo_forge_theme,
                 enable_plugins=general_data.get("general_data", False),
-                source_media_ext_filter=general_data.get(
-                    "source_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
-                ),
-                encode_media_ext_filter=general_data.get(
-                    "encode_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
-                ),
                 releasers_name=general_data.get("releasers_name", ""),
                 tmdb_language=general_data.get("tmdb_language", "en-US"),
                 timeout=general_data.get("timeout", 60),

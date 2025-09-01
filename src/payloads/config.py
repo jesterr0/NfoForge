@@ -52,8 +52,6 @@ class ConfigPayload:
     ui_scale_factor: float
     nfo_forge_theme: NfoForgeTheme
     enable_plugins: bool
-    source_media_ext_filter: list[str]
-    encode_media_ext_filter: list[str]
     releasers_name: str
     tmdb_language: str
     timeout: int
