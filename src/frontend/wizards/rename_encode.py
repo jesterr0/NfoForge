@@ -283,14 +283,9 @@ class RenameEncode(BaseWizardPage):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def initializePage(self) -> None:
-        data = self.config.media_input_payload
-        media_file = data.encode_file
+        self.config.media_input_payload.is_empty(True)
+        media_file = self.config.media_input_payload.file_list[0]
         release_group_name = self.config.cfg_payload.mvr_release_group
-
-        if not media_file:
-            raise FileNotFoundError("Failed to load 'media_file' data")
-        else:
-            media_file = Path(media_file)
 
         self.media_label.setText(media_file.stem)
         self.media_label.setToolTip(media_file.stem)
@@ -299,8 +294,9 @@ class RenameEncode(BaseWizardPage):
 
         self.token_override.setText(self.config.cfg_payload.mvr_token)
 
+        comp_pair = self.config.media_input_payload.comparison_pair
         get_quality = self.backend.get_quality(
-            media_input=media_file, source_input=data.source_file
+            media_input=media_file, source_input=comp_pair.source if comp_pair else None
         )
         if get_quality:
             quality_idx = self.quality_combo.findText(get_quality)
@@ -314,7 +310,8 @@ class RenameEncode(BaseWizardPage):
         self.update_generated_name()
 
     def validatePage(self) -> bool:
-        file_input = self.config.media_input_payload.encode_file
+        self.config.media_input_payload.is_empty(True)
+        file_input = self.config.media_input_payload.file_list[0]
         if file_input:
             if not self._name_validations() or not self._quality_validations():
                 return False
@@ -367,8 +364,9 @@ class RenameEncode(BaseWizardPage):
         select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
 
     def _auto_check_remux_checkbox(self) -> None:
-        fp = self.config.media_input_payload.encode_file
-        if fp and "remux" in fp.stem.lower():
+        self.config.media_input_payload.is_empty(True)
+        media_file = self.config.media_input_payload.file_list[0]
+        if media_file and "remux" in media_file.stem.lower():
             self.remux_checkbox.setChecked(True)
 
     @Slot(bool)
@@ -559,10 +557,7 @@ class RenameEncode(BaseWizardPage):
         else:
             self.token_override.setText(token)
 
-        data = self.config.media_input_payload
-        media_file = data.encode_file
-        source_file = data.source_file
-        media_info_obj = data.encode_file_mi_obj
+        self.config.media_input_payload.is_empty(True)
 
         # treat release group as a pure override token
         release_group = self.release_group_entry.text().strip()
@@ -571,11 +566,6 @@ class RenameEncode(BaseWizardPage):
         else:
             self.backend.override_tokens.pop("release_group", None)
 
-        if not media_file:
-            raise FileNotFoundError("Failed to read media_file")
-        if not media_info_obj:
-            raise AttributeError("Failed to parse MediaInfo")
-
         user_tokens = {
             k: v
             for k, (v, t) in self.config.cfg_payload.user_tokens.items()
@@ -583,13 +573,10 @@ class RenameEncode(BaseWizardPage):
         }
 
         get_file_name = self.backend.media_renamer(
-            media_file=media_file,
-            source_file=source_file,
+            media_input_obj=self.config.media_input_payload,
             mvr_token=token,
             mvr_colon_replacement=self.config.cfg_payload.mvr_colon_replace_filename,
             media_search_payload=self.config.media_search_payload,
-            media_info_obj=media_info_obj,
-            source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
             title_clean_rules=self.config.cfg_payload.title_clean_rules,
             video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
             user_tokens=user_tokens,

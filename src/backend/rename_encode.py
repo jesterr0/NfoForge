@@ -2,12 +2,12 @@ from pathlib import Path
 from typing import Any
 
 from guessit import guessit
-from pymediainfo import MediaInfo
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
 from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 
 
@@ -20,27 +20,19 @@ class RenameEncodeBackEnd:
 
     def media_renamer(
         self,
-        media_file: Path,
-        source_file: Path | None,
+        media_input_obj: MediaInputPayload,
         mvr_token: str,
         mvr_colon_replacement: ColonReplace,
         media_search_payload: MediaSearchPayload,
-        media_info_obj: MediaInfo,
-        source_file_mi_obj: MediaInfo | None,
         title_clean_rules: list[tuple[str, str]] | None,
         video_dynamic_range: dict[str, Any] | None,
         user_tokens: dict[str, str] | None,
     ) -> Path | None:
-        # print(movie_clean_title_rules)
         self.token_replacer = TokenReplacer(
-            media_input=media_file,
-            jinja_engine=None,
-            source_file=source_file,
+            media_input_obj=media_input_obj,
             token_string=mvr_token,
             colon_replace=mvr_colon_replacement,
             media_search_obj=media_search_payload,
-            media_info_obj=media_info_obj,
-            source_file_mi_obj=source_file_mi_obj,
             flatten=True,
             file_name_mode=True,
             token_type=FileToken,
