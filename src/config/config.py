@@ -14,7 +14,6 @@ from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.logging_settings import LogLevel
 from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.profile import Profile
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.theme import NfoForgeTheme
@@ -285,7 +284,7 @@ class Config:
             general_data["nfo_forge_theme"] = NfoForgeTheme(
                 self.cfg_payload.nfo_forge_theme
             ).value
-            general_data["profile"] = Profile(self.cfg_payload.profile).value
+            general_data["enable_plugins"] = self.cfg_payload.enable_plugins
             general_data["source_media_ext_filter"] = (
                 self.cfg_payload.source_media_ext_filter
             )
@@ -1135,7 +1134,6 @@ class Config:
             # general
             general_data = toml_data["general"]
             nfo_forge_theme = NfoForgeTheme(general_data.get("nfo_forge_theme", 1))
-            profile = Profile(general_data.get("profile", 1))
 
             # dependencies
             dependencies_data = toml_data["dependencies"]
@@ -1625,7 +1623,7 @@ class Config:
                 ui_suffix=general_data.get("ui_suffix", ""),
                 ui_scale_factor=general_data.get("ui_scale_factor", 1.0),
                 nfo_forge_theme=nfo_forge_theme,
-                profile=profile,
+                enable_plugins=general_data.get("general_data", False),
                 source_media_ext_filter=general_data.get(
                     "source_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
                 ),

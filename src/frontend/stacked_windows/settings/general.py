@@ -26,7 +26,6 @@ from src.backend.utils.file_utilities import (
     open_explorer,
 )
 from src.enums.logging_settings import LogLevel
-from src.enums.profile import Profile
 from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
@@ -86,12 +85,8 @@ class GeneralSettings(BaseSettings):
         )
         self.theme_combo.activated.connect(self._change_theme)
 
-        profile_lbl = QLabel("Profile", self)
-        profile_lbl.setToolTip("Sets workflow profile")
-        self.profile_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        self.profile_combo.activated.connect(self._change_profile)
+        self.enable_plugins = QCheckBox("Enable External Plugins", self)
+        self.enable_plugins.clicked.connect(self._enable_plugins)
 
         plugin_wizard_page_lbl = QLabel("Choose Wizard Input Page", self)
         plugin_wizard_page_lbl.setToolTip(
@@ -170,20 +165,16 @@ class GeneralSettings(BaseSettings):
         )
         self.tmdb_language_combo.activated.connect(self._handle_language_selection)
 
-        prompt_overview = QLabel("Prompt for Overview", self)
-        prompt_overview.setToolTip(
+        self.enable_prompt_overview = QCheckBox("Prompt for Overview", self)
+        self.enable_prompt_overview.setToolTip(
             "If enabled during processing an editable overview will pop up allowing the user to make final edits"
         )
-        self.enable_prompt_overview = QCheckBox(self)
-        self.enable_prompt_overview.setToolTip(prompt_overview.toolTip())
 
-        enable_mkbrr = QLabel("Enable mkbrr", self)
-        enable_mkbrr.setToolTip(
+        self.enable_mkbrr = QCheckBox("Enable mkbrr", self)
+        self.enable_mkbrr.setToolTip(
             "If mkbrr is detected torrent generation will be "
             "completed by mkbrr\n(will fall back to torf if failure is detected)"
         )
-        self.enable_mkbrr = QCheckBox(self)
-        self.enable_mkbrr.setToolTip(enable_mkbrr.toolTip())
         check_mkbrr = QToolButton(self)
         QTAThemeSwap().register(check_mkbrr, "ph.eye-light", icon_size=QSize(20, 20))
         check_mkbrr.setToolTip("Navigate to Dependencies settings tab")
@@ -281,7 +272,7 @@ class GeneralSettings(BaseSettings):
             create_form_layout(scale_factor_lbl, self.ui_scale_factor_spinbox)
         )
         self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
-        self.add_layout(create_form_layout(profile_lbl, self.profile_combo))
+        self.add_layout(create_form_layout(self.enable_plugins))
         self.add_layout(plugin_wizard_page_layout)
         self.add_layout(plugin_token_replacer_layout)
         self.add_layout(pre_upload_processing_layout)
@@ -296,10 +287,8 @@ class GeneralSettings(BaseSettings):
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(tmdb_language_lbl, self.tmdb_language_combo))
         self.add_widget(build_h_line((10, 1, 10, 1)))
-        self.add_layout(
-            create_form_layout(prompt_overview, self.enable_prompt_overview)
-        )
-        self.add_layout(create_form_layout(enable_mkbrr, mkbrr_widget))
+        self.add_layout(create_form_layout(self.enable_prompt_overview))
+        self.add_layout(create_form_layout(mkbrr_widget))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
@@ -321,8 +310,8 @@ class GeneralSettings(BaseSettings):
         self.ui_scale_factor_spinbox.setValue(int(payload.ui_scale_factor * 100))
         self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.nfo_forge_theme)
         self._change_theme()
-        self.load_combo_box(self.profile_combo, Profile, payload.profile)
-        self._change_profile()
+        self.enable_plugins.setChecked(payload.enable_plugins)
+        self._enable_plugins()
         self._load_filter_widget(
             user_settings=payload.source_media_ext_filter,
             filter_widget=self.source_ext_filter,
@@ -529,9 +518,9 @@ class GeneralSettings(BaseSettings):
         self.ui_scale_factor_spinbox.setValue(int(scale_factor * 100))
         self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
 
-    @Slot(int)
-    def _change_profile(self, _: int | None = None) -> None:
-        if self.profile_combo.currentData() == Profile.PLUGIN:
+    @Slot()
+    def _enable_plugins(self) -> None:
+        if self.enable_plugins.isChecked():
             for widget in self._plugin_widgets:
                 widget.show()
                 self._load_plugin_combos()
@@ -650,8 +639,7 @@ class GeneralSettings(BaseSettings):
         self.config.cfg_payload.nfo_forge_theme = NfoForgeTheme(
             self.theme_combo.currentData()
         )
-        self.config.cfg_payload.profile = Profile(self.profile_combo.currentData())
-        if self.profile_combo.currentData() == Profile.PLUGIN:
+        if self.enable_plugins.isChecked():
             self.config.cfg_payload.wizard_page = (
                 self.plugin_wizard_page_combo.currentData()
             )
@@ -695,10 +683,8 @@ class GeneralSettings(BaseSettings):
         self.theme_combo.setCurrentIndex(
             self.config.cfg_payload_defaults.nfo_forge_theme.value - 1
         )
-        self.profile_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.profile.value - 1
-        )
-        self._change_profile()
+        self.enable_plugins.setChecked(False)
+        self._enable_plugins()
         self.plugin_wizard_page_combo.clear()
         self.plugin_token_replacer_combo.clear()
         self._load_filter_widget(

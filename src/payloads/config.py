@@ -7,7 +7,6 @@ from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.profile import Profile
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.theme import NfoForgeTheme
@@ -52,7 +51,7 @@ class ConfigPayload:
     ui_suffix: str
     ui_scale_factor: float
     nfo_forge_theme: NfoForgeTheme
-    profile: Profile
+    enable_plugins: bool
     source_media_ext_filter: list[str]
     encode_media_ext_filter: list[str]
     releasers_name: str

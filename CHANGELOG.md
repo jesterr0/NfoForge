@@ -38,6 +38,7 @@
 
 ### Changed
 
+- TODO add in changes to input pages etc...
 - Template management widget delete button now requires a confirmation before deleting a template.
 - Sandbox changes:
   - Rebuilt the input for sandbox, it is not a _mini wizard_ that works very similarly to the normal work flow. For series we needed more widgets to gather input from the user, so this allows a nice easy to use flow for the user.
@@ -75,6 +76,9 @@
 - Removed **cinemagoer** dependency and replaced it with **imdbinfo**.
 - Update niquests.
 - All calls to mediainfo includes legacy stream data now _(to detect DTS core)_.
+- General Settings Tab:
+  - **Profile** selection drop down has been replaced by a checkbox **Enable External Plugins**.
+  - Checkbox's are no longer stacked vertically and are inline with the text.
 
 ### Fixed
 
@@ -84,6 +88,7 @@
 
 - `{movie_full_title}` has been removed (`{title_exact}` token replaces it).
 - Movie settings page no longer has controls for clean title token and dynamic range control (this is now handled in Global Management).
+- Advanced Input page _(existing functionality will still exist in the **Input** page)_.
 
 ## [0.8.9] - 2025-08-19
 
