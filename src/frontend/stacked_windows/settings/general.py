@@ -639,6 +639,7 @@ class GeneralSettings(BaseSettings):
         self.config.cfg_payload.nfo_forge_theme = NfoForgeTheme(
             self.theme_combo.currentData()
         )
+        self.config.cfg_payload.enable_plugins = self.enable_plugins.isChecked()
         if self.enable_plugins.isChecked():
             self.config.cfg_payload.wizard_page = (
                 self.plugin_wizard_page_combo.currentData()
