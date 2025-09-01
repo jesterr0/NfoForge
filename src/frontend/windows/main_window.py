@@ -47,7 +47,10 @@ class MainWindow(QMainWindow):
         self.config = config
         self.restore_window_settings()
         self.status_profile_label = QLabel(
-            f"Profile: {str(self.config.cfg_payload.profile).title()}", self
+            self.config.cfg_payload.wizard_page
+            if self.config.cfg_payload.wizard_page
+            else "",
+            self,
         )
         self.status_bar.addPermanentWidget(self.status_profile_label)
         self._check_suffix()
