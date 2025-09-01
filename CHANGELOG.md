@@ -60,6 +60,7 @@
     - Allows **script** files _(.vpy, .avs, or .txt)_ files to be opened to read the crop for comparison image workflows.
   - Now tells how many files are being parsed when the user is clicking next in the status bar.
   - File tree now shows up regardless if it's a single file or directory input.
+    - When opening comparison source file and the file tree only has **one** file in the tree, that file will be automatically selected.
 - MediaInput backend has been reworked:
   - Now supports series.
   - Now utilizes async to parse MediaInfo of multiple files concurrently, this greatly speeds up read speeds for anything over a single file.

@@ -2,7 +2,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Qt, Signal, Slot
+from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
@@ -33,7 +33,9 @@ if TYPE_CHECKING:
 
 
 class MediaInput(BaseWizardPage):
-    DEF_INPUT_ENTRY_TXT = "Open file or directory..."
+    MEDIA_PLACEHOLDER_TXT = "Open file or directory..."
+    SOURCE_PLACEHOLDER_TXT = "Select source file to match..."
+    SCRIPT_PLACEHOLDER_TXT = "Optionally select script file..."
 
     progress_signal = Signal(int, int, int)  # progress, completed files, total files
 
@@ -57,32 +59,24 @@ class MediaInput(BaseWizardPage):
         self.worker: GeneralWorker | None = None
         self._loading_completed = False
 
-        self.extensions = self.get_media_extensions()
-
-        self.input_entry: QLineEdit = DNDLineEdit(
-            parent=self, readOnly=True, placeholderText=self.DEF_INPUT_ENTRY_TXT
+        self.media_input_entry: QLineEdit = DNDLineEdit(
+            parent=self, readOnly=True, placeholderText=self.MEDIA_PLACEHOLDER_TXT
         )
-        self.input_entry.set_extensions(self.extensions)
-        self.input_entry.set_accept_dir(True)
-        self.input_entry.dropped.connect(
-            lambda e: self.update_entries(e, self.input_entry)
-        )
+        self.media_input_entry.set_extensions(("*",))
+        self.media_input_entry.set_accept_dir(True)
+        self.media_input_entry.dropped.connect(self._update_media_input)
 
         self.media_button = QToolButton(self)
         QTAThemeSwap().register(
             self.media_button, "ph.file-arrow-down-light", icon_size=QSize(24, 24)
         )
-        self.media_button.clicked.connect(
-            lambda: self.open_media_dialog(self.input_entry, "media", self.extensions)
-        )
+        self.media_button.clicked.connect(self.open_media_input_dialog)
 
         self.media_dir_button = QToolButton(self)
         QTAThemeSwap().register(
             self.media_dir_button, "ph.folder-open-light", icon_size=QSize(24, 24)
         )
-        self.media_dir_button.clicked.connect(
-            lambda: self.open_dir_dialog(self.input_entry)
-        )
+        self.media_dir_button.clicked.connect(self.open_media_input_dir_dialog)
 
         self.comparison_toggle_btn = QToolButton(self)
         self.comparison_toggle_btn.setCheckable(True)
@@ -94,7 +88,7 @@ class MediaInput(BaseWizardPage):
         self.comparison_toggle_btn.toggled.connect(self._toggle_comparison_mode)
 
         button_layout = QHBoxLayout()
-        button_layout.addWidget(self.input_entry, stretch=1)
+        button_layout.addWidget(self.media_input_entry, stretch=1)
         button_layout.addWidget(self.media_button)
         button_layout.addWidget(self.media_dir_button)
         button_layout.addWidget(build_v_line((0, 0, 0, 0)))
@@ -114,7 +108,7 @@ class MediaInput(BaseWizardPage):
         self.comparison_source_entry = DNDLineEdit(
             parent=self.comparison_widget,
             readOnly=True,
-            placeholderText="Select source file to match...",
+            placeholderText=self.SOURCE_PLACEHOLDER_TXT,
         )
         self.comparison_source_entry.set_extensions(("*",))
         self.comparison_source_entry.dropped.connect(self._dropped_comparison_source)
@@ -143,7 +137,7 @@ class MediaInput(BaseWizardPage):
         self.script_entry = DNDLineEdit(
             parent=self.comparison_widget,
             readOnly=True,
-            placeholderText="Optionally select script file...",
+            placeholderText=self.SCRIPT_PLACEHOLDER_TXT,
         )
         self.script_entry.set_extensions(("*.vpy", "*.avs", "*.txt"))
         self.script_entry.dropped.connect(self._dropped_comparison_source)
@@ -188,7 +182,7 @@ class MediaInput(BaseWizardPage):
             return True
 
         required_entries = [
-            self.input_entry,
+            self.media_input_entry,
         ]
         invalid_entries = False
 
@@ -238,7 +232,7 @@ class MediaInput(BaseWizardPage):
         return valid
 
     def update_payload_data(self) -> None:
-        entry_data = Path(self.input_entry.text())
+        entry_data = Path(self.media_input_entry.text())
         self.config.media_input_payload.input_path = entry_data
 
         # handle single file
@@ -253,7 +247,6 @@ class MediaInput(BaseWizardPage):
                     Path(item["path"])
                     for item in checked_items
                     if not item.get("is_dir", False)
-                    and Path(item["path"]).suffix.lower() in self.extensions
                 ]
             )
             if not supported_files:
@@ -331,55 +324,40 @@ class MediaInput(BaseWizardPage):
         self.progress_signal.disconnect(self._handle_progress)
 
     @Slot()
-    def open_media_dialog(
-        self, entry_widget: QLineEdit, title: str, extension: list | set
-    ) -> None:
-        supported_extensions = (
-            f"{title} file ({' '.join(['*' + ext for ext in extension])})"
-        )
+    def open_media_input_dialog(self) -> None:
         open_file, _ = QFileDialog.getOpenFileName(
             parent=self,
-            caption=f"Open {title.title()} File",
-            filter=supported_extensions,
+            caption="Open Media File",
+            filter="Media Files (*.*)",
         )
         if open_file:
-            self.update_entries((str(Path(open_file)),), entry_widget)
+            self._update_media_input(Path(open_file))
 
     @Slot()
-    def open_dir_dialog(self, entry_widget: QLineEdit) -> None:
+    def open_media_input_dir_dialog(self) -> None:
         open_dir = QFileDialog.getExistingDirectory(
             parent=self,
             caption="Select Directory",
         )
         if open_dir:
-            self.update_entries((str(Path(open_dir)),), entry_widget)
+            self._update_media_input(Path(open_dir))
 
-    def get_media_extensions(self) -> Sequence[str]:
-        accepted_inputs = self.config.cfg_payload.source_media_ext_filter
-        if (
-            accepted_inputs
-            and isinstance(accepted_inputs, list)
-            and len(accepted_inputs) > 0
-        ):
-            for item in accepted_inputs:
-                if item not in self.config.ACCEPTED_EXTENSIONS:
-                    QMessageBox.warning(
-                        self,
-                        "Extension Error",
-                        f"Extension {item} is not valid, using defaults...",
-                    )
-                    return self.config.ACCEPTED_EXTENSIONS
-            return accepted_inputs
-        return self.config.ACCEPTED_EXTENSIONS
+    def _update_media_input(self, data: Sequence | Path) -> None:
+        # uncheck/clear comparison section on new files opened
+        self.comparison_toggle_btn.setChecked(False)
+        self._toggle_comparison_mode(False)
 
-    def update_entries(self, event: Sequence, widget: QLineEdit) -> None:
-        path = Path(event[0])
+        if not data:
+            return
+
+        # update entry data
+        path = Path(data[0]) if isinstance(data, Sequence) else data
         self.comparison_toggle_btn.setDisabled(False)
         self.file_tree.build_tree(path)
         self.file_tree.expandAll()
         self.file_tree.show()
         file_path = str(path)
-        widget.setText(file_path)
+        self.media_input_entry.setText(file_path)
         self.file_loaded.emit(file_path)
 
     @Slot(int, int, int)
@@ -403,34 +381,40 @@ class MediaInput(BaseWizardPage):
         """Handle dropped file for comparison source."""
         if val:
             self.comparison_source_entry.setText(str(val[0]))
+            self._auto_select_single_comp_tree_file()
 
     @Slot()
     def _browse_comparison_source(self) -> None:
         """Browse for comparison source file."""
         path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Source File",
-            self._get_dialog_dir_path() or "",
-            "All Files (*.*)",
+            parent=self,
+            caption="Select Source File",
+            dir=self._get_dialog_dir_path() or "",
+            filter="Media Files (*.*)",
         )
         if path:
             self.comparison_source_entry.setText(path)
+            self._auto_select_single_comp_tree_file()
 
     @Slot()
     def _browse_script(self) -> None:
-        """Browse for comparison source script file."""
+        """Browse for comparison script file."""
         path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Select Script File",
-            self._get_dialog_dir_path() or "",
-            "All Files (*.vpy *.avs *.txt)",
+            parent=self,
+            caption="Select Script File",
+            dir=self._get_dialog_dir_path() or "",
+            filter="Script (*.vpy *.avs *.txt)",
         )
         if path:
             self.script_entry.setText(path)
 
     def _get_dialog_dir_path(self) -> str | None:
         """Return string path directory."""
-        path = Path(self.input_entry.text()) if self.input_entry.text() else None
+        path = (
+            Path(self.media_input_entry.text())
+            if self.media_input_entry.text()
+            else None
+        )
         if path and path.is_dir():
             return str(path)
         elif path and path.is_file():
@@ -442,8 +426,7 @@ class MediaInput(BaseWizardPage):
         if enabled:
             self.comparison_widget.show()
         else:
-            self.comparison_widget.hide()
-            self.comparison_source_entry.clear()
+            self._reset_comparison_widget()
 
     def _get_selected_comparison_file(self) -> str | None:
         """Get the currently selected file from the tree for comparison."""
@@ -485,22 +468,85 @@ class MediaInput(BaseWizardPage):
                 script=Path(script_file) if script_file else None,
             )
 
+    def _auto_select_single_comp_tree_file(self) -> None:
+        """
+        If the tree has exactly one file, select it.
+        Uses cached metadata from tree building to avoid filesystem stats.
+        """
+        try:
+            # collect at most two file candidates and short-circuit if > 1
+            candidates: list[str] = []
+            for p in self.file_tree.items.values():
+                # use cached metadata to avoid filesystem stat
+                meta = getattr(self.file_tree, "item_meta", {}).get(str(p), {})
+                is_dir = meta.get("is_dir")
+
+                # determine if it's a file using metadata or fallback
+                if is_dir is False:
+                    candidates.append(p)
+                # metadata missing, fallback to filesystem
+                elif is_dir is None:
+                    if Path(p).is_file():
+                        candidates.append(p)
+                # if is_dir is True, skip (it's a directory)
+
+                if len(candidates) > 1:
+                    return
+
+            if len(candidates) != 1:
+                return
+
+            target = candidates[0]
+
+            # best-effort: find display key and select in model
+            item_text = next(
+                k
+                for k, v in self.file_tree.items.items()
+                if v == target or str(v) == str(target)
+            )
+            model = self.file_tree.model()
+            matches = model.match(
+                model.index(0, 0),
+                Qt.ItemDataRole.DisplayRole,
+                item_text,
+                hits=1,
+                flags=Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+            )
+            if not matches:
+                return
+            idx = matches[0]
+            sel_model = self.file_tree.selectionModel()
+            sel_model.select(
+                idx,
+                QItemSelectionModel.SelectionFlag.ClearAndSelect
+                | QItemSelectionModel.SelectionFlag.Rows,
+            )
+            try:
+                self.file_tree.scrollTo(idx)
+            except Exception:
+                pass
+        except Exception:
+            # best effort only; prevent breaking the flow on unexpected shapes
+            pass
+
+    def _reset_comparison_widget(self) -> None:
+        """Hides comparison section and resets all entries"""
+        self.comparison_toggle_btn.setDisabled(True)
+        self.comparison_toggle_btn.setChecked(False)
+        self.comparison_source_entry.clear()
+        self.comparison_source_entry.setPlaceholderText(self.SOURCE_PLACEHOLDER_TXT)
+        self.script_entry.clear()
+        self.script_entry.setPlaceholderText(self.SCRIPT_PLACEHOLDER_TXT)
+        self.comparison_widget.hide()
+
     @Slot()
     def reset_page(self) -> None:
-        self.input_entry.clear()
-        self.input_entry.setPlaceholderText(self.DEF_INPUT_ENTRY_TXT)
+        self.media_input_entry.clear()
+        self.media_input_entry.setPlaceholderText(self.MEDIA_PLACEHOLDER_TXT)
         self.file_tree.hide()
         self.file_tree.clear_tree()
         self.progress_bar.reset()
         self.progress_bar.hide()
         self.worker = None
         self._loading_completed = False
-
-        # reset comparison mode
-        self.comparison_toggle_btn.setDisabled(True)
-        self.comparison_toggle_btn.setChecked(False)
-        self.comparison_widget.hide()
-        self.comparison_source_entry.clear()
-        self.comparison_source_entry.setPlaceholderText(
-            "Select source file to match..."
-        )
+        self._reset_comparison_widget()
