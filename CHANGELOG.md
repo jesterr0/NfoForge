@@ -79,6 +79,7 @@
 - General Settings Tab:
   - **Profile** selection drop down has been replaced by a checkbox **Enable External Plugins**.
   - Checkbox's are no longer stacked vertically and are inline with the text.
+- Main window status label now updates with the current wizard plugin when selected.
 
 ### Fixed
 
