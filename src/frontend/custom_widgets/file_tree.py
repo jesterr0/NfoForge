@@ -1,4 +1,4 @@
-from os import PathLike
+from os import PathLike, scandir
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +37,7 @@ class FileSystemTreeView(QTreeView):
         self.read_only = read_only
 
         self.items = {}
+        self.item_meta: dict[str, dict[str, Any]] = {}
 
         self._model = QStandardItemModel()
         self._model.setHorizontalHeaderLabels(("Name", "Size", "Ext"))
@@ -54,6 +55,8 @@ class FileSystemTreeView(QTreeView):
 
     def clear_tree(self) -> None:
         self._model.removeRows(0, self._model.rowCount())
+        self.items.clear()
+        self.item_meta.clear()
 
     def build_tree(self, path: PathLike[str] | Path | None) -> None:
         """
@@ -62,13 +65,15 @@ class FileSystemTreeView(QTreeView):
         self.clear_tree()
         if path:
             path = Path(path)
-            root_item = self.create_row_item(path)
+            is_dir = path.is_dir()
+            root_item = self.create_row_item(path, is_dir=is_dir)
             self.items[path.name] = str(path)
-            ext = "" if path.is_dir() else path.suffix.replace(".", "")
+            self.item_meta[str(path)] = {"is_dir": is_dir, "size": None}
+            ext = "" if is_dir else path.suffix.replace(".", "")
             self._model.invisibleRootItem().appendRow(
                 (root_item, QStandardItem(""), QStandardItem(ext))
             )
-            if path.is_dir():
+            if is_dir:
                 self.add_items(root_item, path)
 
     def add_items(self, parent_item, path) -> None:
@@ -76,35 +81,62 @@ class FileSystemTreeView(QTreeView):
         directories = []
         files = []
 
-        # separate directories and files
+        # use os.scandir for efficient metadata gathering
         if path.is_dir():
-            for item_path in sorted(
-                path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
-            ):
-                if item_path.is_dir():
-                    directories.append(item_path)
-                else:
-                    files.append(item_path)
+            try:
+                with scandir(path) as entries:
+                    # collect entries and sort them
+                    entry_list = list(entries)
+                    entry_list.sort(key=lambda e: (not e.is_dir(), e.name.lower()))
+
+                    for entry in entry_list:
+                        item_path = Path(entry.path)
+                        self.items[item_path.name] = str(item_path)
+                        # cache metadata from scandir (no extra stat needed)
+                        self.item_meta[str(item_path)] = {
+                            "is_dir": entry.is_dir(),
+                            "size": None,  # defer size calculation until needed
+                        }
+
+                        if entry.is_dir():
+                            directories.append(item_path)
+                        else:
+                            files.append(item_path)
+            except (OSError, PermissionError):
+                print("falling back!")
+                # fallback to pathlib if scandir fails
+                for item_path in sorted(
+                    path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+                ):
+                    self.items[item_path.name] = str(item_path)
+                    is_dir = item_path.is_dir()
+                    self.item_meta[str(item_path)] = {"is_dir": is_dir, "size": None}
+                    if is_dir:
+                        directories.append(item_path)
+                    else:
+                        files.append(item_path)
         else:
             files.append(path)
+            self.items[path.name] = str(path)
+            self.item_meta[str(path)] = {"is_dir": False, "size": None}
 
         # add directories first
         for item_path in directories:
-            item = self.create_row_item(item_path)
-            self.items[item_path.name] = str(item_path)
+            item = self.create_row_item(item_path, is_dir=True)
             parent_item.appendRow((item, QStandardItem(""), QStandardItem("")))
             # recursively add child items
             self.add_items(item, item_path)
 
         # add files second
         for item_path in files:
-            item = self.create_row_item(item_path)
+            item = self.create_row_item(item_path, is_dir=False)
             size_item = QStandardItem(self.get_file_size_in_gb(item_path))
             suffix_item = QStandardItem(item_path.suffix.replace(".", ""))
-            self.items[item_path.name] = str(item_path)
             parent_item.appendRow((item, size_item, suffix_item))
 
-    def create_row_item(self, item_path: Path) -> QStandardItem:
+    def create_row_item(
+        self, item_path: Path, is_dir: bool | None = None
+    ) -> QStandardItem:
         item = QStandardItem(item_path.name)
         if self.read_only:
             item.setCheckable(False)
@@ -114,7 +146,8 @@ class FileSystemTreeView(QTreeView):
         item.setEditable(False)
         item.setSelectable(True)
         item.setToolTip(str(item_path.name))
-        if item_path.is_dir():
+        # use provided is_dir to avoid extra stat, fallback to filesystem check
+        if is_dir if is_dir is not None else item_path.is_dir():
             item.setIcon(self.icon_provider.icon(QFileIconProvider.IconType.Folder))
         else:
             item.setIcon(self.get_icon(item_path))
@@ -167,11 +200,25 @@ class FileSystemTreeView(QTreeView):
             if is_checked:
                 path_str = self.items[item.text()]
                 path_obj = Path(path_str)
-                try:
-                    size = path_obj.stat().st_size
-                except Exception:
+
+                # use cached metadata when available
+                meta = self.item_meta.get(path_str, {})
+                is_dir = meta.get("is_dir")
+                if is_dir is None:
+                    is_dir = path_obj.is_dir()  # fallback
+
+                # get or calculate size
+                size = meta.get("size")
+                if size is None and not is_dir:
+                    try:
+                        size = path_obj.stat().st_size
+                        # cache the size for future use
+                        self.item_meta[path_str]["size"] = size
+                    except Exception:
+                        size = 0
+                elif is_dir:
                     size = 0
-                is_dir = path_obj.is_dir()
+
                 if root_path:
                     try:
                         relative_path = str(path_obj.relative_to(root_path))

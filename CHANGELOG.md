@@ -48,7 +48,10 @@
   - `{movie_clean_title}` has been replaced with `{title_clean}`.
   - `{movie_exact_title}` has been replaced with `{title_exact}`.
   - All MediaInfo tokens have had the `mi_` prefix removed (e.g., `{mi_audio_codec}` is now `{audio_codec}`, `{mi_video_width}` is now `{video_width}`).
-- FileTree widget will now display system icons before using any custom defined icons.
+- FileTree widget changes:
+  - Now display system icons before using any custom defined icons.
+  - Massively optimized filetype detection.
+  - Now properly clears item cache on reset (this wouldn't have caused any major issues).
 - MediaInput wizard page has been been modified:
   - No longer considered **Basic** input, this wizard page will handle all inputs _(besides plugin wizard pages)_.
   - Can accept any input, single, comparison etc.
