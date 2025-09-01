@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import NamedTuple
 
 from src.enums.image_host import ImageHost, ImageSource
@@ -28,4 +29,7 @@ RenameNormalization = NamedTuple(
         ("normalized", str),
         ("re_gex", tuple[str]),
     ),
+)
+ComparisonPair = NamedTuple(
+    "ComparisonPair", (("source", Path), ("media", Path), ("script", Path | None))
 )
