@@ -310,7 +310,6 @@ class RenameEncode(BaseWizardPage):
         self.update_generated_name()
 
     def validatePage(self) -> bool:
-        self.config.media_input_payload.is_empty(True)
         file_input = self.config.media_input_payload.file_list[0]
         if file_input:
             if not self._name_validations() or not self._quality_validations():
@@ -364,7 +363,6 @@ class RenameEncode(BaseWizardPage):
         select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
 
     def _auto_check_remux_checkbox(self) -> None:
-        self.config.media_input_payload.is_empty(True)
         media_file = self.config.media_input_payload.file_list[0]
         if media_file and "remux" in media_file.stem.lower():
             self.remux_checkbox.setChecked(True)
@@ -556,8 +554,6 @@ class RenameEncode(BaseWizardPage):
             token = self.token_override.text()
         else:
             self.token_override.setText(token)
-
-        self.config.media_input_payload.is_empty(True)
 
         # treat release group as a pure override token
         release_group = self.release_group_entry.text().strip()
