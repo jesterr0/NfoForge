@@ -30,7 +30,6 @@ from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
@@ -132,18 +131,6 @@ class GeneralSettings(BaseSettings):
             self.plugin_token_replacer_combo,
             plugin_pre_upload_lbl,
             self.plugin_pre_upload_combo,
-        )
-
-        self.source_ext_filter = ExtFilterWidget(
-            label_text="Filter Source Media Extensions (Basic 'Input')",
-            tool_tip="Modify allowed source extensions (Basic 'Input')",
-            parent=self,
-        )
-
-        self.encode_ext_filter = ExtFilterWidget(
-            label_text="Filter Encode Media Extensions (Advanced 'Encode')",
-            tool_tip="Filter Encode Media Extensions (Advanced 'Encode')",
-            parent=self,
         )
 
         releasers_name_lbl = QLabel("Releasers Name")
@@ -276,8 +263,6 @@ class GeneralSettings(BaseSettings):
         self.add_layout(plugin_wizard_page_layout)
         self.add_layout(plugin_token_replacer_layout)
         self.add_layout(pre_upload_processing_layout)
-        self.add_widget(self.source_ext_filter)
-        self.add_widget(self.encode_ext_filter)
         self.add_layout(
             create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
@@ -312,14 +297,6 @@ class GeneralSettings(BaseSettings):
         self._change_theme()
         self.enable_plugins.setChecked(payload.enable_plugins)
         self._enable_plugins()
-        self._load_filter_widget(
-            user_settings=payload.source_media_ext_filter,
-            filter_widget=self.source_ext_filter,
-        )
-        self._load_filter_widget(
-            user_settings=payload.encode_media_ext_filter,
-            filter_widget=self.encode_ext_filter,
-        )
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
         self._load_tmdb_language_combo(payload.tmdb_language)
@@ -380,24 +357,6 @@ class GeneralSettings(BaseSettings):
     def _reset_del_btn(self) -> None:
         self.del_button_timer.stop()
         self.del_config_btn.setText("Delete")
-
-    def _load_filter_widget(
-        self,
-        user_settings: list[str] | None,
-        filter_widget: ExtFilterWidget,
-        defaults: bool = False,
-    ) -> None:
-        accepted_files = []
-        if user_settings and not defaults:
-            for item in self.config.ACCEPTED_EXTENSIONS:
-                if item in user_settings:
-                    accepted_files.append((item, True))
-                else:
-                    accepted_files.append((item, False))
-        else:
-            for item in self.config.ACCEPTED_EXTENSIONS:
-                accepted_files.append((item, True))
-        filter_widget.update_items(accepted_files)
 
     def _load_tmdb_language_combo(self, current_language: str) -> None:
         """Load TMDB language options into the combo box and set current selection."""
@@ -654,12 +613,6 @@ class GeneralSettings(BaseSettings):
             self.config.cfg_payload.wizard_page = ""
             self.config.cfg_payload.token_replacer = ""
             self.config.cfg_payload.pre_upload = ""
-        self.config.cfg_payload.source_media_ext_filter = (
-            self.source_ext_filter.get_accepted_items()
-        )
-        self.config.cfg_payload.encode_media_ext_filter = (
-            self.encode_ext_filter.get_accepted_items()
-        )
         self.config.cfg_payload.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
@@ -688,12 +641,6 @@ class GeneralSettings(BaseSettings):
         self._enable_plugins()
         self.plugin_wizard_page_combo.clear()
         self.plugin_token_replacer_combo.clear()
-        self._load_filter_widget(
-            user_settings=None, filter_widget=self.source_ext_filter, defaults=True
-        )
-        self._load_filter_widget(
-            user_settings=None, filter_widget=self.encode_ext_filter, defaults=True
-        )
         self.releasers_name_entry.clear()
         # set TMDB language to default
         for i in range(self.tmdb_language_combo.count()):
