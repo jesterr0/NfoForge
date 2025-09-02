@@ -1,5 +1,8 @@
 import platform
 
+import flatbencode as bencode
+from niquests.structures import CaseInsensitiveDict
+
 from src.enums.tracker_selection import TrackerSelection
 from src.version import __version__, program_name
 
@@ -88,3 +91,34 @@ def format_image_tag(
         if tracker in _TRACKER_MAP
         else url_str
     )
+
+
+def looks_like_torrent(
+    content: bytes, headers: dict | CaseInsensitiveDict | None = None
+) -> bool:
+    """Return True if response content (and optional headers) look like a .torrent."""
+    if not content:
+        return False
+
+    # fast header check
+    ctype = (headers or {}).get("Content-Type", "").lower()
+    if "application/x-bittorrent" in ctype:
+        return True
+
+    # prefer flatbencode.decode
+    try:
+        bencode.decode(content)
+        return True
+    except Exception:
+        # not valid bencode — fall back to heuristics
+        pass
+
+    # heuristic checks (preferred over just searching for 'd8:announce')
+    if content.startswith(b"d") and b"announce" in content[:500]:
+        return True
+
+    # last-resort: look for common token
+    if b"d8:announce" in content[:200]:
+        return True
+
+    return False
