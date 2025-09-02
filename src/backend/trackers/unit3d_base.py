@@ -8,6 +8,7 @@ from pymediainfo import MediaInfo
 import regex
 
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
+from src.backend.trackers.utils import looks_like_torrent
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_mode import MediaMode
@@ -112,7 +113,8 @@ class Unit3dBaseUploader:
         timeout: int = 60,
     ) -> None:
         self.tracker_name = tracker_name
-        self.upload_url = f"{cleanse_base_url(base_url)}/api/torrents/upload"
+        self.base_url = cleanse_base_url(base_url)
+        self.upload_url = f"{self.base_url}/api/torrents/upload"
         self.media_mode = media_mode
         self.api_key = api_key
         self.torrent_file = torrent_file
@@ -202,6 +204,8 @@ class Unit3dBaseUploader:
         LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
 
         open_torrent = self.torrent_file.open(mode="rb")
+        upload_success = False
+        site_download_link = None
         try:
             with niquests.post(
                 url=self.upload_url,
@@ -216,7 +220,8 @@ class Unit3dBaseUploader:
                 message = response_json.get("message")
                 context = response_json.get("data")
                 if response_json.get("success") is True and "successfully" in message:
-                    return True
+                    upload_success = True
+                    site_download_link = context
                 else:
                     error_msg = f"Message='{message}' Context='{context}'"
                     raise TrackerError(error_msg)
@@ -226,6 +231,86 @@ class Unit3dBaseUploader:
             raise TrackerError(requests_exc_error_msg)
         finally:
             open_torrent.close()
+
+        # replace torrent file with torrent from unit3d tracker
+        self._replace_generated_torrent_from_site(
+            upload_success=upload_success, site_download_link=site_download_link
+        )
+
+        return upload_success
+
+    def _replace_generated_torrent_from_site(
+        self, upload_success: bool, site_download_link: str
+    ) -> None:
+        """Download the full link returned in `data` and atomically replace the local .torrent."""
+        if (
+            not upload_success
+            or not site_download_link
+            or not isinstance(site_download_link, str)
+        ):
+            return
+
+        if not site_download_link.startswith("http"):
+            LOG.debug(
+                LOG.LOG_SOURCE.BE,
+                f"{self.tracker_name}: Ignoring non-http download link: {site_download_link}",
+            )
+            return
+
+        try:
+            with niquests.get(
+                site_download_link, headers=TRACKER_HEADERS, timeout=self.timeout
+            ) as dl_resp:
+                if not dl_resp.ok:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE,
+                        f"{self.tracker_name}: Failed to download site .torrent: HTTP "
+                        f"{dl_resp.status_code} from {site_download_link}",
+                    )
+                    return
+
+                if not dl_resp.content or not dl_resp.headers:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE,
+                        f"{self.tracker_name}: Failed to detect content and/or headers in response",
+                    )
+                    return
+
+                if not looks_like_torrent(dl_resp.content, dl_resp.headers):
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE,
+                        f"{self.tracker_name}: Download did not return a .torrent from {site_download_link} "
+                        f"(type: {dl_resp.headers.get('Content-Type')})",
+                    )
+                    return
+
+                # write atomically: write to temp then replace
+                tmp_path = self.torrent_file.with_name(
+                    self.torrent_file.name + "_dl.tmp"
+                )
+                try:
+                    tmp_path.write_bytes(dl_resp.content)
+                    tmp_path.replace(self.torrent_file)
+                    LOG.info(
+                        LOG.LOG_SOURCE.BE,
+                        f"{self.tracker_name}: Replaced local torrent with site-generated torrent "
+                        f"from {site_download_link}",
+                    )
+                except Exception as e:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE,
+                        f"{self.tracker_name}: Failed to write replaced torrent file: {e}",
+                    )
+                    try:
+                        if tmp_path.exists():
+                            tmp_path.unlink()
+                    except Exception:
+                        pass
+        except niquests.exceptions.RequestException as e:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"{self.tracker_name}: Error fetching site .torrent: {e}",
+            )
 
     def _get_category_id(self) -> str:
         return self.cat_enum(self.cat_enum.MOVIE).value

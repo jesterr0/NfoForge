@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.10] - 2025-09-01
+
+### Changed
+
+- Now downloads the torrent after upload for **UNIT3D** trackers. This is now [required on v9.1.6](https://github.com/HDInnovations/UNIT3D/pull/4910).
+
 ## [0.8.9] - 2025-08-19
 
 ### Added

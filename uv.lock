@@ -1077,7 +1077,7 @@ wheels = [
 
 [[package]]
 name = "nfoforge"
-version = "0.8.9"
+version = "0.8.10"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -1086,6 +1086,7 @@ dependencies = [
     { name = "bencode-py" },
     { name = "cinemagoer" },
     { name = "deluge-web-client" },
+    { name = "flatbencode" },
     { name = "guessit" },
     { name = "iso639-lang" },
     { name = "jinja2" },
@@ -1139,6 +1140,7 @@ requires-dist = [
     { name = "cinemagoer", specifier = ">=2023.5.1" },
     { name = "cython", marker = "extra == 'dev'", specifier = ">=3.0.12" },
     { name = "deluge-web-client", specifier = ">=1.0.7" },
+    { name = "flatbencode" },
     { name = "guessit", specifier = ">=3.8.0" },
     { name = "iso639-lang", specifier = ">=2.6.3" },
     { name = "jinja2", specifier = ">=3.1.6" },
