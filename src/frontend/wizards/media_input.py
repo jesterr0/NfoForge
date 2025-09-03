@@ -139,8 +139,8 @@ class MediaInput(BaseWizardPage):
             readOnly=True,
             placeholderText=self.SCRIPT_PLACEHOLDER_TXT,
         )
-        self.script_entry.set_extensions(("*.vpy", "*.avs", "*.txt"))
-        self.script_entry.dropped.connect(self._dropped_comparison_source)
+        self.script_entry.set_extensions((".vpy", ".avs", ".txt"))
+        self.script_entry.dropped.connect(self._dropped_script)
 
         self.browse_script_btn = QToolButton(self.comparison_widget)
         self.browse_script_btn.setToolTip("Browse script file")
@@ -394,6 +394,12 @@ class MediaInput(BaseWizardPage):
         if path:
             self.comparison_source_entry.setText(path)
             self._auto_select_single_comp_tree_file()
+
+    @Slot(list)
+    def _dropped_script(self, val: list[Path]) -> None:
+        """Handle dropped file for script."""
+        if val:
+            self.script_entry.setText(str(val[0]))
 
     @Slot()
     def _browse_script(self) -> None:
