@@ -35,6 +35,7 @@
   - New widget that will allow the user to match their episode(s) with aired, dvd, or absolute data parsed from **TVDB**. This data will allow NfoForge to accurately rename/manage files throughout the rest of the work flow.
   - New wizard page for the user to access this during the workflow.
 - Support for plugin **filters** and **functions** for flat strings _(no documentation yet on this https://github.com/jesterr0/NfoForge/issues/97)_.
+- Built a dialog crop widget that wraps the existing crop widget.
 
 ### Changed
 
@@ -85,6 +86,13 @@
   - **Profile** selection drop down has been replaced by a checkbox **Enable External Plugins**.
   - Checkbox's are no longer stacked vertically and are inline with the text.
 - Main window status label now updates with the current wizard plugin when selected.
+- Crop Widget:
+  - Improved script detection logic for AviSynth/VapourSynth scripts for manual crops.
+  - Re-organized the widget to make things look nicer.
+  - Added a description label.
+  - Adjusted widget margins.
+  - You can now pop out the text editor widget for the text input.
+  - Text window is now read only.
 
 ### Fixed
 
