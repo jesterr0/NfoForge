@@ -2,7 +2,8 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
+from jinja2.exceptions import TemplateSyntaxError
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -16,12 +17,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from jinja2.exceptions import TemplateSyntaxError
 from qtpy.QtWidgets import QMenu
 
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import TokenType, Tokens
+from src.backend.tokens import Tokens, TokenType
 from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
 from src.enums.tracker_selection import TrackerSelection
@@ -414,7 +414,7 @@ class TemplateSelector(QWidget):
             if not self.config.media_input_payload.input_path:
                 raise FileNotFoundError("No input path to check template")
 
-            if not self.reset_sandbox_cache.isVisible():
+            if self.sandbox and not self.reset_sandbox_cache.isVisible():
                 self.reset_sandbox_cache.show()
 
             user_tokens = {
