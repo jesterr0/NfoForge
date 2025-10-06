@@ -263,6 +263,8 @@ class BHDUploader:
     def generate_release_title(release_title: str) -> str:
         name = release_title.replace(".", " ")
         name = re.sub(r"\s{2,}", " ", name)
+        name = re.sub(r"\s(\d)\s([01])\s", r" \1.\2 ", name)
+        name = re.sub(r"\bDD\s+(\d\.[01])", r"DD\1", name)
         return name
 
 
