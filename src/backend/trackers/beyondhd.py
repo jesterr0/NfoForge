@@ -263,6 +263,13 @@ class BHDUploader:
     def generate_release_title(release_title: str) -> str:
         name = release_title.replace(".", " ")
         name = re.sub(r"\s{2,}", " ", name)
+        year_match = re.search(r"\b(?:19|20)\d{2}\b", name)
+        if year_match:
+            before_year = name[:year_match.end()]
+            after_year = name[year_match.end():]
+            after_year = re.sub(r"\s(\d)\s([01])\s", r" \1.\2 ", after_year)
+            after_year = re.sub(r"\bDD\s+(\d\.[01])", r"DD\1", after_year)
+            name = before_year + after_year
         return name
 
 
