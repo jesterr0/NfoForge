@@ -297,7 +297,7 @@ class RenameEncode(BaseWizardPage):
 
         self._pre_load_attribute_combos(media_file.stem)
 
-        # Apply localization override from plugin if present
+        # apply localization override from plugin if present # TODO: handle all potential overrides later
         localization_override = self.config.shared_data.dynamic_data.get("localization_override")
         if localization_override:
             localization_idx = self.localization_combo.findText(localization_override)
