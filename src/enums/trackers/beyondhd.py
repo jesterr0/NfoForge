@@ -68,3 +68,40 @@ class BHDLiveRelease(Enum):
             BHDLiveRelease.LIVE: "Live",
         }
         return str_map[self]
+
+
+class BHDEdition(Enum):
+    """BeyondHD supported edition values and their mappings from NfoForge edition names"""
+
+    COLLECTOR = "Collector"
+    DIRECTOR = "Director"
+    EXTENDED = "Extended"
+    LIMITED = "Limited"
+    SPECIAL = "Special"
+    THEATRICAL = "Theatrical"
+    UNCUT = "Uncut"
+    UNRATED = "Unrated"
+
+    @classmethod
+    def from_nfoforge_edition(cls, edition: str) -> "BHDEdition | None":
+        """
+        Map NfoForge edition names to BeyondHD edition values.
+
+        Args:
+            edition: Edition string from NfoForge rename wizard
+
+        Returns:
+            BHDEdition enum member if mapping exists, None otherwise
+        """
+        # Mapping from NfoForge edition names to BHD editions
+        mapping = {
+            "Collectors Edition": cls.COLLECTOR,
+            "Directors Cut": cls.DIRECTOR,
+            "Extended Cut": cls.EXTENDED,
+            "Limited Edition": cls.LIMITED,
+            "Special Edition": cls.SPECIAL,
+            "Theatrical Cut": cls.THEATRICAL,
+            "Uncut": cls.UNCUT,
+            "Unrated": cls.UNRATED,
+        }
+        return mapping.get(edition)
