@@ -1273,6 +1273,7 @@ class ProcessBackEnd:
                 edition=edition,
                 localization=localization,
                 add_localization_to_custom_edition=tracker_payload.add_localization_to_custom_edition,
+                stream_optimized=tracker_payload.stream_optimized,
             )
         elif tracker is TrackerSelection.PASS_THE_POPCORN:
             tracker_payload = self.config.cfg_payload.ptp_tracker

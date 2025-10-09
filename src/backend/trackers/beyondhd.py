@@ -96,6 +96,7 @@ def bhd_uploader(
     edition: str | None = None,
     localization: str | None = None,
     add_localization_to_custom_edition: bool = False,
+    stream_optimized: bool = False,
 ) -> str | None:
     uploader = BHDUploader(
         api_key=api_key,
@@ -116,6 +117,7 @@ def bhd_uploader(
         edition=edition,
         localization=localization,
         add_localization_to_custom_edition=add_localization_to_custom_edition,
+        stream_optimized=stream_optimized,
     )
 
 
@@ -149,6 +151,7 @@ class BHDUploader:
         edition: str | None = None,
         localization: str | None = None,
         add_localization_to_custom_edition: bool = False,
+        stream_optimized: bool = False,
     ) -> str | None:
         upload_payload = {
             "name": tracker_title
@@ -160,8 +163,9 @@ class BHDUploader:
             "internal": int(internal),
             "live": live_release.value,
             "anon": int(anonymous),
-            # "stream": 1,
         }
+        if stream_optimized:
+            upload_payload["stream"] = 1
         if imdb_id:
             upload_payload["imdb_id"] = imdb_id
         if tmdb_id:

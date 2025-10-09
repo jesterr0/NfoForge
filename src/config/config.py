@@ -441,6 +441,9 @@ class Config:
             bhd_data["add_localization_to_custom_edition"] = (
                 self.cfg_payload.bhd_tracker.add_localization_to_custom_edition
             )
+            bhd_data["stream_optimized"] = (
+                self.cfg_payload.bhd_tracker.stream_optimized
+            )
 
             # PassThePopcorn tracker
             if "pass_the_popcorn" not in tracker_data:
@@ -1252,6 +1255,7 @@ class Config:
                 add_localization_to_custom_edition=bhd_tracker_data.get(
                     "add_localization_to_custom_edition", False
                 ),
+                stream_optimized=bhd_tracker_data.get("stream_optimized", False),
             )
 
             ptp_tracker_data = tracker_data["pass_the_popcorn"]

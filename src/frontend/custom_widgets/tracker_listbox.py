@@ -356,6 +356,9 @@ class BHDTrackerEdit(TrackerEditBase):
         )
         self.add_localization_to_custom_edition = QCheckBox(self)
 
+        stream_optimized_lbl = QLabel("Upload releases as Streaming Optimized", self)
+        self.stream_optimized = QCheckBox(self)
+
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(100, 2000)
@@ -370,6 +373,7 @@ class BHDTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(
             localization_to_custom_edition_lbl, self.add_localization_to_custom_edition
         )
+        self.add_pair_to_layout(stream_optimized_lbl, self.stream_optimized)
         self.add_pair_to_layout(image_width_lbl, self.image_width)
         self.add_screen_shot_settings()
 
@@ -392,6 +396,7 @@ class BHDTrackerEdit(TrackerEditBase):
         self.add_localization_to_custom_edition.setChecked(
             tracker_data.add_localization_to_custom_edition
         )
+        self.stream_optimized.setChecked(bool(tracker_data.stream_optimized))
         self.image_width.setValue(tracker_data.image_width)
         if self.screen_shot_settings:
             self.screen_shot_settings.load_settings(
@@ -420,6 +425,9 @@ class BHDTrackerEdit(TrackerEditBase):
         self.config.cfg_payload.bhd_tracker.internal = int(self.internal.isChecked())
         self.config.cfg_payload.bhd_tracker.add_localization_to_custom_edition = (
             self.add_localization_to_custom_edition.isChecked()
+        )
+        self.config.cfg_payload.bhd_tracker.stream_optimized = (
+            self.stream_optimized.isChecked()
         )
         self.config.cfg_payload.bhd_tracker.image_width = self.image_width.value()
         if self.screen_shot_settings:
