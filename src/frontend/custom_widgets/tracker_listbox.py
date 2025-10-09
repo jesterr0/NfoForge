@@ -351,6 +351,11 @@ class BHDTrackerEdit(TrackerEditBase):
         internal_lbl = QLabel("Internal", self)
         self.internal = QCheckBox(self)
 
+        localization_to_custom_edition_lbl = QLabel(
+            "Add/append localization to Custom Edition field on upload", self
+        )
+        self.add_localization_to_custom_edition = QCheckBox(self)
+
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(100, 2000)
@@ -362,6 +367,9 @@ class BHDTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(promo_lbl, self.promo)
         self.add_pair_to_layout(live_release_lbl, self.live_release)
         self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(
+            localization_to_custom_edition_lbl, self.add_localization_to_custom_edition
+        )
         self.add_pair_to_layout(image_width_lbl, self.image_width)
         self.add_screen_shot_settings()
 
@@ -381,6 +389,9 @@ class BHDTrackerEdit(TrackerEditBase):
             self.live_release, BHDLiveRelease, tracker_data.live_release
         )
         self.internal.setChecked(bool(tracker_data.internal))
+        self.add_localization_to_custom_edition.setChecked(
+            tracker_data.add_localization_to_custom_edition
+        )
         self.image_width.setValue(tracker_data.image_width)
         if self.screen_shot_settings:
             self.screen_shot_settings.load_settings(
@@ -407,6 +418,9 @@ class BHDTrackerEdit(TrackerEditBase):
             self.live_release.currentData()
         )
         self.config.cfg_payload.bhd_tracker.internal = int(self.internal.isChecked())
+        self.config.cfg_payload.bhd_tracker.add_localization_to_custom_edition = (
+            self.add_localization_to_custom_edition.isChecked()
+        )
         self.config.cfg_payload.bhd_tracker.image_width = self.image_width.value()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()

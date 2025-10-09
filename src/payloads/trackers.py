@@ -65,6 +65,7 @@ class BeyondHDInfo(TrackerInfo):
     live_release: BHDLiveRelease = BHDLiveRelease.LIVE
     internal: int = 0
     image_width: int = 350
+    add_localization_to_custom_edition: bool = False
 
 
 @dataclass(slots=True)

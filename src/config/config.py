@@ -438,6 +438,9 @@ class Config:
             ).value
             bhd_data["internal"] = self.cfg_payload.bhd_tracker.internal
             bhd_data["image_width"] = self.cfg_payload.bhd_tracker.image_width
+            bhd_data["add_localization_to_custom_edition"] = (
+                self.cfg_payload.bhd_tracker.add_localization_to_custom_edition
+            )
 
             # PassThePopcorn tracker
             if "pass_the_popcorn" not in tracker_data:
@@ -1246,6 +1249,9 @@ class Config:
                 live_release=BHDLiveRelease(bhd_tracker_data["live_release"]),
                 internal=bhd_tracker_data["internal"],
                 image_width=bhd_tracker_data["image_width"],
+                add_localization_to_custom_edition=bhd_tracker_data.get(
+                    "add_localization_to_custom_edition", False
+                ),
             )
 
             ptp_tracker_data = tracker_data["pass_the_popcorn"]
