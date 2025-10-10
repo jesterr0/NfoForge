@@ -66,6 +66,7 @@ class BeyondHDInfo(TrackerInfo):
     internal: int = 0
     image_width: int = 350
     add_localization_to_custom_edition: bool = False
+    stream_optimized: bool = False
 
 
 @dataclass(slots=True)
