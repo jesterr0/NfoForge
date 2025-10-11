@@ -2,9 +2,15 @@
 
 ## [0.8.11] - 2025-10-11
 
+### Added
+
+- Localization override for rename/encode wizard (yammes).
+- BHD edition support (yammes).
+- Streaming optimized toggle for BHD uploads (yammes).
+
 ### Fixed
 
-- Audio channel spacing/characters for BHD.
+- Audio channel spacing/characters for BHD (yammes).
 
 ## [0.8.10] - 2025-09-01
 
