@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.11] - 2025-10-11
+
+### Fixed
+
+- Audio channel spacing/characters for BHD.
+
 ## [0.8.10] - 2025-09-01
 
 ### Changed
