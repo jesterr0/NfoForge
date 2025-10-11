@@ -14,6 +14,7 @@ runtime/cookies/
 runtime/docs/
 runtime/config/program/
 runtime/config/user/
+runtime/config/plugins
 runtime/logs/
 runtime/templates/
 runtime/user_packages/
