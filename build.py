@@ -1,10 +1,10 @@
 import os
-from pathlib import Path
 import platform
 import re
 import shutil
-from subprocess import run
 import sys
+from pathlib import Path
+from subprocess import run
 
 from stdlib_list import stdlib_list
 
@@ -241,6 +241,10 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # remove logs
     for log_file in Path(bundled_runtime / "logs").glob("*.log"):
         log_file.unlink()
+
+    # remove cookies
+    for cookie_file in Path(bundled_runtime / "cookies").glob("*.pkl"):
+        cookie_file.unlink()
 
     # Return a success message
     return success
