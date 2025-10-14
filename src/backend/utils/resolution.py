@@ -37,20 +37,35 @@ class CommercialResolutionInfer:
     Classify arbitrary pixel dimensions into standard commercial resolution tiers:
         480p, 576p, 720p, 1080p, 1440p, 2160p, 4320p, 8640p
 
-    Handles full-frame, letterboxed (scope), pillarboxed, and portrait orientations.
-    Returns only the base resolution tier and confidence score.
+    Handles multiple aspect ratios and orientations:
+    - 16:9 widescreen (1920x1080, 1280x720, etc.)
+    - 4:3 classic TV/Academy ratio (960x720, 640x480, etc.)
+    - 2.39:1 / 2.35:1 cinemascope (letterboxed)
+    - 21:9 ultra-wide
+    - Portrait/vertical video
+
+    Returns the base resolution tier and confidence score (0.0-1.0).
     """
 
-    # Standard base tiers: (label, base_height, canonical 16:9 width)
+    # Standard base tiers: (label, base_height, canonical width)
+    # Includes both 16:9 (widescreen) and 4:3 (classic/academy) variants
     BASES: list[tuple[str, int, int]] = [
-        ("480", 480, 854),
-        ("576", 576, 1024),
-        ("720", 720, 1280),
-        ("1080", 1080, 1920),
-        ("1440", 1440, 2560),  # QHD
-        ("2160", 2160, 3840),
-        ("4320", 4320, 7680),
-        ("8640", 8640, 15360),
+        ("480", 480, 854),    # 16:9 SD
+        ("480", 480, 640),    # 4:3 SD
+        ("576", 576, 1024),   # 16:9 PAL
+        ("576", 576, 768),    # 4:3 PAL
+        ("720", 720, 1280),   # 16:9 HD
+        ("720", 720, 960),    # 4:3 HD (pillarboxed from 1080p)
+        ("1080", 1080, 1920), # 16:9 Full HD
+        ("1080", 1080, 1440), # 4:3 Full HD (pillarboxed)
+        ("1440", 1440, 2560), # 16:9 QHD
+        ("1440", 1440, 1920), # 4:3 QHD (pillarboxed)
+        ("2160", 2160, 3840), # 16:9 4K/UHD
+        ("2160", 2160, 2880), # 4:3 4K (pillarboxed)
+        ("4320", 4320, 7680), # 16:9 8K
+        ("4320", 4320, 5760), # 4:3 8K (pillarboxed)
+        ("8640", 8640, 15360),# 16:9 16K
+        ("8640", 8640, 11520),# 4:3 16K (pillarboxed)
     ]
 
     # Tolerances

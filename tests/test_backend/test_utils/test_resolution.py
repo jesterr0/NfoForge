@@ -90,10 +90,36 @@ class TestCommercialResolutionInfer:
         result = CommercialResolutionInfer.infer(1440, 1080)
         assert result.base_label == "1080"
 
-    def test_720p_pillarboxed(self):
-        """960x720 is 720p pillarboxed to 4:3."""
+    def test_720p_pillarboxed_4_3(self):
+        """960x720 is 720p in 4:3 aspect ratio (pillarboxed from 1080p)."""
         result = CommercialResolutionInfer.infer(960, 720)
         assert result.base_label == "720"
+        assert result.confidence >= 0.95  # Should be perfect match with 4:3 support
+
+    # 4:3 aspect ratio (classic TV / Academy ratio)
+    def test_480p_4_3_sd(self):
+        """640x480 is 480p in 4:3 aspect ratio (classic SD)."""
+        result = CommercialResolutionInfer.infer(640, 480)
+        assert result.base_label == "480"
+        assert result.confidence >= 0.95
+
+    def test_576p_4_3_pal(self):
+        """768x576 is 576p in 4:3 aspect ratio (PAL SD)."""
+        result = CommercialResolutionInfer.infer(768, 576)
+        assert result.base_label == "576"
+        assert result.confidence >= 0.95
+
+    def test_1080p_4_3_full_hd(self):
+        """1440x1080 is 1080p in 4:3 aspect ratio."""
+        result = CommercialResolutionInfer.infer(1440, 1080)
+        assert result.base_label == "1080"
+        assert result.confidence >= 0.95
+
+    def test_2160p_4_3_4k(self):
+        """2880x2160 is 2160p/4K in 4:3 aspect ratio."""
+        result = CommercialResolutionInfer.infer(2880, 2160)
+        assert result.base_label == "2160"
+        assert result.confidence >= 0.95
 
     # Portrait/vertical video (swapped dimensions)
     def test_1080p_portrait_vertical_video(self):
