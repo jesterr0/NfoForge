@@ -23,6 +23,7 @@ class ResolutionResult:
         notes: Human-readable description of the match
         extras: Additional metadata (aspect ratios, error metrics, etc.)
     """
+    
     width: int
     height: int
     base_label: str
