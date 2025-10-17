@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.12] - 2025-10-16
+
+### Added
+
+- Massively improve resolution detection (@yammes08).
+
+### Fixed
+
+- Fixed DDP naming @yammes08.
+
 ## [0.8.11] - 2025-10-11
 
 ### Added
