@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- Fixed DDP naming @yammes08.
+- Fixed DDP naming (@yammes08).
 
 ## [0.8.11] - 2025-10-11
 
