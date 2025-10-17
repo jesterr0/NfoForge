@@ -1,7 +1,5 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from pymediainfo import MediaInfo, Track
 
@@ -23,7 +21,7 @@ class ResolutionResult:
         notes: Human-readable description of the match
         extras: Additional metadata (aspect ratios, error metrics, etc.)
     """
-    
+
     width: int
     height: int
     base_label: str
@@ -51,22 +49,22 @@ class CommercialResolutionInfer:
     # Standard base tiers: (label, base_height, canonical width)
     # Includes both 16:9 (widescreen) and 4:3 (classic/academy) variants
     BASES: list[tuple[str, int, int]] = [
-        ("480", 480, 854),    # 16:9 SD
-        ("480", 480, 640),    # 4:3 SD
-        ("576", 576, 1024),   # 16:9 PAL
-        ("576", 576, 768),    # 4:3 PAL
-        ("720", 720, 1280),   # 16:9 HD
-        ("720", 720, 960),    # 4:3 HD (pillarboxed from 1080p)
-        ("1080", 1080, 1920), # 16:9 Full HD
-        ("1080", 1080, 1440), # 4:3 Full HD (pillarboxed)
-        ("1440", 1440, 2560), # 16:9 QHD
-        ("1440", 1440, 1920), # 4:3 QHD (pillarboxed)
-        ("2160", 2160, 3840), # 16:9 4K/UHD
-        ("2160", 2160, 2880), # 4:3 4K (pillarboxed)
-        ("4320", 4320, 7680), # 16:9 8K
-        ("4320", 4320, 5760), # 4:3 8K (pillarboxed)
-        ("8640", 8640, 15360),# 16:9 16K
-        ("8640", 8640, 11520),# 4:3 16K (pillarboxed)
+        ("480", 480, 854),  # 16:9 SD
+        ("480", 480, 640),  # 4:3 SD
+        ("576", 576, 1024),  # 16:9 PAL
+        ("576", 576, 768),  # 4:3 PAL
+        ("720", 720, 1280),  # 16:9 HD
+        ("720", 720, 960),  # 4:3 HD (pillarboxed from 1080p)
+        ("1080", 1080, 1920),  # 16:9 Full HD
+        ("1080", 1080, 1440),  # 4:3 Full HD (pillarboxed)
+        ("1440", 1440, 2560),  # 16:9 QHD
+        ("1440", 1440, 1920),  # 4:3 QHD (pillarboxed)
+        ("2160", 2160, 3840),  # 16:9 4K/UHD
+        ("2160", 2160, 2880),  # 4:3 4K (pillarboxed)
+        ("4320", 4320, 7680),  # 16:9 8K
+        ("4320", 4320, 5760),  # 4:3 8K (pillarboxed)
+        ("8640", 8640, 15360),  # 16:9 16K
+        ("8640", 8640, 11520),  # 4:3 16K (pillarboxed)
     ]
 
     # Tolerances
@@ -130,12 +128,20 @@ class CommercialResolutionInfer:
             err_crop_h = None
             if w >= cls.MIN_CROP_FRAC * bw and h <= bh + tol(bh):
                 deficit = max(0.0, (bh - h) / bh) if bh > 0 else 0.0
-                err_crop_h = (abs(w - bw) / bw if bw > 0 else 0.0) + 0.5 * deficit + 0.25 * ar_err
+                err_crop_h = (
+                    (abs(w - bw) / bw if bw > 0 else 0.0)
+                    + 0.5 * deficit
+                    + 0.25 * ar_err
+                )
 
             err_crop_w = None
             if h >= cls.MIN_CROP_FRAC * bh and w <= bw + tol(bw):
                 deficit = max(0.0, (bw - w) / bw) if bw > 0 else 0.0
-                err_crop_w = (abs(h - bh) / bh if bh > 0 else 0.0) + 0.5 * deficit + 0.25 * ar_err
+                err_crop_w = (
+                    (abs(h - bh) / bh if bh > 0 else 0.0)
+                    + 0.5 * deficit
+                    + 0.25 * ar_err
+                )
 
             for err in (err_full, err_crop_h, err_crop_w):
                 if err is None:
@@ -184,8 +190,9 @@ class CommercialResolutionInfer:
 
 
 class VideoResolutionAnalyzer:
+    __slots__ = ("media_info_obj",)
 
-    def __init__(self, media_info_obj: Optional[MediaInfo]):
+    def __init__(self, media_info_obj: MediaInfo | None) -> None:
         self.media_info_obj = media_info_obj
 
     def get_resolution(self, remove_scan: bool = False) -> str:
@@ -213,14 +220,14 @@ class VideoResolutionAnalyzer:
         LOG.debug(
             LOG.LOG_SOURCE.BE,
             f"Resolution detection: {width}x{height} → {result.base_label}p "
-            f"(confidence: {result.confidence}, AR: {result.extras.get('observed_ar', 'N/A')})"
+            f"(confidence: {result.confidence}, AR: {result.extras.get('observed_ar', 'N/A')})",
         )
 
         # Warn on low confidence matches
         if result.confidence < 0.6:
             LOG.warning(
                 LOG.LOG_SOURCE.BE,
-                f"Low confidence resolution detection for {width}x{height}: {result.notes}"
+                f"Low confidence resolution detection for {width}x{height}: {result.notes}",
             )
 
         # Return just the base resolution if scan type not needed
@@ -265,13 +272,13 @@ class VideoResolutionAnalyzer:
         return track.height
 
     @staticmethod
-    def _get_fps(track: Track) -> Optional[str]:
+    def _get_fps(track: Track) -> str | None:
         if not track.frame_rate:
             LOG.warning(LOG.LOG_SOURCE.BE, "Failed to determine video frame rate")
         return track.frame_rate
 
     @staticmethod
-    def _get_scan(track: Track) -> Optional[str]:
+    def _get_scan(track: Track) -> str | None:
         if not track.scan_type:
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
