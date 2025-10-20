@@ -1,7 +1,8 @@
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from pymediainfo import MediaInfo
 from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -14,7 +15,6 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
 )
-from pymediainfo import MediaInfo
 
 from src.backend.media_input import MediaInputBackEnd
 from src.config.config import Config
@@ -304,7 +304,7 @@ class MediaInput(BaseWizardPage):
             raise AttributeError("Failed to detect MediaInfo")
 
         # store all MediaInfo data (main files + comparison files if any)
-        self.config.media_input_payload.file_list_mediainfo = files_mi_data
+        self.config.media_input_payload.file_list_mediainfo.update(files_mi_data)
         self._loading_completed = True
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
