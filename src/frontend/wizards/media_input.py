@@ -431,7 +431,7 @@ class MediaInput(BaseWizardPage):
         if enabled:
             self.comparison_widget.show()
         else:
-            self._reset_comparison_widget()
+            self._reset_comparison_widget(False)
 
     def _get_selected_comparison_file(self) -> str | None:
         """Get the currently selected file from the tree for comparison."""
@@ -534,9 +534,9 @@ class MediaInput(BaseWizardPage):
             # best effort only; prevent breaking the flow on unexpected shapes
             pass
 
-    def _reset_comparison_widget(self) -> None:
+    def _reset_comparison_widget(self, set_disabled: bool) -> None:
         """Hides comparison section and resets all entries"""
-        self.comparison_toggle_btn.setDisabled(True)
+        self.comparison_toggle_btn.setDisabled(set_disabled)
         self.comparison_toggle_btn.setChecked(False)
         self.comparison_source_entry.clear()
         self.comparison_source_entry.setPlaceholderText(self.SOURCE_PLACEHOLDER_TXT)
@@ -554,4 +554,4 @@ class MediaInput(BaseWizardPage):
         self.progress_bar.hide()
         self.worker = None
         self._loading_completed = False
-        self._reset_comparison_widget()
+        self._reset_comparison_widget(True)
