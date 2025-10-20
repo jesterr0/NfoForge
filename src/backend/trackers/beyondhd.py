@@ -150,9 +150,9 @@ class BHDUploader:
             raise TrackerError(requests_exc_error_msg)
 
     def _category_id(self) -> int | None:
-        if self.media_type == MediaType.MOVIES:
+        if self.media_type is MediaType.MOVIE:
             return BHDCategoryID.MOVIE.value
-        elif self.media_type == MediaType.SERIES:
+        elif self.media_type is MediaType.SERIES:
             return BHDCategoryID.TV.value
 
     def _type(self) -> str:
