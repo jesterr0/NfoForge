@@ -1,7 +1,7 @@
+import re
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
-import re
 
 import niquests
 import regex
@@ -57,6 +57,14 @@ def bhd_uploader(
 
 class BHDUploader:
     """BeyondHD Uploader utilizing their API"""
+
+    __slots__ = (
+        "_upload_url",
+        "torrent_file",
+        "file_input",
+        "media_type",
+        "timeout",
+    )
 
     def __init__(
         self,
@@ -269,6 +277,8 @@ class BHDUploader:
 class BHDSearch:
     """Search BeyondHD utilizing their API"""
 
+    __slots__ = ("_search_url", "_rss_key", "_timeout")
+
     def __init__(
         self, api_key: str, rss_key: str | None = None, timeout: int = 60
     ) -> None:
@@ -276,14 +286,16 @@ class BHDSearch:
         self._rss_key = rss_key
         self._timeout = timeout
 
-    def search(self, title: Path) -> list[TrackerSearchResult]:
-        payload = {"action": "search", "file_name": title.name}
+    def search(self, file_input: Path) -> list[TrackerSearchResult]:
+        payload = {"action": "search", "file_name": file_input.name}
         if self._rss_key:
             payload["rsskey"] = self._rss_key
 
         results = []
         try:
-            LOG.info(LOG.LOG_SOURCE.BE, f"Searching BeyondHD for title: {title}")
+            LOG.info(
+                LOG.LOG_SOURCE.BE, f"Searching BeyondHD for release: {file_input.name}"
+            )
             response = niquests.post(
                 url=self._search_url,
                 params=payload,
