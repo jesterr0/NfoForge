@@ -1,17 +1,18 @@
+import pickle
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
-import pickle
-import re
 from typing import Any
 from xml.etree import ElementTree as ET
 
-from bs4 import BeautifulSoup, Tag as bs4Tag
 import guessit
 import niquests
-from pymediainfo import MediaInfo
 import pyotp
+from bs4 import BeautifulSoup
+from bs4 import Tag as bs4Tag
+from pymediainfo import MediaInfo
 from unidecode import unidecode
 
 from src.backend.trackers.utils import TRACKER_HEADERS
@@ -577,9 +578,9 @@ class MTVUploader:
 
     @staticmethod
     def find_type_tags(media_type: MediaType, resolution: str) -> set:
-        if media_type == MediaType.MOVIES:
+        if media_type is MediaType.MOVIE:
             return MTVUploader.find_movies_tags(resolution)
-        elif media_type == MediaType.SERIES:
+        elif media_type is MediaType.SERIES:
             return MTVUploader.find_movies_tags(resolution)
 
     @staticmethod
