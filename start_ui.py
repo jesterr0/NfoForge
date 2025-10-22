@@ -1,9 +1,9 @@
 # relevant documentation
 # https://doc.qt.io/qtforpython-6/index.html#
-from multiprocessing import freeze_support as mp_freeze_support
-from pathlib import Path
 import sys
 import traceback
+from multiprocessing import freeze_support as mp_freeze_support
+from pathlib import Path
 
 from PySide6.QtCore import QTimer, QtMsgType, Slot, qInstallMessageHandler
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
