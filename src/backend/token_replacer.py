@@ -1,9 +1,10 @@
+import re
 from ast import literal_eval
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-import re
 from typing import Any, Type
 
+import unidecode
 from auto_qpf import ChapterGenerator
 from auto_qpf.enums import ChapterType
 from babelfish.language import Language as BabelLanguage
@@ -11,9 +12,8 @@ from guessit import guessit
 from iso639 import Lang
 from iso639.exceptions import InvalidLanguageValue
 from pymediainfo import MediaInfo, Track
-import unidecode
 
-from src.backend.tokens import FileToken, NfoToken, TokenData, TokenType, Tokens
+from src.backend.tokens import FileToken, NfoToken, TokenData, Tokens, TokenType
 from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
 from src.backend.utils.language import (
@@ -35,8 +35,7 @@ from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import ImageUploadData
-from src.packages.custom_types import ComparisonPair
+from src.packages.custom_types import ComparisonPair, ImageUploadData
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.version import __version__, program_name, program_url
