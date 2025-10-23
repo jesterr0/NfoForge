@@ -1,11 +1,11 @@
-from collections.abc import Callable, Sequence
 import importlib
-from pathlib import Path
 import sys
+from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import SignalInstance
 from pymediainfo import MediaInfo
+from PySide6.QtCore import SignalInstance
 
 from src.backend.utils.working_dir import CURRENT_DIR
 from src.config.config import Config
@@ -112,9 +112,6 @@ class PluginLoader:
                     "config": Config,
                     "tracker": TrackerSelection,
                     "torrent_file": Path,
-                    "media_file": Path,
-                    "mi_obj": MediaInfo,
-                    "source_path": Path,
                     "upload_text_cb": Callable[[str], None],
                     "upload_text_replace_last_line_cb": Callable[[str], None],
                     "progress_cb": Callable[[float], None],

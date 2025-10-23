@@ -93,6 +93,8 @@
   - Adjusted widget margins.
   - You can now pop out the text editor widget for the text input.
   - Text window is now read only.
+- Plugin Changes:
+  - `pre_upload` plugin is no longer passed kwargs `media_file, mi_obj, source_path`. These can be gathered from the config object easily.
 
 ### Fixed
 
