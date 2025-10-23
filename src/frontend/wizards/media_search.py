@@ -1,13 +1,14 @@
 import asyncio
+import traceback
+import webbrowser
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
-import traceback
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib import parse as url_parse
-import webbrowser
 
-from PySide6.QtCore import QSize, QThread, QTimer, Qt, Signal, Slot
+from guessit import guessit
+from PySide6.QtCore import QSize, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QPixmap
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -26,7 +27,6 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
 )
-from guessit import guessit
 
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.filter_title import edition_and_title_extractor as extract_title
@@ -376,7 +376,7 @@ class MediaSearch(BaseWizardPage):
         # update both payloads with the correct MediaType
         self.config.media_input_payload.media_type = (
             self.config.media_search_payload.media_type
-        ) = MediaType.search_type(val=item_data.get("media_type"), strict=True)
+        ) = MediaType.strict_search_type(item_data.get("media_type"))
         self.config.media_search_payload.imdb_id = self.imdb_id_entry.text()
         self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
         self.config.media_search_payload.tmdb_data = item_data.get("raw_data")
@@ -490,10 +490,6 @@ class MediaSearch(BaseWizardPage):
             return
 
         input_path = self.config.media_input_payload.input_path
-        if not input_path:
-            raise MediaFileNotFoundError("Failed to load input path")
-        input_path = Path(input_path)
-
         self.search_label.setText(f"Input: {input_path.name}")
         self.search_label.setToolTip(input_path.name)
         self.search_entry.setText(self._get_title_only(input_path))
