@@ -19,7 +19,7 @@ def oe_uploader(
     media_type: MediaType,
     api_key: str,
     torrent_file: Path,
-    file_input: Path,
+    input_path: Path,
     tracker_title: str | None,
     nfo: str,
     internal: bool,
@@ -29,13 +29,11 @@ def oe_uploader(
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
 ) -> bool | None:
-    torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = OnlyEncodesUploader(
         media_type=media_type,
         api_key=api_key,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
     )
@@ -63,7 +61,7 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
         media_type: MediaType,
         api_key: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
     ) -> None:
@@ -73,7 +71,7 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
-            file_input=file_input,
+            input_path=input_path,
             mediainfo_obj=mediainfo_obj,
             cat_enum=OnlyEncodesCategory,
             res_enum=OnlyEncodesResolution,
@@ -91,7 +89,7 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
             pass
 
         # fallback by checking the file name for known codecs
-        lowered_file_input = self.file_input.stem.lower()
+        lowered_file_input = self.input_path.stem.lower()
         for codec, enum in [
             ("x265", OnlyEncodesType.ENCODE_X265),
             ("av1", OnlyEncodesType.ENCODE_AV1),

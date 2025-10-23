@@ -1,11 +1,11 @@
+import re
 from datetime import datetime
 from pathlib import Path
-import re
 from typing import Type
 
 import niquests
-from pymediainfo import MediaInfo
 import regex
+from pymediainfo import MediaInfo
 
 from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -43,7 +43,6 @@ from src.enums.trackers.uploadcx import (
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
-
 
 CategoryEnums = (
     ReelFlixCategory
@@ -87,7 +86,7 @@ class Unit3dBaseUploader:
         "media_type",
         "api_key",
         "torrent_file",
-        "file_input",
+        "input_path",
         "mediainfo_obj",
         "cat_enum",
         "res_enum",
@@ -104,7 +103,7 @@ class Unit3dBaseUploader:
         media_type: MediaType,
         api_key: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         mediainfo_obj: MediaInfo,
         cat_enum: Type[CategoryEnums],
         res_enum: Type[ResolutionEnums],
@@ -116,7 +115,7 @@ class Unit3dBaseUploader:
         self.media_type = media_type
         self.api_key = api_key
         self.torrent_file = torrent_file
-        self.file_input = file_input
+        self.input_path = input_path
         self.mediainfo_obj = mediainfo_obj
         self.timeout = timeout
 
@@ -148,9 +147,9 @@ class Unit3dBaseUploader:
         upload_payload = {
             "name": tracker_title
             if tracker_title
-            else self.generate_release_title(self.file_input.stem),
+            else self.generate_release_title(self.input_path.stem),
             "description": nfo,
-            "mediainfo": MinimalMediaInfo(self.file_input).get_full_mi_str(
+            "mediainfo": MinimalMediaInfo(self.input_path).get_full_mi_str(
                 cleansed=True
             ),
             # 'bdinfo': bd_dump,
@@ -231,7 +230,7 @@ class Unit3dBaseUploader:
         return self.cat_enum(self.cat_enum.MOVIE).value
 
     def _get_type_id(self) -> str:
-        title_lowered = str(self.file_input.stem).lower()
+        title_lowered = str(self.input_path.stem).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # remux
@@ -295,7 +294,7 @@ class Unit3dBaseUploader:
             ).value
             return resolution
         except ValueError:
-            title_lowered = self.file_input.stem.lower()
+            title_lowered = self.input_path.stem.lower()
             res_map = {
                 "4320p": self.res_enum.RES_4320P,
                 "2160p": self.res_enum.RES_2160P,

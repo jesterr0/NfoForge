@@ -1,6 +1,5 @@
 import re
 from datetime import datetime
-from os import PathLike
 from pathlib import Path
 
 import niquests
@@ -23,8 +22,8 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 
 def bhd_uploader(
     api_key: str,
-    torrent_file: PathLike[str] | Path,
-    file_input: PathLike[str] | Path,
+    torrent_file: Path,
+    input_path: Path,
     tracker_title: str | None,
     media_type: MediaType,
     imdb_id: str | None,
@@ -39,7 +38,7 @@ def bhd_uploader(
     uploader = BHDUploader(
         api_key=api_key,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         media_type=media_type,
         timeout=timeout,
     )
@@ -61,7 +60,7 @@ class BHDUploader:
     __slots__ = (
         "_upload_url",
         "torrent_file",
-        "file_input",
+        "input_path",
         "media_type",
         "timeout",
     )
@@ -69,14 +68,14 @@ class BHDUploader:
     def __init__(
         self,
         api_key: str,
-        torrent_file: PathLike[str] | Path,
-        file_input: PathLike[str] | Path,
+        torrent_file: Path,
+        input_path: Path,
         media_type: MediaType,
         timeout: int = 60,
     ) -> None:
         self._upload_url = f"https://beyond-hd.me/api/upload/{api_key}"
-        self.torrent_file = Path(torrent_file)
-        self.file_input = Path(file_input)
+        self.torrent_file = torrent_file
+        self.input_path = input_path
         self.media_type = media_type
         self.timeout = timeout
 
@@ -94,7 +93,7 @@ class BHDUploader:
         upload_payload = {
             "name": tracker_title
             if tracker_title
-            else self.generate_release_title(self.file_input.stem),
+            else self.generate_release_title(self.input_path.stem),
             "category_id": self._category_id(),
             "type": self._type(),
             "source": self._source(),
@@ -164,7 +163,7 @@ class BHDUploader:
             return BHDCategoryID.TV.value
 
     def _type(self) -> str:
-        title_lowered = str(self.file_input.stem).lower()
+        title_lowered = str(self.input_path.stem).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # remux
@@ -191,7 +190,7 @@ class BHDUploader:
             ),
             title_lowered,
         ):
-            input_file_size = self.file_input.stat().st_size
+            input_file_size = self.input_path.stat().st_size
             if input_file_size <= 26_843_545_600:
                 return BHDType.BD_25.value
             elif input_file_size <= 53_687_091_200:
@@ -238,7 +237,7 @@ class BHDUploader:
         return BHDType.OTHER.value
 
     def _source(self) -> str:
-        title_lowered = str(self.file_input.stem).lower()
+        title_lowered = str(self.input_path.stem).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
         if "bluray" in title_lowered:
@@ -265,7 +264,7 @@ class BHDUploader:
             }
 
     def _cleaned_media_info(self) -> str:
-        return MinimalMediaInfo(self.file_input).get_full_mi_str(cleansed=True)
+        return MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True)
 
     @staticmethod
     def generate_release_title(release_title: str) -> str:
@@ -286,15 +285,15 @@ class BHDSearch:
         self._rss_key = rss_key
         self._timeout = timeout
 
-    def search(self, file_input: Path) -> list[TrackerSearchResult]:
-        payload = {"action": "search", "file_name": file_input.name}
+    def search(self, input_path: Path) -> list[TrackerSearchResult]:
+        payload = {"action": "search", "file_name": input_path.name}
         if self._rss_key:
             payload["rsskey"] = self._rss_key
 
         results = []
         try:
             LOG.info(
-                LOG.LOG_SOURCE.BE, f"Searching BeyondHD for release: {file_input.name}"
+                LOG.LOG_SOURCE.BE, f"Searching BeyondHD for release: {input_path.name}"
             )
             response = niquests.post(
                 url=self._search_url,

@@ -40,7 +40,7 @@ def mtv_uploader(
     nfo: str,
     group_desc: str | None,
     torrent_file: Path | PathLike[str],
-    file_input: Path | str,
+    input_path: Path,
     tracker_title: str | None,
     mediainfo_obj: MediaInfo,
     genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
@@ -51,7 +51,6 @@ def mtv_uploader(
     timeout: int,
 ):
     torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = MTVUploader(
         torrent_input=torrent_file,
         mediainfo_obj=mediainfo_obj,
@@ -65,7 +64,7 @@ def mtv_uploader(
     upload = uploader.upload(
         auth_token=auth_token,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         tracker_title=tracker_title,
         nfo=nfo,
         group_desc=group_desc,
@@ -270,7 +269,7 @@ class MTVUploader:
         self,
         auth_token: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         tracker_title: str | None,
         nfo: str,
         group_desc: str | None,
@@ -283,9 +282,9 @@ class MTVUploader:
             # "image": "",
             "title": self.generate_release_title(tracker_title)
             if tracker_title
-            else self.generate_release_title(file_input.stem),
+            else self.generate_release_title(input_path.stem),
             "category": self._get_cat_id(torrent_file.name),
-            "source": self._get_source_id(file_input),
+            "source": self._get_source_id(input_path),
             "desc": nfo,
             "groupDesc": group_desc,
             "ignoredupes": "1",
@@ -309,7 +308,7 @@ class MTVUploader:
         # update all tags
         tags = self.collect_tags(
             resolution=get_resolution,
-            file_input=file_input,
+            input_path=input_path,
             genre_ids=genre_ids,
             media_type=media_type,
         )
@@ -454,8 +453,8 @@ class MTVUploader:
         return str(category)
 
     @staticmethod
-    def _get_source_id(file_input: Path) -> str:
-        file_input_lowered = re.sub(r"\W", "", file_input.stem).lower()
+    def _get_source_id(input_path: Path) -> str:
+        file_input_lowered = re.sub(r"\W", "", input_path.stem).lower()
 
         source_mapping = {
             "hdtv": MTVSourceIDs.HDTV,
@@ -493,17 +492,17 @@ class MTVUploader:
     def collect_tags(
         self,
         resolution: str,
-        file_input: Path,
+        input_path: Path,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         media_type: MediaType,
     ) -> set:
         tags = self.find_audio_tags(self.mediainfo_obj)
         tags.update(self.find_genre_tags(genre_ids))
         tags.update(self.find_resolution_tags(resolution))
-        tags.update(self.find_type_source_tags(file_input))
+        tags.update(self.find_type_source_tags(input_path))
         tags.update(self.find_type_tags(media_type, resolution))
         tags.update(self.find_video_codec_tags(self.mediainfo_obj))
-        tags.update(self.find_release_group_tags(file_input))
+        tags.update(self.find_release_group_tags(input_path))
         tags.update(self.has_subtitles_tags(self.mediainfo_obj))
 
         return tags
@@ -568,9 +567,9 @@ class MTVUploader:
         return res_set
 
     @staticmethod
-    def find_type_source_tags(file_input: Path) -> set:
+    def find_type_source_tags(input_path: Path) -> set:
         type_source = set()
-        stem_lowered = file_input.stem.lower()
+        stem_lowered = input_path.stem.lower()
         for item in ("remux", "webdl", "webrip", "hdtv", "bluray", "dvd", "hddvd"):
             if item in stem_lowered:
                 type_source.add(item)
@@ -625,10 +624,10 @@ class MTVUploader:
         return v_codecs
 
     @staticmethod
-    def find_release_group_tags(file_input: Path) -> set:
+    def find_release_group_tags(input_path: Path) -> set:
         # TODO: add different logic for movies vs series
         release_group_set = set()
-        release_group = guessit.guessit(file_input).get("release_group", "")
+        release_group = guessit.guessit(input_path).get("release_group", "")
         if release_group:
             release_group_set.add(f"{release_group.lower()}.release")
         return release_group_set

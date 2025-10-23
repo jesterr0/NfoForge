@@ -14,7 +14,7 @@ def aither_uploader(
     media_type: MediaType,
     api_key: str,
     torrent_file: Path,
-    file_input: Path,
+    input_path: Path,
     tracker_title: str | None,
     nfo: str,
     internal: bool,
@@ -30,13 +30,11 @@ def aither_uploader(
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
 ) -> bool | None:
-    torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = AitherUploader(
         media_type=media_type,
         api_key=api_key,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
     )
@@ -69,7 +67,7 @@ class AitherUploader(Unit3dBaseUploader):
         media_type: MediaType,
         api_key: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
     ) -> None:
@@ -79,7 +77,7 @@ class AitherUploader(Unit3dBaseUploader):
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
-            file_input=file_input,
+            input_path=input_path,
             mediainfo_obj=mediainfo_obj,
             cat_enum=AitherCategory,
             res_enum=AitherResolution,
