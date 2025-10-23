@@ -490,6 +490,9 @@ class MediaSearch(BaseWizardPage):
             return
 
         input_path = self.config.media_input_payload.input_path
+        if not input_path:
+            raise MediaFileNotFoundError("Failed to load input path")
+        
         self.search_label.setText(f"Input: {input_path.name}")
         self.search_label.setToolTip(input_path.name)
         self.search_entry.setText(self._get_title_only(input_path))
