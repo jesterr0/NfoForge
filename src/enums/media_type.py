@@ -2,15 +2,20 @@ from src.enums import CaseInsensitiveStrEnum
 
 
 class MediaType(CaseInsensitiveStrEnum):
-    MOVIES = "Movies"
+    MOVIE = "Movie"
     SERIES = "Series"
 
     @classmethod
-    def search_type(cls, val: str, strict: bool = False) -> "MediaType | None":
+    def search_type(cls, val: str) -> "MediaType | None":
         val = str(val).lower()
-        if val in {"movie", "movies"}:
-            return cls.MOVIES
-        elif val in {"tv", "series", "show", "anime"}:
+        if val in ("movie", "movies"):
+            return cls.MOVIE
+        elif val in ("tv", "series", "show", "anime"):
             return cls.SERIES
-        if strict:
+        
+    @classmethod
+    def strict_search_type(cls, val: str) -> "MediaType":
+        media_type = cls.search_type(val)
+        if not media_type:
             raise ValueError("Failed to detect MediaType")
+        return media_type
