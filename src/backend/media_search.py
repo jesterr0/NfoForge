@@ -3,17 +3,18 @@ import base64
 import re
 from typing import Any
 
-from guessit import guessit
-from imdb import Cinemagoer
-from imdb.Movie import Movie
 import niquests
-from rapidfuzz import fuzz
 import tvdb_v4_official
+from guessit import guessit
+from imdbinfo import get_movie as imdb_get_movie
+from imdbinfo.models import MovieDetail
+from rapidfuzz import fuzz
 from unidecode import unidecode
 
 from src.backend.utils.super_sub import normalize_super_sub
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from src.enums.tvdb_season_type import TVDBSeasonType
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -278,7 +279,164 @@ class MediaSearchBackEnd:
 
         # now we can extensively parse the data from the API
         if tvdb_id:
-            return tvdb_parse.get_series_extended(tvdb_id, short=True)
+            # get the main series data (it will have a default type)
+            series_data = tvdb_parse.get_series_extended(
+                tvdb_id, meta="episodes", short=True
+            )
+
+            if not series_data:
+                return None
+
+            # extract available season types from the series data
+            available_season_types = []
+            season_types_data = series_data.get("seasonTypes", [])
+
+            # use enum's mapping functionality to convert TVDB data to our enums
+            for season_type_info in season_types_data:
+                season_type_enum = TVDBSeasonType.from_tvdb_season_type_info(
+                    season_type_info
+                )
+                if season_type_enum and season_type_enum not in available_season_types:
+                    available_season_types.append(season_type_enum)
+
+            # if no recognized season types found, fall back to our default main types
+            if not available_season_types:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No recognized season types found in series data for {tvdb_id}, using default types",
+                )
+                available_season_types = TVDBSeasonType.get_main_types()
+            else:
+                type_names = [st.display_name for st in available_season_types]
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"Available season types for series {tvdb_id}: {', '.join(type_names)}",
+                )
+
+            # get the default episodes (aired/official order) from the main series data
+            # with meta="episodes", this will always include episodes
+            default_episodes = series_data.get("episodes", [])
+
+            # we have episodes in main data, fetch additional orderings for other season types
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                f"Using episodes from main series data, fetching additional orderings for series {tvdb_id}...",
+            )
+
+            async def fetch_episodes_for_type(season_type: TVDBSeasonType):
+                """Fetch episodes for a specific season type"""
+                try:
+                    # note: tvdb_v4_official is synchronous, so we wrap in executor
+                    loop = asyncio.get_event_loop()
+
+                    # for aired/official episodes, we already have them from main data, skip
+                    if season_type.api_param == "official":
+                        return default_episodes
+
+                    episodes_response = await loop.run_in_executor(
+                        None,
+                        lambda: tvdb_parse.get_series_episodes(
+                            tvdb_id, season_type=season_type.api_param
+                        ),
+                    )
+
+                    if episodes_response and "episodes" in episodes_response:
+                        episodes = episodes_response["episodes"]
+                        LOG.info(
+                            LOG.LOG_SOURCE.BE,
+                            f"Fetched {len(episodes)} episodes for {season_type.display_name} "
+                            f"(type {season_type.type_id}) for series {tvdb_id}",
+                        )
+                        return episodes
+                    else:
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE,
+                            f"No episodes found for {season_type.display_name} "
+                            f"(type {season_type.type_id}) for series {tvdb_id}",
+                        )
+                        return []
+
+                except Exception as e:
+                    LOG.error(
+                        LOG.LOG_SOURCE.BE,
+                        f"Failed to fetch episodes for {season_type.display_name} "
+                        f"(type {season_type.type_id}) for series {tvdb_id}: {e}",
+                    )
+                    return []
+
+            # create async tasks for available season types that need separate fetching
+            # (Official/Aired episodes are already in default_episodes from main series data)
+            additional_types = [
+                st for st in available_season_types if st.api_param != "official"
+            ]
+            tasks = {}
+            for season_type in additional_types:
+                tasks[season_type.type_id] = fetch_episodes_for_type(season_type)
+
+            # execute additional tasks concurrently (if any)
+            if tasks:
+                results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+            else:
+                results = []
+
+            # build episodes_by_type dictionary for all available season types
+            episodes_by_type = {}
+            type_summary = []
+
+            # process all available season types
+            additional_results_index = 0
+            for season_type in available_season_types:
+                if season_type.api_param == "official":
+                    # use episodes from main series data
+                    episodes_by_type[season_type.type_id] = {
+                        "type_name": season_type.display_name,
+                        "type": season_type.api_param,
+                        "episodes": default_episodes,
+                    }
+                    type_summary.append(
+                        f"{season_type.display_name}: {len(default_episodes)} episodes"
+                    )
+                else:
+                    # use episodes from additional async results
+                    if additional_results_index < len(results):
+                        result = results[additional_results_index]
+                        if (
+                            result
+                            and not isinstance(result, Exception)
+                            and isinstance(result, list)
+                        ):
+                            episodes_by_type[season_type.type_id] = {
+                                "type_name": season_type.display_name,
+                                "type": season_type.api_param,
+                                "episodes": result,
+                            }
+                            count = len(result)
+                            type_summary.append(
+                                f"{season_type.display_name}: {count} episodes"
+                            )
+                        elif isinstance(result, Exception):
+                            LOG.error(
+                                LOG.LOG_SOURCE.BE,
+                                f"Exception fetching {season_type.display_name}: {result}",
+                            )
+                    additional_results_index += 1
+
+            # add the episodes by type to the series data
+            if episodes_by_type:
+                series_data["episodes_by_type"] = episodes_by_type
+
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    f"Enhanced TVDB data for series {tvdb_id} with episode types: "
+                    f"{', '.join(type_summary)}",
+                )
+            else:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No enhanced episode data could be fetched for series {tvdb_id}",
+                )
+
+            return series_data
 
     @staticmethod
     def _get_tvdb_k() -> str:
@@ -298,11 +456,10 @@ class MediaSearchBackEnd:
         return base64.b64decode(b64_bytes).decode()
 
     @staticmethod
-    async def parse_imdb_data(imdb_id: str | None) -> Movie | None:
+    async def parse_imdb_data(imdb_id: str | None) -> MovieDetail | None:
         if not imdb_id:
             return
-        imdb_parse = Cinemagoer()
-        get_movie = imdb_parse.get_movie(imdb_id.replace("t", ""))
+        get_movie = imdb_get_movie(imdb_id, "en")
         if get_movie:
             return get_movie
 
