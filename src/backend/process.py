@@ -1,12 +1,11 @@
 import asyncio
-from collections.abc import Callable
-from pathlib import Path
 import shutil
 import traceback
-from typing import Any, Sequence
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, Sequence, Type
 
 from PySide6.QtCore import SignalInstance
-from pymediainfo import MediaInfo
 from torf import Torrent
 
 from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
@@ -59,7 +58,7 @@ from src.backend.trackers import (
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.torrentleech import TLUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseUploader
+from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
@@ -82,6 +81,7 @@ from src.packages.custom_types import (
     ImageUploadData,
     ImageUploadFromTo,
 )
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
@@ -107,66 +107,73 @@ class ProcessBackEnd:
 
     async def dupe_checks(
         self,
-        file_input: Path,
-        processing_queue: list[str],
+        processing_queue: list[TrackerSelection],
+        media_input_payload: MediaInputPayload,
         media_search_payload: MediaSearchPayload,
     ) -> dict[str, tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]]:
         # TODO: test this when we add disc & tv support, as this will likely require different
         # checks to accurately obtain dupes
         tasks = []
-        for tracker_name in processing_queue:
-            tracker_sel = TrackerSelection(tracker_name)
+        for tracker_sel in processing_queue:
+            file_input = media_input_payload.require_first_file()
             if tracker_sel is TrackerSelection.MORE_THAN_TV:
                 tasks.append(
                     self._dupe_mtv(
-                        tracker_name=tracker_name,
-                        file_input=file_input,
+                        tracker_sel=tracker_sel,
+                        # file_input prioritizes folder name > file since the api doesn't
+                        # support directly looking for files
+                        file_input=media_input_payload.input_path or file_input,
                         media_search_payload=media_search_payload,
                     )
                 )
             elif tracker_sel is TrackerSelection.TORRENT_LEECH:
                 tasks.append(
-                    self._dupe_tl(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_tl(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.BEYOND_HD:
                 tasks.append(
-                    self._dupe_bhd(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_bhd(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.PASS_THE_POPCORN:
                 tasks.append(
-                    self._dupe_ptp(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_ptp(
+                        tracker_sel=tracker_sel,
+                        # file_input prioritizes folder name > file since the api doesn't
+                        # support directly looking for files
+                        file_input=media_input_payload.input_path or file_input,
+                    )
                 )
             elif tracker_sel is TrackerSelection.REELFLIX:
                 tasks.append(
-                    self._dupe_rf(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_rf(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.AITHER:
                 tasks.append(
-                    self._dupe_aither(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_aither(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.HUNO:
                 tasks.append(
-                    self._dupe_huno(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_huno(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.LST:
                 tasks.append(
-                    self._dupe_lst(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_lst(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.DARK_PEERS:
                 tasks.append(
-                    self._dupe_dp(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_dp(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.SHARE_ISLAND:
                 tasks.append(
-                    self._dupe_shri(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_shri(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.UPLOAD_CX:
                 tasks.append(
-                    self._dupe_ulcx(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_ulcx(tracker_sel=tracker_sel, file_input=file_input)
                 )
             elif tracker_sel is TrackerSelection.ONLY_ENCODES:
                 tasks.append(
-                    self._dupe_oe(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_oe(tracker_sel=tracker_sel, file_input=file_input)
                 )
 
         async_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -190,20 +197,19 @@ class ProcessBackEnd:
 
     async def _dupe_mtv(
         self,
-        tracker_name: str,
+        tracker_sel: TrackerSelection,
         file_input: Path,
         media_search_payload: MediaSearchPayload,
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
         api_key = self.config.cfg_payload.mtv_tracker.api_key
         if not api_key:
-            return TrackerSelection(tracker_name), False, "MTV API key missing"
+            return tracker_sel, False, "MTV API key missing"
         try:
-            title = file_input.stem
             imdb_id = media_search_payload.imdb_id
             tmdb_id = media_search_payload.tmdb_id
-            if not title or not imdb_id or not tmdb_id:
+            if not file_input or not imdb_id or not tmdb_id:
                 return (
-                    TrackerSelection(tracker_name),
+                    tracker_sel,
                     False,
                     "Required MTV search parameters missing",
                 )
@@ -211,25 +217,25 @@ class ProcessBackEnd:
                 api_key,
                 timeout=self.config.cfg_payload.timeout,
             ).search(
-                title=title,
+                title=file_input.stem,  # must not have an extension
                 imdb_id=imdb_id,
                 tmdb_id=tmdb_id,
             )
             if mtv_search:
-                return TrackerSelection(tracker_name), True, mtv_search
+                return tracker_sel, True, mtv_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_tl(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
         username = self.config.cfg_payload.tl_tracker.username
         password = self.config.cfg_payload.tl_tracker.password
         if not username or not password:
             return (
-                TrackerSelection(tracker_name),
+                tracker_sel,
                 False,
                 "TL username or password missing",
             )
@@ -242,20 +248,20 @@ class ProcessBackEnd:
                 timeout=self.config.cfg_payload.timeout,
             ).search(file_input)
             if tl_search:
-                return TrackerSelection(tracker_name), True, tl_search
+                return tracker_sel, True, tl_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_bhd(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
         api_key = self.config.cfg_payload.bhd_tracker.api_key
         rss_key = self.config.cfg_payload.bhd_tracker.rss_key
         if not api_key or not rss_key:
             return (
-                TrackerSelection(tracker_name),
+                tracker_sel,
                 False,
                 "BHD API key or RSS key missing",
             )
@@ -266,14 +272,14 @@ class ProcessBackEnd:
                 timeout=self.config.cfg_payload.timeout,
             ).search(file_input)
             if bhd_search:
-                return TrackerSelection(tracker_name), True, bhd_search
+                return tracker_sel, True, bhd_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_ptp(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
         api_user = self.config.cfg_payload.ptp_tracker.api_user
         api_key = self.config.cfg_payload.ptp_tracker.api_key
@@ -282,7 +288,7 @@ class ProcessBackEnd:
         imdb_id = self.config.media_search_payload.imdb_id
         if not api_user or not api_key or not title or year is None or not imdb_id:
             return (
-                TrackerSelection(tracker_name),
+                tracker_sel,
                 False,
                 "PTP API user/key or search parameters missing",
             )
@@ -294,169 +300,126 @@ class ProcessBackEnd:
             ).search(
                 movie_title=title,
                 movie_year=year,
-                file_name=file_input.stem,
+                file_name=file_input.stem if file_input.is_dir() else file_input.name,
                 imdb_id=imdb_id,
             )
             if ptp_search:
-                return TrackerSelection(tracker_name), True, ptp_search
+                return tracker_sel, True, ptp_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_rf(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.rf_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "ReelFlix API key missing"
-        try:
-            rf_search = ReelFlixSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if rf_search:
-                return TrackerSelection(tracker_name), True, rf_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            ReelFlixSearch,
+            {"api_key": self.config.cfg_payload.rf_tracker.api_key},
+        )
 
     async def _dupe_aither(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.aither_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "Aither API key missing"
-        try:
-            aither_search = AitherSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if aither_search:
-                return TrackerSelection(tracker_name), True, aither_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            AitherSearch,
+            {"api_key": self.config.cfg_payload.aither_tracker.api_key},
+        )
 
     async def _dupe_huno(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.huno_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "Huno API key missing"
-        try:
-            huno_search = HunoSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if huno_search:
-                return TrackerSelection(tracker_name), True, huno_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            HunoSearch,
+            {"api_key": self.config.cfg_payload.huno_tracker.api_key},
+        )
 
     async def _dupe_lst(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.lst_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "LST API key missing"
-        try:
-            lst_search = LSTSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if lst_search:
-                return TrackerSelection(tracker_name), True, lst_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            LSTSearch,
+            {"api_key": self.config.cfg_payload.lst_tracker.api_key},
+        )
 
     async def _dupe_dp(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.darkpeers_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "DarkPeers API key missing"
-        try:
-            dp_search = DarkPeersSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if dp_search:
-                return TrackerSelection(tracker_name), True, dp_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            DarkPeersSearch,
+            {"api_key": self.config.cfg_payload.darkpeers_tracker.api_key},
+        )
 
     async def _dupe_shri(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.shareisland_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "ShareIsland API key missing"
-        try:
-            shri_search = ShareIslandSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if shri_search:
-                return TrackerSelection(tracker_name), True, shri_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            ShareIslandSearch,
+            {"api_key": self.config.cfg_payload.shareisland_tracker.api_key},
+        )
 
     async def _dupe_ulcx(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.ulcx_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "UploadCX API key missing"
-        try:
-            shri_search = UploadCXSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if shri_search:
-                return TrackerSelection(tracker_name), True, shri_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            UploadCXSearch,
+            {"api_key": self.config.cfg_payload.ulcx_tracker.api_key},
+        )
 
     async def _dupe_oe(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.ulcx_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "OnlyEncodes API key missing"
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            OnlyEncodesSearch,
+            {"api_key": self.config.cfg_payload.ulcx_tracker.api_key},
+        )
+
+    async def _aither_dupe_check(
+        self,
+        tracker_sel: TrackerSelection,
+        file_input: Path,
+        search_cls: Type[Unit3dBaseSearch],
+        kwargs: dict[str, Any],
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        """Used solely for UNIT3D trackers."""
         try:
-            shri_search = OnlyEncodesSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if shri_search:
-                return TrackerSelection(tracker_name), True, shri_search
+            # check to ensure we have data
+            for k, v in kwargs.items():
+                if not v:
+                    return tracker_sel, False, f"{tracker_sel} key '{k}' is missing"
+            # execute the search
+            search = search_cls(**kwargs).search(file_name=file_input.name)
+            if search:
+                return tracker_sel, True, search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     def process_trackers(
         self,
-        media_input: Path,
-        jinja_engine: Jinja2TemplateEngine,
-        source_file: Path | None,
         process_dict: dict[str, Any],
         queued_status_update: Callable[[str, str], None],
         queued_text_update: Callable[[str], None],
         queued_text_update_replace_last_line: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
         caught_error: SignalInstance,
-        mediainfo_obj: MediaInfo,
-        source_file_mi_obj: MediaInfo | None,
-        media_type: MediaType,
-        media_search_payload: MediaSearchPayload,
-        releasers_name: str,
-        encode_file_dir: Path | None = None,
         token_prompt_cb: Callable[[Sequence[str] | None], dict[str, str] | None]
         | None = None,
         overview_cb: Callable[
@@ -484,8 +447,8 @@ class ProcessBackEnd:
             )
             queued_text_update(f"<br /><span>{max_piece_size} (bytes)</span>")
 
-        # use encode_file_dir as the source for torrent if set, else use media_input
-        torrent_source = encode_file_dir if encode_file_dir else media_input
+        # get media input
+        media_input = self.config.media_input_payload.require_input_path()
 
         # process
         queued_text_update(
@@ -525,8 +488,7 @@ class ProcessBackEnd:
             # generate tracker title first
             tracker_title = None
             generated_tracker_title = self.generate_tracker_title(
-                file_name=media_input,
-                tracker_info=tracker_info,
+                tracker_info=tracker_info
             )
             if generated_tracker_title:
                 tracker_title = self.tracker_title_formatting(
@@ -572,15 +534,12 @@ class ProcessBackEnd:
                     )
             if nfo_template:
                 nfo = TokenReplacer(
-                    media_input=media_input,
-                    jinja_engine=jinja_engine,
-                    source_file=source_file,
+                    media_input_obj=self.config.media_input_payload,
+                    jinja_engine=self.config.jinja_engine,
                     token_string=nfo_template,
-                    media_search_obj=media_search_payload,
-                    source_file_mi_obj=source_file_mi_obj,
-                    media_info_obj=mediainfo_obj,
+                    media_search_obj=self.config.media_search_payload,
                     unfilled_token_mode=UnfilledTokenRemoval.KEEP,
-                    releasers_name=releasers_name,
+                    releasers_name=self.config.cfg_payload.releasers_name,
                     screen_shots=formatted_screens,
                     screen_shots_comparison=comparison_screens,
                     screen_shots_even_obj=even_screens,
@@ -690,7 +649,7 @@ class ProcessBackEnd:
                         torrent = mkbrr_generate_torrent(
                             mkbrr_path=self.config.cfg_payload.mkbrr,
                             tracker_info=tracker_info,
-                            path=torrent_source,
+                            path=media_input,
                             output_path=torrent_path,
                             max_piece_size=max_piece_size,
                             cb=self.mkbrr_torrent_gen_cb,
@@ -715,7 +674,7 @@ class ProcessBackEnd:
                     )
                     torrent = generate_torrent(
                         tracker_info=tracker_info,
-                        path=torrent_source,
+                        path=media_input,
                         max_piece_size=max_piece_size,
                         cb=self.torrent_gen_cb,
                     )
@@ -753,9 +712,6 @@ class ProcessBackEnd:
                         config=self.config,
                         tracker=cur_tracker,
                         torrent_file=torrent_path,
-                        media_file=media_input,
-                        mi_obj=mediainfo_obj,
-                        source_path=torrent_source,
                         upload_text_cb=queued_text_update,
                         upload_text_replace_last_line_cb=queued_text_update_replace_last_line,
                         progress_cb=self.progress_bar_cb,
@@ -769,10 +725,6 @@ class ProcessBackEnd:
                     execute_upload = self.upload(
                         tracker=cur_tracker,
                         torrent_file=torrent_path,
-                        file_input=Path(media_input),
-                        mediainfo_obj=mediainfo_obj,
-                        media_type=media_type,
-                        media_search_payload=media_search_payload,
                         nfo=nfo,
                         tracker_title=cur_tracker_title,
                     )
@@ -1202,13 +1154,17 @@ class ProcessBackEnd:
         self,
         tracker: TrackerSelection,
         torrent_file: Path,
-        file_input: Path,
-        mediainfo_obj: MediaInfo,
-        media_type: MediaType,
-        media_search_payload: MediaSearchPayload,
         nfo: str,
         tracker_title: str,
     ) -> Path | bool | str | None:
+        input_path = self.config.media_input_payload.require_input_path()
+        first_file = self.config.media_input_payload.require_first_file()
+        mediainfo_obj = self.config.media_input_payload.get_mediainfo(first_file)
+        if not mediainfo_obj:
+            raise TrackerError(f"Failed to get MediaInfo object for '{first_file}'")
+        media_search_obj = self.config.media_search_payload
+        media_type = self.config.media_input_payload.require_media_type()
+
         if tracker is TrackerSelection.MORE_THAN_TV:
             tracker_payload = self.config.cfg_payload.mtv_tracker
             if not tracker_payload.username or not tracker_payload.password:
@@ -1219,11 +1175,11 @@ class ProcessBackEnd:
                 totp=tracker_payload.totp,
                 nfo=nfo,
                 group_desc=tracker_payload.group_description,
-                torrent_file=Path(torrent_file),
-                file_input=file_input,
+                torrent_file=torrent_file,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 mediainfo_obj=mediainfo_obj,
-                genre_ids=media_search_payload.genres,
+                genre_ids=media_search_obj.genres,
                 media_type=media_type,
                 anonymous=bool(tracker_payload.anonymous),
                 source_origin=tracker_payload.source_origin,
@@ -1249,11 +1205,11 @@ class ProcessBackEnd:
             return bhd_uploader(
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 media_type=media_type,
-                imdb_id=media_search_payload.imdb_id,
-                tmdb_id=media_search_payload.tmdb_id,
+                imdb_id=media_search_obj.imdb_id,
+                tmdb_id=media_search_obj.tmdb_id,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 live_release=tracker_payload.live_release,
@@ -1280,10 +1236,10 @@ class ProcessBackEnd:
                 password=tracker_payload.password,
                 announce_url=tracker_payload.announce_url,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 nfo=nfo,
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 ptp_img_api_key=self.config.cfg_payload.ptp_tracker.api_key,
                 cookie_dir=self.config.TRACKER_COOKIE_PATH,
                 totp=tracker_payload.totp,
@@ -1298,7 +1254,7 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
@@ -1311,7 +1267,7 @@ class ProcessBackEnd:
                 double_up=bool(tracker_payload.double_up),
                 sticky=bool(tracker_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.AITHER:
@@ -1322,7 +1278,7 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
@@ -1335,7 +1291,7 @@ class ProcessBackEnd:
                 double_up=bool(tracker_payload.double_up),
                 sticky=bool(tracker_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.HUNO:
@@ -1346,14 +1302,14 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
                 stream_optimized=bool(tracker_payload.stream_optimized),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.LST:
@@ -1364,7 +1320,7 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
@@ -1377,7 +1333,7 @@ class ProcessBackEnd:
                 double_up=bool(tracker_payload.double_up),
                 sticky=bool(tracker_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.DARK_PEERS:
@@ -1388,13 +1344,13 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.SHARE_ISLAND:
@@ -1405,7 +1361,7 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
@@ -1413,7 +1369,7 @@ class ProcessBackEnd:
                 personal_release=bool(tracker_payload.personal_release),
                 opt_in_to_mod_queue=bool(tracker_payload.opt_in_to_mod_queue),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.UPLOAD_CX:
@@ -1424,14 +1380,14 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
                 personal_release=bool(tracker_payload.personal_release),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.ONLY_ENCODES:
@@ -1442,35 +1398,42 @@ class ProcessBackEnd:
                 media_type=media_type,
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(tracker_payload.internal),
                 anonymous=bool(tracker_payload.anonymous),
                 personal_release=bool(tracker_payload.personal_release),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
+                media_search_payload=media_search_obj,
                 timeout=self.config.cfg_payload.timeout,
             )
 
-    def generate_tracker_title(
-        self,
-        file_name: Path,
-        tracker_info: TrackerInfo,
-    ) -> str | None:
+    def generate_tracker_title(self, tracker_info: TrackerInfo) -> str | None:
+        # TODO: each of the checks for `tracker_info.mvr_title_override_enabled` will also need
+        # series specific checks when added
         token_string = (
             tracker_info.mvr_title_token_override
-            if tracker_info.mvr_title_token_override
+            if (
+                tracker_info.mvr_title_token_override
+                and tracker_info.mvr_title_override_enabled
+            )
             else self.config.cfg_payload.mvr_title_token
         )
         colon_replace = (
             tracker_info.mvr_title_colon_replace
-            if tracker_info.mvr_title_colon_replace
+            if (
+                tracker_info.mvr_title_colon_replace
+                and tracker_info.mvr_title_override_enabled
+            )
             else self.config.cfg_payload.mvr_colon_replace_title
         )
         override_title_rules = (
             tracker_info.mvr_title_replace_map
-            if tracker_info.mvr_title_replace_map
+            if (
+                tracker_info.mvr_title_replace_map
+                and tracker_info.mvr_title_override_enabled
+            )
             else None
         )
         user_tokens = {
@@ -1479,13 +1442,10 @@ class ProcessBackEnd:
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
         format_str = TokenReplacer(
-            media_input=file_name,
-            jinja_engine=None,
-            source_file=None,
+            media_input_obj=self.config.media_input_payload,
             token_string=token_string,
             colon_replace=colon_replace,
             media_search_obj=self.config.media_search_payload,
-            media_info_obj=self.config.media_input_payload.encode_file_mi_obj,
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
@@ -1501,6 +1461,7 @@ class ProcessBackEnd:
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
             video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
+            # TODO: i think we'll need to pass in season specific stuff here as well?
         )
         output = format_str.get_output()
         return output if output else None

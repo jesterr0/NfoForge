@@ -1,12 +1,13 @@
 import asyncio
+import traceback
 from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
-import traceback
-from typing import Any, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Sequence
 
+from pymediainfo import MediaInfo
 from PySide6.QtCore import QEventLoop, QObject, QThread, Signal, Slot
-from PySide6.QtGui import QTextCursor, Qt
+from PySide6.QtGui import Qt, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -19,7 +20,6 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
-from pymediainfo import MediaInfo
 
 from src.backend.process import ProcessBackEnd
 from src.backend.utils.file_utilities import open_explorer
@@ -39,6 +39,7 @@ from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import ImageUploadFromTo
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 
@@ -71,14 +72,14 @@ class DupeWorker(BaseWorker):
     def __init__(
         self,
         backend: ProcessBackEnd,
-        file_input: Path,
-        processing_queue: list[str],
+        processing_queue: list[TrackerSelection],
+        media_input_payload: MediaInputPayload,
         media_search_payload: MediaSearchPayload,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.backend = backend
-        self.file_input = file_input
+        self.media_input_payload = media_input_payload
         self.processing_queue = processing_queue
         self.media_search_payload = media_search_payload
 
@@ -88,8 +89,8 @@ class DupeWorker(BaseWorker):
         try:
             dupes = async_loop.run_until_complete(
                 self.backend.dupe_checks(
-                    file_input=self.file_input,
                     processing_queue=self.processing_queue,
+                    media_input_payload=self.media_input_payload,
                     media_search_payload=self.media_search_payload,
                 )
             )
@@ -109,30 +110,12 @@ class ProcessWorker(BaseWorker):
     def __init__(
         self,
         backend: ProcessBackEnd,
-        media_input: Path,
-        jinja_engine: Jinja2TemplateEngine,
-        source_file: Path | None,
         tracker_data: dict[str, Any],
-        mediainfo_obj: MediaInfo,
-        source_file_mi_obj: MediaInfo | None,
-        media_type: MediaType,
-        media_search_payload: MediaSearchPayload,
-        releasers_name: str,
-        encode_file_dir: Path | None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.backend = backend
-        self.media_input = media_input
-        self.jinja_engine = jinja_engine
-        self.source_file = source_file
         self.tracker_data = tracker_data
-        self.mediainfo_obj = mediainfo_obj
-        self.source_file_mi_obj = source_file_mi_obj
-        self.media_type = media_type
-        self.media_search_payload = media_search_payload
-        self.releasers_name = releasers_name
-        self.encode_file_dir = encode_file_dir
 
         self._prompt_tokens_response = None
         self._overview_prompt = None
@@ -140,21 +123,12 @@ class ProcessWorker(BaseWorker):
     def run(self) -> None:
         try:
             self.backend.process_trackers(
-                media_input=self.media_input,
-                jinja_engine=self.jinja_engine,
-                source_file=self.source_file,
                 process_dict=self.tracker_data,
                 queued_status_update=self._queued_status_update_cb,
                 queued_text_update=self._queued_text_update_cb,
                 queued_text_update_replace_last_line=self._queued_text_update_replace_last_line_cb,
                 progress_bar_cb=self._progress_cb,
                 caught_error=self.caught_error,
-                mediainfo_obj=self.mediainfo_obj,
-                source_file_mi_obj=self.source_file_mi_obj,
-                media_type=self.media_type,
-                media_search_payload=self.media_search_payload,
-                releasers_name=self.releasers_name,
-                encode_file_dir=self.encode_file_dir,
                 token_prompt_cb=self.token_prompt_and_wait_cb,
                 overview_cb=self.overview_prompt_and_wait_cb,
             )
@@ -285,40 +259,32 @@ class ProcessPage(BaseWizardPage):
     @Slot()
     def process_jobs(self) -> None:
         # get paths and other things from the media input payload
-        detected_input, mediainfo_obj, encode_file_dir = self._handle_files()
+        detected_input = self._handle_files()
 
         # get tracker data and check for existing torrent files
-        if not self.config.media_input_payload.working_dir:
-            raise FileNotFoundError("Failed to detect MediaInputPayload.working_dir")
-        tracker_data = self._gather_tracker_data(
-            self.config.media_input_payload.working_dir, detected_input
-        )
+        tracker_data = self._gather_tracker_data(detected_input)
         if not tracker_data:
             raise AttributeError("Could not determine tracker data")
 
         GSigs().wizard_set_disabled.emit(True)
         self.tracker_process_tree.setDisabled(True)
 
-        if self.processing_mode == UploadProcessMode.DUPE_CHECK:
+        if self.processing_mode is UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
                 backend=self.backend,
-                file_input=detected_input,
-                processing_queue=list(tracker_data.keys()),
+                processing_queue=[TrackerSelection(x) for x in tracker_data.keys()],
+                media_input_payload=self.config.media_input_payload,
                 media_search_payload=self.config.media_search_payload,
                 parent=self,
             )
             self.dupe_worker.results.connect(self._on_dupe_results)
             self.dupe_worker.job_failed.connect(self._on_dupes_failed)
-            # self.dupe_worker.queued_text_update.connect(self._on_text_update)
-            # self.dupe_worker.queued_text_update_replace_last_line.connect(
-            #     self._on_text_update_replace_last_line
-            # )
             self._on_text_update(
                 '<h3 style="margin: 0; padding: 0;">📋 Checking for dupes:</h3>',
             )
             self.dupe_worker.start()
 
-        elif self.processing_mode == UploadProcessMode.UPLOAD:
+        elif self.processing_mode is UploadProcessMode.UPLOAD:
             if self.save_config:
                 self.save_config = False
                 self._update_last_used_host()
@@ -328,16 +294,7 @@ class ProcessPage(BaseWizardPage):
 
             self.process_worker = ProcessWorker(
                 backend=self.backend,
-                media_input=detected_input,
-                jinja_engine=self.config.jinja_engine,
-                source_file=self.config.media_input_payload.source_file,
                 tracker_data=tracker_data,
-                mediainfo_obj=mediainfo_obj,
-                source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
-                media_type=self.config.media_search_payload.media_type,
-                media_search_payload=self.config.media_search_payload,
-                releasers_name=self.config.cfg_payload.releasers_name,
-                encode_file_dir=encode_file_dir,
                 parent=self,
             )
             self.process_worker.caught_error.connect(self._log_caught_error)
@@ -638,115 +595,157 @@ class ProcessPage(BaseWizardPage):
     def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
         self.save_config = True
 
-    def get_inputs(self) -> tuple[Path, Path | None, MediaInfo, Path | None]:
-        payload = self.config.media_input_payload
-        media_in = payload.encode_file
-        if not media_in:
-            raise FileNotFoundError("Failed to detect encode input")
-        renamed_out = payload.renamed_file
-        media_info_obj = payload.encode_file_mi_obj
-        encode_file_dir = payload.encode_file_dir
-        if not media_info_obj:
-            raise AttributeError("Failed to read media info for encode input")
-        return (
-            Path(media_in),
-            Path(renamed_out) if renamed_out else None,
-            media_info_obj,
-            Path(encode_file_dir) if encode_file_dir else None,
-        )
-
-    def _handle_files(self) -> tuple[Path, MediaInfo, Path | None]:
-        # get paths and other things from the media input payload
-        og_input, renamed_input, mediainfo_obj, encode_file_dir = self.get_inputs()
-
-        detected_input = renamed_input if renamed_input else og_input
+    def _handle_files(self) -> Path:
+        detected_input = self.config.media_input_payload.require_input_path()
         LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
 
         # handle rename if we're uploading
-        if self.processing_mode == UploadProcessMode.UPLOAD:
+        if self.processing_mode is UploadProcessMode.UPLOAD:
             # grab table bg color based on theme
             table_element_bg = self.get_theme_colors()
 
-            # file rename first (if needed)
-            if renamed_input and (str(og_input) != str(renamed_input)):
-                self._on_text_update(f"""\
-                    <br /><h3 style="margin: 0; padding: 0;">📼 Renaming input file:</h3>
+            # new code
+            payload = self.config.media_input_payload
+
+            # iterate the renames and build out a table to show the user
+            table_rows: list[str] = []
+            for input_file, output_file in payload.file_list_rename_map.items():
+                if str(input_file) != str(output_file):
+                    table_rows.append(f"""\
+                    <tr>
+                        <td style="border: 1px solid #bbb; padding: 6px;">{input_file.stem}</td>
+                        <td style="border: 1px solid #bbb; padding: 6px;">{output_file.stem}</td>
+                    </tr>""")
+
+            # if we have table rows lets build the table and show it in the window
+            if table_rows:
+                formatted_table_rows = "\n".join(table_rows)
+                self._on_text_update(
+                    f"""\
+                    <br /><h3 style="margin: 0; padding: 0;">📼 Rename Files:</h3>
                     <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
                     <tr>
-                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Source</th>
+                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Target</th>
                     </tr>
-                    <tr>
-                        <td style="border: 1px solid #bbb; padding: 6px;">{og_input.stem}</td>
-                        <td style="border: 1px solid #bbb; padding: 6px;">{renamed_input.stem}</td>
-                    </tr>
-                    </table>""")
+                    {formatted_table_rows}
+                    </table>"""
+                )
+                self._on_text_update("<br /><span>Renaming files...</span>")
+
                 try:
-                    # only rename if source and destination are different and source exists
-                    if og_input != renamed_input and og_input.exists():
-                        detected_input = self.backend.rename_file(
-                            f_in=og_input, f_out=renamed_input
-                        )
-                        if not detected_input.exists():
-                            detected_input_error = (
-                                "Cannot continue, the detected input does not exist"
+                    for (
+                        src_input_file,
+                        trg_output_file,
+                    ) in payload.file_list_rename_map.items():
+                        # only rename if source and destination are different and source exists
+                        if (
+                            src_input_file != trg_output_file
+                            and src_input_file.exists()
+                        ):
+                            trg_out = self.backend.rename_file(
+                                f_in=src_input_file, f_out=trg_output_file
                             )
-                            LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
-                            raise ProcessError(detected_input_error)
-                        # update payload to reflect new file name
-                        self.config.media_input_payload.encode_file = detected_input
-                        og_input = detected_input
-                    else:
-                        detected_input = renamed_input
-                        self.config.media_input_payload.encode_file = detected_input
-                        og_input = detected_input
+                            if not trg_out.exists():
+                                detected_input_error = f"Cannot continue, the detected renamed output does not exist ({trg_out})"
+                                LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
+                                raise ProcessError(detected_input_error)
                 except Exception as e:
                     LOG.error(
                         LOG.LOG_SOURCE.FE,
                         f"Failed to rename file: {e}\n{traceback.format_exc()}",
                     )
                     raise
+                self._on_text_update("<br /><span>Renaming files completed</span>")
 
-            # directory rename (if needed)
-            if encode_file_dir:
-                # The new folder name should be detected_input.stem
-                new_folder = encode_file_dir.parent / detected_input.stem
-                if encode_file_dir != new_folder:
-                    try:
-                        self._on_text_update(f"""\
-                            <br /><h3 style="margin: 0; padding: 0;">📂 Renaming parent folder:</h3>
-                            <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
-                            <tr>
-                                <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-                                <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #bbb; padding: 6px;">{encode_file_dir.stem}</td>
-                                <td style="border: 1px solid #bbb; padding: 6px;">{new_folder.stem}</td>
-                            </tr>
-                            </table>""")
-                        encode_file_dir.rename(new_folder)
-                        # update payload to reflect new folder name
-                        self.config.media_input_payload.encode_file_dir = new_folder
-                        encode_file_dir = new_folder
-                        # update encode_file path to point to the file inside the new folder
-                        old_file = self.config.media_input_payload.encode_file
-                        if old_file:
-                            new_file = new_folder / Path(old_file).name
-                            self.config.media_input_payload.encode_file = new_file
-                            detected_input = new_file
-                    except Exception as e:
-                        LOG.error(
-                            LOG.LOG_SOURCE.FE,
-                            f"Failed to rename parent folder: {e}\n{traceback.format_exc()}",
-                        )
-                        raise
+            # TODO: handle directory renaming
 
-        return detected_input, mediainfo_obj, encode_file_dir
+            # new code
 
-    def _gather_tracker_data(
-        self, process_dir: Path, detected_input: Path
-    ) -> dict[str, Any] | None:
+            # # file rename first (if needed)
+            # if renamed_input and (str(og_input) != str(renamed_input)):
+            #     self._on_text_update(f"""\
+            #         <br /><h3 style="margin: 0; padding: 0;">📼 Renaming input file:</h3>
+            #         <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
+            #         <tr>
+            #             <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+            #             <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+            #         </tr>
+            #         <tr>
+            #             <td style="border: 1px solid #bbb; padding: 6px;">{og_input.stem}</td>
+            #             <td style="border: 1px solid #bbb; padding: 6px;">{renamed_input.stem}</td>
+            #         </tr>
+            #         </table>""")
+            #     try:
+            #         # only rename if source and destination are different and source exists
+            #         if og_input != renamed_input and og_input.exists():
+            #             detected_input = self.backend.rename_file(
+            #                 f_in=og_input, f_out=renamed_input
+            #             )
+            #             if not detected_input.exists():
+            #                 detected_input_error = (
+            #                     "Cannot continue, the detected input does not exist"
+            #                 )
+            #                 LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
+            #                 raise ProcessError(detected_input_error)
+            #             # update payload to reflect new file name
+            #             self.config.media_input_payload.encode_file = detected_input
+            #             og_input = detected_input
+            #         else:
+            #             detected_input = renamed_input
+            #             self.config.media_input_payload.encode_file = detected_input
+            #             og_input = detected_input
+            #     except Exception as e:
+            #         LOG.error(
+            #             LOG.LOG_SOURCE.FE,
+            #             f"Failed to rename file: {e}\n{traceback.format_exc()}",
+            #         )
+            #         raise
+
+            # # directory rename (if needed)
+            # if encode_file_dir:
+            #     # The new folder name should be detected_input.stem
+            #     new_folder = encode_file_dir.parent / detected_input.stem
+            #     if encode_file_dir != new_folder:
+            #         try:
+            #             self._on_text_update(f"""\
+            #                 <br /><h3 style="margin: 0; padding: 0;">📂 Renaming parent folder:</h3>
+            #                 <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
+            #                 <tr>
+            #                     <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
+            #                     <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
+            #                 </tr>
+            #                 <tr>
+            #                     <td style="border: 1px solid #bbb; padding: 6px;">{encode_file_dir.stem}</td>
+            #                     <td style="border: 1px solid #bbb; padding: 6px;">{new_folder.stem}</td>
+            #                 </tr>
+            #                 </table>""")
+            #             encode_file_dir.rename(new_folder)
+            #             # update payload to reflect new folder name
+            #             self.config.media_input_payload.encode_file_dir = new_folder
+            #             encode_file_dir = new_folder
+            #             # update encode_file path to point to the file inside the new folder
+            #             old_file = self.config.media_input_payload.encode_file
+            #             if old_file:
+            #                 new_file = new_folder / Path(old_file).name
+            #                 self.config.media_input_payload.encode_file = new_file
+            #                 detected_input = new_file
+            #         except Exception as e:
+            #             LOG.error(
+            #                 LOG.LOG_SOURCE.FE,
+            #                 f"Failed to rename parent folder: {e}\n{traceback.format_exc()}",
+            #             )
+            #             raise
+
+        # return detected_input, mediainfo_obj, encode_file_dir
+        return detected_input
+
+    def _gather_tracker_data(self, detected_input: Path) -> dict[str, Any] | None:
+        process_dir = self.config.media_input_payload.working_dir
+        if not process_dir:
+            raise ValueError("Failed to detect MediaInputPayload.working_dir")
+
+        # build data
         tracker_data = {}
         for tracker, (
             combo_text,
