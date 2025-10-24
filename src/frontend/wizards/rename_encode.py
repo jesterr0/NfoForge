@@ -1,10 +1,9 @@
+import re
 from collections.abc import Sequence
 from functools import partial
-from pathlib import Path
-import re
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -28,8 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.rename_encode import RenameEncodeBackEnd
-from src.backend.tokens import FileToken, Tokens
-from src.backend.tokens import TokenSelection, TokenType
+from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
     FRAME_SIZE_INFO,
@@ -284,6 +282,7 @@ class RenameEncode(BaseWizardPage):
 
     def initializePage(self) -> None:
         self.config.media_input_payload.is_empty(True)
+        # this is a movie so there's only ever 1 to rename, grab it with index 0
         media_file = self.config.media_input_payload.file_list[0]
         release_group_name = self.config.cfg_payload.mvr_release_group
 
@@ -314,9 +313,13 @@ class RenameEncode(BaseWizardPage):
         if file_input:
             if not self._name_validations() or not self._quality_validations():
                 return False
-            self.config.media_input_payload.renamed_file = Path(
-                file_input
-            ).parent / Path(f"{self.output_entry.text().strip()}{self._input_ext}")
+            renamed_output = (
+                file_input.parent
+                / f"{self.output_entry.text().strip()}{self._input_ext}"
+            )
+            self.config.media_input_payload.file_list_rename_map[file_input] = (
+                renamed_output
+            )
 
             # update config shared data with detected edition
             edition_combo_text = self.edition_combo.currentText()
