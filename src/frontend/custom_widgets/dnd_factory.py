@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QRect, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import QLineEdit, QPushButton, QToolButton
 
@@ -119,12 +119,15 @@ class DNDLineEdit(DNDMixin, QLineEdit):  # pyright: ignore [reportIncompatibleMe
         self.setAcceptDrops(True)
 
 
-class DNDCustomLineEdit(DNDMixin, CodeEditor):  # pyright: ignore [reportIncompatibleMethodOverride]
+class DNDCodeEditor(DNDMixin, CodeEditor):  # pyright: ignore [reportIncompatibleMethodOverride]
     def __init__(
         self,
         line_numbers: bool = True,
         wrap_text: bool = False,
         mono_font: bool = True,
+        pop_out_expansion: bool = False,
+        pop_out_name: str = "Editor",
+        pop_out_geometry: QRect | None = None,
         parent=None,
         **kwargs,
     ):
@@ -132,6 +135,9 @@ class DNDCustomLineEdit(DNDMixin, CodeEditor):  # pyright: ignore [reportIncompa
             line_numbers=line_numbers,
             wrap_text=wrap_text,
             mono_font=mono_font,
+            pop_out_expansion=pop_out_expansion,
+            pop_out_name=pop_out_name,
+            pop_out_geometry=pop_out_geometry,
             parent=parent,
             **kwargs,
         )
