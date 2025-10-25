@@ -6,8 +6,6 @@ from src.enums.audio_channels import AudioChannels
 
 
 class ParseAudioChannels:
-    __slots__ = ()
-
     @staticmethod
     def get_channel_layout(a_track: Track) -> str:
         num_channels = AudioChannels(ParseAudioChannels.get_channels(a_track)).value
@@ -35,30 +33,32 @@ class ParseAudioChannels:
         return channel_positions
 
     @staticmethod
-    def get_channels(a_track: Track) -> int:
+    def get_channels(mi_audio_obj: Track) -> int:
         """
         Get the number of audio channels for the specified track.
 
         The added complexity for 'check_other' is to ensure we get a report
         of the highest potential channel count.
 
-        Args:
-            mi_object (Track): MediaInfo track object containing information about the media
-            file's audio track.
-
         Returns:
             The number of audio channels as an integer.
         """
-        base_channels = a_track.channel_s
-        check_other = re.search(r"\d+", str(a_track.other_channel_s[0]))
-        check_other_2 = str(a_track.channel_s__original)
-
-        # Create a list of values to find the maximum
+        if isinstance(mi_audio_obj.channel_s, int):
+            base_channels = mi_audio_obj.channel_s
+        else:
+            base_channels = max(
+                int(x) for x in re.findall(r"\d+", str(mi_audio_obj.channel_s)) if x
+            )
+        # create a list of values to find the maximum
         values = [int(base_channels)]
 
+        # we'll check other channels
+        check_other = re.search(r"\d+", str(mi_audio_obj.other_channel_s[0]))
         if check_other:
             values.append(int(check_other.group()))
 
+        # finally look for `channel_s__original` which is usually only in DTS streams with mediainfo
+        check_other_2 = str(mi_audio_obj.channel_s__original)
         if check_other_2.isdigit():
             values.append(int(check_other_2))
 

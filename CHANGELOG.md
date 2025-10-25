@@ -100,6 +100,8 @@
 ### Fixed
 
 - TokenTable widget labels had the wrong weight of bold.
+- UploadCX payload was assigned to the wrong payload _(wouldn't have actually bothered the end result)_.
+- Potential error reading audio track layouts with a core.
 
 ### Removed
 
