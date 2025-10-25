@@ -7,6 +7,7 @@ from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
 from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 
@@ -108,6 +109,7 @@ class RenameEncodeBackEnd:
                     raise FileNotFoundError(
                         f"Directory rename failed: {actual_trg_dir} does not exist"
                     )
+                LOG.debug(LOG.LOG_SOURCE.BE, f"Renamed folder: {src_dir} -> {trg_dir}")
 
                 # update input_path if it was pointing to the old directory
                 if input_path and input_path == src_dir:
@@ -140,6 +142,10 @@ class RenameEncodeBackEnd:
                     raise FileNotFoundError(
                         f"File rename failed: {trg_out} does not exist"
                     )
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"Renamed file: {src_input_file} -> {trg_output_file}",
+                )
 
                 # update input_path if it was pointing to this specific file
                 if input_path and input_path == src_input_file:
