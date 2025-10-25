@@ -1,5 +1,5 @@
-from collections.abc import Callable
 import traceback
+from collections.abc import Callable
 
 from PySide6.QtCore import QThread, Signal
 
