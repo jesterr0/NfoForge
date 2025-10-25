@@ -1,9 +1,10 @@
 import re
 from collections.abc import Sequence
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEventLoop, QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -36,10 +37,14 @@ from src.backend.utils.rename_normalizations import (
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from src.frontend.custom_widgets.token_table import TokenTable
-from src.frontend.utils import block_all_signals, build_h_line
+from src.frontend.global_signals import GSigs
+from src.frontend.utils import build_h_line
+from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
@@ -67,17 +72,25 @@ class RenameEncode(BaseWizardPage):
 
     REASON_STR = "Select or enter reason"
 
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
         self.setTitle("Rename")
         self.setObjectName("renameEncode")
         self.setCommitPage(True)
 
         self.config = config
+        self.context = context
         self.backend = RenameEncodeBackEnd()
         self._input_ext: str | None = None
         self._token_window: QWidget | None = None
         self._overridden_tokens = set()
+
+        # rename loop vars
+        self._rename_loop: QEventLoop | None = None
+        self._updated_map: dict[Path, Path] | None = None
+        self._updated_input_path: Path | None = None
 
         self.media_label = QLabel()
         self.media_label.setSizePolicy(
@@ -281,9 +294,9 @@ class RenameEncode(BaseWizardPage):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def initializePage(self) -> None:
-        self.config.media_input_payload.is_empty(True)
+        self.context.media_input.has_basic_data()
         # this is a movie so there's only ever 1 to rename, grab it with index 0
-        media_file = self.config.media_input_payload.file_list[0]
+        media_file = self.context.media_input.file_list[0]
         release_group_name = self.config.cfg_payload.mvr_release_group
 
         self.media_label.setText(media_file.stem)
@@ -293,7 +306,7 @@ class RenameEncode(BaseWizardPage):
 
         self.token_override.setText(self.config.cfg_payload.mvr_token)
 
-        comp_pair = self.config.media_input_payload.comparison_pair
+        comp_pair = self.context.media_input.comparison_pair
         get_quality = self.backend.get_quality(
             media_input=media_file, source_input=comp_pair.source if comp_pair else None
         )
@@ -309,7 +322,7 @@ class RenameEncode(BaseWizardPage):
         self.update_generated_name()
 
     def validatePage(self) -> bool:
-        file_input = self.config.media_input_payload.file_list[0]
+        file_input = self.context.media_input.file_list[0]
         if file_input:
             if not self._name_validations() or not self._quality_validations():
                 return False
@@ -317,26 +330,91 @@ class RenameEncode(BaseWizardPage):
                 file_input.parent
                 / f"{self.output_entry.text().strip()}{self._input_ext}"
             )
-            self.config.media_input_payload.file_list_rename_map[file_input] = (
-                renamed_output
-            )
+            self.context.media_input.file_list_rename_map[file_input] = renamed_output
+
+            # if user opened a folder (not a single file), rename the folder to match the movie
+            if (
+                self.context.media_input.input_path
+                and self.context.media_input.input_path.is_dir()
+                and file_input.parent == self.context.media_input.input_path
+            ):
+                # rename folder to match the renamed file's stem
+                old_folder = file_input.parent
+                new_folder = old_folder.parent / self.output_entry.text().strip()
+
+                # update the renamed_output to be in the new folder
+                renamed_output = (
+                    new_folder / f"{self.output_entry.text().strip()}{self._input_ext}"
+                )
+                self.context.media_input.file_list_rename_map[file_input] = (
+                    renamed_output
+                )
+
+            # show preview dialog before executing renames
+            preview_dialog = RenamePreviewDialog(self)
+            preview_dialog.set_renames(self.context.media_input.file_list_rename_map)
+
+            # user cancelled - return early
+            if preview_dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
+
+            # execute the renames immediately after user confirms
+            try:
+                GSigs().main_window_set_disabled.emit(True)
+                GSigs().main_window_update_status_tip.emit("Renaming media...", 0)
+
+                # start an event loop to wait for rename completion
+                self._rename_loop = QEventLoop(self)
+
+                worker = GeneralWorker(
+                    func=self.backend.execute_renames,
+                    parent=self,
+                    file_list_rename_map=self.context.media_input.file_list_rename_map,
+                    input_path=self.context.media_input.input_path,
+                )
+                worker.job_finished.connect(self._on_rename_response)
+                worker.job_failed.connect(self._on_rename_failed)
+                worker.start()
+
+                # wait for response
+                self._rename_loop.exec()
+
+                # update the payload with the new paths
+                if not self._updated_map:
+                    return False
+                self.context.media_input.file_list_rename_map = self._updated_map
+                if self._updated_input_path:
+                    self.context.media_input.input_path = self._updated_input_path
+
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "Rename Failed",
+                    f"Failed to rename files:\n\n{str(e)}",
+                )
+                return False
+
+            finally:
+                GSigs().main_window_set_disabled.emit(False)
+                GSigs().main_window_clear_status_tip.emit()
+                self._rename_loop = None
 
             # update config shared data with detected edition
             edition_combo_text = self.edition_combo.currentText()
             if edition_combo_text:
-                self.config.shared_data.dynamic_data["edition_override"] = (
+                self.context.shared_data.dynamic_data["edition_override"] = (
                     edition_combo_text
                 )
 
             # update config shared data with frame size
             frame_size_text = self.frame_size_combo.currentText()
             if frame_size_text:
-                self.config.shared_data.dynamic_data["frame_size_override"] = (
+                self.context.shared_data.dynamic_data["frame_size_override"] = (
                     frame_size_text
                 )
 
             # update config shared data with over ride tokens
-            self.config.shared_data.dynamic_data["override_tokens"] = (
+            self.context.shared_data.dynamic_data["override_tokens"] = (
                 self.backend.override_tokens
             )
 
@@ -349,6 +427,19 @@ class RenameEncode(BaseWizardPage):
             super().validatePage()
             return True
         return False
+
+    @Slot(tuple)
+    def _on_rename_response(
+        self, response: tuple[dict[Path, Path], Path | None]
+    ) -> None:
+        self._updated_map, self._updated_input_path = response
+        if not self._rename_loop:
+            raise RuntimeError("There was a critical error, runtime loop is missing")
+        self._rename_loop.quit()
+
+    @Slot(str)
+    def _on_rename_failed(self, failure: str) -> None:
+        QMessageBox.warning(self, "Error", failure)
 
     def _pre_load_attribute_combos(self, filename: str) -> None:
         def select_combo_by_regex(norm_list, combo):
@@ -366,7 +457,7 @@ class RenameEncode(BaseWizardPage):
         select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
 
     def _auto_check_remux_checkbox(self) -> None:
-        media_file = self.config.media_input_payload.file_list[0]
+        media_file = self.context.media_input.file_list[0]
         if media_file and "remux" in media_file.stem.lower():
             self.remux_checkbox.setChecked(True)
 
@@ -376,7 +467,7 @@ class RenameEncode(BaseWizardPage):
             # remove only the overridden tokens
             for k in self._overridden_tokens:
                 self.backend.override_tokens.pop(k, None)
-                self.config.shared_data.dynamic_data.get("override_tokens", {}).pop(
+                self.context.shared_data.dynamic_data.get("override_tokens", {}).pop(
                     k, None
                 )
             self._overridden_tokens.clear()
@@ -453,7 +544,9 @@ class RenameEncode(BaseWizardPage):
         if not cur_quality:
             return True
         elif cur_quality in {QualitySelection.DVD, QualitySelection.SDTV}:
-            mi_obj = self.config.media_input_payload.encode_file_mi_obj
+            mi_obj = self.context.media_input.get_mediainfo(
+                self.context.media_input.require_first_file()
+            )
             if not mi_obj:
                 raise FileNotFoundError("Failed to parse MediaInfo")
             detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
@@ -572,10 +665,10 @@ class RenameEncode(BaseWizardPage):
         }
 
         get_file_name = self.backend.media_renamer(
-            media_input_obj=self.config.media_input_payload,
+            media_input_obj=self.context.media_input,
             mvr_token=token,
             mvr_colon_replacement=self.config.cfg_payload.mvr_colon_replace_filename,
-            media_search_payload=self.config.media_search_payload,
+            media_search_payload=self.context.media_search,
             title_clean_rules=self.config.cfg_payload.title_clean_rules,
             video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
             user_tokens=user_tokens,
@@ -623,29 +716,6 @@ class RenameEncode(BaseWizardPage):
             elif "proper" in text:
                 self.proper_reason_lbl.show()
                 self.proper_reason_combo.show()
-
-    def reset_page(self) -> None:
-        block_all_signals(self, True)
-        self.media_label.clear()
-        for combo_box in (
-            self.edition_combo,
-            self.frame_size_combo,
-            self.localization_combo,
-            self.re_release_combo,
-        ):
-            combo_box.setCurrentIndex(0)
-        self._reset_re_release_reason_widgets()
-        self.release_group_entry.clear()
-        self.options_scroll_area.verticalScrollBar().setValue(0)
-        self.override_group.setChecked(False)
-        self.output_entry.clear()
-
-        self._input_ext = None
-        self._close_token_window()
-        self._overridden_tokens.clear()
-
-        self.backend.reset()
-        block_all_signals(self, False)
 
     @staticmethod
     def _update_combo_box(
@@ -761,9 +831,3 @@ class RenameTokenControl(QWidget):
                     match = True
                     break
             self.table.setRowHidden(row, not match)
-
-    def reset(self) -> None:
-        self.table.blockSignals(True)
-        self.table.setRowCount(0)
-        self.table.clearContents()
-        self.table.setAutoScroll(False)

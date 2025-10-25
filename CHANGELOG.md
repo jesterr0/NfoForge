@@ -36,6 +36,9 @@
   - New wizard page for the user to access this during the workflow.
 - Support for plugin **filters** and **functions** for flat strings _(no documentation yet on this https://github.com/jesterr0/NfoForge/issues/97)_.
 - Built a dialog crop widget that wraps the existing crop widget.
+- Rename Preview dialogue:
+  - Pops up to preview the renamed folder(s) and file(s) showing a **diff** in red/green colors.
+  - Gives the user a chance to confirm the rename or go back and make changes.
 
 ### Changed
 
@@ -96,6 +99,7 @@
 - Plugin Changes:
   - `pre_upload` plugin is no longer passed kwargs `media_file, mi_obj, source_path`. These can be gathered from the config object easily.
 - Improved the visuals of tracker format override widget.
+- File rename no longer happens during processing stage.
 
 ### Fixed
 

@@ -75,3 +75,74 @@ class RenameEncodeBackEnd:
             return QualitySelection.HDTV
         elif "SDTV" in source:
             return QualitySelection.SDTV
+
+    @staticmethod
+    def execute_renames(
+        file_list_rename_map: dict[Path, Path],
+        input_path: Path | None,
+    ) -> tuple[dict[Path, Path], Path | None]:
+        """Execute filesystem renames in 2 phases: directories first, then files.
+
+        Args:
+            file_list_rename_map: Map of original paths to renamed paths
+            input_path: The original input path (file or directory)
+            callback_text: Optional callback for status updates (callable that takes str)
+
+        Returns:
+            Tuple of (updated_rename_map, updated_input_path)
+        """
+        # PHASE 1: rename directories first
+        directory_renames: dict[Path, Path] = {}
+        for src_file, trg_file in file_list_rename_map.items():
+            if src_file.parent != trg_file.parent:
+                src_dir = src_file.parent
+                trg_dir = trg_file.parent
+                if src_dir not in directory_renames:
+                    directory_renames[src_dir] = trg_dir
+
+        # perform directory renames and update the map
+        for src_dir, trg_dir in directory_renames.items():
+            if src_dir.exists() and src_dir != trg_dir:
+                actual_trg_dir = src_dir.rename(trg_dir)
+                if not actual_trg_dir.exists():
+                    raise FileNotFoundError(
+                        f"Directory rename failed: {actual_trg_dir} does not exist"
+                    )
+
+                # update input_path if it was pointing to the old directory
+                if input_path and input_path == src_dir:
+                    input_path = actual_trg_dir
+
+                # update file_list_rename_map: both keys AND values need updating
+                updated_map: dict[Path, Path] = {}
+                for orig_path, renamed_path in file_list_rename_map.items():
+                    # update key if it was in the old directory
+                    new_orig = orig_path
+                    if orig_path.is_relative_to(src_dir):
+                        relative = orig_path.relative_to(src_dir)
+                        new_orig = actual_trg_dir / relative
+
+                    # update value if it was in the old directory
+                    new_renamed = renamed_path
+                    if renamed_path.is_relative_to(src_dir):
+                        relative = renamed_path.relative_to(src_dir)
+                        new_renamed = actual_trg_dir / relative
+
+                    updated_map[new_orig] = new_renamed
+
+                file_list_rename_map = updated_map
+
+        # PHASE 2: rename files
+        for src_input_file, trg_output_file in file_list_rename_map.items():
+            if src_input_file != trg_output_file and src_input_file.exists():
+                trg_out = src_input_file.rename(trg_output_file)
+                if not trg_out.exists():
+                    raise FileNotFoundError(
+                        f"File rename failed: {trg_out} does not exist"
+                    )
+
+                # update input_path if it was pointing to this specific file
+                if input_path and input_path == src_input_file:
+                    input_path = trg_out
+
+        return file_list_rename_map, input_path
