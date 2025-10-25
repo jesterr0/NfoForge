@@ -36,6 +36,7 @@ def open_explorer(path: Path) -> None:
         cur_platform = system()
         # windows
         if cur_platform == "Windows":
+            # we're not importing this at the top as this won't be available on any other platform
             from os import startfile
 
             startfile(str(path))
