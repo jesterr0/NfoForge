@@ -1,7 +1,6 @@
+import re
 from os import PathLike
 from pathlib import Path
-import re
-from typing import Optional
 
 from pymediainfo import MediaInfo, Track
 
@@ -16,7 +15,7 @@ def calculate_avg_bitrate(mi_track: Track) -> int | None:
         return avg_bitrate
 
 
-def calculate_avg_video_bit_rate(mi_object: Optional[MediaInfo]) -> Optional[int]:
+def calculate_avg_video_bit_rate(mi_object: MediaInfo | None) -> int | None:
     mi_bit_rate = None
     if mi_object:
         video_track = mi_object.video_tracks[0]
