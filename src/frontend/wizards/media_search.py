@@ -33,6 +33,7 @@ from src.backend.utils.filter_title import edition_and_title_extractor as extrac
 from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
@@ -117,10 +118,11 @@ class MediaSearch(BaseWizardPage):
     def __init__(
         self,
         config: Config,
+        context: ProcessingContext,
         parent: "MainWindow | Any",
         on_finished_cb: Callable | None = None,
     ) -> None:
-        super().__init__(config, parent)
+        super().__init__(config, context, parent)
         self.setTitle("Search")
         self.setObjectName("mediaSearch")
         self.setCommitPage(True)
@@ -296,7 +298,7 @@ class MediaSearch(BaseWizardPage):
                 self._search_other_ids()
                 return False
             elif (
-                self.config.media_search_payload.media_type is MediaType.SERIES
+                self.context.media_search.media_type is MediaType.SERIES
                 and self.other_ids_parsed
             ):
                 if self._check_invalid_entries((self.tvdb_id_entry,)):
@@ -322,7 +324,7 @@ class MediaSearch(BaseWizardPage):
                         tvdb_id_entry_text
                         and tvdb_id_entry_text != self.tvdb_id_entry.placeholderText()
                     ):
-                        self.config.media_search_payload.tvdb_id = tvdb_id_entry_text
+                        self.context.media_search.tvdb_id = tvdb_id_entry_text
         return invalid_entries
 
     def _search_other_ids(self) -> None:
@@ -374,18 +376,18 @@ class MediaSearch(BaseWizardPage):
             raise MediaSearchError("Failed to parse TMDB")
 
         # update both payloads with the correct MediaType
-        self.config.media_input_payload.media_type = (
-            self.config.media_search_payload.media_type
-        ) = MediaType.strict_search_type(item_data.get("media_type"))
-        self.config.media_search_payload.imdb_id = self.imdb_id_entry.text()
-        self.config.media_search_payload.tmdb_id = self.tmdb_id_entry.text()
-        self.config.media_search_payload.tmdb_data = item_data.get("raw_data")
+        self.context.media_input.media_type = self.context.media_search.media_type = (
+            MediaType.strict_search_type(item_data.get("media_type"))
+        )
+        self.context.media_search.imdb_id = self.imdb_id_entry.text()
+        self.context.media_search.tmdb_id = self.tmdb_id_entry.text()
+        self.context.media_search.tmdb_data = item_data.get("raw_data")
 
         # title selection handled by backend with smart regional preferences
-        self.config.media_search_payload.title = item_data.get("title")
-        self.config.media_search_payload.year = item_data.get("year")
+        self.context.media_search.title = item_data.get("title")
+        self.context.media_search.year = item_data.get("year")
         original_title = item_data.get("original_title")
-        self.config.media_search_payload.original_title = (
+        self.context.media_search.original_title = (
             normalize_super_sub(original_title) if original_title else None
         )
 
@@ -393,7 +395,7 @@ class MediaSearch(BaseWizardPage):
         genres = None
         if isinstance(item_data.get("genre_ids"), list):
             genres = item_data.get("genre_ids")
-        self.config.media_search_payload.genres = genres if genres else []
+        self.context.media_search.genres = genres if genres else []
 
         if media_data:
             # handle complete TMDB data first
@@ -401,17 +403,14 @@ class MediaSearch(BaseWizardPage):
             if tmdb_complete_data and tmdb_complete_data.get("success") is True:
                 complete_tmdb_result = tmdb_complete_data.get("result")
                 # use complete TMDB data as the primary tmdb_data
-                self.config.media_search_payload.tmdb_data = complete_tmdb_result
+                self.context.media_search.tmdb_data = complete_tmdb_result
 
                 # extract and update IMDb ID from complete data if not already set
-                if (
-                    complete_tmdb_result
-                    and not self.config.media_search_payload.imdb_id
-                ):
+                if complete_tmdb_result and not self.context.media_search.imdb_id:
                     external_ids = complete_tmdb_result.get("external_ids", {})
                     extracted_imdb_id = external_ids.get("imdb_id", "")
                     if extracted_imdb_id:
-                        self.config.media_search_payload.imdb_id = extracted_imdb_id
+                        self.context.media_search.imdb_id = extracted_imdb_id
                         self.imdb_id_entry.setText(extracted_imdb_id)
 
             imdb_data = media_data.get("imdb_data")
@@ -421,17 +420,15 @@ class MediaSearch(BaseWizardPage):
             # imdb data
             if imdb_data and imdb_data.get("success") is True:
                 imdb_data_result = imdb_data.get("result")
-                self.config.media_search_payload.imdb_data = imdb_data_result
+                self.context.media_search.imdb_data = imdb_data_result
 
             # tvdb data
             if tvdb_data and tvdb_data.get("success") is True:
                 tvdb_data_result = tvdb_data.get("result")
-                self.config.media_search_payload.tvdb_data = tvdb_data_result
-                self.config.media_search_payload.tvdb_id = str(
-                    tvdb_data_result.get("id")
-                )
-                if self.config.media_search_payload.tvdb_id:
-                    self.tvdb_id_entry.setText(self.config.media_search_payload.tvdb_id)
+                self.context.media_search.tvdb_data = tvdb_data_result
+                self.context.media_search.tvdb_id = str(tvdb_data_result.get("id"))
+                if self.context.media_search.tvdb_id:
+                    self.tvdb_id_entry.setText(self.context.media_search.tvdb_id)
 
             # anilist data
             if ani_list_data and ani_list_data.get("success") is True:
@@ -442,22 +439,16 @@ class MediaSearch(BaseWizardPage):
                         "id": str(mal_value),
                         "idMal": str(mal_value),
                     }
-                self.config.media_search_payload.anilist_data = ani_list_data_result
-                self.config.media_search_payload.anilist_id = ani_list_data_result.get(
-                    "id"
-                )
-                self.config.media_search_payload.mal_id = ani_list_data_result.get(
-                    "idMal"
-                )
-                if self.config.media_search_payload.mal_id:
-                    self.mal_id_entry.setText(
-                        str(self.config.media_search_payload.mal_id)
-                    )
+                self.context.media_search.anilist_data = ani_list_data_result
+                self.context.media_search.anilist_id = ani_list_data_result.get("id")
+                self.context.media_search.mal_id = ani_list_data_result.get("idMal")
+                if self.context.media_search.mal_id:
+                    self.mal_id_entry.setText(str(self.context.media_search.mal_id))
         else:
             # title selection handled by backend, no additional processing needed
             LOG.info(
                 LOG.LOG_SOURCE.FE,
-                f"Using TMDB title selected by backend: '{self.config.media_search_payload.title}'",
+                f"Using TMDB title selected by backend: '{self.context.media_search.title}'",
             )
 
     def _ask_user_for_id(self, id_source: str) -> int:
@@ -489,10 +480,10 @@ class MediaSearch(BaseWizardPage):
                 QTimer.singleShot(1, self.main_window.wizard.reset_wizard)
             return
 
-        input_path = self.config.media_input_payload.input_path
+        input_path = self.context.media_input.input_path
         if not input_path:
             raise MediaFileNotFoundError("Failed to load input path")
-        
+
         self.search_label.setText(f"Input: {input_path.name}")
         self.search_label.setToolTip(input_path.name)
         self.search_entry.setText(self._get_title_only(input_path))
