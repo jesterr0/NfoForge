@@ -83,15 +83,20 @@ class RenameEncodeBackEnd:
         input_path: Path | None,
     ) -> tuple[dict[Path, Path], Path | None]:
         """Execute filesystem renames in 2 phases: directories first, then files.
+        
+        Returns a mapping of old_path -> new_path for all successfully renamed files.
+        This mapping is used to update file_list and file_list_mediainfo in-place.
 
         Args:
-            file_list_rename_map: Map of original paths to renamed paths
-            input_path: The original input path (file or directory)
-            callback_text: Optional callback for status updates (callable that takes str)
+            file_list_rename_map: Map of current paths to target paths
+            input_path: The current input path (file or directory)
 
         Returns:
-            Tuple of (updated_rename_map, updated_input_path)
+            Tuple of (old_to_new_mapping, updated_input_path)
         """
+        # track all successful renames for updating payload
+        rename_mapping: dict[Path, Path] = {}
+        
         # PHASE 1: rename directories first
         directory_renames: dict[Path, Path] = {}
         for src_file, trg_file in file_list_rename_map.items():
@@ -101,7 +106,7 @@ class RenameEncodeBackEnd:
                 if src_dir not in directory_renames:
                     directory_renames[src_dir] = trg_dir
 
-        # perform directory renames and update the map
+        # perform directory renames
         for src_dir, trg_dir in directory_renames.items():
             if src_dir.exists() and src_dir != trg_dir:
                 actual_trg_dir = src_dir.rename(trg_dir)
@@ -115,49 +120,33 @@ class RenameEncodeBackEnd:
                 if input_path and input_path == src_dir:
                     input_path = actual_trg_dir
 
-                # update file_list_rename_map: ONLY update values (current paths), NOT keys (original paths)
-                # Keys must stay as original paths to maintain mapping from file_list later
-                updated_map: dict[Path, Path] = {}
-                for orig_path, renamed_path in file_list_rename_map.items():
-                    # KEEP the original key unchanged
-                    new_orig = orig_path
-
-                    # update value if it was in the old directory
-                    new_renamed = renamed_path
-                    if renamed_path.is_relative_to(src_dir):
-                        relative = renamed_path.relative_to(src_dir)
-                        new_renamed = actual_trg_dir / relative
-
-                    updated_map[new_orig] = new_renamed
-
-                file_list_rename_map = updated_map
-
         # PHASE 2: rename files
-        # After Phase 1, directory may have moved, so keys (original paths) may not exist
-        # We need to find where files currently are based on their parent directory updates
-        for orig_path, target_path in file_list_rename_map.items():
-            # calculate current physical location by updating parent from directory renames
-            current_path = orig_path
+        for src_path, target_path in file_list_rename_map.items():
+            # calculate current physical location (may have moved if directory was renamed)
+            current_path = src_path
             for src_dir, trg_dir in directory_renames.items():
-                if orig_path.is_relative_to(src_dir):
-                    relative = orig_path.relative_to(src_dir)
+                if src_path.is_relative_to(src_dir):
+                    relative = src_path.relative_to(src_dir)
                     current_path = trg_dir / relative
                     break
 
             # only rename if target is different and current location exists
             if current_path != target_path and current_path.exists():
-                trg_out = current_path.rename(target_path)
-                if not trg_out.exists():
+                actual_target = current_path.rename(target_path)
+                if not actual_target.exists():
                     raise FileNotFoundError(
-                        f"File rename failed: {trg_out} does not exist"
+                        f"File rename failed: {actual_target} does not exist"
                     )
                 LOG.debug(
                     LOG.LOG_SOURCE.BE,
-                    f"Renamed file: {current_path} -> {target_path}",
+                    f"Renamed file: {current_path} -> {actual_target}",
                 )
+
+                # track this rename for payload updates
+                rename_mapping[src_path] = actual_target
 
                 # update input_path if it was pointing to this specific file
                 if input_path and input_path == current_path:
-                    input_path = trg_out
+                    input_path = actual_target
 
-        return file_list_rename_map, input_path
+        return rename_mapping, input_path

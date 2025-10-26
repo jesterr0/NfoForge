@@ -89,7 +89,7 @@ class RenameEncode(BaseWizardPage):
 
         # rename loop vars
         self._rename_loop: QEventLoop | None = None
-        self._updated_map: dict[Path, Path] | None = None
+        self._rename_mapping: dict[Path, Path] | None = None
         self._updated_input_path: Path | None = None
 
         self.media_label = QLabel()
@@ -379,12 +379,34 @@ class RenameEncode(BaseWizardPage):
                 # wait for response
                 self._rename_loop.exec()
 
-                # update the payload with the new paths
-                if not self._updated_map:
+                # apply renames to payload (update file_list and file_list_mediainfo in-place)
+                if not self._rename_mapping:
                     return False
-                self.context.media_input.file_list_rename_map = self._updated_map
+
+                # update file_list with renamed paths
+                for i, old_path in enumerate(self.context.media_input.file_list):
+                    if old_path in self._rename_mapping:
+                        self.context.media_input.file_list[i] = self._rename_mapping[
+                            old_path
+                        ]
+
+                # update file_list_mediainfo keys (MediaInfo objects stay same, just new keys)
+                if self.context.media_input.file_list_mediainfo:
+                    new_mediainfo = {}
+                    for (
+                        old_path,
+                        mi_obj,
+                    ) in self.context.media_input.file_list_mediainfo.items():
+                        new_path = self._rename_mapping.get(old_path, old_path)
+                        new_mediainfo[new_path] = mi_obj
+                    self.context.media_input.file_list_mediainfo = new_mediainfo
+
+                # update input_path if it changed
                 if self._updated_input_path:
                     self.context.media_input.input_path = self._updated_input_path
+
+                # clear the rename map (renames are complete)
+                self.context.media_input.file_list_rename_map.clear()
 
             except Exception as e:
                 QMessageBox.critical(
@@ -432,7 +454,7 @@ class RenameEncode(BaseWizardPage):
     def _on_rename_response(
         self, response: tuple[dict[Path, Path], Path | None]
     ) -> None:
-        self._updated_map, self._updated_input_path = response
+        self._rename_mapping, self._updated_input_path = response
         if not self._rename_loop:
             raise RuntimeError("There was a critical error, runtime loop is missing")
         self._rename_loop.quit()
@@ -544,8 +566,11 @@ class RenameEncode(BaseWizardPage):
         if not cur_quality:
             return True
         elif cur_quality in {QualitySelection.DVD, QualitySelection.SDTV}:
-            mi_obj = self.context.media_input.get_mediainfo(
-                self.context.media_input.require_first_file()
+            first_file = self.context.media_input.require_first_file()
+            mi_obj = (
+                self.context.media_input.file_list_mediainfo.get(first_file)
+                if self.context.media_input.file_list_mediainfo
+                else None
             )
             if not mi_obj:
                 raise FileNotFoundError("Failed to parse MediaInfo")
