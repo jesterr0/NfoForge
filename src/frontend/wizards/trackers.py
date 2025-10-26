@@ -1,11 +1,11 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Slot
-from PySide6.QtWidgets import QVBoxLayout, QMessageBox
+from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
 from src.config.config import Config
-from src.frontend.global_signals import GSigs
+from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
+from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -13,8 +13,10 @@ if TYPE_CHECKING:
 
 
 class TrackersPage(BaseWizardPage):
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
 
         self.setObjectName("trackerPage")
         self.setTitle("Trackers")
@@ -39,7 +41,7 @@ class TrackersPage(BaseWizardPage):
             )
             return False
 
-        self.config.shared_data.selected_trackers = trackers
+        self.context.shared_data.selected_trackers = trackers
 
         self.tracker_selection.save_tracker_info()
 
@@ -47,7 +49,3 @@ class TrackersPage(BaseWizardPage):
         GSigs().settings_refresh.emit()
         super().validatePage()
         return True
-
-    @Slot()
-    def reset_page(self):
-        self.tracker_selection.clear()
