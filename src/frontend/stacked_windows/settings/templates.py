@@ -189,8 +189,12 @@ class TemplatesSettings(BaseSettings):
         sandbox_toggle_layout.setContentsMargins(6, 0, 6, 0)
         sandbox_toggle_layout.addWidget(self.sandbox_enable_prompt_tokens)
 
+        # temporary context for template preview in settings
+        self.temp_preview_context = self.config.create_processing_context()
+
         self.template_selector = TemplateSelector(
             config=self.config,
+            context=self.temp_preview_context,
             sandbox=True,
             main_window=main_window,
             parent=self,

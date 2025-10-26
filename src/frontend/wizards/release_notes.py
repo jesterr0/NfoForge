@@ -1,9 +1,9 @@
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QCheckBox, QFrame, QScrollArea, QVBoxLayout, QWidget
 
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.dict_widget import DictWidget
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
@@ -12,8 +12,10 @@ if TYPE_CHECKING:
 
 
 class ReleaseNotes(BaseWizardPage):
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
 
         self.setObjectName("releaseNotesPage")
         self.setTitle("""\
@@ -72,7 +74,7 @@ class ReleaseNotes(BaseWizardPage):
         if self.release_notes_toggle.isChecked():
             get_notes = self.dict_widget.text_box.toPlainText()
             if get_notes and get_notes.strip():
-                self.config.shared_data.release_notes = get_notes
+                self.context.shared_data.release_notes = get_notes
 
     def _update_cfg(self) -> None:
         self.config.cfg_payload.enable_release_notes = (
@@ -83,14 +85,3 @@ class ReleaseNotes(BaseWizardPage):
         )
         self.config.cfg_payload.release_notes = self.dict_widget.get_data()
         self.config.save_config()
-
-    @Slot()
-    def reset_page(self) -> None:
-        pass
-        # self.tracker_list_box.clear()
-        # self.file_tree_view.clear_tree()
-        # recursively_clear_layout(self.nfo_box_layout)
-        # self.thumbnail_listbox.clear()
-        # self.main_scroll_area.verticalScrollBar().setValue(
-        #     self.main_scroll_area.verticalScrollBar().minimum()
-        # )

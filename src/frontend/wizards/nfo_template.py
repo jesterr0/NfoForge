@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 from src.frontend.custom_widgets.template_selector import TemplateSelector
 from src.frontend.global_signals import GSigs
@@ -14,8 +15,10 @@ if TYPE_CHECKING:
 
 
 class NfoTemplate(BaseWizardPage):
-    def __init__(self, config: Config, parent: "MainWindow"):
-        super().__init__(config, parent)
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+    ):
+        super().__init__(config, context, parent)
         self.setTitle("NFO Template")
         self.setObjectName("nfoTemplate")
         self.setCommitPage(True)
@@ -25,7 +28,11 @@ class NfoTemplate(BaseWizardPage):
         self.main_window = parent
 
         self.template_selector = TemplateSelector(
-            config=self.config, sandbox=False, main_window=self.main_window, parent=self
+            config=self.config,
+            context=self.context,
+            sandbox=False,
+            main_window=self.main_window,
+            parent=self,
         )
         self.template_selector.popup_button.clicked.connect(self._reset_highlight)
         self.template_selector.hide_parent.connect(GSigs().main_window_hide)
@@ -87,15 +94,15 @@ class NfoTemplate(BaseWizardPage):
         return True
 
     def _validate_tracker_selection(self) -> bool:
-        if not self.config.shared_data.selected_trackers:
+        if not self.context.shared_data.selected_trackers:
             raise AttributeError(
                 "You have currently not selected any trackers, please start over and select your desired trackers"
             )
 
-        for tracker in self.config.shared_data.selected_trackers:
+        for tracker in self.context.shared_data.selected_trackers:
             if not self.config.tracker_map[tracker].nfo_template:
                 selected_trackers = {
-                    str(x) for x in self.config.shared_data.selected_trackers
+                    str(x) for x in self.context.shared_data.selected_trackers
                 }
                 QMessageBox.information(
                     self,
@@ -115,6 +122,3 @@ class NfoTemplate(BaseWizardPage):
 
     def _reset_highlight(self) -> None:
         self.template_selector.popup_button.setStyleSheet("")
-
-    def reset_page(self):
-        self.template_selector.destroy_token_window.emit()

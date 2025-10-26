@@ -12,18 +12,19 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QMenu,
     QMessageBox,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
-from qtpy.QtWidgets import QMenu
 
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import Tokens, TokenType
 from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -47,6 +48,7 @@ class TemplateSelector(QWidget):
     def __init__(
         self,
         config: Config,
+        context: ProcessingContext,
         sandbox: bool,
         main_window: "MainWindow",
         parent=None,
@@ -57,6 +59,7 @@ class TemplateSelector(QWidget):
 
         Args:
             config: Configuration object
+            context: Processing context containing media data
             sandbox: Whether this is running in sandbox mode
             main_window: Reference to main window
             parent: Parent widget
@@ -66,6 +69,7 @@ class TemplateSelector(QWidget):
         super().__init__(parent)
 
         self.config = config
+        self.context = context
         self.sandbox = sandbox
         self.toggle_prompt_tokens = toggle_prompt_tokens
         self.main_window = main_window
@@ -402,16 +406,18 @@ class TemplateSelector(QWidget):
         if self.preview_btn.isChecked():
             if self.sandbox:
                 if (
-                    not self.config.media_input_payload.input_path
-                    or not self.config.media_search_payload.title
+                    not self.context.media_input.input_path
+                    or not self.context.media_search.title
                 ):
-                    self.sandbox_wizard = SandboxMainWindow(self.config, self)
+                    self.sandbox_wizard = SandboxMainWindow(
+                        self.config, self.context, self
+                    )
                     if self.sandbox_wizard.exec() == QDialog.DialogCode.Rejected:
                         self.preview_btn.setChecked(False)
                         self.text_edit.setReadOnly(False)
                         return
 
-            if not self.config.media_input_payload.input_path:
+            if not self.context.media_input.input_path:
                 raise FileNotFoundError("No input path to check template")
 
             if self.sandbox and not self.reset_sandbox_cache.isVisible():
@@ -480,20 +486,20 @@ class TemplateSelector(QWidget):
             nfo = ""
             try:
                 token_replacer = TokenReplacer(
-                    media_input_obj=self.config.media_input_payload,
+                    media_input_obj=self.context.media_input,
                     jinja_engine=self.config.jinja_engine,
                     token_string=self.old_text,
-                    media_search_obj=self.config.media_search_payload,
+                    media_search_obj=self.context.media_search,
                     releasers_name=self.config.cfg_payload.releasers_name,
                     dummy_screen_shots=False
-                    if self.config.shared_data.url_data
-                    or self.config.shared_data.loaded_images
+                    if self.context.shared_data.url_data
+                    or self.context.shared_data.loaded_images
                     else True,
-                    release_notes=self.config.shared_data.release_notes,
-                    edition_override=self.config.shared_data.dynamic_data.get(
+                    release_notes=self.context.shared_data.release_notes,
+                    edition_override=self.context.shared_data.dynamic_data.get(
                         "edition_override"
                     ),
-                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                    frame_size_override=self.context.shared_data.dynamic_data.get(
                         "frame_size_override"
                     ),
                     title_clean_rules=self.config.cfg_payload.title_clean_rules,
@@ -609,8 +615,8 @@ class TemplateSelector(QWidget):
         if self.preview_btn.isChecked():
             self.preview_btn.setChecked(False)
             self.preview_template()
-        self.config.media_input_payload.reset()
-        self.config.media_search_payload.reset()
+        self.context.media_input.reset()
+        self.context.media_search.reset()
         if reset_tokens:
             self.cached_sandbox_prompt_tokens = None
         self.reset_sandbox_cache.hide()
