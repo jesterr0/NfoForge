@@ -82,9 +82,9 @@ class TokenReplacer:
         "source_file",
         "media_info_obj",
         "source_file_mi_obj",
-        # vars (set during __init__)
         "guess_name",
         "guess_source_name",
+        # vars (set during __init__)
         "guessit_language",
         "token_data",
         # series vars
@@ -204,17 +204,15 @@ class TokenReplacer:
         self.episode_number = episode_number
         self.episode_format = episode_format
 
-        # derive file references from payload
+        # derive file references from payload (paths are always current after renames)
         self.primary_file = self._get_primary_file()
         self.source_file = self._get_source_file()
         self.media_info_obj = self._get_primary_mediainfo()
         self.source_file_mi_obj = self._get_source_mediainfo()
-
-        # vars
         self.guess_name = guessit(self.primary_file.name)
-        self.guess_source_name: dict[str, Any] | None = None
-        if self.source_file:
-            self.guess_source_name = guessit(self.source_file.name)
+        self.guess_source_name = (
+            guessit(self.source_file.name) if self.source_file else None
+        )
         self.guessit_language = self._guessit_language()
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
@@ -250,12 +248,14 @@ class TokenReplacer:
         # if comparison mode, use the source from comparison pair
         if self.media_input_obj.comparison_pair:
             return self.media_input_obj.comparison_pair.source
+        return None
 
     def _get_primary_mediainfo(self) -> MediaInfo | None:
         """Get MediaInfo for the primary file."""
         if not self.media_input_obj.file_list_mediainfo:
             return None
-        return self.media_input_obj.file_list_mediainfo.get(self.primary_file)
+        primary = self._get_primary_file()
+        return self.media_input_obj.file_list_mediainfo.get(primary)
 
     # def set_active_file(self, file_path: Path) -> None:
     #     """
