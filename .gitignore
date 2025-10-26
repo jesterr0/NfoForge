@@ -7,6 +7,7 @@ scraps/
 .vscode/
 config.toml
 custom-pyinstaller/
+dev_scripts/
 *.exe
 *.csv
 runtime/apps/
