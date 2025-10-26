@@ -129,8 +129,9 @@ class OverviewDialog(QDialog):
 
 
 if __name__ == "__main__":
-    from PySide6.QtWidgets import QApplication
     import sys
+
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
     app.setStyle("fusion")
