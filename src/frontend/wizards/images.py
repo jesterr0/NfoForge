@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pymediainfo import MediaInfo
-from PySide6.QtCore import QSize, QThread, Signal, SignalInstance, Slot
+from PySide6.QtCore import QSize, Qt, QThread, Signal, SignalInstance, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -34,6 +34,7 @@ from src.enums.indexer import Indexer
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
 from src.exceptions.utils import get_full_traceback
+from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.custom_widgets.dnd_factory import (
     DNDThumbnailListWidget,
     DNDToolButton,
@@ -51,9 +52,6 @@ from src.payloads.script import ScriptValues
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
-
-# TODO: make log bigger, make window scrollable, on finish scroll to the bottom of the page or to the image widget
-# TODO: clean up all the type hint errors/warnings.
 
 
 class QueuedWorker(QThread):
@@ -299,10 +297,9 @@ class ImagesPage(BaseWizardPage):
         progress_layout.addWidget(build_v_line((1, 0, 1, 0)))
         progress_layout.addWidget(paste_urls)
 
-        self.text_box = QPlainTextEdit(self)
+        self.text_box = QPlainTextEdit(self, readOnly=True)
         self.text_box.setFrameShape(QFrame.Shape.Box)
         self.text_box.setFrameShadow(QFrame.Shadow.Sunken)
-        self.text_box.setReadOnly(True)
 
         image_gen_log_box = QGroupBox("Log")
         image_gen_log_box_layout = QVBoxLayout(image_gen_log_box)
@@ -325,16 +322,20 @@ class ImagesPage(BaseWizardPage):
             dnd_widget.dropped.connect(self._handle_image_drop)
             dnd_widget.text_dropped.connect(self._handle_image_text_drop)
 
+        # use a custom vertical splitter so users can resize the Log and Images panes
+        splitter = CustomSplitter(Qt.Orientation.Vertical, self)
+        splitter.setChildrenCollapsible(True)
+        splitter.addWidget(image_gen_log_box)
+        splitter.addWidget(image_gen_thumbnail_box)
+
         main_layout = QVBoxLayout()
         main_layout.addWidget(image_gen_control)
-        main_layout.addWidget(image_gen_log_box, stretch=1)
-        main_layout.addWidget(image_gen_thumbnail_box, stretch=3)
+        main_layout.addWidget(splitter, stretch=1)
         main_layout_widget = QWidget()
         main_layout_widget.setLayout(main_layout)
 
-        self.main_scroll_area = QScrollArea(self)
+        self.main_scroll_area = QScrollArea(self, widgetResizable=True)
         self.main_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        self.main_scroll_area.setWidgetResizable(True)
         self.main_scroll_area.setWidget(main_layout_widget)
 
         final_layout = QVBoxLayout(self)
@@ -521,12 +522,13 @@ class ImagesPage(BaseWizardPage):
             )
 
         comp_pair = self.context.media_input.comparison_pair
+        ss_mode = self._determine_ss_mode()
         # no comparison generation
         if not comp_pair:
             # access index 0 since no comparison pair
             self.media_file = file_list[0]
             return (
-                ScreenShotMode.BASIC_SS_GEN,
+                ss_mode,
                 None,
                 mi_file_list[self.media_file],
                 False,
@@ -536,11 +538,6 @@ class ImagesPage(BaseWizardPage):
         else:
             self.source_file = comp_pair.source
             self.media_file = comp_pair.media
-            ss_mode = (
-                ScreenShotMode.SIMPLE_SS_COMP
-                if self.config.cfg_payload.ss_mode is not ScreenShotMode.ADV_SS_COMP
-                else ScreenShotMode.ADV_SS_COMP
-            )
             return (
                 ss_mode,
                 mi_file_list[self.source_file],
@@ -617,14 +614,7 @@ class ImagesPage(BaseWizardPage):
     @Slot(int)
     def _generate_finished(self, code: int) -> None:
         if code == 0:
-            ss_mode = self.config.cfg_payload.ss_mode
-            if self.context.media_input.comparison_pair:
-                ss_mode = (
-                    ScreenShotMode.SIMPLE_SS_COMP
-                    if self.config.cfg_payload.ss_mode is not ScreenShotMode.ADV_SS_COMP
-                    else ScreenShotMode.ADV_SS_COMP
-                )
-
+            ss_mode = self._determine_ss_mode()
             if not self.image_dir:
                 raise RuntimeError("Failed to determine image_dir")
             self.image_viewer = ImageViewer(
@@ -735,6 +725,19 @@ class ImagesPage(BaseWizardPage):
             script_values=self.script_values,
             re_sync=offset,
         )
+
+    def _determine_ss_mode(self) -> ScreenShotMode:
+        comp_pair = self.context.media_input.comparison_pair
+        # no comparison generation
+        if not comp_pair:
+            return ScreenShotMode.BASIC_SS_GEN
+        # comparison generation
+        else:
+            return (
+                ScreenShotMode.SIMPLE_SS_COMP
+                if self.config.cfg_payload.ss_mode is not ScreenShotMode.ADV_SS_COMP
+                else ScreenShotMode.ADV_SS_COMP
+            )
 
     def _complete_loading(self) -> None:
         GSigs().main_window_set_disabled.emit(False)
