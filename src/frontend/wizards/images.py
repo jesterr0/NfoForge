@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pymediainfo import MediaInfo
-from PySide6.QtCore import QSize, QThread, Signal, Slot
+from PySide6.QtCore import QSize, QThread, Signal, SignalInstance, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -80,8 +80,8 @@ class QueuedWorker(QThread):
         indexer: Indexer | None,
         image_plugin: ImagePlugin | None,
         ffmpeg_path: Path,
-        frame_forge_path: Path,
-        progress_signal: Signal,
+        frame_forge_path: Path | None,
+        progress_signal: SignalInstance,
         source_file: Path | None = None,
         source_file_mi_obj: MediaInfo | None = None,
         parent=None,
@@ -109,7 +109,7 @@ class QueuedWorker(QThread):
             image_plugin (Optional[ImagePlugin]): Plugin used for image generation in FrameForge.
             ffmpeg_path (Path): Path to FFMPEG executable.
             frame_forge_path (Path): Path to FFMPEG executable.
-            progress_signal (Signal[str, float]): The signal used to emit progress updates.
+            progress_signal (SignalInstance[str, float]): The signal used to emit progress updates.
             source_file (Optional[Path]): The input file path for the source.
             source_file_mi_obj (Optional[Path]): MediaInfo object of the input file.
         """
@@ -169,6 +169,10 @@ class QueuedWorker(QThread):
         self.job_finished.emit(job)
 
     def _comparison_generation(self) -> None:
+        if not self.source_file or not self.source_file_mi_obj:
+            raise RuntimeError(
+                "Failed to execute comparison image generation: source_file and/or source_file_mi_obj is missing"
+            )
         job = self.backend.comparison_image_generation(
             self.source_file,
             self.source_file_mi_obj,
@@ -190,6 +194,18 @@ class QueuedWorker(QThread):
         self.job_finished.emit(job)
 
     def _adv_comparison_generation(self) -> None:
+        if (
+            not self.source_file
+            or not self.source_file_mi_obj
+            or not self.indexer
+            or not self.image_plugin
+            or not self.frame_forge_path
+        ):
+            raise RuntimeError(
+                "Failed to execute comparison image generation: one or all of "
+                f"({self.source_file=}, {self.source_file_mi_obj=}, {self.indexer=}, "
+                f"{self.image_plugin=}, {self.frame_forge_path=}) is missing"
+            )
         job = self.backend.frame_forge_image_generation(
             self.source_file,
             self.source_file_mi_obj,
@@ -561,6 +577,15 @@ class ImagesPage(BaseWizardPage):
         script_values: ScriptValues | None,
         re_sync,
     ) -> None:
+        if (
+            not self.media_file
+            or not self.image_dir
+            or not self.config.cfg_payload.ffmpeg
+        ):
+            raise RuntimeError(
+                "Failed to execute image worker, missing one or more required inputs "
+                f"({self.media_file=}, {self.image_dir=}, {self.config.cfg_payload.ffmpeg=})"
+            )
         self.queued_worker = QueuedWorker(
             backend=self.backend,
             ss_mode=ss_mode,
@@ -600,6 +625,8 @@ class ImagesPage(BaseWizardPage):
                     else ScreenShotMode.ADV_SS_COMP
                 )
 
+            if not self.image_dir:
+                raise RuntimeError("Failed to determine image_dir")
             self.image_viewer = ImageViewer(
                 image_base_dir=self.image_dir,
                 comparison_mode=ss_mode,

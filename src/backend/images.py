@@ -1211,7 +1211,7 @@ class ImagesBackEnd:
         sub_size: int,
         subtitle_alignment: SubtitleAlignment,
         crop_mode: Cropping,
-        crop_values: CropValues,
+        crop_values: CropValues | None,
         advanced_resize: AdvancedResize | None,
         re_sync: int,
         indexer: Indexer,
@@ -1240,8 +1240,8 @@ class ImagesBackEnd:
             crop_values (CropValues): Crop values.
             advanced_resize (Optional[AdvancedResize]): Crop values.
             re_sync (int): Re_sync value.
-            indexer (Optional[Indexer]): Indexer used for FrameForge.
-            image_plugin (Optional[ImagePlugin]): Plugin used for image generation in FrameForge.
+            indexer (Indexer): Indexer used for FrameForge.
+            image_plugin (ImagePlugin): Plugin used for image generation in FrameForge.
             frame_forge_path (Path): Path to FrameForge executable.
             ffmpeg_path (Optional[Path]): Path to FFMPEG executable.
             signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
