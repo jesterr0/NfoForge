@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.media_input import MediaInputBackEnd
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.exceptions import MediaFileNotFoundError
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
 from src.frontend.custom_widgets.file_tree import FileSystemTreeView
@@ -45,10 +46,11 @@ class MediaInput(BaseWizardPage):
     def __init__(
         self,
         config: Config,
+        context: ProcessingContext,
         parent: "MainWindow | Any",
         on_finished_cb: Callable | None = None,
     ) -> None:
-        super().__init__(config, parent)
+        super().__init__(config, context, parent)
         self.setObjectName("mediaInput")
         self.setTitle("Input")
         self.setCommitPage(True)
@@ -233,11 +235,11 @@ class MediaInput(BaseWizardPage):
 
     def update_payload_data(self) -> None:
         entry_data = Path(self.media_input_entry.text())
-        self.config.media_input_payload.input_path = entry_data
+        self.context.media_input.input_path = entry_data
 
         # handle single file
         if entry_data.is_file():
-            self.config.media_input_payload.file_list.append(entry_data)
+            self.context.media_input.file_list.append(entry_data)
 
         # handle directory
         elif entry_data.is_dir():
@@ -254,19 +256,19 @@ class MediaInput(BaseWizardPage):
                     "No supported media files selected in directory"
                 )
 
-            self.config.media_input_payload.file_list.extend(supported_files)
+            self.context.media_input.file_list.extend(supported_files)
 
         # store comparison match data if comparison mode is enabled
         comparison_pair = self.get_comparison_pair()
         if comparison_pair:
-            self.config.media_input_payload.comparison_pair = comparison_pair
+            self.context.media_input.comparison_pair = comparison_pair
 
         self._run_worker()
 
     def _run_worker(self) -> None:
-        input_path = self.config.media_input_payload.input_path
-        file_list = self.config.media_input_payload.file_list
-        comparison_pair = self.config.media_input_payload.comparison_pair
+        input_path = self.context.media_input.input_path
+        file_list = self.context.media_input.file_list
+        comparison_pair = self.context.media_input.comparison_pair
 
         if not input_path or not file_list:
             raise FileNotFoundError("Failed to detect input path or file list")
@@ -304,7 +306,7 @@ class MediaInput(BaseWizardPage):
             raise AttributeError("Failed to detect MediaInfo")
 
         # store all MediaInfo data (main files + comparison files if any)
-        self.config.media_input_payload.file_list_mediainfo.update(files_mi_data)
+        self.context.media_input.file_list_mediainfo.update(files_mi_data)
         self._loading_completed = True
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
