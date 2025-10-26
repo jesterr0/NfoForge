@@ -13,61 +13,45 @@ class MediaInputPayload:
     input_path: Path | None = None
     # updated in MediaSearch after the input page
     media_type: MediaType | None = None
+    working_dir: Path | None = None
     file_list: list[Path] = field(default_factory=list)  # All relevant files found
     file_list_mediainfo: dict[Path, MediaInfo] = field(default_factory=dict)
     # maps original file input to renamed output
-    # TODO: is this how we wanna do this?
     file_list_rename_map: dict[Path, Path] = field(default_factory=dict)
-    # primary_file: Path  # Representative file for initial analysis
-    # primary_mediainfo: MediaInfo  # Quick analysis for navigation
 
-    comparison_pair: ComparisonPair | None = (
-        None  # TODO: need to work this into the program
-    )
+    # TODO: need to work this into the program
+    comparison_pair: ComparisonPair | None = None
     series_episode_map: dict[Path, dict] | None = None
 
-    # TODO: do away with all the individual inputs below
-    # search for each one and remove it if it not needed etc!
-    script_file: Path | None = None
-    source_file: Path | None = None
-    source_file_mi_obj: MediaInfo | None = None
-    encode_file: Path | None = None
-    encode_file_mi_obj: MediaInfo | None = None
-    encode_file_dir: Path | None = None
-    renamed_file: Path | None = None
-    working_dir: Path | None = None
+    def has_basic_data(self) -> bool:
+        """Check if essential data is present."""
+        return bool(self.input_path and self.file_list and self.file_list_mediainfo)
 
-    def is_empty(self, raise_error: bool = False) -> bool:
-        """Checks if input_path, file_list, or file_list_mediainfo is empty."""
-        if not self.input_path or not self.file_list or not self.file_list_mediainfo:
-            if raise_error:
-                raise AttributeError(
-                    "input_path, file_list, or file_list_mediainfo is empty"
-                )
-            return True
-        return False
-    
     def require_input_path(self) -> Path:
         """Require input path and return it."""
         if not self.input_path:
             raise RuntimeError("'input_path' has not been defined")
         return self.input_path
-    
+
     def require_media_type(self) -> MediaType:
         """Require media type and return it."""
         if not self.media_type:
             raise RuntimeError("'media_type' has not been defined")
         return self.media_type
 
+    def require_working_dir(self) -> Path:
+        """Ensure working directory is set."""
+        if not self.working_dir:
+            raise RuntimeError("Working directory not set")
+        return self.working_dir
+
     def get_first_file(self, raise_error: bool = False) -> Path | None:
-        """Attempts to get the first file if there is renames, otherwise falls back to the first file in the filelist.
+        """Get the first file from file_list.
 
         Returns None on any error or when no files are available.
         """
         try:
-            if self.file_list_rename_map:
-                return next(iter(self.file_list_rename_map.values()))
-            elif self.file_list:
+            if self.file_list:
                 return self.file_list[0]
         except Exception:
             if raise_error:
@@ -82,26 +66,60 @@ class MediaInputPayload:
         return first
 
     def get_mediainfo(self, fp: Path) -> MediaInfo | None:
-        """Gets loaded mediainfo from file_list_mediainfo."""
         return self.file_list_mediainfo.get(fp)
 
-    def get_renamed_path(self, fp: Path) -> Path:
-        """Gets renamed path from file_list_rename_map falling back to input path."""
-        return self.file_list_rename_map.get(fp, fp)
+    def require_mediainfo(self, fp: Path) -> MediaInfo:
+        mi = self.get_mediainfo(fp)
+        if not mi or (mi and not isinstance(mi, MediaInfo)):
+            raise RuntimeError(f"Failed to get MediaInfo object for '{fp}'")
+        return mi
+
+    # Series support helpers (commented out for now, ready for future implementation)
+    # def get_episode_info(self, path: Path) -> dict | None:
+    #     """Get episode metadata for a specific file.
+    #
+    #     Args:
+    #         path: Either an original path or a current renamed path
+    #
+    #     Returns:
+    #         Episode metadata dict, or None if not found
+    #     """
+    #     if not self.series_episode_map:
+    #         return None
+    #
+    #     # Try as original path first
+    #     if path in self.series_episode_map:
+    #         return self.series_episode_map[path]
+    #
+    #     # Try reverse lookup: maybe it's a renamed path
+    #     original = self.get_original_path(path)
+    #     return self.series_episode_map.get(original)
+    #
+    # def get_episodes_by_season(self, season: int) -> list[tuple[Path, dict]]:
+    #     """Get all episodes for a specific season with their current paths.
+    #
+    #     Args:
+    #         season: Season number
+    #
+    #     Returns:
+    #         List of (current_path, episode_info) tuples
+    #     """
+    #     if not self.series_episode_map:
+    #         return []
+    #
+    #     episodes = []
+    #     for original_path, episode_info in self.series_episode_map.items():
+    #         if episode_info.get('season') == season:
+    #             current_path = self.get_current_path(original_path)
+    #             episodes.append((current_path, episode_info))
+    #
+    #     return episodes
 
     def reset(self) -> None:
         self.input_path = None
+        self.media_type = None
+        self.working_dir = None
         self.file_list.clear()
         self.file_list_mediainfo.clear()
         self.file_list_rename_map.clear()
-        self.media_type = None
         self.comparison_pair = None
-
-        self.script_file = None
-        self.source_file = None
-        self.source_file_mi_obj = None
-        self.encode_file = None
-        self.encode_file_mi_obj = None
-        self.encode_file_dir = None
-        self.renamed_file = None
-        self.working_dir = None
