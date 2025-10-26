@@ -1,15 +1,17 @@
-from abc import ABC, abstractmethod
-from pathlib import Path
 import platform
 import random
 import re
 import subprocess
+from abc import ABC, abstractmethod
+from pathlib import Path
 
-from PySide6.QtCore import SignalInstance
 import oslex2
 from pymediainfo import MediaInfo
+from PySide6.QtCore import SignalInstance
 
 from src.backend.utils.images import (
+    compare_res,
+    compare_resolutions,
     create_directories,
     determine_ffmpeg_trimmed_frames,
     ffmpeg_crop_to_crop_values,
@@ -19,7 +21,6 @@ from src.backend.utils.images import (
     get_total_frames,
     vapoursynth_to_ffmpeg_crop,
 )
-from src.backend.utils.images import compare_res, compare_resolutions
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
