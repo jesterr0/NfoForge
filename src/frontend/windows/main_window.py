@@ -1,7 +1,7 @@
+import webbrowser
 from collections.abc import Sequence
 from queue import Queue
 from typing import Type
-import webbrowser
 
 from PySide6.QtCore import QByteArray, QTimer, Slot
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
