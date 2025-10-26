@@ -350,76 +350,91 @@ class RenameEncode(BaseWizardPage):
                     renamed_output
                 )
 
-            # show preview dialog before executing renames
-            preview_dialog = RenamePreviewDialog(self)
-            preview_dialog.set_renames(self.context.media_input.file_list_rename_map)
+            # determine if there are any effective renames (source != target).
+            effective_renames = {
+                src: trg
+                for src, trg in self.context.media_input.file_list_rename_map.items()
+                if src != trg
+            }
 
-            # user cancelled - return early
-            if preview_dialog.exec() != QDialog.DialogCode.Accepted:
-                return False
-
-            # execute the renames immediately after user confirms
-            try:
-                GSigs().main_window_set_disabled.emit(True)
-                GSigs().main_window_update_status_tip.emit("Renaming media...", 0)
-
-                # start an event loop to wait for rename completion
-                self._rename_loop = QEventLoop(self)
-
-                worker = GeneralWorker(
-                    func=self.backend.execute_renames,
-                    parent=self,
-                    file_list_rename_map=self.context.media_input.file_list_rename_map,
-                    input_path=self.context.media_input.input_path,
+            # f there are no actual renames to perform, we'll skip the preview dialog and
+            # rename worker and continue with the post-rename update steps.
+            if not effective_renames:
+                # clear the rename map to avoid later confusion
+                self.context.media_input.file_list_rename_map.clear()
+            else:
+                # show preview dialog before executing renames
+                preview_dialog = RenamePreviewDialog(self)
+                preview_dialog.set_renames(
+                    self.context.media_input.file_list_rename_map
                 )
-                worker.job_finished.connect(self._on_rename_response)
-                worker.job_failed.connect(self._on_rename_failed)
-                worker.start()
 
-                # wait for response
-                self._rename_loop.exec()
-
-                # apply renames to payload (update file_list and file_list_mediainfo in-place)
-                if not self._rename_mapping:
+                # user cancelled - return early
+                if preview_dialog.exec() != QDialog.DialogCode.Accepted:
                     return False
 
-                # update file_list with renamed paths
-                for i, old_path in enumerate(self.context.media_input.file_list):
-                    if old_path in self._rename_mapping:
-                        self.context.media_input.file_list[i] = self._rename_mapping[
-                            old_path
-                        ]
+                # execute the renames immediately after user confirms
+                try:
+                    GSigs().main_window_set_disabled.emit(True)
+                    GSigs().main_window_update_status_tip.emit("Renaming media...", 0)
 
-                # update file_list_mediainfo keys (MediaInfo objects stay same, just new keys)
-                if self.context.media_input.file_list_mediainfo:
-                    new_mediainfo = {}
-                    for (
-                        old_path,
-                        mi_obj,
-                    ) in self.context.media_input.file_list_mediainfo.items():
-                        new_path = self._rename_mapping.get(old_path, old_path)
-                        new_mediainfo[new_path] = mi_obj
-                    self.context.media_input.file_list_mediainfo = new_mediainfo
+                    # start an event loop to wait for rename completion
+                    self._rename_loop = QEventLoop(self)
 
-                # update input_path if it changed
-                if self._updated_input_path:
-                    self.context.media_input.input_path = self._updated_input_path
+                    worker = GeneralWorker(
+                        func=self.backend.execute_renames,
+                        parent=self,
+                        file_list_rename_map=self.context.media_input.file_list_rename_map,
+                        input_path=self.context.media_input.input_path,
+                    )
+                    worker.job_finished.connect(self._on_rename_response)
+                    worker.job_failed.connect(self._on_rename_failed)
+                    worker.start()
 
-                # clear the rename map (renames are complete)
-                self.context.media_input.file_list_rename_map.clear()
+                    # wait for response
+                    self._rename_loop.exec()
 
-            except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    "Rename Failed",
-                    f"Failed to rename files:\n\n{str(e)}",
-                )
-                return False
+                    # apply renames to payload (update file_list and file_list_mediainfo in-place)
+                    if not self._rename_mapping:
+                        return False
 
-            finally:
-                GSigs().main_window_set_disabled.emit(False)
-                GSigs().main_window_clear_status_tip.emit()
-                self._rename_loop = None
+                    # update file_list with renamed paths
+                    for i, old_path in enumerate(self.context.media_input.file_list):
+                        if old_path in self._rename_mapping:
+                            self.context.media_input.file_list[i] = (
+                                self._rename_mapping[old_path]
+                            )
+
+                    # update file_list_mediainfo keys (MediaInfo objects stay same, just new keys)
+                    if self.context.media_input.file_list_mediainfo:
+                        new_mediainfo = {}
+                        for (
+                            old_path,
+                            mi_obj,
+                        ) in self.context.media_input.file_list_mediainfo.items():
+                            new_path = self._rename_mapping.get(old_path, old_path)
+                            new_mediainfo[new_path] = mi_obj
+                        self.context.media_input.file_list_mediainfo = new_mediainfo
+
+                    # update input_path if it changed
+                    if self._updated_input_path:
+                        self.context.media_input.input_path = self._updated_input_path
+
+                    # clear the rename map (renames are complete)
+                    self.context.media_input.file_list_rename_map.clear()
+
+                except Exception as e:
+                    QMessageBox.critical(
+                        self,
+                        "Rename Failed",
+                        f"Failed to rename files:\n\n{str(e)}",
+                    )
+                    return False
+
+                finally:
+                    GSigs().main_window_set_disabled.emit(False)
+                    GSigs().main_window_clear_status_tip.emit()
+                    self._rename_loop = None
 
             # update config shared data with detected edition
             edition_combo_text = self.edition_combo.currentText()
