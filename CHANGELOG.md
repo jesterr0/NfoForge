@@ -39,6 +39,7 @@
 - Rename Preview dialogue:
   - Pops up to preview the renamed folder(s) and file(s) showing a **diff** in red/green colors.
   - Gives the user a chance to confirm the rename or go back and make changes.
+- ImageViewer widget now has a draggable splitter, this way the user can resize/collapse the log/image portion of the widget.
 
 ### Changed
 
