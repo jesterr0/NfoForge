@@ -1,5 +1,4 @@
 import re
-from os import PathLike
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal, Slot
@@ -31,7 +30,7 @@ class ImageViewer(QWidget):
 
     def __init__(
         self,
-        image_base_dir: PathLike[str],
+        image_base_dir: Path,
         comparison_mode: ScreenShotMode,
         min_required_selected_screens: int = 0,
         max_required_selected_screens: int = 0,
