@@ -79,7 +79,7 @@ class ReelFlixUploader(Unit3dBaseUploader):
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.REELFLIX,
-            base_url="https://reelflix.xyz",
+            base_url="https://reelflix.cc",
             media_mode=media_mode,
             api_key=api_key,
             torrent_file=torrent_file,

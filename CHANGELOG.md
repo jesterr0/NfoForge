@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.13] - 2025-10-26
+
+### Changed
+
+- ReelFliX domain change.
+
 ## [0.8.12] - 2025-10-16
 
 ### Added
