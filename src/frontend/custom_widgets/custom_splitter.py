@@ -8,7 +8,7 @@ class CustomSplitterHandle(QSplitterHandle):
 
     def __init__(self, orientation, parent) -> None:
         super().__init__(orientation, parent)
-        self.setMinimumWidth(12)
+        self.setMinimumSize(12, 12)
 
     @override
     def paintEvent(self, event) -> None:
@@ -28,18 +28,29 @@ class CustomSplitterHandle(QSplitterHandle):
         painter.setPen(QPen(dot_color, 1))
         painter.setBrush(dot_color)
 
-        # calculate center and draw 3 dots vertically
+        # calculate center and draw dots oriented to the splitter
         center_x = self.width() // 2
         center_y = self.height() // 2
         dot_size = 2
         dot_spacing = 6
 
-        # 5 dots
-        for i in range(-1, 4):
-            y = center_y + (i * dot_spacing)
-            painter.drawEllipse(
-                center_x - dot_size // 2, y - dot_size // 2, dot_size, dot_size
-            )
+        # draw 5 dots; orientation-aware: decide orientation from the handle geometry
+        # If the handle is wider than tall it's a horizontal handle (draw row), otherwise
+        # draw a vertical column of dots.
+        if self.width() > self.height():
+            # horizontal handle -> draw horizontally aligned dots
+            for i in range(-2, 3):
+                x = center_x + (i * dot_spacing)
+                painter.drawEllipse(
+                    x - dot_size // 2, center_y - dot_size // 2, dot_size, dot_size
+                )
+        else:
+            # vertical handle -> draw vertically stacked dots
+            for i in range(-2, 3):
+                y = center_y + (i * dot_spacing)
+                painter.drawEllipse(
+                    center_x - dot_size // 2, y - dot_size // 2, dot_size, dot_size
+                )
 
 
 class CustomSplitter(QSplitter):
