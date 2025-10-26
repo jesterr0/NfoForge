@@ -14,7 +14,7 @@ dependencies = [
     "iso639-lang>=2.6.3",
     "unidecode>=1.4.0",
     "shortuuid>=1.0.13",
-    "imdbinfo>=0.5.1",
+    "imdbinfo>=0.6.1",
     "torf>=4.3.0",
     "pillow>=11.3.0",
     "platformdirs>=4.4.0",
@@ -30,22 +30,26 @@ dependencies = [
     "deluge-web-client>=1.0.7",
     "niquests>=3.15.2",
     "regex>=2025.7.34",
-    "stdlib-list>=0.11.1",
+    "stdlib-list>=0.12.0",
     "jinja2>=3.1.6",
     "beautifulsoup4>=4.13.4",
     "tvdb-v4-official>=1.1.0",
     "rapidfuzz>=3.13.0",
     "oslex2>=0.1.5",
     "qtawesome>=1.4.0",
+    "urllib3>=2.5.0",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.9.6", "cython>=3.0.12", "pytest", "pytest-cov"]
+dev = ["ruff>=0.9.6", "cython>=3.0.12", "pytest", "pytest-cov", "setuptools", "debugpy"]
 build = ["pyinstaller-hooks-contrib>=2025.1", "pyinstaller>=6.9.0"]
 docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
+select = ["I"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
