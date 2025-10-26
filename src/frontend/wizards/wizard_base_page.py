@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -13,9 +13,12 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from src.backend.utils.file_utilities import find_largest_file_in_directory
-from src.backend.utils.file_utilities import generate_unique_date_name
+from src.backend.utils.file_utilities import (
+    find_largest_file_in_directory,
+    generate_unique_date_name,
+)
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.dnd_factory import DNDButton, DNDToolButton
 
 if TYPE_CHECKING:
@@ -23,27 +26,30 @@ if TYPE_CHECKING:
 
 
 class BaseWizardPage(QWizardPage):
-    REQUIRED_CHILD_METHODS = ("reset_page",)
+    # REQUIRED_CHILD_METHODS = ("reset_page",)
 
-    def __init__(self, config: Config, parent: "MainWindow | Any") -> None:
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow | Any"
+    ) -> None:
         super().__init__(parent)
-        self._custom_abstract_method_check()
+        # self._custom_abstract_method_check()
         self.config = config
+        self.context = context
 
-    def _custom_abstract_method_check(self) -> None:
-        """This is a work around to avoid mixin with ABC"""
-        for method in self.REQUIRED_CHILD_METHODS:
-            if not callable(getattr(self, method, None)):
-                raise NotImplementedError(
-                    f"You must implement the {method} method for {self.__class__.__name__}"
-                )
+    # def _custom_abstract_method_check(self) -> None:
+    #     """This is a work around to avoid mixin with ABC"""
+    #     for method in self.REQUIRED_CHILD_METHODS:
+    #         if not callable(getattr(self, method, None)):
+    #             raise NotImplementedError(
+    #                 f"You must implement the {method} method for {self.__class__.__name__}"
+    #             )
 
     def validatePage(self) -> bool:
         """
         Overrides QWizardPage validatePage and should ALWAYS be called in children pages before
         returning True.
         """
-        if not self.config.media_input_payload.working_dir:
+        if not self.context.media_input.working_dir:
             raise FileNotFoundError(
                 "Could not detect working directory that should be set from child wizard input "
                 "page using method set_working_dir"
@@ -52,7 +58,7 @@ class BaseWizardPage(QWizardPage):
 
     def set_working_dir(self, path: Path) -> None:
         """Convenient method to set the working directory for MediaInputPayload"""
-        self.config.media_input_payload.working_dir = path
+        self.context.media_input.working_dir = path
 
     def gen_unique_date_name(self, path: Path) -> str:
         """Convenient method to generate unique date name for working directory for MediaInputPayload"""
@@ -83,8 +89,7 @@ class BaseWizardPage(QWizardPage):
 class DummyWizardPage(BaseWizardPage):
     """Dummy Wizard Page to hold the plugin page spot as needed"""
 
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
-
-    def reset_page(self) -> None:
-        pass
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
