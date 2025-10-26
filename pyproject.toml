@@ -1,6 +1,6 @@
 [project]
 name = "NfoForge"
-version = "0.8.12"
+version = "0.8.13"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"

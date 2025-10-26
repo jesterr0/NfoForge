@@ -1077,7 +1077,7 @@ wheels = [
 
 [[package]]
 name = "nfoforge"
-version = "0.8.12"
+version = "0.8.13"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
