@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from guessit import guessit
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QApplication,
@@ -7,14 +8,14 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QVBoxLayout,
     QWidget,
     QWizard,
     QWizardPage,
 )
-from guessit import guessit
-from qtpy.QtWidgets import QVBoxLayout
 
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.frontend.global_signals import GSigs
@@ -26,16 +27,17 @@ from src.frontend.wizards.media_search import MediaSearch
 class SandboxMediaInputPage(QWizardPage):
     """Wrapper page for MediaInput in sandbox mode"""
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Input")
         self.setSubTitle("Select your media file or directory")
         self.setCommitPage(True)
 
         self.config = config
+        self.context = context
 
         self.media_input = MediaInput(
-            config, parent, on_finished_cb=self._on_validation_finished
+            config, context, parent, on_finished_cb=self._on_validation_finished
         )
 
         self.setLayout(self.media_input.main_layout)
@@ -53,16 +55,17 @@ class SandboxMediaInputPage(QWizardPage):
 class SandboxMediaSearchPage(QWizardPage):
     """Wrapper page for MediaSearch in sandbox mode"""
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Search")
         self.setSubTitle("Search and select your media")
         self.setCommitPage(True)
 
         self.config = config
+        self.context = context
 
         self.media_search = MediaSearch(
-            config, parent, on_finished_cb=self._on_validation_finished
+            config, context, parent, on_finished_cb=self._on_validation_finished
         )
 
         self.setLayout(self.media_search.main_layout)
@@ -86,8 +89,8 @@ class SandboxMediaSearchPage(QWizardPage):
         """Initialize the page when it becomes current"""
         super().initializePage()
         # auto-populate search based on input file
-        if self.config.media_input_payload.input_path:
-            file_path = self.config.media_input_payload.input_path
+        if self.context.media_input.input_path:
+            file_path = self.context.media_input.input_path
             guess = guessit(Path(file_path).name)
             guessed_title = guess.get("title", "")
             year = guess.get("year", "")
@@ -101,13 +104,14 @@ class SandboxMediaSearchPage(QWizardPage):
 class SandboxSeriesMapperPage(QWizardPage):
     """Page for series episode mapping"""
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Series Mapping")
         self.setSubTitle("Map your files to episodes")
         self.setCommitPage(True)
 
         self.config = config
+        self.context = context
 
         self.series_mapper = SeriesEpisodeMapper(self)
 
@@ -124,7 +128,7 @@ class SandboxSeriesMapperPage(QWizardPage):
             return False
 
         # store the episode mappings in config
-        self.config.media_input_payload.series_episode_map = (
+        self.context.media_input.series_episode_map = (
             self.series_mapper.get_episode_map()
         )
         return True
@@ -133,10 +137,10 @@ class SandboxSeriesMapperPage(QWizardPage):
         """Initialize the page when it becomes current"""
         super().initializePage()
         # load data when page is shown
-        if self.config.media_input_payload and self.config.media_search_payload:
+        if self.context.media_input and self.context.media_search:
             self.series_mapper.load_data(
-                self.config.media_input_payload,
-                self.config.media_search_payload,
+                self.context.media_input,
+                self.context.media_search,
             )
 
 
@@ -148,13 +152,14 @@ class SandboxWizard(QWizard):
     PAGE_SEARCH = 1
     PAGE_SERIES_MAPPER = 2
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Sandbox Input")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setOption(QWizard.WizardOption.NoCancelButton)
 
         self.config = config
+        self.context = context
 
         # modify default buttons
         self.next_button = QPushButton("Accept", self)
@@ -171,9 +176,9 @@ class SandboxWizard(QWizard):
         )
 
         # create pages
-        self.input_page = SandboxMediaInputPage(config, self)
-        self.search_page = SandboxMediaSearchPage(config, self)
-        self.series_mapper_page = SandboxSeriesMapperPage(config, self)
+        self.input_page = SandboxMediaInputPage(config, context, self)
+        self.search_page = SandboxMediaSearchPage(config, context, self)
+        self.series_mapper_page = SandboxSeriesMapperPage(config, context, self)
 
         # add pages
         self.setPage(self.PAGE_INPUT, self.input_page)
@@ -216,7 +221,7 @@ class SandboxWizard(QWizard):
 class SandboxMainWindow(QMainWindow):
     """Main window for sandbox input with built-in status bar to mimic NfoForge's main window"""
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
         super().__init__(parent)
         self.setWindowFlags(
             Qt.WindowType.Dialog
@@ -233,7 +238,7 @@ class SandboxMainWindow(QMainWindow):
         GSigs().main_window_update_status_tip.connect(self._update_status_bar)
         GSigs().main_window_clear_status_tip.connect(self._clear_status_bar)
 
-        self.wizard = SandboxWizard(config, self)
+        self.wizard = SandboxWizard(config, context, self)
         self.wizard.accepted.connect(self.accept)
         self.wizard.rejected.connect(self.reject)
 
