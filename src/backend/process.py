@@ -69,6 +69,7 @@ from src.backend.utils.images import (
 )
 from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
@@ -141,6 +142,7 @@ class ProcessBackEnd:
                         # file_input prioritizes folder name > file since the api doesn't
                         # support directly looking for files
                         file_input=media_input_payload.input_path or file_input,
+                        media_search_payload=media_search_payload,
                     )
                 )
             elif tracker_sel is TrackerSelection.REELFLIX:
@@ -279,13 +281,16 @@ class ProcessBackEnd:
             return tracker_sel, False, str(e)
 
     async def _dupe_ptp(
-        self, tracker_sel: TrackerSelection, file_input: Path
+        self,
+        tracker_sel: TrackerSelection,
+        file_input: Path,
+        media_search_payload: MediaSearchPayload,
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
         api_user = self.config.cfg_payload.ptp_tracker.api_user
         api_key = self.config.cfg_payload.ptp_tracker.api_key
-        title = self.config.media_search_payload.title
-        year = self.config.media_search_payload.year
-        imdb_id = self.config.media_search_payload.imdb_id
+        title = media_search_payload.title
+        year = media_search_payload.year
+        imdb_id = media_search_payload.imdb_id
         if not api_user or not api_key or not title or year is None or not imdb_id:
             return (
                 tracker_sel,
@@ -420,6 +425,7 @@ class ProcessBackEnd:
         queued_text_update_replace_last_line: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
         caught_error: SignalInstance,
+        context: ProcessingContext,
         token_prompt_cb: Callable[[Sequence[str] | None], dict[str, str] | None]
         | None = None,
         overview_cb: Callable[
@@ -433,7 +439,7 @@ class ProcessBackEnd:
 
         # handle image uploading
         images = self.handle_images_for_trackers(
-            process_dict, queued_text_update, progress_bar_cb
+            context, process_dict, queued_text_update, progress_bar_cb
         )
 
         self.progress_bar_cb = progress_bar_cb
@@ -447,8 +453,8 @@ class ProcessBackEnd:
             )
             queued_text_update(f"<br /><span>{max_piece_size} (bytes)</span>")
 
-        # get media input
-        media_input = self.config.media_input_payload.require_input_path()
+        # get media input - use context instead of config
+        media_input = context.media_input.require_input_path()
 
         # process
         queued_text_update(
@@ -488,7 +494,7 @@ class ProcessBackEnd:
             # generate tracker title first
             tracker_title = None
             generated_tracker_title = self.generate_tracker_title(
-                tracker_info=tracker_info
+                tracker_info=tracker_info, context=context
             )
             if generated_tracker_title:
                 tracker_title = self.tracker_title_formatting(
@@ -524,7 +530,7 @@ class ProcessBackEnd:
                     format_images_to_str,
                     getattr(tracker_info, "image_width", 350),
                 )
-                if self.config.shared_data.is_comparison_images:
+                if context.shared_data.is_comparison_images:
                     comparison_screens = format_image_data_to_comparison(tracker_images)
                     even_screens = get_parity_images(data=tracker_images)
                     odd_screens = get_parity_images(data=tracker_images, even=False)
@@ -534,10 +540,10 @@ class ProcessBackEnd:
                     )
             if nfo_template:
                 nfo = TokenReplacer(
-                    media_input_obj=self.config.media_input_payload,
-                    jinja_engine=self.config.jinja_engine,
+                    media_input_obj=context.media_input,
+                    jinja_engine=context.jinja_engine,
                     token_string=nfo_template,
-                    media_search_obj=self.config.media_search_payload,
+                    media_search_obj=context.media_search,
                     unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                     releasers_name=self.config.cfg_payload.releasers_name,
                     screen_shots=formatted_screens,
@@ -546,14 +552,14 @@ class ProcessBackEnd:
                     screen_shots_odd_obj=odd_screens,
                     screen_shots_even_str=even_screens_str,
                     screen_shots_odd_str=odd_screens_str,
-                    release_notes=self.config.shared_data.release_notes,
-                    edition_override=self.config.shared_data.dynamic_data.get(
+                    release_notes=context.shared_data.release_notes,
+                    edition_override=context.shared_data.dynamic_data.get(
                         "edition_override"
                     ),
-                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                    frame_size_override=context.shared_data.dynamic_data.get(
                         "frame_size_override"
                     ),
-                    override_tokens=self.config.shared_data.dynamic_data.get(
+                    override_tokens=context.shared_data.dynamic_data.get(
                         "override_tokens"
                     ),
                     user_tokens=user_tokens,
@@ -576,6 +582,7 @@ class ProcessBackEnd:
                     )
                     replace_tokens = nfo_plugin(
                         config=self.config,
+                        context=context,
                         input_str=nfo,
                         tracker_s=(cur_tracker,),
                         tracker_images=tracker_images
@@ -710,6 +717,7 @@ class ProcessBackEnd:
                 if get_pre_upload_plugin and callable(get_pre_upload_plugin):
                     pre_upload_processing = get_pre_upload_plugin(
                         config=self.config,
+                        context=context,
                         tracker=cur_tracker,
                         torrent_file=torrent_path,
                         upload_text_cb=queued_text_update,
@@ -727,6 +735,7 @@ class ProcessBackEnd:
                         torrent_file=torrent_path,
                         nfo=nfo,
                         tracker_title=cur_tracker_title,
+                        context=context,
                     )
                 except Exception as upload_error:
                     queued_text_update(
@@ -781,6 +790,7 @@ class ProcessBackEnd:
 
     def handle_images_for_trackers(
         self,
+        context: ProcessingContext,
         process_dict: dict[str, Any],
         queued_text_update: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
@@ -792,6 +802,7 @@ class ProcessBackEnd:
         and uploads them to the specified image hosts.
 
         Args:
+            context (ProcessingContext): The processing context containing state data.
             process_dict (dict[str, Any]): A dictionary containing tracker-specific data,
                 including image hosting information.
             queued_text_update (Callable[[str], None]): A callback function to update the UI
@@ -836,27 +847,25 @@ class ProcessBackEnd:
         if to_image_hosts:
             if img_from is ImageSource.URLS:
                 queued_text_update(
-                    f"<br />Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)",
+                    f"<br />Attempting to download {len(context.shared_data.url_data)} user-provided URL(s)",
                 )
 
-                if not self.config.media_input_payload.working_dir:
+                if not context.media_input.working_dir:
                     raise FileNotFoundError("Working directory was not found")
-                img_output_path = (
-                    self.config.media_input_payload.working_dir / "dl_imgs"
-                )
+                img_output_path = context.media_input.working_dir / "dl_imgs"
                 img_downloader = ImageDownloader(
-                    self.config.shared_data.url_data,
+                    context.shared_data.url_data,
                     img_output_path,
                     progress_bar_cb,
                 )
                 files_to_upload = img_downloader.download_images()
-                self.config.shared_data.loaded_images = files_to_upload
+                context.shared_data.loaded_images = files_to_upload
 
                 queued_text_update(
                     f"<br />Successfully downloaded {len(files_to_upload)} user-provided URL(s)",
                 )
             else:
-                files_to_upload = self.config.shared_data.loaded_images
+                files_to_upload = context.shared_data.loaded_images
 
             if files_to_upload:
                 # optimize images if enabled
@@ -865,10 +874,10 @@ class ProcessBackEnd:
                 # if we don't have user generated images and optimize download/url images is enabled or images
                 # are downloaded from URLs
                 if (
-                    self.config.shared_data.generated_images
+                    context.shared_data.generated_images
                     and self.config.cfg_payload.optimize_generated_images
                 ) or (
-                    not self.config.shared_data.generated_images
+                    not context.shared_data.generated_images
                     and self.config.cfg_payload.optimize_dl_url_images
                     or img_from is ImageSource.URLS
                 ):
@@ -911,12 +920,12 @@ class ProcessBackEnd:
                 if img_host is ImageSource.URLS:
                     url_data[tracker] = {
                         i: img_data
-                        for i, img_data in enumerate(self.config.shared_data.url_data)
+                        for i, img_data in enumerate(context.shared_data.url_data)
                     }
                     url_host_count += 1
 
             queued_text_update(
-                f"<br />Using {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)",
+                f"<br />Using {len(context.shared_data.url_data)} URLs for {url_host_count} tracker(s)",
             )
 
         return url_data
@@ -1156,14 +1165,13 @@ class ProcessBackEnd:
         torrent_file: Path,
         nfo: str,
         tracker_title: str,
+        context: ProcessingContext,
     ) -> Path | bool | str | None:
-        input_path = self.config.media_input_payload.require_input_path()
-        first_file = self.config.media_input_payload.require_first_file()
-        mediainfo_obj = self.config.media_input_payload.get_mediainfo(first_file)
-        if not mediainfo_obj:
-            raise TrackerError(f"Failed to get MediaInfo object for '{first_file}'")
-        media_search_obj = self.config.media_search_payload
-        media_type = self.config.media_input_payload.require_media_type()
+        input_path = context.media_input.require_input_path()
+        first_file = context.media_input.require_first_file()
+        mediainfo_obj = context.media_input.require_mediainfo(first_file)
+        media_search_obj = context.media_search
+        media_type = context.media_input.require_media_type()
 
         if tracker is TrackerSelection.MORE_THAN_TV:
             tracker_payload = self.config.cfg_payload.mtv_tracker
@@ -1409,7 +1417,9 @@ class ProcessBackEnd:
                 timeout=self.config.cfg_payload.timeout,
             )
 
-    def generate_tracker_title(self, tracker_info: TrackerInfo) -> str | None:
+    def generate_tracker_title(
+        self, tracker_info: TrackerInfo, context: ProcessingContext
+    ) -> str | None:
         # TODO: each of the checks for `tracker_info.mvr_title_override_enabled` will also need
         # series specific checks when added
         token_string = (
@@ -1442,21 +1452,19 @@ class ProcessBackEnd:
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
         format_str = TokenReplacer(
-            media_input_obj=self.config.media_input_payload,
+            media_input_obj=context.media_input,
             token_string=token_string,
             colon_replace=colon_replace,
-            media_search_obj=self.config.media_search_payload,
+            media_search_obj=context.media_search,
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            edition_override=self.config.shared_data.dynamic_data.get(
-                "edition_override"
-            ),
-            frame_size_override=self.config.shared_data.dynamic_data.get(
+            edition_override=context.shared_data.dynamic_data.get("edition_override"),
+            frame_size_override=context.shared_data.dynamic_data.get(
                 "frame_size_override"
             ),
-            override_tokens=self.config.shared_data.dynamic_data.get("override_tokens"),
+            override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
             title_clean_rules=self.config.cfg_payload.title_clean_rules,
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,

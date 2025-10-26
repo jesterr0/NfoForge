@@ -1,11 +1,11 @@
 import asyncio
 import traceback
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any
 
-from pymediainfo import MediaInfo
 from PySide6.QtCore import QEventLoop, QObject, QThread, Signal, Slot
 from PySide6.QtGui import Qt, QTextCursor
 from PySide6.QtWidgets import (
@@ -24,8 +24,8 @@ from PySide6.QtWidgets import (
 from src.backend.process import ProcessBackEnd
 from src.backend.utils.file_utilities import open_explorer
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
-from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
 from src.exceptions import ProcessError
@@ -37,10 +37,7 @@ from src.frontend.custom_widgets.prompt_token_editor_dialog import (
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import ImageUploadFromTo
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 if TYPE_CHECKING:
@@ -73,15 +70,13 @@ class DupeWorker(BaseWorker):
         self,
         backend: ProcessBackEnd,
         processing_queue: list[TrackerSelection],
-        media_input_payload: MediaInputPayload,
-        media_search_payload: MediaSearchPayload,
+        context: ProcessingContext,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.backend = backend
-        self.media_input_payload = media_input_payload
+        self.context = context
         self.processing_queue = processing_queue
-        self.media_search_payload = media_search_payload
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
@@ -90,8 +85,8 @@ class DupeWorker(BaseWorker):
             dupes = async_loop.run_until_complete(
                 self.backend.dupe_checks(
                     processing_queue=self.processing_queue,
-                    media_input_payload=self.media_input_payload,
-                    media_search_payload=self.media_search_payload,
+                    media_input_payload=self.context.media_input,
+                    media_search_payload=self.context.media_search,
                 )
             )
             self.results.emit(dupes)
@@ -111,11 +106,13 @@ class ProcessWorker(BaseWorker):
         self,
         backend: ProcessBackEnd,
         tracker_data: dict[str, Any],
+        context: ProcessingContext,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.backend = backend
         self.tracker_data = tracker_data
+        self.context = context
 
         self._prompt_tokens_response = None
         self._overview_prompt = None
@@ -129,6 +126,7 @@ class ProcessWorker(BaseWorker):
                 queued_text_update_replace_last_line=self._queued_text_update_replace_last_line_cb,
                 progress_bar_cb=self._progress_cb,
                 caught_error=self.caught_error,
+                context=self.context,
                 token_prompt_cb=self.token_prompt_and_wait_cb,
                 overview_cb=self.overview_prompt_and_wait_cb,
             )
@@ -206,8 +204,10 @@ class ProcessPage(BaseWizardPage):
         "light": {"box_color": "#e6e6e6"},
     }
 
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
         self.setObjectName("processPage")
         self.setTitle("Process")
 
@@ -259,7 +259,8 @@ class ProcessPage(BaseWizardPage):
     @Slot()
     def process_jobs(self) -> None:
         # get paths and other things from the media input payload
-        detected_input = self._handle_files()
+        detected_input = self.context.media_input.require_input_path()
+        LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
 
         # get tracker data and check for existing torrent files
         tracker_data = self._gather_tracker_data(detected_input)
@@ -273,8 +274,7 @@ class ProcessPage(BaseWizardPage):
             self.dupe_worker = DupeWorker(
                 backend=self.backend,
                 processing_queue=[TrackerSelection(x) for x in tracker_data.keys()],
-                media_input_payload=self.config.media_input_payload,
-                media_search_payload=self.config.media_search_payload,
+                context=self.context,
                 parent=self,
             )
             self.dupe_worker.results.connect(self._on_dupe_results)
@@ -289,12 +289,13 @@ class ProcessPage(BaseWizardPage):
                 self.save_config = False
                 self._update_last_used_host()
 
-            if not self.config.media_search_payload.media_type:
+            if not self.context.media_search.media_type:
                 raise AttributeError("Failed to determine MediaType")
 
             self.process_worker = ProcessWorker(
                 backend=self.backend,
                 tracker_data=tracker_data,
+                context=self.context,
                 parent=self,
             )
             self.process_worker.caught_error.connect(self._log_caught_error)
@@ -524,21 +525,21 @@ class ProcessPage(BaseWizardPage):
 
     def add_tracker_items(self) -> None:
         # sort the trackers in the users desired order before displaying them
-        if self.config.shared_data.selected_trackers:
+        if self.context.shared_data.selected_trackers:
             upload_type = ImageSource.IMAGES
             enabled_img_hosts = {ImageHost.DISABLED: False}
 
             # if url data is detected add that to the potential options
-            if self.config.shared_data.url_data:
+            if self.context.shared_data.url_data:
                 upload_type = ImageSource.URLS
                 enabled_img_hosts = enabled_img_hosts | {
-                    upload_type: self.config.shared_data.url_data
+                    upload_type: self.context.shared_data.url_data
                 }
 
             # if we have any image data, filter all image hosts that are enabled and have all required values filled
             if (
-                self.config.shared_data.loaded_images
-                or self.config.shared_data.url_data
+                self.context.shared_data.loaded_images
+                or self.context.shared_data.url_data
             ):
                 enabled_img_hosts = enabled_img_hosts | {
                     key: value
@@ -554,7 +555,7 @@ class ProcessPage(BaseWizardPage):
             ordered_trackers = [
                 x
                 for x in sorted(
-                    self.config.shared_data.selected_trackers,
+                    self.context.shared_data.selected_trackers,
                     key=lambda tracker: self.config.cfg_payload.tracker_order.index(
                         tracker
                     ),
@@ -595,153 +596,8 @@ class ProcessPage(BaseWizardPage):
     def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
         self.save_config = True
 
-    def _handle_files(self) -> Path:
-        detected_input = self.config.media_input_payload.require_input_path()
-        LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
-
-        # handle rename if we're uploading
-        if self.processing_mode is UploadProcessMode.UPLOAD:
-            # grab table bg color based on theme
-            table_element_bg = self.get_theme_colors()
-
-            # new code
-            payload = self.config.media_input_payload
-
-            # iterate the renames and build out a table to show the user
-            table_rows: list[str] = []
-            for input_file, output_file in payload.file_list_rename_map.items():
-                if str(input_file) != str(output_file):
-                    table_rows.append(f"""\
-                    <tr>
-                        <td style="border: 1px solid #bbb; padding: 6px;">{input_file.stem}</td>
-                        <td style="border: 1px solid #bbb; padding: 6px;">{output_file.stem}</td>
-                    </tr>""")
-
-            # if we have table rows lets build the table and show it in the window
-            if table_rows:
-                formatted_table_rows = "\n".join(table_rows)
-                self._on_text_update(
-                    f"""\
-                    <br /><h3 style="margin: 0; padding: 0;">📼 Rename Files:</h3>
-                    <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
-                    <tr>
-                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Source</th>
-                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Target</th>
-                    </tr>
-                    {formatted_table_rows}
-                    </table>"""
-                )
-                self._on_text_update("<br /><span>Renaming files...</span>")
-
-                try:
-                    for (
-                        src_input_file,
-                        trg_output_file,
-                    ) in payload.file_list_rename_map.items():
-                        # only rename if source and destination are different and source exists
-                        if (
-                            src_input_file != trg_output_file
-                            and src_input_file.exists()
-                        ):
-                            trg_out = self.backend.rename_file(
-                                f_in=src_input_file, f_out=trg_output_file
-                            )
-                            if not trg_out.exists():
-                                detected_input_error = f"Cannot continue, the detected renamed output does not exist ({trg_out})"
-                                LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
-                                raise ProcessError(detected_input_error)
-                except Exception as e:
-                    LOG.error(
-                        LOG.LOG_SOURCE.FE,
-                        f"Failed to rename file: {e}\n{traceback.format_exc()}",
-                    )
-                    raise
-                self._on_text_update("<br /><span>Renaming files completed</span>")
-
-            # TODO: handle directory renaming
-
-            # new code
-
-            # # file rename first (if needed)
-            # if renamed_input and (str(og_input) != str(renamed_input)):
-            #     self._on_text_update(f"""\
-            #         <br /><h3 style="margin: 0; padding: 0;">📼 Renaming input file:</h3>
-            #         <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
-            #         <tr>
-            #             <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-            #             <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
-            #         </tr>
-            #         <tr>
-            #             <td style="border: 1px solid #bbb; padding: 6px;">{og_input.stem}</td>
-            #             <td style="border: 1px solid #bbb; padding: 6px;">{renamed_input.stem}</td>
-            #         </tr>
-            #         </table>""")
-            #     try:
-            #         # only rename if source and destination are different and source exists
-            #         if og_input != renamed_input and og_input.exists():
-            #             detected_input = self.backend.rename_file(
-            #                 f_in=og_input, f_out=renamed_input
-            #             )
-            #             if not detected_input.exists():
-            #                 detected_input_error = (
-            #                     "Cannot continue, the detected input does not exist"
-            #                 )
-            #                 LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
-            #                 raise ProcessError(detected_input_error)
-            #             # update payload to reflect new file name
-            #             self.config.media_input_payload.encode_file = detected_input
-            #             og_input = detected_input
-            #         else:
-            #             detected_input = renamed_input
-            #             self.config.media_input_payload.encode_file = detected_input
-            #             og_input = detected_input
-            #     except Exception as e:
-            #         LOG.error(
-            #             LOG.LOG_SOURCE.FE,
-            #             f"Failed to rename file: {e}\n{traceback.format_exc()}",
-            #         )
-            #         raise
-
-            # # directory rename (if needed)
-            # if encode_file_dir:
-            #     # The new folder name should be detected_input.stem
-            #     new_folder = encode_file_dir.parent / detected_input.stem
-            #     if encode_file_dir != new_folder:
-            #         try:
-            #             self._on_text_update(f"""\
-            #                 <br /><h3 style="margin: 0; padding: 0;">📂 Renaming parent folder:</h3>
-            #                 <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
-            #                 <tr>
-            #                     <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-            #                     <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
-            #                 </tr>
-            #                 <tr>
-            #                     <td style="border: 1px solid #bbb; padding: 6px;">{encode_file_dir.stem}</td>
-            #                     <td style="border: 1px solid #bbb; padding: 6px;">{new_folder.stem}</td>
-            #                 </tr>
-            #                 </table>""")
-            #             encode_file_dir.rename(new_folder)
-            #             # update payload to reflect new folder name
-            #             self.config.media_input_payload.encode_file_dir = new_folder
-            #             encode_file_dir = new_folder
-            #             # update encode_file path to point to the file inside the new folder
-            #             old_file = self.config.media_input_payload.encode_file
-            #             if old_file:
-            #                 new_file = new_folder / Path(old_file).name
-            #                 self.config.media_input_payload.encode_file = new_file
-            #                 detected_input = new_file
-            #         except Exception as e:
-            #             LOG.error(
-            #                 LOG.LOG_SOURCE.FE,
-            #                 f"Failed to rename parent folder: {e}\n{traceback.format_exc()}",
-            #             )
-            #             raise
-
-        # return detected_input, mediainfo_obj, encode_file_dir
-        return detected_input
-
     def _gather_tracker_data(self, detected_input: Path) -> dict[str, Any] | None:
-        process_dir = self.config.media_input_payload.working_dir
+        process_dir = self.context.media_input.working_dir
         if not process_dir:
             raise ValueError("Failed to detect MediaInputPayload.working_dir")
 
@@ -799,10 +655,10 @@ class ProcessPage(BaseWizardPage):
     @Slot()
     def _open_temp_output(self) -> None:
         if (
-            self.config.media_input_payload.working_dir
-            and self.config.media_input_payload.working_dir.exists()
+            self.context.media_input.working_dir
+            and self.context.media_input.working_dir.exists()
         ):
-            open_explorer(self.config.media_input_payload.working_dir)
+            open_explorer(self.context.media_input.working_dir)
 
     def initializePage(self) -> None:
         self.add_tracker_items()
