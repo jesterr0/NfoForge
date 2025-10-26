@@ -3,16 +3,19 @@ from typing import TYPE_CHECKING
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
-    from src.frontend.windows.main_window import MainWindow
     from src.config.config import Config
+    from src.context.processing_context import ProcessingContext
+    from src.frontend.windows.main_window import MainWindow
 
 
 class WizardPluginBase(BaseWizardPage):
     """Base class for all wizard plugins"""
 
-    def __init__(self, config: "Config", parent: "MainWindow"):
+    def __init__(
+        self, config: "Config", context: "ProcessingContext", parent: "MainWindow"
+    ):
         """Initialize the plugin with a config and a parent widget."""
-        super().__init__(config, parent)
+        super().__init__(config, context, parent)
 
     # TODO: add requirements later as needed
 

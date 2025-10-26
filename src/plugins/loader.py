@@ -9,6 +9,7 @@ from PySide6.QtCore import SignalInstance
 
 from src.backend.utils.working_dir import CURRENT_DIR
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import PluginError
 from src.logger.nfo_forge_logger import LOG
@@ -105,11 +106,13 @@ class PluginLoader:
             {
                 "token_replacer": {
                     "config": Config,
+                    "context": ProcessingContext,
                     "input_str": str,
                     "tracker_s": Sequence[TrackerSelection],
                 },
                 "pre_upload": {
                     "config": Config,
+                    "context": ProcessingContext,
                     "tracker": TrackerSelection,
                     "torrent_file": Path,
                     "upload_text_cb": Callable[[str], None],
