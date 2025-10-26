@@ -98,6 +98,7 @@
   - Text window is now read only.
 - Plugin Changes:
   - `pre_upload` plugin is no longer passed kwargs `media_file, mi_obj, source_path`. These can be gathered from the config object easily.
+    - You now can access these payloads via the passed `context`.
 - Improved the visuals of tracker format override widget.
 - File rename no longer happens during processing stage.
 
