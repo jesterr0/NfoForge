@@ -2,6 +2,7 @@ from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pymediainfo import MediaInfo
 from PySide6.QtCore import QSize, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
@@ -14,11 +15,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
-    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
-from pymediainfo import MediaInfo
 
 from src.backend.images import ImagesBackEnd
 from src.backend.utils.images import (
@@ -28,10 +27,10 @@ from src.backend.utils.images import (
 )
 from src.backend.utils.script_parser import ScriptParser
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
-from src.enums.profile import Profile
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
 from src.exceptions.utils import get_full_traceback
@@ -40,17 +39,21 @@ from src.frontend.custom_widgets.dnd_factory import (
     DNDToolButton,
 )
 from src.frontend.global_signals import GSigs
-from src.frontend.stacked_windows.cropping import CropWidget
+from src.frontend.stacked_windows.cropping import CropWidgetDialog
 from src.frontend.utils import build_v_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.windows.image_viewer import ImageViewer
-from src.frontend.wizards.media_input_basic import MediaInputBasic
+from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-from src.packages.custom_types import AdvancedResize, CropValues, SubNames
+from src.packages.custom_types import SubNames
+from src.payloads.script import ScriptValues
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
+
+# TODO: make log bigger, make window scrollable, on finish scroll to the bottom of the page or to the image widget
+# TODO: clean up all the type hint errors/warnings.
 
 
 class QueuedWorker(QThread):
@@ -72,8 +75,7 @@ class QueuedWorker(QThread):
         sub_size: int,
         subtitle_alignment: SubtitleAlignment,
         crop_mode: Cropping,
-        crop_values: CropValues | None,
-        advanced_resize: AdvancedResize | None,
+        script_values: ScriptValues | None,
         re_sync: int,
         indexer: Indexer | None,
         image_plugin: ImagePlugin | None,
@@ -101,8 +103,7 @@ class QueuedWorker(QThread):
             sub_size (int): Subtitle size.
             subtitle_alignment (SubtitleAlignment): Subtitle alignment.
             crop_mode (Cropping): Crop mode.
-            crop_values (Optional[CropValues]): Crop values.
-            advanced_resize (Optional[AdvancedResize]): Crop values.
+            script_values (Optional[ScriptValues]): Script values.
             re_sync (int): Re_sync value.
             indexer (Optional[Indexer]): Indexer used for FrameForge.
             image_plugin (Optional[ImagePlugin]): Plugin used for image generation in FrameForge.
@@ -126,8 +127,8 @@ class QueuedWorker(QThread):
         self.sub_size = sub_size
         self.subtitle_alignment = subtitle_alignment
         self.crop_mode = crop_mode
-        self.crop_values = crop_values
-        self.advanced_resize = advanced_resize
+        self.crop_values = script_values.crop_values if script_values else None
+        self.advanced_resize = script_values.advanced_resize if script_values else None
         self.re_sync = re_sync
         self.indexer = indexer
         self.image_plugin = image_plugin
@@ -221,9 +222,10 @@ class ImagesPage(BaseWizardPage):
     def __init__(
         self,
         config: Config,
+        context: ProcessingContext,
         parent: "MainWindow",
     ) -> None:
-        super().__init__(config, parent)
+        super().__init__(config, context, parent)
         self.setObjectName("imagesPage")
         self.setTitle("""<h4>Images</h4><span style="font-size: 9pt; font-weight: normal;">
                         Built-in image generation produces 
@@ -246,8 +248,7 @@ class ImagesPage(BaseWizardPage):
         self.source_file: Path | None = None
         self.media_file: Path | None = None
         self.image_dir: Path | None = None
-        self.crop_values: CropValues | None = None
-        self.advanced_resize: AdvancedResize | None = None
+        self.script_values: ScriptValues | None = None
 
         # we need to keep track of the type of images that are dropped/generated
         # to update SharedPayload.is_comparison_images
@@ -320,18 +321,15 @@ class ImagesPage(BaseWizardPage):
         self.main_scroll_area.setWidgetResizable(True)
         self.main_scroll_area.setWidget(main_layout_widget)
 
-        self.cropping_widget = CropWidget()
-        self.cropping_widget.crop_confirmed.connect(self._execute_image_generation)
-
-        self.stacked_widget = QStackedWidget(self)
-        self.stacked_widget.addWidget(self.main_scroll_area)
-        self.stacked_widget.addWidget(self.cropping_widget)
-
         final_layout = QVBoxLayout(self)
         final_layout.setContentsMargins(0, 0, 0, 0)
-        final_layout.addWidget(self.stacked_widget)
+        final_layout.addWidget(self.main_scroll_area)
 
         self.setLayout(final_layout)
+
+    def initializePage(self) -> None:
+        if not self.context.media_input.has_basic_data():
+            raise RuntimeError("Missing required data from media input")
 
     def isComplete(self) -> bool:
         """Overrides isComplete method to control the next button"""
@@ -340,8 +338,8 @@ class ImagesPage(BaseWizardPage):
     def validatePage(self) -> bool:
         """Overrides validatePage method to run additional tasks"""
         if (
-            not self.config.shared_data.loaded_images
-            and not self.config.shared_data.url_data
+            not self.context.shared_data.loaded_images
+            and not self.context.shared_data.url_data
         ):
             if (
                 QMessageBox.question(
@@ -354,17 +352,17 @@ class ImagesPage(BaseWizardPage):
                 return False
 
         # log used data
-        if self.config.shared_data.loaded_images:
+        if self.context.shared_data.loaded_images:
             img_path_data = "\n".join(
-                (str(p) for p in self.config.shared_data.loaded_images)
+                (str(p) for p in self.context.shared_data.loaded_images)
             )
             LOG.info(
                 LOG.LOG_SOURCE.FE,
                 f"#### IMG Path Data ####\n{img_path_data}\n#### IMG Path Data ####",
             )
-        if self.config.shared_data.url_data:
+        if self.context.shared_data.url_data:
             img_url_data = "\n".join(
-                (str(url_d) for url_d in self.config.shared_data.url_data)
+                (str(url_d) for url_d in self.context.shared_data.url_data)
             )
             LOG.info(
                 LOG.LOG_SOURCE.FE,
@@ -372,7 +370,7 @@ class ImagesPage(BaseWizardPage):
             )
 
         super().validatePage()
-        self.config.shared_data.is_comparison_images = self.is_comparison_images
+        self.context.shared_data.is_comparison_images = self.is_comparison_images
         return True
 
     @Slot(str, float)
@@ -386,57 +384,51 @@ class ImagesPage(BaseWizardPage):
 
     @Slot()
     def _generate_images(self) -> None:
-        profile = self.config.cfg_payload.profile
         ss_mode = self.config.cfg_payload.ss_mode
         crop_mode = self.config.cfg_payload.crop_mode
 
-        # over ride profile if the user is using the Basic (Built-in) plugin
-        if profile == Profile.PLUGIN:
-            if self.config.cfg_payload.wizard_page:
-                wizard_plugin = self.config.loaded_plugins[
-                    self.config.cfg_payload.wizard_page
-                ].wizard
-                if wizard_plugin == MediaInputBasic:
-                    self.config.cfg_payload.profile = profile = Profile.BASIC
-
-        if profile == Profile.BASIC:
-            self._execute_image_generation()
-        elif profile in (Profile.ADVANCED, Profile.PLUGIN):
-            if ss_mode == ScreenShotMode.BASIC_SS_GEN:
+        # if ScreenShotMode is not basic we can run comparison logic
+        if ss_mode is not ScreenShotMode.BASIC_SS_GEN:
+            # if the user didn't provide a comparison pair we'll just generated via basic
+            comp_pair = self.context.media_input.comparison_pair
+            if not comp_pair:
                 self._execute_image_generation()
-            elif ss_mode == ScreenShotMode.SIMPLE_SS_COMP:
-                if not self._compare_resolutions():
-                    if crop_mode == Cropping.MANUAL:
-                        self.stacked_widget.setCurrentWidget(self.cropping_widget)
+                return
+
+            if not self._compare_resolutions():
+                # if manual we will prompt the crop dialog widget
+                if crop_mode is Cropping.MANUAL:
+                    dlg = CropWidgetDialog(self)
+                    # if we have the script pre-load it even if using manual
+                    if comp_pair.script:
+                        dlg.load_script(comp_pair.script)
+                    script_values = dlg.exec_crop()
+                    if script_values:
+                        self._execute_image_generation(script_values=script_values)
                         return
-                self._execute_image_generation()
+                # if auto and there is a script already we can apply the values if they are valid
+                elif crop_mode is Cropping.AUTO and comp_pair.script:
+                    parse_script = ScriptParser(comp_pair.script.read_text()).get_data()
+                    if not parse_script.all_zeros():
+                        self._execute_image_generation(
+                            script_values=ScriptParser(
+                                comp_pair.script.read_text()
+                            ).get_data()
+                        )
+                        return
 
-            elif ss_mode == ScreenShotMode.ADV_SS_COMP:
-                if not self._compare_resolutions():
-                    if crop_mode == Cropping.MANUAL:
-                        if self.config.media_input_payload.script_file:
-                            script_str = self._read_advanced_script(
-                                self.config.media_input_payload.script_file
-                            )
-                            advanced_script_data = ScriptParser(script_str).get_data()
-                            self._execute_image_generation(
-                                advanced_script_data.crop_values,
-                                advanced_script_data.advanced_resize,
-                            )
-                        else:
-                            self.stacked_widget.setCurrentWidget(self.cropping_widget)
-                            return
-                self._execute_image_generation()
+        # if comparison logic was not needed just fall back to regular generation
+        # allowing it to detect the correct flow
+        self._execute_image_generation()
 
     def _compare_resolutions(self) -> bool:
-        if (
-            not self.config.media_input_payload.source_file_mi_obj
-            or not self.config.media_input_payload.encode_file_mi_obj
-        ):
-            raise AttributeError("Cannot detect MediaInfo for source or encode input")
+        comp_pair = self.context.media_input.comparison_pair
+        mi_list = self.context.media_input.file_list_mediainfo
+        if not comp_pair or not mi_list:
+            raise AttributeError("Failed to get data from comparison pair")
         if not compare_resolutions(
-            self.config.media_input_payload.source_file_mi_obj,
-            self.config.media_input_payload.encode_file_mi_obj,
+            mi_list[comp_pair.source],
+            mi_list[comp_pair.media],
         ):
             return False
         return True
@@ -448,18 +440,12 @@ class ImagesPage(BaseWizardPage):
     @Slot()
     def _execute_image_generation(
         self,
-        crop_values: CropValues | None = None,
-        advanced_resize: AdvancedResize | None = None,
+        script_values: ScriptValues | None = None,
         re_sync: int = 0,
     ) -> None:
         crop_mode = self.config.cfg_payload.crop_mode
-        if crop_values:
-            self.crop_values = crop_values
-
-        if advanced_resize:
-            self.advanced_resize = advanced_resize
-
-        self.stacked_widget.setCurrentWidget(self.main_scroll_area)
+        if script_values:
+            self.script_values = script_values
 
         if self.queued_worker is not None and self.queued_worker.isRunning():
             return
@@ -470,15 +456,9 @@ class ImagesPage(BaseWizardPage):
         self._disable_generate_images_button()
         self._update_loading_state(False)
 
-        profile_handlers = {
-            Profile.BASIC: self._handle_basic_profile,
-            Profile.ADVANCED: self._handle_basic_comparison,
-            Profile.PLUGIN: self._handle_basic_comparison,
-        }
-
-        profile = Profile(self.config.cfg_payload.profile)
-        handler = profile_handlers[profile]
-        ss_mode, source_file_mi_obj, media_file_mi_obj, comparison_subs = handler()
+        ss_mode, source_file_mi_obj, media_file_mi_obj, comparison_subs = (
+            self._generate_job_args()
+        )
         self._update_text_box(f"Starting image generation (Mode: {ss_mode}).")
 
         self._set_image_directory()
@@ -504,8 +484,7 @@ class ImagesPage(BaseWizardPage):
             sub_size,
             subtitle_alignment,
             crop_mode,
-            crop_values,
-            advanced_resize,
+            script_values,
             re_sync,
         )
 
@@ -516,43 +495,49 @@ class ImagesPage(BaseWizardPage):
         self.loading_complete = state
         self.completeChanged.emit()
 
-    def _handle_basic_profile(self) -> tuple:
-        if not self.config.media_input_payload.encode_file:
-            raise FileNotFoundError("Failed to locate path to 'encode_file'")
-        self.media_file = Path(self.config.media_input_payload.encode_file)
-        return (
-            ScreenShotMode.BASIC_SS_GEN,
-            None,
-            self.config.media_input_payload.encode_file_mi_obj,
-            False,
-        )
-
-    def _handle_basic_comparison(self) -> tuple:
-        if (
-            not self.config.media_input_payload.source_file
-            or not self.config.media_input_payload.encode_file
-        ):
-            raise FileNotFoundError(
-                "Failed to locate path to 'source_file' or 'encode_file'"
+    def _generate_job_args(self) -> tuple:
+        """Determine image generation args."""
+        file_list = self.context.media_input.file_list
+        mi_file_list = self.context.media_input.file_list_mediainfo
+        if not file_list or not mi_file_list:
+            raise AttributeError(
+                "No files detected in file_list or file_list_mediainfo"
             )
-        self.source_file = Path(self.config.media_input_payload.source_file)
-        source_file_mi_obj = self.config.media_input_payload.source_file_mi_obj
-        self.media_file = Path(self.config.media_input_payload.encode_file)
-        media_file_mi_obj = self.config.media_input_payload.encode_file_mi_obj
-        comparison_subs = self.config.cfg_payload.comparison_subtitles
-        return (
-            self.config.cfg_payload.ss_mode,
-            source_file_mi_obj,
-            media_file_mi_obj,
-            comparison_subs,
-        )
+
+        comp_pair = self.context.media_input.comparison_pair
+        # no comparison generation
+        if not comp_pair:
+            # access index 0 since no comparison pair
+            self.media_file = file_list[0]
+            return (
+                ScreenShotMode.BASIC_SS_GEN,
+                None,
+                mi_file_list[self.media_file],
+                False,
+            )
+
+        # comparison generation
+        else:
+            self.source_file = comp_pair.source
+            self.media_file = comp_pair.media
+            ss_mode = (
+                ScreenShotMode.SIMPLE_SS_COMP
+                if self.config.cfg_payload.ss_mode is not ScreenShotMode.ADV_SS_COMP
+                else ScreenShotMode.ADV_SS_COMP
+            )
+            return (
+                ss_mode,
+                mi_file_list[self.source_file],
+                mi_file_list[self.media_file],
+                self.config.cfg_payload.comparison_subtitles,
+            )
 
     def _set_image_directory(self) -> None:
-        if not self.config.media_input_payload.working_dir:
+        if not self.context.media_input.working_dir:
             raise FileNotFoundError(
                 "Failed to locate path to 'working directory for media'"
             )
-        self.image_dir = self.config.media_input_payload.working_dir / "images"
+        self.image_dir = self.context.media_input.working_dir / "images"
 
     def _get_sub_names(self, comparison_subs) -> SubNames | None:
         if comparison_subs:
@@ -573,8 +558,7 @@ class ImagesPage(BaseWizardPage):
         sub_size,
         subtitle_alignment,
         crop_mode: Cropping,
-        crop_values: CropValues | None,
-        advanced_resize: AdvancedResize | None,
+        script_values: ScriptValues | None,
         re_sync,
     ) -> None:
         self.queued_worker = QueuedWorker(
@@ -594,8 +578,7 @@ class ImagesPage(BaseWizardPage):
             sub_size=sub_size,
             subtitle_alignment=subtitle_alignment,
             crop_mode=crop_mode,
-            crop_values=crop_values,
-            advanced_resize=advanced_resize,
+            script_values=script_values,
             re_sync=re_sync,
             indexer=self.config.cfg_payload.indexer,
             image_plugin=self.config.cfg_payload.image_plugin,
@@ -610,8 +593,12 @@ class ImagesPage(BaseWizardPage):
     def _generate_finished(self, code: int) -> None:
         if code == 0:
             ss_mode = self.config.cfg_payload.ss_mode
-            if self.config.cfg_payload.profile == Profile.BASIC:
-                ss_mode = ScreenShotMode.BASIC_SS_GEN
+            if self.context.media_input.comparison_pair:
+                ss_mode = (
+                    ScreenShotMode.SIMPLE_SS_COMP
+                    if self.config.cfg_payload.ss_mode is not ScreenShotMode.ADV_SS_COMP
+                    else ScreenShotMode.ADV_SS_COMP
+                )
 
             self.image_viewer = ImageViewer(
                 image_base_dir=self.image_dir,
@@ -653,7 +640,7 @@ class ImagesPage(BaseWizardPage):
             self.thumbnail_listbox.addItems([str(x) for x in img_objs])
         else:
             self._update_text_box("No image URLs detected.")
-        self.config.shared_data.url_data = img_objs
+        self.context.shared_data.url_data = img_objs
         self.is_comparison_images = self._ask_comparison()
         self._complete_loading()
 
@@ -683,8 +670,8 @@ class ImagesPage(BaseWizardPage):
         if images:
             for img in images:
                 self.thumbnail_listbox.add_thumbnail(img)
-            self.config.shared_data.loaded_images = images
-            self.config.shared_data.generated_images = generated
+            self.context.shared_data.loaded_images = images
+            self.context.shared_data.generated_images = generated
 
             # if generated we need to check the ss_mode to determine if these are comp images
             if (
@@ -718,8 +705,7 @@ class ImagesPage(BaseWizardPage):
     @Slot(int)
     def _re_sync(self, offset: int) -> None:
         self._execute_image_generation(
-            crop_values=self.crop_values,
-            advanced_resize=self.advanced_resize,
+            script_values=self.script_values,
             re_sync=offset,
         )
 
@@ -727,22 +713,10 @@ class ImagesPage(BaseWizardPage):
         GSigs().main_window_set_disabled.emit(False)
         self.generate_images.setEnabled(True)
         self._update_loading_state(True)
+        self._reset_vars()
 
+    def _reset_vars(self) -> None:
         self.source_file = None
         self.media_file = None
         self.image_dir = None
-        self.crop_values = None
-        self.advanced_resize = None
-
-    @Slot()
-    def reset_page(self) -> None:
-        self.is_comparison_images = False
-
-        self.text_box.clear()
-        self.progress_bar.setValue(0)
-        self.progress_bar.reset()
-        self.thumbnail_listbox.clear()
-        self.stacked_widget.setCurrentWidget(self.main_scroll_area)
-        self.main_scroll_area.verticalScrollBar().setValue(
-            self.main_scroll_area.verticalScrollBar().minimum()
-        )
+        self.script_values = None
