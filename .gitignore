@@ -12,9 +12,9 @@ custom-pyinstaller/
 runtime/apps/
 runtime/cookies/
 runtime/docs/
-runtime/config/program/
-runtime/config/user/
-runtime/config/plugins
+runtime/config/*
+!runtime/config/audio_conventions/
+!runtime/config/defaults/
 runtime/logs/
 runtime/templates/
 runtime/user_packages/
