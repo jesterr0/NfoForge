@@ -246,6 +246,9 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     for cookie_file in Path(bundled_runtime / "cookies").glob("*.pkl"):
         cookie_file.unlink()
 
+    # remove plugins folder
+    shutil.rmtree(bundled_runtime / "plugins")
+
     # Return a success message
     return success
 
