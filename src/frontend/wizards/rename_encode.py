@@ -194,7 +194,7 @@ class RenameEncode(BaseWizardPage):
             parent=self,
         )
         self.quality_combo.addItem("")
-        self.quality_combo.addItems(QualitySelection)
+        self.quality_combo.addItems([str(q) for q in QualitySelection])
         self.quality_combo.currentIndexChanged.connect(self._update_quality_combo)
 
         self.remux_checkbox = QCheckBox("REMUX", self)
