@@ -1,5 +1,5 @@
-from pathlib import Path
 import traceback
+from pathlib import Path
 from typing import Type
 
 from PySide6.QtCore import QThread, Signal, SignalInstance, Slot
