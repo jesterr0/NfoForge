@@ -570,28 +570,29 @@ class ProcessBackEnd:
                     raise ValueError("NFO should be a string")
 
             # run token replacer plugin if available
-            token_replacer_plugin = self.config.cfg_payload.token_replacer
-            if token_replacer_plugin:
-                nfo_plugin = self.config.loaded_plugins[
-                    token_replacer_plugin
-                ].token_replacer
-                if nfo_plugin and callable(nfo_plugin):
-                    LOG.info(
-                        LOG.LOG_SOURCE.BE,
-                        f"Running token replacer plugin for tracker: {tracker_name}",
-                    )
-                    replace_tokens = nfo_plugin(
-                        config=self.config,
-                        context=context,
-                        input_str=nfo,
-                        tracker_s=(cur_tracker,),
-                        tracker_images=tracker_images
-                        if cur_tracker in images
-                        else None,
-                        format_images_to_str=formatted_screens,
-                        formatted_screens=formatted_screens,
-                    )
-                    nfo = replace_tokens if replace_tokens else nfo
+            if self.config.cfg_payload.enable_plugins:
+                token_replacer_plugin = self.config.cfg_payload.token_replacer
+                if token_replacer_plugin:
+                    nfo_plugin = self.config.loaded_plugins[
+                        token_replacer_plugin
+                    ].token_replacer
+                    if nfo_plugin and callable(nfo_plugin):
+                        LOG.info(
+                            LOG.LOG_SOURCE.BE,
+                            f"Running token replacer plugin for tracker: {tracker_name}",
+                        )
+                        replace_tokens = nfo_plugin(
+                            config=self.config,
+                            context=context,
+                            input_str=nfo,
+                            tracker_s=(cur_tracker,),
+                            tracker_images=tracker_images
+                            if cur_tracker in images
+                            else None,
+                            format_images_to_str=formatted_screens,
+                            formatted_screens=formatted_screens,
+                        )
+                        nfo = replace_tokens if replace_tokens else nfo
 
             tracker_release_data[cur_tracker] = {"title": tracker_title, "nfo": nfo}
 
@@ -709,21 +710,22 @@ class ProcessBackEnd:
 
             # pre upload plugin
             pre_upload_processing = None
-            pre_upload_plugin = self.config.cfg_payload.pre_upload
-            if pre_upload_plugin:
-                get_pre_upload_plugin = self.config.loaded_plugins[
-                    pre_upload_plugin
-                ].pre_upload
-                if get_pre_upload_plugin and callable(get_pre_upload_plugin):
-                    pre_upload_processing = get_pre_upload_plugin(
-                        config=self.config,
-                        context=context,
-                        tracker=cur_tracker,
-                        torrent_file=torrent_path,
-                        upload_text_cb=queued_text_update,
-                        upload_text_replace_last_line_cb=queued_text_update_replace_last_line,
-                        progress_cb=self.progress_bar_cb,
-                    )
+            if self.config.cfg_payload.enable_plugins:
+                pre_upload_plugin = self.config.cfg_payload.pre_upload
+                if pre_upload_plugin:
+                    get_pre_upload_plugin = self.config.loaded_plugins[
+                        pre_upload_plugin
+                    ].pre_upload
+                    if get_pre_upload_plugin and callable(get_pre_upload_plugin):
+                        pre_upload_processing = get_pre_upload_plugin(
+                            config=self.config,
+                            context=context,
+                            tracker=cur_tracker,
+                            torrent_file=torrent_path,
+                            upload_text_cb=queued_text_update,
+                            upload_text_replace_last_line_cb=queued_text_update_replace_last_line,
+                            progress_cb=self.progress_bar_cb,
+                        )
 
             # upload
             if tracker_info.upload_enabled and pre_upload_processing is not False:

@@ -526,22 +526,23 @@ class TemplateSelector(QWidget):
                 raise
 
             try:
-                token_replacer_plugin = self.config.cfg_payload.token_replacer
-                if token_replacer_plugin:
-                    plugin = self.config.loaded_plugins[
-                        token_replacer_plugin
-                    ].token_replacer
-                    if plugin and callable(plugin):
-                        selected_template = self.template_combo.currentText()
-                        tracker_s = [
-                            tracker
-                            for tracker, tracker_settings in self.config.tracker_map.items()
-                            if tracker_settings.nfo_template == selected_template
-                        ]
-                        replace_tokens = plugin(
-                            config=self.config, input_str=nfo, tracker_s=tracker_s
-                        )
-                        nfo = replace_tokens if replace_tokens else nfo
+                if self.config.cfg_payload.enable_plugins:
+                    token_replacer_plugin = self.config.cfg_payload.token_replacer
+                    if token_replacer_plugin:
+                        plugin = self.config.loaded_plugins[
+                            token_replacer_plugin
+                        ].token_replacer
+                        if plugin and callable(plugin):
+                            selected_template = self.template_combo.currentText()
+                            tracker_s = [
+                                tracker
+                                for tracker, tracker_settings in self.config.tracker_map.items()
+                                if tracker_settings.nfo_template == selected_template
+                            ]
+                            replace_tokens = plugin(
+                                config=self.config, input_str=nfo, tracker_s=tracker_s
+                            )
+                            nfo = replace_tokens if replace_tokens else nfo
             except Exception:
                 # we attempt to execute the plugin, but since some data is filled in process step
                 # it might not be available.
