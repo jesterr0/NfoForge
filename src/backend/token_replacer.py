@@ -2940,9 +2940,7 @@ class TokenReplacer:
         title: str, title_clean_rules: list[tuple[str, str]] | None
     ) -> str:
         if not title:
-            raise RuntimeError(
-                "Title is required. Title clean rules must be provided for cleaned formatting."
-            )
+            return ""
         if title_clean_rules:
             for replace, replace_with in title_clean_rules:
                 if replace_with == "[unidecode]":
