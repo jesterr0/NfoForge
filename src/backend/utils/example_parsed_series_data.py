@@ -1,41 +1,45 @@
 from datetime import datetime
+from pathlib import Path
 
 from pymediainfo import MediaInfo
 
 from src.enums.media_type import MediaType
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 
 current_year = datetime.now().year
 
-EXAMPLE_FOLDER_NAME = "Series.Name.S03.BluRay.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup"
-EXAMPLE_FILE_NAME_1 = (
+EXAMPLE_FOLDER_NAME = Path(
+    "Series.Name.S03.BluRay.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup"
+)
+EXAMPLE_FILE_NAME_1 = Path(
     "Series.Name.S03E01.Episode.Name.1.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_2 = (
+EXAMPLE_FILE_NAME_2 = Path(
     "Series.Name.S03E01.Episode.Name.2.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_3 = (
+EXAMPLE_FILE_NAME_3 = Path(
     "Series.Name.S03E01.Episode.Name.3.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_4 = (
+EXAMPLE_FILE_NAME_4 = Path(
     "Series.Name.S03E01.Episode.Name.4.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_5 = (
+EXAMPLE_FILE_NAME_5 = Path(
     "Series.Name.S03E01.Episode.Name.5.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_6 = (
+EXAMPLE_FILE_NAME_6 = Path(
     "Series.Name.S03E01.Episode.Name.6.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_7 = (
+EXAMPLE_FILE_NAME_7 = Path(
     "Series.Name.S03E01.Episode.Name.7.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_8 = (
+EXAMPLE_FILE_NAME_8 = Path(
     "Series.Name.S03E01.Episode.Name.8.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_9 = (
+EXAMPLE_FILE_NAME_9 = Path(
     "Series.Name.S03E01.Episode.Name.9.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_10 = (
+EXAMPLE_FILE_NAME_10 = Path(
     "Series.Name.S03E01.Episode.Name.10.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
 
@@ -1319,6 +1323,13 @@ Chapters_Pos_End                         : 106
 00:22:13.874                             : en:Chapter 05
 """
 # fmt: on
+
+EXAMPLE_MEDIA_INPUT_PAYLOAD = MediaInputPayload(
+    input_path=EXAMPLE_FILE_NAME_1,
+    file_list=[EXAMPLE_FILE_NAME_1],
+    file_list_mediainfo={EXAMPLE_FILE_NAME_1: EXAMPLE_MEDIAINFO_OBJ},
+    media_type=MediaType.SERIES,
+)
 
 EXAMPLE_SEARCH_PAYLOAD = MediaSearchPayload(
     media_type=MediaType.SERIES,
