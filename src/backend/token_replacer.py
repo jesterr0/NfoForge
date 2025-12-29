@@ -2939,18 +2939,19 @@ class TokenReplacer:
     def _title_formatting_cleaned(
         title: str, title_clean_rules: list[tuple[str, str]] | None
     ) -> str:
-        if not title or not title_clean_rules:
+        if not title:
             raise RuntimeError(
                 "Title is required. Title clean rules must be provided for cleaned formatting."
             )
-        for replace, replace_with in title_clean_rules:
-            if replace_with == "[unidecode]":
-                title = unidecode.unidecode(title)
-            else:
-                replace_with = replace_with.replace("[remove]", "").replace(
-                    "[space]", " "
-                )
-                title = re.sub(rf"{replace}", rf"{replace_with}", title)
+        if title_clean_rules:
+            for replace, replace_with in title_clean_rules:
+                if replace_with == "[unidecode]":
+                    title = unidecode.unidecode(title)
+                else:
+                    replace_with = replace_with.replace("[remove]", "").replace(
+                        "[space]", " "
+                    )
+                    title = re.sub(rf"{replace}", rf"{replace_with}", title)
         return title
 
     @staticmethod
