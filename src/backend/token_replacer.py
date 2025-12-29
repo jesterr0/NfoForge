@@ -2909,13 +2909,16 @@ class TokenReplacer:
             return None
 
         # search through TVDB data
-        for ep in self.media_search_obj.tvdb_data:
+        for ep in self.media_search_obj.tvdb_data.get("episodes", []):
             s = ep.get("seasonNumber")
             e = ep.get("number")
             if s is None or e is None:
                 continue
             try:
                 if int(s) == season and int(e) == episode:
+                    # initialize season dict if it doesn't exist
+                    if season not in self._series_cache:
+                        self._series_cache[season] = {}
                     self._series_cache[season][episode] = ep
                     return ep
             except ValueError:
