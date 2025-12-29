@@ -16,11 +16,11 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.token_replacer import ColonReplace, TokenReplacer, UnfilledTokenRemoval
-from src.backend.tokens import FileToken, TokenSelection, TokenType, Tokens
+from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
-    EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
+    EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
 )
 from src.enums.tracker_selection import TrackerSelection
