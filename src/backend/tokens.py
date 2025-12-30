@@ -4,7 +4,6 @@ from typing import Any, NamedTuple, Type
 
 from src.enums import CaseInsensitiveStrEnum
 
-
 TITLE_CLEAN_REPLACE_DEF = [
     (r"", r"[unidecode]"),
     (r"&", r"and"),
