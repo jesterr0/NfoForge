@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
 from src.config.config import Config
+from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
@@ -11,8 +12,10 @@ if TYPE_CHECKING:
 
 
 class SeriesMatch(BaseWizardPage):
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
+    def __init__(
+        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
         self.setTitle("Series Match")
         self.setObjectName("seriesMatch")
         self.setCommitPage(True)
@@ -27,9 +30,9 @@ class SeriesMatch(BaseWizardPage):
     def initializePage(self):
         """Initialize the page and load data into the series mapper"""
         # load data into the series mapper
-        if self.config.media_input_payload and self.config.media_search_payload:
+        if self.context.media_input and self.context.media_search:
             self.series_mapper.load_data(
-                self.config.media_input_payload, self.config.media_search_payload
+                self.context.media_input, self.context.media_search
             )
 
     def validatePage(self) -> bool:
@@ -46,11 +49,7 @@ class SeriesMatch(BaseWizardPage):
         # store the episode mappings in config for later use
         episode_maps = self.series_mapper.get_episode_map()
         if episode_maps:
-            self.config.media_input_payload.series_episode_map = episode_maps
+            self.context.media_input.series_episode_map = episode_maps
 
         super().validatePage()
         return True
-
-    def reset_page(self):
-        """Reset the page data"""
-        self.series_mapper.clear_data()
