@@ -98,16 +98,31 @@
   - You can now pop out the text editor widget for the text input.
   - Text window is now read only.
 - Plugin Changes:
-  - `pre_upload` plugin is no longer passed kwargs `media_file, mi_obj, source_path`. These can be gathered from the config object easily.
+  - `pre_upload` plugin is no longer passed kwargs `media_file, mi_obj, source_path`. These can be gathered from the context object easily.
     - You now can access these payloads via the passed `context`.
 - Improved the visuals of tracker format override widget.
 - File rename no longer happens during processing stage.
+- Updated dependencies:
+  - tomlkit
+  - imdbinfo
+  - pillow
+  - platformdirs
+  - pyside6
+  - psutil
+  - aiohttp
+  - qbittorrent-api
+  - niquests
+  - regex
+  - rapidfuzz
+  - oslex2
+  - urllib3
 
 ### Fixed
 
 - TokenTable widget labels had the wrong weight of bold.
 - UploadCX payload was assigned to the wrong payload _(wouldn't have actually bothered the end result)_.
 - Potential error reading audio track layouts with a core.
+- Properly catch/handle errors when loading the program when a plugin wizard page threw an error.
 
 ### Removed
 
