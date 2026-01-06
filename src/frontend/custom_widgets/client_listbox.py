@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QSpinBox,
     QMessageBox,
+    QCheckBox,
 )
 from PySide6.QtCore import Qt, Signal, Slot, QThread
 from PySide6.QtGui import QAction
@@ -65,20 +66,34 @@ class ClientEditBase(QFrame):
         super().__init__(parent)
 
         self.specific_params_layout = QVBoxLayout()
-        self.specific_params_map: dict[str, QLineEdit] = {}
+        self.specific_params_map: dict[str, QLineEdit | QCheckBox] = {}
 
         self.test_class: Callable | None = None
         self.client_test_worker: ClientTestWorker | None = None
         self.test_client_signal.connect(self._test_client)
 
-    def build_widgets_from_dict(self, data: dict[str, str]) -> None:
+    BOOL_PARAM_LABELS = {
+        "super_seeding": "Add new torrents in super seeding mode",
+    }
+
+    def build_widgets_from_dict(self, data: dict[str, str | bool]) -> None:
         """Builds widgets as needed dynamically"""
         for key, value in data.items():
-            widget = QLineEdit(self)
-            widget.setText(value)
-            self.specific_params_map[key] = widget
-            form = self.build_form_layout(key.title().replace("_", " "), widget)
-            self.specific_params_layout.addLayout(form)
+            if isinstance(value, bool):
+                label_text = self.BOOL_PARAM_LABELS.get(
+                    key, key.title().replace("_", " ")
+                )
+                widget = QCheckBox(self)
+                widget.setChecked(value)
+                self.specific_params_map[key] = widget
+                form = self.build_form_layout(label_text, widget)
+                self.specific_params_layout.addLayout(form)
+            else:
+                widget = QLineEdit(self)
+                widget.setText(value)
+                self.specific_params_map[key] = widget
+                form = self.build_form_layout(key.title().replace("_", " "), widget)
+                self.specific_params_layout.addLayout(form)
 
     @Slot(object)
     def _test_client(self, test_payload: TorrentClient) -> None:
@@ -367,7 +382,10 @@ class ClientListWidget(QWidget):
             client_attributes.user = full_client_widget.user.text().strip()
             client_attributes.password = full_client_widget.password.text().strip()
             for key, val_widget in full_client_widget.specific_params_map.items():
-                client_attributes.specific_params[key] = val_widget.text().strip()
+                if isinstance(val_widget, QCheckBox):
+                    client_attributes.specific_params[key] = val_widget.isChecked()
+                else:
+                    client_attributes.specific_params[key] = val_widget.text().strip()
 
         elif client in self.URI_CLIENTS and isinstance(
             client_attributes, TorrentClient

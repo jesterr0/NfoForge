@@ -1,6 +1,7 @@
 from qbittorrentapi import Client as QBitClient
 import qbittorrentapi.exceptions
 from pathlib import Path
+from torf import Torrent
 
 from src.exceptions import TrackerClientError
 from src.payloads.clients import TorrentClient
@@ -57,6 +58,11 @@ class QBittorrentClient:
                 category=self._get_category(),
             )
             if add_torrent == "Ok.":
+                if self._get_super_seeding():
+                    torrent = Torrent.read(torrent_file)
+                    self.client.torrents_set_super_seeding(
+                        enable=True, torrent_hashes=torrent.infohash
+                    )
                 return True, "qBittorrent injection successful"
             else:
                 return False, "qBittorrent injection failed"
@@ -74,6 +80,9 @@ class QBittorrentClient:
                 "You must supply your category in the configuration"
             )
         return category
+
+    def _get_super_seeding(self) -> bool:
+        return bool(self.qbit_config.specific_params.get("super_seeding", False))
 
     def _get_port(self) -> int | None:
         port = int(self.qbit_config.port)

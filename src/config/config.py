@@ -71,7 +71,7 @@ class Config:
 
     ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
 
-    QBIT_SPECIFIC = ("category",)
+    QBIT_SPECIFIC = ("category", "super_seeding")
 
     DELUGE_SPECIFIC = ("label", "path")
 
@@ -1539,8 +1539,15 @@ class Config:
             # qbittorrent
             qbittorrent = TorrentClient(**torrent_client_data["qbittorrent"])
             for qbit_specific in self.QBIT_SPECIFIC:
-                if not qbittorrent.specific_params.get(qbit_specific):
-                    qbittorrent.specific_params[qbit_specific] = ""
+                if qbit_specific not in qbittorrent.specific_params:
+                    default_val = (
+                        self.cfg_payload_defaults.qbittorrent.specific_params.get(
+                            qbit_specific, ""
+                        )
+                        if self.cfg_payload_defaults
+                        else ""
+                    )
+                    qbittorrent.specific_params[qbit_specific] = default_val
 
             # deluge
             deluge = TorrentClient(**torrent_client_data["deluge"])
