@@ -1243,12 +1243,17 @@ class TokenReplacer:
                     mi_candidates.append(t)
 
             # try to match the most specific enabled HDR type
+            # track if we matched a specific HDR format (not just PQ/HLG)
+            matched_hdr_format = False
             for candidate in mi_candidates:
                 norm_candidate = normalize(candidate)
                 if norm_candidate in norm_enabled_types:
                     hdr_type = norm_enabled_types[norm_candidate]
                     custom = custom_strings.get(hdr_type, "").strip()
                     hdr_string = custom or fallback_names.get(hdr_type, hdr_type)
+                    # HDR10, HDR10+, DV formats use PQ transfer - don't append PQ later
+                    if candidate not in ("PQ", "HLG"):
+                        matched_hdr_format = True
                     break
 
             # fallback: if nothing matched, check if SDR is enabled and present in candidates
@@ -1264,18 +1269,21 @@ class TokenReplacer:
                 hdr_string = custom or fallback_names.get("SDR", "SDR")
 
             # append PQ/HLG if enabled, matches transfer_characteristics, and not already present
-            for t in ("PQ", "HLG"):
-                if (
-                    transfer_characteristics == t
-                    and t in enabled_hdr_types
-                    and normalize(t) not in normalize(str(hdr_string))
-                ):
-                    custom = custom_strings.get(t, "").strip()
-                    to_add = custom or fallback_names.get(t, t)
-                    if hdr_string:
-                        hdr_string += f" {to_add}"
-                    else:
-                        hdr_string = to_add
+            # only do this if we didn't match a specific HDR format (HDR10, HDR10+, DV, etc.)
+            # since those formats already use PQ transfer characteristics
+            if not matched_hdr_format:
+                for t in ("PQ", "HLG"):
+                    if (
+                        transfer_characteristics == t
+                        and t in enabled_hdr_types
+                        and normalize(t) not in normalize(str(hdr_string))
+                    ):
+                        custom = custom_strings.get(t, "").strip()
+                        to_add = custom or fallback_names.get(t, t)
+                        if hdr_string:
+                            hdr_string += f" {to_add}"
+                        else:
+                            hdr_string = to_add
 
         return self._optional_user_input(hdr_string, token_data)
 
