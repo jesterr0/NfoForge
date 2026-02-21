@@ -2,9 +2,14 @@
 
 ## [0.8.14] - 2026-2-21
 
+### Added
+
+- Add super seeding mode option for qBittorrent client (@yammes08).
+
 ### Fixed
 
 - MoreThanTV release group parser for tags could sometimes include extra information.
+- Prevent mi_video_dynamic_range token from appending PQ to HDR formats (@yammes08).
 
 ## [0.8.13] - 2025-10-26
 
