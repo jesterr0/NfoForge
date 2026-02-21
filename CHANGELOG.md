@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.14] - 2026-2-21
+
+### Fixed
+
+- MoreThanTV release group parser for tags could sometimes include extra information.
+
 ## [0.8.13] - 2025-10-26
 
 ### Changed
