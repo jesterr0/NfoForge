@@ -1,17 +1,17 @@
+import pickle
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
-import pickle
-import re
 from typing import Any
 from xml.etree import ElementTree as ET
 
-from bs4 import BeautifulSoup, Tag as bs4Tag
-import guessit
 import niquests
-from pymediainfo import MediaInfo
 import pyotp
+from bs4 import BeautifulSoup
+from bs4 import Tag as bs4Tag
+from pymediainfo import MediaInfo
 from unidecode import unidecode
 
 from src.backend.trackers.utils import TRACKER_HEADERS
@@ -502,7 +502,7 @@ class MTVUploader:
         tags.update(self.find_type_source_tags(file_input))
         tags.update(self.find_type_tags(media_mode, resolution))
         tags.update(self.find_video_codec_tags(self.mediainfo_obj))
-        tags.update(self.find_release_group_tags(file_input))
+        # tags.update(self.find_release_group_tags(file_input))
         tags.update(self.has_subtitles_tags(self.mediainfo_obj))
 
         return tags
@@ -623,14 +623,16 @@ class MTVUploader:
                 v_codecs.add(str(codec).lower())
         return v_codecs
 
-    @staticmethod
-    def find_release_group_tags(file_input: Path) -> set:
-        # TODO: add different logic for movies vs series
-        release_group_set = set()
-        release_group = guessit.guessit(file_input).get("release_group", "")
-        if release_group:
-            release_group_set.add(f"{release_group.lower()}.release")
-        return release_group_set
+    # @staticmethod
+    # def find_release_group_tags(file_input: Path) -> set:
+    #     # TODO: add different logic for movies vs series
+    #     # NOTE: this can break, so for now we'll just let MTV detect this ->
+    #     # if guessit parses something like -ReleaseGroup_temp it'll return 'releasegroup.temp'
+    #     release_group_set = set()
+    #     release_group = guessit.guessit(file_input).get("release_group", "")
+    #     if release_group:
+    #         release_group_set.add(f"{release_group.lower()}.release")
+    #     return release_group_set
 
     @staticmethod
     def has_subtitles_tags(mediainfo_obj: MediaInfo) -> set:
