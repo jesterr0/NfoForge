@@ -227,27 +227,27 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # remove all config files from config directory
     for cfg_file in Path(bundled_runtime / "config").rglob("*.toml"):
         if not str(cfg_file.parent).endswith("defaults"):
-            cfg_file.unlink()
+            cfg_file.unlink(missing_ok=True)
 
     # remove templates
     for template_file in Path(bundled_runtime / "templates").glob("*.txt"):
-        template_file.unlink()
+        template_file.unlink(missing_ok=True)
 
     # remove user packages
     user_packages = bundled_runtime / "user_packages"
     if user_packages.exists():
-        shutil.rmtree(bundled_runtime / "user_packages")
+        shutil.rmtree(bundled_runtime / "user_packages", ignore_errors=True)
 
     # remove logs
     for log_file in Path(bundled_runtime / "logs").glob("*.log"):
-        log_file.unlink()
+        log_file.unlink(missing_ok=True)
 
     # remove cookies
     for cookie_file in Path(bundled_runtime / "cookies").glob("*.pkl"):
-        cookie_file.unlink()
+        cookie_file.unlink(missing_ok=True)
 
     # remove plugins folder
-    shutil.rmtree(bundled_runtime / "plugins")
+    shutil.rmtree(bundled_runtime / "plugins", ignore_errors=True)
 
     # Return a success message
     return success
