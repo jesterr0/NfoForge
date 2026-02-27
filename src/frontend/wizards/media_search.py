@@ -512,7 +512,7 @@ class MediaSearch(BaseWizardPage):
         GSigs().wizard_next_button_change_txt.emit("Select Title")
 
     def _get_title_only(self, file_path: Path) -> str:
-        guess = guessit(file_path.stem)
+        guess = guessit(file_path.stem, {"excludes": ["language"]})
         title = guess.get("title")
         year = guess.get("year")
         if title and year:
