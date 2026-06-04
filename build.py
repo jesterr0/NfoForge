@@ -1,10 +1,10 @@
 import os
-from pathlib import Path
 import platform
 import re
 import shutil
-from subprocess import run
 import sys
+from pathlib import Path
+from subprocess import run
 
 from stdlib_list import stdlib_list
 
