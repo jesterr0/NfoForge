@@ -83,7 +83,7 @@ class RenameEncodeBackEnd:
         input_path: Path | None,
     ) -> tuple[dict[Path, Path], Path | None]:
         """Execute filesystem renames in 2 phases: directories first, then files.
-        
+
         Returns a mapping of old_path -> new_path for all successfully renamed files.
         This mapping is used to update file_list and file_list_mediainfo in-place.
 
@@ -96,7 +96,7 @@ class RenameEncodeBackEnd:
         """
         # track all successful renames for updating payload
         rename_mapping: dict[Path, Path] = {}
-        
+
         # PHASE 1: rename directories first
         directory_renames: dict[Path, Path] = {}
         for src_file, trg_file in file_list_rename_map.items():
