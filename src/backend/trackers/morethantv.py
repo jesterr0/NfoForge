@@ -45,6 +45,7 @@ def mtv_uploader(
     mediainfo_obj: MediaInfo,
     genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
     media_type: MediaType,
+    is_pack: bool,
     anonymous: bool,
     source_origin: MTVSourceOrigin,
     cookie_dir: Path,
@@ -70,6 +71,7 @@ def mtv_uploader(
         group_desc=group_desc,
         genre_ids=genre_ids,
         media_type=media_type,
+        is_pack=is_pack,
         anonymous=anonymous,
         source_origin=source_origin,
     )
@@ -275,15 +277,17 @@ class MTVUploader:
         group_desc: str | None,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         media_type: MediaType,
+        is_pack: bool,
         anonymous: bool,
         source_origin: MTVSourceOrigin,
     ) -> Path:
+        release_title = self.generate_release_title(
+            tracker_title if tracker_title else input_path.stem
+        )
         data = {
             # "image": "",
-            "title": self.generate_release_title(tracker_title)
-            if tracker_title
-            else self.generate_release_title(input_path.stem),
-            "category": self._get_cat_id(torrent_file.name),
+            "title": release_title,
+            "category": self._get_cat_id(release_title, media_type, is_pack),
             "source": self._get_source_id(input_path),
             "desc": nfo,
             "groupDesc": group_desc,
@@ -311,6 +315,7 @@ class MTVUploader:
             input_path=input_path,
             genre_ids=genre_ids,
             media_type=media_type,
+            is_pack=is_pack,
         )
         if tags:
             data["taglist"] = " ".join(tags)
@@ -407,7 +412,11 @@ class MTVUploader:
         return release_title
 
     @staticmethod
-    def _get_cat_id(release_title: str) -> str:
+    def _get_cat_id(
+        release_title: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+    ) -> str:
         """
         default: 0,
         HD Episode: 3,
@@ -418,6 +427,11 @@ class MTVUploader:
         SD Season: 6,
         """
         category = MTVCategories.DEFAULT.value
+        if media_type is MediaType.SERIES and is_pack:
+            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+                return str(MTVCategories.HD_SEASON.value)
+            return str(MTVCategories.SD_SEASON.value)
+
         # normal
         if re.search(
             r"( |\.)(S[0-9]+)?E[0-9]+(-?E[0-9]+){0,2}?( |\.)",
@@ -495,12 +509,13 @@ class MTVUploader:
         input_path: Path,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         media_type: MediaType,
+        is_pack: bool,
     ) -> set:
         tags = self.find_audio_tags(self.mediainfo_obj)
         tags.update(self.find_genre_tags(genre_ids))
         tags.update(self.find_resolution_tags(resolution))
         tags.update(self.find_type_source_tags(input_path))
-        tags.update(self.find_type_tags(media_type, resolution))
+        tags.update(self.find_type_tags(media_type, resolution, is_pack))
         tags.update(self.find_video_codec_tags(self.mediainfo_obj))
         tags.update(self.find_release_group_tags(input_path))
         tags.update(self.has_subtitles_tags(self.mediainfo_obj))
@@ -576,11 +591,13 @@ class MTVUploader:
         return type_source
 
     @staticmethod
-    def find_type_tags(media_type: MediaType, resolution: str) -> set:
+    def find_type_tags(
+        media_type: MediaType, resolution: str, is_pack: bool = False
+    ) -> set:
         if media_type is MediaType.MOVIE:
             return MTVUploader.find_movies_tags(resolution)
         elif media_type is MediaType.SERIES:
-            return MTVUploader.find_movies_tags(resolution)
+            return MTVUploader.find_series_tags(resolution, is_pack)
 
     @staticmethod
     def find_movies_tags(resolution: str) -> set:
@@ -590,24 +607,14 @@ class MTVUploader:
         return movies
 
     @staticmethod
-    def find_series_tags(resolution: str) -> set:
-        # TODO: add a check for episodes vs seasons
-        # # Episodes
-        # if meta['sd'] == 1:
-        #     tags.extend(['episode.release', 'sd.episode'])
-        # else:
-        #     tags.extend(['episode.release', 'hd.episode'])
-
-        # # Seasons
-        # if meta['sd'] == 1:
-        #     tags.append('sd.season')
-        # else:
-        #     tags.append('hd.season')
+    def find_series_tags(resolution: str, is_pack: bool = False) -> set:
         series = set()
-        # if resolution in ("2160p", "4320p"):
-        #     series.add("uhd.movie")
-        # elif resolution in ("720p", "1080p"):
-        #     series.add("hd.movie")
+        hd = resolution in ("720p", "1080p", "1080i", "2160p", "4320p")
+        if is_pack:
+            series.add("hd.season" if hd else "sd.season")
+        else:
+            series.add("episode.release")
+            series.add("hd.episode" if hd else "sd.episode")
         return series
 
     @staticmethod
