@@ -1,19 +1,18 @@
-from datetime import datetime
-from pathlib import Path
 import pickle
 import re
+from datetime import datetime
+from pathlib import Path
 
 import niquests
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.media_type import MediaType
 from src.enums.trackers.torrentleech import TLCategories
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
-
-# TODO: implement full tv support
 
 
 def tl_upload(
@@ -22,6 +21,8 @@ def tl_upload(
     tracker_title: str | None,
     torrent_file: Path,
     mediainfo_obj: MediaInfo,
+    media_type: MediaType,
+    is_pack: bool,
     timeout: int,
 ) -> bool | None:
     uploader = TLUploader(announce_key=announce_key, timeout=timeout)
@@ -30,6 +31,8 @@ def tl_upload(
         tracker_title=tracker_title,
         torrent_file=torrent_file,
         mediainfo_obj=mediainfo_obj,
+        media_type=media_type,
+        is_pack=is_pack,
     )
 
 
@@ -50,10 +53,12 @@ class TLUploader:
         tracker_title: str | None,
         torrent_file: Path,
         mediainfo_obj: MediaInfo,
+        media_type: MediaType,
+        is_pack: bool,
     ) -> bool | None:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
-        data = self._get_data(torrent_file.stem, get_resolution)
+        data = self._get_data(torrent_file.stem, get_resolution, media_type, is_pack)
         if tracker_title:
             data["name"] = self.generate_release_title(tracker_title)
 
@@ -88,17 +93,35 @@ class TLUploader:
         with open(torrent_file, "rb") as t_file:
             return {"nfo": nfo, "torrent": (str(torrent_file), t_file.read())}
 
-    def _get_data(self, title: str, resolution: str) -> dict:
+    def _get_data(
+        self,
+        title: str,
+        resolution: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+    ) -> dict:
         return {
             "announcekey": self.announce_key,
-            "category": self._detect_category(title, resolution),
+            "category": self._detect_category(title, resolution, media_type, is_pack),
         }
 
     @staticmethod
-    def _detect_category(title: str, resolution: str) -> int:
+    def _detect_category(
+        title: str,
+        resolution: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+    ) -> int:
         # TODO: This will still need some TLC. We need a cleaner way to determine whats what
         # and pass it to all trackers
         title_lowered = title.lower()
+        if media_type is MediaType.SERIES:
+            if is_pack:
+                return TLCategories.TV_BOX_SETS.value
+            if resolution in {"720p", "1080p", "1080i", "2160p", "4320p"}:
+                return TLCategories.TV_EPISODES_HD.value
+            return TLCategories.TV_EPISODES.value
+
         if "bluray" in title_lowered or "blu-ray" in title_lowered:
             if resolution in {"720p", "1080p"}:
                 return TLCategories.MOVIE_BLURAY_RIP.value
@@ -140,7 +163,10 @@ class TLUploader:
 
 class TLSearch:
     LOGIN_URL: str = "https://www.torrentleech.org/user/account/login/"
-    SEARCH_URL: str = "https://www.torrentleech.org/torrents/browse/list/exact/1/query/{movie_title}/orderby/added/order/desc"
+    SEARCH_URL: str = (
+        "https://www.torrentleech.org/torrents/browse/list/exact/1/query/"
+        "{media_title}/orderby/added/order/desc"
+    )
     TORRENT_URL: str = "https://www.torrentleech.me/torrent/{torrent_id}"
 
     def __init__(
@@ -189,7 +215,7 @@ class TLSearch:
         We convert the above with the sort_results method to a different format to be parsed in the UI
         """
         response = self._session.get(
-            self.SEARCH_URL.format(movie_title=file_input), timeout=self.timeout
+            self.SEARCH_URL.format(media_title=file_input), timeout=self.timeout
         )
         if response.ok and response.status_code == 200:
             results = response.json()["torrentList"]
