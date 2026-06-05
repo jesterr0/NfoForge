@@ -227,7 +227,13 @@ class Unit3dBaseUploader:
             open_torrent.close()
 
     def _get_category_id(self) -> str:
-        return self.cat_enum(self.cat_enum.MOVIE).value
+        category_name = "TV" if self.media_type is MediaType.SERIES else "MOVIE"
+        category = getattr(self.cat_enum, category_name, None)
+        if not category:
+            raise TrackerError(
+                f"{self.tracker_name} does not support {self.media_type} uploads"
+            )
+        return self.cat_enum(category).value
 
     def _get_type_id(self) -> str:
         title_lowered = str(self.input_path.stem).lower()
