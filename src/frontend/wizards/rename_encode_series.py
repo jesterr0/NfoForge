@@ -49,7 +49,7 @@ from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
-from src.payloads.episode_selection import EpisodeSelection
+from src.payloads.episodes import EpisodeSelection
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow

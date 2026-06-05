@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(slots=True)
 class EpisodeSelection:
     """Data structure for episode selection in series renaming."""
 
