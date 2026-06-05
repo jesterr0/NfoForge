@@ -29,6 +29,8 @@ def bhd_uploader(
     imdb_id: str | None,
     tmdb_id: str | None,
     nfo: str,
+    is_pack: bool,
+    is_special: bool,
     internal: bool,
     live_release: BHDLiveRelease,
     anonymous: bool,
@@ -47,6 +49,8 @@ def bhd_uploader(
         imdb_id=imdb_id,
         tmdb_id=tmdb_id,
         nfo=nfo,
+        is_pack=is_pack,
+        is_special=is_special,
         internal=internal,
         live_release=live_release,
         anonymous=anonymous,
@@ -62,6 +66,8 @@ class BHDUploader:
         "torrent_file",
         "input_path",
         "media_type",
+        "is_pack",
+        "is_special",
         "timeout",
     )
 
@@ -71,12 +77,16 @@ class BHDUploader:
         torrent_file: Path,
         input_path: Path,
         media_type: MediaType,
+        is_pack: bool = False,
+        is_special: bool = False,
         timeout: int = 60,
     ) -> None:
         self._upload_url = f"https://beyond-hd.me/api/upload/{api_key}"
         self.torrent_file = torrent_file
         self.input_path = input_path
         self.media_type = media_type
+        self.is_pack = is_pack
+        self.is_special = is_special
         self.timeout = timeout
 
     def upload(
@@ -85,6 +95,8 @@ class BHDUploader:
         imdb_id: str | None = None,
         tmdb_id: str | None = None,
         nfo: str | None = None,
+        is_pack: bool = False,
+        is_special: bool = False,
         internal: bool = False,
         live_release: BHDLiveRelease = BHDLiveRelease.LIVE,
         anonymous: bool = False,
@@ -106,6 +118,11 @@ class BHDUploader:
             upload_payload["imdb_id"] = imdb_id
         if tmdb_id:
             upload_payload["tmdb_id"] = tmdb_id
+        if self.media_type is MediaType.SERIES:
+            if is_pack or self.is_pack:
+                upload_payload["pack"] = 1
+            if is_special or self.is_special:
+                upload_payload["special"] = 1
         if nfo:
             upload_payload["description"] = nfo
             upload_payload["nfo"] = nfo
