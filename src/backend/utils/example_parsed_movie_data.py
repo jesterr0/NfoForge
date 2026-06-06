@@ -14,6 +14,7 @@ EXAMPLE_FILE_NAME = Path(
 )
 
 # fmt: off
+# cSpell:disable
 _EXAMPLE_MEDIAINFO_XML_DATA = f"""\
 <Mediainfo version="23.10">
 <File>

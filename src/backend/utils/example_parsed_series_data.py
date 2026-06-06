@@ -44,6 +44,7 @@ EXAMPLE_FILE_NAME_10 = Path(
 )
 
 # fmt: off
+# cSpell:disable
 _EXAMPLE_MEDIAINFO_XML_DATA = """\
 <?xml version="1.0" encoding="UTF-8"?>
 <Mediainfo version="25.04">
@@ -1617,7 +1618,50 @@ EXAMPLE_SEARCH_PAYLOAD = MediaSearchPayload(
             "isOrderRandomized": False,
             "lastUpdated": "2025-08-18 18:05:26",
             "averageRuntime": 22,
-            "episodes": None,
+            "episodes": [
+                {
+                    "id": 4721616,
+                    "seriesId": 275274,
+                    "name": "Some episode name 1",
+                    "aired": "2012-09-19",
+                    "runtime": 4,
+                    "nameTranslations": None,
+                    "overview": "Some overview.",
+                    "overviewTranslations": None,
+                    "image": "/banners/episodes/275274/4721616.jpg",
+                    "imageType": 11,
+                    "isMovie": 0,
+                    "seasons": None,
+                    "number": 1,
+                    "absoluteNumber": 0,
+                    "seasonNumber": 0,
+                    "lastUpdated": "2020-12-10 19:56:53",
+                    "finaleType": None,
+                    "airsBeforeSeason": 1,
+                    "airsBeforeEpisode": 1,
+                    "year": "2012",
+                },
+                {
+                    "id": 4779718,
+                    "seriesId": 275274,
+                    "name": "Some episode name 2",
+                    "aired": "2008-01-15",
+                    "runtime": 1,
+                    "nameTranslations": None,
+                    "overview": "Some overview.",
+                    "overviewTranslations": None,
+                    "image": None,
+                    "imageType": None,
+                    "isMovie": 0,
+                    "seasons": None,
+                    "number": 2,
+                    "absoluteNumber": 0,
+                    "seasonNumber": 0,
+                    "lastUpdated": "2020-12-10 19:59:26",
+                    "finaleType": None,
+                    "year": "2008",
+                },
+            ],
             "overview": "Series Name Overview...",
             "year": current_year,
         }
