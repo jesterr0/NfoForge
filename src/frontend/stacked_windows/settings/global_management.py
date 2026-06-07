@@ -6,10 +6,6 @@ from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 
 
-# TODO: series and movie management (NOW JUST SERIES) tabs need to update their example tokens 
-# on some of these changes, like clean title etc.
-
-
 class GlobalManagementSettings(BaseSettings):
     """Movie and Series global settings"""
 
@@ -25,7 +21,7 @@ class GlobalManagementSettings(BaseSettings):
         self.token_table = TokenTable(show_tokens=False, allow_edits=True, parent=self)
         self.token_table.main_layout.setContentsMargins(0, 0, 0, 0)
         self.title_clean_rules_modified = False
-        
+
         # Connect to debounced signals from TokenTable
         self.token_table.replacement_rules_changed.connect(
             self._title_clean_rules_user_change
@@ -73,9 +69,7 @@ class GlobalManagementSettings(BaseSettings):
     def _title_clean_rules_user_change(self, data: list) -> None:
         self.title_clean_rules_modified = True
         # emit signal with live data for real-time updates
-        GSigs().global_management_state_changed.emit({
-            'title_clean_rules': data
-        })
+        GSigs().global_management_state_changed.emit({"title_clean_rules": data})
 
     @Slot()
     def _title_clean_rules_defaults_applied(self) -> None:
@@ -83,18 +77,16 @@ class GlobalManagementSettings(BaseSettings):
         # Emit signal with default rules for real-time updates
         defaults = self.token_table.replacement_list_widget.default_rules
         if defaults:
-            GSigs().global_management_state_changed.emit({
-                'title_clean_rules': defaults
-            })
+            GSigs().global_management_state_changed.emit(
+                {"title_clean_rules": defaults}
+            )
 
     @Slot(object)
     def _video_dynamic_range_update_live_cfg(self, data: dict) -> None:
         if data:
             self.config.cfg_payload.video_dynamic_range = data
             # Emit signal for real-time updates
-            GSigs().global_management_state_changed.emit({
-                'video_dynamic_range': data
-            })
+            GSigs().global_management_state_changed.emit({"video_dynamic_range": data})
 
     @Slot()
     def _save_settings(self) -> None:
