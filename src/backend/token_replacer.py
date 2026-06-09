@@ -974,11 +974,11 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.EPISODE_AIR_DATE.token:
             return self._episode_air_date(token_data)
 
-        elif token_data.bracket_token in {
-            Tokens.EPISODE_NUMBER.token,
-            Tokens.EPISODE_NUMBER_ABSOLUTE.token,
-        }:
+        elif token_data.bracket_token == Tokens.EPISODE_NUMBER.token:
             return self._episode_number(token_data)
+
+        elif token_data.bracket_token == Tokens.EPISODE_NUMBER_ABSOLUTE.token:
+            return self._episode_number_absolute(token_data)
 
         elif token_data.bracket_token == Tokens.EPISODE_TITLE.token:
             return self._episode_title(token_data)
@@ -2084,7 +2084,8 @@ class TokenReplacer:
         return self._optional_user_input(str(self._get_source_quality()), token_data)
 
     def _season_number(self, token_data: TokenData) -> str:
-        int_val = str(self._validate_int_var(self.season_number)) or ""
+        season = self._validate_int_var(self.season_number)
+        int_val = str(season) if season is not None else ""
         return self._optional_user_input(int_val, token_data)
 
     def _episode_air_date(self, token_data: TokenData) -> str:
@@ -2100,8 +2101,26 @@ class TokenReplacer:
         return self._optional_user_input(air_date, token_data)
 
     def _episode_number(self, token_data: TokenData) -> str:
-        int_val = str(self._validate_int_var(self.episode_number)) or ""
+        episode = self._validate_int_var(self.episode_number)
+        int_val = str(episode) if episode is not None else ""
         return self._optional_user_input(int_val, token_data)
+
+    def _episode_number_absolute(self, token_data: TokenData) -> str:
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+
+        absolute_number = None
+        episode_data = self._get_tvdb_episode_dict(*get_info)
+        if episode_data:
+            absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
+        if absolute_number is None:
+            absolute_number = self._validate_int_var(self.episode_number)
+
+        return self._optional_user_input(
+            str(absolute_number) if absolute_number is not None else "",
+            token_data,
+        )
 
     def _episode_title(self, token_data: TokenData) -> str:
         get_info = self._verify_series_info()
