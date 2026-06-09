@@ -4,6 +4,7 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from src.enums.media_type import MediaType
+from src.enums.series import EpisodeFormat
 from src.packages.custom_types import ComparisonPair
 
 
@@ -14,14 +15,15 @@ class MediaInputPayload:
     # updated in MediaSearch after the input page
     media_type: MediaType | None = None
     working_dir: Path | None = None
-    file_list: list[Path] = field(default_factory=list)  # All relevant files found
+    file_list: list[Path] = field(default_factory=list)  # all relevant files found
     file_list_mediainfo: dict[Path, MediaInfo] = field(default_factory=dict)
     # maps original file input to renamed output
     file_list_rename_map: dict[Path, Path] = field(default_factory=dict)
-
-    # TODO: need to work this into the program
     comparison_pair: ComparisonPair | None = None
+
+    # series stuff
     series_episode_map: dict[Path, dict] | None = None
+    series_episode_format: EpisodeFormat = EpisodeFormat.STANDARD
 
     def has_basic_data(self) -> bool:
         """Check if essential data is present."""
@@ -74,48 +76,8 @@ class MediaInputPayload:
             raise RuntimeError(f"Failed to get MediaInfo object for '{fp}'")
         return mi
 
-    # Series support helpers (commented out for now, ready for future implementation)
-    # def get_episode_info(self, path: Path) -> dict | None:
-    #     """Get episode metadata for a specific file.
-    #
-    #     Args:
-    #         path: Either an original path or a current renamed path
-    #
-    #     Returns:
-    #         Episode metadata dict, or None if not found
-    #     """
-    #     if not self.series_episode_map:
-    #         return None
-    #
-    #     # Try as original path first
-    #     if path in self.series_episode_map:
-    #         return self.series_episode_map[path]
-    #
-    #     # Try reverse lookup: maybe it's a renamed path
-    #     original = self.get_original_path(path)
-    #     return self.series_episode_map.get(original)
-    #
-    # def get_episodes_by_season(self, season: int) -> list[tuple[Path, dict]]:
-    #     """Get all episodes for a specific season with their current paths.
-    #
-    #     Args:
-    #         season: Season number
-    #
-    #     Returns:
-    #         List of (current_path, episode_info) tuples
-    #     """
-    #     if not self.series_episode_map:
-    #         return []
-    #
-    #     episodes = []
-    #     for original_path, episode_info in self.series_episode_map.items():
-    #         if episode_info.get('season') == season:
-    #             current_path = self.get_current_path(original_path)
-    #             episodes.append((current_path, episode_info))
-    #
-    #     return episodes
-
     def reset(self) -> None:
+        """Reset all fields to initial state."""
         self.input_path = None
         self.media_type = None
         self.working_dir = None
@@ -123,3 +85,5 @@ class MediaInputPayload:
         self.file_list_mediainfo.clear()
         self.file_list_rename_map.clear()
         self.comparison_pair = None
+        self.series_episode_map = None
+        self.series_episode_format = EpisodeFormat.STANDARD
