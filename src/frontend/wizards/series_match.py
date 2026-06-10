@@ -50,6 +50,10 @@ class SeriesMatch(BaseWizardPage):
         episode_maps = self.series_mapper.get_episode_map()
         if episode_maps:
             self.context.media_input.series_episode_map = episode_maps
+        # update config with the selected episode format
+        self.context.media_input.series_episode_format = (
+            self.series_mapper.get_series_format()
+        )
 
         super().validatePage()
         return True

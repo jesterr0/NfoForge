@@ -1,8 +1,9 @@
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 from typing import Any
 
+from guessit import guessit
 from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -24,9 +25,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from guessit import guessit
 from rapidfuzz import fuzz
 
+from src.enums.series import EpisodeFormat
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.payloads.media_inputs import MediaInputPayload
@@ -105,6 +106,8 @@ class SeriesEpisodeMapper(QWidget):
         self.episodes_by_type = {}  # enhanced episode data organized by season type
         self.file_episode_mappings = {}  # {file_path: {season, episode, confidence, etc}}
         self.episode_items = []  # list of EpisodeListItem objects
+        self._release_format_manually_selected = False
+        self._loading_release_format_combo = False
 
         # fuzzy matching controls
         matching_group = QGroupBox("Fuzzy Matching", self)
@@ -174,9 +177,29 @@ class SeriesEpisodeMapper(QWidget):
         actions_layout.addWidget(self.fuzzy_match_btn)
         actions_layout.addWidget(self.clear_btn)
 
+        # release format controls
+        release_format_group = QGroupBox("Release Format", self)
+
+        self.release_format_combo = QComboBox()
+        self.release_format_combo.setToolTip(
+            "Controls title and filename token format. This does not change the TVDB episode order."
+        )
+        for episode_format in EpisodeFormat:
+            display_name = str(episode_format)
+            if episode_format is EpisodeFormat.ANIME_ABSOLUTE:
+                display_name = "Anime / Absolute Numbering"
+            self.release_format_combo.addItem(display_name, episode_format)
+        self.release_format_combo.currentIndexChanged.connect(
+            self._on_release_format_changed
+        )
+
+        release_format_layout = QVBoxLayout(release_format_group)
+        release_format_layout.addWidget(self.release_format_combo)
+
         header_layout = QHBoxLayout()
         header_layout.addWidget(matching_group)
         header_layout.addWidget(actions_group)
+        header_layout.addWidget(release_format_group)
         header_layout.addStretch()
 
         splitter = CustomSplitter(Qt.Orientation.Horizontal, self)
@@ -260,7 +283,7 @@ class SeriesEpisodeMapper(QWidget):
         )
 
         episode_controls_layout = QHBoxLayout()
-        episode_controls_layout.addWidget(QLabel("Order:"))
+        episode_controls_layout.addWidget(QLabel("TVDB Order:"))
         episode_controls_layout.addWidget(self.episode_order_combo)
         episode_controls_layout.addWidget(QLabel("Filter:"))
         episode_controls_layout.addWidget(self.episode_filter_combo)
@@ -307,6 +330,11 @@ class SeriesEpisodeMapper(QWidget):
         """Load media data and populate the widget"""
         self.media_input_payload = media_input_payload
         self.media_search_payload = media_search_payload
+        self._release_format_manually_selected = False
+        if media_input_payload.series_episode_format is not EpisodeFormat.STANDARD:
+            self._set_release_format(
+                media_input_payload.series_episode_format, manually_selected=True
+            )
 
         # load and populate data
         self._load_episode_data()
@@ -328,6 +356,8 @@ class SeriesEpisodeMapper(QWidget):
         self.files_table.setRowCount(0)
         self.episodes_tree.clear()
         self.episode_order_combo.clear()
+        self._release_format_manually_selected = False
+        self._set_release_format(EpisodeFormat.STANDARD, manually_selected=False)
         self.episode_filter_combo.clear()
         self.episode_filter_combo.addItem("All Seasons", "all")
         self.episode_search_box.clear()
@@ -356,39 +386,7 @@ class SeriesEpisodeMapper(QWidget):
         # setup dynamic episode order combo based on available types
         self._setup_episode_order_combo_from_data()
 
-        # use the first available type for initial load
-        if self.episodes_by_type:
-            first_type_data = next(iter(self.episodes_by_type.values()))
-            episodes_to_load = first_type_data.get("episodes", [])
-        else:
-            return
-
-        # load episodes into available_episodes structure
-        for episode in episodes_to_load:
-            season_num = episode.get("seasonNumber")
-            episode_num = episode.get("number")
-
-            if season_num is not None and episode_num is not None:
-                if season_num not in self.available_episodes:
-                    self.available_episodes[season_num] = {}
-
-                self.available_episodes[season_num][episode_num] = episode
-
-        # update episode filter combo with available seasons
-        self.episode_filter_combo.clear()
-        self.episode_filter_combo.addItem("All Seasons", "all")
-        for season in sorted(self.available_episodes.keys()):
-            self.episode_filter_combo.addItem(f"Season {season}", season)
-
-        if self.available_episodes:
-            self._load_episodes_with_ordering()
-
-        # Log available episode types if we have enhanced data
-        # if self.episodes_by_type:
-        #     print("🎬 Available episode orderings:")
-        #     for type_id, type_data in self.episodes_by_type.items():
-        #         episode_count = len(type_data["episodes"])
-        #         print(f"   • {type_data['type_name']}: {episode_count} episodes")
+        self._load_episodes_with_ordering()
 
     def _setup_episode_order_combo_from_data(self) -> None:
         """Setup episode order combo based on available enhanced episode types"""
@@ -408,6 +406,7 @@ class SeriesEpisodeMapper(QWidget):
         # set the first item as default selection
         if self.episode_order_combo.count() > 0:
             self.episode_order_combo.setCurrentIndex(0)
+            self._sync_release_format_to_order()
             # explicitly trigger episodes loading since setCurrentIndex might not emit signal
             self._load_episodes_with_ordering()
 
@@ -734,6 +733,7 @@ class SeriesEpisodeMapper(QWidget):
         """Load episodes list with specified ordering from enhanced data"""
         type_id = self.episode_order_combo.currentData()
 
+        self.available_episodes.clear()
         self.episode_items.clear()
 
         # use enhanced episode data with specific type
@@ -750,6 +750,9 @@ class SeriesEpisodeMapper(QWidget):
                 season_num = episode_data.get("seasonNumber")
                 episode_num = episode_data.get("number")
                 if season_num is not None and episode_num is not None:
+                    if season_num not in self.available_episodes:
+                        self.available_episodes[season_num] = {}
+                    self.available_episodes[season_num][episode_num] = episode_data
                     episode_item = EpisodeListItem(
                         season_num, episode_num, episode_data
                     )
@@ -968,7 +971,15 @@ class SeriesEpisodeMapper(QWidget):
 
     @Slot(str)
     def _on_episode_order_changed(self, _order: str) -> None:
+        self._sync_release_format_to_order()
         self._load_episodes_with_ordering()
+        self._clear_all_assignments()
+        self._auto_match_files()
+
+    @Slot(int)
+    def _on_release_format_changed(self, _idx: int) -> None:
+        if not self._loading_release_format_combo:
+            self._release_format_manually_selected = True
 
     @Slot(str)
     def _on_episode_filter_changed(self, filter_text: str) -> None:
@@ -1150,3 +1161,46 @@ class SeriesEpisodeMapper(QWidget):
         return len(self.file_episode_mappings) == len(
             self.media_input_payload.file_list
         )
+
+    def get_series_format(self) -> EpisodeFormat:
+        """Get the output format for renaming/title tokens."""
+        return EpisodeFormat(self.release_format_combo.currentData())
+
+    def _sync_release_format_to_order(self) -> None:
+        """Default release format from TVDB order until the user picks one."""
+        if self._release_format_manually_selected:
+            return
+
+        release_format = self._default_release_format_for_current_order()
+        self._loading_release_format_combo = True
+        try:
+            self._set_release_format(release_format, manually_selected=False)
+        finally:
+            self._loading_release_format_combo = False
+
+    def _default_release_format_for_current_order(self) -> EpisodeFormat:
+        type_id = self.episode_order_combo.currentData()
+        type_data = self.episodes_by_type.get(type_id, {}) if type_id else {}
+        order_type = str(type_data.get("type", "")).lower()
+        order_name = str(type_data.get("type_name", "")).lower()
+
+        if "absolute" in order_type or "absolute" in order_name:
+            return EpisodeFormat.ANIME_ABSOLUTE
+        if "dvd" in order_type or "dvd" in order_name:
+            return EpisodeFormat.DVD
+        return EpisodeFormat.STANDARD
+
+    def _set_release_format(
+        self, release_format: EpisodeFormat, manually_selected: bool
+    ) -> None:
+        release_format = EpisodeFormat(release_format)
+        was_loading = self._loading_release_format_combo
+        self._loading_release_format_combo = True
+        try:
+            for idx in range(self.release_format_combo.count()):
+                if self.release_format_combo.itemData(idx) == release_format:
+                    self.release_format_combo.setCurrentIndex(idx)
+                    break
+        finally:
+            self._loading_release_format_combo = was_loading
+        self._release_format_manually_selected = manually_selected
