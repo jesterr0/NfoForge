@@ -1,8 +1,9 @@
+import traceback
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QPushButton, QWizard
+from PySide6.QtWidgets import QMessageBox, QPushButton, QWizard
 
 from src.config.config import Config
 from src.enums.media_type import MediaType
@@ -15,10 +16,11 @@ from src.frontend.wizards.nfo_template import NfoTemplate
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.release_notes import ReleaseNotes
 from src.frontend.wizards.rename_encode import RenameEncode
+from src.frontend.wizards.rename_encode_series import RenameEncodeSeries
 from src.frontend.wizards.series_match import SeriesMatch
 from src.frontend.wizards.trackers import TrackersPage
-from src.frontend.wizards.wizard_base_page import DummyWizardPage
-
+from src.frontend.wizards.wizard_base_page import BaseWizardPage, DummyWizardPage
+from src.logger.nfo_forge_logger import LOG
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -37,21 +39,9 @@ class MainWindowWizard(QWizard):
 
         self.config = config
         self.main_window = parent
+        self.context = self.config.create_processing_context()
 
-        self._PAGES = [
-            MediaInput(self.config, self.main_window),
-            DummyWizardPage(self.config, self.main_window),
-            MediaSearch(self.config, self.main_window),
-            SeriesMatch(self.config, self.main_window),
-            RenameEncode(self.config, self.main_window),
-            # RenameEncodeSeries(self.config, self.main_window),
-            ImagesPage(self.config, self.main_window),
-            TrackersPage(self.config, self.main_window),
-            ReleaseNotes(self.config, self.main_window),
-            NfoTemplate(self.config, self.main_window),
-            ProcessPage(self.config, self.main_window),
-        ]
-
+        self._PAGES = self._generate_new_pages()
         self._START_PAGES = (
             WizardPages.INPUT_PAGE,
             WizardPages.PLUGIN_INPUT_PAGE,
@@ -114,21 +104,22 @@ class MainWindowWizard(QWizard):
         GSigs().wizard_next_button_reset_txt.connect(self._reset_next_button_text)
         GSigs().wizard_end_early.connect(self.end_early)
 
-    def keyPressEvent(self, event: QKeyEvent):  # pyright: ignore [reportIncompatibleMethodOverride]
+    def keyPressEvent(self, event: QKeyEvent):
         # prevent enter/return key from pressing "Next" on the wizard
         if event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Escape):
             pass
         else:
-            # Call the base class implementation for other key events
+            # call the base class implementation for other key events
             super().keyPressEvent(event)
 
     def nextId(self) -> int:
         """Control the flow between pages based on conditions"""
         current_page = WizardPages(self.currentId())
-        if self.config.DEV_MODE:
-            return self._flow_dev(current_page)
-        else:
-            return self._flow_production(current_page)
+        # if self.config.DEV_MODE:
+        #     return self._flow_dev(current_page)
+        # else:
+        #     return self._flow_production(current_page)
+        return self._flow_production(current_page)
 
     @Slot(str)
     def _change_next_button_text(self, text: str) -> None:
@@ -144,10 +135,10 @@ class MainWindowWizard(QWizard):
 
     @Slot()
     def reset_wizard(self) -> None:
-        self.config.reset_config()
+        self.context = self.config.create_processing_context()
         self.currentIdChanged.disconnect()
-        self._reset_wizard_pages()
         self._remove_all_pages()
+        self._PAGES = self._generate_new_pages()
         self._insert_plugin_page()
         self._build_wizard_pages()
         self._set_start_page()
@@ -157,10 +148,6 @@ class MainWindowWizard(QWizard):
         self.process_button.setText("Process (Dupe Check)")
         self.setButtonLayout(self.starting_buttons)
         self.restart()
-
-    def _reset_wizard_pages(self) -> None:
-        for page in self._PAGES:
-            page.reset_page()
 
     def _build_wizard_pages(self) -> None:
         for idx, page in enumerate(self._PAGES):
@@ -201,19 +188,40 @@ class MainWindowWizard(QWizard):
         self.setButtonLayout(self.early_ending_buttons)
 
     def _insert_plugin_page(self) -> None:
-        if self.config.cfg_payload.wizard_page and self.config.loaded_plugins:
+        if (
+            self.config.cfg_payload.enable_plugins
+            and self.config.cfg_payload.wizard_page
+            and self.config.loaded_plugins
+        ):
             try:
                 plugin_obj = self.config.loaded_plugins[
                     self.config.cfg_payload.wizard_page
                 ]
                 if plugin_obj.wizard:
-                    plugin_wizard = plugin_obj.wizard(self.config, self.main_window)
+                    # insert the plugin wizard page into the correct spot
+                    plugin_wizard = plugin_obj.wizard(
+                        self.config, self.context, self.main_window
+                    )
                     self._PAGES.pop(WizardPages.PLUGIN_INPUT_PAGE.value - 1)
                     self._PAGES.insert(
                         WizardPages.PLUGIN_INPUT_PAGE.value - 1, plugin_wizard
                     )
-            except KeyError:
-                return
+            except Exception as e:
+                LOG.critical(LOG.LOG_SOURCE.FE, traceback.format_exc())
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Failed to load plugin page:\n{e}\n\nPlugins are disabled until plugin issues are resolved.",
+                )
+                # revert to default media input page on failure
+                self._PAGES.pop(WizardPages.PLUGIN_INPUT_PAGE.value - 1)
+                self._PAGES.insert(
+                    WizardPages.PLUGIN_INPUT_PAGE.value - 1,
+                    MediaInput(self.config, self.context, self.main_window),
+                )
+                # disable plugins for the rest of the wizard flow
+                self.config.cfg_payload.enable_plugins = False
+                self.config.save_config()
 
     def _remove_all_pages(self) -> None:
         for page_id in reversed(self.pageIds()):
@@ -228,12 +236,12 @@ class MainWindowWizard(QWizard):
 
         elif current_page == WizardPages.MEDIA_SEARCH_PAGE:
             # if series navigate to the series matcher page
-            if self.config.media_search_payload.media_type is MediaType.SERIES:
+            if self.context.media_search.media_type is MediaType.SERIES:
                 return WizardPages.SERIES_MATCHER_PAGE.value
             # movie
             else:
                 if self.config.cfg_payload.mvr_enabled:
-                    return WizardPages.RENAME_ENCODE_PAGE.value
+                    return WizardPages.RENAME_ENCODE_MOVIES_PAGE.value
                 elif (
                     not self.config.cfg_payload.mvr_enabled
                     and self.config.cfg_payload.screenshots_enabled
@@ -242,65 +250,13 @@ class MainWindowWizard(QWizard):
                 return WizardPages.TRACKERS_PAGE.value
 
         elif current_page == WizardPages.SERIES_MATCHER_PAGE:
-            # TODO: come back when svr_* works with series rename still needs worked in fully
-            if self.config.cfg_payload.screenshots_enabled:
+            if self.config.cfg_payload.tvr_enabled:
+                return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
+            elif self.config.cfg_payload.screenshots_enabled:
                 return WizardPages.IMAGES_PAGE.value
             return WizardPages.TRACKERS_PAGE.value
 
-        elif current_page == WizardPages.RENAME_ENCODE_PAGE:
-            if self.config.cfg_payload.screenshots_enabled:
-                return WizardPages.IMAGES_PAGE.value
-            else:
-                return WizardPages.TRACKERS_PAGE.value
-
-        # TODO: we'll put series elif here for rename when the time comes
-        # elif current_page == WizardPages.RENAME_ENCODE_SERIES_PAGE:
-        #     if self.config.cfg_payload.screenshots_enabled:
-        #         return WizardPages.IMAGES_PAGE.value
-        #     else:
-        #         return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.IMAGES_PAGE:
-            return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.TRACKERS_PAGE:
-            return WizardPages.RELEASE_NOTES_PAGE.value
-
-        elif current_page == WizardPages.RELEASE_NOTES_PAGE:
-            return WizardPages.NFO_TEMPLATE_PAGE.value
-
-        elif current_page == WizardPages.NFO_TEMPLATE_PAGE:
-            return WizardPages.PROCESS_PAGE.value
-
-        elif current_page == WizardPages.PROCESS_PAGE:
-            return -1
-
-        return -1
-
-    def _flow_dev(self, current_page: WizardPages) -> int:
-        if current_page in self._START_PAGES:
-            # return WizardPages.MEDIA_SEARCH_PAGE.value
-            return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
-
-        elif current_page == WizardPages.MEDIA_SEARCH_PAGE:
-            if self.config.cfg_payload.mvr_enabled:
-                # Route to appropriate rename page based on media type
-                if (
-                    self.config.media_search_payload
-                    and self.config.media_search_payload.media_type == MediaType.SERIES
-                ):
-                    return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
-                else:
-                    return WizardPages.RENAME_ENCODE_PAGE.value
-            elif (
-                not self.config.cfg_payload.mvr_enabled
-                and self.config.cfg_payload.screenshots_enabled
-            ):
-                return WizardPages.IMAGES_PAGE.value
-            else:
-                return WizardPages.TRACKERS_PAGE.value
-
-        elif current_page == WizardPages.RENAME_ENCODE_PAGE:
+        elif current_page == WizardPages.RENAME_ENCODE_MOVIES_PAGE:
             if self.config.cfg_payload.screenshots_enabled:
                 return WizardPages.IMAGES_PAGE.value
             else:
@@ -328,3 +284,72 @@ class MainWindowWizard(QWizard):
             return -1
 
         return -1
+
+    # def _flow_dev(self, current_page: WizardPages) -> int:
+    #     if current_page in self._START_PAGES:
+    #         # return WizardPages.MEDIA_SEARCH_PAGE.value
+    #         return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
+
+    #     elif current_page == WizardPages.MEDIA_SEARCH_PAGE:
+    #         if self.config.cfg_payload.mvr_enabled:
+    #             # Route to appropriate rename page based on media type
+    #             if (
+    #                 self.context.media_search
+    #                 and self.context.media_search.media_type == MediaType.SERIES
+    #             ):
+    #                 return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
+    #             else:
+    #                 return WizardPages.RENAME_ENCODE_PAGE.value
+    #         elif (
+    #             not self.config.cfg_payload.mvr_enabled
+    #             and self.config.cfg_payload.screenshots_enabled
+    #         ):
+    #             return WizardPages.IMAGES_PAGE.value
+    #         else:
+    #             return WizardPages.TRACKERS_PAGE.value
+
+    #     elif current_page == WizardPages.RENAME_ENCODE_PAGE:
+    #         if self.config.cfg_payload.screenshots_enabled:
+    #             return WizardPages.IMAGES_PAGE.value
+    #         else:
+    #             return WizardPages.TRACKERS_PAGE.value
+
+    #     elif current_page == WizardPages.RENAME_ENCODE_SERIES_PAGE:
+    #         if self.config.cfg_payload.screenshots_enabled:
+    #             return WizardPages.IMAGES_PAGE.value
+    #         else:
+    #             return WizardPages.TRACKERS_PAGE.value
+
+    #     elif current_page == WizardPages.IMAGES_PAGE:
+    #         return WizardPages.TRACKERS_PAGE.value
+
+    #     elif current_page == WizardPages.TRACKERS_PAGE:
+    #         return WizardPages.RELEASE_NOTES_PAGE.value
+
+    #     elif current_page == WizardPages.RELEASE_NOTES_PAGE:
+    #         return WizardPages.NFO_TEMPLATE_PAGE.value
+
+    #     elif current_page == WizardPages.NFO_TEMPLATE_PAGE:
+    #         return WizardPages.PROCESS_PAGE.value
+
+    #     elif current_page == WizardPages.PROCESS_PAGE:
+    #         return -1
+
+    #     return -1
+
+    def _generate_new_pages(self) -> list[BaseWizardPage]:
+        """Helper method to generate wizard page instances and return them."""
+        pages = (
+            MediaInput,
+            DummyWizardPage,
+            MediaSearch,
+            SeriesMatch,
+            RenameEncode,
+            RenameEncodeSeries,
+            ImagesPage,
+            TrackersPage,
+            ReleaseNotes,
+            NfoTemplate,
+            ProcessPage,
+        )
+        return [p(self.config, self.context, self.main_window) for p in pages]

@@ -117,6 +117,7 @@
   - rapidfuzz
   - oslex2
   - urllib3
+- On wizard plugin load failures we now provide a detailed error message and disable plugins for the remainder of launched instance
 
 ### Fixed
 
