@@ -1,9 +1,20 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
+from dataclasses import dataclass, field
+
+from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
+
+
+@dataclass(slots=True)
+class TitleOverridePayload:
+    enabled: bool = False
+    colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH
+    token: str = ""
+    replace_map: list[tuple[str, str]] | None = None
 
 
 @dataclass(slots=True)
@@ -25,11 +36,16 @@ class TrackerInfo:
     column_space: int = 1
     row_space: int = 1
 
-    # title token override
+    # movie title token override
     mvr_title_override_enabled: bool = False
     mvr_title_colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH
     mvr_title_token_override: str = ""
     mvr_title_replace_map: list[tuple[str, str]] | None = None
+
+    # series title token overrides (per EpisodeFormat)
+    tvr_title_overrides: dict[EpisodeFormat, TitleOverridePayload] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(slots=True)
