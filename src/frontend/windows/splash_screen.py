@@ -140,7 +140,7 @@ class SplashScreenLoader(QThread):
         plugin_loader = PluginLoader(self.update_splash_msg)
         plugins = plugin_loader.load_plugins()
         self.config.loaded_plugins.update(plugins)
-        self._update_filter_engines_with_plugins()
+        self._update_flat_filters_with_plugins()
 
         # check if we have missing keys and remove them from the running config
         plugins = self.config.loaded_plugins.keys()
@@ -167,23 +167,11 @@ class SplashScreenLoader(QThread):
         }
         self.config.loaded_plugins.update(built_in_plugins)
 
-    def _update_filter_engines_with_plugins(self) -> None:
+    def _update_flat_filters_with_plugins(self) -> None:
         for plugin in self.config.loaded_plugins.values():
-            # flat filters
             flat_filters = getattr(plugin, "flat_filters", None)
             if flat_filters:
                 self.config.loaded_flat_filters.update(flat_filters)
-
-            # jinja filters/functions
-            jinja2_filters = getattr(plugin, "jinja2_filters", None)
-            jinja2_functions = getattr(plugin, "jinja2_functions", None)
-            if jinja2_filters:
-                for name, func in jinja2_filters.items():
-                    self.config.jinja_engine.add_filter(name, func)
-
-            if jinja2_functions:
-                for name, func in jinja2_functions.items():
-                    self.config.jinja_engine.add_global(name, func, False)
 
 
 class SplashScreen(QWidget):

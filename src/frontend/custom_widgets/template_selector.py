@@ -487,7 +487,7 @@ class TemplateSelector(QWidget):
             try:
                 token_replacer = TokenReplacer(
                     media_input_obj=self.context.media_input,
-                    jinja_engine=self.config.jinja_engine,
+                    jinja_engine=self.context.jinja_engine,
                     token_string=self.old_text,
                     media_search_obj=self.context.media_search,
                     releasers_name=self.config.cfg_payload.releasers_name,

@@ -326,7 +326,9 @@ class RenameEncodeSeries(BaseWizardPage):
 
         # Use series token from config
         series_token = (
-            self.config.cfg_payload.tvr_standard_episode_token
+            self.config.cfg_payload.get_tvr_episode_token(
+                self.context.media_input.series_episode_format
+            )
             or "{title_clean} - S{season_number:02d}E{episode_number:02d} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
         )
         self.token_override.setText(series_token)
@@ -366,8 +368,10 @@ class RenameEncodeSeries(BaseWizardPage):
             self.token_override.text()
             if self.override_group.isChecked()
             else (
-                self.config.cfg_payload.tvr_standard_episode_token
-                or "{series_title_clean} - S{season_number:02d}E{episode_number:02d} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
+                self.config.cfg_payload.get_tvr_episode_token(
+                    self.context.media_input.series_episode_format
+                )
+                or "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
             )
         )
 
@@ -438,7 +442,7 @@ class RenameEncodeSeries(BaseWizardPage):
                 user_tokens=user_tokens,
                 season_num=media_data["season"],
                 episode_num=media_data["episode"],
-                # episode_selection=episode_selection,
+                episode_format=self.context.media_input.series_episode_format,
             )
             print(f"Renamed file: {renamed_file}")
 
@@ -713,9 +717,9 @@ class RenameEncodeSeries(BaseWizardPage):
         # The specific validation will happen during batch rename
         for global_name, (combo_text, pattern) in combo_to_global_map.items():
             if combo_text:
-                self.config.jinja_engine.add_global(global_name, combo_text, True)
+                self.context.jinja_engine.add_global(global_name, combo_text, True)
                 # Store the pattern info for batch processing
-                self.config.jinja_engine.add_global(
+                self.context.jinja_engine.add_global(
                     global_name.replace("_reason", "_pattern"), pattern, True
                 )
                 # Ensure only one combo box is processed
@@ -783,7 +787,9 @@ class RenameEncodeSeries(BaseWizardPage):
     def update_generated_name(self, _: int | None = None) -> None:
         """Update the generated name based on current selections."""
         token = (
-            self.config.cfg_payload.tvr_standard_episode_token
+            self.config.cfg_payload.get_tvr_episode_token(
+                self.context.media_input.series_episode_format
+            )
             or "{title_clean} - S{season_number}E{episode_number} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
         )
         if self.override_group.isChecked():

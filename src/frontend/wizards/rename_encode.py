@@ -616,10 +616,10 @@ class RenameEncode(BaseWizardPage):
 
         for global_name, (combo_text, pattern) in combo_to_global_map.items():
             if combo_text:
-                self.config.jinja_engine.add_global(global_name, combo_text, True)
+                self.context.jinja_engine.add_global(global_name, combo_text, True)
                 match = re.search(pattern, final_output_text, flags=re.I)
                 if match:
-                    self.config.jinja_engine.add_global(
+                    self.context.jinja_engine.add_global(
                         global_name.replace("_reason", "_n"), match.group(1), True
                     )
                 # ensure only one combo box is processed

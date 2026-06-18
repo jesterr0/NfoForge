@@ -84,12 +84,18 @@ from src.packages.custom_types import (
 )
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.series import SeriesReleaseInfo, build_series_release_info
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
 
 
 class ProcessBackEnd:
+    UNSUPPORTED_SERIES_TRACKERS = {
+        TrackerSelection.PASS_THE_POPCORN,
+        TrackerSelection.REELFLIX,
+    }
+
     def __init__(self, config: Config) -> None:
         self.config = config
         self.template_selector_be = TemplateSelectorBackEnd()
@@ -115,25 +121,37 @@ class ProcessBackEnd:
         # TODO: test this when we add disc & tv support, as this will likely require different
         # checks to accurately obtain dupes
         tasks = []
+        release_info = build_series_release_info(media_input_payload)
         for tracker_sel in processing_queue:
+            if (
+                release_info.is_series
+                and tracker_sel in self.UNSUPPORTED_SERIES_TRACKERS
+            ):
+                tasks.append(
+                    self._unsupported_series_tracker_dupe(
+                        tracker_sel=tracker_sel,
+                    )
+                )
+                continue
             file_input = media_input_payload.require_first_file()
+            search_input = release_info.search_path or file_input
             if tracker_sel is TrackerSelection.MORE_THAN_TV:
                 tasks.append(
                     self._dupe_mtv(
                         tracker_sel=tracker_sel,
                         # file_input prioritizes folder name > file since the api doesn't
                         # support directly looking for files
-                        file_input=media_input_payload.input_path or file_input,
+                        file_input=search_input,
                         media_search_payload=media_search_payload,
                     )
                 )
             elif tracker_sel is TrackerSelection.TORRENT_LEECH:
                 tasks.append(
-                    self._dupe_tl(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_tl(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.BEYOND_HD:
                 tasks.append(
-                    self._dupe_bhd(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_bhd(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.PASS_THE_POPCORN:
                 tasks.append(
@@ -141,41 +159,41 @@ class ProcessBackEnd:
                         tracker_sel=tracker_sel,
                         # file_input prioritizes folder name > file since the api doesn't
                         # support directly looking for files
-                        file_input=media_input_payload.input_path or file_input,
+                        file_input=search_input,
                         media_search_payload=media_search_payload,
                     )
                 )
             elif tracker_sel is TrackerSelection.REELFLIX:
                 tasks.append(
-                    self._dupe_rf(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_rf(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.AITHER:
                 tasks.append(
-                    self._dupe_aither(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_aither(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.HUNO:
                 tasks.append(
-                    self._dupe_huno(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_huno(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.LST:
                 tasks.append(
-                    self._dupe_lst(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_lst(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.DARK_PEERS:
                 tasks.append(
-                    self._dupe_dp(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_dp(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.SHARE_ISLAND:
                 tasks.append(
-                    self._dupe_shri(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_shri(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.UPLOAD_CX:
                 tasks.append(
-                    self._dupe_ulcx(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_ulcx(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.ONLY_ENCODES:
                 tasks.append(
-                    self._dupe_oe(tracker_sel=tracker_sel, file_input=file_input)
+                    self._dupe_oe(tracker_sel=tracker_sel, file_input=search_input)
                 )
 
         async_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -197,6 +215,11 @@ class ProcessBackEnd:
 
         return dupes
 
+    async def _unsupported_series_tracker_dupe(
+        self, tracker_sel: TrackerSelection
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        return tracker_sel, False, f"{tracker_sel} does not support series uploads yet"
+
     async def _dupe_mtv(
         self,
         tracker_sel: TrackerSelection,
@@ -209,7 +232,8 @@ class ProcessBackEnd:
         try:
             imdb_id = media_search_payload.imdb_id
             tmdb_id = media_search_payload.tmdb_id
-            if not file_input or not imdb_id or not tmdb_id:
+            tvdb_id = media_search_payload.tvdb_id
+            if not file_input or not imdb_id or (not tmdb_id and not tvdb_id):
                 return (
                     tracker_sel,
                     False,
@@ -222,6 +246,7 @@ class ProcessBackEnd:
                 title=file_input.stem,  # must not have an extension
                 imdb_id=imdb_id,
                 tmdb_id=tmdb_id,
+                tvdb_id=tvdb_id,
             )
             if mtv_search:
                 return tracker_sel, True, mtv_search
@@ -455,6 +480,7 @@ class ProcessBackEnd:
 
         # get media input - use context instead of config
         media_input = context.media_input.require_input_path()
+        release_info = build_series_release_info(context.media_input)
 
         # process
         queued_text_update(
@@ -494,7 +520,9 @@ class ProcessBackEnd:
             # generate tracker title first
             tracker_title = None
             generated_tracker_title = self.generate_tracker_title(
-                tracker_info=tracker_info, context=context
+                tracker_info=tracker_info,
+                context=context,
+                release_info=release_info,
             )
             if generated_tracker_title:
                 tracker_title = self.tracker_title_formatting(
@@ -738,6 +766,7 @@ class ProcessBackEnd:
                         nfo=nfo,
                         tracker_title=cur_tracker_title,
                         context=context,
+                        release_info=release_info,
                     )
                 except Exception as upload_error:
                     queued_text_update(
@@ -1168,12 +1197,20 @@ class ProcessBackEnd:
         nfo: str,
         tracker_title: str,
         context: ProcessingContext,
+        release_info: SeriesReleaseInfo,
     ) -> Path | bool | str | None:
-        input_path = context.media_input.require_input_path()
         first_file = context.media_input.require_first_file()
         mediainfo_obj = context.media_input.require_mediainfo(first_file)
         media_search_obj = context.media_search
         media_type = context.media_input.require_media_type()
+        if (
+            media_type is MediaType.SERIES
+            and tracker in self.UNSUPPORTED_SERIES_TRACKERS
+        ):
+            raise TrackerError(f"{tracker} does not support series uploads yet")
+        input_path = first_file
+        if media_type is not MediaType.SERIES:
+            input_path = context.media_input.require_input_path()
 
         if tracker is TrackerSelection.MORE_THAN_TV:
             tracker_payload = self.config.cfg_payload.mtv_tracker
@@ -1191,6 +1228,7 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 genre_ids=media_search_obj.genres,
                 media_type=media_type,
+                is_pack=release_info.is_pack,
                 anonymous=bool(tracker_payload.anonymous),
                 source_origin=tracker_payload.source_origin,
                 cookie_dir=self.config.TRACKER_COOKIE_PATH,
@@ -1206,6 +1244,8 @@ class ProcessBackEnd:
                 tracker_title=tracker_title,
                 torrent_file=torrent_file,
                 mediainfo_obj=mediainfo_obj,
+                media_type=media_type,
+                is_pack=release_info.is_pack,
                 timeout=self.config.cfg_payload.timeout,
             )
         elif tracker is TrackerSelection.BEYOND_HD:
@@ -1221,6 +1261,8 @@ class ProcessBackEnd:
                 imdb_id=media_search_obj.imdb_id,
                 tmdb_id=media_search_obj.tmdb_id,
                 nfo=nfo,
+                is_pack=release_info.is_pack,
+                is_special=release_info.is_special,
                 internal=bool(tracker_payload.internal),
                 live_release=tracker_payload.live_release,
                 anonymous=bool(tracker_payload.anonymous),
@@ -1420,34 +1462,75 @@ class ProcessBackEnd:
             )
 
     def generate_tracker_title(
-        self, tracker_info: TrackerInfo, context: ProcessingContext
+        self,
+        tracker_info: TrackerInfo,
+        context: ProcessingContext,
+        release_info: SeriesReleaseInfo,
     ) -> str | None:
-        # TODO: each of the checks for `tracker_info.mvr_title_override_enabled` will also need
-        # series specific checks when added
-        token_string = (
-            tracker_info.mvr_title_token_override
-            if (
+        if release_info.is_series:
+            default_title = self.config.cfg_payload.get_tvr_title_token(
+                release_info.episode_format
+            )
+            if not default_title:
+                default_title = (
+                    "{title_clean} S{season_number|zfill(2)}"
+                    "{:opt=E:episode_number|zfill(2)} {re_release} "
+                    "{resolution} {source} {audio_codec} {audio_channel_s} "
+                    "{video_dynamic_range_type_inc_sdr_over_1080} "
+                    "{video_codec}{:opt=-:release_group}"
+                )
+            series_override = tracker_info.tvr_title_overrides.get(
+                release_info.episode_format
+            )
+            override_enabled = bool(series_override and series_override.enabled)
+            token_string = (
+                series_override.token
+                if (
+                    override_enabled
+                    and series_override is not None
+                    and series_override.token
+                )
+                else default_title
+            )
+            colon_replace = (
+                series_override.colon_replace
+                if override_enabled and series_override is not None
+                else self.config.cfg_payload.tvr_colon_replace_title
+            )
+            override_title_rules = (
+                series_override.replace_map
+                if (
+                    override_enabled
+                    and series_override is not None
+                    and series_override.replace_map
+                )
+                else None
+            )
+        else:
+            token_string = (
                 tracker_info.mvr_title_token_override
-                and tracker_info.mvr_title_override_enabled
+                if (
+                    tracker_info.mvr_title_token_override
+                    and tracker_info.mvr_title_override_enabled
+                )
+                else self.config.cfg_payload.mvr_title_token
             )
-            else self.config.cfg_payload.mvr_title_token
-        )
-        colon_replace = (
-            tracker_info.mvr_title_colon_replace
-            if (
+            colon_replace = (
                 tracker_info.mvr_title_colon_replace
-                and tracker_info.mvr_title_override_enabled
+                if (
+                    tracker_info.mvr_title_colon_replace
+                    and tracker_info.mvr_title_override_enabled
+                )
+                else self.config.cfg_payload.mvr_colon_replace_title
             )
-            else self.config.cfg_payload.mvr_colon_replace_title
-        )
-        override_title_rules = (
-            tracker_info.mvr_title_replace_map
-            if (
+            override_title_rules = (
                 tracker_info.mvr_title_replace_map
-                and tracker_info.mvr_title_override_enabled
+                if (
+                    tracker_info.mvr_title_replace_map
+                    and tracker_info.mvr_title_override_enabled
+                )
+                else None
             )
-            else None
-        )
         user_tokens = {
             k: v
             for k, (v, t) in self.config.cfg_payload.user_tokens.items()
@@ -1471,7 +1554,11 @@ class ProcessBackEnd:
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
             video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
-            # TODO: i think we'll need to pass in season specific stuff here as well?
+            season_number=release_info.season,
+            episode_number=(
+                release_info.episode_start if not release_info.is_pack else None
+            ),
+            episode_format=release_info.episode_format,
         )
         output = format_str.get_output()
         return output if output else None

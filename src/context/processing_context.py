@@ -24,5 +24,9 @@ class ProcessingContext:
         default_factory=dict
     )
 
-    # jinja engine (created per context)
-    jinja_engine: Jinja2TemplateEngine | None = field(default=None, init=False)
+    jinja_engine: Jinja2TemplateEngine = field(default_factory=Jinja2TemplateEngine)
+
+    def __post_init__(self) -> None:
+        self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
+        self.jinja_engine.add_global("nf_media_search_payload", self.media_search, True)
+        self.jinja_engine.add_global("nf_media_input_payload", self.media_input, True)
