@@ -69,6 +69,7 @@ from src.backend.utils.images import (
 )
 from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import Config
+from src.config.tv_tokens import get_tvr_title_token
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.torrent_client import TorrentClientSelection
@@ -1468,17 +1469,10 @@ class ProcessBackEnd:
         release_info: SeriesReleaseInfo,
     ) -> str | None:
         if release_info.is_series:
-            default_title = self.config.cfg_payload.get_tvr_title_token(
-                release_info.episode_format
+            default_title = get_tvr_title_token(
+                self.config.cfg_payload,
+                release_info.episode_format,
             )
-            if not default_title:
-                default_title = (
-                    "{title_clean} S{season_number|zfill(2)}"
-                    "{:opt=E:episode_number|zfill(2)} {re_release} "
-                    "{resolution} {source} {audio_codec} {audio_channel_s} "
-                    "{video_dynamic_range_type_inc_sdr_over_1080} "
-                    "{video_codec}{:opt=-:release_group}"
-                )
             series_override = tracker_info.tvr_title_overrides.get(
                 release_info.episode_format
             )

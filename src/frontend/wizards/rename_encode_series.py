@@ -38,6 +38,7 @@ from src.backend.utils.rename_normalizations import (
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.config.config import Config
+from src.config.tv_tokens import get_tvr_episode_token
 from src.context.processing_context import ProcessingContext
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -325,11 +326,9 @@ class RenameEncodeSeries(BaseWizardPage):
             self._pre_load_attribute_combos(first_file.stem)
 
         # Use series token from config
-        series_token = (
-            self.config.cfg_payload.get_tvr_episode_token(
-                self.context.media_input.series_episode_format
-            )
-            or "{title_clean} - S{season_number:02d}E{episode_number:02d} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
+        series_token = get_tvr_episode_token(
+            self.config.cfg_payload,
+            self.context.media_input.series_episode_format,
         )
         self.token_override.setText(series_token)
 
@@ -367,11 +366,9 @@ class RenameEncodeSeries(BaseWizardPage):
         token = (
             self.token_override.text()
             if self.override_group.isChecked()
-            else (
-                self.config.cfg_payload.get_tvr_episode_token(
-                    self.context.media_input.series_episode_format
-                )
-                or "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+            else get_tvr_episode_token(
+                self.config.cfg_payload,
+                self.context.media_input.series_episode_format,
             )
         )
 
@@ -786,11 +783,9 @@ class RenameEncodeSeries(BaseWizardPage):
     @Slot(int)
     def update_generated_name(self, _: int | None = None) -> None:
         """Update the generated name based on current selections."""
-        token = (
-            self.config.cfg_payload.get_tvr_episode_token(
-                self.context.media_input.series_episode_format
-            )
-            or "{title_clean} - S{season_number}E{episode_number} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
+        token = get_tvr_episode_token(
+            self.config.cfg_payload,
+            self.context.media_input.series_episode_format,
         )
         if self.override_group.isChecked():
             token = self.token_override.text()

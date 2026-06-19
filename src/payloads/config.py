@@ -106,21 +106,20 @@ class ConfigPayload:
     mvr_release_group: str
 
     # series management settings (TVR - TV Rename)
-    # tvr_enabled: bool
-    # tvr_replace_illegal_chars: bool
-    # tvr_colon_replace_filename: ColonReplace
-    # tvr_colon_replace_title: ColonReplace
-    # tvr_parse_filename_attributes: bool
-    # tvr_standard_episode_token: str
-    # tvr_daily_episode_token: str
-    # tvr_anime_episode_token: str
-    # tvr_season_folder_token: str
-    # tvr_multi_episode_style: MultiEpisodeStyle
-    # tvr_standard_title_token: str
-    # tvr_daily_title_token: str
-    # tvr_anime_title_token: str
-    # tvr_title_token: str  # General/legacy title token
-    # tvr_release_group: str
+    tvr_enabled: bool
+    tvr_replace_illegal_chars: bool
+    tvr_colon_replace_filename: ColonReplace
+    tvr_colon_replace_title: ColonReplace
+    tvr_parse_filename_attributes: bool
+    tvr_standard_episode_token: str
+    tvr_daily_episode_token: str
+    tvr_anime_episode_token: str
+    tvr_season_folder_token: str
+    tvr_multi_episode_style: MultiEpisodeStyle
+    tvr_standard_title_token: str
+    tvr_daily_title_token: str
+    tvr_anime_title_token: str
+    tvr_release_group: str
 
     # global management
     title_clean_rules: list[tuple[str, str]]

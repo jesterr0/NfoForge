@@ -2,9 +2,7 @@
 ui_suffix = ""
 ui_scale_factor = 1.0
 nfo_forge_theme = 1
-profile = 1
-source_media_ext_filter = [".mkv", ".mp4"]
-encode_media_ext_filter = [".mkv", ".mp4"]
+enable_plugins = false
 releasers_name = ""
 tmdb_language = "en-US"
 timeout = 60
@@ -426,6 +424,22 @@ mvr_token = "{title_clean} {release_year} {re_release} {source} {resolution} {au
 mvr_title_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
 # TODO: move to global at the top?
 mvr_release_group = ""
+
+[series_management]
+tvr_enabled = true
+tvr_replace_illegal_chars = true
+tvr_colon_replace_filename = 3
+tvr_colon_replace_title = 3
+tvr_parse_filename_attributes = true
+tvr_standard_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_daily_episode_token = "{title_clean} {air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_anime_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_season_folder_token = "Season {season}"
+tvr_multi_episode_style = 4
+tvr_standard_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_daily_title_token = "{title_clean} {air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_anime_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_release_group = ""
 
 [global_management]
 title_clean_rules = [

@@ -354,7 +354,7 @@ class MediaInput(BaseWizardPage):
 
         # update entry data
         path = Path(data[0]) if isinstance(data, Sequence) else data
-        self.context.media_input.reset_for_new_input(path)
+        self.context.media_input.reset(path)
         self.comparison_toggle_btn.setDisabled(False)
         self.file_tree.build_tree(path)
         self.file_tree.expandAll()

@@ -76,9 +76,9 @@ class MediaInputPayload:
             raise RuntimeError(f"Failed to get MediaInfo object for '{fp}'")
         return mi
 
-    def reset(self) -> None:
+    def reset(self, input_path: Path | None = None) -> None:
         """Reset all fields to initial state."""
-        self.input_path = None
+        self.input_path = input_path
         self.media_type = None
         self.working_dir = None
         self.file_list.clear()

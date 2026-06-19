@@ -2,12 +2,15 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from platformdirs import user_data_dir as pd_user_data_dir
 import tomlkit
+from platformdirs import user_data_dir as pd_user_data_dir
 from tomlkit import TOMLDocument
 
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.dependencies import FindDependencies
+from src.config.tv_tokens import resolve_tvr_token
+from src.context.factory import create_processing_context
+from src.context.processing_context import ProcessingContext
 from src.enums.cropping import Cropping
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
@@ -15,6 +18,7 @@ from src.enums.indexer import Indexer
 from src.enums.logging_settings import LogLevel
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.screen_shot_mode import ScreenShotMode
+from src.enums.series import EpisodeFormat
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.theme import NfoForgeTheme
 from src.enums.token_replacer import ColonReplace
@@ -24,7 +28,6 @@ from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
 from src.exceptions import ConfigError
-from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.clients import TorrentClient
 from src.payloads.config import ConfigPayload, ProgramConfigPayload
 from src.payloads.image_hosts import (
@@ -35,9 +38,6 @@ from src.payloads.image_hosts import (
     ImagePayloadBase,
     PTPIMGPayload,
 )
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.shared_data import SharedPayload
 from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
@@ -49,8 +49,10 @@ from src.payloads.trackers import (
     PassThePopcornInfo,
     ReelFlixInfo,
     ShareIslandInfo,
+    TitleOverridePayload,
     TorrentLeechInfo,
     TrackerInfo,
+    UploadCXInfo,
 )
 from src.payloads.watch_folder import WatchFolder
 
@@ -111,14 +113,6 @@ class Config:
         self._program_conf_data_last = None
         self._config_data_last = None
 
-        # used for misc shared data, this will be the only payload
-        # that we won't use slots on. So it can be used for ANYTHING else.
-        self.shared_data = SharedPayload()
-
-        # additional payloads
-        self.media_search_payload = MediaSearchPayload()
-        self.media_input_payload = MediaInputPayload()
-
         # maps
         self.tracker_map = self._tracker_map()
         self.tracker_map_defaults = self._tracker_map(defaults=True)
@@ -131,35 +125,9 @@ class Config:
         # call save just in case some data is not up to date
         self.save_config()
 
-        # jinja engine
-        self.jinja_engine = Jinja2TemplateEngine(**self._jinja_env_settings())
-
-        # expose payloads for use in the engine
-        self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
-        self.jinja_engine.add_global(
-            "nf_media_search_payload", self.media_search_payload, True
-        )
-        self.jinja_engine.add_global(
-            "nf_media_input_payload", self.media_input_payload, True
-        )
-
-    def reset_config(self) -> None:
-        """Reset the configuration payloads to their default values."""
-        self.shared_data.reset()
-
-        self.media_search_payload.reset()
-        self.media_input_payload.reset()
-
-        self.jinja_engine.reset_added_globals()
-
-        # re-expose payloads for use in the engine
-        self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
-        self.jinja_engine.add_global(
-            "nf_media_search_payload", self.media_search_payload, True
-        )
-        self.jinja_engine.add_global(
-            "nf_media_input_payload", self.media_input_payload, True
-        )
+    def create_processing_context(self) -> "ProcessingContext":
+        """Create an isolated context for a processing workflow."""
+        return create_processing_context(self.cfg_payload, self.loaded_plugins)
 
     def load_program_conf(self, config_file: str | None) -> None:
         """
@@ -813,6 +781,24 @@ class Config:
             oe_data["personal_release"] = self.cfg_payload.oe_tracker.personal_release
             oe_data["image_width"] = self.cfg_payload.oe_tracker.image_width
 
+            for tracker_key, tracker_info in (
+                ("more_than_tv", self.cfg_payload.mtv_tracker),
+                ("torrent_leech", self.cfg_payload.tl_tracker),
+                ("beyond_hd", self.cfg_payload.bhd_tracker),
+                ("pass_the_popcorn", self.cfg_payload.ptp_tracker),
+                ("reelflix", self.cfg_payload.rf_tracker),
+                ("aither", self.cfg_payload.aither_tracker),
+                ("huno", self.cfg_payload.huno_tracker),
+                ("lst", self.cfg_payload.lst_tracker),
+                ("dark_peers", self.cfg_payload.darkpeers_tracker),
+                ("shareisland", self.cfg_payload.shareisland_tracker),
+                ("uploadcx", self.cfg_payload.ulcx_tracker),
+                ("only_encodes", self.cfg_payload.oe_tracker),
+            ):
+                tracker_data[tracker_key]["tvr_title_overrides"] = (
+                    self._serialize_series_title_overrides(tracker_info)
+                )
+
             # torrent client
             torrent_client_data = self._toml_data["torrent_client"]
 
@@ -895,30 +881,46 @@ class Config:
             movie_management["mvr_release_group"] = self.cfg_payload.mvr_release_group
 
             # series management
-            # series_management = self._toml_data["series_management"]
-            # series_management["tvr_enabled"] = self.cfg_payload.tvr_enabled
-            # series_management["tvr_replace_illegal_chars"] = (
-            #     self.cfg_payload.tvr_replace_illegal_chars
-            # )
-            # series_management["tvr_colon_replace_filename"] = ColonReplace(
-            #     self.cfg_payload.tvr_colon_replace_filename
-            # ).value
-            # series_management["tvr_colon_replace_title"] = ColonReplace(
-            #     self.cfg_payload.tvr_colon_replace_title
-            # ).value
-            # series_management["tvr_parse_filename_attributes"] = (
-            #     self.cfg_payload.tvr_parse_filename_attributes
-            # )
-            # series_management["tvr_standard_episode_token"] = self.cfg_payload.tvr_standard_episode_token
-            # series_management["tvr_daily_episode_token"] = self.cfg_payload.tvr_daily_episode_token
-            # series_management["tvr_anime_episode_token"] = self.cfg_payload.tvr_anime_episode_token
-            # series_management["tvr_season_folder_token"] = self.cfg_payload.tvr_season_folder_token
-            # series_management["tvr_multi_episode_style"] = self.cfg_payload.tvr_multi_episode_style.value
-            # series_management["tvr_standard_title_token"] = self.cfg_payload.tvr_standard_title_token
-            # series_management["tvr_daily_title_token"] = self.cfg_payload.tvr_daily_title_token
-            # series_management["tvr_anime_title_token"] = self.cfg_payload.tvr_anime_title_token
-            # series_management["tvr_title_token"] = self.cfg_payload.tvr_title_token
-            # series_management["tvr_release_group"] = self.cfg_payload.tvr_release_group
+            series_management = self._toml_data["series_management"]
+            series_management["tvr_enabled"] = self.cfg_payload.tvr_enabled
+            series_management["tvr_replace_illegal_chars"] = (
+                self.cfg_payload.tvr_replace_illegal_chars
+            )
+            series_management["tvr_colon_replace_filename"] = ColonReplace(
+                self.cfg_payload.tvr_colon_replace_filename
+            ).value
+            series_management["tvr_colon_replace_title"] = ColonReplace(
+                self.cfg_payload.tvr_colon_replace_title
+            ).value
+            series_management["tvr_parse_filename_attributes"] = (
+                self.cfg_payload.tvr_parse_filename_attributes
+            )
+            series_management["tvr_standard_episode_token"] = (
+                self.cfg_payload.tvr_standard_episode_token
+            )
+            series_management["tvr_daily_episode_token"] = (
+                self.cfg_payload.tvr_daily_episode_token
+            )
+            series_management["tvr_anime_episode_token"] = (
+                self.cfg_payload.tvr_anime_episode_token
+            )
+            series_management["tvr_season_folder_token"] = (
+                self.cfg_payload.tvr_season_folder_token
+            )
+            series_management["tvr_multi_episode_style"] = (
+                self.cfg_payload.tvr_multi_episode_style.value
+            )
+            series_management["tvr_standard_title_token"] = (
+                self.cfg_payload.tvr_standard_title_token
+            )
+            series_management["tvr_daily_title_token"] = (
+                self.cfg_payload.tvr_daily_title_token
+            )
+            series_management["tvr_anime_title_token"] = (
+                self.cfg_payload.tvr_anime_title_token
+            )
+            series_management.pop("tvr_title_token", None)
+            series_management["tvr_release_group"] = self.cfg_payload.tvr_release_group
 
             # global management
             global_management = self._toml_data["global_management"]
@@ -1197,6 +1199,7 @@ class Config:
                 ),
                 mvr_title_token_override=mtv_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=mtv_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(mtv_tracker_data),
                 anonymous=mtv_tracker_data["anonymous"],
                 api_key=mtv_tracker_data["api_key"],
                 username=mtv_tracker_data["username"],
@@ -1229,6 +1232,7 @@ class Config:
                 ),
                 mvr_title_token_override=tl_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=tl_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(tl_tracker_data),
                 username=tl_tracker_data["username"],
                 password=tl_tracker_data["password"],
                 torrent_passkey=tl_tracker_data["torrent_passkey"],
@@ -1256,6 +1260,7 @@ class Config:
                 ),
                 mvr_title_token_override=bhd_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=bhd_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(bhd_tracker_data),
                 anonymous=bhd_tracker_data["anonymous"],
                 api_key=bhd_tracker_data["api_key"],
                 rss_key=bhd_tracker_data["rss_key"],
@@ -1286,6 +1291,7 @@ class Config:
                 ),
                 mvr_title_token_override=ptp_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=ptp_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(ptp_tracker_data),
                 api_user=ptp_tracker_data["api_user"],
                 api_key=ptp_tracker_data["api_key"],
                 username=ptp_tracker_data["username"],
@@ -1314,6 +1320,7 @@ class Config:
                 ),
                 mvr_title_token_override=rf_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=rf_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(rf_tracker_data),
                 api_key=rf_tracker_data["api_key"],
                 anonymous=rf_tracker_data["anonymous"],
                 internal=rf_tracker_data["internal"],
@@ -1350,6 +1357,9 @@ class Config:
                     "mvr_title_token_override"
                 ],
                 mvr_title_replace_map=aither_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    aither_tracker_data
+                ),
                 api_key=aither_tracker_data["api_key"],
                 anonymous=aither_tracker_data["anonymous"],
                 internal=aither_tracker_data["internal"],
@@ -1384,6 +1394,9 @@ class Config:
                 ),
                 mvr_title_token_override=huno_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=huno_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    huno_tracker_data
+                ),
                 api_key=huno_tracker_data["api_key"],
                 anonymous=huno_tracker_data["anonymous"],
                 internal=huno_tracker_data["internal"],
@@ -1412,6 +1425,7 @@ class Config:
                 ),
                 mvr_title_token_override=lst_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=lst_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(lst_tracker_data),
                 api_key=lst_tracker_data["api_key"],
                 anonymous=lst_tracker_data["anonymous"],
                 internal=lst_tracker_data["internal"],
@@ -1448,6 +1462,9 @@ class Config:
                     "mvr_title_token_override"
                 ],
                 mvr_title_replace_map=darkpeers_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    darkpeers_tracker_data
+                ),
                 api_key=darkpeers_tracker_data["api_key"],
                 anonymous=darkpeers_tracker_data["anonymous"],
                 internal=darkpeers_tracker_data["internal"],
@@ -1476,6 +1493,9 @@ class Config:
                 ),
                 mvr_title_token_override=shri_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=shri_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    shri_tracker_data
+                ),
                 api_key=shri_tracker_data["api_key"],
                 anonymous=shri_tracker_data["anonymous"],
                 internal=shri_tracker_data["internal"],
@@ -1485,7 +1505,7 @@ class Config:
             )
 
             ulcx_tracker_data = tracker_data["uploadcx"]
-            ulcx_tracker = ShareIslandInfo(
+            ulcx_tracker = UploadCXInfo(
                 upload_enabled=ulcx_tracker_data["upload_enabled"],
                 announce_url=ulcx_tracker_data["announce_url"],
                 enabled=ulcx_tracker_data["enabled"],
@@ -1505,6 +1525,9 @@ class Config:
                 ),
                 mvr_title_token_override=ulcx_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=ulcx_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    ulcx_tracker_data
+                ),
                 api_key=ulcx_tracker_data["api_key"],
                 anonymous=ulcx_tracker_data["anonymous"],
                 internal=ulcx_tracker_data["internal"],
@@ -1533,6 +1556,7 @@ class Config:
                 ),
                 mvr_title_token_override=oe_tracker_data["mvr_title_token_override"],
                 mvr_title_replace_map=oe_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(oe_tracker_data),
                 api_key=oe_tracker_data["api_key"],
                 anonymous=oe_tracker_data["anonymous"],
                 internal=oe_tracker_data["internal"],
@@ -1574,7 +1598,19 @@ class Config:
             movie_management = toml_data["movie_management"]
 
             # series management
-            # series_management = toml_data.get("series_management", {})
+            series_management = toml_data["series_management"]
+            default_series_payload = (
+                None if build_defaults else self.cfg_payload_defaults
+            )
+
+            def load_series_token(key: str) -> str:
+                value = str(series_management[key])
+                if default_series_payload is None:
+                    return value
+                return resolve_tvr_token(
+                    value,
+                    getattr(default_series_payload, key),
+                )
 
             # global management
             global_management = toml_data["global_management"]
@@ -1666,46 +1702,34 @@ class Config:
                 mvr_token=movie_management.get("mvr_token"),
                 mvr_title_token=movie_management.get("mvr_title_token"),
                 mvr_release_group=movie_management.get("mvr_release_group", ""),
-                # tvr_enabled=series_management.get("tvr_enabled", True),
-                # tvr_replace_illegal_chars=series_management.get("tvr_replace_illegal_chars", True),
-                # tvr_colon_replace_filename=ColonReplace(
-                #     series_management.get("tvr_colon_replace_filename", 3)
-                # ),
-                # tvr_colon_replace_title=ColonReplace(
-                #     series_management.get("tvr_colon_replace_title", 3)
-                # ),
-                # tvr_parse_filename_attributes=series_management.get("tvr_parse_filename_attributes", True),
-                # tvr_standard_episode_token=series_management.get(
-                #     "tvr_standard_episode_token",
-                #     "{series_title_clean} - S{season:02d}E{episode:02d} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
-                # ),
-                # tvr_daily_episode_token=series_management.get(
-                #     "tvr_daily_episode_token",
-                #     "{series_title_clean} - {air_date} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
-                # ),
-                # tvr_anime_episode_token=series_management.get(
-                #     "tvr_anime_episode_token",
-                #     "{series_title_clean} - S{season:02d}E{episode:02d} - {absolute_episode:03d} - {episode_title_clean} [{resolution} {source} {video_codec} {audio_codec}]-{release_group}"
-                # ),
-                # tvr_season_folder_token=series_management.get("tvr_season_folder_token", "Season {season}"),
-                # tvr_multi_episode_style=MultiEpisodeStyle(series_management.get("tvr_multi_episode_style", 4)),
-                # tvr_standard_title_token=series_management.get(
-                #     "tvr_standard_title_token",
-                #     "{series_title_clean} S{season:02d}E{episode:02d} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
-                # ),
-                # tvr_daily_title_token=series_management.get(
-                #     "tvr_daily_title_token",
-                #     "{series_title_clean} {air_date} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
-                # ),
-                # tvr_anime_title_token=series_management.get(
-                #     "tvr_anime_title_token",
-                #     "{series_title_clean} S{season:02d}E{episode:02d} {absolute_episode:03d} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
-                # ),
-                # tvr_title_token=series_management.get(
-                #     "tvr_title_token",
-                #     "{series_title_clean} S{season:02d}E{episode:02d} {resolution} {source} {video_codec} {audio_codec}-{release_group}"
-                # ),
-                # tvr_release_group=series_management.get("tvr_release_group", ""),
+                tvr_enabled=bool(series_management["tvr_enabled"]),
+                tvr_replace_illegal_chars=bool(
+                    series_management["tvr_replace_illegal_chars"]
+                ),
+                tvr_colon_replace_filename=ColonReplace(
+                    series_management["tvr_colon_replace_filename"]
+                ),
+                tvr_colon_replace_title=ColonReplace(
+                    series_management["tvr_colon_replace_title"]
+                ),
+                tvr_parse_filename_attributes=bool(
+                    series_management["tvr_parse_filename_attributes"]
+                ),
+                tvr_standard_episode_token=load_series_token(
+                    "tvr_standard_episode_token"
+                ),
+                tvr_daily_episode_token=load_series_token("tvr_daily_episode_token"),
+                tvr_anime_episode_token=load_series_token("tvr_anime_episode_token"),
+                tvr_season_folder_token=str(
+                    series_management["tvr_season_folder_token"]
+                ),
+                tvr_multi_episode_style=MultiEpisodeStyle(
+                    series_management["tvr_multi_episode_style"]
+                ),
+                tvr_standard_title_token=load_series_token("tvr_standard_title_token"),
+                tvr_daily_title_token=load_series_token("tvr_daily_title_token"),
+                tvr_anime_title_token=load_series_token("tvr_anime_title_token"),
+                tvr_release_group=str(series_management["tvr_release_group"]),
                 title_clean_rules=global_management.get("title_clean_rules"),
                 title_clean_rules_modified=global_management.get(
                     "title_clean_rules_modified"
@@ -1901,14 +1925,6 @@ class Config:
         """Initialize dependencies and updates the config if needed"""
         FindDependencies().update_dependencies(self)
 
-    def _jinja_env_settings(self) -> dict:
-        env_settings = {
-            "trim_blocks": self.cfg_payload.trim_blocks,
-            "lstrip_blocks": self.cfg_payload.lstrip_blocks,
-            "keep_trailing_newline": self.cfg_payload.keep_trailing_newline,
-        }
-        return env_settings
-
     @staticmethod
     def resolve_dependency(path_attr: Path | None) -> str:
         """Ensure that we're returning a toml safe string to save the paths"""
@@ -1924,16 +1940,35 @@ class Config:
             wd.mkdir(parents=True, exist_ok=True)
         return wd
 
-    # TODO: all these methods can be re activated when self.shared_data is needed IF they are needed
-    # def set_shared_data(self, key, value):
-    #     self.shared_data[key] = value
+    @staticmethod
+    def _serialize_series_title_overrides(
+        tracker_info: TrackerInfo,
+    ) -> dict[str, dict]:
+        overrides = {}
+        existing = tracker_info.tvr_title_overrides or {}
+        for episode_format in EpisodeFormat:
+            override = existing.get(episode_format, TitleOverridePayload())
+            overrides[str(episode_format).lower()] = {
+                "enabled": override.enabled,
+                "colon_replace": ColonReplace(override.colon_replace).value,
+                "token": override.token,
+                "replace_map": override.replace_map or [],
+            }
+        return overrides
 
-    # def get_shared_data(self, key):
-    #     return self.shared_data.get(key)
-
-    # # TODO: handle message box on FE
-    # def save_config_data(self):
-    # try:
-    #     self.config.save_config()
-    # except ConfigError as e:
-    #     QMessageBox.critical(self, "Error", str(e))
+    @staticmethod
+    def _load_series_title_overrides(
+        tracker_data: dict,
+    ) -> dict[EpisodeFormat, TitleOverridePayload]:
+        override_data = tracker_data.get("tvr_title_overrides", {})
+        overrides = {}
+        for episode_format in EpisodeFormat:
+            key = str(episode_format).lower()
+            data = override_data.get(key, {})
+            overrides[episode_format] = TitleOverridePayload(
+                enabled=bool(data.get("enabled", False)),
+                colon_replace=ColonReplace(data.get("colon_replace", 3)),
+                token=data.get("token", ""),
+                replace_map=data.get("replace_map", []),
+            )
+        return overrides

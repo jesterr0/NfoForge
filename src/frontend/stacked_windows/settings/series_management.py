@@ -23,6 +23,12 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.config.tv_tokens import (
+    get_tvr_episode_token,
+    get_tvr_title_token,
+    set_tvr_episode_token,
+    set_tvr_title_token,
+)
 from src.enums.series import EpisodeFormat
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
@@ -383,10 +389,10 @@ class SeriesManagementSettings(BaseSettings):
 
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
-            episode_tok = self.config.cfg_payload.get_tvr_episode_token(fmt)
+            episode_tok = get_tvr_episode_token(self.config.cfg_payload, fmt)
             if episode_tok.strip():
                 self._update_qline_cursor_0(w["file_token"], episode_tok)
-            title_tok = self.config.cfg_payload.get_tvr_title_token(fmt)
+            title_tok = get_tvr_title_token(self.config.cfg_payload, fmt)
             if title_tok.strip():
                 self._update_qline_cursor_0(w["title_token"], title_tok)
 
@@ -444,8 +450,8 @@ class SeriesManagementSettings(BaseSettings):
 
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
-            self.config.cfg_payload.set_tvr_episode_token(fmt, w["file_token"].text())
-            self.config.cfg_payload.set_tvr_title_token(fmt, w["title_token"].text())
+            set_tvr_episode_token(self.config.cfg_payload, fmt, w["file_token"].text())
+            set_tvr_title_token(self.config.cfg_payload, fmt, w["title_token"].text())
 
             for tracker, tfo in w["tracker_override_map"].items():
                 existing = self.config.tracker_map[tracker].tvr_title_overrides
@@ -478,10 +484,10 @@ class SeriesManagementSettings(BaseSettings):
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
             w["file_token"].setText(
-                self.config.cfg_payload_defaults.get_tvr_episode_token(fmt)
+                get_tvr_episode_token(self.config.cfg_payload_defaults, fmt)
             )
             w["title_token"].setText(
-                self.config.cfg_payload_defaults.get_tvr_title_token(fmt)
+                get_tvr_title_token(self.config.cfg_payload_defaults, fmt)
             )
             self._apply_override_defaults(fmt)
         self.token_table.reset()
