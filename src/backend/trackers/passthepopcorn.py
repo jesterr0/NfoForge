@@ -1,13 +1,13 @@
-from pathlib import Path
 import pickle
 import re
+from pathlib import Path
 
-from guessit import guessit
-from imdb.Movie import Movie
 import niquests
-from pymediainfo import MediaInfo
 import pyotp
 import regex
+from guessit import guessit
+from imdbinfo.models import MovieDetail
+from pymediainfo import MediaInfo
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer
@@ -32,7 +32,7 @@ def ptp_uploader(
     password: str,
     announce_url: str,
     torrent_file: Path,
-    file_input: Path,
+    input_path: Path,
     nfo: str,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
@@ -42,7 +42,6 @@ def ptp_uploader(
     timeout: int = 60,
 ) -> bool | None:
     torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = PTPUploader(
         username=username,
         password=password,
@@ -67,7 +66,7 @@ def ptp_uploader(
         auth_token=auth_token,
         media_search_payload=media_search_payload,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         nfo=nfo,
         ptp_img_api_key=ptp_img_api_key,
         group_id=group_id,
@@ -75,6 +74,17 @@ def ptp_uploader(
 
 
 class PTPUploader:
+    __slots__ = (
+        "username",
+        "password",
+        "mediainfo_obj",
+        "announce_url",
+        "cookie_path",
+        "totp",
+        "timeout",
+        "_session",
+    )
+
     URL = "https://passthepopcorn.me/torrents.php"
     UPLOAD_URL = "https://passthepopcorn.me/upload.php"
     LOGIN_URL = "https://passthepopcorn.me/ajax.php?action=login"
@@ -242,7 +252,7 @@ class PTPUploader:
         auth_token: str,
         media_search_payload: MediaSearchPayload,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         nfo: str,
         ptp_img_api_key: str | None,
         group_id: str | None = None,
@@ -258,16 +268,16 @@ class PTPUploader:
             "submit": "true",
             "remaster_year": "",
             "remaster_title": self._remaster_title(
-                media_search_payload.imdb_data, file_input
+                media_search_payload.imdb_data, input_path
             ),
             "type": self._get_type(media_search_payload.imdb_data),
             "codec": "Other",  # sending the codec as Other to fill with other_codec
-            "other_codec": self._get_codec(file_input),
+            "other_codec": self._get_codec(input_path),
             "resolution": self._resolution(),
             "container": "Other",  # sending container as Other to fill with other_container
-            "other_container": self._get_container(file_input),
+            "other_container": self._get_container(input_path),
             "source": "Other",  # sending the source as Other to fill with other_source
-            "other_source": self._source(file_input),
+            "other_source": self._source(input_path),
             "release_desc": nfo,
             "nfo_text": "",  # appears to do nothing at all
             "subtitles[]": self._subtitles(),
@@ -281,7 +291,7 @@ class PTPUploader:
             data["groupid"] = group_id
         else:
             url = "https://passthepopcorn.me/upload.php"
-            get_poster = media_search_payload.imdb_data.get("full-size cover url")
+            get_poster = media_search_payload.imdb_data.cover_url
             if not get_poster:
                 get_poster = (
                     f"https://image.tmdb.org/t/p/original{media_search_payload.tmdb_data.get('poster_path')}"
@@ -295,7 +305,7 @@ class PTPUploader:
             ptp_url = self._ptp_img_upload(get_poster, ptp_img_api_key)
 
             tags = ""
-            get_tags = media_search_payload.imdb_data.get("genres")
+            get_tags = media_search_payload.imdb_data.genres
             if get_tags:
                 tags = ", ".join((str(x).lower() for x in get_tags))
             if not get_tags:
@@ -304,17 +314,17 @@ class PTPUploader:
                 )
 
             new_group_data = {
-                "title": media_search_payload.imdb_data.get(
-                    "title", media_search_payload.tmdb_data.get("title", "")
-                ),
-                "year": media_search_payload.imdb_data.get(
-                    "year", media_search_payload.tmdb_data.get("year", "")
-                ),
+                "title": media_search_payload.imdb_data.title_localized
+                if media_search_payload.imdb_data.title_localized
+                else media_search_payload.tmdb_data.get("title", ""),
+                "year": media_search_payload.imdb_data.year
+                if media_search_payload.imdb_data.year
+                else media_search_payload.tmdb_data.get("year", ""),
                 "image": ptp_url,
                 "tags": tags,
-                "album_desc": media_search_payload.imdb_data.get(
-                    "plot outline", media_search_payload.tmdb_data.get("overview", "")
-                ),
+                "album_desc": media_search_payload.imdb_data.plot
+                if media_search_payload.imdb_data.plot
+                else media_search_payload.tmdb_data.get("overview", ""),
                 # "trailer": "", # TODO: detect eventually?
             }
             data.update(new_group_data)
@@ -405,22 +415,26 @@ class PTPUploader:
 
         raise TrackerError("Cannot detect image URLs")
 
-    def _remaster_title(self, imdb_data: Movie, file_input: Path) -> str:
+    def _remaster_title(self, imdb_data: MovieDetail, input_path: Path) -> str:
         remaster_title = set()
-        title_lowered = file_input.stem.lower()
+        title_lowered = input_path.stem.lower()
 
         # collections
         # Masters of Cinema, The Criterion Collection, Warner Archive Collection
-        try:
-            distributors = {str(x).upper() for x in imdb_data["distributors"]}
-            if {"WARNER ARCHIVE", "WARNER ARCHIVE COLLECTION", "WAC"} & distributors:
-                remaster_title.add("Warner Archive Collection")
-            elif {"CRITERION", "CRITERION COLLECTION", "CC"} & distributors:
-                remaster_title.add("The Criterion Collection")
-            elif {"MASTERS OF CINEMA", "MOC"} & distributors:
-                remaster_title.add("Masters of Cinema")
-        except Exception as e:
-            LOG.debug(LOG.LOG_SOURCE.BE, f"Failed to get distributor data: {e}")
+        # TODO: add support for distributors when https://github.com/tveronesi/imdbinfo/issues/52 is in.
+        # STRIP THE ABOVE OUT WHEN WE STRIP OUT IMDB VIA THIS TOOL
+        # TODO: the above is no longer valid as IMDb is making efforts to avoid allowing scraping we will need
+        # another solution in the future...
+        # try:
+        #     distributors = {str(x).upper() for x in imdb_data["distributors"]}
+        #     if {"WARNER ARCHIVE", "WARNER ARCHIVE COLLECTION", "WAC"} & distributors:
+        #         remaster_title.add("Warner Archive Collection")
+        #     elif {"CRITERION", "CRITERION COLLECTION", "CC"} & distributors:
+        #         remaster_title.add("The Criterion Collection")
+        #     elif {"MASTERS OF CINEMA", "MOC"} & distributors:
+        #         remaster_title.add("Masters of Cinema")
+        # except Exception as e:
+        #     LOG.debug(LOG.LOG_SOURCE.BE, f"Failed to get distributor data: {e}")
 
         # editions
         def collect_editions(source, key: str) -> list:
@@ -430,7 +444,7 @@ class PTPUploader:
 
         # ensure we have unique editions
         edition_set = set()
-        guess_name = guessit(file_input.name)
+        guess_name = guessit(input_path.name)
 
         # collect editions from `guess_name`
         edition_set.update(collect_editions(guess_name, "edition"))
@@ -519,9 +533,9 @@ class PTPUploader:
             output = " / ".join(sorted(remaster_title))
         return output
 
-    def _get_type(self, imdb_data: Movie) -> str:
+    def _get_type(self, imdb_data: MovieDetail) -> str:
         ptp_type = PTPType.FEATURE_FILM
-        imdb_type = imdb_data.get("kind")
+        imdb_type = imdb_data.kind.lower() if imdb_data.kind else None
         if imdb_type:
             if imdb_type in ("movie", "tv movie"):
                 duration = int(self.mediainfo_obj.general_tracks[0].duration) // 60000
@@ -539,8 +553,8 @@ class PTPUploader:
                 ptp_type = PTPType.LIVE_PERFORMANCE
         return ptp_type.value
 
-    def _get_codec(self, file_input: Path) -> str:
-        title_lowered = str(file_input.stem).lower()
+    def _get_codec(self, input_path: Path) -> str:
+        title_lowered = str(input_path.stem).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # disc
@@ -558,7 +572,7 @@ class PTPUploader:
             ),
             title_lowered,
         ):
-            input_file_size = file_input.stat().st_size
+            input_file_size = input_path.stat().st_size
             if input_file_size <= 26_843_545_600:
                 return PTPCodec.BD25.value
             elif input_file_size <= 53_687_091_200:
@@ -594,8 +608,8 @@ class PTPUploader:
             resolution = PTPResolution.OTHER.value
         return resolution
 
-    def _get_container(self, file_input: Path) -> str:
-        extension = file_input.suffix
+    def _get_container(self, input_path: Path) -> str:
+        extension = input_path.suffix
         if extension == ".mkv":
             return PTPContainer.MKV.value
         elif extension == ".mp4":
@@ -604,8 +618,8 @@ class PTPUploader:
             return PTPContainer.MPG.value
         return PTPContainer.AUTO_DETECT.value
 
-    def _source(self, file_input: Path) -> str:
-        title_lowered = str(file_input.stem).lower()
+    def _source(self, input_path: Path) -> str:
+        title_lowered = str(input_path.stem).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
         if "bluray" in title_lowered:
@@ -797,6 +811,8 @@ class PTPUploader:
 
 class PTPSearch:
     """Search PassThePopcorn"""
+
+    __slots__ = ("api_user", "api_key", "timeout")
 
     URL = "https://passthepopcorn.me/torrents.php"
 
