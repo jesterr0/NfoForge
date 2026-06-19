@@ -176,6 +176,9 @@ class TemplatesSettings(BaseSettings):
             completer=False, disable_mouse_wheel=True, parent=self
         )
         self.newline_sequence.addItems(("\\r", "\\n", "\\r\\n"))
+        self.newline_sequence.currentIndexChanged.connect(
+            self.update_jinja_engine_settings
+        )
 
         self.sandbox_enable_prompt_tokens = QCheckBox(
             "Enabled Prompt Tokens on Preview in Sandbox", self
@@ -459,6 +462,11 @@ class TemplatesSettings(BaseSettings):
         update_map = {
             "trim_blocks": self.trim_blocks_toggle.isChecked(),
             "lstrip_blocks": self.lstrip_blocks_toggle.isChecked(),
+            "newline_sequence": {
+                "\\n": "\n",
+                "\\r": "\r",
+                "\\r\\n": "\r\n",
+            }[self.newline_sequence.currentText()],
             "keep_trailing_newline": self.keep_trailing_newline_toggle.isChecked(),
         }
 
@@ -466,7 +474,7 @@ class TemplatesSettings(BaseSettings):
         for attr, value in update_map.items():
             if value is not None:
                 setattr(
-                    self.config.jinja_engine.environment,
+                    self.temp_preview_context.jinja_engine.environment,
                     attr,
                     value,
                 )
