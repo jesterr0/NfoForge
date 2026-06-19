@@ -236,32 +236,32 @@ class MediaInput(BaseWizardPage):
     def update_payload_data(self) -> None:
         entry_data = Path(self.media_input_entry.text())
         self.context.media_input.input_path = entry_data
+        selected_files: list[Path]
 
         # handle single file
         if entry_data.is_file():
-            self.context.media_input.file_list.append(entry_data)
+            selected_files = [entry_data]
 
         # handle directory
         elif entry_data.is_dir():
             checked_items: list[dict[str, Any]] = self.file_tree.get_checked_items()
-            supported_files = sorted(
+            selected_files = sorted(
                 [
                     Path(item["path"])
                     for item in checked_items
                     if not item.get("is_dir", False)
                 ]
             )
-            if not supported_files:
+            if not selected_files:
                 raise MediaFileNotFoundError(
                     "No supported media files selected in directory"
                 )
-
-            self.context.media_input.file_list.extend(supported_files)
+        else:
+            raise MediaFileNotFoundError(f"Input does not exist: {entry_data}")
 
         # store comparison match data if comparison mode is enabled
-        comparison_pair = self.get_comparison_pair()
-        if comparison_pair:
-            self.context.media_input.comparison_pair = comparison_pair
+        self.context.media_input.file_list[:] = selected_files
+        self.context.media_input.comparison_pair = self.get_comparison_pair()
 
         self._run_worker()
 
@@ -347,12 +347,14 @@ class MediaInput(BaseWizardPage):
         # uncheck/clear comparison section on new files opened
         self.comparison_toggle_btn.setChecked(False)
         self._toggle_comparison_mode(False)
+        self._loading_completed = False
 
         if not data:
             return
 
         # update entry data
         path = Path(data[0]) if isinstance(data, Sequence) else data
+        self.context.media_input.reset_for_new_input(path)
         self.comparison_toggle_btn.setDisabled(False)
         self.file_tree.build_tree(path)
         self.file_tree.expandAll()
