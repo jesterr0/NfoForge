@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.process import ProcessBackEnd
 from src.backend.utils.file_utilities import open_explorer
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
@@ -205,7 +205,7 @@ class ProcessPage(BaseWizardPage):
     }
 
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
         super().__init__(config, context, parent)
         self.setObjectName("processPage")
@@ -481,18 +481,18 @@ class ProcessPage(BaseWizardPage):
         prompt_tokens = None
         prompt = PromptTokenEditorDialog(
             items=tokens,
-            warn_missing=self.config.cfg_payload.prompt_token_editor_warn_on_missing,
+            warn_missing=self.config.settings.widgets.prompt_token_editor_warn_on_missing,
             parent=self,
         )
         if prompt.exec() == QDialog.DialogCode.Accepted:
             if (
                 prompt.warn_on_missing.isChecked()
-                != self.config.cfg_payload.prompt_token_editor_warn_on_missing
+                != self.config.settings.widgets.prompt_token_editor_warn_on_missing
             ):
-                self.config.cfg_payload.prompt_token_editor_warn_on_missing = (
+                self.config.settings.widgets.prompt_token_editor_warn_on_missing = (
                     prompt.warn_on_missing.isChecked()
                 )
-                self.config.save_config()
+                self.config.save()
             prompt_tokens = prompt.get_results()
         GSigs().prompt_tokens_response.emit(prompt_tokens)
 
@@ -507,21 +507,21 @@ class ProcessPage(BaseWizardPage):
         GSigs().overview_prompt_response.emit(result)
 
     def _update_last_used_host(self) -> None:
-        start_data = deepcopy(self.config.cfg_payload.last_used_img_host)
+        start_data = deepcopy(self.config.settings.trackers.last_used_image_host)
         for _, (
             _,
             (_, (tracker, img_dest)),
         ), _ in self.tracker_process_tree.get_item_values():
             try:
-                self.config.cfg_payload.last_used_img_host[
+                self.config.settings.trackers.last_used_image_host[
                     TrackerSelection(tracker)
                 ] = ImageHost(img_dest)
             except ValueError:
-                self.config.cfg_payload.last_used_img_host[
+                self.config.settings.trackers.last_used_image_host[
                     TrackerSelection(tracker)
                 ] = ImageSource(img_dest)
-        if self.config.cfg_payload.last_used_img_host != start_data:
-            self.config.save_config()
+        if self.config.settings.trackers.last_used_image_host != start_data:
+            self.config.save()
 
     def add_tracker_items(self) -> None:
         # sort the trackers in the users desired order before displaying them
@@ -543,7 +543,7 @@ class ProcessPage(BaseWizardPage):
             ):
                 enabled_img_hosts = enabled_img_hosts | {
                     key: value
-                    for key, value in self.config.image_host_map.items()
+                    for key, value in self.config.settings.image_hosts.by_selection().items()
                     if value.enabled
                     and all(
                         getattr(value, field.name)
@@ -556,7 +556,7 @@ class ProcessPage(BaseWizardPage):
                 x
                 for x in sorted(
                     self.context.shared_data.selected_trackers,
-                    key=lambda tracker: self.config.cfg_payload.tracker_order.index(
+                    key=lambda tracker: self.config.settings.trackers.order.index(
                         tracker
                     ),
                 )
@@ -584,7 +584,9 @@ class ProcessPage(BaseWizardPage):
                         )
                     ],
                 )
-                last_used_host = self.config.cfg_payload.last_used_img_host.get(tracker)
+                last_used_host = self.config.settings.trackers.last_used_image_host.get(
+                    tracker
+                )
                 if combo_box and last_used_host:
                     get_last = combo_box.findText(
                         str(last_used_host), flags=Qt.MatchFlag.MatchContains

@@ -26,7 +26,7 @@ from src.backend.utils.images import (
     extract_images_from_str,
 )
 from src.backend.utils.script_parser import ScriptParser
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
@@ -235,7 +235,7 @@ class ImagesPage(BaseWizardPage):
 
     def __init__(
         self,
-        config: Config,
+        config: ConfigManager,
         context: ProcessingContext,
         parent: "MainWindow",
     ) -> None:
@@ -401,8 +401,8 @@ class ImagesPage(BaseWizardPage):
 
     @Slot()
     def _generate_images(self) -> None:
-        ss_mode = self.config.cfg_payload.ss_mode
-        crop_mode = self.config.cfg_payload.crop_mode
+        ss_mode = self.config.settings.screenshots.mode
+        crop_mode = self.config.settings.screenshots.crop_mode
 
         # if ScreenShotMode is not basic we can run comparison logic
         if ss_mode is not ScreenShotMode.BASIC_SS_GEN:
@@ -460,7 +460,7 @@ class ImagesPage(BaseWizardPage):
         script_values: ScriptValues | None = None,
         re_sync: int = 0,
     ) -> None:
-        crop_mode = self.config.cfg_payload.crop_mode
+        crop_mode = self.config.settings.screenshots.crop_mode
         if script_values:
             self.script_values = script_values
 
@@ -480,16 +480,16 @@ class ImagesPage(BaseWizardPage):
 
         self._set_image_directory()
 
-        subtitle_color = self.config.cfg_payload.subtitle_color
-        subtitle_outline_color = self.config.cfg_payload.subtitle_outline_color
+        subtitle_color = self.config.settings.screenshots.subtitle_color
+        subtitle_outline_color = self.config.settings.screenshots.subtitle_outline_color
         sub_names = self._get_sub_names(comparison_subs)
         sub_size = determine_sub_size(
             media_file_mi_obj.video_tracks[0].height,
-            self.config.cfg_payload.sub_size_height_720,
-            self.config.cfg_payload.sub_size_height_1080,
-            self.config.cfg_payload.sub_size_height_2160,
+            self.config.settings.screenshots.subtitle_height_720,
+            self.config.settings.screenshots.subtitle_height_1080,
+            self.config.settings.screenshots.subtitle_height_2160,
         )
-        subtitle_alignment = self.config.cfg_payload.subtitle_alignment
+        subtitle_alignment = self.config.settings.screenshots.subtitle_alignment
 
         self._start_queued_worker(
             ss_mode,
@@ -542,7 +542,7 @@ class ImagesPage(BaseWizardPage):
                 ss_mode,
                 mi_file_list[self.source_file],
                 mi_file_list[self.media_file],
-                self.config.cfg_payload.comparison_subtitles,
+                self.config.settings.screenshots.comparison_subtitles,
             )
 
     def _set_image_directory(self) -> None:
@@ -555,8 +555,8 @@ class ImagesPage(BaseWizardPage):
     def _get_sub_names(self, comparison_subs) -> SubNames | None:
         if comparison_subs:
             return SubNames(
-                self.config.cfg_payload.comparison_subtitle_source_name,
-                self.config.cfg_payload.comparison_subtitle_encode_name,
+                self.config.settings.screenshots.comparison_source_name,
+                self.config.settings.screenshots.comparison_encode_name,
             )
         return None
 
@@ -577,11 +577,11 @@ class ImagesPage(BaseWizardPage):
         if (
             not self.media_file
             or not self.image_dir
-            or not self.config.cfg_payload.ffmpeg
+            or not self.config.settings.dependencies.ffmpeg
         ):
             raise RuntimeError(
                 "Failed to execute image worker, missing one or more required inputs "
-                f"({self.media_file=}, {self.image_dir=}, {self.config.cfg_payload.ffmpeg=})"
+                f"({self.media_file=}, {self.image_dir=}, {self.config.settings.dependencies.ffmpeg=})"
             )
         self.queued_worker = QueuedWorker(
             backend=self.backend,
@@ -589,10 +589,13 @@ class ImagesPage(BaseWizardPage):
             media_file=self.media_file,
             media_file_mi_obj=media_file_mi_obj,
             output_directory=self.image_dir,
-            total_images=self.config.cfg_payload.screen_shot_count,
-            trim=(self.config.cfg_payload.trim_start, self.config.cfg_payload.trim_end),
-            ffmpeg_path=self.config.cfg_payload.ffmpeg,
-            frame_forge_path=self.config.cfg_payload.frame_forge,
+            total_images=self.config.settings.screenshots.count,
+            trim=(
+                self.config.settings.screenshots.trim_start,
+                self.config.settings.screenshots.trim_end,
+            ),
+            ffmpeg_path=self.config.settings.dependencies.ffmpeg,
+            frame_forge_path=self.config.settings.dependencies.frame_forge,
             progress_signal=self.progress_signal_generation,
             subtitle_color=subtitle_color,
             subtitle_outline_color=subtitle_outline_color,
@@ -602,8 +605,8 @@ class ImagesPage(BaseWizardPage):
             crop_mode=crop_mode,
             script_values=script_values,
             re_sync=re_sync,
-            indexer=self.config.cfg_payload.indexer,
-            image_plugin=self.config.cfg_payload.image_plugin,
+            indexer=self.config.settings.screenshots.indexer,
+            image_plugin=self.config.settings.screenshots.image_plugin,
             source_file=self.source_file,
             source_file_mi_obj=source_file_mi_obj,
         )
@@ -620,8 +623,8 @@ class ImagesPage(BaseWizardPage):
             self.image_viewer = ImageViewer(
                 image_base_dir=self.image_dir,
                 comparison_mode=ss_mode,
-                min_required_selected_screens=self.config.cfg_payload.min_required_selected_screens,
-                max_required_selected_screens=self.config.cfg_payload.max_required_selected_screens,
+                min_required_selected_screens=self.config.settings.screenshots.min_required_selected,
+                max_required_selected_screens=self.config.settings.screenshots.max_required_selected,
                 parent=self,
             )
             self.image_viewer.show()
@@ -693,12 +696,13 @@ class ImagesPage(BaseWizardPage):
             # if generated we need to check the ss_mode to determine if these are comp images
             if (
                 generated
-                and self.config.cfg_payload.ss_mode is ScreenShotMode.BASIC_SS_GEN
+                and self.config.settings.screenshots.mode is ScreenShotMode.BASIC_SS_GEN
             ):
                 self.is_comparison_images = False
             elif (
                 generated
-                and self.config.cfg_payload.ss_mode is not ScreenShotMode.BASIC_SS_GEN
+                and self.config.settings.screenshots.mode
+                is not ScreenShotMode.BASIC_SS_GEN
             ):
                 self.is_comparison_images = True
             # if not generated we need to ask the user the type of images
@@ -735,7 +739,8 @@ class ImagesPage(BaseWizardPage):
         else:
             return (
                 ScreenShotMode.SIMPLE_SS_COMP
-                if self.config.cfg_payload.ss_mode is not ScreenShotMode.ADV_SS_COMP
+                if self.config.settings.screenshots.mode
+                is not ScreenShotMode.ADV_SS_COMP
                 else ScreenShotMode.ADV_SS_COMP
             )
 

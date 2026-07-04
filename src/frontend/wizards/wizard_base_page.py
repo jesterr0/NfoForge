@@ -17,7 +17,7 @@ from src.backend.utils.file_utilities import (
     find_largest_file_in_directory,
     generate_unique_date_name,
 )
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.dnd_factory import DNDButton, DNDToolButton
 
@@ -29,7 +29,10 @@ class BaseWizardPage(QWizardPage):
     # REQUIRED_CHILD_METHODS = ("reset_page",)
 
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow | Any"
+        self,
+        config: ConfigManager,
+        context: ProcessingContext,
+        parent: "MainWindow | Any",
     ) -> None:
         super().__init__(parent)
         # self._custom_abstract_method_check()
@@ -90,6 +93,6 @@ class DummyWizardPage(BaseWizardPage):
     """Dummy Wizard Page to hold the plugin page spot as needed"""
 
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
         super().__init__(config, context, parent)

@@ -1,33 +1,33 @@
 from pathlib import Path
 from typing import Callable
 
+from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QFrame,
-    QVBoxLayout,
-    QWidget,
-    QPushButton,
-    QLabel,
     QFormLayout,
+    QFrame,
+    QLabel,
     QLineEdit,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QSpinBox,
     QTreeWidget,
     QTreeWidgetItem,
-    QMenu,
-    QSpinBox,
-    QMessageBox,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot, QThread
-from PySide6.QtGui import QAction
 
-from src.config.config import Config
-from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.deluge import DelugeClient
-from src.backend.torrent_clients.transmission import TransmissionClient
+from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
+from src.backend.torrent_clients.transmission import TransmissionClient
+from src.config.config import ConfigManager
 from src.enums.torrent_client import TorrentClientSelection
-from src.payloads.watch_folder import WatchFolder
-from src.payloads.clients import TorrentClient
-from src.frontend.utils import build_h_line
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
+from src.frontend.utils import build_h_line
+from src.payloads.clients import TorrentClient
+from src.payloads.watch_folder import WatchFolder
 
 
 class ClientTestWorker(QThread):
@@ -216,7 +216,7 @@ class ClientListWidget(QWidget):
         TorrentClientSelection.TRANSMISSION: TransmissionClient,
     }
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -281,7 +281,8 @@ class ClientListWidget(QWidget):
         if client in self.FULL_CLIENTS and isinstance(client_info, TorrentClient):
             client_widget = ClientEdit()
             client_widget.host.setText(client_info.host)
-            client_widget.port.setValue(client_info.port)
+            if client_info.port:
+                client_widget.port.setValue(client_info.port)
             client_widget.user.setText(client_info.user)
             client_widget.password.setText(client_info.password)
             client_widget.build_widgets_from_dict(client_info.specific_params)
@@ -335,13 +336,15 @@ class ClientListWidget(QWidget):
         """Expand all parent items in the QTreeWidget"""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            item.setExpanded(True)
+            if item:
+                item.setExpanded(True)
 
     def collapse_all_items(self) -> None:
         """Collapse all parent items in the QTreeWidget"""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            item.setExpanded(False)
+            if item:
+                item.setExpanded(False)
 
     @Slot(object)
     def _test_client(self, _: TorrentClient) -> None:
@@ -349,16 +352,20 @@ class ClientListWidget(QWidget):
 
     @Slot(object, int)
     def _toggle_client(self, item: QTreeWidgetItem, column: int) -> None:
-        client_attributes: TorrentClient | WatchFolder = self.config.client_map[
-            TorrentClientSelection(item.text(column))
-        ]
+        client_attributes: TorrentClient | WatchFolder = (
+            self.config.settings.torrent_clients.by_selection()[
+                TorrentClientSelection(item.text(column))
+            ]
+        )
         client_attributes.enabled = (
             True if item.checkState(column) == Qt.CheckState.Checked else False
         )
 
     @Slot(object)
     def save_client_info(self, client: TorrentClientSelection) -> None:
-        client_attributes: TorrentClient | WatchFolder = self.config.client_map[client]
+        client_attributes: TorrentClient | WatchFolder = (
+            self.config.settings.torrent_clients.by_selection()[client]
+        )
 
         if client in self.FULL_CLIENTS and isinstance(client_attributes, TorrentClient):
             full_client_widget: ClientEdit = self._save_settings_map[client]
@@ -391,6 +398,8 @@ class ClientListWidget(QWidget):
 
         for i in range(self.tree.topLevelItemCount()):
             parent_item = self.tree.topLevelItem(i)
+            if not parent_item:
+                continue
             name = parent_item.text(0)
             check_state = parent_item.checkState(0)
             if check_state == Qt.CheckState.Checked:

@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
 from src.frontend.global_signals import GSigs
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 class TrackersPage(BaseWizardPage):
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
         super().__init__(config, context, parent)
 
@@ -31,7 +31,7 @@ class TrackersPage(BaseWizardPage):
         layout.addWidget(self.tracker_selection)
 
     def initializePage(self) -> None:
-        self.tracker_selection.add_items(self.config.tracker_map)
+        self.tracker_selection.add_items(self.config.settings.trackers.by_selection())
 
     def validatePage(self) -> bool:
         trackers = self.tracker_selection.get_selected_trackers()
@@ -45,7 +45,7 @@ class TrackersPage(BaseWizardPage):
 
         self.tracker_selection.save_tracker_info()
 
-        self.config.save_config()
+        self.config.save()
         GSigs().settings_refresh.emit()
         super().validatePage()
         return True

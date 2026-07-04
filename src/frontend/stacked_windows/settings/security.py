@@ -28,12 +28,12 @@ class SecuritySettings(BaseSettings):
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
-        payload = self.config.cfg_payload
-        self.tmdb_api_key_entry.setText(payload.tmdb_api_key)
+        payload = self.config.settings.api_keys
+        self.tmdb_api_key_entry.setText(payload.tmdb)
 
     @Slot()
     def _save_settings(self) -> None:
-        self.config.cfg_payload.tmdb_api_key = self.tmdb_api_key_entry.text().strip()
+        self.config.settings.api_keys.tmdb = self.tmdb_api_key_entry.text().strip()
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:

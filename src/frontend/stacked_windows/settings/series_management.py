@@ -23,6 +23,7 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.config.models import DynamicRangeSettings
 from src.config.tv_tokens import (
     get_tvr_episode_token,
     get_tvr_title_token,
@@ -211,7 +212,7 @@ class SeriesManagementSettings(BaseSettings):
         tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
         tracker_stacked = ResizableStackedWidget(container)
 
-        for tracker in self.config.tracker_map.keys():
+        for tracker in self.config.settings.trackers.by_selection().keys():
             if tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED:
                 continue
             tfo = TrackerFormatOverride(container)
@@ -300,7 +301,7 @@ class SeriesManagementSettings(BaseSettings):
     ) -> str:
         user_tokens = {
             k: v
-            for k, (v, ts) in self.config.cfg_payload.user_tokens.items()
+            for k, (v, ts) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(ts) is TokenSelection.FILE_TOKEN
         }
         format_str = TokenReplacer(
@@ -313,13 +314,13 @@ class SeriesManagementSettings(BaseSettings):
             file_name_mode=file_name_mode,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            releasers_name=self.config.cfg_payload.releasers_name,
+            releasers_name=self.config.settings.general.releasers_name,
             title_clean_rules=self._get_live_title_clean_rules(),
             video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
-            flat_filters=self.config.loaded_flat_filters,
+            flat_filters=self.config.plugin_registry.flat_filters,
             season_number=1,
             episode_number=1,
         )
@@ -369,35 +370,35 @@ class SeriesManagementSettings(BaseSettings):
             for tfo in w["tracker_override_map"].values():
                 tfo.blockSignals(True)
 
-        self.rename_check_box.setChecked(self.config.cfg_payload.tvr_enabled)
+        self.rename_check_box.setChecked(self.config.settings.series.enabled)
         self.replace_illegal_chars.setChecked(
-            self.config.cfg_payload.tvr_replace_illegal_chars
+            self.config.settings.series.replace_illegal_chars
         )
         self.load_combo_box(
             self.fn_colon_replace,
             ColonReplace,
-            self.config.cfg_payload.tvr_colon_replace_filename,
+            self.config.settings.series.filename_colon_replace,
         )
         self.load_combo_box(
             self.title_colon_replace,
             ColonReplace,
-            self.config.cfg_payload.tvr_colon_replace_title,
+            self.config.settings.series.title_colon_replace,
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.cfg_payload.tvr_parse_filename_attributes
+            self.config.settings.series.parse_filename_attributes
         )
 
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
-            episode_tok = get_tvr_episode_token(self.config.cfg_payload, fmt)
+            episode_tok = get_tvr_episode_token(self.config.settings.series, fmt)
             if episode_tok.strip():
                 self._update_qline_cursor_0(w["file_token"], episode_tok)
-            title_tok = get_tvr_title_token(self.config.cfg_payload, fmt)
+            title_tok = get_tvr_title_token(self.config.settings.series, fmt)
             if title_tok.strip():
                 self._update_qline_cursor_0(w["title_token"], title_tok)
 
             for idx, tracker in enumerate(w["tracker_override_map"].keys()):
-                tracker_info = self.config.tracker_map[tracker]
+                tracker_info = self.config.settings.trackers.by_selection()[tracker]
                 tfo = w["tracker_override_map"][tracker]
                 override = (tracker_info.tvr_title_overrides or {}).get(
                     fmt, TitleOverridePayload()
@@ -406,7 +407,10 @@ class SeriesManagementSettings(BaseSettings):
                 tfo.set_colon_replace(str(override.colon_replace))
                 self._update_qline_cursor_0(tfo.over_ride_format_title, override.token)
                 default_override = (
-                    self.config.tracker_map_defaults[tracker].tvr_title_overrides or {}
+                    self.config.defaults.trackers.by_selection()[
+                        tracker
+                    ].tvr_title_overrides
+                    or {}
                 ).get(fmt, TitleOverridePayload())
                 tfo.over_ride_replacement_table.set_default_rules(
                     default_override.replace_map
@@ -434,30 +438,38 @@ class SeriesManagementSettings(BaseSettings):
 
     @Slot()
     def _save_settings(self) -> None:
-        self.config.cfg_payload.tvr_enabled = self.rename_check_box.isChecked()
-        self.config.cfg_payload.tvr_replace_illegal_chars = (
+        self.config.settings.series.enabled = self.rename_check_box.isChecked()
+        self.config.settings.series.replace_illegal_chars = (
             self.replace_illegal_chars.isChecked()
         )
-        self.config.cfg_payload.tvr_colon_replace_filename = ColonReplace(
+        self.config.settings.series.filename_colon_replace = ColonReplace(
             self.fn_colon_replace.currentData()
         )
-        self.config.cfg_payload.tvr_colon_replace_title = ColonReplace(
+        self.config.settings.series.title_colon_replace = ColonReplace(
             self.title_colon_replace.currentData()
         )
-        self.config.cfg_payload.tvr_parse_filename_attributes = (
+        self.config.settings.series.parse_filename_attributes = (
             self.parse_input_file_attributes.isChecked()
         )
 
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
-            set_tvr_episode_token(self.config.cfg_payload, fmt, w["file_token"].text())
-            set_tvr_title_token(self.config.cfg_payload, fmt, w["title_token"].text())
+            set_tvr_episode_token(
+                self.config.settings.series, fmt, w["file_token"].text()
+            )
+            set_tvr_title_token(
+                self.config.settings.series, fmt, w["title_token"].text()
+            )
 
             for tracker, tfo in w["tracker_override_map"].items():
-                existing = self.config.tracker_map[tracker].tvr_title_overrides
+                existing = self.config.settings.trackers.by_selection()[
+                    tracker
+                ].tvr_title_overrides
                 if existing is None:
                     existing = {}
-                    self.config.tracker_map[tracker].tvr_title_overrides = existing
+                    self.config.settings.trackers.by_selection()[
+                        tracker
+                    ].tvr_title_overrides = existing
                 existing[fmt] = TitleOverridePayload(
                     enabled=tfo.enabled_checkbox.isChecked(),
                     colon_replace=ColonReplace(tfo.title_colon_replace.currentData()),
@@ -468,26 +480,26 @@ class SeriesManagementSettings(BaseSettings):
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
-        self.rename_check_box.setChecked(self.config.cfg_payload_defaults.tvr_enabled)
+        self.rename_check_box.setChecked(self.config.defaults.series.enabled)
         self.replace_illegal_chars.setChecked(
-            self.config.cfg_payload_defaults.tvr_replace_illegal_chars
+            self.config.defaults.series.replace_illegal_chars
         )
         self.fn_colon_replace.setCurrentIndex(
-            self.config.cfg_payload_defaults.tvr_colon_replace_filename.value - 1
+            self.config.defaults.series.filename_colon_replace.value - 1
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.cfg_payload_defaults.tvr_parse_filename_attributes
+            self.config.defaults.series.parse_filename_attributes
         )
         self.title_colon_replace.setCurrentIndex(
-            self.config.cfg_payload_defaults.tvr_colon_replace_title.value - 1
+            self.config.defaults.series.title_colon_replace.value - 1
         )
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
             w["file_token"].setText(
-                get_tvr_episode_token(self.config.cfg_payload_defaults, fmt)
+                get_tvr_episode_token(self.config.defaults.series, fmt)
             )
             w["title_token"].setText(
-                get_tvr_title_token(self.config.cfg_payload_defaults, fmt)
+                get_tvr_title_token(self.config.defaults.series, fmt)
             )
             self._apply_override_defaults(fmt)
         self.token_table.reset()
@@ -496,7 +508,10 @@ class SeriesManagementSettings(BaseSettings):
         w = self._format_widgets[fmt]
         for tracker, tfo in w["tracker_override_map"].items():
             default_override = (
-                self.config.tracker_map_defaults[tracker].tvr_title_overrides or {}
+                self.config.defaults.trackers.by_selection()[
+                    tracker
+                ].tvr_title_overrides
+                or {}
             ).get(fmt, TitleOverridePayload())
             tfo.enabled_checkbox.setChecked(default_override.enabled)
             tfo.set_colon_replace(str(default_override.colon_replace))
@@ -541,13 +556,15 @@ class SeriesManagementSettings(BaseSettings):
         if "title_clean_rules" in data:
             self._live_title_clean_rules = data["title_clean_rules"]
         if "video_dynamic_range" in data:
-            self._live_video_dynamic_range = data["video_dynamic_range"]
+            self._live_video_dynamic_range = DynamicRangeSettings(
+                **data["video_dynamic_range"]
+            )
         self._update_all_examples()
 
     def _get_file_tokens(self) -> list[TokenType]:
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
-            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (_, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         ]
         return sorted(Tokens().get_token_objects(FileToken)) + user_tokens
@@ -556,14 +573,14 @@ class SeriesManagementSettings(BaseSettings):
         return (
             self._live_title_clean_rules
             if self._live_title_clean_rules is not None
-            else self.config.cfg_payload.title_clean_rules
+            else self.config.settings.global_management.title_clean_rules
         )
 
-    def _get_live_video_dynamic_range(self) -> dict:
+    def _get_live_video_dynamic_range(self) -> DynamicRangeSettings:
         return (
             self._live_video_dynamic_range
             if self._live_video_dynamic_range is not None
-            else self.config.cfg_payload.video_dynamic_range
+            else self.config.settings.global_management.video_dynamic_range
         )
 
     @staticmethod

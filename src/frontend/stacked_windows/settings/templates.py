@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.context.factory import create_processing_context
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
@@ -193,7 +194,10 @@ class TemplatesSettings(BaseSettings):
         sandbox_toggle_layout.addWidget(self.sandbox_enable_prompt_tokens)
 
         # temporary context for template preview in settings
-        self.temp_preview_context = self.config.create_processing_context()
+        self.temp_preview_context = create_processing_context(
+            self.config.settings,
+            self.config.plugin_registry.plugins,
+        )
 
         self.template_selector = TemplateSelector(
             config=self.config,
@@ -284,16 +288,16 @@ class TemplatesSettings(BaseSettings):
 
     @Slot()
     def _load_saved_settings(self) -> None:
-        payload = self.config.cfg_payload
-        block_color = QColor(self.config.cfg_payload.block_syntax_color)
+        payload = self.config.settings.templates
+        block_color = QColor(self.config.settings.templates.block_syntax_color)
         self._update_block_entry_text_color(block_color)
         self.block_syntax_color.update_color(block_color)
 
-        variable_color = QColor(self.config.cfg_payload.variable_syntax_color)
+        variable_color = QColor(self.config.settings.templates.variable_syntax_color)
         self._update_variable_entry_text_color(variable_color)
         self.variable_syntax_color.update_color(variable_color)
 
-        comment_color = QColor(self.config.cfg_payload.comment_syntax_color)
+        comment_color = QColor(self.config.settings.templates.comment_syntax_color)
         self._update_comment_entry_text_color(comment_color)
         self.comment_syntax_color.update_color(comment_color)
 
@@ -321,23 +325,27 @@ class TemplatesSettings(BaseSettings):
         if not self._save_inputs_valid():
             return
 
-        self.config.cfg_payload.block_syntax_color = (
+        self.config.settings.templates.block_syntax_color = (
             self.block_syntax_color.get_hex_color()
         )
-        self.config.cfg_payload.variable_syntax_color = (
+        self.config.settings.templates.variable_syntax_color = (
             self.variable_syntax_color.get_hex_color()
         )
-        self.config.cfg_payload.comment_syntax_color = (
+        self.config.settings.templates.comment_syntax_color = (
             self.comment_syntax_color.get_hex_color()
         )
 
-        self.config.cfg_payload.trim_blocks = self.trim_blocks_toggle.isChecked()
-        self.config.cfg_payload.lstrip_blocks = self.lstrip_blocks_toggle.isChecked()
-        self.config.cfg_payload.newline_sequence = self.newline_sequence.currentText()
-        self.config.cfg_payload.keep_trailing_newline = (
+        self.config.settings.templates.trim_blocks = self.trim_blocks_toggle.isChecked()
+        self.config.settings.templates.lstrip_blocks = (
+            self.lstrip_blocks_toggle.isChecked()
+        )
+        self.config.settings.templates.newline_sequence = (
+            self.newline_sequence.currentText()
+        )
+        self.config.settings.templates.keep_trailing_newline = (
             self.keep_trailing_newline_toggle.isChecked()
         )
-        self.config.cfg_payload.enable_sandbox_prompt_tokens = (
+        self.config.settings.templates.enable_sandbox_prompt_tokens = (
             self.sandbox_enable_prompt_tokens.isChecked()
         )
         self.update_jinja_engine_settings()
@@ -360,7 +368,7 @@ class TemplatesSettings(BaseSettings):
             cur_tracker = TrackerSelection(tracker)
             if cur_tracker is TrackerSelection.PASS_THE_POPCORN:
                 ptp_template = self.template_selector.backend.read_template(
-                    self.config.cfg_payload.ptp_tracker.nfo_template
+                    self.config.settings.trackers.pass_the_popcorn.nfo_template
                 )
                 if ptp_template:
                     ptp_match_rule = r"^\n*?\s*?\{\{\s?media_info\s?\}\}\n*?\s*\{\{\s?screen_shots\s?\}\}"
@@ -386,7 +394,9 @@ class TemplatesSettings(BaseSettings):
                 TrackerSelection.ONLY_ENCODES,
             ):
                 unit3d_template = self.template_selector.backend.read_template(
-                    self.config.tracker_map[cur_tracker].nfo_template
+                    self.config.settings.trackers.by_selection()[
+                        cur_tracker
+                    ].nfo_template
                 )
                 if unit3d_template:
                     rf_match_rule = r"\{\{\s?screen_shots\s?\}\}"
@@ -426,34 +436,34 @@ class TemplatesSettings(BaseSettings):
         return True
 
     def apply_defaults(self) -> None:
-        block_color = QColor(self.config.cfg_payload_defaults.block_syntax_color)
+        block_color = QColor(self.config.defaults.templates.block_syntax_color)
         self._update_block_entry_text_color(block_color)
         self.block_syntax_color.update_color(block_color)
 
-        variable_color = QColor(self.config.cfg_payload_defaults.variable_syntax_color)
+        variable_color = QColor(self.config.defaults.templates.variable_syntax_color)
         self._update_variable_entry_text_color(variable_color)
         self.variable_syntax_color.update_color(variable_color)
 
-        comment_color = QColor(self.config.cfg_payload_defaults.comment_syntax_color)
+        comment_color = QColor(self.config.defaults.templates.comment_syntax_color)
         self._update_comment_entry_text_color(comment_color)
         self.comment_syntax_color.update_color(comment_color)
 
-        self.trim_blocks_toggle.setChecked(self.config.cfg_payload_defaults.trim_blocks)
+        self.trim_blocks_toggle.setChecked(self.config.defaults.templates.trim_blocks)
         self.lstrip_blocks_toggle.setChecked(
-            self.config.cfg_payload_defaults.lstrip_blocks
+            self.config.defaults.templates.lstrip_blocks
         )
         new_line_idx = self.newline_sequence.findText(
-            self.config.cfg_payload_defaults.newline_sequence
+            self.config.defaults.templates.newline_sequence
         )
         if new_line_idx > -1:
             self.newline_sequence.setCurrentIndex(new_line_idx)
         else:
             self.newline_sequence.setCurrentIndex(1)
         self.keep_trailing_newline_toggle.setChecked(
-            self.config.cfg_payload_defaults.keep_trailing_newline
+            self.config.defaults.templates.keep_trailing_newline
         )
         self.sandbox_enable_prompt_tokens.setChecked(
-            self.config.cfg_payload_defaults.enable_sandbox_prompt_tokens
+            self.config.defaults.templates.enable_sandbox_prompt_tokens
         )
         self.update_jinja_engine_settings()
 

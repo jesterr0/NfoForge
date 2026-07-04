@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.main_window import kill_child_processes
 from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
 from src.frontend.custom_widgets.multi_prompt_dialog import MultiPromptDialog
@@ -31,7 +31,7 @@ from src.version import __version__, program_name
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, config: Config):
+    def __init__(self, config: ConfigManager):
         super().__init__()
 
         # setup window
@@ -47,8 +47,8 @@ class MainWindow(QMainWindow):
         self.config = config
         self.restore_window_settings()
         self.status_profile_label = QLabel(
-            self.config.cfg_payload.wizard_page
-            if self.config.cfg_payload.wizard_page
+            self.config.settings.plugins.wizard_page
+            if self.config.settings.plugins.wizard_page
             else "",
             self,
         )
@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
 
         # setup scaling manager for Electron-like zoom functionality
         self.scaling_manager = FontScalingManager(
-            initial_scale_factor=config.cfg_payload.ui_scale_factor, parent=self
+            initial_scale_factor=config.settings.general.ui_scale_factor, parent=self
         )
         # setup shortcuts
         self.scaling_manager.setup_shortcuts(self)
@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
     @Slot(float)
     def _on_scaling_changed(self, scale_factor: float) -> None:
         """Save the new scaling factor to config when it changes."""
-        self.config.cfg_payload.ui_scale_factor = scale_factor
+        self.config.settings.general.ui_scale_factor = scale_factor
 
         # emit global signal to sync UI elements in general settings
         GSigs().scale_factor_changed.emit(scale_factor)
@@ -145,7 +145,7 @@ class MainWindow(QMainWindow):
     def _save_config_debounced(self) -> None:
         """Debounced config save method to prevent excessive config writes."""
         try:
-            self.config.save_config()
+            self.config.save()
             # show brief status message to indicate save
             GSigs().main_window_update_status_tip.emit("Config saved", 1500)
         except Exception as e:
@@ -154,22 +154,22 @@ class MainWindow(QMainWindow):
 
     def _check_suffix(self) -> None:
         title = self.default_window_title
-        if self.config.cfg_payload.ui_suffix:
-            if len(self.config.cfg_payload.ui_suffix) > 30:
-                self.config.cfg_payload.ui_suffix = (
-                    f"{self.config.cfg_payload.ui_suffix[0:31]}..."
+        if self.config.settings.general.ui_suffix:
+            if len(self.config.settings.general.ui_suffix) > 30:
+                self.config.settings.general.ui_suffix = (
+                    f"{self.config.settings.general.ui_suffix[0:31]}..."
                 )
-            title = f"{title} - {self.config.cfg_payload.ui_suffix}"
+            title = f"{title} - {self.config.settings.general.ui_suffix}"
         self.setWindowTitle(title)
 
     def _check_dependencies(self) -> None:
-        if self.config.cfg_payload.screenshots_enabled:
-            ss_mode = self.config.cfg_payload.ss_mode
+        if self.config.settings.screenshots.enabled:
+            ss_mode = self.config.settings.screenshots.mode
             if ss_mode in (
                 ScreenShotMode.BASIC_SS_GEN,
                 ScreenShotMode.SIMPLE_SS_COMP,
             ):
-                ffmpeg = self.config.cfg_payload.ffmpeg
+                ffmpeg = self.config.settings.dependencies.ffmpeg
                 if not ffmpeg or (ffmpeg and not ffmpeg.exists()):
                     QMessageBox.critical(
                         self,
@@ -180,14 +180,14 @@ class MainWindow(QMainWindow):
                             "generation until executable path is provided."
                         ),
                     )
-                    self.config.cfg_payload.screenshots_enabled = False
-                    self.config.save_config()
+                    self.config.settings.screenshots.enabled = False
+                    self.config.save()
                     self.settings.re_load_settings.emit()
                     self.stacked_widget.setCurrentWidget(self.settings)
                     GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
             elif ss_mode == ScreenShotMode.ADV_SS_COMP:
-                frame_forge = self.config.cfg_payload.frame_forge
+                frame_forge = self.config.settings.dependencies.frame_forge
                 if not frame_forge or (frame_forge and not frame_forge.exists()):
                     QMessageBox.critical(
                         self,
@@ -198,8 +198,8 @@ class MainWindow(QMainWindow):
                             "generation until executable path is provided."
                         ),
                     )
-                    self.config.cfg_payload.screenshots_enabled = False
-                    self.config.save_config()
+                    self.config.settings.screenshots.enabled = False
+                    self.config.save()
                     self.settings.re_load_settings.emit()
                     self.stacked_widget.setCurrentWidget(self.settings)
                     GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
@@ -210,15 +210,15 @@ class MainWindow(QMainWindow):
 
     def _setup_logger(self) -> None:
         """Ran by threaded worker"""
-        LOG.set_log_level(self.config.cfg_payload.log_level)
-        LOG.clean_up_logs(self.config.cfg_payload.log_total)
+        LOG.set_log_level(self.config.settings.general.log_level)
+        LOG.clean_up_logs(self.config.settings.general.log_total)
 
     def _delayed_start_up_tasks(self) -> None:
         """Any task ran inside of this method should be triggered via a QTimer.singleShot"""
         QTimer.singleShot(3500, self.display_temp_directory_size)
 
     def display_temp_directory_size(self) -> None:
-        size = get_dir_size(self.config.cfg_payload.working_dir)
+        size = get_dir_size(self.config.settings.general.working_dir)
         if size <= 0:
             return
         GSigs().main_window_update_status_tip.emit(
@@ -266,11 +266,11 @@ class MainWindow(QMainWindow):
 
     def save_window_settings(self) -> None:
         geometry = str(self.saveGeometry().toBase64().data(), encoding="utf-8")
-        self.config.program_conf.main_window_position = geometry
-        self.config.save_program_conf()
+        self.config.program.main_window_position = geometry
+        self.config.save_program()
 
     def restore_window_settings(self) -> None:
-        geometry = self.config.program_conf.main_window_position
+        geometry = self.config.program.main_window_position
         if geometry:
             self.restoreGeometry(QByteArray.fromBase64(geometry.encode("utf-8")))
 

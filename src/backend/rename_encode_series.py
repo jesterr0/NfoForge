@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Any
 
 from src.backend.rename_encode import RenameEncodeBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
+from src.config.models import DynamicRangeSettings
 from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.payloads.media_inputs import MediaInputPayload
@@ -27,7 +27,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         season_num: int,
         episode_num: int,
         title_clean_rules: list[tuple[str, str]] | None,
-        video_dynamic_range: dict[str, Any] | None,
+        video_dynamic_range: DynamicRangeSettings | None,
         user_tokens: dict[str, str] | None,
         episode_format: EpisodeFormat,
     ) -> Path | None:

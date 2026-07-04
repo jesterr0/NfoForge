@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
@@ -27,7 +27,9 @@ from src.frontend.wizards.media_search import MediaSearch
 class SandboxMediaInputPage(QWizardPage):
     """Wrapper page for MediaInput in sandbox mode"""
 
-    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
+    def __init__(
+        self, config: ConfigManager, context: ProcessingContext, parent=None
+    ) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Input")
         self.setSubTitle("Select your media file or directory")
@@ -55,7 +57,9 @@ class SandboxMediaInputPage(QWizardPage):
 class SandboxMediaSearchPage(QWizardPage):
     """Wrapper page for MediaSearch in sandbox mode"""
 
-    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
+    def __init__(
+        self, config: ConfigManager, context: ProcessingContext, parent=None
+    ) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Search")
         self.setSubTitle("Search and select your media")
@@ -104,7 +108,9 @@ class SandboxMediaSearchPage(QWizardPage):
 class SandboxSeriesMapperPage(QWizardPage):
     """Page for series episode mapping"""
 
-    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
+    def __init__(
+        self, config: ConfigManager, context: ProcessingContext, parent=None
+    ) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Series Mapping")
         self.setSubTitle("Map your files to episodes")
@@ -152,7 +158,9 @@ class SandboxWizard(QWizard):
     PAGE_SEARCH = 1
     PAGE_SERIES_MAPPER = 2
 
-    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
+    def __init__(
+        self, config: ConfigManager, context: ProcessingContext, parent=None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Sandbox Input")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
@@ -221,7 +229,9 @@ class SandboxWizard(QWizard):
 class SandboxMainWindow(QMainWindow):
     """Main window for sandbox input with built-in status bar to mimic NfoForge's main window"""
 
-    def __init__(self, config: Config, context: ProcessingContext, parent=None) -> None:
+    def __init__(
+        self, config: ConfigManager, context: ProcessingContext, parent=None
+    ) -> None:
         super().__init__(parent)
         self.setWindowFlags(
             Qt.WindowType.Dialog

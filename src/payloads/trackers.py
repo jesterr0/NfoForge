@@ -50,7 +50,7 @@ class TrackerInfo:
 
 @dataclass(slots=True)
 class MoreThanTVInfo(TrackerInfo):
-    anonymous: int = 0
+    anonymous: bool = False
     api_key: str | None = None
     username: str | None = None
     password: str | None = None
@@ -74,12 +74,12 @@ class TorrentLeechInfo(TrackerInfo):
 
 @dataclass(slots=True)
 class BeyondHDInfo(TrackerInfo):
-    anonymous: int = 0
+    anonymous: bool = False
     api_key: str | None = None
     rss_key: str | None = None
     promo: BHDPromo = BHDPromo.NO_PROMO
     live_release: BHDLiveRelease = BHDLiveRelease.LIVE
-    internal: int = 0
+    internal: bool = False
     image_width: int = 350
 
 
@@ -95,95 +95,95 @@ class PassThePopcornInfo(TrackerInfo):
 @dataclass(slots=True)
 class ReelFlixInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    stream_optimized: int = 0
-    opt_in_to_mod_queue: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    stream_optimized: bool = False
+    opt_in_to_mod_queue: bool = False
     image_width: int = 350
 
     # below is only available to staff and internal users
-    featured: int = 0
-    free: int = 0
-    double_up: int = 0
-    sticky: int = 0
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
 
 
 @dataclass(slots=True)
 class AitherInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    stream_optimized: int = 0
-    opt_in_to_mod_queue: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    stream_optimized: bool = False
+    opt_in_to_mod_queue: bool = False
     image_width: int = 350
 
     # below is only available to staff and internal users
-    featured: int = 0
-    free: int = 0
-    double_up: int = 0
-    sticky: int = 0
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
 
 
 @dataclass(slots=True)
 class HunoInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    stream_optimized: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    stream_optimized: bool = False
     image_width: int = 350
 
 
 @dataclass(slots=True)
 class LSTInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    mod_queue_opt_in: int = 0
-    draft_queue_opt_in: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    mod_queue_opt_in: bool = False
+    draft_queue_opt_in: bool = False
     image_width: int = 500
 
     # below is only available to staff and internal users
-    featured: int = 0
-    free: int = 0
-    double_up: int = 0
-    sticky: int = 0
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
 
 
 @dataclass(slots=True)
 class DarkPeersInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
     image_width: int = 500
 
 
 @dataclass(slots=True)
 class ShareIslandInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    opt_in_to_mod_queue: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    opt_in_to_mod_queue: bool = False
     image_width: int = 500
 
 
 @dataclass(slots=True)
 class UploadCXInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
     image_width: int = 500
 
 
 @dataclass(slots=True)
 class OnlyEncodesInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
     image_width: int = 500

@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 @dataclass(slots=True)
 class TorrentClient:
     enabled: bool = False
-    host: str = None
-    port: int = None
-    user: str = None
-    password: str = None
-    specific_params: dict = field(default=dict)
+    host: str | None = None
+    port: int | None = None
+    user: str | None = None
+    password: str | None = None
+    specific_params: dict[str, str] = field(default_factory=dict)

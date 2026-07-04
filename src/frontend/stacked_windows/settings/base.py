@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Type
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 
 if TYPE_CHECKING:
-    from src.frontend.windows.main_window import MainWindow
     from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
 
 
 class BaseSettings(QWidget):
@@ -33,7 +33,7 @@ class BaseSettings(QWidget):
     REQUIRED_CHILD_METHODS = ("apply_defaults",)
 
     def __init__(
-        self, config: Config, main_window: "MainWindow", parent: "Settings"
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
     ) -> None:
         super().__init__(parent)
         self._custom_abstract_method_check()

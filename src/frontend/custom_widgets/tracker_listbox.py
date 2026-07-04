@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Type
 
-from PySide6.QtCore import QEvent, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.trackers.morethantv import MTVSourceOrigin
@@ -35,7 +35,7 @@ class TrackerEditBase(QFrame):
     load_data = Signal()
     save_data = Signal()
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -139,7 +139,7 @@ class TrackerEditBase(QFrame):
 
 
 class MTVTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         anonymous_lbl = QLabel("Anonymous", self)
@@ -194,7 +194,7 @@ class MTVTrackerEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.mtv_tracker
+        tracker_data = self.config.settings.trackers.more_than_tv
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -225,38 +225,48 @@ class MTVTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.mtv_tracker.upload_enabled = (
+        self.config.settings.trackers.more_than_tv.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.mtv_tracker.announce_url = (
+        self.config.settings.trackers.more_than_tv.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.mtv_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.mtv_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.mtv_tracker.anonymous = int(self.anonymous.isChecked())
-        self.config.cfg_payload.mtv_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.mtv_tracker.username = self.username.text().strip()
-        self.config.cfg_payload.mtv_tracker.password = self.password.text().strip()
-        self.config.cfg_payload.mtv_tracker.totp = self.totp.text().strip()
-        self.config.cfg_payload.mtv_tracker.group_description = (
+        self.config.settings.trackers.more_than_tv.comments = (
+            self.comments.text().strip()
+        )
+        self.config.settings.trackers.more_than_tv.source = self.source.text().strip()
+        self.config.settings.trackers.more_than_tv.anonymous = (
+            self.anonymous.isChecked()
+        )
+        self.config.settings.trackers.more_than_tv.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.more_than_tv.username = (
+            self.username.text().strip()
+        )
+        self.config.settings.trackers.more_than_tv.password = (
+            self.password.text().strip()
+        )
+        self.config.settings.trackers.more_than_tv.totp = self.totp.text().strip()
+        self.config.settings.trackers.more_than_tv.group_description = (
             self.group_description.text().strip()
         )
-        self.config.cfg_payload.mtv_tracker.additional_tags = (
+        self.config.settings.trackers.more_than_tv.additional_tags = (
             self.additional_tags.text().strip()
         )
-        self.config.cfg_payload.mtv_tracker.source_origin = MTVSourceOrigin(
+        self.config.settings.trackers.more_than_tv.source_origin = MTVSourceOrigin(
             self.source_origin.currentData()
         )
-        self.config.cfg_payload.mtv_tracker.image_width = self.image_width.value()
+        self.config.settings.trackers.more_than_tv.image_width = (
+            self.image_width.value()
+        )
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.mtv_tracker.column_s = col_s
-            self.config.cfg_payload.mtv_tracker.column_space = col_space
-            self.config.cfg_payload.mtv_tracker.row_space = row_space
+            self.config.settings.trackers.more_than_tv.column_s = col_s
+            self.config.settings.trackers.more_than_tv.column_space = col_space
+            self.config.settings.trackers.more_than_tv.row_space = row_space
 
 
 class TLTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         username_lbl = QLabel("Username", self)
@@ -278,7 +288,7 @@ class TLTrackerEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.tl_tracker
+        tracker_data = self.config.settings.trackers.torrent_leech
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -302,31 +312,37 @@ class TLTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.tl_tracker.upload_enabled = (
+        self.config.settings.trackers.torrent_leech.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.tl_tracker.announce_url = (
+        self.config.settings.trackers.torrent_leech.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.tl_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.tl_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.tl_tracker.username = self.username.text().strip()
-        self.config.cfg_payload.tl_tracker.password = self.password.text().strip()
-        self.config.cfg_payload.tl_tracker.torrent_passkey = (
+        self.config.settings.trackers.torrent_leech.comments = (
+            self.comments.text().strip()
+        )
+        self.config.settings.trackers.torrent_leech.source = self.source.text().strip()
+        self.config.settings.trackers.torrent_leech.username = (
+            self.username.text().strip()
+        )
+        self.config.settings.trackers.torrent_leech.password = (
+            self.password.text().strip()
+        )
+        self.config.settings.trackers.torrent_leech.torrent_passkey = (
             self.torrent_passkey.text().strip()
         )
-        self.config.cfg_payload.tl_tracker.alt_2_fa_token = (
+        self.config.settings.trackers.torrent_leech.alt_2_fa_token = (
             self.alt_2_fa_token.text().strip()
         )
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.tl_tracker.column_s = col_s
-            self.config.cfg_payload.tl_tracker.column_space = col_space
-            self.config.cfg_payload.tl_tracker.row_space = row_space
+            self.config.settings.trackers.torrent_leech.column_s = col_s
+            self.config.settings.trackers.torrent_leech.column_space = col_space
+            self.config.settings.trackers.torrent_leech.row_space = row_space
 
 
 class BHDTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         anonymous_lbl = QLabel("Anonymous", self)
@@ -366,7 +382,7 @@ class BHDTrackerEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.bhd_tracker
+        tracker_data = self.config.settings.trackers.beyond_hd
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -391,32 +407,34 @@ class BHDTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.bhd_tracker.upload_enabled = (
+        self.config.settings.trackers.beyond_hd.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.bhd_tracker.announce_url = (
+        self.config.settings.trackers.beyond_hd.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.bhd_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.bhd_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.bhd_tracker.anonymous = int(self.anonymous.isChecked())
-        self.config.cfg_payload.bhd_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.bhd_tracker.rss_key = self.rss_key.text().strip()
-        self.config.cfg_payload.bhd_tracker.promo = BHDPromo(self.promo.currentData())
-        self.config.cfg_payload.bhd_tracker.live_release = BHDLiveRelease(
+        self.config.settings.trackers.beyond_hd.comments = self.comments.text().strip()
+        self.config.settings.trackers.beyond_hd.source = self.source.text().strip()
+        self.config.settings.trackers.beyond_hd.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.beyond_hd.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.beyond_hd.rss_key = self.rss_key.text().strip()
+        self.config.settings.trackers.beyond_hd.promo = BHDPromo(
+            self.promo.currentData()
+        )
+        self.config.settings.trackers.beyond_hd.live_release = BHDLiveRelease(
             self.live_release.currentData()
         )
-        self.config.cfg_payload.bhd_tracker.internal = int(self.internal.isChecked())
-        self.config.cfg_payload.bhd_tracker.image_width = self.image_width.value()
+        self.config.settings.trackers.beyond_hd.internal = self.internal.isChecked()
+        self.config.settings.trackers.beyond_hd.image_width = self.image_width.value()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.bhd_tracker.column_s = col_s
-            self.config.cfg_payload.bhd_tracker.column_space = col_space
-            self.config.cfg_payload.bhd_tracker.row_space = row_space
+            self.config.settings.trackers.beyond_hd.column_s = col_s
+            self.config.settings.trackers.beyond_hd.column_space = col_space
+            self.config.settings.trackers.beyond_hd.row_space = row_space
 
 
 class PTPTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_user_lbl = QLabel("API User", self)
@@ -456,7 +474,7 @@ class PTPTrackerEdit(TrackerEditBase):
             self.screen_shot_settings.column_space_spinbox.setDisabled(True)
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.ptp_tracker
+        tracker_data = self.config.settings.trackers.pass_the_popcorn
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -477,28 +495,40 @@ class PTPTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.ptp_tracker.upload_enabled = (
+        self.config.settings.trackers.pass_the_popcorn.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.ptp_tracker.announce_url = (
+        self.config.settings.trackers.pass_the_popcorn.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.ptp_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.ptp_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.ptp_tracker.api_user = self.api_user.text().strip()
-        self.config.cfg_payload.ptp_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.ptp_tracker.username = self.username.text().strip()
-        self.config.cfg_payload.ptp_tracker.password = self.password.text().strip()
-        self.config.cfg_payload.ptp_tracker.totp = self.totp.text().strip()
+        self.config.settings.trackers.pass_the_popcorn.comments = (
+            self.comments.text().strip()
+        )
+        self.config.settings.trackers.pass_the_popcorn.source = (
+            self.source.text().strip()
+        )
+        self.config.settings.trackers.pass_the_popcorn.api_user = (
+            self.api_user.text().strip()
+        )
+        self.config.settings.trackers.pass_the_popcorn.api_key = (
+            self.api_key.text().strip()
+        )
+        self.config.settings.trackers.pass_the_popcorn.username = (
+            self.username.text().strip()
+        )
+        self.config.settings.trackers.pass_the_popcorn.password = (
+            self.password.text().strip()
+        )
+        self.config.settings.trackers.pass_the_popcorn.totp = self.totp.text().strip()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.ptp_tracker.column_s = col_s
-            self.config.cfg_payload.ptp_tracker.column_space = col_space
-            self.config.cfg_payload.ptp_tracker.row_space = row_space
+            self.config.settings.trackers.pass_the_popcorn.column_s = col_s
+            self.config.settings.trackers.pass_the_popcorn.column_space = col_space
+            self.config.settings.trackers.pass_the_popcorn.row_space = row_space
 
 
 class RFTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -563,7 +593,7 @@ class RFTrackerEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.rf_tracker
+        tracker_data = self.config.settings.trackers.reelflix
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -590,40 +620,40 @@ class RFTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.rf_tracker.upload_enabled = (
+        self.config.settings.trackers.reelflix.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.rf_tracker.announce_url = (
+        self.config.settings.trackers.reelflix.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.rf_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.rf_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.rf_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.rf_tracker.anonymous = int(self.anonymous.isChecked())
-        self.config.cfg_payload.rf_tracker.internal = int(self.internal.isChecked())
-        self.config.cfg_payload.rf_tracker.personal_release = int(
+        self.config.settings.trackers.reelflix.comments = self.comments.text().strip()
+        self.config.settings.trackers.reelflix.source = self.source.text().strip()
+        self.config.settings.trackers.reelflix.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.reelflix.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.reelflix.internal = self.internal.isChecked()
+        self.config.settings.trackers.reelflix.personal_release = (
             self.personal_release.isChecked()
         )
-        self.config.cfg_payload.rf_tracker.stream_optimized = int(
+        self.config.settings.trackers.reelflix.stream_optimized = (
             self.stream_optimized.isChecked()
         )
-        self.config.cfg_payload.rf_tracker.opt_in_to_mod_queue = int(
+        self.config.settings.trackers.reelflix.opt_in_to_mod_queue = (
             self.opt_in_mod_queue.isChecked()
         )
-        self.config.cfg_payload.rf_tracker.image_width = self.image_width.value()
-        self.config.cfg_payload.rf_tracker.featured = int(self.featured.isChecked())
-        self.config.cfg_payload.rf_tracker.free = int(self.free.isChecked())
-        self.config.cfg_payload.rf_tracker.double_up = int(self.double_up.isChecked())
-        self.config.cfg_payload.rf_tracker.sticky = int(self.sticky.isChecked())
+        self.config.settings.trackers.reelflix.image_width = self.image_width.value()
+        self.config.settings.trackers.reelflix.featured = self.featured.isChecked()
+        self.config.settings.trackers.reelflix.free = self.free.isChecked()
+        self.config.settings.trackers.reelflix.double_up = self.double_up.isChecked()
+        self.config.settings.trackers.reelflix.sticky = self.sticky.isChecked()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.rf_tracker.column_s = col_s
-            self.config.cfg_payload.rf_tracker.column_space = col_space
-            self.config.cfg_payload.rf_tracker.row_space = row_space
+            self.config.settings.trackers.reelflix.column_s = col_s
+            self.config.settings.trackers.reelflix.column_space = col_space
+            self.config.settings.trackers.reelflix.row_space = row_space
 
 
 class AitherTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -688,7 +718,7 @@ class AitherTrackerEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.aither_tracker
+        tracker_data = self.config.settings.trackers.aither
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -715,44 +745,40 @@ class AitherTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.aither_tracker.upload_enabled = (
+        self.config.settings.trackers.aither.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.aither_tracker.announce_url = (
+        self.config.settings.trackers.aither.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.aither_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.aither_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.aither_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.aither_tracker.anonymous = int(
-            self.anonymous.isChecked()
-        )
-        self.config.cfg_payload.aither_tracker.internal = int(self.internal.isChecked())
-        self.config.cfg_payload.aither_tracker.personal_release = int(
+        self.config.settings.trackers.aither.comments = self.comments.text().strip()
+        self.config.settings.trackers.aither.source = self.source.text().strip()
+        self.config.settings.trackers.aither.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.aither.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.aither.internal = self.internal.isChecked()
+        self.config.settings.trackers.aither.personal_release = (
             self.personal_release.isChecked()
         )
-        self.config.cfg_payload.aither_tracker.stream_optimized = int(
+        self.config.settings.trackers.aither.stream_optimized = (
             self.stream_optimized.isChecked()
         )
-        self.config.cfg_payload.aither_tracker.opt_in_to_mod_queue = int(
+        self.config.settings.trackers.aither.opt_in_to_mod_queue = (
             self.opt_in_mod_queue.isChecked()
         )
-        self.config.cfg_payload.aither_tracker.image_width = self.image_width.value()
-        self.config.cfg_payload.aither_tracker.featured = int(self.featured.isChecked())
-        self.config.cfg_payload.aither_tracker.free = int(self.free.isChecked())
-        self.config.cfg_payload.aither_tracker.double_up = int(
-            self.double_up.isChecked()
-        )
-        self.config.cfg_payload.aither_tracker.sticky = int(self.sticky.isChecked())
+        self.config.settings.trackers.aither.image_width = self.image_width.value()
+        self.config.settings.trackers.aither.featured = self.featured.isChecked()
+        self.config.settings.trackers.aither.free = self.free.isChecked()
+        self.config.settings.trackers.aither.double_up = self.double_up.isChecked()
+        self.config.settings.trackers.aither.sticky = self.sticky.isChecked()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.aither_tracker.column_s = col_s
-            self.config.cfg_payload.aither_tracker.column_space = col_space
-            self.config.cfg_payload.aither_tracker.row_space = row_space
+            self.config.settings.trackers.aither.column_s = col_s
+            self.config.settings.trackers.aither.column_space = col_space
+            self.config.settings.trackers.aither.row_space = row_space
 
 
 class HunoTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -780,7 +806,7 @@ class HunoTrackerEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.huno_tracker
+        tracker_data = self.config.settings.trackers.huno
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -801,30 +827,30 @@ class HunoTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.huno_tracker.upload_enabled = (
+        self.config.settings.trackers.huno.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.huno_tracker.announce_url = (
+        self.config.settings.trackers.huno.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.huno_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.huno_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.huno_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.huno_tracker.anonymous = int(self.anonymous.isChecked())
-        self.config.cfg_payload.huno_tracker.internal = int(self.internal.isChecked())
-        self.config.cfg_payload.huno_tracker.stream_optimized = int(
+        self.config.settings.trackers.huno.comments = self.comments.text().strip()
+        self.config.settings.trackers.huno.source = self.source.text().strip()
+        self.config.settings.trackers.huno.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.huno.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.huno.internal = self.internal.isChecked()
+        self.config.settings.trackers.huno.stream_optimized = (
             self.stream_optimized.isChecked()
         )
-        self.config.cfg_payload.huno_tracker.image_width = self.image_width.value()
+        self.config.settings.trackers.huno.image_width = self.image_width.value()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.huno_tracker.column_s = col_s
-            self.config.cfg_payload.huno_tracker.column_space = col_space
-            self.config.cfg_payload.huno_tracker.row_space = row_space
+            self.config.settings.trackers.huno.column_s = col_s
+            self.config.settings.trackers.huno.column_space = col_space
+            self.config.settings.trackers.huno.row_space = row_space
 
 
 class LSTTrackerEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -889,7 +915,7 @@ class LSTTrackerEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.lst_tracker
+        tracker_data = self.config.settings.trackers.lst
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -916,40 +942,40 @@ class LSTTrackerEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.lst_tracker.upload_enabled = (
+        self.config.settings.trackers.lst.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.lst_tracker.announce_url = (
+        self.config.settings.trackers.lst.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.lst_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.lst_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.lst_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.lst_tracker.anonymous = int(self.anonymous.isChecked())
-        self.config.cfg_payload.lst_tracker.internal = int(self.internal.isChecked())
-        self.config.cfg_payload.lst_tracker.personal_release = int(
+        self.config.settings.trackers.lst.comments = self.comments.text().strip()
+        self.config.settings.trackers.lst.source = self.source.text().strip()
+        self.config.settings.trackers.lst.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.lst.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.lst.internal = self.internal.isChecked()
+        self.config.settings.trackers.lst.personal_release = (
             self.personal_release.isChecked()
         )
-        self.config.cfg_payload.lst_tracker.mod_queue_opt_in = int(
+        self.config.settings.trackers.lst.mod_queue_opt_in = (
             self.mod_queue_opt_in.isChecked()
         )
-        self.config.cfg_payload.lst_tracker.draft_queue_opt_in = int(
+        self.config.settings.trackers.lst.draft_queue_opt_in = (
             self.draft_queue_opt_in.isChecked()
         )
-        self.config.cfg_payload.lst_tracker.image_width = self.image_width.value()
-        self.config.cfg_payload.lst_tracker.featured = int(self.featured.isChecked())
-        self.config.cfg_payload.lst_tracker.free = int(self.free.isChecked())
-        self.config.cfg_payload.lst_tracker.double_up = int(self.double_up.isChecked())
-        self.config.cfg_payload.lst_tracker.sticky = int(self.sticky.isChecked())
+        self.config.settings.trackers.lst.image_width = self.image_width.value()
+        self.config.settings.trackers.lst.featured = self.featured.isChecked()
+        self.config.settings.trackers.lst.free = self.free.isChecked()
+        self.config.settings.trackers.lst.double_up = self.double_up.isChecked()
+        self.config.settings.trackers.lst.sticky = self.sticky.isChecked()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.lst_tracker.column_s = col_s
-            self.config.cfg_payload.lst_tracker.column_space = col_space
-            self.config.cfg_payload.lst_tracker.row_space = row_space
+            self.config.settings.trackers.lst.column_s = col_s
+            self.config.settings.trackers.lst.column_space = col_space
+            self.config.settings.trackers.lst.row_space = row_space
 
 
 class DarkPeersEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -990,7 +1016,7 @@ class DarkPeersEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.darkpeers_tracker
+        tracker_data = self.config.settings.trackers.dark_peers
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -1011,36 +1037,30 @@ class DarkPeersEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.darkpeers_tracker.upload_enabled = (
+        self.config.settings.trackers.dark_peers.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.darkpeers_tracker.announce_url = (
+        self.config.settings.trackers.dark_peers.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.darkpeers_tracker.comments = (
-            self.comments.text().strip()
-        )
-        self.config.cfg_payload.darkpeers_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.darkpeers_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.darkpeers_tracker.anonymous = int(
-            self.anonymous.isChecked()
-        )
-        self.config.cfg_payload.darkpeers_tracker.internal = int(
-            self.internal.isChecked()
-        )
-        self.config.cfg_payload.darkpeers_tracker.personal_release = int(
+        self.config.settings.trackers.dark_peers.comments = self.comments.text().strip()
+        self.config.settings.trackers.dark_peers.source = self.source.text().strip()
+        self.config.settings.trackers.dark_peers.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.dark_peers.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.dark_peers.internal = self.internal.isChecked()
+        self.config.settings.trackers.dark_peers.personal_release = (
             self.personal_release.isChecked()
         )
-        self.config.cfg_payload.darkpeers_tracker.image_width = self.image_width.value()
+        self.config.settings.trackers.dark_peers.image_width = self.image_width.value()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.darkpeers_tracker.column_s = col_s
-            self.config.cfg_payload.darkpeers_tracker.column_space = col_space
-            self.config.cfg_payload.darkpeers_tracker.row_space = row_space
+            self.config.settings.trackers.dark_peers.column_s = col_s
+            self.config.settings.trackers.dark_peers.column_space = col_space
+            self.config.settings.trackers.dark_peers.row_space = row_space
 
 
 class ShareIslandEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -1072,7 +1092,7 @@ class ShareIslandEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.shareisland_tracker
+        tracker_data = self.config.settings.trackers.share_island
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -1094,43 +1114,39 @@ class ShareIslandEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.shareisland_tracker.upload_enabled = (
+        self.config.settings.trackers.share_island.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.shareisland_tracker.announce_url = (
+        self.config.settings.trackers.share_island.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.shareisland_tracker.comments = (
+        self.config.settings.trackers.share_island.comments = (
             self.comments.text().strip()
         )
-        self.config.cfg_payload.shareisland_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.shareisland_tracker.api_key = (
-            self.api_key.text().strip()
-        )
-        self.config.cfg_payload.shareisland_tracker.anonymous = int(
+        self.config.settings.trackers.share_island.source = self.source.text().strip()
+        self.config.settings.trackers.share_island.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.share_island.anonymous = (
             self.anonymous.isChecked()
         )
-        self.config.cfg_payload.shareisland_tracker.internal = int(
-            self.internal.isChecked()
-        )
-        self.config.cfg_payload.shareisland_tracker.personal_release = int(
+        self.config.settings.trackers.share_island.internal = self.internal.isChecked()
+        self.config.settings.trackers.share_island.personal_release = (
             self.personal_release.isChecked()
         )
-        self.config.cfg_payload.shareisland_tracker.opt_in_to_mod_queue = int(
+        self.config.settings.trackers.share_island.opt_in_to_mod_queue = (
             self.opt_in_mod_queue.isChecked()
         )
-        self.config.cfg_payload.shareisland_tracker.image_width = (
+        self.config.settings.trackers.share_island.image_width = (
             self.image_width.value()
         )
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.shareisland_tracker.column_s = col_s
-            self.config.cfg_payload.shareisland_tracker.column_space = col_space
-            self.config.cfg_payload.shareisland_tracker.row_space = row_space
+            self.config.settings.trackers.share_island.column_s = col_s
+            self.config.settings.trackers.share_island.column_space = col_space
+            self.config.settings.trackers.share_island.row_space = row_space
 
 
 class UploadCXEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -1158,7 +1174,7 @@ class UploadCXEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.ulcx_tracker
+        tracker_data = self.config.settings.trackers.upload_cx
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -1179,30 +1195,30 @@ class UploadCXEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.ulcx_tracker.upload_enabled = (
+        self.config.settings.trackers.upload_cx.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.ulcx_tracker.announce_url = (
+        self.config.settings.trackers.upload_cx.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.ulcx_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.ulcx_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.ulcx_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.ulcx_tracker.anonymous = int(self.anonymous.isChecked())
-        self.config.cfg_payload.ulcx_tracker.internal = int(self.internal.isChecked())
-        self.config.cfg_payload.ulcx_tracker.personal_release = int(
+        self.config.settings.trackers.upload_cx.comments = self.comments.text().strip()
+        self.config.settings.trackers.upload_cx.source = self.source.text().strip()
+        self.config.settings.trackers.upload_cx.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.upload_cx.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.upload_cx.internal = self.internal.isChecked()
+        self.config.settings.trackers.upload_cx.personal_release = (
             self.personal_release.isChecked()
         )
-        self.config.cfg_payload.ulcx_tracker.image_width = self.image_width.value()
+        self.config.settings.trackers.upload_cx.image_width = self.image_width.value()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.ulcx_tracker.column_s = col_s
-            self.config.cfg_payload.ulcx_tracker.column_space = col_space
-            self.config.cfg_payload.ulcx_tracker.row_space = row_space
+            self.config.settings.trackers.upload_cx.column_s = col_s
+            self.config.settings.trackers.upload_cx.column_space = col_space
+            self.config.settings.trackers.upload_cx.row_space = row_space
 
 
 class OnlyEncodesEdit(TrackerEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -1230,7 +1246,7 @@ class OnlyEncodesEdit(TrackerEditBase):
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
-        tracker_data = self.config.cfg_payload.oe_tracker
+        tracker_data = self.config.settings.trackers.only_encodes
         self.upload_enabled.setChecked(tracker_data.upload_enabled)
         self.announce_url.setText(
             tracker_data.announce_url if tracker_data.announce_url else ""
@@ -1251,30 +1267,36 @@ class OnlyEncodesEdit(TrackerEditBase):
             )
 
     def save_settings(self) -> None:
-        self.config.cfg_payload.oe_tracker.upload_enabled = (
+        self.config.settings.trackers.only_encodes.upload_enabled = (
             self.upload_enabled.isChecked()
         )
-        self.config.cfg_payload.oe_tracker.announce_url = (
+        self.config.settings.trackers.only_encodes.announce_url = (
             self.announce_url.text().strip()
         )
-        self.config.cfg_payload.oe_tracker.comments = self.comments.text().strip()
-        self.config.cfg_payload.oe_tracker.source = self.source.text().strip()
-        self.config.cfg_payload.oe_tracker.api_key = self.api_key.text().strip()
-        self.config.cfg_payload.oe_tracker.anonymous = int(self.anonymous.isChecked())
-        self.config.cfg_payload.oe_tracker.internal = int(self.internal.isChecked())
-        self.config.cfg_payload.oe_tracker.personal_release = int(
+        self.config.settings.trackers.only_encodes.comments = (
+            self.comments.text().strip()
+        )
+        self.config.settings.trackers.only_encodes.source = self.source.text().strip()
+        self.config.settings.trackers.only_encodes.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.only_encodes.anonymous = (
+            self.anonymous.isChecked()
+        )
+        self.config.settings.trackers.only_encodes.internal = self.internal.isChecked()
+        self.config.settings.trackers.only_encodes.personal_release = (
             self.personal_release.isChecked()
         )
-        self.config.cfg_payload.oe_tracker.image_width = self.image_width.value()
+        self.config.settings.trackers.only_encodes.image_width = (
+            self.image_width.value()
+        )
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.cfg_payload.oe_tracker.column_s = col_s
-            self.config.cfg_payload.oe_tracker.column_space = col_space
-            self.config.cfg_payload.oe_tracker.row_space = row_space
+            self.config.settings.trackers.only_encodes.column_s = col_s
+            self.config.settings.trackers.only_encodes.column_space = col_space
+            self.config.settings.trackers.only_encodes.row_space = row_space
 
 
 class TrackerListWidget(QWidget):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent=None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -1367,18 +1389,22 @@ class TrackerListWidget(QWidget):
         """Expand all parent items in the QTreeWidget"""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            item.setExpanded(True)
+            if item:
+                item.setExpanded(True)
 
     def collapse_all_items(self) -> None:
         """Collapse all parent items in the QTreeWidget"""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            item.setExpanded(False)
+            if item:
+                item.setExpanded(False)
 
     @Slot(object, int)
     def _toggle_tracker(self, item: QTreeWidgetItem, column: int) -> None:
         curr_tracker = TrackerSelection(item.text(column))
-        tracker_attributes: TrackerInfo = self.config.tracker_map[curr_tracker]
+        tracker_attributes: TrackerInfo = self.config.settings.trackers.by_selection()[
+            curr_tracker
+        ]
         if curr_tracker is TrackerSelection.PASS_THE_POPCORN:
             if not self._validate_ptp():
                 self._update_check_no_signals(item, column, Qt.CheckState.Unchecked)
@@ -1388,7 +1414,7 @@ class TrackerListWidget(QWidget):
         )
 
     def _validate_ptp(self) -> bool:
-        if not self.config.cfg_payload.ptpimg.api_key:
+        if not self.config.settings.image_hosts.ptpimg.api_key:
             text, ok = QInputDialog.getText(
                 self,
                 "PTPIMG",
@@ -1396,8 +1422,8 @@ class TrackerListWidget(QWidget):
             )
             if ok and text:
                 text = text.strip()
-                self.config.cfg_payload.ptpimg.api_key = text
-                self.config.save_config()
+                self.config.settings.image_hosts.ptpimg.api_key = text
+                self.config.save()
                 QTimer.singleShot(1, GSigs().settings_refresh.emit)
             else:
                 return False
@@ -1414,6 +1440,8 @@ class TrackerListWidget(QWidget):
     def save_tracker_info(self) -> None:
         for i in range(self.tree.topLevelItemCount()):
             parent = self.tree.topLevelItem(i)
+            if not parent:
+                return None
             for j in range(parent.childCount()):
                 child = parent.child(j)
                 tracker_edit = self.tree.itemWidget(child, 0)
@@ -1425,6 +1453,8 @@ class TrackerListWidget(QWidget):
 
         for i in range(self.tree.topLevelItemCount()):
             parent_item = self.tree.topLevelItem(i)
+            if not parent_item:
+                return None
             name = parent_item.text(0)
             check_state = parent_item.checkState(0)
             if check_state == Qt.CheckState.Checked:

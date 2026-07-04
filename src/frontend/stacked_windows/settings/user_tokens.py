@@ -47,23 +47,23 @@ class UserTokenSettings(BaseSettings):
         self._load_saved_settings()
 
     @Slot(object)
-    def _update_changes_now(self, data: dict[str, tuple[str, str]]) -> None:
-        self.config.cfg_payload.user_tokens = data
-        self.config.save_config()
+    def _update_changes_now(self, data: dict[str, tuple[str, TokenSelection]]) -> None:
+        self.config.settings.user_tokens.tokens = data
+        self.config.save()
         GSigs().token_state_changed.emit()
 
     @Slot()
     def _load_saved_settings(self) -> None:
-        if self.config.cfg_payload.user_tokens:
+        if self.config.settings.user_tokens.tokens:
             self.token_editor.blockSignals(True)
-            self.token_editor.load_tokens(self.config.cfg_payload.user_tokens)
+            self.token_editor.load_tokens(self.config.settings.user_tokens.tokens)
             self.token_editor.blockSignals(False)
 
     @Slot()
     def _save_settings(self) -> None:
         saved_tokens = self.token_editor.save_all()
         if saved_tokens is not None:
-            self.config.cfg_payload.user_tokens = saved_tokens
+            self.config.settings.user_tokens.tokens = saved_tokens
             self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:

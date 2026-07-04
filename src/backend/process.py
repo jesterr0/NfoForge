@@ -68,7 +68,7 @@ from src.backend.utils.images import (
     get_parity_images_to_str,
 )
 from src.backend.utils.token_utils import get_prompt_tokens
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.config.tv_tokens import get_tvr_title_token
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
@@ -97,7 +97,7 @@ class ProcessBackEnd:
         TrackerSelection.REELFLIX,
     }
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: ConfigManager) -> None:
         self.config = config
         self.template_selector_be = TemplateSelectorBackEnd()
         self.template_selector_be.load_templates()
@@ -227,7 +227,7 @@ class ProcessBackEnd:
         file_input: Path,
         media_search_payload: MediaSearchPayload,
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.mtv_tracker.api_key
+        api_key = self.config.settings.trackers.more_than_tv.api_key
         if not api_key:
             return tracker_sel, False, "MTV API key missing"
         try:
@@ -242,7 +242,7 @@ class ProcessBackEnd:
                 )
             mtv_search = MTVSearch(
                 api_key,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             ).search(
                 title=file_input.stem,  # must not have an extension
                 imdb_id=imdb_id,
@@ -259,8 +259,8 @@ class ProcessBackEnd:
     async def _dupe_tl(
         self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        username = self.config.cfg_payload.tl_tracker.username
-        password = self.config.cfg_payload.tl_tracker.password
+        username = self.config.settings.trackers.torrent_leech.username
+        password = self.config.settings.trackers.torrent_leech.password
         if not username or not password:
             return (
                 tracker_sel,
@@ -271,9 +271,9 @@ class ProcessBackEnd:
             tl_search = TLSearch(
                 username=username,
                 password=password,
-                cookie_dir=self.config.TRACKER_COOKIE_PATH,
-                alt_2_fa_token=self.config.cfg_payload.tl_tracker.alt_2_fa_token,
-                timeout=self.config.cfg_payload.timeout,
+                cookie_dir=self.config.paths.tracker_cookies,
+                alt_2_fa_token=self.config.settings.trackers.torrent_leech.alt_2_fa_token,
+                timeout=self.config.settings.general.timeout,
             ).search(file_input)
             if tl_search:
                 return tracker_sel, True, tl_search
@@ -285,8 +285,8 @@ class ProcessBackEnd:
     async def _dupe_bhd(
         self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.bhd_tracker.api_key
-        rss_key = self.config.cfg_payload.bhd_tracker.rss_key
+        api_key = self.config.settings.trackers.beyond_hd.api_key
+        rss_key = self.config.settings.trackers.beyond_hd.rss_key
         if not api_key or not rss_key:
             return (
                 tracker_sel,
@@ -297,7 +297,7 @@ class ProcessBackEnd:
             bhd_search = BHDSearch(
                 api_key=api_key,
                 rss_key=rss_key,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             ).search(file_input)
             if bhd_search:
                 return tracker_sel, True, bhd_search
@@ -312,8 +312,8 @@ class ProcessBackEnd:
         file_input: Path,
         media_search_payload: MediaSearchPayload,
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_user = self.config.cfg_payload.ptp_tracker.api_user
-        api_key = self.config.cfg_payload.ptp_tracker.api_key
+        api_user = self.config.settings.trackers.pass_the_popcorn.api_user
+        api_key = self.config.settings.trackers.pass_the_popcorn.api_key
         title = media_search_payload.title
         year = media_search_payload.year
         imdb_id = media_search_payload.imdb_id
@@ -327,7 +327,7 @@ class ProcessBackEnd:
             ptp_search = PTPSearch(
                 api_user=api_user,
                 api_key=api_key,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             ).search(
                 movie_title=title,
                 movie_year=year,
@@ -348,7 +348,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             ReelFlixSearch,
-            {"api_key": self.config.cfg_payload.rf_tracker.api_key},
+            {"api_key": self.config.settings.trackers.reelflix.api_key},
         )
 
     async def _dupe_aither(
@@ -358,7 +358,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             AitherSearch,
-            {"api_key": self.config.cfg_payload.aither_tracker.api_key},
+            {"api_key": self.config.settings.trackers.aither.api_key},
         )
 
     async def _dupe_huno(
@@ -368,7 +368,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             HunoSearch,
-            {"api_key": self.config.cfg_payload.huno_tracker.api_key},
+            {"api_key": self.config.settings.trackers.huno.api_key},
         )
 
     async def _dupe_lst(
@@ -378,7 +378,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             LSTSearch,
-            {"api_key": self.config.cfg_payload.lst_tracker.api_key},
+            {"api_key": self.config.settings.trackers.lst.api_key},
         )
 
     async def _dupe_dp(
@@ -388,7 +388,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             DarkPeersSearch,
-            {"api_key": self.config.cfg_payload.darkpeers_tracker.api_key},
+            {"api_key": self.config.settings.trackers.dark_peers.api_key},
         )
 
     async def _dupe_shri(
@@ -398,7 +398,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             ShareIslandSearch,
-            {"api_key": self.config.cfg_payload.shareisland_tracker.api_key},
+            {"api_key": self.config.settings.trackers.share_island.api_key},
         )
 
     async def _dupe_ulcx(
@@ -408,7 +408,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             UploadCXSearch,
-            {"api_key": self.config.cfg_payload.ulcx_tracker.api_key},
+            {"api_key": self.config.settings.trackers.upload_cx.api_key},
         )
 
     async def _dupe_oe(
@@ -418,7 +418,7 @@ class ProcessBackEnd:
             tracker_sel,
             file_input,
             OnlyEncodesSearch,
-            {"api_key": self.config.cfg_payload.ulcx_tracker.api_key},
+            {"api_key": self.config.settings.trackers.only_encodes.api_key},
         )
 
     async def _aither_dupe_check(
@@ -496,7 +496,7 @@ class ProcessBackEnd:
             all_prompt_tokens = []
             for tracker_name in process_dict.keys():
                 cur_tracker = TrackerSelection(tracker_name)
-                tracker_info = self.config.tracker_map[cur_tracker]
+                tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
                 nfo_template = self.template_selector_be.read_template(
                     name=tracker_info.nfo_template
                 )
@@ -516,7 +516,7 @@ class ProcessBackEnd:
         queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
         for tracker_name in process_dict.keys():
             cur_tracker = TrackerSelection(tracker_name)
-            tracker_info = self.config.tracker_map[cur_tracker]
+            tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
             # generate tracker title first
             tracker_title = None
@@ -534,7 +534,7 @@ class ProcessBackEnd:
                 name=tracker_info.nfo_template
             )
             user_tokens = base_usr_tokens | {
-                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+                k: v for k, (v, _) in self.config.settings.user_tokens.tokens.items()
             }
             nfo = ""
             tracker_images = None
@@ -574,7 +574,7 @@ class ProcessBackEnd:
                     token_string=nfo_template,
                     media_search_obj=context.media_search,
                     unfilled_token_mode=UnfilledTokenRemoval.KEEP,
-                    releasers_name=self.config.cfg_payload.releasers_name,
+                    releasers_name=self.config.settings.general.releasers_name,
                     screen_shots=formatted_screens,
                     screen_shots_comparison=comparison_screens,
                     screen_shots_even_obj=even_screens,
@@ -592,17 +592,17 @@ class ProcessBackEnd:
                         "override_tokens"
                     ),
                     user_tokens=user_tokens,
-                    title_clean_rules=self.config.cfg_payload.title_clean_rules,
-                    video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
+                    title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                    video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
                 ).get_output()
                 if not isinstance(nfo, str):
                     raise ValueError("NFO should be a string")
 
             # run token replacer plugin if available
-            if self.config.cfg_payload.enable_plugins:
-                token_replacer_plugin = self.config.cfg_payload.token_replacer
+            if self.config.settings.general.enable_plugins:
+                token_replacer_plugin = self.config.settings.plugins.token_replacer
                 if token_replacer_plugin:
-                    nfo_plugin = self.config.loaded_plugins[
+                    nfo_plugin = self.config.plugin_registry.plugins[
                         token_replacer_plugin
                     ].token_replacer
                     if nfo_plugin and callable(nfo_plugin):
@@ -626,7 +626,7 @@ class ProcessBackEnd:
             tracker_release_data[cur_tracker] = {"title": tracker_title, "nfo": nfo}
 
         # update nfos with user updates from front end if enabled
-        if self.config.cfg_payload.enable_prompt_overview and overview_cb:
+        if self.config.settings.general.enable_prompt_overview and overview_cb:
             confirm_overview = overview_cb(tracker_release_data)
             if confirm_overview:
                 nfo_updates = [
@@ -656,7 +656,7 @@ class ProcessBackEnd:
 
             # get tracker object and tracker info
             cur_tracker = TrackerSelection(tracker_name)
-            tracker_info = self.config.tracker_map[cur_tracker]
+            tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
             # get tracker title and nfo data
             cur_tracker_release_data = tracker_release_data.get(cur_tracker, {})
@@ -675,16 +675,16 @@ class ProcessBackEnd:
             if idx == 0:
                 # try mkbrr first if enabled, fallback to torf if not available or on error
                 try:
-                    if self.config.cfg_payload.enable_mkbrr and (
-                        self.config.cfg_payload.mkbrr
-                        and self.config.cfg_payload.mkbrr.exists()
+                    if self.config.settings.general.enable_mkbrr and (
+                        self.config.settings.dependencies.mkbrr
+                        and self.config.settings.dependencies.mkbrr.exists()
                     ):
                         queued_text_update(
                             '<br /><span>Generating torrent with <span style="font-weight: bold;">'
                             "mkbrr</span></span>"
                         )
                         torrent = mkbrr_generate_torrent(
-                            mkbrr_path=self.config.cfg_payload.mkbrr,
+                            mkbrr_path=self.config.settings.dependencies.mkbrr,
                             tracker_info=tracker_info,
                             path=media_input,
                             output_path=torrent_path,
@@ -697,8 +697,8 @@ class ProcessBackEnd:
                 except Exception as mkbrr_error:
                     # only show error if mkbrr was available but failed
                     if (
-                        self.config.cfg_payload.enable_mkbrr
-                        and self.config.cfg_payload.mkbrr
+                        self.config.settings.general.enable_mkbrr
+                        and self.config.settings.dependencies.mkbrr
                     ):
                         queued_text_update(
                             f'<br /><span style="color: red;">mkbrr failed: {mkbrr_error} '
@@ -739,10 +739,10 @@ class ProcessBackEnd:
 
             # pre upload plugin
             pre_upload_processing = None
-            if self.config.cfg_payload.enable_plugins:
-                pre_upload_plugin = self.config.cfg_payload.pre_upload
+            if self.config.settings.general.enable_plugins:
+                pre_upload_plugin = self.config.settings.plugins.pre_upload
                 if pre_upload_plugin:
-                    get_pre_upload_plugin = self.config.loaded_plugins[
+                    get_pre_upload_plugin = self.config.plugin_registry.plugins[
                         pre_upload_plugin
                     ].pre_upload
                     if get_pre_upload_plugin and callable(get_pre_upload_plugin):
@@ -907,10 +907,10 @@ class ProcessBackEnd:
                 # are downloaded from URLs
                 if (
                     context.shared_data.generated_images
-                    and self.config.cfg_payload.optimize_generated_images
+                    and self.config.settings.screenshots.optimize_generated_images
                 ) or (
                     not context.shared_data.generated_images
-                    and self.config.cfg_payload.optimize_dl_url_images
+                    and self.config.settings.screenshots.optimize_downloaded_images
                     or img_from is ImageSource.URLS
                 ):
                     queued_text_update(
@@ -974,7 +974,7 @@ class ProcessBackEnd:
 
         image_optimizer = MultiProcessImageOptimizer(
             on_job_done=img_optimizer_job_done_callback,
-            cpu_fraction=self.config.cfg_payload.optimize_dl_url_images_percentage,
+            cpu_fraction=self.config.settings.screenshots.optimize_downloaded_images_percentage,
         )
         img_opt_output_dir = files_to_upload[0].parent / "optimized"
         try:
@@ -1091,7 +1091,7 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If required credentials are missing.
         """
-        chv4_payload = self.config.cfg_payload.chevereto_v4
+        chv4_payload = self.config.settings.image_hosts.chevereto_v4
         if not chv4_payload.api_key or not chv4_payload.base_url:
             raise ImageHostError("Missing 'API Key' or 'Base URL' for CheveretoV4.")
         return CheveretoV4Uploader(
@@ -1108,7 +1108,7 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If required credentials are missing.
         """
-        chv3_payload = self.config.cfg_payload.chevereto_v3
+        chv3_payload = self.config.settings.image_hosts.chevereto_v3
         if (
             not chv3_payload.base_url
             or not chv3_payload.user
@@ -1131,7 +1131,7 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If required credentials are missing.
         """
-        imgbb_payload = self.config.cfg_payload.image_bb
+        imgbb_payload = self.config.settings.image_hosts.image_bb
         if not imgbb_payload.api_key or not imgbb_payload.base_url:
             raise ImageHostError("Missing 'API Key' for ImageBB.")
         return ImageBBUploader(api_key=imgbb_payload.api_key)
@@ -1146,7 +1146,7 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If required credentials are missing.
         """
-        ptpimg_payload = self.config.cfg_payload.ptpimg
+        ptpimg_payload = self.config.settings.image_hosts.ptpimg
         if not ptpimg_payload.api_key or not ptpimg_payload.base_url:
             raise ImageHostError("Missing 'API Key' for PTPIMG.")
         return PTPIMGUploader(api_key=ptpimg_payload.api_key)
@@ -1180,7 +1180,7 @@ class ProcessBackEnd:
         """
         piece_sizes = set()
         for tracker in process_dict.keys():
-            max_piece_size = self.config.tracker_map[
+            max_piece_size = self.config.settings.trackers.by_selection()[
                 TrackerSelection(tracker)
             ].max_piece_size
             if max_piece_size > 0:
@@ -1214,7 +1214,7 @@ class ProcessBackEnd:
             input_path = context.media_input.require_input_path()
 
         if tracker is TrackerSelection.MORE_THAN_TV:
-            tracker_payload = self.config.cfg_payload.mtv_tracker
+            tracker_payload = self.config.settings.trackers.more_than_tv
             if not tracker_payload.username or not tracker_payload.password:
                 raise TrackerError("Username and password is required for MoreThanTV")
             return mtv_uploader(
@@ -1232,11 +1232,11 @@ class ProcessBackEnd:
                 is_pack=release_info.is_pack,
                 anonymous=bool(tracker_payload.anonymous),
                 source_origin=tracker_payload.source_origin,
-                cookie_dir=self.config.TRACKER_COOKIE_PATH,
-                timeout=self.config.cfg_payload.timeout,
+                cookie_dir=self.config.paths.tracker_cookies,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.TORRENT_LEECH:
-            announce_key = self.config.cfg_payload.tl_tracker.torrent_passkey
+            announce_key = self.config.settings.trackers.torrent_leech.torrent_passkey
             if not announce_key:
                 raise TrackerError("Missing announce key for TorrentLeech")
             return tl_upload(
@@ -1247,10 +1247,10 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_type=media_type,
                 is_pack=release_info.is_pack,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.BEYOND_HD:
-            tracker_payload = self.config.cfg_payload.bhd_tracker
+            tracker_payload = self.config.settings.trackers.beyond_hd
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for BeyondHD")
             return bhd_uploader(
@@ -1268,10 +1268,10 @@ class ProcessBackEnd:
                 live_release=tracker_payload.live_release,
                 anonymous=bool(tracker_payload.anonymous),
                 promo=tracker_payload.promo,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.PASS_THE_POPCORN:
-            tracker_payload = self.config.cfg_payload.ptp_tracker
+            tracker_payload = self.config.settings.trackers.pass_the_popcorn
             if (
                 not tracker_payload.api_user
                 or not tracker_payload.api_key
@@ -1293,14 +1293,14 @@ class ProcessBackEnd:
                 nfo=nfo,
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                ptp_img_api_key=self.config.cfg_payload.ptp_tracker.api_key,
-                cookie_dir=self.config.TRACKER_COOKIE_PATH,
+                ptp_img_api_key=self.config.settings.trackers.pass_the_popcorn.api_key,
+                cookie_dir=self.config.paths.tracker_cookies,
                 totp=tracker_payload.totp,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         # Unit3d trackers
         elif tracker is TrackerSelection.REELFLIX:
-            tracker_payload = self.config.cfg_payload.rf_tracker
+            tracker_payload = self.config.settings.trackers.reelflix
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for ReelFliX")
             return rf_uploader(
@@ -1321,10 +1321,10 @@ class ProcessBackEnd:
                 sticky=bool(tracker_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.AITHER:
-            tracker_payload = self.config.cfg_payload.aither_tracker
+            tracker_payload = self.config.settings.trackers.aither
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for Aither")
             return aither_uploader(
@@ -1345,10 +1345,10 @@ class ProcessBackEnd:
                 sticky=bool(tracker_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.HUNO:
-            tracker_payload = self.config.cfg_payload.huno_tracker
+            tracker_payload = self.config.settings.trackers.huno
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for HUNO")
             return huno_uploader(
@@ -1363,10 +1363,10 @@ class ProcessBackEnd:
                 stream_optimized=bool(tracker_payload.stream_optimized),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.LST:
-            tracker_payload = self.config.cfg_payload.lst_tracker
+            tracker_payload = self.config.settings.trackers.lst
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for LST")
             return lst_uploader(
@@ -1387,10 +1387,10 @@ class ProcessBackEnd:
                 sticky=bool(tracker_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.DARK_PEERS:
-            tracker_payload = self.config.cfg_payload.darkpeers_tracker
+            tracker_payload = self.config.settings.trackers.dark_peers
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for DarkPeers")
             return dp_uploader(
@@ -1404,10 +1404,10 @@ class ProcessBackEnd:
                 anonymous=bool(tracker_payload.anonymous),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.SHARE_ISLAND:
-            tracker_payload = self.config.cfg_payload.shareisland_tracker
+            tracker_payload = self.config.settings.trackers.share_island
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for ShareIsland")
             return shri_uploader(
@@ -1423,10 +1423,10 @@ class ProcessBackEnd:
                 opt_in_to_mod_queue=bool(tracker_payload.opt_in_to_mod_queue),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.UPLOAD_CX:
-            tracker_payload = self.config.cfg_payload.ulcx_tracker
+            tracker_payload = self.config.settings.trackers.upload_cx
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for UploadCX")
             return ulcx_uploader(
@@ -1441,10 +1441,10 @@ class ProcessBackEnd:
                 personal_release=bool(tracker_payload.personal_release),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.ONLY_ENCODES:
-            tracker_payload = self.config.cfg_payload.oe_tracker
+            tracker_payload = self.config.settings.trackers.only_encodes
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for OnlyEncodes")
             return oe_uploader(
@@ -1459,7 +1459,7 @@ class ProcessBackEnd:
                 personal_release=bool(tracker_payload.personal_release),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             )
 
     def generate_tracker_title(
@@ -1470,7 +1470,7 @@ class ProcessBackEnd:
     ) -> str | None:
         if release_info.is_series:
             default_title = get_tvr_title_token(
-                self.config.cfg_payload,
+                self.config.settings.series,
                 release_info.episode_format,
             )
             series_override = tracker_info.tvr_title_overrides.get(
@@ -1489,7 +1489,7 @@ class ProcessBackEnd:
             colon_replace = (
                 series_override.colon_replace
                 if override_enabled and series_override is not None
-                else self.config.cfg_payload.tvr_colon_replace_title
+                else self.config.settings.series.title_colon_replace
             )
             override_title_rules = (
                 series_override.replace_map
@@ -1507,7 +1507,7 @@ class ProcessBackEnd:
                     tracker_info.mvr_title_token_override
                     and tracker_info.mvr_title_override_enabled
                 )
-                else self.config.cfg_payload.mvr_title_token
+                else self.config.settings.movie.title_token
             )
             colon_replace = (
                 tracker_info.mvr_title_colon_replace
@@ -1515,7 +1515,7 @@ class ProcessBackEnd:
                     tracker_info.mvr_title_colon_replace
                     and tracker_info.mvr_title_override_enabled
                 )
-                else self.config.cfg_payload.mvr_colon_replace_title
+                else self.config.settings.movie.title_colon_replace
             )
             override_title_rules = (
                 tracker_info.mvr_title_replace_map
@@ -1527,7 +1527,7 @@ class ProcessBackEnd:
             )
         user_tokens = {
             k: v
-            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
         format_str = TokenReplacer(
@@ -1544,10 +1544,10 @@ class ProcessBackEnd:
                 "frame_size_override"
             ),
             override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
-            title_clean_rules=self.config.cfg_payload.title_clean_rules,
+            title_clean_rules=self.config.settings.global_management.title_clean_rules,
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
-            video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
+            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
             season_number=release_info.season,
             episode_number=(
                 release_info.episode_start if not release_info.is_pack else None
@@ -1601,7 +1601,10 @@ class ProcessBackEnd:
         torrent_path: Path,
         file_input: Path,
     ) -> None:
-        for client, client_settings in self.config.client_map.items():
+        for (
+            client,
+            client_settings,
+        ) in self.config.settings.torrent_clients.by_selection().items():
             if client_settings.enabled:
                 inj_success, inj_msg = False, "Failed"
                 queued_text_update(
@@ -1635,7 +1638,8 @@ class ProcessBackEnd:
     def qbittorrent_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.qbit_client:
             self.qbit_client = QBittorrentClient(
-                self.config.cfg_payload.qbittorrent, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.qbittorrent,
+                self.config.settings.general.timeout,
             )
             self.qbit_client.login()
         return self.qbit_client.inject_torrent(torrent_path)
@@ -1643,7 +1647,8 @@ class ProcessBackEnd:
     def deluge_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.deluge_client:
             self.deluge_client = DelugeClient(
-                self.config.cfg_payload.deluge, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.deluge,
+                self.config.settings.general.timeout,
             )
             self.deluge_client.login()
         return self.deluge_client.inject_torrent(torrent_path)
@@ -1651,14 +1656,16 @@ class ProcessBackEnd:
     def rtorrent_inject(self, torrent_path: Path, file_path: Path) -> tuple[bool, str]:
         if not self.rtorrent_client:
             self.rtorrent_client = RTorrentClient(
-                self.config.cfg_payload.rtorrent, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.rtorrent,
+                self.config.settings.general.timeout,
             )
         return self.rtorrent_client.inject_torrent(torrent_path, file_path, True)
 
     def transmission_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.transmission_client:
             self.transmission_client = TransmissionClient(
-                self.config.cfg_payload.transmission, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.transmission,
+                self.config.settings.general.timeout,
             )
         return self.transmission_client.inject_torrent(torrent_path)
 

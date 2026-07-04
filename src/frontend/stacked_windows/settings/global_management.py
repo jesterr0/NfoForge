@@ -1,6 +1,7 @@
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QWidget
 
+from src.config.models import DynamicRangeSettings
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
@@ -52,13 +53,13 @@ class GlobalManagementSettings(BaseSettings):
 
         # load settings
         self.title_clean_rules_modified = (
-            self.config.cfg_payload.title_clean_rules_modified
+            self.config.settings.global_management.title_clean_rules_modified
         )
         self.token_table.load_replacement_rules(
-            self.config.cfg_payload.title_clean_rules
+            self.config.settings.global_management.title_clean_rules
         )
         self.token_table.video_dynamic_range.from_dict(
-            self.config.cfg_payload.video_dynamic_range
+            self.config.settings.global_management.video_dynamic_range.to_dict()
         )
         self._default_title_clean_update_check()
 
@@ -84,18 +85,20 @@ class GlobalManagementSettings(BaseSettings):
     @Slot(object)
     def _video_dynamic_range_update_live_cfg(self, data: dict) -> None:
         if data:
-            self.config.cfg_payload.video_dynamic_range = data
+            self.config.settings.global_management.video_dynamic_range = (
+                DynamicRangeSettings(**data)
+            )
             # Emit signal for real-time updates
             GSigs().global_management_state_changed.emit({"video_dynamic_range": data})
 
     @Slot()
     def _save_settings(self) -> None:
-        self.config.cfg_payload.title_clean_rules_modified = (
+        self.config.settings.global_management.title_clean_rules_modified = (
             self.title_clean_rules_modified
         )
         self._clean_title_rules_save()
-        self.config.cfg_payload.video_dynamic_range = (
-            self.token_table.video_dynamic_range.to_dict()
+        self.config.settings.global_management.video_dynamic_range = (
+            DynamicRangeSettings(**self.token_table.video_dynamic_range.to_dict())
         )
         self.updated_settings_applied.emit()
 
@@ -104,7 +107,7 @@ class GlobalManagementSettings(BaseSettings):
         Checks to see if defaults have been changed on the program level and updates users config if their
         config was not modified before.
         """
-        if not self.config.cfg_payload.title_clean_rules_modified:
+        if not self.config.settings.global_management.title_clean_rules_modified:
             replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
             defaults = self.token_table.replacement_list_widget.default_rules
             if not defaults:
@@ -112,32 +115,32 @@ class GlobalManagementSettings(BaseSettings):
                     "Cannot detect 'replacement_list_widget' default rules"
                 )
             if set(replacements) != set(defaults):
-                self.config.cfg_payload.title_clean_rules = defaults
+                self.config.settings.global_management.title_clean_rules = defaults
                 self.token_table.reset()
-                self.config.save_config()
+                self.config.save()
 
     def _clean_title_rules_save(self) -> None:
         replacements = self.token_table.replacement_list_widget.replacement_list_widget.get_replacements()
         defaults = self.token_table.replacement_list_widget.default_rules
         if not defaults:
             raise ValueError("Cannot detect 'replacement_list_widget' default rules")
-        if not self.config.cfg_payload.title_clean_rules_modified:
-            self.config.cfg_payload.title_clean_rules = defaults
+        if not self.config.settings.global_management.title_clean_rules_modified:
+            self.config.settings.global_management.title_clean_rules = defaults
         else:
-            self.config.cfg_payload.title_clean_rules = replacements
+            self.config.settings.global_management.title_clean_rules = replacements
 
         if set(replacements) != set(defaults):
-            self.config.cfg_payload.title_clean_rules_modified = True
+            self.config.settings.global_management.title_clean_rules_modified = True
         else:
-            self.config.cfg_payload.title_clean_rules_modified = False
+            self.config.settings.global_management.title_clean_rules_modified = False
 
     def apply_defaults(self) -> None:
         self.token_table.reset()
-        self.config.cfg_payload.title_clean_rules_modified = (
-            self.config.cfg_payload_defaults.title_clean_rules_modified
+        self.config.settings.global_management.title_clean_rules_modified = (
+            self.config.defaults.global_management.title_clean_rules_modified
         )
         self.token_table.video_dynamic_range.from_dict(
-            self.config.cfg_payload_defaults.video_dynamic_range
+            self.config.defaults.global_management.video_dynamic_range.to_dict()
         )
         self.title_clean_rules_modified = False
 

@@ -23,7 +23,7 @@ from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import Tokens, TokenType
 from src.backend.utils.token_utils import get_prompt_tokens
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
@@ -47,7 +47,7 @@ class TemplateSelector(QWidget):
 
     def __init__(
         self,
-        config: Config,
+        config: ConfigManager,
         context: ProcessingContext,
         sandbox: bool,
         main_window: "MainWindow",
@@ -217,7 +217,7 @@ class TemplateSelector(QWidget):
         self._update_tracker_toggles()
         # INFO: if we wanted to load last used template or a default template we could do it here
         # self.template_combo.setCurrentIndex(
-        #     self.template_index_map[self.config.cfg_payload.nfo_template]
+        #     self.template_index_map[self.config.settings.nfo_template]
         # )
 
     def _update_tracker_toggles(self) -> None:
@@ -229,7 +229,7 @@ class TemplateSelector(QWidget):
                 if selected_template
                 else False,
             )
-            for tracker, tracker_settings in self.config.tracker_map.items()
+            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
         ]
         self.popup_button.update_items(trackers)
         if not selected_template:
@@ -249,12 +249,14 @@ class TemplateSelector(QWidget):
     def _tracker_toggled(self, data: tuple[str, bool]) -> None:
         tracker, toggled = data
         if toggled:
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 TrackerSelection(tracker)
             ].nfo_template = self.template_combo.currentText()
         else:
-            self.config.tracker_map[TrackerSelection(tracker)].nfo_template = ""
-        self.config.save_config()
+            self.config.settings.trackers.by_selection()[
+                TrackerSelection(tracker)
+            ].nfo_template = ""
+        self.config.save()
 
     @Slot()
     def show_tokens(self) -> None:
@@ -371,7 +373,7 @@ class TemplateSelector(QWidget):
     def _template_in_use(self, selected_template: PathLike[str]) -> bool:
         toggled_trackers = [
             str(tracker)
-            for tracker, tracker_settings in self.config.tracker_map.items()
+            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
             if tracker_settings.nfo_template == Path(selected_template).stem
         ]
 
@@ -390,10 +392,10 @@ class TemplateSelector(QWidget):
             return False
 
         for detected_tracker in toggled_trackers:
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 TrackerSelection(detected_tracker)
             ].nfo_template = ""
-        self.config.save_config()
+        self.config.save()
 
         return True
 
@@ -424,7 +426,7 @@ class TemplateSelector(QWidget):
                 self.reset_sandbox_cache.show()
 
             user_tokens = {
-                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+                k: v for k, (v, _) in self.config.settings.user_tokens.tokens.items()
             }
 
             self.text_edit.setReadOnly(True)
@@ -461,18 +463,16 @@ class TemplateSelector(QWidget):
                     }
                 prompt = PromptTokenEditorDialog(
                     items=tokens_dict,
-                    warn_missing=self.config.cfg_payload.prompt_token_editor_warn_on_missing,
+                    warn_missing=self.config.settings.widgets.prompt_token_editor_warn_on_missing,
                     parent=self,
                 )
                 if prompt.exec() == QDialog.DialogCode.Accepted:
                     if (
                         prompt.warn_on_missing.isChecked()
-                        != self.config.cfg_payload.prompt_token_editor_warn_on_missing
+                        != self.config.settings.widgets.prompt_token_editor_warn_on_missing
                     ):
-                        self.config.cfg_payload.prompt_token_editor_warn_on_missing = (
-                            prompt.warn_on_missing.isChecked()
-                        )
-                        self.config.save_config()
+                        self.config.settings.widgets.prompt_token_editor_warn_on_missing = prompt.warn_on_missing.isChecked()
+                        self.config.save()
                     prompt_results = prompt.get_results()
                     self.cached_sandbox_prompt_tokens = prompt_results
                     if prompt_results:
@@ -490,7 +490,7 @@ class TemplateSelector(QWidget):
                     jinja_engine=self.context.jinja_engine,
                     token_string=self.old_text,
                     media_search_obj=self.context.media_search,
-                    releasers_name=self.config.cfg_payload.releasers_name,
+                    releasers_name=self.config.settings.general.releasers_name,
                     dummy_screen_shots=False
                     if self.context.shared_data.url_data
                     or self.context.shared_data.loaded_images
@@ -502,8 +502,8 @@ class TemplateSelector(QWidget):
                     frame_size_override=self.context.shared_data.dynamic_data.get(
                         "frame_size_override"
                     ),
-                    title_clean_rules=self.config.cfg_payload.title_clean_rules,
-                    video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
+                    title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                    video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
                     user_tokens=user_tokens,
                 )
                 output = token_replacer.get_output()
@@ -526,17 +526,17 @@ class TemplateSelector(QWidget):
                 raise
 
             try:
-                if self.config.cfg_payload.enable_plugins:
-                    token_replacer_plugin = self.config.cfg_payload.token_replacer
+                if self.config.settings.general.enable_plugins:
+                    token_replacer_plugin = self.config.settings.plugins.token_replacer
                     if token_replacer_plugin:
-                        plugin = self.config.loaded_plugins[
+                        plugin = self.config.plugin_registry.plugins[
                             token_replacer_plugin
                         ].token_replacer
                         if plugin and callable(plugin):
                             selected_template = self.template_combo.currentText()
                             tracker_s = [
                                 tracker
-                                for tracker, tracker_settings in self.config.tracker_map.items()
+                                for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
                                 if tracker_settings.nfo_template == selected_template
                             ]
                             replace_tokens = plugin(
@@ -604,7 +604,7 @@ class TemplateSelector(QWidget):
     def _get_file_tokens(self) -> list[TokenType]:
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
-            for k in self.config.cfg_payload.user_tokens.keys()
+            for k in self.config.settings.user_tokens.tokens.keys()
         ]
         return sorted(Tokens().get_token_objects()) + user_tokens
 

@@ -2,9 +2,9 @@ from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QLabel
 
 from src.enums.tracker_selection import TrackerSelection
-from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
 from src.frontend.custom_widgets.sortable_listbox import SortableListBox
+from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
+from src.frontend.stacked_windows.settings.base import BaseSettings
 
 
 class TrackersSettings(BaseSettings):
@@ -34,15 +34,15 @@ class TrackersSettings(BaseSettings):
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
-        self.tracker_widget.add_items(self.config.tracker_map)
+        self.tracker_widget.add_items(self.config.settings.trackers.by_selection())
         self.tracker_order.load_items(
-            [str(x) for x in self.config.cfg_payload.tracker_order]
+            [str(x) for x in self.config.settings.trackers.order]
         )
 
     @Slot()
     def _save_settings(self) -> None:
         self.tracker_widget.save_tracker_info()
-        self.config.cfg_payload.tracker_order = [
+        self.config.settings.trackers.order = [
             TrackerSelection(x) for x in self.tracker_order.get_items()
         ]
         self.updated_settings_applied.emit()

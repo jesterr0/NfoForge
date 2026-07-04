@@ -34,7 +34,9 @@ class ClientsSettings(BaseSettings):
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
-        self.client_widget.add_items(self.config.client_map)
+        self.client_widget.add_items(
+            self.config.settings.torrent_clients.by_selection()
+        )
 
     @Slot()
     def _save_settings(self) -> None:

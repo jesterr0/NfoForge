@@ -1,7 +1,7 @@
-from collections.abc import Sequence
 import re
+from collections.abc import Sequence
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -12,8 +12,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QMessageBox,
     QPushButton,
-    QStyleOptionViewItem,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -245,7 +245,7 @@ class CustomTokenEditor(QWidget):
         data = self.save_all()
         self.save_changes_now.emit(data)
 
-    def save_all(self) -> dict[str, tuple[str, str]] | None:
+    def save_all(self) -> dict[str, tuple[str, TokenSelection]] | None:
         """Save all tokens returning the output, if None is returned there was an error."""
         tokens = {}
         for row in range(self.table.rowCount()):
@@ -271,14 +271,14 @@ class CustomTokenEditor(QWidget):
                 value = lines[0] if line_len == 1 else ""
                 if not value:
                     continue
-            tokens[name] = (value, ttype)
+            tokens[name] = (value, TokenSelection(ttype))
         self.tokens = tokens
         return tokens
 
-    def get_tokens(self) -> dict[str, tuple[str, str]]:
+    def get_tokens(self) -> dict[str, tuple[str, TokenSelection]]:
         return dict(self.tokens)
 
-    def load_tokens(self, tokens: dict[str, tuple[str, str]]) -> None:
+    def load_tokens(self, tokens: dict[str, tuple[str, TokenSelection]]) -> None:
         """
         Load tokens into the table. tokens: {token_name: (value, token_type)}
         """
@@ -287,7 +287,7 @@ class CustomTokenEditor(QWidget):
         for i, (name, (value, ttype)) in enumerate(tokens.items()):
             self.table.insertRow(i)
             name_item = QTableWidgetItem(name)
-            type_item = QTableWidgetItem(ttype)
+            type_item = QTableWidgetItem(str(ttype))
             self.table.setItem(i, 0, name_item)
             self.table.setItem(i, 1, type_item)
             self.value_map[name] = value
@@ -339,13 +339,13 @@ if __name__ == "__main__":
     import sys
 
     blah = {
-        "usr_new_token": ("123", "FileToken"),
+        "usr_new_token": ("123", TokenSelection.FILE_TOKEN),
         "usr_blah": (
             "123 Howdy! This is the new custom token setup :)\n\nMulti line support as needed too!",
             "NfoToken",
         ),
-        "usr_yay": ("more random data", "NfoToken"),
-        "usr_nah": ("random data", "FileToken"),
+        "usr_yay": ("more random data", TokenSelection.NFO_TOKEN),
+        "usr_nah": ("random data", TokenSelection.FILE_TOKEN),
     }
 
     app = QApplication(sys.argv)

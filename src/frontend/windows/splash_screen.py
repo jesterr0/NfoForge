@@ -1,6 +1,5 @@
 import traceback
 from pathlib import Path
-from typing import Type
 
 from PySide6.QtCore import QThread, Signal, SignalInstance, Slot
 from PySide6.QtGui import QPixmap, Qt
@@ -15,10 +14,9 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.wizards.media_input import MediaInput
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.plugins.loader import PluginLoader
 from src.plugins.plugin_payload import PluginPayload
 from src.version import __version__
@@ -114,10 +112,10 @@ config_push_button_style = """
 
 class SplashScreenLoader(QThread):
     error_message = Signal(str)
-    success = Signal()
+    success = Signal(str)
 
     def __init__(
-        self, config: Config, update_splash_msg: SignalInstance, parent=None
+        self, config: ConfigManager, update_splash_msg: SignalInstance, parent=None
     ) -> None:
         super().__init__(parent)
         self.config = config
@@ -125,30 +123,40 @@ class SplashScreenLoader(QThread):
 
     def run(self) -> None:
         try:
-            self.init_plugins()
-            self.success.emit()
+            warning = self.init_plugins()
+            self.success.emit(warning or "")
         except Exception as error:
             self.error_message.emit(
                 f"Unhandled error: {error}\n{traceback.format_exc()}"
             )
 
-    def init_plugins(self) -> Type[BaseWizardPage] | None:
+    def init_plugins(self) -> str | None:
         # built in plugins
         self._update_built_in_plugins()
 
         # load user plugins
         plugin_loader = PluginLoader(self.update_splash_msg)
         plugins = plugin_loader.load_plugins()
-        self.config.loaded_plugins.update(plugins)
+        self.config.plugin_registry.plugins.update(plugins)
         self._update_flat_filters_with_plugins()
 
         # check if we have missing keys and remove them from the running config
-        plugins = self.config.loaded_plugins.keys()
-        if self.config.cfg_payload.wizard_page not in plugins:
-            self.config.cfg_payload.wizard_page = None
-        if self.config.cfg_payload.token_replacer not in plugins:
-            self.config.cfg_payload.token_replacer = None
-        self.config.save_config()
+        plugins = self.config.plugin_registry.plugins.keys()
+        if self.config.settings.plugins.wizard_page not in plugins:
+            self.config.settings.plugins.wizard_page = None
+        if self.config.settings.plugins.token_replacer not in plugins:
+            self.config.settings.plugins.token_replacer = None
+        if self.config.settings.plugins.pre_upload not in plugins:
+            self.config.settings.plugins.pre_upload = None
+        self.config.save()
+
+        if plugin_loader.failures:
+            failures = "\n".join(f"- {failure}" for failure in plugin_loader.failures)
+            return (
+                "The following plugins could not be loaded and were skipped:\n\n"
+                f"{failures}\n\n"
+                "See the application log for full error details."
+            )
 
     def _update_built_in_plugins(self) -> None:
         built_in_plugins = {
@@ -165,13 +173,13 @@ class SplashScreenLoader(QThread):
                 pre_upload=False,
             ),
         }
-        self.config.loaded_plugins.update(built_in_plugins)
+        self.config.plugin_registry.plugins.update(built_in_plugins)
 
     def _update_flat_filters_with_plugins(self) -> None:
-        for plugin in self.config.loaded_plugins.values():
+        for plugin in self.config.plugin_registry.plugins.values():
             flat_filters = getattr(plugin, "flat_filters", None)
             if flat_filters:
-                self.config.loaded_flat_filters.update(flat_filters)
+                self.config.plugin_registry.flat_filters.update(flat_filters)
 
 
 class SplashScreen(QWidget):

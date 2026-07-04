@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 class SeriesMatch(BaseWizardPage):
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
         super().__init__(config, context, parent)
         self.setTitle("Series Match")

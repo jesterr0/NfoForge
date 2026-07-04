@@ -37,7 +37,7 @@ from src.backend.utils.rename_normalizations import (
     RE_RELEASE_INFO,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.config.tv_tokens import get_tvr_episode_token
 from src.context.processing_context import ProcessingContext
 from src.enums.rename import QualitySelection
@@ -78,7 +78,7 @@ class RenameEncodeSeries(BaseWizardPage):
     REASON_STR = "Select or enter reason"
 
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
         super().__init__(config, context, parent)
         self.setTitle("Series Rename")
@@ -309,7 +309,7 @@ class RenameEncodeSeries(BaseWizardPage):
         """Initialize the page with series data and load episode batch."""
         self.context.media_input.has_basic_data()
         media_files = self.context.media_input.file_list
-        release_group_name = self.config.cfg_payload.tvr_release_group
+        release_group_name = self.config.settings.series.release_group
 
         if not media_files:
             raise FileNotFoundError("No files found in media input payload")
@@ -327,7 +327,7 @@ class RenameEncodeSeries(BaseWizardPage):
 
         # Use series token from config
         series_token = get_tvr_episode_token(
-            self.config.cfg_payload,
+            self.config.settings.series,
             self.context.media_input.series_episode_format,
         )
         self.token_override.setText(series_token)
@@ -367,7 +367,7 @@ class RenameEncodeSeries(BaseWizardPage):
             self.token_override.text()
             if self.override_group.isChecked()
             else get_tvr_episode_token(
-                self.config.cfg_payload,
+                self.config.settings.series,
                 self.context.media_input.series_episode_format,
             )
         )
@@ -375,7 +375,7 @@ class RenameEncodeSeries(BaseWizardPage):
         # Get user tokens
         user_tokens = {
             k: v
-            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
 
@@ -432,10 +432,10 @@ class RenameEncodeSeries(BaseWizardPage):
                 media_input_obj=self.context.media_input,
                 # media_file=media_file,
                 token=token,
-                colon_replacement=self.config.cfg_payload.tvr_colon_replace_filename,
+                colon_replacement=self.config.settings.series.filename_colon_replace,
                 media_search_payload=self.context.media_search,
-                title_clean_rules=self.config.cfg_payload.title_clean_rules,
-                video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
+                title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
                 user_tokens=user_tokens,
                 season_num=media_data["season"],
                 episode_num=media_data["episode"],
@@ -646,7 +646,7 @@ class RenameEncodeSeries(BaseWizardPage):
 
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
-            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (_, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         ]
 
@@ -784,7 +784,7 @@ class RenameEncodeSeries(BaseWizardPage):
     def update_generated_name(self, _: int | None = None) -> None:
         """Update the generated name based on current selections."""
         token = get_tvr_episode_token(
-            self.config.cfg_payload,
+            self.config.settings.series,
             self.context.media_input.series_episode_format,
         )
         if self.override_group.isChecked():

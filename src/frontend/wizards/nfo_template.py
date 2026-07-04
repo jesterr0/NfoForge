@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 from src.frontend.custom_widgets.template_selector import TemplateSelector
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 class NfoTemplate(BaseWizardPage):
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ):
         super().__init__(config, context, parent)
         self.setTitle("NFO Template")
@@ -59,7 +59,7 @@ class NfoTemplate(BaseWizardPage):
             QMessageBox.critical(self, "Error", f"Failed to load template:\n{i_error}")
 
     def get_syntax_highlights(self) -> list[HighlightKeywords]:
-        payload = self.config.cfg_payload
+        payload = self.config.settings.templates
         return [
             (
                 HighlightKeywords(
@@ -88,7 +88,7 @@ class NfoTemplate(BaseWizardPage):
         if not self._validate_tracker_selection():
             return False
 
-        self.config.save_config()
+        self.config.save()
         self.template_selector.destroy_token_window.emit()
         super().validatePage()
         return True
@@ -100,7 +100,7 @@ class NfoTemplate(BaseWizardPage):
             )
 
         for tracker in self.context.shared_data.selected_trackers:
-            if not self.config.tracker_map[tracker].nfo_template:
+            if not self.config.settings.trackers.by_selection()[tracker].nfo_template:
                 selected_trackers = {
                     str(x) for x in self.context.shared_data.selected_trackers
                 }

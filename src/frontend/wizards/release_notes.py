@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QCheckBox, QFrame, QScrollArea, QVBoxLayout, QWidget
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.dict_widget import DictWidget
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 class ReleaseNotes(BaseWizardPage):
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
         super().__init__(config, context, parent)
 
@@ -51,15 +51,13 @@ class ReleaseNotes(BaseWizardPage):
         self.setLayout(main_layout)
 
     def initializePage(self) -> None:
-        self.release_notes_toggle.setChecked(
-            self.config.cfg_payload.enable_release_notes
-        )
-        self.dict_widget.fill_data(self.config.cfg_payload.release_notes)
+        self.release_notes_toggle.setChecked(self.config.settings.release_notes.enabled)
+        self.dict_widget.fill_data(self.config.settings.release_notes.notes)
 
         # apply last used index
-        if self.config.cfg_payload.last_used_release_note:
+        if self.config.settings.release_notes.last_used:
             combo_idx = self.dict_widget.combo.findText(
-                self.config.cfg_payload.last_used_release_note
+                self.config.settings.release_notes.last_used
             )
             if combo_idx != -1:
                 self.dict_widget.combo.setCurrentIndex(combo_idx)
@@ -77,11 +75,11 @@ class ReleaseNotes(BaseWizardPage):
                 self.context.shared_data.release_notes = get_notes
 
     def _update_cfg(self) -> None:
-        self.config.cfg_payload.enable_release_notes = (
+        self.config.settings.release_notes.enabled = (
             self.release_notes_toggle.isChecked()
         )
-        self.config.cfg_payload.last_used_release_note = (
+        self.config.settings.release_notes.last_used = (
             self.dict_widget.combo.currentText()
         )
-        self.config.cfg_payload.release_notes = self.dict_widget.get_data()
-        self.config.save_config()
+        self.config.settings.release_notes.notes = self.dict_widget.get_data()
+        self.config.save()

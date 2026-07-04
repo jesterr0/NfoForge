@@ -23,6 +23,7 @@ from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.config.models import DynamicRangeSettings
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -198,7 +199,7 @@ class MoviesManagementSettings(BaseSettings):
         # tracker override map
         self.tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
         self.tracker_over_ride_stacked_widget = ResizableStackedWidget(self)
-        for tracker in self.config.tracker_map.keys():
+        for tracker in self.config.settings.trackers.by_selection().keys():
             if tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED:
                 continue
             tracker_format_override = TrackerFormatOverride(self)
@@ -280,7 +281,7 @@ class MoviesManagementSettings(BaseSettings):
     ) -> str:
         user_tokens = {
             k: v
-            for k, (v, ts) in self.config.cfg_payload.user_tokens.items()
+            for k, (v, ts) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(ts) is TokenSelection.FILE_TOKEN
         }
         format_str = TokenReplacer(
@@ -293,13 +294,13 @@ class MoviesManagementSettings(BaseSettings):
             file_name_mode=file_name_mode,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            releasers_name=self.config.cfg_payload.releasers_name,
+            releasers_name=self.config.settings.general.releasers_name,
             title_clean_rules=self._get_live_title_clean_rules(),
             video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
-            flat_filters=self.config.loaded_flat_filters,
+            flat_filters=self.config.plugin_registry.flat_filters,
         )
         example_txt = qline.text()
         output = format_str.get_output()
@@ -360,36 +361,36 @@ class MoviesManagementSettings(BaseSettings):
         self._live_title_clean_rules = None
         self._live_video_dynamic_range = None
 
-        self.rename_check_box.setChecked(self.config.cfg_payload.mvr_enabled)
+        self.rename_check_box.setChecked(self.config.settings.movie.enabled)
         self.replace_illegal_chars.setChecked(
-            self.config.cfg_payload.mvr_replace_illegal_chars
+            self.config.settings.movie.replace_illegal_chars
         )
         self.load_combo_box(
             self.fn_colon_replace,
             ColonReplace,
-            self.config.cfg_payload.mvr_colon_replace_filename,
+            self.config.settings.movie.filename_colon_replace,
         )
         self.load_combo_box(
             self.title_colon_replace,
             ColonReplace,
-            self.config.cfg_payload.mvr_colon_replace_title,
+            self.config.settings.movie.title_colon_replace,
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.cfg_payload.mvr_parse_filename_attributes
+            self.config.settings.movie.parse_filename_attributes
         )
-        if self.config.cfg_payload.mvr_token.strip():
+        if self.config.settings.movie.filename_token.strip():
             self._update_qline_cursor_0(
                 self.format_file_name_token_input,
-                self.config.cfg_payload.mvr_token,
+                self.config.settings.movie.filename_token,
             )
-        if self.config.cfg_payload.mvr_title_token.strip():
+        if self.config.settings.movie.title_token.strip():
             self._update_qline_cursor_0(
                 self.format_release_title_input,
-                self.config.cfg_payload.mvr_title_token,
+                self.config.settings.movie.title_token,
             )
         # load saved tracker overrides
         for idx, tracker in enumerate(self.tracker_override_map.keys()):
-            tracker_info = self.config.tracker_map[tracker]
+            tracker_info = self.config.settings.trackers.by_selection()[tracker]
             over_ride_widget = self.tracker_override_map[tracker]
             over_ride_widget.enabled_checkbox.setChecked(
                 tracker_info.mvr_title_override_enabled
@@ -402,7 +403,9 @@ class MoviesManagementSettings(BaseSettings):
                 tracker_info.mvr_title_token_override,
             )
             over_ride_widget.over_ride_replacement_table.set_default_rules(
-                self.config.tracker_map_defaults[tracker].mvr_title_replace_map
+                self.config.defaults.trackers.by_selection()[
+                    tracker
+                ].mvr_title_replace_map
             )
             over_ride_widget.over_ride_replacement_table.reset()
             if tracker_info.mvr_title_replace_map:
@@ -432,36 +435,38 @@ class MoviesManagementSettings(BaseSettings):
 
     @Slot()
     def _save_settings(self) -> None:
-        self.config.cfg_payload.mvr_enabled = self.rename_check_box.isChecked()
-        self.config.cfg_payload.mvr_replace_illegal_chars = (
+        self.config.settings.movie.enabled = self.rename_check_box.isChecked()
+        self.config.settings.movie.replace_illegal_chars = (
             self.replace_illegal_chars.isChecked()
         )
-        self.config.cfg_payload.mvr_colon_replace_filename = ColonReplace(
+        self.config.settings.movie.filename_colon_replace = ColonReplace(
             self.fn_colon_replace.currentData()
         )
-        self.config.cfg_payload.mvr_parse_filename_attributes = (
+        self.config.settings.movie.parse_filename_attributes = (
             self.parse_input_file_attributes.isChecked()
         )
-        self.config.cfg_payload.mvr_colon_replace_title = ColonReplace(
+        self.config.settings.movie.title_colon_replace = ColonReplace(
             self.title_colon_replace.currentData()
         )
-        self.config.cfg_payload.mvr_token = self.format_file_name_token_input.text()
-        self.config.cfg_payload.mvr_title_token = self.format_release_title_input.text()
+        self.config.settings.movie.filename_token = (
+            self.format_file_name_token_input.text()
+        )
+        self.config.settings.movie.title_token = self.format_release_title_input.text()
         # save tracker overrides
         for tracker in self.tracker_override_map.keys():
             over_ride_widget = self.tracker_override_map[tracker]
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 tracker
             ].mvr_title_override_enabled = over_ride_widget.enabled_checkbox.isChecked()
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 tracker
             ].mvr_title_colon_replace = (
                 over_ride_widget.title_colon_replace.currentData()
             )
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 tracker
             ].mvr_title_token_override = over_ride_widget.over_ride_format_title.text()
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 tracker
             ].mvr_title_replace_map = (
                 over_ride_widget.over_ride_replacement_table.get_replacements()
@@ -469,32 +474,30 @@ class MoviesManagementSettings(BaseSettings):
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
-        self.rename_check_box.setChecked(self.config.cfg_payload_defaults.mvr_enabled)
+        self.rename_check_box.setChecked(self.config.defaults.movie.enabled)
         self.replace_illegal_chars.setChecked(
-            self.config.cfg_payload_defaults.mvr_replace_illegal_chars
+            self.config.defaults.movie.replace_illegal_chars
         )
         self.fn_colon_replace.setCurrentIndex(
-            self.config.cfg_payload_defaults.mvr_colon_replace_filename.value - 1
+            self.config.defaults.movie.filename_colon_replace.value - 1
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.cfg_payload_defaults.mvr_parse_filename_attributes
+            self.config.defaults.movie.parse_filename_attributes
         )
         self.format_file_name_token_input.setText(
-            self.config.cfg_payload_defaults.mvr_token
+            self.config.defaults.movie.filename_token
         )
         self.title_colon_replace.setCurrentIndex(
-            self.config.cfg_payload_defaults.mvr_colon_replace_title.value - 1
+            self.config.defaults.movie.title_colon_replace.value - 1
         )
-        self.format_release_title_input.setText(
-            self.config.cfg_payload_defaults.mvr_title_token
-        )
+        self.format_release_title_input.setText(self.config.defaults.movie.title_token)
         self._apply_override_defaults()
         self.token_table.reset()
 
     def _apply_override_defaults(self) -> None:
         for tracker in self.tracker_override_map.keys():
             over_ride_widget = self.tracker_override_map[tracker]
-            tracker_info = self.config.tracker_map_defaults[tracker]
+            tracker_info = self.config.defaults.trackers.by_selection()[tracker]
             over_ride_widget.enabled_checkbox.setChecked(
                 tracker_info.mvr_title_override_enabled
             )
@@ -558,13 +561,15 @@ class MoviesManagementSettings(BaseSettings):
         if "title_clean_rules" in data:
             self._live_title_clean_rules = data["title_clean_rules"]
         if "video_dynamic_range" in data:
-            self._live_video_dynamic_range = data["video_dynamic_range"]
+            self._live_video_dynamic_range = DynamicRangeSettings(
+                **data["video_dynamic_range"]
+            )
         self._update_all_examples()
 
     def _get_file_tokens(self) -> list[TokenType]:
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
-            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (_, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         ]
         return sorted(Tokens().get_token_objects(FileToken)) + user_tokens
@@ -574,15 +579,15 @@ class MoviesManagementSettings(BaseSettings):
         return (
             self._live_title_clean_rules
             if self._live_title_clean_rules is not None
-            else self.config.cfg_payload.title_clean_rules
+            else self.config.settings.global_management.title_clean_rules
         )
 
-    def _get_live_video_dynamic_range(self) -> dict:
+    def _get_live_video_dynamic_range(self) -> DynamicRangeSettings:
         """Get live video dynamic range (from cache if available, otherwise from config)"""
         return (
             self._live_video_dynamic_range
             if self._live_video_dynamic_range is not None
-            else self.config.cfg_payload.video_dynamic_range
+            else self.config.settings.global_management.video_dynamic_range
         )
 
     @staticmethod

@@ -292,7 +292,7 @@ class ScreenShotSettings(BaseSettings):
             ScreenShotMode.BASIC_SS_GEN,
             ScreenShotMode.SIMPLE_SS_COMP,
         ):
-            ffmpeg = self.config.cfg_payload.ffmpeg
+            ffmpeg = self.config.settings.dependencies.ffmpeg
             if not ffmpeg or (ffmpeg and not ffmpeg.exists()):
                 QMessageBox.critical(
                     self,
@@ -303,13 +303,13 @@ class ScreenShotSettings(BaseSettings):
                         "generation until executable path is provided."
                     ),
                 )
-                self.config.cfg_payload.screenshots_enabled = False
+                self.config.settings.screenshots.enabled = False
                 self.ss_enabled_btn.setChecked(False)
-                self.config.save_config()
+                self.config.save()
                 GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
         elif ss_mode == ScreenShotMode.ADV_SS_COMP:
-            frame_forge = self.config.cfg_payload.frame_forge
+            frame_forge = self.config.settings.dependencies.frame_forge
             if not frame_forge or (frame_forge and not frame_forge.exists()):
                 QMessageBox.critical(
                     self,
@@ -320,15 +320,15 @@ class ScreenShotSettings(BaseSettings):
                         "generation until executable path is provided."
                     ),
                 )
-                self.config.cfg_payload.screenshots_enabled = False
+                self.config.settings.screenshots.enabled = False
                 self.ss_enabled_btn.setChecked(False)
-                self.config.save_config()
+                self.config.save()
                 GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
     @Slot(bool)
     def _ss_enable_toggle_check(self, _: bool) -> None:
         if self.ss_enabled_btn.isChecked():
-            self._ss_toggle_check(self.config.cfg_payload.ss_mode)
+            self._ss_toggle_check(self.config.settings.screenshots.mode)
 
     @Slot(int)
     def _ss_mode_changed(self, idx: int) -> None:
@@ -361,34 +361,30 @@ class ScreenShotSettings(BaseSettings):
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
-        payload = self.config.cfg_payload
-        self.ss_enabled_btn.setChecked(payload.screenshots_enabled)
-        self.ss_count_spinbox.setValue(payload.screen_shot_count)
-        self.load_combo_box(self.ss_mode_combo, ScreenShotMode, payload.ss_mode)
+        payload = self.config.settings.screenshots
+        self.ss_enabled_btn.setChecked(payload.enabled)
+        self.ss_count_spinbox.setValue(payload.count)
+        self.load_combo_box(self.ss_mode_combo, ScreenShotMode, payload.mode)
         self.ss_trim_start.setValue(payload.trim_start)
         self.ss_trim_end.setValue(payload.trim_end)
-        self.min_ss_required_count_spinbox.setValue(
-            payload.min_required_selected_screens
-        )
-        self.max_ss_required_count_spinbox.setValue(
-            payload.max_required_selected_screens
-        )
+        self.min_ss_required_count_spinbox.setValue(payload.min_required_selected)
+        self.max_ss_required_count_spinbox.setValue(payload.max_required_selected)
         self.load_combo_box(self.crop_mode_combo, Cropping, payload.crop_mode)
         self.load_combo_box(self.indexer_combo, Indexer, payload.indexer)
         self.load_combo_box(self.image_plugin_combo, ImagePlugin, payload.image_plugin)
         self.ss_comparison_subtitle_btn.setChecked(payload.comparison_subtitles)
-        self.ss_comp_source_entry.setText(payload.comparison_subtitle_source_name)
-        self.ss_comp_encode_entry.setText(payload.comparison_subtitle_encode_name)
-        self.sub_720p_size_spinbox.setValue(payload.sub_size_height_720)
-        self.sub_1080p_size_spinbox.setValue(payload.sub_size_height_1080)
-        self.sub_2160p_size_spinbox.setValue(payload.sub_size_height_2160)
+        self.ss_comp_source_entry.setText(payload.comparison_source_name)
+        self.ss_comp_encode_entry.setText(payload.comparison_encode_name)
+        self.sub_720p_size_spinbox.setValue(payload.subtitle_height_720)
+        self.sub_1080p_size_spinbox.setValue(payload.subtitle_height_1080)
+        self.sub_2160p_size_spinbox.setValue(payload.subtitle_height_2160)
         self.sub_color_entry.setText(payload.subtitle_color)
         self.sub_color_picker.update_color(
-            QColor(self.config.cfg_payload.subtitle_color)
+            QColor(self.config.settings.screenshots.subtitle_color)
         )
         self.sub_outline_color_entry.setText(payload.subtitle_outline_color)
         self.sub_outline_color_picker.update_color(
-            QColor(self.config.cfg_payload.subtitle_outline_color)
+            QColor(self.config.settings.screenshots.subtitle_outline_color)
         )
         self._update_sub_entry_color(self.sub_color_picker.get_color())
         self.load_combo_box(
@@ -396,57 +392,65 @@ class ScreenShotSettings(BaseSettings):
         )
         self.ss_optimize_generated_btn.setChecked(payload.optimize_generated_images)
         self.dl_provided_images_optimize.setChecked(
-            self.config.cfg_payload.optimize_dl_url_images
+            self.config.settings.screenshots.optimize_downloaded_images
         )
         self.optimize_cpu_cores_percent.setValue(
-            self.config.cfg_payload.optimize_dl_url_images_percentage
+            self.config.settings.screenshots.optimize_downloaded_images_percentage
         )
-        self.image_host_config.add_items(self.config.image_host_map)
+        self.image_host_config.add_items(
+            self.config.settings.image_hosts.by_selection()
+        )
 
     @Slot()
     def _save_settings(self) -> None:
-        self.config.cfg_payload.screenshots_enabled = self.ss_enabled_btn.isChecked()
-        self.config.cfg_payload.screen_shot_count = self.ss_count_spinbox.value()
-        self.config.cfg_payload.ss_mode = self.ss_mode_combo.currentData()
-        self.config.cfg_payload.min_required_selected_screens = (
+        self.config.settings.screenshots.enabled = self.ss_enabled_btn.isChecked()
+        self.config.settings.screenshots.count = self.ss_count_spinbox.value()
+        self.config.settings.screenshots.mode = self.ss_mode_combo.currentData()
+        self.config.settings.screenshots.min_required_selected = (
             self.min_ss_required_count_spinbox.value()
         )
-        self.config.cfg_payload.max_required_selected_screens = (
+        self.config.settings.screenshots.max_required_selected = (
             self.max_ss_required_count_spinbox.value()
         )
-        self.config.cfg_payload.crop_mode = self.crop_mode_combo.currentData()
-        self.config.cfg_payload.indexer = self.indexer_combo.currentData()
-        self.config.cfg_payload.image_plugin = self.image_plugin_combo.currentData()
-        self.config.cfg_payload.comparison_subtitles = (
+        self.config.settings.screenshots.crop_mode = self.crop_mode_combo.currentData()
+        self.config.settings.screenshots.indexer = self.indexer_combo.currentData()
+        self.config.settings.screenshots.image_plugin = (
+            self.image_plugin_combo.currentData()
+        )
+        self.config.settings.screenshots.comparison_subtitles = (
             self.ss_comparison_subtitle_btn.isChecked()
         )
-        self.config.cfg_payload.comparison_subtitle_source_name = (
+        self.config.settings.screenshots.comparison_source_name = (
             self.ss_comp_source_entry.text().strip()
         )
-        self.config.cfg_payload.comparison_subtitle_encode_name = (
+        self.config.settings.screenshots.comparison_encode_name = (
             self.ss_comp_encode_entry.text().strip()
         )
-        self.config.cfg_payload.sub_size_height_720 = self.sub_720p_size_spinbox.value()
-        self.config.cfg_payload.sub_size_height_1080 = (
+        self.config.settings.screenshots.subtitle_height_720 = (
+            self.sub_720p_size_spinbox.value()
+        )
+        self.config.settings.screenshots.subtitle_height_1080 = (
             self.sub_1080p_size_spinbox.value()
         )
-        self.config.cfg_payload.sub_size_height_2160 = (
+        self.config.settings.screenshots.subtitle_height_2160 = (
             self.sub_2160p_size_spinbox.value()
         )
-        self.config.cfg_payload.subtitle_color = self.sub_color_entry.text().strip()
-        self.config.cfg_payload.subtitle_outline_color = (
+        self.config.settings.screenshots.subtitle_color = (
+            self.sub_color_entry.text().strip()
+        )
+        self.config.settings.screenshots.subtitle_outline_color = (
             self.sub_outline_color_entry.text().strip()
         )
-        self.config.cfg_payload.subtitle_alignment = (
+        self.config.settings.screenshots.subtitle_alignment = (
             self.sub_alignment_combo.currentData()
         )
-        self.config.cfg_payload.optimize_generated_images = (
+        self.config.settings.screenshots.optimize_generated_images = (
             self.ss_optimize_generated_btn.isChecked()
         )
-        self.config.cfg_payload.optimize_dl_url_images = (
+        self.config.settings.screenshots.optimize_downloaded_images = (
             self.dl_provided_images_optimize.isChecked()
         )
-        self.config.cfg_payload.optimize_dl_url_images_percentage = (
+        self.config.settings.screenshots.optimize_downloaded_images_percentage = (
             self.optimize_cpu_cores_percent.value()
         )
         try:
@@ -458,68 +462,66 @@ class ScreenShotSettings(BaseSettings):
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
-        self.ss_enabled_btn.setChecked(
-            self.config.cfg_payload_defaults.screenshots_enabled
-        )
-        self.ss_count_spinbox.setValue(
-            self.config.cfg_payload_defaults.screen_shot_count
-        )
+        self.ss_enabled_btn.setChecked(self.config.defaults.screenshots.enabled)
+        self.ss_count_spinbox.setValue(self.config.defaults.screenshots.count)
         self.ss_mode_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.ss_mode.value - 1
+            self.config.defaults.screenshots.mode.value - 1
         )
         self.min_ss_required_count_spinbox.setValue(
-            self.config.cfg_payload_defaults.min_required_selected_screens
+            self.config.defaults.screenshots.min_required_selected
         )
         self.max_ss_required_count_spinbox.setValue(
-            self.config.cfg_payload_defaults.max_required_selected_screens
+            self.config.defaults.screenshots.max_required_selected
         )
         self.crop_mode_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.crop_mode.value - 1
+            self.config.defaults.screenshots.crop_mode.value - 1
         )
         self.indexer_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.indexer.value - 1
+            self.config.defaults.screenshots.indexer.value - 1
         )
         self.image_plugin_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.image_plugin.value - 1
+            self.config.defaults.screenshots.image_plugin.value - 1
         )
         self.ss_comparison_subtitle_btn.setChecked(
-            self.config.cfg_payload_defaults.comparison_subtitles
+            self.config.defaults.screenshots.comparison_subtitles
         )
         self.ss_comp_source_entry.setText(
-            self.config.cfg_payload_defaults.comparison_subtitle_source_name
+            self.config.defaults.screenshots.comparison_source_name
         )
         self.ss_comp_encode_entry.setText(
-            self.config.cfg_payload_defaults.comparison_subtitle_encode_name
+            self.config.defaults.screenshots.comparison_encode_name
         )
         self.sub_720p_size_spinbox.setValue(
-            self.config.cfg_payload_defaults.sub_size_height_720
+            self.config.defaults.screenshots.subtitle_height_720
         )
         self.sub_1080p_size_spinbox.setValue(
-            self.config.cfg_payload_defaults.sub_size_height_1080
+            self.config.defaults.screenshots.subtitle_height_1080
         )
         self.sub_2160p_size_spinbox.setValue(
-            self.config.cfg_payload_defaults.sub_size_height_2160
+            self.config.defaults.screenshots.subtitle_height_2160
         )
         self.sub_color_picker.update_color(
-            QColor(self.config.cfg_payload_defaults.subtitle_color)
+            QColor(self.config.defaults.screenshots.subtitle_color)
         )
         self._update_sub_entry_color(self.sub_color_picker.get_color())
         self.sub_outline_color_picker.update_color(
-            QColor(self.config.cfg_payload_defaults.subtitle_outline_color)
+            QColor(self.config.defaults.screenshots.subtitle_outline_color)
         )
         self._update_sub_entry_outline_color(self.sub_outline_color_picker.get_color())
         self.ss_optimize_generated_btn.setChecked(
-            self.config.cfg_payload_defaults.optimize_generated_images
+            self.config.defaults.screenshots.optimize_generated_images
         )
         self.dl_provided_images_optimize.setChecked(
-            self.config.cfg_payload_defaults.optimize_dl_url_images
+            self.config.defaults.screenshots.optimize_downloaded_images
         )
         self.optimize_cpu_cores_percent.setValue(
-            self.config.cfg_payload_defaults.optimize_dl_url_images_percentage
+            self.config.defaults.screenshots.optimize_downloaded_images_percentage
         )
-        self.image_host_config.add_items(self.config.image_host_map, reset=True)
+        self.image_host_config.add_items(
+            self.config.settings.image_hosts.by_selection(), reset=True
+        )
         self.sub_alignment_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.subtitle_alignment.value - 1
+            self.config.defaults.screenshots.subtitle_alignment.value - 1
         )
 
     def _build_spinbox(

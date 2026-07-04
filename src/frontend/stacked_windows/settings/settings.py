@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.enums.settings_window import SettingsTabs
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.about import AboutTab
@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 class Settings(QWidget):
     re_load_settings = Signal()
 
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
+    def __init__(self, config: ConfigManager, parent: "MainWindow") -> None:
         super().__init__(parent)
         self.setObjectName("settingsWindow")
 
@@ -168,12 +168,11 @@ class Settings(QWidget):
             parent=self,
             caption="Save Config As",
             filter="*.toml",
-            dir=str(self.config.USER_CONFIG_DIR),
+            dir=str(self.config.paths.user_configs),
         )
         if save_cfg:
             save_cfg = Path(save_cfg)
-            self.config.program_conf.current_config = save_cfg.stem
-            self.config.save_config(save_cfg)
+            self.config.save_as(save_cfg)
             self.general_settings_content.load_selected_configs()
             self._apply_settings()
 
@@ -200,7 +199,7 @@ class Settings(QWidget):
 
     def _save_all_settings(self) -> None:
         self._save_approved_counter = 0
-        self.config.save_config()
+        self.config.save()
         GSigs().settings_close.emit()
         self._reload_settings()
 

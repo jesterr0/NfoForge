@@ -1,7 +1,7 @@
-from pathlib import Path
 import shutil
+from pathlib import Path
 
-from PySide6.QtCore import QSize, QTimer, Qt, Slot
+from PySide6.QtCore import QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -289,11 +289,11 @@ class GeneralSettings(BaseSettings):
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
-        payload = self.config.cfg_payload
+        payload = self.config.settings.general
         self.load_selected_configs()
         self.ui_suffix.setText(payload.ui_suffix.strip())
         self.ui_scale_factor_spinbox.setValue(int(payload.ui_scale_factor * 100))
-        self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.nfo_forge_theme)
+        self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.theme)
         self._change_theme()
         self.enable_plugins.setChecked(payload.enable_plugins)
         self._enable_plugins()
@@ -310,19 +310,19 @@ class GeneralSettings(BaseSettings):
 
     def load_selected_configs(self) -> None:
         self.selected_config.clear()
-        for config_file in self.config.USER_CONFIG_DIR.glob("*.toml"):
+        for config_file in self.config.paths.user_configs.glob("*.toml"):
             self.selected_config.addItem(config_file.stem)
 
-        if self.config.program_conf.current_config:
+        if self.config.program.current_config:
             current_index = self.selected_config.findText(
-                self.config.program_conf.current_config
+                self.config.program.current_config
             )
             if current_index >= 0:
                 self.selected_config.setCurrentIndex(current_index)
 
     def delete_config(self) -> None:
         config_to_remove = self.selected_config.currentText()
-        user_configs = [item for item in self.config.USER_CONFIG_DIR.glob("*.toml")]
+        user_configs = [item for item in self.config.paths.user_configs.glob("*.toml")]
         if len(user_configs) > 1:
             last_config = None
             for config_file in user_configs:
@@ -332,7 +332,7 @@ class GeneralSettings(BaseSettings):
                 else:
                     last_config = config_file.stem
 
-            self.config.program_conf.current_config = last_config
+            self.config.program.current_config = last_config
             self.load_selected_configs()
             self._swap_config()
         else:
@@ -340,8 +340,8 @@ class GeneralSettings(BaseSettings):
 
     @Slot(int)
     def _swap_config(self, _: int | None = None) -> None:
-        self.config.program_conf.current_config = self.selected_config.currentText()
-        self.config.load_config(self.selected_config.currentText())
+        self.config.program.current_config = self.selected_config.currentText()
+        self.config.load_profile(self.selected_config.currentText())
         self.settings_window.re_load_settings.emit()
 
     @Slot()
@@ -492,22 +492,22 @@ class GeneralSettings(BaseSettings):
         wd = QFileDialog.getExistingDirectory(
             parent=self,
             caption="Select Directory",
-            dir=str(self.config.cfg_payload.working_dir)
-            if self.config.cfg_payload.working_dir
+            dir=str(self.config.settings.general.working_dir)
+            if self.config.settings.general.working_dir
             else "",
         )
         if wd:
             wd = Path(wd)
             self.working_dir_entry.setText(str(wd))
-            self.config.cfg_payload.working_dir = wd
+            self.config.settings.general.working_dir = wd
 
     @Slot()
     def _handle_open_working_dir_click(self) -> None:
-        open_explorer(self.config.cfg_payload.working_dir)
+        open_explorer(self.config.settings.general.working_dir)
 
     @Slot()
     def _handle_working_dir_clean_up_click(self) -> None:
-        total_size = get_dir_size(self.config.cfg_payload.working_dir)
+        total_size = get_dir_size(self.config.settings.general.working_dir)
 
         msg = (
             "Would you like to clean up the working directory now?\n\n"
@@ -523,7 +523,7 @@ class GeneralSettings(BaseSettings):
             )
             is QMessageBox.StandardButton.Yes
         ):
-            for item in self.config.cfg_payload.working_dir.iterdir():
+            for item in self.config.settings.general.working_dir.iterdir():
                 if item.is_dir():
                     shutil.rmtree(item)
                 else:
@@ -535,8 +535,8 @@ class GeneralSettings(BaseSettings):
 
     def _load_plugin_combos(self) -> None:
         if self.plugin_wizard_page_combo.count() == 0:
-            if self.config.loaded_plugins:
-                for plugin in self.config.loaded_plugins.values():
+            if self.config.plugin_registry.plugins:
+                for plugin in self.config.plugin_registry.plugins.values():
                     plugin_name = plugin.name
 
                     if plugin.wizard:
@@ -562,27 +562,27 @@ class GeneralSettings(BaseSettings):
 
     def _apply_plugin_combos_settings(self) -> None:
         wizard_plugin = None
-        if self.config.cfg_payload.wizard_page:
+        if self.config.settings.plugins.wizard_page:
             wizard_plugin = self.plugin_wizard_page_combo.findText(
-                self.config.cfg_payload.wizard_page
+                self.config.settings.plugins.wizard_page
             )
         self.plugin_wizard_page_combo.setCurrentIndex(
             wizard_plugin if wizard_plugin and wizard_plugin > 0 else 0
         )
 
         url_plugin = None
-        if self.config.cfg_payload.token_replacer:
+        if self.config.settings.plugins.token_replacer:
             url_plugin = self.plugin_token_replacer_combo.findText(
-                self.config.cfg_payload.token_replacer
+                self.config.settings.plugins.token_replacer
             )
         self.plugin_token_replacer_combo.setCurrentIndex(
             url_plugin if url_plugin and url_plugin > 0 else 0
         )
 
         pre_upload_plugin = None
-        if self.config.cfg_payload.pre_upload:
+        if self.config.settings.plugins.pre_upload:
             pre_upload_plugin = self.plugin_pre_upload_combo.findText(
-                self.config.cfg_payload.pre_upload
+                self.config.settings.plugins.pre_upload
             )
         self.plugin_pre_upload_combo.setCurrentIndex(
             pre_upload_plugin if pre_upload_plugin and pre_upload_plugin > 0 else 0
@@ -590,53 +590,55 @@ class GeneralSettings(BaseSettings):
 
     @Slot()
     def _save_settings(self) -> None:
-        self.config.program_conf.current_config = self.selected_config.currentText()
-        self.config.cfg_payload.ui_suffix = self.ui_suffix.text().strip()
-        self.config.cfg_payload.ui_scale_factor = (
+        self.config.program.current_config = self.selected_config.currentText()
+        self.config.settings.general.ui_suffix = self.ui_suffix.text().strip()
+        self.config.settings.general.ui_scale_factor = (
             self.ui_scale_factor_spinbox.value() / 100.0
         )
-        self.config.cfg_payload.nfo_forge_theme = NfoForgeTheme(
+        self.config.settings.general.theme = NfoForgeTheme(
             self.theme_combo.currentData()
         )
-        self.config.cfg_payload.enable_plugins = self.enable_plugins.isChecked()
+        self.config.settings.general.enable_plugins = self.enable_plugins.isChecked()
         if self.enable_plugins.isChecked():
-            self.config.cfg_payload.wizard_page = (
+            self.config.settings.plugins.wizard_page = (
                 self.plugin_wizard_page_combo.currentData()
             )
-            self.config.cfg_payload.token_replacer = (
+            self.config.settings.plugins.token_replacer = (
                 self.plugin_token_replacer_combo.currentData()
             )
-            self.config.cfg_payload.pre_upload = (
+            self.config.settings.plugins.pre_upload = (
                 self.plugin_pre_upload_combo.currentData()
             )
         else:
-            self.config.cfg_payload.wizard_page = ""
-            self.config.cfg_payload.token_replacer = ""
-            self.config.cfg_payload.pre_upload = ""
-        self.config.cfg_payload.releasers_name = (
+            self.config.settings.plugins.wizard_page = ""
+            self.config.settings.plugins.token_replacer = ""
+            self.config.settings.plugins.pre_upload = ""
+        self.config.settings.general.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
-        self.config.cfg_payload.tmdb_language = self.tmdb_language_combo.currentData()
-        self.config.cfg_payload.timeout = self.global_timeout_spinbox.value()
-        self.config.cfg_payload.enable_prompt_overview = (
+        self.config.settings.general.tmdb_language = (
+            self.tmdb_language_combo.currentData()
+        )
+        self.config.settings.general.timeout = self.global_timeout_spinbox.value()
+        self.config.settings.general.enable_prompt_overview = (
             self.enable_prompt_overview.isChecked()
         )
-        self.config.cfg_payload.enable_mkbrr = self.enable_mkbrr.isChecked()
-        self.config.cfg_payload.log_level = LogLevel(self.log_level_combo.currentData())
-        LOG.set_log_level(self.config.cfg_payload.log_level)
-        self.config.cfg_payload.log_total = self.max_log_files_spinbox.value()
-        self.config.cfg_payload.working_dir = Path(self.working_dir_entry.text())
+        self.config.settings.general.enable_mkbrr = self.enable_mkbrr.isChecked()
+        self.config.settings.general.log_level = LogLevel(
+            self.log_level_combo.currentData()
+        )
+        LOG.set_log_level(self.config.settings.general.log_level)
+        self.config.settings.general.log_total = self.max_log_files_spinbox.value()
+        self.config.settings.general.working_dir = Path(self.working_dir_entry.text())
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
         self.selected_config.setCurrentIndex(0)
         self.ui_suffix.clear()
         self.ui_scale_factor_spinbox.setValue(
-            int(self.config.cfg_payload_defaults.ui_scale_factor * 100)
+            int(self.config.defaults.general.ui_scale_factor * 100)
         )
-        self.theme_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.nfo_forge_theme.value - 1
-        )
+        self.theme_combo.setCurrentIndex(self.config.defaults.general.theme.value - 1)
         self.enable_plugins.setChecked(False)
         self._enable_plugins()
         self.plugin_wizard_page_combo.clear()
@@ -646,15 +648,15 @@ class GeneralSettings(BaseSettings):
         for i in range(self.tmdb_language_combo.count()):
             if (
                 self.tmdb_language_combo.itemData(i)
-                == self.config.cfg_payload_defaults.tmdb_language
+                == self.config.defaults.general.tmdb_language
             ):
                 self.tmdb_language_combo.setCurrentIndex(i)
                 break
-        self.global_timeout_spinbox.setValue(self.config.cfg_payload_defaults.timeout)
+        self.global_timeout_spinbox.setValue(self.config.defaults.general.timeout)
         self.enable_prompt_overview.setChecked(
-            self.config.cfg_payload.enable_prompt_overview
+            self.config.settings.general.enable_prompt_overview
         )
-        self.enable_mkbrr.setChecked(self.config.cfg_payload_defaults.enable_mkbrr)
+        self.enable_mkbrr.setChecked(self.config.defaults.general.enable_mkbrr)
         self.working_dir_entry.setText(str(self.config.default_working_dir()))
 
     @staticmethod

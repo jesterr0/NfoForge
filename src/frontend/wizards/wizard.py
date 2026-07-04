@@ -5,7 +5,8 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QMessageBox, QPushButton, QWizard
 
-from src.config.config import Config
+from src.config.config import ConfigManager
+from src.context.factory import create_processing_context
 from src.enums.media_type import MediaType
 from src.enums.wizard import WizardPages
 from src.frontend.global_signals import GSigs
@@ -29,7 +30,7 @@ if TYPE_CHECKING:
 class MainWindowWizard(QWizard):
     def __init__(
         self,
-        config: Config,
+        config: ConfigManager,
         parent: "MainWindow",
     ) -> None:
         super().__init__(parent)
@@ -39,7 +40,10 @@ class MainWindowWizard(QWizard):
 
         self.config = config
         self.main_window = parent
-        self.context = self.config.create_processing_context()
+        self.context = create_processing_context(
+            self.config.settings,
+            self.config.plugin_registry.plugins,
+        )
 
         self._PAGES = self._generate_new_pages()
         self._START_PAGES = (
@@ -135,7 +139,10 @@ class MainWindowWizard(QWizard):
 
     @Slot()
     def reset_wizard(self) -> None:
-        self.context = self.config.create_processing_context()
+        self.context = create_processing_context(
+            self.config.settings,
+            self.config.plugin_registry.plugins,
+        )
         self.currentIdChanged.disconnect()
         self._remove_all_pages()
         self._PAGES = self._generate_new_pages()
@@ -154,17 +161,17 @@ class MainWindowWizard(QWizard):
             self.setPage(idx + 1, page)
 
     def _set_start_page(self) -> None:
-        if not self.config.cfg_payload.enable_plugins:
+        if not self.config.settings.general.enable_plugins:
             self.setStartId(WizardPages.INPUT_PAGE.value)
             GSigs().main_window_update_status_bar_label.emit("Input")
         elif (
-            self.config.cfg_payload.enable_plugins
-            and self.config.cfg_payload.wizard_page
-            and self.config.loaded_plugins
+            self.config.settings.general.enable_plugins
+            and self.config.settings.plugins.wizard_page
+            and self.config.plugin_registry.plugins
         ):
             self.setStartId(WizardPages.PLUGIN_INPUT_PAGE.value)
             GSigs().main_window_update_status_bar_label.emit(
-                self.config.cfg_payload.wizard_page
+                self.config.settings.plugins.wizard_page
             )
 
     @Slot(int)
@@ -189,13 +196,13 @@ class MainWindowWizard(QWizard):
 
     def _insert_plugin_page(self) -> None:
         if (
-            self.config.cfg_payload.enable_plugins
-            and self.config.cfg_payload.wizard_page
-            and self.config.loaded_plugins
+            self.config.settings.general.enable_plugins
+            and self.config.settings.plugins.wizard_page
+            and self.config.plugin_registry.plugins
         ):
             try:
-                plugin_obj = self.config.loaded_plugins[
-                    self.config.cfg_payload.wizard_page
+                plugin_obj = self.config.plugin_registry.plugins[
+                    self.config.settings.plugins.wizard_page
                 ]
                 if plugin_obj.wizard:
                     # insert the plugin wizard page into the correct spot
@@ -220,8 +227,8 @@ class MainWindowWizard(QWizard):
                     MediaInput(self.config, self.context, self.main_window),
                 )
                 # disable plugins for the rest of the wizard flow
-                self.config.cfg_payload.enable_plugins = False
-                self.config.save_config()
+                self.config.settings.general.enable_plugins = False
+                self.config.save()
 
     def _remove_all_pages(self) -> None:
         for page_id in reversed(self.pageIds()):
@@ -240,30 +247,30 @@ class MainWindowWizard(QWizard):
                 return WizardPages.SERIES_MATCHER_PAGE.value
             # movie
             else:
-                if self.config.cfg_payload.mvr_enabled:
+                if self.config.settings.movie.enabled:
                     return WizardPages.RENAME_ENCODE_MOVIES_PAGE.value
                 elif (
-                    not self.config.cfg_payload.mvr_enabled
-                    and self.config.cfg_payload.screenshots_enabled
+                    not self.config.settings.movie.enabled
+                    and self.config.settings.screenshots.enabled
                 ):
                     return WizardPages.IMAGES_PAGE.value
                 return WizardPages.TRACKERS_PAGE.value
 
         elif current_page == WizardPages.SERIES_MATCHER_PAGE:
-            if self.config.cfg_payload.tvr_enabled:
+            if self.config.settings.series.enabled:
                 return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
-            elif self.config.cfg_payload.screenshots_enabled:
+            elif self.config.settings.screenshots.enabled:
                 return WizardPages.IMAGES_PAGE.value
             return WizardPages.TRACKERS_PAGE.value
 
         elif current_page == WizardPages.RENAME_ENCODE_MOVIES_PAGE:
-            if self.config.cfg_payload.screenshots_enabled:
+            if self.config.settings.screenshots.enabled:
                 return WizardPages.IMAGES_PAGE.value
             else:
                 return WizardPages.TRACKERS_PAGE.value
 
         elif current_page == WizardPages.RENAME_ENCODE_SERIES_PAGE:
-            if self.config.cfg_payload.screenshots_enabled:
+            if self.config.settings.screenshots.enabled:
                 return WizardPages.IMAGES_PAGE.value
             else:
                 return WizardPages.TRACKERS_PAGE.value
@@ -291,7 +298,7 @@ class MainWindowWizard(QWizard):
     #         return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
 
     #     elif current_page == WizardPages.MEDIA_SEARCH_PAGE:
-    #         if self.config.cfg_payload.mvr_enabled:
+    #         if self.config.settings.movie.enabled:
     #             # Route to appropriate rename page based on media type
     #             if (
     #                 self.context.media_search
@@ -301,21 +308,21 @@ class MainWindowWizard(QWizard):
     #             else:
     #                 return WizardPages.RENAME_ENCODE_PAGE.value
     #         elif (
-    #             not self.config.cfg_payload.mvr_enabled
-    #             and self.config.cfg_payload.screenshots_enabled
+    #             not self.config.settings.movie.enabled
+    #             and self.config.settings.screenshots.enabled
     #         ):
     #             return WizardPages.IMAGES_PAGE.value
     #         else:
     #             return WizardPages.TRACKERS_PAGE.value
 
     #     elif current_page == WizardPages.RENAME_ENCODE_PAGE:
-    #         if self.config.cfg_payload.screenshots_enabled:
+    #         if self.config.settings.screenshots.enabled:
     #             return WizardPages.IMAGES_PAGE.value
     #         else:
     #             return WizardPages.TRACKERS_PAGE.value
 
     #     elif current_page == WizardPages.RENAME_ENCODE_SERIES_PAGE:
-    #         if self.config.cfg_payload.screenshots_enabled:
+    #         if self.config.settings.screenshots.enabled:
     #             return WizardPages.IMAGES_PAGE.value
     #         else:
     #             return WizardPages.TRACKERS_PAGE.value

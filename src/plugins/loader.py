@@ -1,6 +1,8 @@
 import importlib
 import sys
+import traceback
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +10,7 @@ from pymediainfo import MediaInfo
 from PySide6.QtCore import SignalInstance
 
 from src.backend.utils.working_dir import CURRENT_DIR
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import PluginError
@@ -17,27 +19,48 @@ from src.plugins.plugin_payload import PluginPayload
 from src.plugins.plugin_wizard_base import WizardPluginBase
 
 
+@dataclass(frozen=True, slots=True)
+class PluginLoadFailure:
+    plugin_path: Path
+    reason: str
+
+    def __str__(self) -> str:
+        return f"{self.plugin_path.name}: {self.reason}"
+
+
 class PluginLoader:
     def __init__(self, update_splash_msg: SignalInstance) -> None:
         self.update_splash_msg = update_splash_msg
         self.plugins: dict[str, PluginPayload] = {}
+        self.failures: list[PluginLoadFailure] = []
         self.plugin_dir = CURRENT_DIR / "plugins"
         self.plugin_dir.mkdir(exist_ok=True, parents=True)
 
     def load_plugins(self) -> dict[str, PluginPayload]:
         """Load all plugin packages."""
+        self.failures.clear()
+
         # get plugins in current directory or ONE level down
         directories = tuple(p for p in self.plugin_dir.glob("*") if p.is_dir()) + tuple(
             p for p in self.plugin_dir.glob("*/*") if p.is_dir()
         )
         for item in directories:
-            if (
-                item.is_dir()
-                and item.name.startswith("plugin_")
-                or item.name.startswith("plugin-")
-            ):
-                sys.path.append(str(item.parent))
-                self._handle_dir(item)
+            if item.name.startswith(("plugin_", "plugin-")):
+                plugin_parent = str(item.parent)
+                if plugin_parent not in sys.path:
+                    sys.path.append(plugin_parent)
+                try:
+                    self._handle_dir(item)
+                except Exception as error:
+                    failure = PluginLoadFailure(
+                        item, str(error) or type(error).__name__
+                    )
+                    self.failures.append(failure)
+                    LOG.error(
+                        LOG.LOG_SOURCE.FE,
+                        f"Failed to load plugin '{item}':\n{traceback.format_exc()}",
+                    )
+
         if self.plugins:
             LOG.debug(LOG.LOG_SOURCE.FE, f"Detected plugins: {self.plugins}")
         return self.plugins
@@ -105,13 +128,13 @@ class PluginLoader:
             plugin_payload,
             {
                 "token_replacer": {
-                    "config": Config,
+                    "config": ConfigManager,
                     "context": ProcessingContext,
                     "input_str": str,
                     "tracker_s": Sequence[TrackerSelection],
                 },
                 "pre_upload": {
-                    "config": Config,
+                    "config": ConfigManager,
                     "context": ProcessingContext,
                     "tracker": TrackerSelection,
                     "torrent_file": Path,

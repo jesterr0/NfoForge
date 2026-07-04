@@ -1,10 +1,10 @@
 from pathlib import Path
-from typing import Any
 
 from guessit import guessit
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
+from src.config.models import DynamicRangeSettings
 from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.logger.nfo_forge_logger import LOG
@@ -26,7 +26,7 @@ class RenameEncodeBackEnd:
         mvr_colon_replacement: ColonReplace,
         media_search_payload: MediaSearchPayload,
         title_clean_rules: list[tuple[str, str]] | None,
-        video_dynamic_range: dict[str, Any] | None,
+        video_dynamic_range: DynamicRangeSettings | None,
         user_tokens: dict[str, str] | None,
     ) -> Path | None:
         self.token_replacer = TokenReplacer(

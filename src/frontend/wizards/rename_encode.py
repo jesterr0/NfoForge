@@ -36,7 +36,7 @@ from src.backend.utils.rename_normalizations import (
     RE_RELEASE_INFO,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -73,7 +73,7 @@ class RenameEncode(BaseWizardPage):
     REASON_STR = "Select or enter reason"
 
     def __init__(
-        self, config: Config, context: ProcessingContext, parent: "MainWindow"
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
         super().__init__(config, context, parent)
         self.setTitle("Rename")
@@ -297,14 +297,14 @@ class RenameEncode(BaseWizardPage):
         self.context.media_input.has_basic_data()
         # this is a movie so there's only ever 1 to rename, grab it with index 0
         media_file = self.context.media_input.file_list[0]
-        release_group_name = self.config.cfg_payload.mvr_release_group
+        release_group_name = self.config.settings.movie.release_group
 
         self.media_label.setText(media_file.stem)
         self.media_label.setToolTip(media_file.stem)
 
         self._pre_load_attribute_combos(media_file.stem)
 
-        self.token_override.setText(self.config.cfg_payload.mvr_token)
+        self.token_override.setText(self.config.settings.movie.filename_token)
 
         comp_pair = self.context.media_input.comparison_pair
         get_quality = self.backend.get_quality(
@@ -533,7 +533,7 @@ class RenameEncode(BaseWizardPage):
 
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
-            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (_, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         ]
 
@@ -685,7 +685,7 @@ class RenameEncode(BaseWizardPage):
     def update_generated_name(self, _: int | None = None) -> None:
         """Update the generated name based on current selections."""
 
-        token = self.config.cfg_payload.mvr_token
+        token = self.config.settings.movie.filename_token
         if self.override_group.isChecked():
             token = self.token_override.text()
         else:
@@ -700,17 +700,17 @@ class RenameEncode(BaseWizardPage):
 
         user_tokens = {
             k: v
-            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
 
         get_file_name = self.backend.media_renamer(
             media_input_obj=self.context.media_input,
             mvr_token=token,
-            mvr_colon_replacement=self.config.cfg_payload.mvr_colon_replace_filename,
+            mvr_colon_replacement=self.config.settings.movie.filename_colon_replace,
             media_search_payload=self.context.media_search,
-            title_clean_rules=self.config.cfg_payload.title_clean_rules,
-            video_dynamic_range=self.config.cfg_payload.video_dynamic_range,
+            title_clean_rules=self.config.settings.global_management.title_clean_rules,
+            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
             user_tokens=user_tokens,
         )
 

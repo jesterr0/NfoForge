@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.media_input import MediaInputBackEnd
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.exceptions import MediaFileNotFoundError
 from src.frontend.custom_widgets.dnd_factory import DNDLineEdit
@@ -45,7 +45,7 @@ class MediaInput(BaseWizardPage):
 
     def __init__(
         self,
-        config: Config,
+        config: ConfigManager,
         context: ProcessingContext,
         parent: "MainWindow | Any",
         on_finished_cb: Callable | None = None,
@@ -274,7 +274,8 @@ class MediaInput(BaseWizardPage):
             raise FileNotFoundError("Failed to detect input path or file list")
 
         self.set_working_dir(
-            self.config.cfg_payload.working_dir / self.gen_unique_date_name(input_path)
+            self.config.settings.general.working_dir
+            / self.gen_unique_date_name(input_path)
         )
 
         # build copy of file_list to send to the worker, we don't want to modify the original

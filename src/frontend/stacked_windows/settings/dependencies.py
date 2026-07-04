@@ -1,5 +1,5 @@
-from pathlib import Path
 import platform
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt, Slot
@@ -125,35 +125,41 @@ class DependencySettings(BaseSettings):
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
-        ffmpeg_path = self.config.cfg_payload.ffmpeg
+        ffmpeg_path = self.config.settings.dependencies.ffmpeg
         self.ffmpeg_widgets[2].setText(str(ffmpeg_path) if ffmpeg_path else "")
 
-        ffprobe_path = self.config.cfg_payload.ffprobe
+        ffprobe_path = self.config.settings.dependencies.ffprobe
         self.ffprobe_widgets[2].setText(str(ffprobe_path) if ffprobe_path else "")
 
-        frame_forge_path = self.config.cfg_payload.frame_forge
+        frame_forge_path = self.config.settings.dependencies.frame_forge
         self.frame_forge_widgets[2].setText(
             str(frame_forge_path) if frame_forge_path else ""
         )
 
-        mkbrr_path = self.config.cfg_payload.mkbrr
+        mkbrr_path = self.config.settings.dependencies.mkbrr
         self.mkbrr_widgets[2].setText(str(mkbrr_path) if mkbrr_path else "")
 
     @Slot()
     def _save_settings(self) -> None:
         ffmpeg_path = self.ffmpeg_widgets[2].text().strip()
-        self.config.cfg_payload.ffmpeg = Path(ffmpeg_path) if ffmpeg_path else None
+        self.config.settings.dependencies.ffmpeg = (
+            Path(ffmpeg_path) if ffmpeg_path else None
+        )
 
         ffprobe_path = self.ffprobe_widgets[2].text().strip()
-        self.config.cfg_payload.ffprobe = Path(ffprobe_path) if ffprobe_path else None
+        self.config.settings.dependencies.ffprobe = (
+            Path(ffprobe_path) if ffprobe_path else None
+        )
 
         frame_forge_path = self.frame_forge_widgets[2].text().strip()
-        self.config.cfg_payload.frame_forge = (
+        self.config.settings.dependencies.frame_forge = (
             Path(frame_forge_path) if frame_forge_path else None
         )
 
         mkbrr_path = self.mkbrr_widgets[2].text().strip()
-        self.config.cfg_payload.mkbrr = Path(mkbrr_path) if mkbrr_path else None
+        self.config.settings.dependencies.mkbrr = (
+            Path(mkbrr_path) if mkbrr_path else None
+        )
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
