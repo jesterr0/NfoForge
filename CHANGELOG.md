@@ -44,7 +44,7 @@
 
 ### Changed
 
-- TODO add in changes to input pages etc...
+- Re worked input pages completely
 - Template management widget delete button now requires a confirmation before deleting a template.
 - Sandbox changes:
   - Rebuilt the input for sandbox, it is now a _mini wizard_ that works very similarly to the normal work flow. For series we needed more widgets to gather input from the user, so this allows a nice easy to use flow for the user.
@@ -118,6 +118,7 @@
   - oslex2
   - urllib3
 - On wizard plugin load failures we now provide a detailed error message and disable plugins for the remainder of launched instance
+- Checks for incompatible schema of configs on selection and allows the user to generate a new config if one is detected backing up the old
 
 ### Fixed
 

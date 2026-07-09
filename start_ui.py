@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from src.backend.utils.working_dir import IS_FROZEN, RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
+from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.main_window import MainWindow
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
@@ -97,7 +98,14 @@ class NfoForge:
     def _continue_init(self) -> None:
         # setup config
         self.splash_screen.updateMessageBox("Initializing config")
-        self.config = ConfigManager(self.config_file)
+        try:
+            self.config = ConfigManager(self.config_file)
+        except ConfigSchemaError as error:
+            self._handle_config_schema_error(error)
+            return
+        except ConfigError as error:
+            self._error_on_splash(str(error))
+            return
         if not self.config:
             raise AttributeError("Failed to load config")
 
@@ -114,6 +122,52 @@ class NfoForge:
         if error:
             QMessageBox.critical(self.splash_screen, "Error", error)
             QApplication.quit()
+
+    def _handle_config_schema_error(self, error: ConfigSchemaError) -> None:
+        config_path = error.config_path
+        if not config_path:
+            self._error_on_splash(str(error))
+            return
+
+        response = QMessageBox.question(
+            self.splash_screen,
+            "Incompatible Config",
+            (
+                f"{error}\n\n"
+                "Would you like NfoForge to archive this config and generate a "
+                "new default config?\n\n"
+                f"Current config:\n{config_path}"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if response != QMessageBox.StandardButton.Yes:
+            QApplication.quit()
+            return
+
+        try:
+            backup_path = ConfigManager.replace_profile_with_default(config_path)
+        except ConfigError as reset_error:
+            self._error_on_splash(str(reset_error))
+            return
+        except Exception as reset_error:
+            self._error_message_box(
+                "Config Reset Failed",
+                str(reset_error),
+                traceback.format_exc(),
+            )
+            self.app.exit()
+            return
+
+        QMessageBox.information(
+            self.splash_screen,
+            "Config Recreated",
+            (
+                "A new default config was generated.\n\n"
+                f"Old config backup:\n{backup_path}"
+            ),
+        )
+        self._continue_init()
 
     @Slot(str)
     def _load_main_window(self, plugin_warning: str) -> None:

@@ -1,3 +1,6 @@
+from pathlib import Path
+
+
 class NfoForgeError(Exception):
     """Base exception for NfoForge"""
 
@@ -8,6 +11,14 @@ class MediaFileNotFoundError(NfoForgeError):
 
 class ConfigError(NfoForgeError):
     """Exception incorrect screenshot count"""
+
+
+class ConfigSchemaError(ConfigError):
+    """Exception for incompatible or missing config schema versions"""
+
+    def __init__(self, message: str, config_path: Path | None = None) -> None:
+        super().__init__(message)
+        self.config_path = config_path
 
 
 class MediaParsingError(NfoForgeError):

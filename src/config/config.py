@@ -1,4 +1,5 @@
 from collections.abc import MutableMapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
 from src.config.registry import PluginRegistry
-from src.exceptions import ConfigError
+from src.exceptions import ConfigError, ConfigSchemaError
 
 # TODO: add cryptography
 
@@ -134,8 +135,15 @@ class ConfigManager(TypedTomlOperations):
         if config_path.exists():
             loaded_text = config_path.read_text(encoding="utf-8")
             self._config_snapshot = loaded_text
+            loaded_document = tomlkit.parse(loaded_text)
+            try:
+                self.codec.validate_schema(loaded_document)
+            except ConfigSchemaError as error:
+                if not error.config_path:
+                    error.config_path = config_path
+                raise
             self._toml_data = self.codec.merge_defaults(
-                tomlkit.parse(loaded_text),
+                loaded_document,
                 tomlkit.parse(default_toml),
             )
             self.codec.validate_types(self._toml_data, self._default_document)
@@ -153,6 +161,39 @@ class ConfigManager(TypedTomlOperations):
         self.program.current_config = save_path.stem
         self.save(save_path)
         self.save_program()
+
+    @classmethod
+    def replace_profile_with_default(
+        cls,
+        config_path: Path,
+        paths: ConfigPaths | None = None,
+    ) -> Path:
+        """Archive an incompatible profile and replace it with the default config."""
+        config_paths = paths or ConfigPaths()
+        if not config_path.exists():
+            atomic_write_text(
+                config_path,
+                config_paths.default_config.read_text(encoding="utf-8"),
+            )
+            return config_path
+
+        backup_dir = config_path.parent / "old_configs"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"{config_path.stem}_{timestamp}{config_path.suffix}"
+        counter = 1
+        while backup_path.exists():
+            backup_path = backup_dir / (
+                f"{config_path.stem}_{timestamp}_{counter}{config_path.suffix}"
+            )
+            counter += 1
+
+        config_path.replace(backup_path)
+        atomic_write_text(
+            config_path,
+            config_paths.default_config.read_text(encoding="utf-8"),
+        )
+        return backup_path
 
     def _init_dependencies(self) -> None:
         """Initialize dependencies and updates the config if needed"""
