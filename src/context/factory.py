@@ -9,15 +9,6 @@ if TYPE_CHECKING:
     from src.plugins.plugin_payload import PluginPayload
 
 
-_VALID_NEWLINE_SEQUENCES = {"\n", "\r", "\r\n"}
-
-
-def normalize_newline_sequence(value: str) -> str:
-    if value in _VALID_NEWLINE_SEQUENCES:
-        return value
-    return "\n"
-
-
 def create_processing_context(
     config: AppConfig,
     plugins: Mapping[str, "PluginPayload"],
@@ -26,7 +17,7 @@ def create_processing_context(
     engine = Jinja2TemplateEngine(
         trim_blocks=config.templates.trim_blocks,
         lstrip_blocks=config.templates.lstrip_blocks,
-        newline_sequence=normalize_newline_sequence(config.templates.newline_sequence),
+        newline_sequence=config.templates.newline_sequence,
         keep_trailing_newline=config.templates.keep_trailing_newline,
     )
 
