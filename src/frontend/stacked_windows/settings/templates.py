@@ -27,6 +27,12 @@ from src.frontend.utils import (
     create_form_layout,
 )
 
+NEWLINE_SEQUENCE_OPTIONS = (
+    ("\\r", "\r"),
+    ("\\n", "\n"),
+    ("\\r\\n", "\r\n"),
+)
+
 
 class TemplatesSettings(BaseSettings):
     def __init__(self, config, main_window, parent) -> None:
@@ -176,7 +182,8 @@ class TemplatesSettings(BaseSettings):
         self.newline_sequence = CustomComboBox(
             completer=False, disable_mouse_wheel=True, parent=self
         )
-        self.newline_sequence.addItems(("\\r", "\\n", "\\r\\n"))
+        for label, value in NEWLINE_SEQUENCE_OPTIONS:
+            self.newline_sequence.addItem(label, value)
         self.newline_sequence.currentIndexChanged.connect(
             self.update_jinja_engine_settings
         )
@@ -303,7 +310,7 @@ class TemplatesSettings(BaseSettings):
 
         self.trim_blocks_toggle.setChecked(payload.trim_blocks)
         self.lstrip_blocks_toggle.setChecked(payload.lstrip_blocks)
-        get_newline_sequence_idx = self.newline_sequence.findText(
+        get_newline_sequence_idx = self.newline_sequence.findData(
             payload.newline_sequence
         )
         if get_newline_sequence_idx > -1:
@@ -340,7 +347,7 @@ class TemplatesSettings(BaseSettings):
             self.lstrip_blocks_toggle.isChecked()
         )
         self.config.settings.templates.newline_sequence = (
-            self.newline_sequence.currentText()
+            self._current_newline_sequence()
         )
         self.config.settings.templates.keep_trailing_newline = (
             self.keep_trailing_newline_toggle.isChecked()
@@ -452,7 +459,7 @@ class TemplatesSettings(BaseSettings):
         self.lstrip_blocks_toggle.setChecked(
             self.config.defaults.templates.lstrip_blocks
         )
-        new_line_idx = self.newline_sequence.findText(
+        new_line_idx = self.newline_sequence.findData(
             self.config.defaults.templates.newline_sequence
         )
         if new_line_idx > -1:
@@ -472,11 +479,7 @@ class TemplatesSettings(BaseSettings):
         update_map = {
             "trim_blocks": self.trim_blocks_toggle.isChecked(),
             "lstrip_blocks": self.lstrip_blocks_toggle.isChecked(),
-            "newline_sequence": {
-                "\\n": "\n",
-                "\\r": "\r",
-                "\\r\\n": "\r\n",
-            }[self.newline_sequence.currentText()],
+            "newline_sequence": self._current_newline_sequence(),
             "keep_trailing_newline": self.keep_trailing_newline_toggle.isChecked(),
         }
 
@@ -497,6 +500,10 @@ class TemplatesSettings(BaseSettings):
         self.template_selector.text_edit.highlight_keywords(
             self.jinja_syntax_highlights()
         )
+
+    def _current_newline_sequence(self) -> str:
+        value = self.newline_sequence.currentData()
+        return value if isinstance(value, str) else "\n"
 
     def jinja_syntax_highlights(self) -> list[HighlightKeywords]:
         syntax_highlights = []
