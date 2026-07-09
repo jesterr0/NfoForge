@@ -22,7 +22,7 @@ A token string is simply a combination of tokens and text.
 **Example of a token string:**
 
 ```text
-{title_clean} {release_year} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
+{title_clean} {release_year} {edition} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}
 ```
 
 **When filled:**
@@ -40,7 +40,7 @@ You can use tokens with an optional syntax to only add text **if** the token is 
 **Example of a token string with opt syntax:**
 
 ```text
-{title_clean} {:opt=(:release_year:opt=):} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
+{title_clean} {:opt=(:release_year:opt=):} {edition} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}
 ```
 
 Note the token `{:opt=(:release_year:opt=):}`. We're using `:opt=(:` and `:opt=):` to wrap the year with parentheses. This allows for many use cases and enables a high degree of customization.

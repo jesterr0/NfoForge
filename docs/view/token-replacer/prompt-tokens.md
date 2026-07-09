@@ -20,7 +20,7 @@ Prompt tokens are formatted identically to [multi-line tokens](multi-line.md#for
 See the example below, where the token **{{ prompt_source }}** is defined in the template.
 
 ```jinja {.scrollable-code-block}
-Title                   : {{ movie_title }} {{ release_year_parentheses }}
+Title                   : {{ title_exact }} {{ release_year_parentheses }}
 Format Profile          : {{ format_profile }}
 Resolution              : {{ resolution }}
 

@@ -11,7 +11,7 @@
 
 ### Format
 
-For multi-line strings **both** [FileTokens](introduction.md) and [NfoTokens](introduction.md) are available for use in NfoForge. Also, multi-line tokens **must** use **two** sets of brackets, e.g., `{{ movie_title }}`.
+For multi-line strings **both** [FileTokens](introduction.md) and [NfoTokens](introduction.md) are available for use in NfoForge. Also, multi-line tokens **must** use **two** sets of brackets, e.g., `{{ title_exact }}`.
 
 <!-- prettier-ignore -->
 !!! tip
@@ -29,10 +29,10 @@ This part of NfoForge's formatter utilizes [Jinja](https://jinja.palletsprojects
 
 ```jinja {.scrollable-code-block}
 Info
-Title                   : {{ movie_title }} {{ release_year_parentheses }}
+Title                   : {{ title_exact }} {{ release_year_parentheses }}
 Format Profile          : {{ format_profile }}
 Resolution              : {{ resolution }}
-Average Bitrate         : {{ mi_video_bit_rate }}
+Average Bitrate         : {{ video_bit_rate }}
 {% if releasers_name %}
 Encoder                 : {{ releasers_name }}
 {% endif %}
@@ -123,7 +123,7 @@ Suppose you have filled in a movie, but you're unsure if there will be an **edit
 
 ```jinja
 Info
-Title                   : {{ movie_title }} {{ release_year_parentheses }}
+Title                   : {{ title_exact }} {{ release_year_parentheses }}
 {% if edition %}
 Edition                 : {{ edition }}
 {% else %}
@@ -150,7 +150,7 @@ While I can't go over all of what jinja [supports](https://jinja.palletsprojects
 **Example:**
 
 ```jinja
-{{ mi_audio_bitrate_formatted }}
+{{ audio_bitrate_formatted }}
 ```
 
 **Output:**
@@ -164,7 +164,7 @@ Let's say you want to swap `/` for `'`.
 **In:**
 
 ```jinja
-{{ mi_audio_bitrate_formatted|replace("/", "'") }}
+{{ audio_bitrate_formatted|replace("/", "'") }}
 ```
 
 **Out:**
@@ -178,7 +178,7 @@ You can also chain multiple filters together.
 **In:**
 
 ```jinja
-{{ mi_audio_bitrate_formatted|replace("/", "'")|replace(" ", "") }}
+{{ audio_bitrate_formatted|replace("/", "'")|replace(" ", "") }}
 ```
 
 **Out:**
