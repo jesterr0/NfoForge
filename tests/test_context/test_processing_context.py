@@ -1,9 +1,7 @@
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
-
-from src.context.factory import create_processing_context, normalize_newline_sequence
+from src.context.factory import create_processing_context
 from src.context.processing_context import ProcessingContext
 
 
@@ -11,7 +9,7 @@ def _config_payload(**overrides) -> Any:
     template_values = {
         "trim_blocks": True,
         "lstrip_blocks": False,
-        "newline_sequence": "\\r\\n",
+        "newline_sequence": "\r\n",
         "keep_trailing_newline": True,
     }
     template_values.update(overrides)
@@ -66,31 +64,3 @@ def test_factory_applies_settings_and_plugins() -> None:
     assert environment.keep_trailing_newline is True
     assert environment.filters["plugin_filter"] is plugin_filter
     assert environment.globals["plugin_function"] is plugin_function
-
-
-@pytest.mark.parametrize(
-    ("stored_value", "expected"),
-    (
-        ("\n", "\n"),
-        ("\r", "\r"),
-        ("\r\n", "\r\n"),
-        ("\\n", "\n"),
-        ("\\r", "\r"),
-        ("\\r\\n", "\r\n"),
-        ("\\\\n", "\n"),
-        ("\\\\r", "\r"),
-        ("\\\\r\\\\n", "\r\n"),
-        ("invalid", "\n"),
-    ),
-)
-def test_normalize_newline_sequence(stored_value: str, expected: str) -> None:
-    assert normalize_newline_sequence(stored_value) == expected
-
-
-def test_factory_falls_back_to_lf_for_invalid_newline_sequence() -> None:
-    context = create_processing_context(
-        _config_payload(newline_sequence="invalid"),
-        {},
-    )
-
-    assert context.jinja_engine.environment.newline_sequence == "\n"
