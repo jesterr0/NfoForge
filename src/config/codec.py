@@ -4,7 +4,7 @@ from typing import Any, TypeVar
 import tomlkit
 
 from src.config.models import AppConfig
-from src.exceptions import ConfigError
+from src.exceptions import ConfigError, ConfigSchemaError
 
 TomlMutableMapping = TypeVar("TomlMutableMapping", bound=MutableMapping[str, Any])
 
@@ -12,13 +12,22 @@ TomlMutableMapping = TypeVar("TomlMutableMapping", bound=MutableMapping[str, Any
 class TomlConfigCodec:
     """Document-level TOML schema utilities used by the typed config manager."""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     @classmethod
     def validate_schema(cls, document: Mapping[str, Any]) -> None:
-        version = int(document.get("schema_version", cls.SCHEMA_VERSION))
+        if "schema_version" not in document:
+            raise ConfigSchemaError(
+                "Missing configuration schema_version. "
+                "Please generate a new config file."
+            )
+        version = int(document["schema_version"])
         if version != cls.SCHEMA_VERSION:
-            raise ConfigError(f"Unsupported configuration schema_version: {version}")
+            raise ConfigSchemaError(
+                f"Unsupported configuration schema_version: {version}. "
+                f"Expected schema_version: {cls.SCHEMA_VERSION}. "
+                "Please generate a new config file."
+            )
 
     @classmethod
     def merge_defaults(
@@ -63,6 +72,8 @@ class TomlConfigCodec:
             "urls.vertical": config.urls.vertical >= 0,
             "urls.horizontal": config.urls.horizontal >= 0,
             "urls.image_width": config.urls.image_width >= 0,
+            "template_settings.newline_sequence": config.templates.newline_sequence
+            in {"\n", "\r", "\r\n"},
         }
         for path, valid in checks.items():
             if not valid:
