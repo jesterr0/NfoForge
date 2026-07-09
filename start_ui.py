@@ -10,7 +10,8 @@ from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.backend.utils.working_dir import IS_FROZEN, RUNTIME_DIR
-from src.config.config import Config
+from src.config.config import ConfigManager
+from src.config.paths import ConfigPaths
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.main_window import MainWindow
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
@@ -44,7 +45,7 @@ class NfoForge:
         QTimer.singleShot(500, self._init_app)
 
         self.splash_screen_loader: SplashScreenLoader | None = None
-        self.config: Config | None = None
+        self.config: ConfigManager | None = None
         self.main_window: MainWindow | None = None
 
         sys.exit(self.app.exec())
@@ -96,7 +97,7 @@ class NfoForge:
     def _continue_init(self) -> None:
         # setup config
         self.splash_screen.updateMessageBox("Initializing config")
-        self.config = Config(self.config_file)
+        self.config = ConfigManager(self.config_file)
         if not self.config:
             raise AttributeError("Failed to load config")
 
@@ -114,8 +115,13 @@ class NfoForge:
             QMessageBox.critical(self.splash_screen, "Error", error)
             QApplication.quit()
 
-    @Slot()
-    def _load_main_window(self) -> None:
+    @Slot(str)
+    def _load_main_window(self, plugin_warning: str) -> None:
+        if plugin_warning:
+            QMessageBox.warning(
+                self.splash_screen, "Plugin Load Warning", plugin_warning
+            )
+
         self.splash_screen.update_message_box.emit("Loading main window")
         if not self.config:
             raise AttributeError("Failed to load config")
@@ -135,7 +141,7 @@ class NfoForge:
     def _get_available_configs(self) -> list[str] | None:
         """Get list of available config file names (without .toml extension)"""
         try:
-            config_dir = Config.USER_CONFIG_DIR
+            config_dir = ConfigPaths().user_configs
             if not config_dir.exists():
                 return
             return sorted([x.stem for x in config_dir.glob("*.toml")])

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, overload
 
 from src.backend.tokens import TokenSelection
 from src.enums.cropping import Cropping
@@ -193,6 +193,20 @@ class DynamicRangeSettings:
             "custom_strings": dict[HdrType, str](self.custom_strings),
         }
 
+    @overload
+    def __getitem__(self, key: Literal["resolutions"]) -> dict[ResolutionKey, bool]: ...
+
+    @overload
+    def __getitem__(self, key: Literal["hdr_types"]) -> dict[HdrType, bool]: ...
+
+    @overload
+    def __getitem__(self, key: Literal["custom_strings"]) -> dict[HdrType, str]: ...
+
+    @overload
+    def __getitem__(
+        self, key: str
+    ) -> dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str]: ...
+
     def __getitem__(
         self, key: str
     ) -> dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str]:
@@ -203,6 +217,48 @@ class DynamicRangeSettings:
         if key == "custom_strings":
             return self.custom_strings
         raise KeyError(key)
+
+    @overload
+    def get(
+        self, key: Literal["resolutions"], default: None = None
+    ) -> dict[ResolutionKey, bool] | None: ...
+
+    @overload
+    def get(
+        self, key: Literal["resolutions"], default: dict[ResolutionKey, bool]
+    ) -> dict[ResolutionKey, bool]: ...
+
+    @overload
+    def get(
+        self, key: Literal["hdr_types"], default: None = None
+    ) -> dict[HdrType, bool] | None: ...
+
+    @overload
+    def get(
+        self, key: Literal["hdr_types"], default: dict[HdrType, bool]
+    ) -> dict[HdrType, bool]: ...
+
+    @overload
+    def get(
+        self, key: Literal["custom_strings"], default: None = None
+    ) -> dict[HdrType, str] | None: ...
+
+    @overload
+    def get(
+        self, key: Literal["custom_strings"], default: dict[HdrType, str]
+    ) -> dict[HdrType, str]: ...
+
+    @overload
+    def get(
+        self,
+        key: str,
+        default: dict[ResolutionKey, bool]
+        | dict[HdrType, bool]
+        | dict[HdrType, str]
+        | None = None,
+    ) -> (
+        dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str] | None
+    ): ...
 
     def get(
         self,

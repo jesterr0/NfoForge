@@ -32,7 +32,7 @@ from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.filter_title import edition_and_title_extractor as extract_title
 from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
@@ -117,7 +117,7 @@ class IDParseWorker(QThread):
 class MediaSearch(BaseWizardPage):
     def __init__(
         self,
-        config: Config,
+        config: ConfigManager,
         context: ProcessingContext,
         parent: "MainWindow | Any",
         on_finished_cb: Callable | None = None,
@@ -132,8 +132,8 @@ class MediaSearch(BaseWizardPage):
 
         self.config = config
         self.backend = MediaSearchBackEnd(
-            api_key=self.config.cfg_payload.tmdb_api_key,
-            language=self.config.cfg_payload.tmdb_language,
+            api_key=self.config.settings.api_keys.tmdb,
+            language=self.config.settings.general.tmdb_language,
         )
 
         # listen for settings changes to update language
@@ -466,9 +466,9 @@ class MediaSearch(BaseWizardPage):
     @Slot()
     def _update_backend_settings(self) -> None:
         """Update MediaSearchBackEnd when settings change"""
-        new_language = self.config.cfg_payload.tmdb_language
+        new_language = self.config.settings.general.tmdb_language
         self.backend.update_language(new_language)
-        self.backend.update_api_key(self.config.cfg_payload.tmdb_api_key)
+        self.backend.update_api_key(self.config.settings.api_keys.tmdb)
 
     def isComplete(self) -> bool:
         """Overrides isComplete method to control the next button"""
@@ -511,13 +511,9 @@ class MediaSearch(BaseWizardPage):
             return extracted_title
 
     def _check_media_api_keys(self) -> bool:
-        required_keys_map = {
-            "TMDB (v3)": "tmdb_api_key",
-        }
+        required_keys = {"TMDB (v3)": self.config.settings.api_keys.tmdb}
 
-        for service, key_attr in required_keys_map.items():
-            key = getattr(self.config.cfg_payload, key_attr, None)
-
+        for service, key in required_keys.items():
             if not key or not key.strip():
                 text, ok = QInputDialog.getText(
                     self,
@@ -526,8 +522,8 @@ class MediaSearch(BaseWizardPage):
                 )
                 if ok and text:
                     text = text.strip()
-                    setattr(self.config.cfg_payload, key_attr, text)
-                    self.config.save_config()
+                    self.config.settings.api_keys.tmdb = text
+                    self.config.save()
                     self.backend.update_api_key(text)
                 else:
                     QMessageBox.critical(
@@ -672,7 +668,7 @@ class MediaSearch(BaseWizardPage):
         self.id_parse_worker = None
         self.other_ids_parsed = False
 
-        self.backend.update_api_key(self.config.cfg_payload.tmdb_api_key)
+        self.backend.update_api_key(self.config.settings.api_keys.tmdb)
 
         if all_widgets:
             self.search_entry.clear()

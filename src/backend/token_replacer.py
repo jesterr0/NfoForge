@@ -29,6 +29,7 @@ from src.backend.utils.media_info_utils import (
 from src.backend.utils.rename_normalizations import EDITION_INFO
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
 from src.enums.media_type import MediaType
 from src.enums.rename import QualitySelection
 from src.enums.series import EpisodeFormat
@@ -110,7 +111,7 @@ class TokenReplacer:
         frame_size_override: str | None = None,
         title_clean_rules: list[tuple[str, str]] | None = None,
         override_title_rules: list[tuple[str, str]] | None = None,
-        video_dynamic_range: dict[str, Any] | None = None,
+        video_dynamic_range: DynamicRangeSettings | None = None,
         screen_shots: str | None = None,
         screen_shots_comparison: str | None = None,
         screen_shots_even_obj: Sequence[ImageUploadData] | None = None,
@@ -147,7 +148,7 @@ class TokenReplacer:
             frame_size_override (Optional[str]): Frame size override.
             title_clean_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for 'title_clean' token.
             override_title_rules: (Optional[list[tuple[str, str]]]: Rules to iterate and replace for final title output.
-            video_dynamic_range: (Optional[dict[str, Any]]: Rules to control formatting of video dynamic range.
+            video_dynamic_range: Rules to control formatting of video dynamic range.
             screen_shots (Optional[str]): Screenshots.
             screen_shots_comparison (Optional[str]): Screenshots in comparison mode
               (raw URLs only; user must add comparison tags).
@@ -1634,7 +1635,7 @@ class TokenReplacer:
             def normalize(s: str) -> str:
                 return s.replace(" ", "").lower()
 
-            fallback_names = {
+            fallback_names: dict[HdrType, str] = {
                 "SDR": "SDR",
                 "PQ": "PQ",
                 "HLG": "HLG",
@@ -1647,23 +1648,31 @@ class TokenReplacer:
 
             # resolution
             resolution = int(self._detect_resolution(self.media_info_obj, True))
-            res_map = {720: "720p", 1080: "1080p", 2160: "2160p"}
-            res_key = next(
+            res_map: dict[int, ResolutionKey] = {
+                720: "720p",
+                1080: "1080p",
+                2160: "2160p",
+            }
+            res_key: ResolutionKey | None = next(
                 (v for k, v in res_map.items() if abs(resolution - k) < 100), None
             )
 
-            if not res_key or not self.video_dynamic_range["resolutions"].get(
+            if not res_key or not self.video_dynamic_range.resolutions.get(
                 res_key, False
             ):
                 return self._optional_user_input("", token_data)
 
             # get data from dict
-            enabled_hdr_types = [
-                k for k, v in self.video_dynamic_range["hdr_types"].items() if v
+            enabled_hdr_types: list[HdrType] = [
+                k for k, v in self.video_dynamic_range.hdr_types.items() if v
             ]
-            custom_strings = self.video_dynamic_range.get("custom_strings", {})
-            enabled_hdr_types_sorted = sorted(enabled_hdr_types, key=len, reverse=True)
-            norm_enabled_types = {normalize(k): k for k in enabled_hdr_types_sorted}
+            custom_strings = self.video_dynamic_range.custom_strings
+            enabled_hdr_types_sorted: list[HdrType] = sorted(
+                enabled_hdr_types, key=len, reverse=True
+            )
+            norm_enabled_types: dict[str, HdrType] = {
+                normalize(k): k for k in enabled_hdr_types_sorted
+            }
 
             # extract HDR format and transfer characteristics
             hdr_format = ""
