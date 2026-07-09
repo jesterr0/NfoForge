@@ -25,6 +25,7 @@ from src.backend.tokens import Tokens, TokenType
 from src.backend.utils.token_utils import get_prompt_tokens
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -94,10 +95,23 @@ class TemplateSelector(QWidget):
 
         self.template_combo: QComboBox = CustomComboBox(True)
         self.template_combo.currentIndexChanged.connect(self.selection_changed)
+
         self.new_btn = QToolButton(self)
         QTAThemeSwap().register(
             self.new_btn, "ph.plus-circle-light", icon_size=QSize(24, 24)
         )
+        self.new_btn.setToolTip("Create a new template")
+        self.new_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+
+        # menu to control template type
+        self.template_new_menu = QMenu(self.new_btn)
+        _new_mv_action = self.template_new_menu.addAction("New Movie Template")
+        _new_mv_action.triggered.connect(self.new_mv_template)
+        _new_series_action = self.template_new_menu.addAction("New Series Template")
+        _new_series_action.triggered.connect(self.new_series_template)
+
+        # set above menu to button
+        self.new_btn.setMenu(self.template_new_menu)
 
         self.popup_button = CustomButtonMenu(parent=self)
         QTAThemeSwap().register(
@@ -105,9 +119,6 @@ class TemplateSelector(QWidget):
         )
         self.popup_button.setText("Trackers")
         self.popup_button.item_changed.connect(self._tracker_toggled)
-
-        self.new_btn.setToolTip("Create a new template")
-        self.new_btn.clicked.connect(self.new_template)
 
         self.save_btn = QToolButton(self)
         QTAThemeSwap().register(
@@ -299,18 +310,26 @@ class TemplateSelector(QWidget):
         self._update_tracker_toggles()
         self._del_timer_stop()
 
+    @Slot(bool)
+    def new_mv_template(self, _checked: bool) -> None:
+        self.new_template(MediaType.MOVIE)
+
+    @Slot(bool)
+    def new_series_template(self, _checked: bool) -> None:
+        self.new_template(MediaType.SERIES)
+
     @Slot()
-    def new_template(self) -> None:
+    def new_template(self, media_type: MediaType) -> None:
         template, _ = QFileDialog.getSaveFileName(
             parent=self,
-            caption="Choose template name",
+            caption=f"Choose {media_type.lower()} template name",
             filter="*.txt",
             dir=str(self.backend.template_dir),
         )
         if template:
             if not template.endswith(".txt"):
                 template += ".txt"
-            new = self.backend.create_template(template)
+            new = self.backend.create_template(template, media_type)
             self.load_templates()
             index = self.template_index_map.get(new.stem, -1)
             self.template_combo.setCurrentIndex(index)
