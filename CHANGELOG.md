@@ -112,7 +112,7 @@
   - psutil
   - aiohttp
   - qbittorrent-api
-  - niquests
+  - niquests **with speedups enabled**
   - regex
   - rapidfuzz
   - oslex2
