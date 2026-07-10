@@ -7,7 +7,15 @@ from src.logger.nfo_forge_logger import LOG
 
 
 class GeneralWorker(QThread):
-    """Handle jobs in a thread to keep the frontend smooth for different purposes"""
+    """
+    Handle jobs in a thread to keep the frontend smooth for different purposes.
+
+    Connect to the signals:
+    ```python
+        job_finished = Signal(object)
+        job_failed = Signal(str)
+    ```
+    """
 
     job_finished = Signal(object)
     job_failed = Signal(str)

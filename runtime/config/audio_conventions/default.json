@@ -6,8 +6,11 @@
     "AAC LC SBR PS": "AAC",
     "AAC Main": "AAC"
   },
-  "AC-3": "DD",
-  "AC-3 Dep": "DDP",
+  "AC-3": {
+    "AC-3": "DD",
+    "E-AC-3": "DDP",
+    "AC-3 Dep": "DDP"
+  },
   "DTS": {
     "DTS": "DTS",
     "DTS 96 24": "DTS 96-24",

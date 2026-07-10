@@ -135,6 +135,51 @@
 - Advanced Input page _(existing functionality will still exist in the **Input** page)_.
 - General settings source/encode extension filter control has been removed.
 
+## [0.8.14] - 2026-2-21
+
+### Added
+
+- Add super seeding mode option for qBittorrent client (@yammes08).
+
+### Fixed
+
+- MoreThanTV release group parser for tags could sometimes include extra information.
+- Prevent mi_video_dynamic_range token from appending PQ to HDR formats (@yammes08).
+
+## [0.8.13] - 2025-10-26
+
+### Changed
+
+- ReelFliX domain change.
+
+## [0.8.12] - 2025-10-16
+
+### Added
+
+- Massively improve resolution detection (@yammes08).
+
+### Fixed
+
+- Fixed DDP naming (@yammes08).
+
+## [0.8.11] - 2025-10-11
+
+### Added
+
+- Localization override for rename/encode wizard (yammes).
+- BHD edition support (yammes).
+- Streaming optimized toggle for BHD uploads (yammes).
+
+### Fixed
+
+- Audio channel spacing/characters for BHD (yammes).
+
+## [0.8.10] - 2025-09-01
+
+### Changed
+
+- Now downloads the torrent after upload for **UNIT3D** trackers. This is now [required on v9.1.6](https://github.com/HDInnovations/UNIT3D/pull/4910).
+
 ## [0.8.9] - 2025-08-19
 
 ### Added

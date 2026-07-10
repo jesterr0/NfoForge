@@ -304,6 +304,15 @@ class RenameEncode(BaseWizardPage):
 
         self._pre_load_attribute_combos(media_file.stem)
 
+        # apply localization override from plugin if present # TODO: handle all potential overrides later
+        localization_override = self.context.shared_data.dynamic_data.get(
+            "localization_override"
+        )
+        if localization_override:
+            localization_idx = self.localization_combo.findText(localization_override)
+            if localization_idx > -1:
+                self.localization_combo.setCurrentIndex(localization_idx)
+
         self.token_override.setText(self.config.settings.movie.filename_token)
 
         comp_pair = self.context.media_input.comparison_pair

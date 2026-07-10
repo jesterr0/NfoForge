@@ -307,7 +307,7 @@ class TLSearch:
                 )
 
         response = self._session.get(self.LOGIN_URL, timeout=self.timeout)
-        csrf_token = response.cookie["csrf_token"]
+        csrf_token = response.cookies.get("csrf_token")  # pyright: ignore[reportAttributeAccessIssue]
 
         data = {
             "username": self.username,

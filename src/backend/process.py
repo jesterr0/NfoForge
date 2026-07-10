@@ -1253,6 +1253,16 @@ class ProcessBackEnd:
             tracker_payload = self.config.settings.trackers.beyond_hd
             if not tracker_payload.api_key:
                 raise TrackerError("Missing API key for BeyondHD")
+
+            # get edition from shared data
+            edition = context.shared_data.dynamic_data.get("edition_override")
+
+            # get localization from override tokens
+            override_tokens = context.shared_data.dynamic_data.get(
+                "override_tokens", {}
+            )
+            localization = override_tokens.get("localization")
+
             return bhd_uploader(
                 api_key=tracker_payload.api_key,
                 torrent_file=torrent_file,
@@ -1269,6 +1279,10 @@ class ProcessBackEnd:
                 anonymous=bool(tracker_payload.anonymous),
                 promo=tracker_payload.promo,
                 timeout=self.config.settings.general.timeout,
+                edition=edition,
+                localization=localization,
+                add_localization_to_custom_edition=tracker_payload.add_localization_to_custom_edition,
+                stream_optimized=tracker_payload.stream_optimized,
             )
         elif tracker is TrackerSelection.PASS_THE_POPCORN:
             tracker_payload = self.config.settings.trackers.pass_the_popcorn

@@ -13,8 +13,9 @@ dev_scripts/
 runtime/apps/
 runtime/cookies/
 runtime/docs/
-runtime/config/program/
-runtime/config/user/
+runtime/config/*
+!runtime/config/audio_conventions/
+!runtime/config/defaults/
 runtime/logs/
 runtime/templates/
 runtime/user_packages/

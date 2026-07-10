@@ -189,7 +189,7 @@ class MediaSearchBackEnd:
 
     @staticmethod
     def _guessit(input_string: str) -> tuple[str | None, str]:
-        get_info = guessit(input_string)
+        get_info = guessit(input_string, {"excludes": ["language"]})
         title = get_info.get("title")
         year = get_info.get("year", "")
         if not title and year:

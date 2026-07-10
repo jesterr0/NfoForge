@@ -10,6 +10,7 @@ from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
 from src.enums.trackers.beyondhd import (
     BHDCategoryID,
+    BHDEdition,
     BHDLiveRelease,
     BHDPromo,
     BHDSource,
@@ -18,6 +19,63 @@ from src.enums.trackers.beyondhd import (
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
+
+
+def process_edition(edition: str | None) -> tuple[str, str] | None:
+    """
+    Process edition string and return appropriate field name and value for BHD API.
+
+    Args:
+        edition: Edition string from rename wizard (e.g., "Theatrical Cut", "The Final Cut")
+
+    Returns:
+        Tuple of (field_name, value) where field_name is either 'edition' or 'custom_edition',
+        or None if edition is empty/whitespace
+    """
+    if not edition or not edition.strip():
+        return None
+
+    edition = edition.strip()
+
+    # try to map to BHD predefined edition
+    bhd_edition = BHDEdition.from_nfoforge_edition(edition)
+    if bhd_edition:
+        return ("edition", bhd_edition.value)
+
+    # use custom_edition for unmapped editions
+    return ("custom_edition", edition)
+
+
+def process_localization(
+    custom_edition_value: str | None,
+    localization: str | None,
+    add_localization_enabled: bool,
+) -> str | None:
+    """
+    Process localization and append to custom_edition if enabled.
+
+    Args:
+        custom_edition_value: Current value of custom_edition field (may be None or empty)
+        localization: Localization value from rename wizard ("Dubbed" or "Subbed")
+        add_localization_enabled: Whether the setting is enabled
+
+    Returns:
+        Updated custom_edition value with localization appended, or original value if not applicable
+    """
+    if not add_localization_enabled:
+        return custom_edition_value
+
+    if not localization or localization.strip() not in ("Dubbed", "Subbed"):
+        return custom_edition_value
+
+    localization = localization.strip()
+
+    # If custom_edition is empty, just use localization
+    if not custom_edition_value or not custom_edition_value.strip():
+        return localization
+
+    # Append localization with separator
+    return f"{custom_edition_value.strip()} / {localization}"
 
 
 def bhd_uploader(
@@ -36,6 +94,10 @@ def bhd_uploader(
     anonymous: bool,
     promo: BHDPromo,
     timeout: int,
+    edition: str | None = None,
+    localization: str | None = None,
+    add_localization_to_custom_edition: bool = False,
+    stream_optimized: bool = False,
 ) -> str | None:
     uploader = BHDUploader(
         api_key=api_key,
@@ -55,6 +117,10 @@ def bhd_uploader(
         live_release=live_release,
         anonymous=anonymous,
         promo=promo,
+        edition=edition,
+        localization=localization,
+        add_localization_to_custom_edition=add_localization_to_custom_edition,
+        stream_optimized=stream_optimized,
     )
 
 
@@ -101,6 +167,10 @@ class BHDUploader:
         live_release: BHDLiveRelease = BHDLiveRelease.LIVE,
         anonymous: bool = False,
         promo: BHDPromo | None = None,
+        edition: str | None = None,
+        localization: str | None = None,
+        add_localization_to_custom_edition: bool = False,
+        stream_optimized: bool = False,
     ) -> str | None:
         upload_payload = {
             "name": tracker_title
@@ -112,8 +182,9 @@ class BHDUploader:
             "internal": int(internal),
             "live": live_release.value,
             "anon": int(anonymous),
-            # "stream": 1,
         }
+        if stream_optimized:
+            upload_payload["stream"] = 1
         if imdb_id:
             upload_payload["imdb_id"] = imdb_id
         if tmdb_id:
@@ -128,6 +199,43 @@ class BHDUploader:
             upload_payload["nfo"] = nfo
         if promo:
             upload_payload["promo"] = promo.value
+
+        # process edition field
+        edition_result = process_edition(edition)
+        custom_edition_value = None
+
+        if edition_result:
+            field_name, field_value = edition_result
+            if field_name == "edition":
+                upload_payload["edition"] = field_value
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD edition: using predefined edition '{field_value}'",
+                )
+            else:  # custom_edition
+                custom_edition_value = field_value
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD edition: using custom edition '{field_value}'",
+                )
+
+        # process localization and potentially append to custom_edition
+        final_custom_edition = process_localization(
+            custom_edition_value, localization, add_localization_to_custom_edition
+        )
+
+        if final_custom_edition:
+            upload_payload["custom_edition"] = final_custom_edition
+            if custom_edition_value and localization and add_localization_to_custom_edition:
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD custom_edition: appended localization '{localization}' to result in '{final_custom_edition}'",
+                )
+            else:
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD custom_edition: '{final_custom_edition}'",
+                )
 
         LOG.debug(
             LOG.LOG_SOURCE.BE,
@@ -287,6 +395,8 @@ class BHDUploader:
     def generate_release_title(release_title: str) -> str:
         name = release_title.replace(".", " ")
         name = re.sub(r"\s{2,}", " ", name)
+        name = re.sub(r"\s(\d)\s([01])\s", r" \1.\2 ", name)
+        name = re.sub(r"\bDD\s+(\d\.[01])", r"DD\1", name)
         return name
 
 
