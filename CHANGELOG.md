@@ -117,6 +117,7 @@
   - rapidfuzz
   - oslex2
   - urllib3
+  - guessit
 - On wizard plugin load failures we now provide a detailed error message and disable plugins for the remainder of launched instance
 - Checks for incompatible schema of configs on selection and allows the user to generate a new config if one is detected backing up the old
 - New template button is now a drop down menu that allows the user to select a series vs. movies template for a basic default template designed for that media type
