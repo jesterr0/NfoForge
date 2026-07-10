@@ -6,7 +6,7 @@ A powerful media upload assistant featuring a step-by-step [wizard](view/getting
 
 NfoForge is currently under active development, and I’m excited to share it with the community now that it has reached a stable stage.
 
-At present, **Movies** are the only supported media type. However, support for **TV shows** and **Anime** is already planned and will be added in the near future.
+Movies are supported, and series support is now available for standard TV episodes, daily/date releases, anime/absolute-numbered releases, and episode packs. Some tracker-specific series paths are still limited; see [Series Support](view/getting-started/series-support.md).
 
 ## Key Features
 
@@ -20,6 +20,7 @@ At present, **Movies** are the only supported media type. However, support for *
 - Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.
 - Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require the same Python version as NfoForge).
 - Support for movie files in MKV and MP4 format.
+- Series matching, renaming, NFO generation, and supported tracker uploads.
 - Automatic detection for light/dark mode (with a manual override if desired) _Windows only_.
 - Additional format support and features coming soon!
 

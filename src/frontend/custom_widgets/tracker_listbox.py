@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Type
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction
@@ -123,7 +122,7 @@ class TrackerEditBase(QFrame):
 
     @staticmethod
     def load_combo_box(
-        widget: CustomComboBox, enum: Type[Enum], saved_data: Enum
+        widget: CustomComboBox, enum: type[Enum], saved_data: Enum
     ) -> None:
         """Clears CustomComboBox and reloads it with fresh data, setting the default value if available"""
         widget.clear()
@@ -1341,21 +1340,33 @@ class TrackerListWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.tree)
 
-    def add_items(self, items: dict[TrackerSelection, TrackerInfo]) -> None:
+    def add_items(
+        self,
+        items: dict[TrackerSelection, TrackerInfo],
+        unsupported_trackers: set[TrackerSelection] | None = None,
+    ) -> None:
         self.tree.blockSignals(True)
         self.tree.clear()
+        unsupported_trackers = unsupported_trackers or set()
 
         for tracker, tracker_info in items.items():
             parent_item = QTreeWidgetItem(self.tree)
             parent_item.setText(0, str(tracker))
+            unsupported = tracker in unsupported_trackers
 
             # add checkbox to the parent item
             parent_item.setCheckState(
                 0,
                 Qt.CheckState.Checked
-                if tracker_info.enabled
+                if tracker_info.enabled and not unsupported
                 else Qt.CheckState.Unchecked,
             )
+            if unsupported:
+                parent_item.setDisabled(True)
+                parent_item.setToolTip(
+                    0,
+                    f"{tracker} does not support series uploads in NfoForge yet.",
+                )
 
             self.add_child_widget(parent_item, tracker)
 

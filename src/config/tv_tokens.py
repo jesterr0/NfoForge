@@ -2,6 +2,12 @@ from typing import Protocol
 
 from src.enums.series import EpisodeFormat
 
+SUPPORTED_TVR_FORMATS = (
+    EpisodeFormat.STANDARD,
+    EpisodeFormat.DAILY_DATE,
+    EpisodeFormat.ANIME_ABSOLUTE,
+)
+
 
 class TVTokenPayload(Protocol):
     standard_episode_token: str

@@ -1197,7 +1197,7 @@ class TokenReplacer:
         get_info = self._verify_series_info()
         if not get_info:
             return ""
-        episode_data = self._get_tvdb_episode_dict(*get_info)
+        episode_data = self._get_selected_episode_data(*get_info)
         if not episode_data:
             return ""
         return self._optional_user_input(episode_data.get("aired", ""), token_data)
@@ -2112,7 +2112,7 @@ class TokenReplacer:
 
         # get episode dict
         air_date = ""
-        episode_data = self._get_tvdb_episode_dict(*get_info)
+        episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             air_date = episode_data.get("aired", "")
         return self._optional_user_input(air_date, token_data)
@@ -2128,7 +2128,7 @@ class TokenReplacer:
             return ""
 
         absolute_number = None
-        episode_data = self._get_tvdb_episode_dict(*get_info)
+        episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
         if absolute_number is None:
@@ -2146,7 +2146,7 @@ class TokenReplacer:
 
         # get episode dict
         title = ""
-        episode_data = self._get_tvdb_episode_dict(*get_info)
+        episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
 
@@ -2161,7 +2161,7 @@ class TokenReplacer:
 
         # get episode dict
         title = ""
-        episode_data = self._get_tvdb_episode_dict(*get_info)
+        episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
         title = self._title_formatting_cleaned(title, self.title_clean_rules)
@@ -2174,7 +2174,7 @@ class TokenReplacer:
 
         # get episode dict
         title = ""
-        episode_data = self._get_tvdb_episode_dict(*get_info)
+        episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
         return self._optional_user_input(title, token_data)
@@ -2960,6 +2960,39 @@ class TokenReplacer:
             except ValueError:
                 continue
 
+        return None
+
+    def _get_selected_episode_data(
+        self, season: int, episode: int
+    ) -> dict[str, Any] | None:
+        """Return episode data from the user's selected mapping before TVDB fallback."""
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if mapped_episode:
+            episode_data = mapped_episode.get("episode_data")
+            if isinstance(episode_data, dict):
+                return episode_data
+            if mapped_episode.get("episode_name"):
+                return {
+                    "seasonNumber": season,
+                    "number": episode,
+                    "name": mapped_episode.get("episode_name", ""),
+                    "aired": "",
+                }
+        return self._get_tvdb_episode_dict(season, episode)
+
+    def _get_mapped_episode_payload(
+        self, season: int, episode: int
+    ) -> dict[str, Any] | None:
+        if not self.media_input_obj.series_episode_map:
+            return None
+        for mapped_data in self.media_input_obj.series_episode_map.values():
+            try:
+                mapped_season = self._validate_int_var(mapped_data.get("season"))
+                mapped_episode = self._validate_int_var(mapped_data.get("episode"))
+            except AttributeError:
+                continue
+            if mapped_season == season and mapped_episode == episode:
+                return mapped_data
         return None
 
     @staticmethod

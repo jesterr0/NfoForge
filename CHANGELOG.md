@@ -121,6 +121,8 @@
 - On wizard plugin load failures we now provide a detailed error message and disable plugins for the remainder of launched instance
 - Checks for incompatible schema of configs on selection and allows the user to generate a new config if one is detected backing up the old
 - New template button is now a drop down menu that allows the user to select a series vs. movies template for a basic default template designed for that media type
+- Added early tracker UX guard
+  - Series workflows disable known unsupported trackers: PTP and ReelFliX.
 
 ### Fixed
 
@@ -128,6 +130,7 @@
 - UploadCX payload was assigned to the wrong payload _(wouldn't have actually bothered the end result)_.
 - Potential error reading audio track layouts with a core.
 - Properly catch/handle errors when loading the program when a plugin wizard page threw an error.
+- Fixed config round-trip bug for qBittorrent super_seeding
 
 ### Removed
 

@@ -78,6 +78,70 @@ def test_save_preserves_unknown_keys_and_comments(
     assert "timeout = 90" in saved
 
 
+def test_manager_preserves_qbittorrent_super_seeding_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    assert (
+        manager.settings.torrent_clients.qbittorrent.specific_params["super_seeding"]
+        is False
+    )
+
+    manager.save()
+    manager.load_profile("test")
+
+    profile = paths.user_configs / "test.toml"
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    torrent_client = cast(MutableMapping[str, Any], saved["torrent_client"])
+    qbittorrent = cast(MutableMapping[str, Any], torrent_client["qbittorrent"])
+    specific_params = cast(MutableMapping[str, Any], qbittorrent["specific_params"])
+    assert specific_params["super_seeding"] is False
+    assert (
+        manager.settings.torrent_clients.qbittorrent.specific_params["super_seeding"]
+        is False
+    )
+
+
+def test_manager_repairs_generated_empty_qbittorrent_super_seeding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    torrent_client = cast(MutableMapping[str, Any], document["torrent_client"])
+    qbittorrent = cast(MutableMapping[str, Any], torrent_client["qbittorrent"])
+    specific_params = cast(MutableMapping[str, Any], qbittorrent["specific_params"])
+    specific_params["super_seeding"] = ""
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)
+
+    assert (
+        manager.settings.torrent_clients.qbittorrent.specific_params["super_seeding"]
+        is False
+    )
+    repaired = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    repaired_torrent_client = cast(MutableMapping[str, Any], repaired["torrent_client"])
+    repaired_qbittorrent = cast(
+        MutableMapping[str, Any], repaired_torrent_client["qbittorrent"]
+    )
+    repaired_specific_params = cast(
+        MutableMapping[str, Any], repaired_qbittorrent["specific_params"]
+    )
+    assert repaired_specific_params["super_seeding"] is False
+
+
 def test_lookup_helpers_do_not_cache_replaced_objects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

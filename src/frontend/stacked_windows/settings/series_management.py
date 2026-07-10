@@ -25,6 +25,7 @@ from src.backend.utils.example_parsed_series_data import (
 )
 from src.config.models import DynamicRangeSettings
 from src.config.tv_tokens import (
+    SUPPORTED_TVR_FORMATS,
     get_tvr_episode_token,
     get_tvr_title_token,
     set_tvr_episode_token,
@@ -48,11 +49,7 @@ class SeriesManagementSettings(BaseSettings):
     """Series specific settings"""
 
     TRACKERS_OVERRIDE_NOT_SUPPORTED = (TrackerSelection.PASS_THE_POPCORN,)
-    _FORMAT_ORDER = (
-        EpisodeFormat.STANDARD,
-        EpisodeFormat.DAILY_DATE,
-        EpisodeFormat.ANIME_ABSOLUTE,
-    )
+    _FORMAT_ORDER = SUPPORTED_TVR_FORMATS
 
     def __init__(self, config, main_window, parent) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)

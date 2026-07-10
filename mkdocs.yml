@@ -8,6 +8,7 @@ nav:
       - Install: view/getting-started/install.md
       - Initial Setup: view/getting-started/initial-setup.md
       - Using The Wizard: view/getting-started/using-the-wizard.md
+      - Series Support: view/getting-started/series-support.md
   - TokenReplacer:
       - Introduction: view/token-replacer/introduction.md
       - Tokens: view/token-replacer/tokens.md

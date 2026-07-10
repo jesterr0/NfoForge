@@ -4,6 +4,8 @@ from PySide6.QtWidgets import QMessageBox, QVBoxLayout
 
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
+from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -13,6 +15,11 @@ if TYPE_CHECKING:
 
 
 class TrackersPage(BaseWizardPage):
+    UNSUPPORTED_SERIES_TRACKERS = {
+        TrackerSelection.PASS_THE_POPCORN,
+        TrackerSelection.REELFLIX,
+    }
+
     def __init__(
         self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
     ) -> None:
@@ -31,7 +38,15 @@ class TrackersPage(BaseWizardPage):
         layout.addWidget(self.tracker_selection)
 
     def initializePage(self) -> None:
-        self.tracker_selection.add_items(self.config.settings.trackers.by_selection())
+        unsupported_trackers = (
+            self.UNSUPPORTED_SERIES_TRACKERS
+            if self.context.media_input.media_type is MediaType.SERIES
+            else None
+        )
+        self.tracker_selection.add_items(
+            self.config.settings.trackers.by_selection(),
+            unsupported_trackers=unsupported_trackers,
+        )
 
     def validatePage(self) -> bool:
         trackers = self.tracker_selection.get_selected_trackers()

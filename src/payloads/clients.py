@@ -8,4 +8,4 @@ class TorrentClient:
     port: int | None = None
     user: str | None = None
     password: str | None = None
-    specific_params: dict[str, str] = field(default_factory=dict)
+    specific_params: dict[str, str | bool] = field(default_factory=dict)

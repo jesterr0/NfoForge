@@ -76,7 +76,7 @@ class QBittorrentClient:
 
     def _get_category(self) -> str:
         category = self.qbit_config.specific_params.get("category")
-        if not category:
+        if not category or isinstance(category, bool):
             raise TrackerClientError(
                 "You must supply your category in the configuration"
             )
@@ -86,5 +86,5 @@ class QBittorrentClient:
         return bool(self.qbit_config.specific_params.get("super_seeding", False))
 
     def _get_port(self) -> int | None:
-        port = int(self.qbit_config.port)
+        port = int(self.qbit_config.port or 0)
         return port if port > 0 else None

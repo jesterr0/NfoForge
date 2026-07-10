@@ -32,6 +32,7 @@ from src.config.models import (
 )
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
+from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.cropping import Cropping
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
@@ -1514,25 +1515,27 @@ class TypedTomlOperations:
             # qbittorrent
             qbittorrent = TorrentClient(**torrent_client_data["qbittorrent"])
             for qbit_specific in self.QBIT_SPECIFIC:
-                if not qbittorrent.specific_params.get(qbit_specific):
+                if qbit_specific not in qbittorrent.specific_params:
                     qbittorrent.specific_params[qbit_specific] = ""
+            if qbittorrent.specific_params.get("super_seeding") == "":
+                qbittorrent.specific_params["super_seeding"] = False
 
             # deluge
             deluge = TorrentClient(**torrent_client_data["deluge"])
             for deluge_specific in self.DELUGE_SPECIFIC:
-                if not deluge.specific_params.get(deluge_specific):
+                if deluge_specific not in deluge.specific_params:
                     deluge.specific_params[deluge_specific] = ""
 
             # rtorrent
             rtorrent = TorrentClient(**torrent_client_data["rtorrent"])
             for rtorrent_specific in self.RTORRENT_SPECIFIC:
-                if not rtorrent.specific_params.get(rtorrent_specific):
+                if rtorrent_specific not in rtorrent.specific_params:
                     rtorrent.specific_params[rtorrent_specific] = ""
 
             # transmission
             transmission = TorrentClient(**torrent_client_data["transmission"])
             for transmission_specific in self.TRANSMISSION_SPECIFIC:
-                if not transmission.specific_params.get(transmission_specific):
+                if transmission_specific not in transmission.specific_params:
                     transmission.specific_params[transmission_specific] = ""
 
             # watch folder
@@ -1832,7 +1835,7 @@ class TypedTomlOperations:
     ) -> dict[str, dict]:
         overrides = {}
         existing = tracker_info.tvr_title_overrides or {}
-        for episode_format in EpisodeFormat:
+        for episode_format in SUPPORTED_TVR_FORMATS:
             override = existing.get(episode_format, TitleOverridePayload())
             overrides[str(episode_format).lower()] = {
                 "enabled": override.enabled,

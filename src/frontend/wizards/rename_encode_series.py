@@ -379,58 +379,20 @@ class RenameEncodeSeries(BaseWizardPage):
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
 
-        # Generate renames for each episode file
-
         if not self.context.media_input.series_episode_map:
-            raise ValueError  # TODO: do a proper error here
+            QMessageBox.warning(
+                self,
+                "Incomplete Series Mapping",
+                "No episode mappings were found. Please return to the Series Match page and map each file to an episode.",
+            )
+            return False
 
-        # TODO: iterate the map instead of the media files since it's already loaded at this point
         for (
             media_file,
             media_data,
         ) in self.context.media_input.series_episode_map.items():
-            # for media_file_path in media_files:
-            #     media_file = Path(media_file_path)
-
-            # Get episode info from series_episode_map if available
-            # episode_data = None
-            # if self.context.media_input.series_episode_map:
-            # TODO: check and toss error instead
-            # episode_data = self.context.media_input.series_episode_map.get(
-            #     media_file
-            # )
-
-            # Create EpisodeSelection from episode data or use defaults
-            # if episode_data:
-            #     episode_selection = EpisodeSelection(
-            #         series_title=self.context.media_search.title or "Unknown",
-            #         season_number=episode_data.get("season", 1),
-            #         episode_number=episode_data.get("episode", 1),
-            #         episode_title=episode_data.get("episode_name"),
-            #         episode_air_date=episode_data.get("episode_data", {}).get("aired")
-            #         if isinstance(episode_data.get("episode_data"), dict)
-            #         else None,
-            #     )
-            # else:
-            #     # Fallback: try to detect from filename
-            #     match = re.search(r"s(\d+)e(\d+)", media_file.stem, re.I)
-            #     if match:
-            #         season = int(match.group(1))
-            #         episode = int(match.group(2))
-            #     else:
-            #         season = 1
-            #         episode = media_files.index(media_file_path) + 1
-
-            #     episode_selection = EpisodeSelection(
-            #         series_title=self.context.media_search.title or "Unknown",
-            #         season_number=season,
-            #         episode_number=episode,
-            #     )
-
-            # Generate rename for this episode
             renamed_file = self.backend.series_renamer(
                 media_input_obj=self.context.media_input,
-                # media_file=media_file,
                 token=token,
                 colon_replacement=self.config.settings.series.filename_colon_replace,
                 media_search_payload=self.context.media_search,
@@ -441,7 +403,6 @@ class RenameEncodeSeries(BaseWizardPage):
                 episode_num=media_data["episode"],
                 episode_format=self.context.media_input.series_episode_format,
             )
-            print(f"Renamed file: {renamed_file}")
 
             if renamed_file:
                 # Get extension from original file

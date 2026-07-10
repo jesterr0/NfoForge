@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 from rapidfuzz import fuzz
 
+from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.series import EpisodeFormat
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
@@ -184,7 +185,7 @@ class SeriesEpisodeMapper(QWidget):
         self.release_format_combo.setToolTip(
             "Controls title and filename token format. This does not change the TVDB episode order."
         )
-        for episode_format in EpisodeFormat:
+        for episode_format in SUPPORTED_TVR_FORMATS:
             display_name = str(episode_format)
             if episode_format is EpisodeFormat.ANIME_ABSOLUTE:
                 display_name = "Anime / Absolute Numbering"
@@ -1186,8 +1187,8 @@ class SeriesEpisodeMapper(QWidget):
 
         if "absolute" in order_type or "absolute" in order_name:
             return EpisodeFormat.ANIME_ABSOLUTE
-        if "dvd" in order_type or "dvd" in order_name:
-            return EpisodeFormat.DVD
+        # if "dvd" in order_type or "dvd" in order_name:
+        #     return EpisodeFormat.DVD
         return EpisodeFormat.STANDARD
 
     def _set_release_format(
