@@ -1,7 +1,6 @@
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Type
 
 import niquests
 import regex
@@ -105,9 +104,9 @@ class Unit3dBaseUploader:
         torrent_file: Path,
         input_path: Path,
         mediainfo_obj: MediaInfo,
-        cat_enum: Type[CategoryEnums],
-        res_enum: Type[ResolutionEnums],
-        type_enum: Type[TypeEnums],
+        cat_enum: type[CategoryEnums],
+        res_enum: type[ResolutionEnums],
+        type_enum: type[TypeEnums],
         timeout: int = 60,
     ) -> None:
         self.tracker_name = tracker_name
@@ -262,11 +261,11 @@ class Unit3dBaseUploader:
 
         # web
         if "web" in title_lowered:
-            if re.match(r"web.?dl", title_lowered):
+            if re.search(r"\bweb[._ -]?dl\b", title_lowered):
                 webdl_value = getattr(self.type_enum, "WEBDL", None)
                 if webdl_value:
                     return webdl_value.value
-            elif re.match(r"web.?rip", title_lowered):
+            elif re.search(r"\bweb[._ -]?rip\b", title_lowered):
                 webrip_value = getattr(self.type_enum, "WEBRIP", None)
                 if webrip_value:
                     return webrip_value.value

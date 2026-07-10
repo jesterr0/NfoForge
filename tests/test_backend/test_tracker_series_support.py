@@ -1,7 +1,10 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
+from pymediainfo import MediaInfo
 
+from src.backend.trackers.aither import AitherUploader
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.series_support import (
@@ -11,6 +14,7 @@ from src.backend.trackers.series_support import (
 from src.backend.trackers.torrentleech import TLUploader
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
+from src.enums.trackers.aither import AitherType
 from src.enums.trackers.beyondhd import (
     BHDCategoryID,
     BHDLiveRelease,
@@ -90,14 +94,11 @@ def test_torrentleech_series_category_mapping(
 def test_morethantv_series_category_mapping(
     release_title: str, is_pack: bool, expected: MTVCategories
 ) -> None:
-    assert (
-        MTVUploader._get_cat_id(
-            release_title=release_title,
-            media_type=MediaType.SERIES,
-            is_pack=is_pack,
-        )
-        == str(expected.value)
-    )
+    assert MTVUploader._get_cat_id(
+        release_title=release_title,
+        media_type=MediaType.SERIES,
+        is_pack=is_pack,
+    ) == str(expected.value)
 
 
 @pytest.mark.parametrize(
@@ -151,3 +152,26 @@ def test_beyondhd_series_type_source_category_and_pack_payload(tmp_path: Path) -
     assert payload["anon"] == 1
     assert payload["promo"] == BHDPromo.FREELEECH.value
     assert payload["stream"] == 1
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("Example.Show.S01E01.1080p.WEB-DL.H.264.mkv", AitherType.WEBDL),
+        ("Example.Show.S01E01.1080p.WEBDL.H.264.mkv", AitherType.WEBDL),
+        ("Example.Show.S01E01.1080p.WEBRip.H.264.mkv", AitherType.WEBRIP),
+        ("Example.Show.S01E01.1080p.HDTV.H.264.mkv", AitherType.HDTV),
+    ],
+)
+def test_unit3d_series_type_detection_prefers_release_source(
+    tmp_path: Path, filename: str, expected: AitherType
+) -> None:
+    uploader = AitherUploader(
+        media_type=MediaType.SERIES,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=tmp_path / filename,
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    assert uploader._get_type_id() == expected.value
