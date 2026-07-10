@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from src.packages.custom_types import ImageUploadData
 
 

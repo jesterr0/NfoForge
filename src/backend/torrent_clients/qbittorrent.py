@@ -1,6 +1,7 @@
-from qbittorrentapi import Client as QBitClient
-import qbittorrentapi.exceptions
 from pathlib import Path
+
+import qbittorrentapi.exceptions
+from qbittorrentapi import Client as QBitClient
 from torf import Torrent
 
 from src.exceptions import TrackerClientError

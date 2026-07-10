@@ -16,7 +16,6 @@ from src.frontend.utils import build_h_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.version import __version__
 
-
 about_txt = f"""\
 <h2 style="text-align: center;">NfoForge v{__version__}</h2>
 <p style="text-align: center;">A powerful media upload assistant.</p>

@@ -1,5 +1,5 @@
-from enum import auto as auto_enum
 from enum import Enum
+from enum import auto as auto_enum
 
 
 class UploadProcessMode(Enum):

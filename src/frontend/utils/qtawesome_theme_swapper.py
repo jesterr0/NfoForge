@@ -1,8 +1,8 @@
 from functools import partial
 
+import qtawesome as qta
 from PySide6.QtCore import QObject, QSize, Qt, Slot
 from PySide6.QtWidgets import QApplication, QPushButton, QToolButton
-import qtawesome as qta
 
 
 class QTAwesomeThemeSwapper(QObject):

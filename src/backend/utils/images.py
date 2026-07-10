@@ -1,6 +1,6 @@
-from pathlib import Path
 import re
 import shutil
+from pathlib import Path
 from typing import Tuple, Union
 
 from pymediainfo import MediaInfo
@@ -10,7 +10,6 @@ from src.enums.url_type import URLType
 from src.exceptions import MediaFrameCountError, URLFormattingError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import CropValues, ImageUploadData
-
 
 # def calculate_start_time(total_frames: int, start_percentage: int, fps: float) -> str:
 #     start_frame = int(total_frames * start_percentage / 100)

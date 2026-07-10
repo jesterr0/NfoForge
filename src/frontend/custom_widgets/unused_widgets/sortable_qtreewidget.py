@@ -3,10 +3,10 @@ from collections.abc import Sequence
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QApplication,
+    QFrame,
+    QHeaderView,
     QTreeWidget,
     QTreeWidgetItem,
-    QHeaderView,
-    QFrame,
 )
 
 

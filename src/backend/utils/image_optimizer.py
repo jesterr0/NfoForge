@@ -1,8 +1,9 @@
 import shutil
 from collections.abc import Callable, Sequence
+from multiprocessing import Manager, Pool, cpu_count
 from pathlib import Path
+
 from PIL import Image
-from multiprocessing import Pool, Manager, cpu_count
 
 
 def optimize_img_to_png(image_in: Path, output_dir: Path) -> Path:

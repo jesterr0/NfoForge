@@ -1,19 +1,20 @@
 from collections.abc import Sequence
 from typing import Any
-from typing_extensions import override
+
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QAction, Qt
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
+    QFrame,
     QHBoxLayout,
+    QHeaderView,
+    QMenu,
     QTreeWidget,
     QTreeWidgetItem,
-    QHeaderView,
-    QFrame,
-    QComboBox,
     QWidget,
-    QMenu,
 )
-from PySide6.QtGui import QAction, Qt
+from typing_extensions import override
 
 
 class ComboBoxTreeWidget(QTreeWidget):

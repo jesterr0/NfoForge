@@ -1,10 +1,10 @@
 import asyncio
 import uuid
-from collections.abc import Sequence, Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from src.packages.custom_types import ImageUploadData
 from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.packages.custom_types import ImageUploadData
 
 
 class ImageUploader:

@@ -1,6 +1,6 @@
-from .example import ci_replace_filter, ci_replace_function
-
 from src.plugins.plugin_payload import PluginPayload
+
+from .example import ci_replace_filter, ci_replace_function
 
 plugin_payload = PluginPayload(
     name="Jinja2Example",

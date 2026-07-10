@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QStackedWidget, QWidget
 from PySide6.QtCore import QSize
+from PySide6.QtWidgets import QStackedWidget, QWidget
 
 
 class ResizableStackedWidget(QStackedWidget):

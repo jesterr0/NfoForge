@@ -1,6 +1,6 @@
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QComboBox, QCompleter
-from PySide6.QtCore import QTimer
 
 # from PySide6.QtGui import QPalette, QColor
 

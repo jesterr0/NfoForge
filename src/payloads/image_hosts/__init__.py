@@ -5,7 +5,6 @@ from src.payloads.image_hosts.image_bb import ImageBBPayload
 from src.payloads.image_hosts.image_box import ImageBoxPayload
 from src.payloads.image_hosts.ptpimg import PTPIMGPayload
 
-
 __all__ = (
     "ImagePayloadBase",
     "CheveretoV3Payload",

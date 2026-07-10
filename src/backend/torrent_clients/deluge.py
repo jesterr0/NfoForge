@@ -1,5 +1,6 @@
-from deluge_web_client.client import DelugeWebClient
 from pathlib import Path
+
+from deluge_web_client.client import DelugeWebClient
 
 from src.exceptions import TrackerClientError
 from src.payloads.clients import TorrentClient

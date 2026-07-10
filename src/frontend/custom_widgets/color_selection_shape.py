@@ -1,11 +1,11 @@
-from PySide6.QtCore import QSize, Qt, QRectF, Signal
-from PySide6.QtGui import QColor, QPaintEvent, QPainter, QPainterPath, QMouseEvent
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPaintEvent
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
-    QWidget,
-    QVBoxLayout,
     QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 

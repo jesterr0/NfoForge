@@ -2,8 +2,8 @@ import asyncio
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import SignalInstance
 from pymediainfo import MediaInfo
+from PySide6.QtCore import SignalInstance
 
 from src.logger.nfo_forge_logger import LOG
 

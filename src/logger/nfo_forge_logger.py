@@ -1,15 +1,16 @@
-import sys
-import logging
 import json
-import shortuuid
+import logging
+import sys
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-from src.enums.logging_settings import LogLevel, LogSource, DebugDataType
-from src.exceptions import DebugDumpError
+import shortuuid
+
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.version import program_name, __version__
+from src.enums.logging_settings import DebugDataType, LogLevel, LogSource
+from src.exceptions import DebugDumpError
+from src.version import __version__, program_name
 
 
 class Logger:

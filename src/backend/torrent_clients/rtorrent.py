@@ -1,11 +1,12 @@
-import bencode
 import errno
 import ssl
 import xmlrpc
 import xmlrpc.client
 from pathlib import Path
-from torf import Torrent
 from typing import Any
+
+import bencode
+from torf import Torrent
 
 from src.exceptions import TrackerClientError
 from src.payloads.clients import TorrentClient

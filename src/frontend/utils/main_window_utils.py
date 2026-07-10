@@ -1,6 +1,7 @@
 import traceback
 from collections.abc import Callable
-from PySide6.QtCore import Signal, QThread
+
+from PySide6.QtCore import QThread, Signal
 
 from src.logger.nfo_forge_logger import LOG
 

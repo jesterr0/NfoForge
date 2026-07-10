@@ -1,7 +1,7 @@
-from collections.abc import Sequence
 import re
+from collections.abc import Sequence
 
-from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import (
     QApplication,

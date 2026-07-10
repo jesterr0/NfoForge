@@ -70,8 +70,9 @@ class ListBoxEditor(QWidget):
 
 
 if __name__ == "__main__":
-    from PySide6.QtWidgets import QApplication, QVBoxLayout, QPushButton, QDialog
     import sys
+
+    from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QVBoxLayout
 
     class TestDialog(QDialog):
         def __init__(self):

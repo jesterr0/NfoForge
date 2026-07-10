@@ -126,6 +126,7 @@ class DynamicRangeWidget(QWidget):
 
 if __name__ == "__main__":
     import sys
+
     from PySide6.QtWidgets import QApplication, QPushButton
 
     app = QApplication(sys.argv)

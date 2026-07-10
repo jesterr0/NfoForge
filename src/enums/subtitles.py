@@ -1,5 +1,6 @@
-from src.enums import CaseInsensitiveEnum
 from typing_extensions import override
+
+from src.enums import CaseInsensitiveEnum
 
 
 class SubtitleAlignment(CaseInsensitiveEnum):

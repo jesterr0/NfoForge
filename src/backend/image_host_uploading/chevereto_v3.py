@@ -1,9 +1,9 @@
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
 import datetime
+import re
+from collections.abc import Awaitable, Callable, Sequence
 from os import PathLike
 from pathlib import Path
-import re
 
 import aiohttp
 

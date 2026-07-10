@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from functools import partial
 from typing import Any
 
-from PySide6.QtCore import QTimer, Qt, Slot
+from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QBrush
 from PySide6.QtWidgets import (
     QCheckBox,

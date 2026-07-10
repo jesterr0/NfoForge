@@ -9,8 +9,8 @@ from PySide6.QtGui import (
     QFontDatabase,
     QKeyEvent,
     QKeySequence,
-    QPaintEvent,
     QPainter,
+    QPaintEvent,
     QResizeEvent,
     QShortcut,
     QSyntaxHighlighter,
@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
 
 from src.frontend.utils import set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
-
 
 HighlightKeywords = NamedTuple(
     "HighlightKeywords",

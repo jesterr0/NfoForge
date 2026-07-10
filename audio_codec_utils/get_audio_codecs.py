@@ -1,6 +1,7 @@
 import csv
-from pymediainfo import MediaInfo
 from pathlib import Path
+
+from pymediainfo import MediaInfo
 
 
 def get_audio_codec_info(file_path):

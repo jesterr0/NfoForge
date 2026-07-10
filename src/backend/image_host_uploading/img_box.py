@@ -1,7 +1,9 @@
 import asyncio
-from collections.abc import Sequence, Callable, Awaitable
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
-from pyimgbox import Gallery as ImgBoxGallery, Submission
+
+from pyimgbox import Gallery as ImgBoxGallery
+from pyimgbox import Submission
 
 from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
 from src.packages.custom_types import ImageUploadData

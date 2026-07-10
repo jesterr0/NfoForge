@@ -1,14 +1,14 @@
+from PySide6.QtCore import Slot
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
-    QSpacerItem,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
+    QSpacerItem,
     QSpinBox,
+    QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import Slot
-from PySide6.QtGui import QWheelEvent
 
 from src.enums.url_type import URLType
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor

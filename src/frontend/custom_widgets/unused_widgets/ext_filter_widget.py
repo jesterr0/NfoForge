@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 
-from PySide6.QtWidgets import QWidget, QLabel, QLineEdit, QHBoxLayout
 from PySide6.QtCore import Slot
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
 from src.frontend.utils import create_form_layout

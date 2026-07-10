@@ -1,11 +1,14 @@
+from pathlib import Path
+
 from transmission_rpc import (
-    from_url as TransmissionClientFromUrl,
-    TransmissionError,
     TransmissionAuthError,
     TransmissionConnectError,
+    TransmissionError,
     TransmissionTimeoutError,
 )
-from pathlib import Path
+from transmission_rpc import (
+    from_url as TransmissionClientFromUrl,
+)
 
 from src.exceptions import TrackerClientError
 from src.payloads.clients import TorrentClient

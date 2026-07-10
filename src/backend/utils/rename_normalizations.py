@@ -2,7 +2,6 @@ from collections.abc import Sequence
 
 from src.packages.custom_types import RenameNormalization
 
-
 EDITION_INFO: Sequence[RenameNormalization] = (
     RenameNormalization(
         "Alternative Cut",

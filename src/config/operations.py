@@ -1,5 +1,5 @@
-from pathlib import Path
 from collections.abc import Mapping, MutableMapping
+from pathlib import Path
 from typing import Any, cast
 
 import tomlkit

@@ -1,8 +1,8 @@
-from PySide6.QtWidgets import QListWidget, QListWidgetItem, QFrame
-from PySide6.QtGui import QIcon, QFontDatabase, QFont
-from PySide6.QtCore import QSize, Qt
-
 from pathlib import Path
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QFont, QFontDatabase, QIcon
+from PySide6.QtWidgets import QFrame, QListWidget, QListWidgetItem
 
 
 class ThumbnailListWidget(QListWidget):
