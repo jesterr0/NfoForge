@@ -1,3 +1,4 @@
+from collections.abc import Set as AbstractSet
 from enum import Enum
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
@@ -1343,11 +1344,11 @@ class TrackerListWidget(QWidget):
     def add_items(
         self,
         items: dict[TrackerSelection, TrackerInfo],
-        unsupported_trackers: set[TrackerSelection] | None = None,
+        unsupported_trackers: AbstractSet[TrackerSelection] | None = None,
     ) -> None:
         self.tree.blockSignals(True)
         self.tree.clear()
-        unsupported_trackers = unsupported_trackers or set()
+        unsupported_trackers = unsupported_trackers or frozenset()
 
         for tracker, tracker_info in items.items():
             parent_item = QTreeWidgetItem(self.tree)

@@ -1,9 +1,9 @@
 import asyncio
 import shutil
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, Sequence, Type
+from typing import Any
 
 from PySide6.QtCore import SignalInstance
 from torf import Torrent
@@ -57,6 +57,7 @@ from src.backend.trackers import (
 )
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.morethantv import MTVUploader
+from src.backend.trackers.series_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
@@ -76,7 +77,6 @@ from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ImageHostError, TrackerError
 from src.logger.nfo_forge_logger import LOG
-from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import (
     ImageHost,
     ImageSource,
@@ -92,11 +92,6 @@ from src.payloads.watch_folder import WatchFolder
 
 
 class ProcessBackEnd:
-    UNSUPPORTED_SERIES_TRACKERS = {
-        TrackerSelection.PASS_THE_POPCORN,
-        TrackerSelection.REELFLIX,
-    }
-
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
         self.template_selector_be = TemplateSelectorBackEnd()
@@ -124,10 +119,7 @@ class ProcessBackEnd:
         tasks = []
         release_info = build_series_release_info(media_input_payload)
         for tracker_sel in processing_queue:
-            if (
-                release_info.is_series
-                and tracker_sel in self.UNSUPPORTED_SERIES_TRACKERS
-            ):
+            if release_info.is_series and tracker_sel in UNSUPPORTED_SERIES_TRACKERS:
                 tasks.append(
                     self._unsupported_series_tracker_dupe(
                         tracker_sel=tracker_sel,
@@ -425,7 +417,7 @@ class ProcessBackEnd:
         self,
         tracker_sel: TrackerSelection,
         file_input: Path,
-        search_cls: Type[Unit3dBaseSearch],
+        search_cls: type[Unit3dBaseSearch],
         kwargs: dict[str, Any],
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
         """Used solely for UNIT3D trackers."""
@@ -1204,10 +1196,7 @@ class ProcessBackEnd:
         mediainfo_obj = context.media_input.require_mediainfo(first_file)
         media_search_obj = context.media_search
         media_type = context.media_input.require_media_type()
-        if (
-            media_type is MediaType.SERIES
-            and tracker in self.UNSUPPORTED_SERIES_TRACKERS
-        ):
+        if media_type is MediaType.SERIES and tracker in UNSUPPORTED_SERIES_TRACKERS:
             raise TrackerError(f"{tracker} does not support series uploads yet")
         input_path = first_file
         if media_type is not MediaType.SERIES:

@@ -16,14 +16,18 @@ DVD order can be used as a TVDB episode ordering when available, but it currentl
 
 ## Tracker support
 
-Series tracker behavior is still being hardened. NfoForge keeps backend guards in place and disables known unsupported series trackers in the wizard where possible.
+NfoForge keeps backend guards in place and disables known unsupported series trackers in the wizard where possible.
 
-Currently blocked for series uploads:
+| Tracker                                                          | Series status                        | Notes                                                               |
+| ---------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
+| MoreThanTV                                                       | Supported                            | Uses TV episode/season categories and series tags.                  |
+| TorrentLeech                                                     | Supported                            | Uses TV episode HD/SD categories and TV box set category for packs. |
+| BeyondHD                                                         | Supported                            | Uses TV category plus pack and special flags where applicable.      |
+| Aither, HUNO, LST, DarkPeers, ShareIsland, UploadCX, OnlyEncodes | Supported through UNIT3D upload flow | Sends TV category and TVDB metadata when available.                 |
+| PassThePopcorn                                                   | Blocked                              | NfoForge does not support this series upload path yet.              |
+| ReelFliX                                                         | Blocked                              | NfoForge does not support this series upload path yet.              |
 
-- PassThePopcorn
-- ReelFliX
-
-Other trackers should be treated as supported only where their upload category/source/type mapping is implemented. If a tracker rejects a series upload, keep the generated torrent/NFO output and verify the tracker's current rules before retrying.
+If a tracker rejects a series upload, keep the generated torrent/NFO output and verify the tracker's current rules before retrying.
 
 ## Useful series tokens
 

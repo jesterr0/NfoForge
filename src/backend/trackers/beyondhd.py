@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import niquests
 import regex
@@ -172,74 +173,22 @@ class BHDUploader:
         add_localization_to_custom_edition: bool = False,
         stream_optimized: bool = False,
     ) -> str | None:
-        upload_payload = {
-            "name": tracker_title
-            if tracker_title
-            else self.generate_release_title(self.input_path.stem),
-            "category_id": self._category_id(),
-            "type": self._type(),
-            "source": self._source(),
-            "internal": int(internal),
-            "live": live_release.value,
-            "anon": int(anonymous),
-        }
-        if stream_optimized:
-            upload_payload["stream"] = 1
-        if imdb_id:
-            upload_payload["imdb_id"] = imdb_id
-        if tmdb_id:
-            upload_payload["tmdb_id"] = tmdb_id
-        if self.media_type is MediaType.SERIES:
-            if is_pack or self.is_pack:
-                upload_payload["pack"] = 1
-            if is_special or self.is_special:
-                upload_payload["special"] = 1
-        if nfo:
-            upload_payload["description"] = nfo
-            upload_payload["nfo"] = nfo
-        if promo:
-            upload_payload["promo"] = promo.value
-
-        # process edition field
-        edition_result = process_edition(edition)
-        custom_edition_value = None
-
-        if edition_result:
-            field_name, field_value = edition_result
-            if field_name == "edition":
-                upload_payload["edition"] = field_value
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE,
-                    f"BeyondHD edition: using predefined edition '{field_value}'",
-                )
-            else:  # custom_edition
-                custom_edition_value = field_value
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE,
-                    f"BeyondHD edition: using custom edition '{field_value}'",
-                )
-
-        # process localization and potentially append to custom_edition
-        final_custom_edition = process_localization(
-            custom_edition_value, localization, add_localization_to_custom_edition
+        upload_payload = self._build_upload_payload(
+            tracker_title=tracker_title,
+            imdb_id=imdb_id,
+            tmdb_id=tmdb_id,
+            nfo=nfo,
+            is_pack=is_pack,
+            is_special=is_special,
+            internal=internal,
+            live_release=live_release,
+            anonymous=anonymous,
+            promo=promo,
+            edition=edition,
+            localization=localization,
+            add_localization_to_custom_edition=add_localization_to_custom_edition,
+            stream_optimized=stream_optimized,
         )
-
-        if final_custom_edition:
-            upload_payload["custom_edition"] = final_custom_edition
-            if (
-                custom_edition_value
-                and localization
-                and add_localization_to_custom_edition
-            ):
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE,
-                    f"BeyondHD custom_edition: appended localization '{localization}' to result in '{final_custom_edition}'",
-                )
-            else:
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE,
-                    f"BeyondHD custom_edition: '{final_custom_edition}'",
-                )
 
         LOG.debug(
             LOG.LOG_SOURCE.BE,
@@ -284,6 +233,92 @@ class BHDUploader:
             requests_exc_error_msg = f"Failed to upload to BeyondHD: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
             raise TrackerError(requests_exc_error_msg)
+
+    def _build_upload_payload(
+        self,
+        tracker_title: str | None,
+        imdb_id: str | None = None,
+        tmdb_id: str | None = None,
+        nfo: str | None = None,
+        is_pack: bool = False,
+        is_special: bool = False,
+        internal: bool = False,
+        live_release: BHDLiveRelease = BHDLiveRelease.LIVE,
+        anonymous: bool = False,
+        promo: BHDPromo | None = None,
+        edition: str | None = None,
+        localization: str | None = None,
+        add_localization_to_custom_edition: bool = False,
+        stream_optimized: bool = False,
+    ) -> dict[str, Any]:
+        upload_payload: dict[str, Any] = {
+            "name": tracker_title
+            if tracker_title
+            else self.generate_release_title(self.input_path.stem),
+            "category_id": self._category_id(),
+            "type": self._type(),
+            "source": self._source(),
+            "internal": int(internal),
+            "live": live_release.value,
+            "anon": int(anonymous),
+        }
+        if stream_optimized:
+            upload_payload["stream"] = 1
+        if imdb_id:
+            upload_payload["imdb_id"] = imdb_id
+        if tmdb_id:
+            upload_payload["tmdb_id"] = tmdb_id
+        if self.media_type is MediaType.SERIES:
+            if is_pack or self.is_pack:
+                upload_payload["pack"] = 1
+            if is_special or self.is_special:
+                upload_payload["special"] = 1
+        if nfo:
+            upload_payload["description"] = nfo
+            upload_payload["nfo"] = nfo
+        if promo:
+            upload_payload["promo"] = promo.value
+
+        edition_result = process_edition(edition)
+        custom_edition_value = None
+
+        if edition_result:
+            field_name, field_value = edition_result
+            if field_name == "edition":
+                upload_payload["edition"] = field_value
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD edition: using predefined edition '{field_value}'",
+                )
+            else:
+                custom_edition_value = field_value
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD edition: using custom edition '{field_value}'",
+                )
+
+        final_custom_edition = process_localization(
+            custom_edition_value, localization, add_localization_to_custom_edition
+        )
+
+        if final_custom_edition:
+            upload_payload["custom_edition"] = final_custom_edition
+            if (
+                custom_edition_value
+                and localization
+                and add_localization_to_custom_edition
+            ):
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD custom_edition: appended localization '{localization}' to result in '{final_custom_edition}'",
+                )
+            else:
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"BeyondHD custom_edition: '{final_custom_edition}'",
+                )
+
+        return upload_payload
 
     def _category_id(self) -> int | None:
         if self.media_type is MediaType.MOVIE:

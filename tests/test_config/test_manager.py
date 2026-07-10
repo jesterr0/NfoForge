@@ -108,7 +108,7 @@ def test_manager_preserves_qbittorrent_super_seeding_false(
     )
 
 
-def test_manager_repairs_generated_empty_qbittorrent_super_seeding(
+def test_manager_rejects_empty_qbittorrent_super_seeding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
@@ -125,21 +125,11 @@ def test_manager_repairs_generated_empty_qbittorrent_super_seeding(
     specific_params["super_seeding"] = ""
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
-    manager = ConfigManager("test", paths)
-
-    assert (
-        manager.settings.torrent_clients.qbittorrent.specific_params["super_seeding"]
-        is False
-    )
-    repaired = tomlkit.parse(profile.read_text(encoding="utf-8"))
-    repaired_torrent_client = cast(MutableMapping[str, Any], repaired["torrent_client"])
-    repaired_qbittorrent = cast(
-        MutableMapping[str, Any], repaired_torrent_client["qbittorrent"]
-    )
-    repaired_specific_params = cast(
-        MutableMapping[str, Any], repaired_qbittorrent["specific_params"]
-    )
-    assert repaired_specific_params["super_seeding"] is False
+    with pytest.raises(
+        ConfigError,
+        match=r"torrent_client\.qbittorrent\.specific_params\.super_seeding",
+    ):
+        ConfigManager("test", paths)
 
 
 def test_lookup_helpers_do_not_cache_replaced_objects(
