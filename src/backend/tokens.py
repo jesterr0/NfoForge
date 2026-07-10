@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, make_dataclass
-from typing import Any, NamedTuple, Type
+from typing import Any, NamedTuple
 
 from src.enums import CaseInsensitiveStrEnum
 
@@ -42,7 +42,7 @@ class TokenSelection(CaseInsensitiveStrEnum):
     FILE_TOKEN = "FileToken"
     NFO_TOKEN = "NfoToken"
 
-    def get_token_obj(self) -> Type[TokenType]:
+    def get_token_obj(self) -> type[TokenType]:
         if self == TokenSelection.FILE_TOKEN:
             return FileToken
         elif self == TokenSelection.NFO_TOKEN:
@@ -299,7 +299,7 @@ class Tokens:
 
     @classmethod
     def get_token_objects(
-        cls, token_type: Iterable[TokenType] | Type[TokenType] | None = None
+        cls, token_type: Iterable[TokenType] | type[TokenType] | None = None
     ) -> set[TokenType]:
         """Returns a set of token objects based on the specified token type"""
         token_types = [FileToken, NfoToken] if token_type is None else [token_type]
@@ -314,14 +314,14 @@ class Tokens:
 
     @staticmethod
     def get_tokens(
-        token_type: Iterable[TokenType] | Type[TokenType] | None = None,
+        token_type: Iterable[TokenType] | type[TokenType] | None = None,
     ) -> set[str]:
         """Returns a set of tokens without the brackets based on the specified token type"""
         return {token.token[1:-1] for token in Tokens.get_token_objects(token_type)}
 
     @staticmethod
     def generate_token_dataclass(
-        token_type: Iterable[TokenType] | Type[TokenType] | None = None,
+        token_type: Iterable[TokenType] | type[TokenType] | None = None,
     ) -> Any:
         """This dynamically creates a data class for the tokens above"""
         fields = [
