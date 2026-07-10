@@ -86,9 +86,6 @@ class AitherUploader(Unit3dBaseUploader):
             timeout=timeout,
         )
 
-    # def _get_category_id(self) -> str:  # TODO: detect TV here when support is added
-    #     return super()._get_category_id()
-
     def _get_resolution_id(self) -> str:
         try:
             return super()._get_resolution_id()
