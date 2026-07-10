@@ -58,7 +58,7 @@ docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 line-length = 88
 
 [tool.ruff.lint]
-select = ["I"]
+select = ["I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
