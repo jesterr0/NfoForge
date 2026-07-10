@@ -226,7 +226,11 @@ class BHDUploader:
 
         if final_custom_edition:
             upload_payload["custom_edition"] = final_custom_edition
-            if custom_edition_value and localization and add_localization_to_custom_edition:
+            if (
+                custom_edition_value
+                and localization
+                and add_localization_to_custom_edition
+            ):
                 LOG.debug(
                     LOG.LOG_SOURCE.BE,
                     f"BeyondHD custom_edition: appended localization '{localization}' to result in '{final_custom_edition}'",
