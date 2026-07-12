@@ -586,6 +586,7 @@ class ProcessBackEnd:
                     user_tokens=user_tokens,
                     title_clean_rules=self.config.settings.global_management.title_clean_rules,
                     video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+                    **self._release_info_token_kwargs(release_info),
                 ).get_output()
                 if not isinstance(nfo, str):
                     raise ValueError("NFO should be a string")
@@ -1551,14 +1552,22 @@ class ProcessBackEnd:
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
             video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-            season_number=release_info.season,
-            episode_number=(
-                release_info.episode_start if not release_info.is_pack else None
-            ),
-            episode_format=release_info.episode_format,
+            **self._release_info_token_kwargs(release_info),
         )
         output = format_str.get_output()
         return output if output else None
+
+    @staticmethod
+    def _release_info_token_kwargs(
+        release_info: SeriesReleaseInfo,
+    ) -> dict[str, Any]:
+        return {
+            "season_number": release_info.season,
+            "episode_number": (
+                release_info.episode_start if not release_info.is_pack else None
+            ),
+            "episode_format": release_info.episode_format,
+        }
 
     def tracker_title_formatting(self, tracker: TrackerSelection, title: str) -> str:
         """Apply tracker specific formatting if it has any, else return the title as it is."""

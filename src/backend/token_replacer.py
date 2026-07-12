@@ -2,7 +2,7 @@ import re
 from ast import literal_eval
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Any, Type
+from typing import Any
 
 import unidecode
 from auto_qpf import ChapterGenerator
@@ -11,6 +11,7 @@ from babelfish.language import Language as BabelLanguage
 from guessit import guessit
 from iso639 import Lang
 from iso639.exceptions import InvalidLanguageValue
+from jinja2 import meta
 from pymediainfo import MediaInfo, Track
 
 from src.backend.tokens import FileToken, NfoToken, TokenData, Tokens, TokenType
@@ -102,7 +103,7 @@ class TokenReplacer:
         flatten: bool | None = False,
         flat_filters: dict[str, Callable[..., str]] | None = None,
         file_name_mode: bool = True,
-        token_type: Iterable[TokenType] | Type[TokenType] | None = None,
+        token_type: Iterable[TokenType] | type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
         override_tokens: dict[str, str] | None = None,
@@ -561,7 +562,7 @@ class TokenReplacer:
         else:
             filled_tokens = {
                 token.token: self._get_token_value(token)
-                for token in self.generate_all_tokens()
+                for token in self._parse_jinja_input()
             }
             # add user tokens to the context for jinja2 rendering
             if self.user_tokens:
@@ -636,6 +637,25 @@ class TokenReplacer:
 
         return all_tokens
 
+    def _parse_jinja_input(self) -> set[TokenData]:
+        if not self.jinja_engine:
+            raise AttributeError("Could not detect 'jinja_engine'")
+
+        valid_tokens = Tokens.get_tokens()
+        ast = self.jinja_engine.environment.parse(self.token_string)
+        referenced_tokens = meta.find_undeclared_variables(ast)
+        return {
+            TokenData(
+                pre_token="",
+                token=token,
+                bracket_token=f"{{{token}}}",
+                post_token="",
+                full_match=f"{{{token}}}",
+            )
+            for token in referenced_tokens
+            if token in valid_tokens
+        }
+
     def _get_token_value(self, token_data: TokenData) -> str | Sequence[Any] | None:
         # handle user and prompt tokens
         if (
@@ -673,7 +693,7 @@ class TokenReplacer:
         if self.token_type:
             token_types = (
                 self.token_type
-                if isinstance(self.token_type, (list, set, tuple))
+                if isinstance(self.token_type, list | set | tuple)
                 else [self.token_type]
             )
         else:
@@ -2017,7 +2037,7 @@ class TokenReplacer:
         search_re_release = re.findall(
             r"\b(PROPER\d*|REPACK\d*)\b", self.media_input.name, flags=re.IGNORECASE
         )
-        re_release_str = " ".join((str(x).upper() for x in search_re_release))
+        re_release_str = " ".join(str(x).upper() for x in search_re_release)
 
         return self._optional_user_input(re_release_str, token_data)
 
@@ -2497,7 +2517,7 @@ class TokenReplacer:
             else None,
             v_track.format_profile,
         )
-        output += " / ".join((str(x) for x in video_data if x))
+        output += " / ".join(str(x) for x in video_data if x)
 
         # audios
         audio_s = []
@@ -2559,7 +2579,7 @@ class TokenReplacer:
                 filename_header = str(episode)
 
             if data:
-                meta_block = "\n".join((str(x) for x in data if x))
+                meta_block = "\n".join(str(x) for x in data if x)
                 if meta_block:
                     epi_data.append(f"{filename_header}\n{meta_block}")
 

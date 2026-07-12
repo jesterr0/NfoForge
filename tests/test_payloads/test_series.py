@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from src.backend.process import ProcessBackEnd
 from src.enums.media_type import MediaType
 from src.enums.series import EpisodeFormat
 from src.payloads.media_inputs import MediaInputPayload
@@ -42,3 +43,26 @@ def test_build_series_release_info_detects_special() -> None:
 
     assert release_info.is_special is True
     assert release_info.display_tag == "S00E01"
+
+
+def test_release_info_token_kwargs_omit_episode_for_pack() -> None:
+    file_one = Path("Show.S02E03.mkv")
+    file_two = Path("Show.S02E04.mkv")
+    release_info = build_series_release_info(
+        MediaInputPayload(
+            input_path=Path("Show Season 2"),
+            media_type=MediaType.SERIES,
+            file_list=[file_one, file_two],
+            series_episode_map={
+                file_one: {"season": 2, "episode": 3},
+                file_two: {"season": 2, "episode": 4},
+            },
+            series_episode_format=EpisodeFormat.STANDARD,
+        )
+    )
+
+    assert ProcessBackEnd._release_info_token_kwargs(release_info) == {
+        "season_number": 2,
+        "episode_number": None,
+        "episode_format": EpisodeFormat.STANDARD,
+    }

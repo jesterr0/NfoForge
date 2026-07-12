@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -6,12 +7,20 @@ from pymediainfo import MediaInfo
 
 from src.backend.trackers.aither import AitherUploader
 from src.backend.trackers.beyondhd import BHDUploader
+from src.backend.trackers.darkpeers import DarkPeersUploader
+from src.backend.trackers.huno import HunoUploader
+from src.backend.trackers.lst import LSTUploader
 from src.backend.trackers.morethantv import MTVUploader
+from src.backend.trackers.onlyencodes import OnlyEncodesUploader
+from src.backend.trackers.reelflix import ReelFlixUploader
 from src.backend.trackers.series_support import (
     UNSUPPORTED_SERIES_TRACKERS,
     supports_series_upload,
 )
+from src.backend.trackers.shareisland import ShareIslandUploader
 from src.backend.trackers.torrentleech import TLUploader
+from src.backend.trackers.unit3d_base import Unit3dBaseUploader
+from src.backend.trackers.uploadcx import UploadCXUploader
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherType
@@ -24,6 +33,7 @@ from src.enums.trackers.beyondhd import (
 )
 from src.enums.trackers.morethantv import MTVCategories
 from src.enums.trackers.torrentleech import TLCategories
+from src.exceptions import TrackerError
 
 
 @pytest.mark.parametrize(
@@ -175,3 +185,42 @@ def test_unit3d_series_type_detection_prefers_release_source(
     )
 
     assert uploader._get_type_id() == expected.value
+
+
+@pytest.mark.parametrize(
+    "uploader_cls",
+    [
+        AitherUploader,
+        HunoUploader,
+        LSTUploader,
+        DarkPeersUploader,
+        ShareIslandUploader,
+        UploadCXUploader,
+        OnlyEncodesUploader,
+    ],
+)
+def test_supported_unit3d_trackers_resolve_series_tv_category(
+    tmp_path: Path, uploader_cls: Callable[..., Unit3dBaseUploader]
+) -> None:
+    uploader = uploader_cls(
+        media_type=MediaType.SERIES,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=tmp_path / "Example.Show.S01E01.1080p.WEB-DL.H.264.mkv",
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    assert uploader._get_category_id() == "2"
+
+
+def test_reelflix_does_not_resolve_series_tv_category(tmp_path: Path) -> None:
+    uploader = ReelFlixUploader(
+        media_type=MediaType.SERIES,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=tmp_path / "Example.Show.S01E01.1080p.WEB-DL.H.264.mkv",
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    with pytest.raises(TrackerError, match="does not support"):
+        uploader._get_category_id()

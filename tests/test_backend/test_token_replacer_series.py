@@ -2,8 +2,13 @@ from pathlib import Path
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
+from src.backend.utils.example_parsed_series_data import (
+    EXAMPLE_MEDIAINFO_OBJ,
+    EXAMPLE_SEARCH_PAYLOAD,
+)
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 
@@ -67,3 +72,115 @@ def test_air_date_token_prefers_selected_series_mapping() -> None:
     output = _series_replacer("{air_date}").get_output()
 
     assert output == "2024-02-03"
+
+
+def test_series_nfo_tokens_render_selected_episode_context() -> None:
+    file_path = Path("Show.S01E02.mkv")
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        file_list_mediainfo={file_path: EXAMPLE_MEDIAINFO_OBJ},
+        series_episode_map={
+            file_path: {
+                "season": 1,
+                "episode": 2,
+                "episode_name": "Selected Order Title",
+                "episode_data": {
+                    "seasonNumber": 1,
+                    "number": 2,
+                    "absoluteNumber": 22,
+                    "name": "Selected Order Title",
+                    "aired": "2024-02-03",
+                },
+            }
+        },
+    )
+
+    output = TokenReplacer(
+        media_input_obj=media_input,
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        token_string=(
+            "{{ season_number }}|{{ episode_number }}|"
+            "{{ episode_title_exact }}|{{ air_date }}"
+        ),
+        jinja_engine=Jinja2TemplateEngine(),
+        season_number=1,
+        episode_number=2,
+    ).get_output()
+
+    assert output == "1|2|Selected Order Title|2024-02-03"
+
+
+def test_series_pack_nfo_single_episode_tokens_stay_blank() -> None:
+    file_one = Path("Show.S01E02.mkv")
+    file_two = Path("Show.S01E03.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[file_one, file_two],
+        file_list_mediainfo={
+            file_one: EXAMPLE_MEDIAINFO_OBJ,
+            file_two: EXAMPLE_MEDIAINFO_OBJ,
+        },
+        series_episode_map={
+            file_one: {
+                "season": 1,
+                "episode": 2,
+                "episode_name": "Episode Two",
+                "episode_data": {
+                    "seasonNumber": 1,
+                    "number": 2,
+                    "name": "Episode Two",
+                    "aired": "2024-02-03",
+                },
+            },
+            file_two: {
+                "season": 1,
+                "episode": 3,
+                "episode_name": "Episode Three",
+                "episode_data": {
+                    "seasonNumber": 1,
+                    "number": 3,
+                    "name": "Episode Three",
+                    "aired": "2024-02-10",
+                },
+            },
+        },
+    )
+
+    output = TokenReplacer(
+        media_input_obj=media_input,
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        token_string=(
+            "{{ season_number }}|{{ episode_number }}|"
+            "{{ episode_title_exact }}|{{ episode_metadata }}"
+        ),
+        jinja_engine=Jinja2TemplateEngine(),
+        season_number=1,
+        episode_number=None,
+    ).get_output()
+
+    assert output is not None
+    first_line, metadata = output.split("|", 3)[0:3], output.split("|", 3)[3]
+    assert first_line == ["1", "", ""]
+    assert "Episode Two" in metadata
+    assert "Episode Three" in metadata
+
+
+def test_jinja_nfo_rendering_only_evaluates_referenced_tokens() -> None:
+    file_path = Path("Missing.MediaInfo.File.S01E02.mkv")
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+    )
+
+    output = TokenReplacer(
+        media_input_obj=media_input,
+        media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
+        token_string="{{ title }}",
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "Missing MediaInfo File"
