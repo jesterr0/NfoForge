@@ -1155,20 +1155,21 @@ class TokenReplacer:
                         self.colon_replace, formatted_title
                     )
 
-            # apply specific formatting for 'title_clean' tokens
+            # apply specific formatting for '*title_clean' tokens (match braced literals)
             if filled_tokens:
-                if "title_clean" in formatted_title:
+                if "{title_clean}" in formatted_title:
                     formatted_title = formatted_title.replace(
-                        "{title_clean}", filled_tokens["title_clean"]
+                        "{title_clean}", filled_tokens.get("title_clean", "")
                     )
-                if "episode_title_clean" in formatted_title:
+                if "{episode_title_clean}" in formatted_title:
                     formatted_title = formatted_title.replace(
-                        "{episode_title_clean}", filled_tokens["episode_title_clean"]
+                        "{episode_title_clean}",
+                        filled_tokens.get("episode_title_clean", ""),
                     )
-                if "imdb_aka_fallback_title_clean" in formatted_title:
+                if "{imdb_aka_fallback_title_clean}" in formatted_title:
                     formatted_title = formatted_title.replace(
                         "{imdb_aka_fallback_title_clean}",
-                        filled_tokens["imdb_aka_fallback_title_clean"],
+                        filled_tokens.get("imdb_aka_fallback_title_clean", ""),
                     )
 
             # remove unfilled tokens if needed

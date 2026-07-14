@@ -168,6 +168,26 @@ def test_series_pack_nfo_single_episode_tokens_stay_blank() -> None:
     assert "Episode Three" in metadata
 
 
+def test_flat_token_with_episode_title_clean_only_does_not_return_none() -> None:
+    # token string uses {episode_title_clean} but NOT {title_clean}; the
+    # substring "title_clean" inside "episode_title_clean" previously caused
+    # a KeyError on filled_tokens["title_clean"], swallowed into None output
+    output = _series_replacer("{episode_title_clean}").get_output()
+
+    assert output is not None
+    assert output == "Selected Order Title"
+
+
+def test_flat_token_with_imdb_aka_fallback_title_clean_only_does_not_return_none() -> (
+    None
+):
+    # token string uses {imdb_aka_fallback_title_clean} alone; same substring
+    # collision as above must not raise a KeyError and return None
+    output = _series_replacer("{imdb_aka_fallback_title_clean}").get_output()
+
+    assert output is not None
+
+
 def test_jinja_nfo_rendering_only_evaluates_referenced_tokens() -> None:
     file_path = Path("Missing.MediaInfo.File.S01E02.mkv")
     media_input = MediaInputPayload(
