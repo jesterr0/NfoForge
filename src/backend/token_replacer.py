@@ -2540,24 +2540,36 @@ class TokenReplacer:
         output += "\n" + "\n".join(" / ".join(str(x) for x in a if x) for a in audio_s)
         return output
 
+    def _season_episode_label(self, season_num, episode_num) -> str:
+        """Build a "Season XX Episode XX" label, treating `0` as a valid value.
+
+        Season/episode `0` (e.g. specials) is a legitimate value and must not
+        be dropped by a falsy check like `if season_num:`.
+        """
+        parts = []
+        if season_num is not None:
+            parts.append(f"Season {str(season_num).zfill(2)}")
+        if episode_num is not None:
+            parts.append(f"Episode {str(episode_num).zfill(2)}")
+        return " ".join(parts)
+
     def _episode_metadata(self, token_data: TokenData) -> str:
-        if not self.is_series_mode or not self.media_input_obj.series_episode_map:
+        if (
+            not self.is_series_mode
+            or not self.media_input_obj.file_list
+            or not self.media_input_obj.series_episode_map
+        ):
             return ""
 
         epi_data = []
-        for episode, episode_data in self.media_input_obj.series_episode_map.items():
-            # `episode` is expected to be a Path (filename) in the map keys
-            season_episode_str = ""
+        for file_path in self.media_input_obj.file_list:
+            episode_data = self.media_input_obj.series_episode_map.get(file_path)
+            if not episode_data:
+                continue
+
             season_num = episode_data.get("season")
             episode_num = episode_data.get("episode")
-            if season_num:
-                season_episode_str += f"Season {str(season_num).zfill(2)}"
-            if episode_num:
-                season_episode_str += (
-                    f" Episode {str(episode_num).zfill(2)}"
-                    if season_num
-                    else f"Episode {str(episode_num).zfill(2)}"
-                )
+            season_episode_str = self._season_episode_label(season_num, episode_num)
 
             air_date = ""
             get_air_date = episode_data.get("episode_data")
@@ -2570,14 +2582,10 @@ class TokenReplacer:
                 air_date if air_date else None,
             )
             # prepend filename/stem to the metadata block so the filename is shown at the top
-            # use `episode.stem` if `episode` looks like a Path-like object, otherwise fall back
-            filename_header = ""
             try:
-                # path-like objects have .stem
-                filename_header = episode.stem
+                filename_header = file_path.stem
             except Exception:
-                # fallback to string cast
-                filename_header = str(episode)
+                filename_header = str(file_path)
 
             if data:
                 meta_block = "\n".join(str(x) for x in data if x)
@@ -2636,17 +2644,11 @@ class TokenReplacer:
             )
 
             if episode_data:
-                season_episode_str = ""
                 season_num = episode_data.get("season")
                 episode_num = episode_data.get("episode")
-                if season_num:
-                    season_episode_str += f"Season {str(season_num).zfill(2)}"
-                if episode_num:
-                    season_episode_str += (
-                        f" Episode {str(episode_num).zfill(2)}"
-                        if season_num
-                        else f"Episode {str(episode_num).zfill(2)}"
-                    )
+                season_episode_str = self._season_episode_label(
+                    season_num, episode_num
+                )
 
                 if season_episode_str:
                     block_lines.append(season_episode_str)
@@ -2708,17 +2710,11 @@ class TokenReplacer:
                 else None
             )
             if episode_data:
-                season_episode_str = ""
                 season_num = episode_data.get("season")
                 episode_num = episode_data.get("episode")
-                if season_num:
-                    season_episode_str += f"Season {str(season_num).zfill(2)}"
-                if episode_num:
-                    season_episode_str += (
-                        f" Episode {str(episode_num).zfill(2)}"
-                        if season_num
-                        else f"Episode {str(episode_num).zfill(2)}"
-                    )
+                season_episode_str = self._season_episode_label(
+                    season_num, episode_num
+                )
 
                 if season_episode_str:
                     parts.append(season_episode_str)
