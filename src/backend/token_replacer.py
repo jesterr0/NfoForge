@@ -2152,7 +2152,7 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
-        if absolute_number is None:
+        if not absolute_number:  # None or 0 (TVDB uses 0 for non-anime episodes)
             absolute_number = self._validate_int_var(self.episode_number)
 
         return self._optional_user_input(

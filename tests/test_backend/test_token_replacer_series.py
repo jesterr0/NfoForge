@@ -109,6 +109,58 @@ def test_episode_tokens_prefer_selected_series_mapping() -> None:
     assert output == "Selected Order Title 2024-02-03 22"
 
 
+def test_episode_number_absolute_falls_back_when_tvdb_value_is_zero() -> None:
+    # TVDB commonly stores absoluteNumber: 0 for non-anime episodes; that
+    # should be treated as "no absolute number" and fall back to the
+    # season-relative episode number instead of rendering "0"/"000".
+    file_path = Path("Show.S02E05.mkv")
+    replacer = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": 2,
+                    "episode": 5,
+                    "episode_name": "Non-Anime Episode",
+                    "episode_data": {
+                        "seasonNumber": 2,
+                        "number": 5,
+                        "absoluteNumber": 0,
+                        "name": "Non-Anime Episode",
+                        "aired": "2024-05-01",
+                    },
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={
+                "episodes": [
+                    {
+                        "seasonNumber": 2,
+                        "number": 5,
+                        "absoluteNumber": 0,
+                        "name": "Non-Anime Episode",
+                        "aired": "2024-05-01",
+                    }
+                ]
+            },
+        ),
+        token_string="{episode_number_absolute}",
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=2,
+        episode_number=5,
+    )
+
+    assert replacer.get_output() == "5"
+
+
 def test_air_date_token_prefers_selected_series_mapping() -> None:
     output = _series_replacer("{air_date}").get_output()
 
