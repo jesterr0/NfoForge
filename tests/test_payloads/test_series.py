@@ -1,10 +1,25 @@
 from pathlib import Path
 
+from PySide6.QtWidgets import QApplication
+
 from src.backend.process import ProcessBackEnd
 from src.enums.media_type import MediaType
 from src.enums.series import EpisodeFormat
+from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.series import build_series_release_info
+
+
+def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
+    # a QApplication instance is required to construct any QWidget
+    QApplication.instance() or QApplication([])
+    mapper = SeriesEpisodeMapper()
+    mapper.media_input_payload = MediaInputPayload(
+        input_path=Path("Show Season 1"),
+        media_type=MediaType.SERIES,
+        file_list=file_list,
+    )
+    return mapper
 
 
 def test_build_series_release_info_uses_episode_mapping_for_pack() -> None:
@@ -66,3 +81,13 @@ def test_release_info_token_kwargs_omit_episode_for_pack() -> None:
         "episode_number": None,
         "episode_format": EpisodeFormat.STANDARD,
     }
+
+
+def test_is_valid_rejects_duplicate_episode_targets() -> None:
+    mapper = _make_mapper_with_files([Path("a.mkv"), Path("b.mkv")])
+    # both files mapped to S01E01
+    mapper.file_episode_mappings = {
+        Path("a.mkv"): {"season": 1, "episode": 1},
+        Path("b.mkv"): {"season": 1, "episode": 1},
+    }
+    assert mapper.is_valid() is False

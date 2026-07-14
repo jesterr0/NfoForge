@@ -1155,13 +1155,18 @@ class SeriesEpisodeMapper(QWidget):
         return self.file_episode_mappings
 
     def is_valid(self) -> bool:
-        """Check if all files are properly assigned"""
+        """Check that every file is mapped and no two files target the same episode."""
         if not self.media_input_payload or not self.media_input_payload.file_list:
             return False
 
-        return len(self.file_episode_mappings) == len(
-            self.media_input_payload.file_list
-        )
+        if len(self.file_episode_mappings) != len(self.media_input_payload.file_list):
+            return False
+
+        targets = [
+            (m.get("season"), m.get("episode"))
+            for m in self.file_episode_mappings.values()
+        ]
+        return len(targets) == len(set(targets))
 
     def get_series_format(self) -> EpisodeFormat:
         """Get the output format for renaming/title tokens."""

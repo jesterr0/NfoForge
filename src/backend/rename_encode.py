@@ -94,6 +94,15 @@ class RenameEncodeBackEnd:
         Returns:
             Tuple of (old_to_new_mapping, updated_input_path)
         """
+        # reject colliding targets before touching the filesystem so a duplicate
+        # mapping cannot leave a partial rename
+        targets = list(file_list_rename_map.values())
+        if len(targets) != len(set(targets)):
+            dupes = sorted({str(t) for t in targets if targets.count(t) > 1})
+            raise FileExistsError(
+                f"Multiple files rename to the same target(s): {dupes}"
+            )
+
         # track all successful renames for updating payload
         rename_mapping: dict[Path, Path] = {}
 
