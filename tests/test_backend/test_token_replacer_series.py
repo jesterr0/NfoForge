@@ -6,6 +6,7 @@ from pymediainfo import MediaInfo
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenData
 from src.backend.utils.example_parsed_series_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_MEDIAINFO_OBJ,
     EXAMPLE_SEARCH_PAYLOAD,
 )
@@ -96,6 +97,45 @@ def _series_search_replacer(
         season_number=1,
         episode_number=2,
     )
+
+
+def _series_replacer_from_example(token: str) -> TokenReplacer:
+    """Mirrors the series-management settings preview's TokenReplacer call
+    (`_update_example` in
+    src/frontend/stacked_windows/settings/series_management.py):
+    EXAMPLE_MEDIA_INPUT_PAYLOAD/EXAMPLE_SEARCH_PAYLOAD, season 1 episode 1,
+    flattened, no jinja engine, and no series_episode_map beyond the one
+    baked into the fixture itself."""
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string=token,
+        jinja_engine=None,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=1,
+    )
+
+
+def test_example_series_payload_renders_episode_tokens() -> None:
+    # Regression test for the series-management settings preview: it feeds
+    # EXAMPLE_SEARCH_PAYLOAD/EXAMPLE_MEDIA_INPUT_PAYLOAD into TokenReplacer
+    # with no live series_episode_map lookups beyond the fixture's own, so
+    # every episode-derived token must resolve to a non-empty value straight
+    # from the fixture data. Previously tvdb_data nested everything under a
+    # "series" key that production never produces, so these all rendered
+    # blank.
+    replacer = _series_replacer_from_example("{episode_title} {air_date}")
+
+    assert replacer._episode_title(_td()) == "Some episode name 1"
+    assert replacer._air_date(_td()) == "2013-12-02"
+
+    output = replacer.get_output()
+    assert output == "Some episode name 1 2013-12-02"
 
 
 def _series_replacer_with_special() -> TokenReplacer:
@@ -243,10 +283,10 @@ def test_series_nfo_tokens_render_selected_episode_context() -> None:
         episode_number=2,
     ).get_output()
 
-    # EXAMPLE_SEARCH_PAYLOAD's tvdb_data has no flat series-level "firstAired"
-    # key (its fixture nests series fields under "series"), so {air_date} is
-    # blank here; {episode_air_date} still resolves from the selected episode.
-    assert output == "1|2|Selected Order Title||2024-02-03"
+    # EXAMPLE_SEARCH_PAYLOAD's tvdb_data now matches production's flat shape,
+    # so {air_date} resolves to the series-level "firstAired" value;
+    # {episode_air_date} still resolves from the selected episode.
+    assert output == "1|2|Selected Order Title|2013-12-02|2024-02-03"
 
 
 def test_series_pack_nfo_single_episode_tokens_stay_blank() -> None:
