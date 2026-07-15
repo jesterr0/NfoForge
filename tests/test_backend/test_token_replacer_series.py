@@ -361,6 +361,33 @@ def test_total_seasons_falls_back_to_tvdb_filtered_count_excluding_special() -> 
     assert replacer._total_seasons(_td()) == "6"
 
 
+def test_total_seasons_fallback_prefers_official_season_type_when_listed_after_others() -> (
+    None
+):
+    # TVDB's "seasons" list has no ordering guarantee; a payload can list
+    # "dvd" (or other non-official) rows before "official" rows for the same
+    # series. The fallback must still count the "official" order (the
+    # codebase's canonical/aired order -- see TVDBSeasonType.AIRED_ORDER and
+    # media_search.py's `season_type.api_param == "official"` checks), not
+    # whichever type happens to appear first in the list.
+    tvdb_seasons_rows = [
+        # dvd rows come first and, if wrongly preferred, would report 7
+        # seasons instead of the correct official count of 5.
+        {"number": season_num, "type": {"type": "dvd"}}
+        for season_num in range(0, 8)  # season 0 (specials) + 7 dvd seasons
+    ] + [
+        {"number": season_num, "type": {"type": "official"}}
+        for season_num in range(0, 6)  # season 0 (specials) + 5 official seasons
+    ]
+
+    replacer = _series_search_replacer(
+        tmdb_data=None,
+        tvdb_data={"seasons": tvdb_seasons_rows},
+    )
+
+    assert replacer._total_seasons(_td()) == "5"
+
+
 def test_total_episodes_falls_back_to_tvdb_excluding_special_episodes() -> None:
     # no TMDB counts available; TVDB's "episodes" rows include a season-0
     # (specials) episode that must be excluded from the total.

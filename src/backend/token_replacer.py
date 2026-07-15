@@ -2800,28 +2800,49 @@ class TokenReplacer:
         (season-type x season) combination -- aired/official, DVD, absolute,
         and regional orders can each contribute a row for the same season
         number -- plus a row for season 0 (specials). `len(...)` on that list
-        wildly overcounts, so this filters down to a single season-type
-        (whichever is encountered first) and drops season 0.
+        wildly overcounts, so this filters down to a single season-type and
+        drops season 0.
+
+        The list has no ordering guarantee, so "official" (the codebase's
+        canonical/aired order -- see `TVDBSeasonType.AIRED_ORDER` and
+        `media_search.py`'s `season_type.api_param == "official"` checks) is
+        always preferred when present, regardless of where it falls in the
+        list. Only when no "official"-typed rows exist at all does this fall
+        back to whichever other season-type is encountered first.
         """
-        season_type = None
-        numbers: set[int] = set()
+        official_numbers: set[int] = set()
+        has_official = False
+
+        fallback_type = None
+        fallback_numbers: set[int] = set()
+
         for row in seasons:
             if not isinstance(row, dict):
                 continue
             number = row.get("number")
-            if number is None or number == 0:
-                continue
             row_type = row.get("type")
             if isinstance(row_type, dict):
                 type_name = row_type.get("type") or row_type.get("name")
             else:
                 type_name = row_type
-            if season_type is None:
-                season_type = type_name
-            elif type_name != season_type:
+
+            if type_name == "official":
+                has_official = True
+                if number is not None and number != 0:
+                    official_numbers.add(number)
                 continue
-            numbers.add(number)
-        return len(numbers)
+
+            if number is None or number == 0:
+                continue
+            if fallback_type is None:
+                fallback_type = type_name
+            elif type_name != fallback_type:
+                continue
+            fallback_numbers.add(number)
+
+        if has_official:
+            return len(official_numbers)
+        return len(fallback_numbers)
 
     @staticmethod
     def _count_tvdb_episodes(episodes: list) -> int:
