@@ -192,10 +192,11 @@ class Tokens:
     EPISODE_AIR_DATE = FileToken("{episode_air_date}", "Episode air date (UTC)")
     EPISODE_NUMBER = FileToken("{episode_number}", "Episode number (1, 2, 3, etc.)")
     EPISODE_NUMBER_ABSOLUTE = FileToken(
-        "{episode_number_absolute}", "Episode number (1, 2, 3, etc.)"
+        "{episode_number_absolute}", "Absolute episode number (1, 2, 3, etc.)"
     )
     EPISODE_TITLE = FileToken(
-        "{episode_title}", "Title parsed from media databases with minimal formatting"
+        "{episode_title}",
+        "Episode title parsed from media databases with minimal formatting",
     )
     EPISODE_TITLE_CLEAN = FileToken(
         "{episode_title_clean}", "Clean title parsed from media databases"

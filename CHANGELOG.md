@@ -24,7 +24,6 @@
     - `{episode_title}`- Title parsed from media databases with minimal formatting.
     - `{episode_title_clean}`- Clean title parsed from media databases.
     - `{episode_title_exact}`- Title parsed from media databases with no modifications.
-    - `{episode_title_exact}`- Title parsed from media databases with no modifications.
   - **NfoTokens**:
     - `{total_seasons}`- Total seasons in series.
     - `{total_episodes}`- Total episodes in season/series.
