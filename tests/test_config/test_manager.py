@@ -310,6 +310,53 @@ def test_load_profile_migrates_schema1_in_place(
     assert manager.settings.trackers.more_than_tv.username == "custom_mtv_user"
 
 
+def test_migration_validation_failure_preserves_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A schema-1 config that migrates structurally (no `unmapped` sections)
+    but whose resulting schema-2 document fails validation must NOT be
+    written to disk. The manager must fall through to the same
+    `ConfigSchemaError` archive/regenerate path used when migration can't
+    map sections at all, leaving the original file byte-for-byte untouched.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    fixture_text = Path("tests/test_config/fixtures/schema1_config.toml").read_text(
+        encoding="utf-8"
+    )
+    profile.write_text(fixture_text, encoding="utf-8")
+
+    # Force the post-migration validation step to fail, simulating a
+    # migrated document that maps structurally but doesn't actually
+    # validate (e.g. a bad type/value that survived the section mapping).
+    original_decode = ConfigManager.decode
+
+    def fake_decode(
+        self: object,
+        toml_data: object,
+        build_defaults: bool = False,
+        dry_run: bool = False,
+    ) -> None:
+        if dry_run:
+            raise ConfigError("forced migration validation failure")
+        return original_decode(self, toml_data, build_defaults=build_defaults)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ConfigManager, "decode", fake_decode)
+
+    with pytest.raises(ConfigError, match="Missing configuration schema_version"):
+        ConfigManager("test", paths)
+
+    # the original schema-1 file must be left completely untouched -- no
+    # partial/invalid migrated document was ever persisted
+    assert profile.read_text(encoding="utf-8") == fixture_text
+    assert not (profile.parent / "old_configs").exists()
+
+
 def test_load_profile_raises_schema_error_when_migration_cannot_map_sections(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

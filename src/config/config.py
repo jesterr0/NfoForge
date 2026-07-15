@@ -139,7 +139,7 @@ class ConfigManager(TypedTomlOperations):
 
             if "schema_version" not in loaded_document:
                 migrated_document = self._try_migrate_unversioned_profile(
-                    loaded_document
+                    loaded_document, default_toml
                 )
                 if migrated_document is not None:
                     loaded_text = self.codec.dumps(migrated_document)
@@ -171,15 +171,27 @@ class ConfigManager(TypedTomlOperations):
         self._active_profile_path = config_path
 
     def _try_migrate_unversioned_profile(
-        self, loaded_document: MutableMapping[str, Any]
+        self,
+        loaded_document: MutableMapping[str, Any],
+        default_toml: str,
     ) -> MutableMapping[str, Any] | None:
         """Attempt to migrate an unversioned ("schema 1") profile to schema 2.
 
-        Returns the migrated document on success. Returns ``None`` if
-        migration is not possible (some section could not be mapped) or it
-        raised, in which case the caller should leave the original document
-        untouched and fall through to the normal `ConfigSchemaError` path so
-        the existing archive+regenerate flow can take over.
+        Returns the migrated document on success -- but only after proving it
+        actually validates, by running it through the exact same validation
+        `load_profile` applies to a normal, already-current-schema config:
+        schema check, merge defaults, per-key type validation, and a decode
+        (which also runs `validate_settings`). That trial run happens on an
+        in-memory copy only (`decode(..., dry_run=True)`), never on the
+        document that gets persisted, so a migration that maps structurally
+        but produces an invalid document can't destroy the original file.
+
+        Returns ``None`` if migration is not possible (some section could
+        not be mapped), the migrated document fails validation, or anything
+        raised, in which case the caller must leave the original
+        document/file untouched and fall through to the normal
+        `ConfigSchemaError` path so the existing archive+regenerate flow can
+        take over.
         """
         try:
             migrated_document, unmapped = migrate_unversioned_to_v2(
@@ -189,6 +201,18 @@ class ConfigManager(TypedTomlOperations):
             return None
         if unmapped:
             return None
+
+        try:
+            trial_document = tomlkit.parse(self.codec.dumps(migrated_document))
+            self.codec.validate_schema(trial_document)
+            merged_trial = self.codec.merge_defaults(
+                trial_document, tomlkit.parse(default_toml)
+            )
+            self.codec.validate_types(merged_trial, self._default_document)
+            self.decode(merged_trial, dry_run=True)
+        except Exception:
+            return None
+
         return migrated_document
 
     def save_as(self, save_path: Path) -> None:

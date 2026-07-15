@@ -81,6 +81,29 @@ def _rename_tokens(value: str) -> str:
     return _MI_PREFIX_RE.sub("{", value)
 
 
+def _rename_tracker_title_overrides(tracker: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply the token rename map to each ``[tracker.*]`` section's
+    persisted ``mvr_title_token_override`` string.
+
+    Every other tracker key is left byte-identical -- only the
+    ``mvr_title_token_override`` field is a token string, and it is
+    consumed verbatim as the title ``token_string`` when the tracker's
+    title override is enabled (see ``src/backend/process.py``), so it must
+    be carried through the same rename map applied to the movie-rename
+    token fields.
+    """
+    new_tracker: dict[str, Any] = dict(tracker)
+    for name, section in tracker.items():
+        if not isinstance(section, Mapping):
+            continue
+        override = section.get("mvr_title_token_override")
+        if isinstance(override, str) and override:
+            new_section = dict(section)
+            new_section["mvr_title_token_override"] = _rename_tokens(override)
+            new_tracker[name] = new_section
+    return new_tracker
+
+
 def _rename_tokens_recursive(value: Any) -> Any:
     """Apply ``_rename_tokens`` to strings, recursing into lists/mappings."""
     if isinstance(value, str):
@@ -213,6 +236,11 @@ def migrate_unversioned_to_v2(
                 for name, entry in user_tokens["tokens"].items()
             },
         }
+
+    # Apply token renames to each tracker's persisted title token override.
+    tracker_section = new_doc.get("tracker")
+    if isinstance(tracker_section, Mapping):
+        new_doc["tracker"] = _rename_tracker_title_overrides(tracker_section)
 
     movie_rename = old_doc.get(_MOVIE_RENAME_KEY)
     if not isinstance(movie_rename, Mapping):

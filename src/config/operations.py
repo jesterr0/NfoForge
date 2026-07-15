@@ -1066,8 +1066,18 @@ class TypedTomlOperations:
         self,
         toml_data: Mapping[str, Any],
         build_defaults: bool = False,
+        dry_run: bool = False,
     ) -> None:
-        """Assigns config payload attributes from a given toml document"""
+        """Assigns config payload attributes from a given toml document.
+
+        When ``dry_run`` is True, the document is fully decoded and
+        validated (including ``validate_settings``) but the resulting
+        payload is discarded instead of being assigned to
+        ``self.settings``/``self.defaults``. This lets a caller prove a
+        document is fully valid -- exactly as a real decode would -- without
+        mutating manager state; used to validate a migrated schema-1->2
+        document before it is ever persisted.
+        """
         try:
             self.codec.validate_schema(toml_data)
             # general
@@ -1810,12 +1820,15 @@ class TypedTomlOperations:
                 ),
             )
 
+            # validate before ever assigning to instance state
+            self.codec.validate_settings(config_payload)
+            if dry_run:
+                return
+
             # check where to store the built payload
             if build_defaults:
-                self.codec.validate_settings(config_payload)
                 self.defaults = config_payload
             else:
-                self.codec.validate_settings(config_payload)
                 self.settings = config_payload
 
         except Exception as e:

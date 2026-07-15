@@ -35,10 +35,59 @@ def test_migration_moves_and_renames_movie_sections() -> None:
 
 def test_migration_preserves_untouched_sections() -> None:
     old = _load_fixture("schema1_config.toml")
+    # Snapshot the serialized form *before* migration -- comparing
+    # `new[...] == old[...]` after the fact is trivially true whenever
+    # migration copies the tomlkit object forward by reference (as it does
+    # here), even if that shared object were later mutated in place. Only a
+    # pre-migration snapshot can actually catch an accidental mutation.
+    before_api_keys = tomlkit.dumps(old["api_keys"])
+    before_mtv = tomlkit.dumps(old["tracker"]["more_than_tv"])
+
     new, _ = migrate_unversioned_to_v2(old)
 
-    assert new["api_keys"] == old["api_keys"]
-    assert new["tracker"]["more_than_tv"] == old["tracker"]["more_than_tv"]
+    assert tomlkit.dumps(new["api_keys"]) == before_api_keys
+    assert tomlkit.dumps(new["tracker"]["more_than_tv"]) == before_mtv
+
+
+def test_migration_renames_tokens_in_tracker_title_overrides() -> None:
+    old = _load_fixture("schema1_config.toml")
+    new, unmapped = migrate_unversioned_to_v2(old)
+
+    assert not unmapped
+
+    aither_override = new["tracker"]["aither"]["mvr_title_token_override"]
+    assert "{movie_clean_title}" not in aither_override
+    assert "{mi_audio_codec}" not in aither_override
+    assert "{mi_" not in aither_override
+    assert "{title_clean}" in aither_override
+    assert "{audio_codec}" in aither_override
+
+    # every schema-1 default tracker that shipped a non-empty override
+    # using old token names must be rewritten the same way
+    for tracker_name in (
+        "aither",
+        "huno",
+        "lst",
+        "dark_peers",
+        "shareisland",
+        "uploadcx",
+        "only_encodes",
+    ):
+        override = new["tracker"][tracker_name]["mvr_title_token_override"]
+        assert "{movie_clean_title}" not in override, tracker_name
+        assert "{mi_" not in override, tracker_name
+        assert "{title_clean}" in override, tracker_name
+
+    # trackers with an empty override are left alone
+    assert new["tracker"]["more_than_tv"]["mvr_title_token_override"] == ""
+    assert new["tracker"]["torrent_leech"]["mvr_title_token_override"] == ""
+
+    # non-token keys in a rewritten tracker section are untouched
+    assert (
+        new["tracker"]["aither"]["mvr_title_replace_map"]
+        == old["tracker"]["aither"]["mvr_title_replace_map"]
+    )
+    assert new["tracker"]["aither"]["source"] == "Aither"
 
 
 def test_migration_reports_unmapped_when_movie_rename_missing() -> None:
