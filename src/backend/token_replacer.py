@@ -2503,20 +2503,22 @@ class TokenReplacer:
         output = ""
 
         # video
-        v_track = mi_obj.video_tracks[0]
-        v_avg_bitrate = calculate_avg_bitrate(v_track)
-        resolution = VideoResolutionAnalyzer(mi_obj).get_resolution()
-        video_data = (
-            v_track.format,
-            f"{v_avg_bitrate} kbps" if v_avg_bitrate else None,
-            resolution if resolution else None,
-            f"{v_track.frame_rate} FPS" if v_track.frame_rate else "",
-            v_track.other_display_aspect_ratio[0]
-            if v_track.other_display_aspect_ratio
-            else None,
-            v_track.format_profile,
-        )
-        output += " / ".join(str(x) for x in video_data if x)
+        video_tracks = getattr(mi_obj, "video_tracks", []) or []
+        if video_tracks:
+            v_track = video_tracks[0]
+            v_avg_bitrate = calculate_avg_bitrate(v_track)
+            resolution = VideoResolutionAnalyzer(mi_obj).get_resolution()
+            video_data = (
+                v_track.format,
+                f"{v_avg_bitrate} kbps" if v_avg_bitrate else None,
+                resolution if resolution else None,
+                f"{v_track.frame_rate} FPS" if v_track.frame_rate else "",
+                v_track.other_display_aspect_ratio[0]
+                if v_track.other_display_aspect_ratio
+                else None,
+                v_track.format_profile,
+            )
+            output += " / ".join(str(x) for x in video_data if x)
 
         # audios
         audio_s = []

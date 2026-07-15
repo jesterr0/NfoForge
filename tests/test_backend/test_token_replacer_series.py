@@ -1,4 +1,7 @@
 from pathlib import Path
+from unittest.mock import Mock
+
+from pymediainfo import MediaInfo
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenData
@@ -422,3 +425,17 @@ def test_jinja_nfo_rendering_only_evaluates_referenced_tokens() -> None:
     ).get_output()
 
     assert output == "Missing MediaInfo File"
+
+
+def test_get_mi_synopsis_handles_no_video_track() -> None:
+    # A file with no video track (e.g. an audio-only or corrupt rip) must not
+    # crash the whole render; get_mi_synopsis should degrade gracefully like
+    # the already-guarded audio loop below it.
+    fake_mi_no_video = Mock(spec=MediaInfo)
+    fake_mi_no_video.video_tracks = []
+    fake_mi_no_video.audio_tracks = []
+
+    replacer = _series_replacer("")
+    out = replacer.get_mi_synopsis(fake_mi_no_video)
+
+    assert isinstance(out, str)
