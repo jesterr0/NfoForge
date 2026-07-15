@@ -1213,15 +1213,13 @@ class TokenReplacer:
             raise InvalidTokenError("Invalid 'unfilled_token_mode'")
 
     def _air_date(self, token_data: TokenData) -> str:
+        """Series-level first-aired date (parallels the movie {release_date} token)."""
         if self.media_search_obj.media_type is not MediaType.SERIES:
             return ""
-        get_info = self._verify_series_info()
-        if not get_info:
+        tvdb_data = self.media_search_obj.tvdb_data
+        if not tvdb_data:
             return ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if not episode_data:
-            return ""
-        return self._optional_user_input(episode_data.get("aired", ""), token_data)
+        return self._optional_user_input(tvdb_data.get("firstAired", ""), token_data)
 
     def _edition(self, token_data: TokenData) -> str:
         if self.edition_override:

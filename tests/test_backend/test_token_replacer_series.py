@@ -38,6 +38,7 @@ def _series_replacer(token: str) -> TokenReplacer:
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.SERIES,
             tvdb_data={
+                "firstAired": "2019-04-01",
                 "episodes": [
                     {
                         "seasonNumber": 1,
@@ -161,10 +162,13 @@ def test_episode_number_absolute_falls_back_when_tvdb_value_is_zero() -> None:
     assert replacer.get_output() == "5"
 
 
-def test_air_date_token_prefers_selected_series_mapping() -> None:
-    output = _series_replacer("{air_date}").get_output()
+def test_air_date_is_series_level_first_aired_distinct_from_episode_air_date() -> None:
+    # {air_date} is series-level (parallels the movie {release_date} token) and
+    # must differ from {episode_air_date}, which stays the selected episode's
+    # own air date.
+    output = _series_replacer("{air_date} {episode_air_date}").get_output()
 
-    assert output == "2024-02-03"
+    assert output == "2019-04-01 2024-02-03"
 
 
 def test_series_nfo_tokens_render_selected_episode_context() -> None:
@@ -195,14 +199,17 @@ def test_series_nfo_tokens_render_selected_episode_context() -> None:
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         token_string=(
             "{{ season_number }}|{{ episode_number }}|"
-            "{{ episode_title_exact }}|{{ air_date }}"
+            "{{ episode_title_exact }}|{{ air_date }}|{{ episode_air_date }}"
         ),
         jinja_engine=Jinja2TemplateEngine(),
         season_number=1,
         episode_number=2,
     ).get_output()
 
-    assert output == "1|2|Selected Order Title|2024-02-03"
+    # EXAMPLE_SEARCH_PAYLOAD's tvdb_data has no flat series-level "firstAired"
+    # key (its fixture nests series fields under "series"), so {air_date} is
+    # blank here; {episode_air_date} still resolves from the selected episode.
+    assert output == "1|2|Selected Order Title||2024-02-03"
 
 
 def test_series_pack_nfo_single_episode_tokens_stay_blank() -> None:
