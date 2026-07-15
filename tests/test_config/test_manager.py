@@ -412,6 +412,72 @@ def test_load_profile_leaves_current_config_unchanged_on_schema_error(
     assert manager.program.current_config == "test"
 
 
+def test_load_profile_persists_new_current_config_to_disk_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful `load_profile` switch must persist the NEW profile name
+    to the on-disk program-conf file immediately -- not only in memory.
+
+    Regression test: task 3.2 moved the `self.program.current_config =
+    config_file` assignment in `load_profile` to *after* `self.save
+    (config_path)`, but `save()` calls `save_program()`, which writes
+    `self.program.current_config` to disk. With the assignment after the
+    save, `save_program()` persisted the STALE (previous) profile name, so
+    an abnormal termination right after a successful switch would revert to
+    the old profile on next launch. The in-memory value alone (asserted by
+    other tests in this file) does not catch this -- only reading the
+    on-disk program-conf file back does.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    assert manager.program.current_config == "test"
+
+    second_profile = paths.user_configs / "second.toml"
+    second_profile.write_text(
+        paths.default_config.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    manager.load_profile("second")
+
+    assert manager.program.current_config == "second"
+    on_disk = tomlkit.parse(paths.program.read_text(encoding="utf-8"))
+    assert on_disk["current_config"] == "second"
+
+
+def test_load_profile_leaves_on_disk_current_config_unchanged_on_schema_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure path must leave the on-disk program-conf file's
+    `current_config` unchanged too, not just the in-memory value (see
+    `test_load_profile_leaves_current_config_unchanged_on_schema_error`).
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    assert manager.program.current_config == "test"
+    on_disk_before = tomlkit.parse(paths.program.read_text(encoding="utf-8"))
+    assert on_disk_before["current_config"] == "test"
+
+    broken_profile = paths.user_configs / "broken.toml"
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    document["schema_version"] = 99
+    broken_profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ConfigSchemaError):
+        manager.load_profile("broken")
+
+    assert manager.program.current_config == "test"
+    on_disk_after = tomlkit.parse(paths.program.read_text(encoding="utf-8"))
+    assert on_disk_after["current_config"] == "test"
+
+
 def test_atomic_write_failure_preserves_original(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

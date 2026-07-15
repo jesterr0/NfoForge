@@ -161,19 +161,26 @@ class ConfigManager(TypedTomlOperations):
             )
             self.codec.validate_types(self._toml_data, self._default_document)
             self.decode(self._toml_data)
+            # only update the active profile name once loading has fully
+            # succeeded -- otherwise a profile that fails schema validation
+            # (raising `ConfigSchemaError` above) would get persisted as
+            # `current_config` even though it was never actually loaded.
+            # This must happen *before* `self.save` below: `save()` calls
+            # `save_program()`, which writes `self.program.current_config`
+            # to disk, so the assignment has to land first or the on-disk
+            # program-conf file keeps the stale profile name until some
+            # later, unrelated save.
+            if config_file:
+                self.program.current_config = config_file
             self.save(config_path)
         else:
             atomic_write_text(config_path, default_toml)
             self._toml_data = tomlkit.parse(default_toml)
             self.decode(self._toml_data)
             self._config_snapshot = default_toml
+            if config_file:
+                self.program.current_config = config_file
         self._active_profile_path = config_path
-        # only update the active profile name once loading has fully
-        # succeeded -- otherwise a profile that fails schema validation
-        # (raising `ConfigSchemaError` above) would get persisted as
-        # `current_config` even though it was never actually loaded
-        if config_file:
-            self.program.current_config = config_file
 
     def _try_migrate_unversioned_profile(
         self,

@@ -353,7 +353,6 @@ class GeneralSettings(BaseSettings):
                 (f"{error}\n\nReverted to the previous config: {previous}"),
             )
             return
-        self.config.program.current_config = target
         self.settings_window.re_load_settings.emit()
 
     @Slot()
