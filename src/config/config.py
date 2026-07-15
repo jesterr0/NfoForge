@@ -114,7 +114,6 @@ class ConfigManager(TypedTomlOperations):
     def load_profile(self, config_file: str | None = None) -> None:
         """Loads config file, if missing automatically creates one from the example template."""
         if config_file:
-            self.program.current_config = config_file
             config_path = self.paths.user_configs / str(config_file + ".toml")
         else:
             if not self.program.current_config:
@@ -169,6 +168,12 @@ class ConfigManager(TypedTomlOperations):
             self.decode(self._toml_data)
             self._config_snapshot = default_toml
         self._active_profile_path = config_path
+        # only update the active profile name once loading has fully
+        # succeeded -- otherwise a profile that fails schema validation
+        # (raising `ConfigSchemaError` above) would get persisted as
+        # `current_config` even though it was never actually loaded
+        if config_file:
+            self.program.current_config = config_file
 
     def _try_migrate_unversioned_profile(
         self,

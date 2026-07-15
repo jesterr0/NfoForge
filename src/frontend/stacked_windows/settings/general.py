@@ -29,6 +29,7 @@ from src.enums.logging_settings import LogLevel
 from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
+from src.exceptions import ConfigSchemaError
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
@@ -340,8 +341,19 @@ class GeneralSettings(BaseSettings):
 
     @Slot(int)
     def _swap_config(self, _: int | None = None) -> None:
-        self.config.program.current_config = self.selected_config.currentText()
-        self.config.load_profile(self.selected_config.currentText())
+        previous = self.config.program.current_config
+        target = self.selected_config.currentText()
+        try:
+            self.config.load_profile(target)
+        except ConfigSchemaError as error:
+            self.selected_config.setCurrentText(previous)
+            QMessageBox.critical(
+                self,
+                "Incompatible Config",
+                (f"{error}\n\nReverted to the previous config: {previous}"),
+            )
+            return
+        self.config.program.current_config = target
         self.settings_window.re_load_settings.emit()
 
     @Slot()

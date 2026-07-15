@@ -10,7 +10,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
 from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ConfigError
+from src.exceptions import ConfigError, ConfigSchemaError
 from src.payloads.trackers import MoreThanTVInfo
 
 
@@ -382,6 +382,34 @@ def test_load_profile_raises_schema_error_when_migration_cannot_map_sections(
 
     # failed migration must not write a partial result to disk
     assert profile.read_text(encoding="utf-8") == original
+
+
+def test_load_profile_leaves_current_config_unchanged_on_schema_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Switching to an incompatible profile must not persist the broken
+    profile name as the active one. `program.current_config` must still
+    point at the last-known-good profile after `load_profile` raises
+    `ConfigSchemaError`, so a runtime profile switch can safely restore the
+    previous selection instead of getting stuck on a config that can't load.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    assert manager.program.current_config == "test"
+
+    broken_profile = paths.user_configs / "broken.toml"
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    document["schema_version"] = 99
+    broken_profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ConfigSchemaError):
+        manager.load_profile("broken")
+
+    assert manager.program.current_config == "test"
 
 
 def test_atomic_write_failure_preserves_original(
