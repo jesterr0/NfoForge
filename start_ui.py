@@ -124,6 +124,12 @@ class NfoForge:
             QApplication.quit()
 
     def _handle_config_schema_error(self, error: ConfigSchemaError) -> None:
+        # note: by the time this fires, ConfigManager has already attempted
+        # an automatic in-place migration (see `ConfigManager.load_profile`
+        # / `migrate_unversioned_to_v2`) and either it wasn't applicable
+        # (schema_version present but unsupported) or it failed to fully
+        # account for the user's settings. Either way, settings cannot be
+        # preserved from here, so this dialog makes that explicit.
         config_path = error.config_path
         if not config_path:
             self._error_on_splash(str(error))
@@ -134,8 +140,10 @@ class NfoForge:
             "Incompatible Config",
             (
                 f"{error}\n\n"
+                "Your existing settings could not be fully migrated.\n\n"
                 "Would you like NfoForge to archive this config and generate a "
-                "new default config?\n\n"
+                "new default config? Settings will reset and must be "
+                "re-entered.\n\n"
                 f"Current config:\n{config_path}"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -163,8 +171,10 @@ class NfoForge:
             self.splash_screen,
             "Config Recreated",
             (
-                "A new default config was generated.\n\n"
-                f"Old config backup:\n{backup_path}"
+                "Your existing settings could not be fully migrated.\n\n"
+                f"The old config has been backed up to:\n{backup_path}\n\n"
+                "A new default config has been created; settings must be "
+                "re-entered."
             ),
         )
         self._continue_init()

@@ -283,6 +283,60 @@ def test_manager_rejects_invalid_newline_sequence(
         ConfigManager("test", paths)
 
 
+def test_load_profile_migrates_schema1_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    fixture_text = Path("tests/test_config/fixtures/schema1_config.toml").read_text(
+        encoding="utf-8"
+    )
+    profile.write_text(fixture_text, encoding="utf-8")
+
+    manager = ConfigManager("test", paths)  # should migrate, not raise
+
+    reloaded = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    assert reloaded["schema_version"] == 2
+    assert reloaded["movie_management"]["mvr_release_group"] == "CustomReleaseGroup"
+    assert "movie_rename" not in reloaded
+    # migrated in place; the archive/backup path must not have been taken
+    assert not (profile.parent / "old_configs").exists()
+    assert manager.settings.movie.release_group == "CustomReleaseGroup"
+    assert manager.settings.trackers.more_than_tv.username == "custom_mtv_user"
+
+
+def test_load_profile_raises_schema_error_when_migration_cannot_map_sections(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When migration can't fully account for the settings (or raises), the
+    manager must still surface `ConfigSchemaError` -- exactly as it did
+    before migration support existed -- so the caller's existing
+    archive+regenerate flow (gated behind a user-facing dialog) takes over.
+    ConfigManager itself never auto-archives.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    # no [movie_rename] section at all -- cannot be migrated
+    original = '[general]\nui_suffix = ""\n'
+    profile.write_text(original, encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Missing configuration schema_version"):
+        ConfigManager("test", paths)
+
+    # failed migration must not write a partial result to disk
+    assert profile.read_text(encoding="utf-8") == original
+
+
 def test_atomic_write_failure_preserves_original(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -7,6 +7,7 @@ import tomlkit
 
 from src.config.codec import TomlConfigCodec
 from src.config.dependencies import FindDependencies
+from src.config.migrations import migrate_unversioned_to_v2
 from src.config.models import AppConfig, ProgramConfig
 from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
@@ -134,8 +135,21 @@ class ConfigManager(TypedTomlOperations):
 
         if config_path.exists():
             loaded_text = config_path.read_text(encoding="utf-8")
-            self._config_snapshot = loaded_text
             loaded_document = tomlkit.parse(loaded_text)
+
+            if "schema_version" not in loaded_document:
+                migrated_document = self._try_migrate_unversioned_profile(
+                    loaded_document
+                )
+                if migrated_document is not None:
+                    loaded_text = self.codec.dumps(migrated_document)
+                    atomic_write_text(config_path, loaded_text)
+                    # re-parse so downstream merge/validate/decode operate on
+                    # a real TOML document, consistent with the normal
+                    # (non-migration) load path
+                    loaded_document = tomlkit.parse(loaded_text)
+
+            self._config_snapshot = loaded_text
             try:
                 self.codec.validate_schema(loaded_document)
             except ConfigSchemaError as error:
@@ -155,6 +169,27 @@ class ConfigManager(TypedTomlOperations):
             self.decode(self._toml_data)
             self._config_snapshot = default_toml
         self._active_profile_path = config_path
+
+    def _try_migrate_unversioned_profile(
+        self, loaded_document: MutableMapping[str, Any]
+    ) -> MutableMapping[str, Any] | None:
+        """Attempt to migrate an unversioned ("schema 1") profile to schema 2.
+
+        Returns the migrated document on success. Returns ``None`` if
+        migration is not possible (some section could not be mapped) or it
+        raised, in which case the caller should leave the original document
+        untouched and fall through to the normal `ConfigSchemaError` path so
+        the existing archive+regenerate flow can take over.
+        """
+        try:
+            migrated_document, unmapped = migrate_unversioned_to_v2(
+                loaded_document, self._default_document
+            )
+        except Exception:
+            return None
+        if unmapped:
+            return None
+        return migrated_document
 
     def save_as(self, save_path: Path) -> None:
         """Save the current settings under a new profile name."""
