@@ -13,6 +13,14 @@ from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 
 
+def _td() -> TokenData:
+    # bare TokenData() has pre_token/post_token = None, which
+    # _optional_user_input happily f-string-interpolates as the literal
+    # string "None" around the value; tests asserting exact output need the
+    # empty-string variant instead.
+    return TokenData(pre_token="", post_token="")
+
+
 def _series_replacer(token: str) -> TokenReplacer:
     file_path = Path("Show.S01E02.mkv")
     return TokenReplacer(
@@ -51,6 +59,32 @@ def _series_replacer(token: str) -> TokenReplacer:
             },
         ),
         token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=2,
+    )
+
+
+def _series_search_replacer(
+    tmdb_data: dict | None = None, tvdb_data: dict | None = None
+) -> TokenReplacer:
+    file_path = Path("Show.S01E02.mkv")
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tmdb_data=tmdb_data,
+            tvdb_data=tvdb_data,
+        ),
+        token_string="",
         colon_replace=ColonReplace.REPLACE_WITH_DASH,
         flatten=True,
         file_name_mode=False,
@@ -286,6 +320,63 @@ def test_flat_token_with_imdb_aka_fallback_title_clean_only_does_not_return_none
     output = _series_replacer("{imdb_aka_fallback_title_clean}").get_output()
 
     assert output is not None
+
+
+def test_total_seasons_and_episodes_prefer_tmdb_counts() -> None:
+    # TVDB's "seasons" list has one row per (season-type x season)
+    # combination, so it's deliberately built "wrong" here (14 rows across
+    # two season-types, including a season-0/specials row) to prove it's
+    # ignored whenever TMDB's clean rollup counts are present.
+    tvdb_seasons_rows = [
+        {"number": season_num, "type": {"type": season_type}}
+        for season_type in ("official", "dvd")
+        for season_num in range(0, 7)  # season 0 (specials) + seasons 1-6
+    ]
+    assert len(tvdb_seasons_rows) == 14
+
+    replacer = _series_search_replacer(
+        tmdb_data={"number_of_seasons": 5, "number_of_episodes": 62},
+        tvdb_data={"seasons": tvdb_seasons_rows},
+    )
+
+    assert replacer._total_seasons(_td()) == "5"
+    assert replacer._total_episodes(_td()) == "62"
+
+
+def test_total_seasons_falls_back_to_tvdb_filtered_count_excluding_special() -> None:
+    # no TMDB counts available; TVDB's raw "seasons" rows span two
+    # season-types (14 rows total) but only 6 real seasons (season 0 is
+    # specials and must be excluded).
+    tvdb_seasons_rows = [
+        {"number": season_num, "type": {"type": season_type}}
+        for season_type in ("official", "dvd")
+        for season_num in range(0, 7)
+    ]
+
+    replacer = _series_search_replacer(
+        tmdb_data=None,
+        tvdb_data={"seasons": tvdb_seasons_rows},
+    )
+
+    assert replacer._total_seasons(_td()) == "6"
+
+
+def test_total_episodes_falls_back_to_tvdb_excluding_special_episodes() -> None:
+    # no TMDB counts available; TVDB's "episodes" rows include a season-0
+    # (specials) episode that must be excluded from the total.
+    tvdb_episodes_rows = [
+        {"seasonNumber": 0, "number": 1},
+        {"seasonNumber": 1, "number": 1},
+        {"seasonNumber": 1, "number": 2},
+        {"seasonNumber": 2, "number": 1},
+    ]
+
+    replacer = _series_search_replacer(
+        tmdb_data=None,
+        tvdb_data={"episodes": tvdb_episodes_rows},
+    )
+
+    assert replacer._total_episodes(_td()) == "3"
 
 
 def test_jinja_nfo_rendering_only_evaluates_referenced_tokens() -> None:

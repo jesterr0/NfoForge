@@ -2745,35 +2745,111 @@ class TokenReplacer:
 
         return "\n\n".join(combined)
 
-    def _get_tvdb_data_count(
-        self, data_key: str, cache_key: str, token_data: TokenData
+    def _get_series_total_count(
+        self,
+        cache_key: str,
+        tmdb_key: str,
+        tvdb_key: str,
+        tvdb_counter: Callable[[list], int],
+        token_data: TokenData,
     ) -> str:
-        """Helper method to get count from TVDB data with caching."""
+        """Helper method to get a total seasons/episodes count with caching.
+
+        Prefers TMDB's rollup counts (`number_of_seasons`/`number_of_episodes`),
+        which already exclude season 0 (specials). TVDB's `series/extended`
+        response has no equivalent rollup field, so when TMDB data isn't
+        available we fall back to TVDB, using `tvdb_counter` to collapse its
+        raw rows into a real count.
+        """
         # check cache first
         if cache_key in self._series_cache:
             return self._optional_user_input(
                 str(self._series_cache[cache_key]), token_data
             )
 
-        # early return if no TVDB data
-        if not self.media_search_obj or not self.media_search_obj.tvdb_data:
-            return self._optional_user_input("", token_data)
+        count = None
 
-        # get data from TVDB
-        data = self.media_search_obj.tvdb_data.get(data_key)
-        if not data:
+        # prefer TMDB's clean rollup counts when available
+        tmdb_data = self.media_search_obj.tmdb_data if self.media_search_obj else None
+        if tmdb_data:
+            tmdb_count = tmdb_data.get(tmdb_key)
+            if tmdb_count:
+                count = int(tmdb_count)
+
+        # fall back to TVDB
+        if count is None:
+            tvdb_data = (
+                self.media_search_obj.tvdb_data if self.media_search_obj else None
+            )
+            rows = tvdb_data.get(tvdb_key) if tvdb_data else None
+            if rows:
+                count = tvdb_counter(rows)
+
+        if not count:
             return self._optional_user_input("", token_data)
 
         # cache and return count
-        count = len(data)
         self._series_cache[cache_key] = count
         return self._optional_user_input(str(count), token_data)
 
+    @staticmethod
+    def _count_tvdb_seasons(seasons: list) -> int:
+        """Count real seasons from TVDB's per-season-type "seasons" rows.
+
+        TVDB's `series/extended` "seasons" list has one row per
+        (season-type x season) combination -- aired/official, DVD, absolute,
+        and regional orders can each contribute a row for the same season
+        number -- plus a row for season 0 (specials). `len(...)` on that list
+        wildly overcounts, so this filters down to a single season-type
+        (whichever is encountered first) and drops season 0.
+        """
+        season_type = None
+        numbers: set[int] = set()
+        for row in seasons:
+            if not isinstance(row, dict):
+                continue
+            number = row.get("number")
+            if number is None or number == 0:
+                continue
+            row_type = row.get("type")
+            if isinstance(row_type, dict):
+                type_name = row_type.get("type") or row_type.get("name")
+            else:
+                type_name = row_type
+            if season_type is None:
+                season_type = type_name
+            elif type_name != season_type:
+                continue
+            numbers.add(number)
+        return len(numbers)
+
+    @staticmethod
+    def _count_tvdb_episodes(episodes: list) -> int:
+        """Count real episodes from TVDB's "episodes" rows, excluding season 0 (specials)."""
+        count = 0
+        for row in episodes:
+            if isinstance(row, dict) and row.get("seasonNumber") == 0:
+                continue
+            count += 1
+        return count
+
     def _total_seasons(self, token_data: TokenData) -> str:
-        return self._get_tvdb_data_count("seasons", "total_seasons", token_data)
+        return self._get_series_total_count(
+            cache_key="total_seasons",
+            tmdb_key="number_of_seasons",
+            tvdb_key="seasons",
+            tvdb_counter=self._count_tvdb_seasons,
+            token_data=token_data,
+        )
 
     def _total_episodes(self, token_data: TokenData) -> str:
-        return self._get_tvdb_data_count("episodes", "total_episodes", token_data)
+        return self._get_series_total_count(
+            cache_key="total_episodes",
+            tmdb_key="number_of_episodes",
+            tvdb_key="episodes",
+            tvdb_counter=self._count_tvdb_episodes,
+            token_data=token_data,
+        )
 
     def _program_info(self, token_data: TokenData) -> str:
         return self._optional_user_input(f"{program_name} v{__version__}", token_data)
