@@ -414,12 +414,21 @@ class MTVUploader:
     # Resolutions treated as HD across category selection (_get_cat_id) and
     # tagging (find_series_tags). Keep these in sync: a release must never be
     # placed in an HD category while being tagged SD, or vice versa.
+    #
+    # MTV only distinguishes SD vs HD, and everything above SD is HD: this
+    # matches a 720p-range token (e.g. 720p), any 4-digit 1xxx/2xxx
+    # resolution with a p or i suffix (e.g. 1080p/1080i, 1440p/1440i,
+    # 2160p/2160i), or 4320p (8K, which the 1xxx/2xxx branch does not cover).
+    # That intentionally includes 1440p/1440i/2160i as HD even though an
+    # older, narrower tag list did not.
     _HD_RESOLUTION_PATTERN = re.compile(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]|4320p")
 
     @staticmethod
     def _is_hd(name: str) -> bool:
         """Return whether `name` (a release title or a resolution string)
-        indicates an HD (720p/1080p/1080i/2160p/4320p) release."""
+        indicates an HD release for MTV, i.e. anything above SD: a 720p-range
+        token, any 4-digit 1xxx/2xxx resolution (progressive or interlaced,
+        e.g. 1080p/1080i, 1440p/1440i, 2160p/2160i), or 4320p (8K)."""
         return bool(MTVUploader._HD_RESOLUTION_PATTERN.search(name))
 
     @staticmethod

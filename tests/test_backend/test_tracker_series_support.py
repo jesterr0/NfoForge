@@ -105,6 +105,18 @@ def test_torrentleech_series_category_mapping(
         # produced by find_series_tags for the same resolution.
         ("Example.Show.S01.4320p.WEB-DL", True, MTVCategories.HD_SEASON),
         ("Example.Show.S01E01.4320p.WEB-DL", False, MTVCategories.HD_EPISODE),
+        # MTV only distinguishes SD vs HD, so everything above SD -- including
+        # 1440p/1440i (QHD) and interlaced 2160i/1080i -- resolves to the HD
+        # category. Locks in the intended behavior of the shared _is_hd
+        # predicate (see morethantv.py _HD_RESOLUTION_PATTERN).
+        ("Example.Show.S01.1440p.WEB-DL", True, MTVCategories.HD_SEASON),
+        ("Example.Show.S01E01.1440p.WEB-DL", False, MTVCategories.HD_EPISODE),
+        ("Example.Show.S01.1440i.WEB-DL", True, MTVCategories.HD_SEASON),
+        ("Example.Show.S01E01.1440i.WEB-DL", False, MTVCategories.HD_EPISODE),
+        ("Example.Show.S01.2160i.WEB-DL", True, MTVCategories.HD_SEASON),
+        ("Example.Show.S01E01.2160i.WEB-DL", False, MTVCategories.HD_EPISODE),
+        ("Example.Show.S01.1080i.WEB-DL", True, MTVCategories.HD_SEASON),
+        ("Example.Show.S01E01.1080i.WEB-DL", False, MTVCategories.HD_EPISODE),
     ],
 )
 def test_morethantv_series_category_mapping(
@@ -128,6 +140,17 @@ def test_morethantv_series_category_mapping(
         ("2160p", False, {"episode.release", "hd.episode"}),
         ("4320p", True, {"hd.season"}),
         ("4320p", False, {"episode.release", "hd.episode"}),
+        # 1440p/1440i (QHD) and interlaced 2160i/1080i are HD for MTV, same
+        # as their progressive counterparts -- MTV only distinguishes SD vs
+        # HD, and everything above SD is HD.
+        ("1440p", True, {"hd.season"}),
+        ("1440p", False, {"episode.release", "hd.episode"}),
+        ("1440i", True, {"hd.season"}),
+        ("1440i", False, {"episode.release", "hd.episode"}),
+        ("2160i", True, {"hd.season"}),
+        ("2160i", False, {"episode.release", "hd.episode"}),
+        ("1080i", True, {"hd.season"}),
+        ("1080i", False, {"episode.release", "hd.episode"}),
     ],
 )
 def test_morethantv_series_tags(
@@ -141,12 +164,20 @@ def test_morethantv_series_tags(
     [
         ("720p", True),
         ("1080p", True),
+        ("1080i", True),
+        ("1440p", True),
+        ("1440i", True),
         ("2160p", True),
+        ("2160i", True),
         ("4320p", True),
         ("480p", True),
         ("720p", False),
         ("1080p", False),
+        ("1080i", False),
+        ("1440p", False),
+        ("1440i", False),
         ("2160p", False),
+        ("2160i", False),
         ("4320p", False),
         ("480p", False),
     ],
@@ -157,7 +188,10 @@ def test_morethantv_series_category_and_tag_agree_on_hd(
     """The season/episode category and the season/episode tag must always
     agree on whether a release is HD or SD. An 8K (4320p) release must not
     be tagged HD while its category is categorized as SD (or vice versa),
-    and genuinely-SD releases must remain SD in both places."""
+    and genuinely-SD releases must remain SD in both places. This also locks
+    in that everything above SD -- including 1440p/1440i (QHD) and
+    interlaced 2160i/1080i -- is HD in both places, per MTV's SD-vs-HD-only
+    distinction."""
     release_title = (
         f"Example.Show.S01.{resolution}.WEB-DL"
         if is_pack
