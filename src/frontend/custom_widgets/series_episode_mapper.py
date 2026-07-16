@@ -1123,6 +1123,18 @@ class SeriesEpisodeMapper(QWidget):
 
             if has_tvdb_match:
                 confidence_item.setBackground(Qt.GlobalColor.green)  # Manual = green
+                # season/episode items are already attached to the table;
+                # a previous edit may have painted them amber (unverified
+                # manual mapping) before this correction matched TVDB
+                # data, so reset them back to the table default. block
+                # signals while touching them so setBackground() (which
+                # emits itemChanged) doesn't re-enter this slot
+                self.files_table.blockSignals(True)
+                try:
+                    season_item.setBackground(Qt.GlobalColor.transparent)
+                    episode_item.setBackground(Qt.GlobalColor.transparent)
+                finally:
+                    self.files_table.blockSignals(False)
             else:
                 # amber: manual entry not confirmed against TVDB data
                 unverified_color = QColor(255, 205, 120)
@@ -1162,6 +1174,21 @@ class SeriesEpisodeMapper(QWidget):
         method_item = QTableWidgetItem("")
         method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.files_table.setItem(row, 4, method_item)
+
+        # reset season/episode background: a previous edit may have
+        # painted them amber (unverified manual mapping), but the mapping
+        # no longer exists so the cells should show no special color.
+        # block signals while touching them so setBackground() (which
+        # emits itemChanged) doesn't re-enter _on_table_item_changed
+        season_item = self.files_table.item(row, 1)
+        episode_item = self.files_table.item(row, 2)
+        if season_item is not None and episode_item is not None:
+            self.files_table.blockSignals(True)
+            try:
+                season_item.setBackground(Qt.GlobalColor.transparent)
+                episode_item.setBackground(Qt.GlobalColor.transparent)
+            finally:
+                self.files_table.blockSignals(False)
 
     # public API
     def load_media_search_data(self, media_search_payload: MediaSearchPayload) -> None:

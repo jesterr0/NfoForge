@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from src.backend.process import ProcessBackEnd
@@ -224,3 +225,40 @@ def test_typed_episode_present_in_tvdb_data_still_stores_as_before() -> None:
     assert mapping["episode_name"] == "Pilot"
     assert mapping["assignment_method"] == "manual"
     assert mapping["confidence"] == 1.0
+
+
+def test_correcting_unverified_episode_to_tvdb_match_clears_amber_cells() -> None:
+    # typing an episode with no TVDB match paints the season/episode cells
+    # amber (unverified). Correcting the value to one that DOES exist in
+    # TVDB must clear that amber so the row no longer looks unverified.
+    unverified_color = QColor(255, 205, 120)
+    file_path = Path("Show.S05E12.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {1: {1: {"name": "Pilot", "aired": "2020-01-01"}}}
+
+    season_item = mapper.files_table.item(0, 1)
+    episode_item = mapper.files_table.item(0, 2)
+
+    # step 1: type a season/episode with no TVDB match -> amber
+    season_item.setText("5")
+    episode_item.setText("12")
+    assert season_item.background().color() == unverified_color
+    assert episode_item.background().color() == unverified_color
+
+    # step 2: correct it to a season/episode that DOES exist in TVDB ->
+    # amber must be cleared (season/episode cells no longer stale)
+    season_item.setText("1")
+    episode_item.setText("1")
+    assert season_item.background().color() != unverified_color
+    assert episode_item.background().color() != unverified_color
+
+    # step 3: blank the fields -> amber must also be cleared
+    season_item.setText("5")
+    episode_item.setText("12")
+    assert season_item.background().color() == unverified_color
+
+    season_item.setText("")
+    episode_item.setText("")
+    assert season_item.background().color() != unverified_color
+    assert episode_item.background().color() != unverified_color
