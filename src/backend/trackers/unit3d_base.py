@@ -327,15 +327,27 @@ class Unit3dBaseUploader:
                 webrip_value = getattr(self.type_enum, "WEBRIP", None)
                 if webrip_value:
                     return webrip_value.value
-            elif re.search(r"\bweb\b", title_lowered) and not (
-                "hdtv" in title_lowered or "hd-tv" in title_lowered
+            elif (
+                re.search(
+                    r"\b(?:480|576|720|1080|2160|4320)[pi][._ -]?web\b"
+                    r"|\bweb[._ -]?(?:480|576|720|1080|2160|4320)[pi]\b"
+                    r"|\bweb[._ -]?(?:[xh][._ -]?26[45]|hevc|avc)\b",
+                    title_lowered,
+                )
+                and not ("hdtv" in title_lowered or "hd-tv" in title_lowered)
             ):
                 # bare "WEB" (no -DL/-Rip suffix) is a common scene/P2P source
                 # tag for episodic web releases (e.g. "S01E01.1080p.WEB.H264").
                 # Treat it the same as WEB-DL rather than falling through to
-                # the codec-driven ENCODE branch below. Guarded against an
-                # explicit HDTV marker so an incidental "web" substring (e.g.
-                # from a show title) can't override a real HDTV release.
+                # the codec-driven ENCODE branch below -- but only when "web"
+                # sits in the release-tag region: immediately adjacent to a
+                # resolution token (RES.WEB / WEB.RES) or immediately followed
+                # by a codec token (WEB.CODEC). This keeps an incidental "web"
+                # elsewhere in the filename -- e.g. a show title like
+                # "Spider.Web.S01E01.1080p.x264-GRP" -- from being misread as
+                # a source tag; that case falls through to the ENCODE branch
+                # below. Also guarded against an explicit HDTV marker so a
+                # real HDTV release can't be overridden.
                 webdl_value = getattr(self.type_enum, "WEBDL", None)
                 if webdl_value:
                     return webdl_value.value

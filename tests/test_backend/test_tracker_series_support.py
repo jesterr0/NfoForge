@@ -191,6 +191,24 @@ def test_unit3d_series_type_detection_prefers_release_source(
     assert uploader._get_type_id() == expected.value
 
 
+def test_unit3d_series_web_in_title_only_resolves_encode(
+    tmp_path: Path,
+) -> None:
+    """A show title that merely contains the word "web" (e.g. "Spider.Web")
+    must not be misread as a bare-"WEB" source tag. With no resolution- or
+    codec-adjacent "web" release-tag, this is a plain codec encode and must
+    resolve to ENCODE, not WEBDL."""
+    uploader = AitherUploader(
+        media_type=MediaType.SERIES,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=tmp_path / "Spider.Web.S01E01.1080p.x264-GRP.mkv",
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    assert uploader._get_type_id() == AitherType.ENCODE.value
+
+
 def test_unit3d_movie_encode_without_web_marker_still_resolves_encode(
     tmp_path: Path,
 ) -> None:
