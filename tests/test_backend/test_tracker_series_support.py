@@ -99,6 +99,12 @@ def test_torrentleech_series_category_mapping(
         ("Example.Show.S01.480p.WEB-DL", True, MTVCategories.SD_SEASON),
         ("Example.Show.S01E01.1080p.WEB-DL", False, MTVCategories.HD_EPISODE),
         ("Example.Show.2024.02.03.480p.WEB-DL", False, MTVCategories.SD_EPISODE),
+        ("Example.Show.S01.2160p.WEB-DL", True, MTVCategories.HD_SEASON),
+        ("Example.Show.S01E01.2160p.WEB-DL", False, MTVCategories.HD_EPISODE),
+        # 8K releases must resolve to the HD category, matching the HD tag
+        # produced by find_series_tags for the same resolution.
+        ("Example.Show.S01.4320p.WEB-DL", True, MTVCategories.HD_SEASON),
+        ("Example.Show.S01E01.4320p.WEB-DL", False, MTVCategories.HD_EPISODE),
     ],
 )
 def test_morethantv_series_category_mapping(
@@ -118,12 +124,59 @@ def test_morethantv_series_category_mapping(
         ("480p", True, {"sd.season"}),
         ("1080p", False, {"episode.release", "hd.episode"}),
         ("480p", False, {"episode.release", "sd.episode"}),
+        ("2160p", True, {"hd.season"}),
+        ("2160p", False, {"episode.release", "hd.episode"}),
+        ("4320p", True, {"hd.season"}),
+        ("4320p", False, {"episode.release", "hd.episode"}),
     ],
 )
 def test_morethantv_series_tags(
     resolution: str, is_pack: bool, expected_tags: set[str]
 ) -> None:
     assert MTVUploader.find_series_tags(resolution, is_pack) == expected_tags
+
+
+@pytest.mark.parametrize(
+    ("resolution", "is_pack"),
+    [
+        ("720p", True),
+        ("1080p", True),
+        ("2160p", True),
+        ("4320p", True),
+        ("480p", True),
+        ("720p", False),
+        ("1080p", False),
+        ("2160p", False),
+        ("4320p", False),
+        ("480p", False),
+    ],
+)
+def test_morethantv_series_category_and_tag_agree_on_hd(
+    resolution: str, is_pack: bool
+) -> None:
+    """The season/episode category and the season/episode tag must always
+    agree on whether a release is HD or SD. An 8K (4320p) release must not
+    be tagged HD while its category is categorized as SD (or vice versa),
+    and genuinely-SD releases must remain SD in both places."""
+    release_title = (
+        f"Example.Show.S01.{resolution}.WEB-DL"
+        if is_pack
+        else f"Example.Show.S01E01.{resolution}.WEB-DL"
+    )
+    category = MTVUploader._get_cat_id(
+        release_title=release_title,
+        media_type=MediaType.SERIES,
+        is_pack=is_pack,
+    )
+    tags = MTVUploader.find_series_tags(resolution, is_pack)
+
+    category_is_hd = category in (
+        str(MTVCategories.HD_SEASON.value),
+        str(MTVCategories.HD_EPISODE.value),
+    )
+    tag_is_hd = "hd.season" in tags or "hd.episode" in tags
+
+    assert category_is_hd == tag_is_hd
 
 
 def test_beyondhd_series_type_source_category_and_pack_payload(tmp_path: Path) -> None:

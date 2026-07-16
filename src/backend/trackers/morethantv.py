@@ -411,6 +411,17 @@ class MTVUploader:
             )
         return release_title
 
+    # Resolutions treated as HD across category selection (_get_cat_id) and
+    # tagging (find_series_tags). Keep these in sync: a release must never be
+    # placed in an HD category while being tagged SD, or vice versa.
+    _HD_RESOLUTION_PATTERN = re.compile(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]|4320p")
+
+    @staticmethod
+    def _is_hd(name: str) -> bool:
+        """Return whether `name` (a release title or a resolution string)
+        indicates an HD (720p/1080p/1080i/2160p/4320p) release."""
+        return bool(MTVUploader._HD_RESOLUTION_PATTERN.search(name))
+
     @staticmethod
     def _get_cat_id(
         release_title: str,
@@ -428,7 +439,7 @@ class MTVUploader:
         """
         category = MTVCategories.DEFAULT.value
         if media_type is MediaType.SERIES and is_pack:
-            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 return str(MTVCategories.HD_SEASON.value)
             return str(MTVCategories.SD_SEASON.value)
 
@@ -438,7 +449,7 @@ class MTVUploader:
             release_title,
             re.IGNORECASE,
         ):
-            if re.search("7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_EPISODE.value
             else:
                 category = MTVCategories.SD_EPISODE.value
@@ -448,13 +459,13 @@ class MTVUploader:
             release_title,
             re.IGNORECASE,
         ):
-            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_EPISODE.value
             else:
                 category = MTVCategories.SD_EPISODE.value
         # season
         elif re.search(r"( |\.)S[0-9]+( |\.)", release_title, re.IGNORECASE):
-            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_SEASON.value
             else:
                 category = MTVCategories.SD_SEASON.value
@@ -609,7 +620,7 @@ class MTVUploader:
     @staticmethod
     def find_series_tags(resolution: str, is_pack: bool = False) -> set:
         series = set()
-        hd = resolution in ("720p", "1080p", "1080i", "2160p", "4320p")
+        hd = MTVUploader._is_hd(resolution)
         if is_pack:
             series.add("hd.season" if hd else "sd.season")
         else:
