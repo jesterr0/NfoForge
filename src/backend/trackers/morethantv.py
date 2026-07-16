@@ -411,25 +411,23 @@ class MTVUploader:
             )
         return release_title
 
-    # Resolutions treated as HD across category selection (_get_cat_id) and
-    # tagging (find_series_tags). Keep these in sync: a release must never be
-    # placed in an HD category while being tagged SD, or vice versa.
-    #
-    # MTV only distinguishes SD vs HD, and everything above SD is HD: this
-    # matches a 720p-range token (e.g. 720p), any 4-digit 1xxx/2xxx
-    # resolution with a p or i suffix (e.g. 1080p/1080i, 1440p/1440i,
-    # 2160p/2160i), or 4320p (8K, which the 1xxx/2xxx branch does not cover).
-    # That intentionally includes 1440p/1440i/2160i as HD even though an
-    # older, narrower tag list did not.
-    _HD_RESOLUTION_PATTERN = re.compile(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]|4320p")
+    # MTV has only two categories, HD and SD, for both movies and TV. Any
+    # resolution of 720 lines or more (interlaced or progressive) is HD;
+    # anything below 720 -- or no resolution at all -- is SD. This threshold
+    # is used at every site that decides HD vs SD: category selection
+    # (_get_cat_id, for both the movie and series branches) and tagging
+    # (find_series_tags, find_movies_tags). Keep these in sync: a release
+    # must never be placed in an HD category while being tagged SD, or vice
+    # versa.
+    _RESOLUTION_TOKEN = re.compile(r"\b(\d{3,4})[ip]\b")
 
     @staticmethod
-    def _is_hd(name: str) -> bool:
-        """Return whether `name` (a release title or a resolution string)
-        indicates an HD release for MTV, i.e. anything above SD: a 720p-range
-        token, any 4-digit 1xxx/2xxx resolution (progressive or interlaced,
-        e.g. 1080p/1080i, 1440p/1440i, 2160p/2160i), or 4320p (8K)."""
-        return bool(MTVUploader._HD_RESOLUTION_PATTERN.search(name))
+    def _is_hd(text: str) -> bool:
+        """MoreThanTV has only HD and SD categories (movies and TV). Any
+        resolution >= 720 lines (interlaced or progressive) is HD; below 720
+        is SD. Works on a full release title or a bare resolution string."""
+        match = MTVUploader._RESOLUTION_TOKEN.search(text.lower())
+        return bool(match) and int(match.group(1)) >= 720
 
     @staticmethod
     def _get_cat_id(
@@ -480,7 +478,7 @@ class MTVUploader:
                 category = MTVCategories.SD_SEASON.value
         # movies
         else:
-            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_MOVIES.value
             else:
                 category = MTVCategories.SD_MOVIES.value
@@ -622,7 +620,7 @@ class MTVUploader:
     @staticmethod
     def find_movies_tags(resolution: str) -> set:
         movies = set()
-        if resolution in ("720p", "1080p", "2160p", "4320p"):
+        if MTVUploader._is_hd(resolution):
             movies.add("hd.movie")
         return movies
 
