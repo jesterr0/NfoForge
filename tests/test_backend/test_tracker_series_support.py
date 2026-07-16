@@ -213,6 +213,87 @@ def test_supported_unit3d_trackers_resolve_series_tv_category(
     assert uploader._get_category_id() == "2"
 
 
+def test_unit3d_single_episode_payload_includes_episode_number(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(AitherUploader, "_get_resolution_id", lambda self: "1080p")
+    monkeypatch.setattr(AitherUploader, "_standard_definition", lambda self: False)
+    input_path = tmp_path / "Example.Show.S01E01.1080p.WEB-DL.H.264.mkv"
+    input_path.write_bytes(b"placeholder")
+    uploader = AitherUploader(
+        media_type=MediaType.SERIES,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=input_path,
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    payload = uploader._build_upload_payload(
+        tracker_title=None,
+        season_number=1,
+        episode_number=1,
+        season_pack=False,
+    )
+
+    assert payload["season_number"] == 1
+    assert payload["episode_number"] == 1
+    assert "season_pack" not in payload
+
+
+def test_unit3d_season_pack_payload_includes_season_pack(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(AitherUploader, "_get_resolution_id", lambda self: "1080p")
+    monkeypatch.setattr(AitherUploader, "_standard_definition", lambda self: False)
+    input_path = tmp_path / "Example.Show.S01.1080p.WEB-DL.H.264.mkv"
+    input_path.write_bytes(b"placeholder")
+    uploader = AitherUploader(
+        media_type=MediaType.SERIES,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=input_path,
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    payload = uploader._build_upload_payload(
+        tracker_title=None,
+        season_number=1,
+        episode_number=None,
+        season_pack=True,
+    )
+
+    assert payload["season_number"] == 1
+    assert payload["season_pack"] == 1
+    assert "episode_number" not in payload
+
+
+def test_unit3d_movie_payload_excludes_series_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(AitherUploader, "_get_resolution_id", lambda self: "1080p")
+    monkeypatch.setattr(AitherUploader, "_standard_definition", lambda self: False)
+    input_path = tmp_path / "Example.Movie.2024.1080p.WEB-DL.H.264.mkv"
+    input_path.write_bytes(b"placeholder")
+    uploader = AitherUploader(
+        media_type=MediaType.MOVIE,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=input_path,
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    payload = uploader._build_upload_payload(
+        tracker_title=None,
+        season_number=1,
+        episode_number=1,
+        season_pack=True,
+    )
+
+    assert "season_number" not in payload
+    assert "episode_number" not in payload
+    assert "season_pack" not in payload
+
+
 def test_reelflix_does_not_resolve_series_tv_category(tmp_path: Path) -> None:
     uploader = ReelFlixUploader(
         media_type=MediaType.SERIES,

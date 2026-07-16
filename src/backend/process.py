@@ -1354,6 +1354,11 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start
+                if not release_info.is_pack
+                else None,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.HUNO:
             tracker_payload = self.config.settings.trackers.huno
@@ -1372,6 +1377,11 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start
+                if not release_info.is_pack
+                else None,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.LST:
             tracker_payload = self.config.settings.trackers.lst
@@ -1396,6 +1406,11 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start
+                if not release_info.is_pack
+                else None,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.DARK_PEERS:
             tracker_payload = self.config.settings.trackers.dark_peers
@@ -1413,6 +1428,11 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start
+                if not release_info.is_pack
+                else None,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.SHARE_ISLAND:
             tracker_payload = self.config.settings.trackers.share_island
@@ -1432,6 +1452,11 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start
+                if not release_info.is_pack
+                else None,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.UPLOAD_CX:
             tracker_payload = self.config.settings.trackers.upload_cx
@@ -1450,6 +1475,11 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start
+                if not release_info.is_pack
+                else None,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.ONLY_ENCODES:
             tracker_payload = self.config.settings.trackers.only_encodes
@@ -1468,6 +1498,11 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start
+                if not release_info.is_pack
+                else None,
+                season_pack=release_info.is_pack,
             )
 
     def generate_tracker_title(

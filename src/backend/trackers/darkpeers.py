@@ -25,6 +25,9 @@ def dp_uploader(
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+    season_pack: bool = False,
 ) -> bool | None:
     uploader = DarkPeersUploader(
         media_type=media_type,
@@ -43,6 +46,9 @@ def dp_uploader(
         nfo=nfo,
         internal=internal,
         anonymous=anonymous,
+        season_number=season_number,
+        episode_number=episode_number,
+        season_pack=season_pack,
     )
     return upload
 

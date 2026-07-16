@@ -29,6 +29,9 @@ def aither_uploader(
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+    season_pack: bool = False,
 ) -> bool | None:
     uploader = AitherUploader(
         media_type=media_type,
@@ -54,6 +57,9 @@ def aither_uploader(
         free=free,
         double_up=double_up,
         sticky=sticky,
+        season_number=season_number,
+        episode_number=episode_number,
+        season_pack=season_pack,
     )
     return upload
 

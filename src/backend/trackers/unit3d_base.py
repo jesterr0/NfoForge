@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import niquests
 import regex
@@ -141,9 +142,84 @@ class Unit3dBaseUploader:
         free: bool | None = False,
         double_up: bool | None = False,
         sticky: bool | None = False,
+        season_number: int | None = None,
+        episode_number: int | None = None,
+        season_pack: bool = False,
     ) -> bool | None:
         params = {"api_token": self.api_key}
-        upload_payload = {
+        upload_payload = self._build_upload_payload(
+            tracker_title=tracker_title,
+            imdb_id=imdb_id,
+            tmdb_id=tmdb_id,
+            tvdb_id=tvdb_id,
+            mal_id=mal_id,
+            nfo=nfo,
+            internal=internal,
+            anonymous=anonymous,
+            personal_release=personal_release,
+            stream_optimized=stream_optimized,
+            opt_in_to_mod_queue=opt_in_to_mod_queue,
+            draft_queue_opt_in=draft_queue_opt_in,
+            featured=featured,
+            free=free,
+            double_up=double_up,
+            sticky=sticky,
+            season_number=season_number,
+            episode_number=episode_number,
+            season_pack=season_pack,
+        )
+
+        LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
+
+        open_torrent = self.torrent_file.open(mode="rb")
+        try:
+            with niquests.post(
+                url=self.upload_url,
+                files={"torrent": open_torrent},
+                params=params,
+                data=upload_payload,
+                headers=TRACKER_HEADERS,
+                timeout=self.timeout,
+            ) as response:
+                response_json = response.json()
+                # {'success': True, 'data': 'https://baseurl/torrent/download/45835.keydata', 'message': 'Torrent uploaded successfully.'}
+                message = response_json.get("message")
+                context = response_json.get("data")
+                if response_json.get("success") is True and "successfully" in message:
+                    return True
+                else:
+                    error_msg = f"Message='{message}' Context='{context}'"
+                    raise TrackerError(error_msg)
+        except (niquests.exceptions.RequestException, TrackerError) as error:
+            requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
+            raise TrackerError(requests_exc_error_msg)
+        finally:
+            open_torrent.close()
+
+    def _build_upload_payload(
+        self,
+        tracker_title: str | None,
+        imdb_id: str | None = None,
+        tmdb_id: str | None = None,
+        tvdb_id: str | None = None,
+        mal_id: str | None = None,
+        nfo: str | None = None,
+        internal: bool = False,
+        anonymous: bool = False,
+        personal_release: bool | None = True,
+        stream_optimized: bool = False,
+        opt_in_to_mod_queue: bool | None = False,
+        draft_queue_opt_in: bool | None = False,
+        featured: bool | None = False,
+        free: bool | None = False,
+        double_up: bool | None = False,
+        sticky: bool | None = False,
+        season_number: int | None = None,
+        episode_number: int | None = None,
+        season_pack: bool = False,
+    ) -> dict[str, Any]:
+        upload_payload: dict[str, Any] = {
             "name": tracker_title
             if tracker_title
             else self.generate_release_title(self.input_path.stem),
@@ -177,6 +253,14 @@ class Unit3dBaseUploader:
         if mal_id:
             upload_payload["mal"] = mal_id
 
+        if self.media_type is MediaType.SERIES:
+            if season_number is not None:
+                upload_payload["season_number"] = season_number
+            if not season_pack and episode_number is not None:
+                upload_payload["episode_number"] = episode_number
+            if season_pack:
+                upload_payload["season_pack"] = 1
+
         # some trackers have different keys for different features, we'll handle that here
         if self.tracker_name in (TrackerSelection.AITHER, TrackerSelection.REELFLIX):
             if opt_in_to_mod_queue is not None:
@@ -197,33 +281,7 @@ class Unit3dBaseUploader:
         if sticky is not None:
             upload_payload["sticky"] = int(sticky)
 
-        LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
-
-        open_torrent = self.torrent_file.open(mode="rb")
-        try:
-            with niquests.post(
-                url=self.upload_url,
-                files={"torrent": open_torrent},
-                params=params,
-                data=upload_payload,
-                headers=TRACKER_HEADERS,
-                timeout=self.timeout,
-            ) as response:
-                response_json = response.json()
-                # {'success': True, 'data': 'https://baseurl/torrent/download/45835.keydata', 'message': 'Torrent uploaded successfully.'}
-                message = response_json.get("message")
-                context = response_json.get("data")
-                if response_json.get("success") is True and "successfully" in message:
-                    return True
-                else:
-                    error_msg = f"Message='{message}' Context='{context}'"
-                    raise TrackerError(error_msg)
-        except (niquests.exceptions.RequestException, TrackerError) as error:
-            requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
-            LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
-            raise TrackerError(requests_exc_error_msg)
-        finally:
-            open_torrent.close()
+        return upload_payload
 
     def _get_category_id(self) -> str:
         category_name = "TV" if self.media_type is MediaType.SERIES else "MOVIE"

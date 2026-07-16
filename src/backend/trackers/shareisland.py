@@ -27,6 +27,9 @@ def shri_uploader(
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+    season_pack: bool = False,
 ) -> bool | None:
     uploader = ShareIslandUploader(
         media_type=media_type,
@@ -47,6 +50,9 @@ def shri_uploader(
         anonymous=anonymous,
         personal_release=personal_release,
         opt_in_to_mod_queue=opt_in_to_mod_queue,
+        season_number=season_number,
+        episode_number=episode_number,
+        season_pack=season_pack,
     )
     return upload
 
