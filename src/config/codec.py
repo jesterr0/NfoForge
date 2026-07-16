@@ -109,6 +109,16 @@ class TomlConfigCodec:
                 expected.unwrap() if hasattr(expected, "unwrap") else expected
             )
             actual_value = actual.unwrap() if hasattr(actual, "unwrap") else actual
+            if (
+                type(expected_value) is float
+                and isinstance(actual_value, int)
+                and not isinstance(actual_value, bool)
+            ):
+                # an int is an acceptable value where a float is expected
+                # (e.g. `ui_scale_factor = 1` for a default of `1.0`); `bool`
+                # is excluded since it is a subclass of `int` in Python and
+                # must still be rejected where a float/int is expected.
+                continue
             if type(actual_value) is not type(expected_value):
                 raise ConfigError(
                     f"Invalid type at {path}: expected "

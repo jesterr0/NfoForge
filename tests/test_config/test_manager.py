@@ -183,6 +183,35 @@ def test_codec_reports_dotted_path_for_invalid_type() -> None:
         TomlConfigCodec.validate_types(invalid, defaults)
 
 
+def test_int_accepted_where_float_expected() -> None:
+    """A hand-edited or plugin-written config with an int value where the
+    default is a float (e.g. `ui_scale_factor = 1` vs. the default `1.0`)
+    is current-schema and salvageable -- it must not be rejected."""
+    defaults = tomlkit.parse(
+        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
+    )
+    doc = tomlkit.parse(tomlkit.dumps(defaults))
+    general = cast(MutableMapping[str, Any], doc["general"])
+    assert isinstance(general["ui_scale_factor"].unwrap(), float)
+    general["ui_scale_factor"] = 1  # int, default is 1.0
+
+    TomlConfigCodec.validate_types(doc, defaults)  # must not raise
+
+
+def test_bool_still_rejected_where_float_expected() -> None:
+    """`bool` is a subclass of `int` in Python and must still be rejected
+    where a float is expected, even though a plain `int` is now tolerated."""
+    defaults = tomlkit.parse(
+        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
+    )
+    invalid = tomlkit.parse(tomlkit.dumps(defaults))
+    general = cast(MutableMapping[str, Any], invalid["general"])
+    general["ui_scale_factor"] = True
+
+    with pytest.raises(ConfigError, match=r"general\.ui_scale_factor"):
+        TomlConfigCodec.validate_types(invalid, defaults)
+
+
 def test_manager_rejects_blank_required_series_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
