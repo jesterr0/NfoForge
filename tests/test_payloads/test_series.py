@@ -172,3 +172,55 @@ def test_build_series_release_info_single_episode_mapping_unchanged() -> None:
     assert release_info.episode_start == 1
     assert release_info.episode_end == 1
     assert release_info.display_tag == "S01E01"
+
+
+def test_typed_episode_without_tvdb_data_still_stores_manual_mapping() -> None:
+    # when TVDB has no episode data at all (or not for this specific
+    # season/episode), a user-typed season/episode must still be stored
+    # instead of the row being cleared -- otherwise is_valid() can never
+    # be satisfied and the wizard has no Back button to escape the wall
+    file_path = Path("Show.S05E12.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {}  # no TVDB episode data whatsoever
+
+    season_item = mapper.files_table.item(0, 1)
+    episode_item = mapper.files_table.item(0, 2)
+    season_item.setText("5")
+    episode_item.setText("12")
+
+    assert file_path in mapper.file_episode_mappings
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 5
+    assert mapping["episode"] == 12
+    assert mapping["episode_data"] == {
+        "season": 5,
+        "episode": 12,
+        "name": None,
+        "aired": None,
+    }
+    assert mapping["assignment_method"] == "manual"
+    assert mapping["confidence"] == 1.0
+    assert mapper.is_valid() is True
+
+
+def test_typed_episode_present_in_tvdb_data_still_stores_as_before() -> None:
+    # regression guard: an episode that DOES exist in the TVDB payload must
+    # keep using the real episode_data, not the synthesized fallback
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {1: {1: {"name": "Pilot", "aired": "2020-01-01"}}}
+
+    season_item = mapper.files_table.item(0, 1)
+    episode_item = mapper.files_table.item(0, 2)
+    season_item.setText("1")
+    episode_item.setText("1")
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 1
+    assert mapping["episode"] == 1
+    assert mapping["episode_data"] == {"name": "Pilot", "aired": "2020-01-01"}
+    assert mapping["episode_name"] == "Pilot"
+    assert mapping["assignment_method"] == "manual"
+    assert mapping["confidence"] == 1.0

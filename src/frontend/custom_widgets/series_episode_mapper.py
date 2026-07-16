@@ -1085,33 +1085,61 @@ class SeriesEpisodeMapper(QWidget):
                 return
 
             # check if episode exists in TVDB data
-            if (
+            has_tvdb_match = (
                 season in self.available_episodes
                 and episode in self.available_episodes[season]
-            ):
+            )
+            if has_tvdb_match:
                 episode_data = self.available_episodes[season][episode]
-                confidence = 1.0  # 100%
-                method = "manual"
-
-                # store the mapping
-                self._store_mapping(
-                    file_path, season, episode, episode_data, confidence, method
-                )
-
-                # update confidence and method columns
-                confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
-                confidence_item.setFlags(
-                    confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-                )
-                confidence_item.setBackground(Qt.GlobalColor.green)  # Manual = green
-                self.files_table.setItem(row, 3, confidence_item)
-
-                method_item = QTableWidgetItem(method)
-                method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.files_table.setItem(row, 4, method_item)
             else:
-                # clear confidence and method for invalid episodes
-                self._clear_row_assignment_data(row)
+                # TVDB has no data for this season/episode (or no episode
+                # data at all for the series): still store what the user
+                # typed using a minimal synthesized payload instead of
+                # clearing the row. Otherwise the user has no way to map
+                # this file at all, and the wizard has no Back button to
+                # escape the resulting dead end.
+                episode_data = {
+                    "season": season,
+                    "episode": episode,
+                    "name": None,
+                    "aired": None,
+                }
+
+            confidence = 1.0  # 100%
+            method = "manual"
+
+            # store the mapping
+            self._store_mapping(
+                file_path, season, episode, episode_data, confidence, method
+            )
+
+            # update confidence and method columns
+            confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
+            confidence_item.setFlags(
+                confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+            )
+            method_item = QTableWidgetItem(method)
+            method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
+            if has_tvdb_match:
+                confidence_item.setBackground(Qt.GlobalColor.green)  # Manual = green
+            else:
+                # amber: manual entry not confirmed against TVDB data
+                unverified_color = QColor(255, 205, 120)
+                confidence_item.setBackground(unverified_color)
+                method_item.setBackground(unverified_color)
+                # season/episode items are already attached to the table;
+                # block signals while touching them so setBackground()
+                # (which emits itemChanged) doesn't re-enter this slot
+                self.files_table.blockSignals(True)
+                try:
+                    season_item.setBackground(unverified_color)
+                    episode_item.setBackground(unverified_color)
+                finally:
+                    self.files_table.blockSignals(False)
+
+            self.files_table.setItem(row, 3, confidence_item)
+            self.files_table.setItem(row, 4, method_item)
 
         except Exception as _e:
             pass
