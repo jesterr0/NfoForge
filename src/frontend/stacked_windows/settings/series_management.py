@@ -31,6 +31,7 @@ from src.config.tv_tokens import (
     set_tvr_episode_token,
     set_tvr_title_token,
 )
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
@@ -123,6 +124,25 @@ class SeriesManagementSettings(BaseSettings):
         title_colon_replace_v_box.addWidget(title_colon_replace_lbl)
         title_colon_replace_v_box.addWidget(self.title_colon_replace)
 
+        multi_episode_style_lbl = QLabel(
+            """<span style="font-weight: bold;">Multi-Episode Style</span>""",
+            self,
+        )
+        multi_episode_style_lbl.setToolTip(
+            "Select how NfoForge formats file names and titles for episodes "
+            "that span multiple episode numbers"
+        )
+        self.multi_episode_style_combo = CustomComboBox(
+            disable_mouse_wheel=True, parent=self
+        )
+        self.multi_episode_style_combo.currentIndexChanged.connect(
+            self._update_all_examples
+        )
+        multi_episode_style_v_box = QVBoxLayout()
+        multi_episode_style_v_box.setContentsMargins(0, 0, 0, 0)
+        multi_episode_style_v_box.addWidget(multi_episode_style_lbl)
+        multi_episode_style_v_box.addWidget(self.multi_episode_style_combo)
+
         self.controls_box = QGroupBox("Controls")
         controls_layout = QVBoxLayout(self.controls_box)
         controls_layout.addLayout(control_top_layout)
@@ -130,6 +150,7 @@ class SeriesManagementSettings(BaseSettings):
         controls_layout.addWidget(self.parse_input_file_attributes)
         controls_layout.addLayout(fn_colon_replace_v_box)
         controls_layout.addLayout(title_colon_replace_v_box)
+        controls_layout.addLayout(multi_episode_style_v_box)
 
         #### per format tabs ####
         self._format_widgets: dict[EpisodeFormat, dict] = {}
@@ -320,7 +341,9 @@ class SeriesManagementSettings(BaseSettings):
             flat_filters=self.config.plugin_registry.flat_filters,
             season_number=1,
             episode_number=1,
-            multi_episode_style=self.config.settings.series.multi_episode_style,
+            multi_episode_style=MultiEpisodeStyle(
+                self.multi_episode_style_combo.currentData()
+            ),
         )
         example_txt = qline.text()
         output = format_str.get_output()
@@ -361,6 +384,7 @@ class SeriesManagementSettings(BaseSettings):
 
         self.fn_colon_replace.blockSignals(True)
         self.title_colon_replace.blockSignals(True)
+        self.multi_episode_style_combo.blockSignals(True)
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
             w["file_token"].blockSignals(True)
@@ -384,6 +408,11 @@ class SeriesManagementSettings(BaseSettings):
         )
         self.parse_input_file_attributes.setChecked(
             self.config.settings.series.parse_filename_attributes
+        )
+        self.load_combo_box(
+            self.multi_episode_style_combo,
+            MultiEpisodeStyle,
+            self.config.settings.series.multi_episode_style,
         )
 
         for fmt in self._FORMAT_ORDER:
@@ -421,6 +450,7 @@ class SeriesManagementSettings(BaseSettings):
 
         self.fn_colon_replace.blockSignals(False)
         self.title_colon_replace.blockSignals(False)
+        self.multi_episode_style_combo.blockSignals(False)
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
             w["file_token"].blockSignals(False)
@@ -448,6 +478,9 @@ class SeriesManagementSettings(BaseSettings):
         )
         self.config.settings.series.parse_filename_attributes = (
             self.parse_input_file_attributes.isChecked()
+        )
+        self.config.settings.series.multi_episode_style = MultiEpisodeStyle(
+            self.multi_episode_style_combo.currentData()
         )
 
         for fmt in self._FORMAT_ORDER:
@@ -490,6 +523,9 @@ class SeriesManagementSettings(BaseSettings):
         )
         self.title_colon_replace.setCurrentIndex(
             self.config.defaults.series.title_colon_replace.value - 1
+        )
+        self.multi_episode_style_combo.setCurrentIndex(
+            self.config.defaults.series.multi_episode_style.value
         )
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
