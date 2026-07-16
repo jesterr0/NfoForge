@@ -1001,6 +1001,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.EPISODE_NUMBER_ABSOLUTE.token:
             return self._episode_number_absolute(token_data)
 
+        elif token_data.bracket_token == Tokens.END_EPISODE_NUMBER.token:
+            return self._end_episode_number(token_data)
+
         elif token_data.bracket_token == Tokens.EPISODE_TITLE.token:
             return self._episode_title(token_data)
 
@@ -2157,6 +2160,25 @@ class TokenReplacer:
             str(absolute_number) if absolute_number is not None else "",
             token_data,
         )
+
+    def _end_episode_number(self, token_data: TokenData) -> str:
+        """Range end for a multi-episode file; blank when the file covers a
+        single episode (``episode_end`` is None/absent or matches the start
+        episode number)."""
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+
+        season, episode = get_info
+        end_episode = None
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if mapped_episode:
+            end_episode = self._validate_int_var(mapped_episode.get("episode_end"))
+
+        if end_episode is None or end_episode == episode:
+            return self._optional_user_input("", token_data)
+
+        return self._optional_user_input(str(end_episode), token_data)
 
     def _episode_title(self, token_data: TokenData) -> str:
         get_info = self._verify_series_info()

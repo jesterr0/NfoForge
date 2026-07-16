@@ -194,6 +194,10 @@ class Tokens:
     EPISODE_NUMBER_ABSOLUTE = FileToken(
         "{episode_number_absolute}", "Absolute episode number (1, 2, 3, etc.)"
     )
+    END_EPISODE_NUMBER = FileToken(
+        "{end_episode_number}",
+        "End episode number for a multi-episode file (blank for single episodes).",
+    )
     EPISODE_TITLE = FileToken(
         "{episode_title}",
         "Episode title parsed from media databases with minimal formatting",

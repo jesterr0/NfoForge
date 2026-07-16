@@ -239,6 +239,51 @@ def test_episode_number_absolute_falls_back_when_tvdb_value_is_zero() -> None:
     assert replacer.get_output() == "5"
 
 
+def test_end_episode_number_renders_range_end_for_multi_episode_file() -> None:
+    file_path = Path("Show.S01E02E03.mkv")
+    replacer = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": 1,
+                    "episode": 2,
+                    "episode_end": 3,
+                    "episode_name": "Multi Episode",
+                    "episode_data": {
+                        "seasonNumber": 1,
+                        "number": 2,
+                        "name": "Multi Episode",
+                        "aired": "2024-02-03",
+                    },
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={"episodes": []},
+        ),
+        token_string="{end_episode_number}",
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=2,
+    )
+
+    assert replacer.get_output() == "3"
+
+
+def test_end_episode_number_blank_for_single_episode() -> None:
+    output = _series_replacer("{end_episode_number}").get_output()
+
+    assert output == ""
+
+
 def test_air_date_is_series_level_first_aired_distinct_from_episode_air_date() -> None:
     # {air_date} is series-level (parallels the movie {release_date} token) and
     # must differ from {episode_air_date}, which stays the selected episode's
