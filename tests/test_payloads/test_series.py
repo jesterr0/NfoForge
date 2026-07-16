@@ -91,3 +91,80 @@ def test_is_valid_rejects_duplicate_episode_targets() -> None:
         Path("b.mkv"): {"season": 1, "episode": 1},
     }
     assert mapper.is_valid() is False
+
+
+def test_auto_match_files_carries_episode_range_for_multi_episode_file() -> None:
+    # a single file spanning multiple episodes (e.g. "S01E01E02", common for
+    # anime) should keep the full range instead of collapsing to episode 1
+    file_path = Path("Show.S01E01E02.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {
+            1: {"name": "Episode One"},
+            2: {"name": "Episode Two"},
+        }
+    }
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 1
+    assert mapping["episode"] == 1
+    assert mapping["episode_end"] == 2
+
+
+def test_auto_match_files_single_episode_has_no_episode_end() -> None:
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {1: {1: {"name": "Episode One"}}}
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 1
+    assert mapping["episode"] == 1
+    assert mapping["episode_end"] is None
+
+
+def test_build_series_release_info_reads_episode_end_from_single_file_mapping() -> None:
+    # a single file's multi-episode range (not a multi-file pack) should
+    # still surface via SeriesReleaseInfo.episode_end
+    file_path = Path("Show.S01E01E02.mkv")
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_map={
+            file_path: {"season": 1, "episode": 1, "episode_end": 2},
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == 1
+    assert release_info.episode_start == 1
+    assert release_info.episode_end == 2
+    assert release_info.is_pack is False
+    assert release_info.display_tag == "S01E01-E02"
+
+
+def test_build_series_release_info_single_episode_mapping_unchanged() -> None:
+    # mappings without an "episode_end" key still behave as a normal
+    # single episode
+    file_path = Path("Show.S01E01.mkv")
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_map={file_path: {"season": 1, "episode": 1}},
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.episode_start == 1
+    assert release_info.episode_end == 1
+    assert release_info.display_tag == "S01E01"

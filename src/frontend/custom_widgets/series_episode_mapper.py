@@ -566,8 +566,20 @@ class SeriesEpisodeMapper(QWidget):
 
             if isinstance(season, list):
                 season = season[0] if season else None
+
+            # guessit returns a list of episode numbers for files that span
+            # multiple episodes (e.g. "S01E01E02"). keep the lowest as the
+            # primary episode and carry the highest as the range end so a
+            # single file's multi-episode span isn't collapsed to episode 1.
+            episode_end = None
             if isinstance(episode, list):
-                episode = episode[0] if episode else None
+                if episode:
+                    episode = sorted(episode)
+                    episode, episode_end = episode[0], episode[-1]
+                    if episode_end == episode:
+                        episode_end = None
+                else:
+                    episode = None
 
             if (
                 season
@@ -581,7 +593,13 @@ class SeriesEpisodeMapper(QWidget):
                 method = "regex"
 
                 self._store_mapping(
-                    file_path, season, episode, episode_data, confidence, method
+                    file_path,
+                    season,
+                    episode,
+                    episode_data,
+                    confidence,
+                    method,
+                    episode_end=episode_end,
                 )
                 self._update_file_row_assignment(
                     row, season, episode, confidence, method
@@ -660,11 +678,18 @@ class SeriesEpisodeMapper(QWidget):
         episode_data: dict,
         confidence: float,
         method: str,
+        episode_end: int | None = None,
     ) -> None:
-        """Store file-to-episode mapping"""
+        """Store file-to-episode mapping.
+
+        ``episode_end`` carries the last episode number for a file that spans
+        multiple episodes (e.g. a single "S01E01E02" file). It is ``None``
+        for a normal single-episode mapping.
+        """
         self.file_episode_mappings[file_path] = {
             "season": season,
             "episode": episode,
+            "episode_end": episode_end,
             "episode_data": episode_data,
             "episode_name": episode_data.get("name", "Unknown"),
             "confidence": confidence,
@@ -675,29 +700,40 @@ class SeriesEpisodeMapper(QWidget):
         self, row: int, season: int, episode: int, confidence: float, method: str
     ):
         """Update file table row with assignment data"""
-        # season (editable, numeric)
-        season_item = NumericTableItem(str(season))
-        self.files_table.setItem(row, 1, season_item)
+        # block signals while populating cells programmatically: setItem()
+        # fires itemChanged, which would otherwise re-enter
+        # _on_table_item_changed and re-store this mapping through the
+        # "manual" path, clobbering the method/confidence (and episode_end)
+        # that were just computed here.
+        self.files_table.blockSignals(True)
+        try:
+            # season (editable, numeric)
+            season_item = NumericTableItem(str(season))
+            self.files_table.setItem(row, 1, season_item)
 
-        # episode (editable, numeric)
-        episode_item = NumericTableItem(str(episode))
-        self.files_table.setItem(row, 2, episode_item)
+            # episode (editable, numeric)
+            episode_item = NumericTableItem(str(episode))
+            self.files_table.setItem(row, 2, episode_item)
 
-        # confidence with color coding (read only)
-        confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
-        confidence_item.setFlags(confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        if confidence >= 0.9:
-            confidence_item.setBackground(Qt.GlobalColor.green)
-        elif confidence >= 0.7:
-            confidence_item.setBackground(Qt.GlobalColor.yellow)
-        else:
-            confidence_item.setBackground(Qt.GlobalColor.red)
-        self.files_table.setItem(row, 3, confidence_item)
+            # confidence with color coding (read only)
+            confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
+            confidence_item.setFlags(
+                confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+            )
+            if confidence >= 0.9:
+                confidence_item.setBackground(Qt.GlobalColor.green)
+            elif confidence >= 0.7:
+                confidence_item.setBackground(Qt.GlobalColor.yellow)
+            else:
+                confidence_item.setBackground(Qt.GlobalColor.red)
+            self.files_table.setItem(row, 3, confidence_item)
 
-        # method (read only)
-        method_item = QTableWidgetItem(method)
-        method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.files_table.setItem(row, 4, method_item)
+            # method (read only)
+            method_item = QTableWidgetItem(method)
+            method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.files_table.setItem(row, 4, method_item)
+        finally:
+            self.files_table.blockSignals(False)
 
     def _clear_all_assignments(self) -> None:
         """Clear all file assignments"""
@@ -1115,17 +1151,22 @@ class SeriesEpisodeMapper(QWidget):
         self._auto_match_files()
 
     def get_file_episode_mappings(self) -> dict[Path, dict[str, Any]]:
-        """Get the current file-to-episode mappings"""
+        """Get the current file-to-episode mappings.
+
+        Each mapping value may include an ``episode_end`` key (``int | None``)
+        when a single file spans multiple episodes (e.g. "S01E01E02").
+        """
         return self.file_episode_mappings.copy()
 
     def get_simple_mappings(self) -> dict[str, dict[str, Any]]:
-        """Get simplified mappings: {filename: {season, episode, confidence_percent}}"""
+        """Get simplified mappings: {filename: {season, episode, episode_end, confidence_percent}}"""
         simple_mappings = {}
 
         for file_path, mapping_data in self.file_episode_mappings.items():
             simple_mappings[file_path.name] = {
                 "season": mapping_data["season"],
                 "episode": mapping_data["episode"],
+                "episode_end": mapping_data.get("episode_end"),
                 # convert to 0-100%
                 "confidence": int(mapping_data["confidence"] * 100),
                 "method": mapping_data["assignment_method"],
@@ -1135,13 +1176,14 @@ class SeriesEpisodeMapper(QWidget):
         return simple_mappings
 
     def get_path_mappings(self) -> dict[str, dict[str, Any]]:
-        """Get mappings with full file paths: {file_path: {season, episode, confidence_percent}}"""
+        """Get mappings with full file paths: {file_path: {season, episode, episode_end, confidence_percent}}"""
         path_mappings = {}
 
         for file_path, mapping_data in self.file_episode_mappings.items():
             path_mappings[str(file_path)] = {
                 "season": mapping_data["season"],
                 "episode": mapping_data["episode"],
+                "episode_end": mapping_data.get("episode_end"),
                 # convert to 0-100%
                 "confidence": int(mapping_data["confidence"] * 100),
                 "method": mapping_data["assignment_method"],
@@ -1151,7 +1193,11 @@ class SeriesEpisodeMapper(QWidget):
         return path_mappings
 
     def get_episode_map(self) -> dict | None:
-        """Get episode mappings"""
+        """Get episode mappings.
+
+        Values may include an ``episode_end`` key (``int | None``) marking the
+        last episode number for a file that spans multiple episodes.
+        """
         return self.file_episode_mappings
 
     def is_valid(self) -> bool:

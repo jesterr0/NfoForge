@@ -77,30 +77,39 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
     mappings = media_input.series_episode_map or {}
 
     seasons: list[int] = []
-    episodes: list[int] = []
+    episode_starts: list[int] = []
+    # per-file episode end (defaults to that file's episode_start when the
+    # file only covers a single episode) so a lone file spanning multiple
+    # episodes (e.g. "S01E01E02") still contributes its true upper bound.
+    episode_ends: list[int] = []
     for file_path in file_list:
         mapping = _mapping_for_path(file_path, mappings)
         season = _int_or_none(mapping.get("season")) if mapping else None
         episode = _int_or_none(mapping.get("episode")) if mapping else None
+        episode_end = _int_or_none(mapping.get("episode_end")) if mapping else None
         if season is not None:
             seasons.append(season)
         if episode is not None:
-            episodes.append(episode)
+            episode_starts.append(episode)
+            episode_ends.append(episode_end if episode_end is not None else episode)
 
-    if not seasons or not episodes:
+    if not seasons or not episode_starts:
         for file_path in file_list or ([primary_file] if primary_file else []):
             parsed = guessit(file_path.name, options={"type": "episode"})
             season = _int_or_none(parsed.get("season"))
-            episode = _episode_number(parsed.get("episode"))
+            episode_start, episode_end = _episode_range(parsed.get("episode"))
             if season is not None:
                 seasons.append(season)
-            if episode is not None:
-                episodes.append(episode)
+            if episode_start is not None:
+                episode_starts.append(episode_start)
+                episode_ends.append(
+                    episode_end if episode_end is not None else episode_start
+                )
 
     season = min(seasons) if seasons else None
-    episode_start = min(episodes) if episodes else None
-    episode_end = max(episodes) if episodes else None
-    episode_count = max(len(file_list), len(mappings), len(episodes))
+    episode_start = min(episode_starts) if episode_starts else None
+    episode_end = max(episode_ends) if episode_ends else None
+    episode_count = max(len(file_list), len(mappings), len(episode_starts))
 
     return SeriesReleaseInfo(
         media_type=media_input.media_type,
@@ -129,10 +138,19 @@ def _mapping_for_path(
     return {}
 
 
-def _episode_number(value: Any) -> int | None:
+def _episode_range(value: Any) -> tuple[int | None, int | None]:
+    """Resolve guessit's episode value to (start, end).
+
+    guessit returns a list of episode numbers for a single file that spans
+    multiple episodes (e.g. "S01E01E02" -> [1, 2]); a plain int otherwise.
+    """
     if isinstance(value, list | tuple):
-        value = value[0] if value else None
-    return _int_or_none(value)
+        values = [v for v in (_int_or_none(v) for v in value) if v is not None]
+        if not values:
+            return None, None
+        return min(values), max(values)
+    episode = _int_or_none(value)
+    return episode, episode
 
 
 def _int_or_none(value: Any) -> int | None:
