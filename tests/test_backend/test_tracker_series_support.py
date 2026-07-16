@@ -171,6 +171,10 @@ def test_beyondhd_series_type_source_category_and_pack_payload(tmp_path: Path) -
         ("Example.Show.S01E01.1080p.WEBDL.H.264.mkv", AitherType.WEBDL),
         ("Example.Show.S01E01.1080p.WEBRip.H.264.mkv", AitherType.WEBRIP),
         ("Example.Show.S01E01.1080p.HDTV.H.264.mkv", AitherType.HDTV),
+        # bare "WEB" (no -DL/-Rip suffix) is a common scene/P2P tag and must
+        # not fall through to the ENCODE branch just because it also carries
+        # a codec tag (h264/x264/etc.)
+        ("Show.S01E01.1080p.WEB.H264.mkv", AitherType.WEBDL),
     ],
 )
 def test_unit3d_series_type_detection_prefers_release_source(
@@ -185,6 +189,22 @@ def test_unit3d_series_type_detection_prefers_release_source(
     )
 
     assert uploader._get_type_id() == expected.value
+
+
+def test_unit3d_movie_encode_without_web_marker_still_resolves_encode(
+    tmp_path: Path,
+) -> None:
+    """A genuine encode with no web/hdtv/disc marker must still resolve to
+    ENCODE; the bare-"WEB" fallback must not over-match unrelated titles."""
+    uploader = AitherUploader(
+        media_type=MediaType.MOVIE,
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=tmp_path / "Movie.2020.1080p.x264.mkv",
+        mediainfo_obj=cast(MediaInfo, object()),
+    )
+
+    assert uploader._get_type_id() == AitherType.ENCODE.value
 
 
 @pytest.mark.parametrize(

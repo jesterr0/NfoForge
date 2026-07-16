@@ -327,6 +327,18 @@ class Unit3dBaseUploader:
                 webrip_value = getattr(self.type_enum, "WEBRIP", None)
                 if webrip_value:
                     return webrip_value.value
+            elif re.search(r"\bweb\b", title_lowered) and not (
+                "hdtv" in title_lowered or "hd-tv" in title_lowered
+            ):
+                # bare "WEB" (no -DL/-Rip suffix) is a common scene/P2P source
+                # tag for episodic web releases (e.g. "S01E01.1080p.WEB.H264").
+                # Treat it the same as WEB-DL rather than falling through to
+                # the codec-driven ENCODE branch below. Guarded against an
+                # explicit HDTV marker so an incidental "web" substring (e.g.
+                # from a show title) can't override a real HDTV release.
+                webdl_value = getattr(self.type_enum, "WEBDL", None)
+                if webdl_value:
+                    return webdl_value.value
 
         # hdtv
         if "hdtv" in title_lowered or "hd-tv" in title_lowered:
