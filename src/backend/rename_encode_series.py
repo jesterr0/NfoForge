@@ -4,6 +4,7 @@ from src.backend.rename_encode import RenameEncodeBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
 from src.config.models import DynamicRangeSettings
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.payloads.media_inputs import MediaInputPayload
@@ -30,6 +31,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         video_dynamic_range: DynamicRangeSettings | None,
         user_tokens: dict[str, str] | None,
         episode_format: EpisodeFormat,
+        multi_episode_style: MultiEpisodeStyle,
     ) -> Path | None:
         """Rename series file.
 
@@ -41,6 +43,8 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             title_clean_rules: Title cleaning rules
             video_dynamic_range: Video dynamic range settings
             user_tokens: User-defined tokens
+            episode_format: Episode format (Standard, Daily, Anime)
+            multi_episode_style: How multi-episode spans render in {episode_number}
 
         Returns:
             Path object with the generated filename (no extension), or None if failed
@@ -62,6 +66,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             season_number=season_num,
             episode_number=episode_num,
             episode_format=episode_format,
+            multi_episode_style=multi_episode_style,
         )
 
         # get rename output

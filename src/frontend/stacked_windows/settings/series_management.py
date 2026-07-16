@@ -320,6 +320,7 @@ class SeriesManagementSettings(BaseSettings):
             flat_filters=self.config.plugin_registry.flat_filters,
             season_number=1,
             episode_number=1,
+            multi_episode_style=self.config.settings.series.multi_episode_style,
         )
         example_txt = qline.text()
         output = format_str.get_output()

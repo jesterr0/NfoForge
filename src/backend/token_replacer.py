@@ -32,6 +32,7 @@ from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
 from src.enums.media_type import MediaType
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.rename import QualitySelection
 from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
@@ -79,6 +80,7 @@ class TokenReplacer:
         "season_number",
         "episode_number",
         "episode_format",
+        "multi_episode_style",
         # derived properties (computed from payload)
         "primary_file",
         "source_file",
@@ -125,6 +127,7 @@ class TokenReplacer:
         season_number: int | None = None,
         episode_number: int | None = None,
         episode_format: EpisodeFormat | None = None,
+        multi_episode_style: MultiEpisodeStyle = MultiEpisodeStyle.RANGE,
     ):
         """
         Takes a MediaInputPayload and outputs formatted strings based on tokens.
@@ -169,6 +172,9 @@ class TokenReplacer:
             season_number (Optional[int]): Season number.
             episode_number (Optional[int]): Episode number.
             episode_format (Optional[EpisodeFormat]): Episode format (Standard, Daily, Anime).
+            multi_episode_style (MultiEpisodeStyle): How the {episode_number} token renders a
+                multi-episode file's span (e.g. RANGE -> "01-03", SCENE -> "01-E03"). Ignored for
+                single-episode files, whose {episode_number} stays the raw start number.
             flat_filters (Optional[dict[str, Callable[..., str]]]): Custom filters for flat mode.
                 Dictionary mapping filter names to callable functions that take (value, *args) and return str.
         """
@@ -205,6 +211,7 @@ class TokenReplacer:
         self.season_number = season_number
         self.episode_number = episode_number
         self.episode_format = episode_format
+        self.multi_episode_style = MultiEpisodeStyle(multi_episode_style)
 
         # derive file references from payload (paths are always current after renames)
         self.primary_file = self._get_primary_file()
@@ -2141,8 +2148,60 @@ class TokenReplacer:
 
     def _episode_number(self, token_data: TokenData) -> str:
         episode = self._validate_int_var(self.episode_number)
-        int_val = str(episode) if episode is not None else ""
+        if episode is None:
+            return self._optional_user_input("", token_data)
+
+        # multi-episode files render a style-aware span (already zero-padded);
+        # single-episode files keep the raw start number so a template's own
+        # |zfill filter still pads it exactly as before.
+        designator = self._multi_episode_designator(episode)
+        int_val = designator if designator is not None else str(episode)
         return self._optional_user_input(int_val, token_data)
+
+    def _multi_episode_designator(self, episode: int) -> str | None:
+        """Render the season/episode span designator for a multi-episode file
+        per the configured ``MultiEpisodeStyle``, or ``None`` when the file
+        covers a single episode (the caller then emits the raw start number).
+
+        The span is read from the selected per-file mapping's ``episode_end``
+        (Task 4.1), and numbers are pre-padded to width 2 so a template's own
+        ``|zfill(2)`` on the composite string is a harmless no-op. Given
+        season S, start=1, end=3 the styles render:
+
+        - EXTEND (0):          ``01-03``
+        - DUPLICATE (1):       ``01.S{S:02}E03`` (e.g. ``01.S01E03``)
+        - REPEAT (2):          ``01E03``
+        - SCENE (3):           ``01-E03``
+        - RANGE (4):           ``01-03``
+        - PREFIXED_RANGE (5):  ``01-E03``
+
+        EXTEND collapses to RANGE and PREFIXED_RANGE collapses to SCENE
+        because the mapping stores only the start and end episode numbers, not
+        the full intermediate episode list those two styles would expand.
+        """
+        season = self._validate_int_var(self.season_number)
+        if season is None:
+            return None
+
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if not mapped_episode:
+            return None
+
+        end_episode = self._validate_int_var(mapped_episode.get("episode_end"))
+        if end_episode is None or end_episode <= episode:
+            return None
+
+        start = f"{episode:02d}"
+        end = f"{end_episode:02d}"
+        style = self.multi_episode_style
+        if style is MultiEpisodeStyle.DUPLICATE:
+            return f"{start}.S{season:02d}E{end}"
+        if style is MultiEpisodeStyle.REPEAT:
+            return f"{start}E{end}"
+        if style in (MultiEpisodeStyle.SCENE, MultiEpisodeStyle.PREFIXED_RANGE):
+            return f"{start}-E{end}"
+        # EXTEND and RANGE (and any future member) -> plain zero-padded range
+        return f"{start}-{end}"
 
     def _episode_number_absolute(self, token_data: TokenData) -> str:
         get_info = self._verify_series_info()

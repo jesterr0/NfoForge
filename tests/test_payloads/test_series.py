@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QApplication
 
 from src.backend.process import ProcessBackEnd
 from src.enums.media_type import MediaType
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.payloads.media_inputs import MediaInputPayload
@@ -76,10 +77,13 @@ def test_release_info_token_kwargs_omit_episode_for_pack() -> None:
         )
     )
 
-    assert ProcessBackEnd._release_info_token_kwargs(release_info) == {
+    assert ProcessBackEnd._release_info_token_kwargs(
+        release_info, MultiEpisodeStyle.RANGE
+    ) == {
         "season_number": 2,
         "episode_number": None,
         "episode_format": EpisodeFormat.STANDARD,
+        "multi_episode_style": MultiEpisodeStyle.RANGE,
     }
 
 

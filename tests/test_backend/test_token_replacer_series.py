@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import Mock
 
+import pytest
 from pymediainfo import MediaInfo
 
 from src.backend.token_replacer import TokenReplacer
@@ -11,6 +12,7 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_SEARCH_PAYLOAD,
 )
 from src.enums.media_type import MediaType
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_inputs import MediaInputPayload
@@ -282,6 +284,128 @@ def test_end_episode_number_blank_for_single_episode() -> None:
     output = _series_replacer("{end_episode_number}").get_output()
 
     assert output == ""
+
+
+def _multi_episode_replacer(
+    token: str,
+    multi_episode_style: MultiEpisodeStyle,
+    episode: int = 1,
+    episode_end: int = 3,
+    season: int = 1,
+) -> TokenReplacer:
+    file_path = Path("Show.S01E01-E03.mkv")
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": season,
+                    "episode": episode,
+                    "episode_end": episode_end,
+                    "episode_name": "Multi Episode",
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES, tvdb_data={"episodes": []}
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=season,
+        episode_number=episode,
+        multi_episode_style=multi_episode_style,
+    )
+
+
+@pytest.mark.parametrize(
+    ("style", "expected"),
+    [
+        # EXTEND and RANGE collapse to the same "start-end" form because the
+        # mapping (Task 4.1) only stores start/end, not the full intermediate
+        # episode list EXTEND would otherwise need.
+        (MultiEpisodeStyle.EXTEND, "01-03"),
+        (MultiEpisodeStyle.DUPLICATE, "01.S01E03"),
+        (MultiEpisodeStyle.REPEAT, "01E03"),
+        # SCENE and PREFIXED_RANGE likewise collapse to the same
+        # "start-Eend" form given only start/end data.
+        (MultiEpisodeStyle.SCENE, "01-E03"),
+        (MultiEpisodeStyle.RANGE, "01-03"),
+        (MultiEpisodeStyle.PREFIXED_RANGE, "01-E03"),
+    ],
+)
+def test_episode_number_renders_multi_episode_designator_per_style(
+    style: MultiEpisodeStyle, expected: str
+) -> None:
+    output = _multi_episode_replacer("{episode_number}", style).get_output()
+
+    assert output == expected
+
+
+def test_episode_number_single_episode_unchanged_raw_number() -> None:
+    # single episode (no episode_end key in the mapping): {episode_number}
+    # must render exactly as it did before this feature existed -- the raw
+    # start number, unpadded, regardless of the configured MultiEpisodeStyle.
+    file_path = Path("Show.S01E01.mkv")
+    replacer = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": 1,
+                    "episode": 1,
+                    "episode_name": "Single Episode",
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES, tvdb_data={"episodes": []}
+        ),
+        token_string="{episode_number}",
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=1,
+        multi_episode_style=MultiEpisodeStyle.SCENE,
+    )
+
+    assert replacer.get_output() == "1"
+
+
+def test_episode_number_single_episode_still_honors_template_zfill() -> None:
+    # single-episode file rendered through a template's own |zfill(2) filter
+    # (mirrors the default series token) must still just zero-pad the raw
+    # number -- unaffected by the multi-episode styling path.
+    output = _multi_episode_replacer(
+        "S{season_number|zfill(2)}E{episode_number|zfill(2)}",
+        MultiEpisodeStyle.RANGE,
+        episode=1,
+        episode_end=1,
+    ).get_output()
+
+    assert output == "S01E01"
+
+
+def test_episode_number_range_style_end_to_end_template() -> None:
+    # end-to-end proof using the shape of the default standard episode token
+    # ("S{season_number|zfill(2)}E{episode_number|zfill(2)}"): a RANGE-styled
+    # multi-episode file must render "S01E01-03", not drop the range end.
+    output = _multi_episode_replacer(
+        "S{season_number|zfill(2)}E{episode_number|zfill(2)}",
+        MultiEpisodeStyle.RANGE,
+    ).get_output()
+
+    assert output == "S01E01-03"
 
 
 def test_air_date_is_series_level_first_aired_distinct_from_episode_air_date() -> None:

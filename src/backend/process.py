@@ -73,6 +73,7 @@ from src.config.config import ConfigManager
 from src.config.tv_tokens import get_tvr_title_token
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ImageHostError, TrackerError
@@ -586,7 +587,10 @@ class ProcessBackEnd:
                     user_tokens=user_tokens,
                     title_clean_rules=self.config.settings.global_management.title_clean_rules,
                     video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-                    **self._release_info_token_kwargs(release_info),
+                    **self._release_info_token_kwargs(
+                        release_info,
+                        self.config.settings.series.multi_episode_style,
+                    ),
                 ).get_output()
                 if not isinstance(nfo, str):
                     raise ValueError("NFO should be a string")
@@ -1552,7 +1556,10 @@ class ProcessBackEnd:
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
             video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-            **self._release_info_token_kwargs(release_info),
+            **self._release_info_token_kwargs(
+                release_info,
+                self.config.settings.series.multi_episode_style,
+            ),
         )
         output = format_str.get_output()
         return output if output else None
@@ -1560,6 +1567,7 @@ class ProcessBackEnd:
     @staticmethod
     def _release_info_token_kwargs(
         release_info: SeriesReleaseInfo,
+        multi_episode_style: MultiEpisodeStyle,
     ) -> dict[str, Any]:
         return {
             "season_number": release_info.season,
@@ -1567,6 +1575,7 @@ class ProcessBackEnd:
                 release_info.episode_start if not release_info.is_pack else None
             ),
             "episode_format": release_info.episode_format,
+            "multi_episode_style": multi_episode_style,
         }
 
     def tracker_title_formatting(self, tracker: TrackerSelection, title: str) -> str:

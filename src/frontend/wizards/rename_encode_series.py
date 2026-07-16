@@ -402,6 +402,7 @@ class RenameEncodeSeries(BaseWizardPage):
                 season_num=media_data["season"],
                 episode_num=media_data["episode"],
                 episode_format=self.context.media_input.series_episode_format,
+                multi_episode_style=self.config.settings.series.multi_episode_style,
             )
 
             if renamed_file:
