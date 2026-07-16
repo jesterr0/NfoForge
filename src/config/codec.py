@@ -21,12 +21,28 @@ class TomlConfigCodec:
                 "Missing configuration schema_version. "
                 "Please generate a new config file."
             )
-        version = int(document["schema_version"])
-        if version != cls.SCHEMA_VERSION:
+        raw_version = document["schema_version"]
+        try:
+            version = int(raw_version)
+        except (TypeError, ValueError) as error:
+            raise ConfigSchemaError(
+                f"Invalid configuration schema_version: {raw_version!r}. "
+                "Please generate a new config file."
+            ) from error
+        if version < cls.SCHEMA_VERSION:
             raise ConfigSchemaError(
                 f"Unsupported configuration schema_version: {version}. "
                 f"Expected schema_version: {cls.SCHEMA_VERSION}. "
                 "Please generate a new config file."
+            )
+        if version > cls.SCHEMA_VERSION:
+            raise ConfigSchemaError(
+                f"Configuration schema_version {version} is newer than the "
+                f"supported schema_version {cls.SCHEMA_VERSION}. This "
+                "configuration file may be from a newer version of the "
+                "application (e.g. after downgrading). Please generate a "
+                "new config file or reinstall the application version that "
+                "created it."
             )
 
     @classmethod

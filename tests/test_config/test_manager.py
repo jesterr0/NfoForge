@@ -248,9 +248,7 @@ def test_manager_rejects_unsupported_schema_version(
     document["schema_version"] = 99
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
-    with pytest.raises(
-        ConfigError, match="Unsupported configuration schema_version: 99"
-    ):
+    with pytest.raises(ConfigError, match="schema_version 99 is newer"):
         ConfigManager("test", paths)
 
 
@@ -274,6 +272,27 @@ def test_manager_rejects_old_schema_before_value_validation(
         ConfigError, match="Unsupported configuration schema_version: 1"
     ):
         ConfigManager("test", paths)
+
+
+def test_validate_schema_rejects_non_integer_schema_version() -> None:
+    """A malformed `schema_version` (e.g. a string) must raise
+    `ConfigSchemaError`, not a bare `ValueError` -- a bare `ValueError` would
+    bubble past the friendly startup error handlers straight to the global
+    excepthook instead of offering the migrate/regenerate recovery path."""
+    with pytest.raises(ConfigSchemaError):
+        TomlConfigCodec.validate_schema({"schema_version": "two"})
+
+
+def test_validate_schema_distinguishes_newer_schema_version() -> None:
+    """A `schema_version` newer than the app's `SCHEMA_VERSION` (e.g. the
+    config was written by a newer app version and the app was then
+    downgraded) must raise `ConfigSchemaError` with wording that
+    distinguishes it from the older/needs-migration case, instead of the
+    same generic "please generate a new config file" message used when the
+    config predates the current schema."""
+    newer_version = TomlConfigCodec.SCHEMA_VERSION + 1
+    with pytest.raises(ConfigSchemaError, match="newer"):
+        TomlConfigCodec.validate_schema({"schema_version": newer_version})
 
 
 def test_replace_profile_with_default_archives_old_config(tmp_path: Path) -> None:
