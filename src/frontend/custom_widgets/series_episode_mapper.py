@@ -39,6 +39,7 @@ from src.payloads.media_search import MediaSearchPayload
 NO_TVDB_EPISODE_DATA_MESSAGE = (
     "TVDB returned no episode data for this series; enter season/episode manually."
 )
+NO_TVDB_EPISODE_DATA_STYLE = "color: #b3261e; font-weight: bold;"
 
 
 def match_by_absolute(
@@ -483,9 +484,16 @@ class SeriesEpisodeMapper(QWidget):
             # TVDB returned no episode data at all for this series (or the
             # lookup never populated tvdb_data in the first place). Surface
             # this clearly rather than leaving the episodes tree empty with
-            # no explanation -- the user can still map files manually.
+            # no explanation -- the user can still map files manually. Style
+            # it distinctly so it isn't mistaken for the plain stats message
+            # this label normally shows.
+            self.episodes_stats_label.setStyleSheet(NO_TVDB_EPISODE_DATA_STYLE)
             self.episodes_stats_label.setText(NO_TVDB_EPISODE_DATA_MESSAGE)
             return
+
+        # TVDB returned real episode data: clear any warning styling left
+        # over from a previous "no episode data" state so it doesn't stick.
+        self.episodes_stats_label.setStyleSheet("")
 
         # store all episode types for UI
         self.episodes_by_type = episodes_by_type

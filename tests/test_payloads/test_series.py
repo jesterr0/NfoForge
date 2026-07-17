@@ -493,6 +493,43 @@ def test_load_episode_data_populates_normally_when_tvdb_has_episodes() -> None:
     assert "1 available" in mapper.episodes_stats_label.text()
 
 
+def test_load_episode_data_no_tvdb_data_applies_warning_style() -> None:
+    # the "no episode data" status shares a plain label with the generic
+    # stats message -- it needs a visible emphasis so it isn't missed
+    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv")])
+    mapper.media_search_payload = MediaSearchPayload(tvdb_data=None)
+
+    mapper._load_episode_data()
+
+    style = mapper.episodes_stats_label.styleSheet()
+    assert style != ""
+    assert "color" in style.lower()
+
+
+def test_load_episode_data_resets_warning_style_when_data_present() -> None:
+    # the warning emphasis must not stick once real TVDB episode data loads
+    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv")])
+    mapper.media_search_payload = MediaSearchPayload(tvdb_data=None)
+    mapper._load_episode_data()
+    assert mapper.episodes_stats_label.styleSheet() != ""
+
+    mapper.media_search_payload = MediaSearchPayload(
+        tvdb_data={
+            "episodes_by_type": {
+                0: {
+                    "type_name": "Aired Order",
+                    "episodes": [
+                        {"seasonNumber": 1, "number": 1, "name": "Pilot"},
+                    ],
+                }
+            }
+        }
+    )
+    mapper._load_episode_data()
+
+    assert mapper.episodes_stats_label.styleSheet() == ""
+
+
 def test_has_unmapped_files_reflects_mapping_completeness() -> None:
     mapper = _make_mapper_with_files([Path("a.mkv"), Path("b.mkv")])
     assert mapper.has_unmapped_files() is True
