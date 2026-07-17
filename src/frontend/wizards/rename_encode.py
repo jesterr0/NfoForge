@@ -177,7 +177,7 @@ class RenameEncode(BaseWizardPage):
             CustomComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self.proper_reason_combo.addItems(self.PROPER_REASONS)
-        proper_reason_combo_line_edit = self.repack_reason_combo.lineEdit()
+        proper_reason_combo_line_edit = self.proper_reason_combo.lineEdit()
         if not proper_reason_combo_line_edit:
             raise AttributeError(
                 "Could not detect proper_reason_combo_line_edit.lineEdit()"
