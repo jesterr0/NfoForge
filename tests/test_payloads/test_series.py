@@ -297,6 +297,26 @@ def test_auto_match_files_single_episode_has_no_episode_end() -> None:
     assert mapping["episode_end"] is None
 
 
+def test_auto_match_files_exact_matches_season_zero_special() -> None:
+    # regression guard: TVDB uses season 0 for specials, and `season == 0`
+    # is falsy in Python. Stage 1's exact-match gate used truthiness
+    # (`season and episode`), so a genuinely parsed "Show.S00E05.mkv"
+    # (season=0, episode=5) was skipped even though TVDB has that exact
+    # S00E05 entry in `available_episodes`, wrongly degrading a
+    # high-confidence exact match down to fuzzy/unmatched.
+    file_path = Path("Show.S00E05.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {0: {5: {"name": "Special Episode"}}}
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 0
+    assert mapping["episode"] == 5
+    assert mapping["assignment_method"] == "regex"
+
+
 def test_build_series_release_info_reads_episode_end_from_single_file_mapping() -> None:
     # a single file's multi-episode range (not a multi-file pack) should
     # still surface via SeriesReleaseInfo.episode_end

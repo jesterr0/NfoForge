@@ -619,8 +619,12 @@ class SeriesEpisodeMapper(QWidget):
         best_match = None
         best_score = 0
 
-        # search in specified season or all seasons
-        seasons_to_search = [season] if season else self.available_episodes.keys()
+        # search in specified season or all seasons. identity check, not
+        # truthiness -- season 0 is a valid TVDB season (specials), and
+        # `season == 0` is falsy in Python.
+        seasons_to_search = (
+            [season] if season is not None else self.available_episodes.keys()
+        )
 
         for search_season in seasons_to_search:
             if search_season not in self.available_episodes:
@@ -724,9 +728,14 @@ class SeriesEpisodeMapper(QWidget):
                 else:
                     episode = None
 
+            # this must use identity checks, not truthiness -- TVDB uses
+            # season 0 for specials, and `season == 0` is falsy in Python,
+            # so a truthiness check would skip a genuinely parsed "S00E05"
+            # even though `available_episodes` has that exact entry (it's
+            # populated with an `is not None` check, so season 0 is valid).
             if (
-                season
-                and episode
+                season is not None
+                and episode is not None
                 and season in self.available_episodes
                 and episode in self.available_episodes[season]
             ):
