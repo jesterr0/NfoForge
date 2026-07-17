@@ -511,10 +511,15 @@ def test_unit3d_season_pack_payload_includes_season_pack(
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
+    # process.py now always sends a real episode_number (release_info's
+    # episode_start) alongside season_pack, relying on the builder's guard
+    # (not season_pack and episode_number is not None) to drop it -- this
+    # proves that guard holds even when episode_number is populated, not
+    # just when it's None.
     payload = uploader._build_upload_payload(
         tracker_title=None,
         season_number=1,
-        episode_number=None,
+        episode_number=1,
         season_pack=True,
     )
 

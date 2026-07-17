@@ -20,7 +20,7 @@ from src.frontend.custom_widgets.series_episode_mapper import (
 )
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
-from src.payloads.series import build_series_release_info
+from src.payloads.series import SeriesReleaseInfo, build_series_release_info
 
 
 def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
@@ -71,6 +71,36 @@ def test_build_series_release_info_detects_special() -> None:
 
     assert release_info.is_special is True
     assert release_info.display_tag == "S00E01"
+
+
+def test_season_tag_with_season_end_none_direct_construction() -> None:
+    # build_series_release_info always sets season_end (via max()), so this
+    # exercises SeriesReleaseInfo's own season_tag/is_special defaults when
+    # constructed directly with season_end left at None -- a specials
+    # season (0) must still render "S00" and be flagged special, and a
+    # normal season must still render its own tag, not blow up on the
+    # missing season_end.
+    specials = SeriesReleaseInfo(
+        media_type=MediaType.SERIES,
+        input_path=None,
+        primary_file=None,
+        title_path=None,
+        season=0,
+        season_end=None,
+    )
+    assert specials.season_tag == "S00"
+    assert specials.is_special is True
+
+    season_two = SeriesReleaseInfo(
+        media_type=MediaType.SERIES,
+        input_path=None,
+        primary_file=None,
+        title_path=None,
+        season=2,
+        season_end=None,
+    )
+    assert season_two.season_tag == "S02"
+    assert season_two.is_special is False
 
 
 def test_build_series_release_info_multi_season_pack_renders_season_range() -> None:
@@ -292,6 +322,19 @@ def test_is_valid_accepts_normal_single_episode_pack() -> None:
     mapper.file_episode_mappings = {
         Path("a.mkv"): {"season": 1, "episode": 1},
         Path("b.mkv"): {"season": 1, "episode": 2},
+    }
+    assert mapper.is_valid() is True
+
+
+def test_is_valid_accepts_same_episode_number_across_different_seasons() -> None:
+    # two files sharing the same episode number but in DIFFERENT seasons
+    # (e.g. S01E01 and S02E01) must not be treated as a collision -- the
+    # claimed-targets check keys on the (season, episode) pair, not the
+    # episode number alone.
+    mapper = _make_mapper_with_files([Path("a.mkv"), Path("b.mkv")])
+    mapper.file_episode_mappings = {
+        Path("a.mkv"): {"season": 1, "episode": 1},
+        Path("b.mkv"): {"season": 2, "episode": 1},
     }
     assert mapper.is_valid() is True
 
