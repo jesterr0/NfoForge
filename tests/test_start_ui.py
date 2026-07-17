@@ -115,6 +115,30 @@ def test_config_error_falls_back_to_fatal_when_path_unresolvable(
     assert fatal_calls == ["boom"]
 
 
+def test_resolve_config_path_defaults_missing_current_config_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_resolve_config_path` must default a missing `current_config` key
+    to "config", matching `ConfigManager.decode_program`'s default, instead
+    of giving up and returning `None`.
+    """
+    program_path = tmp_path / "program" / "conf.toml"
+    program_path.parent.mkdir(parents=True, exist_ok=True)
+    program_path.write_text('main_window_position = ""\n', encoding="utf-8")
+    test_paths = ConfigPaths(
+        default_config=tmp_path / "default_config.toml",
+        default_program=tmp_path / "default_program_conf.toml",
+        program=program_path,
+        user_configs=tmp_path / "user",
+        tracker_cookies=tmp_path / "cookies",
+    )
+    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+
+    app = _bare_nfoforge(None)
+
+    assert app._resolve_config_path() == test_paths.user_configs / "config.toml"
+
+
 def test_config_schema_error_still_prefers_schema_specific_handler(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

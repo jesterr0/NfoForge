@@ -180,7 +180,10 @@ class NfoForge:
             config_file = self.config_file
             if not config_file and paths.program.exists():
                 program_doc = tomlkit.parse(paths.program.read_text(encoding="utf-8"))
-                config_file = program_doc.get("current_config") or None
+                # mirrors `ConfigManager.decode_program`, which defaults a
+                # missing `current_config` key to "config" -- keep both
+                # resolutions of an absent key in agreement.
+                config_file = program_doc.get("current_config", "config")
             if not config_file:
                 return None
             return paths.user_configs / f"{config_file}.toml"
