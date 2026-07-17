@@ -31,8 +31,13 @@ from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.series import EpisodeFormat
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+
+NO_TVDB_EPISODE_DATA_MESSAGE = (
+    "TVDB returned no episode data for this series; enter season/episode manually."
+)
 
 
 class EnhancedFileTableItem(QTableWidgetItem):
@@ -372,17 +377,21 @@ class SeriesEpisodeMapper(QWidget):
         # store episodes organized by season type
         self.episodes_by_type = {}
 
-        if not (
-            self.media_search_payload
-            and self.media_search_payload.tvdb_data
-            and "episodes_by_type" in self.media_search_payload.tvdb_data
-        ):
+        tvdb_data = (
+            self.media_search_payload.tvdb_data if self.media_search_payload else None
+        )
+        episodes_by_type = tvdb_data.get("episodes_by_type") if tvdb_data else None
+
+        if not episodes_by_type:
+            # TVDB returned no episode data at all for this series (or the
+            # lookup never populated tvdb_data in the first place). Surface
+            # this clearly rather than leaving the episodes tree empty with
+            # no explanation -- the user can still map files manually.
+            self.episodes_stats_label.setText(NO_TVDB_EPISODE_DATA_MESSAGE)
             return
 
-        tvdb_data = self.media_search_payload.tvdb_data
-
         # store all episode types for UI
-        self.episodes_by_type = tvdb_data["episodes_by_type"]
+        self.episodes_by_type = episodes_by_type
 
         # setup dynamic episode order combo based on available types
         self._setup_episode_order_combo_from_data()
@@ -1153,9 +1162,12 @@ class SeriesEpisodeMapper(QWidget):
             self.files_table.setItem(row, 3, confidence_item)
             self.files_table.setItem(row, 4, method_item)
 
-        except Exception as _e:
-            pass
-            # TODO: log?
+        except Exception as e:
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to process manual season/episode edit for "
+                f"'{file_path.name}': {e}",
+            )
 
         # update stats and refresh display
         self._update_all_stats()
@@ -1268,6 +1280,18 @@ class SeriesEpisodeMapper(QWidget):
             for m in self.file_episode_mappings.values()
         ]
         return len(targets) == len(set(targets))
+
+    def has_tvdb_episode_data(self) -> bool:
+        """Whether TVDB returned any episode data for the current series."""
+        return bool(self.episodes_by_type)
+
+    def has_unmapped_files(self) -> bool:
+        """Whether at least one input file still lacks a season/episode mapping."""
+        if not self.media_input_payload or not self.media_input_payload.file_list:
+            return False
+        return len(self.file_episode_mappings) < len(
+            self.media_input_payload.file_list
+        )
 
     def get_series_format(self) -> EpisodeFormat:
         """Get the output format for renaming/title tokens."""

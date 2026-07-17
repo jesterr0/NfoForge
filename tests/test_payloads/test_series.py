@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import pytest
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
@@ -7,8 +8,12 @@ from src.backend.process import ProcessBackEnd
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
-from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
+from src.frontend.custom_widgets.series_episode_mapper import (
+    NO_TVDB_EPISODE_DATA_MESSAGE,
+    SeriesEpisodeMapper,
+)
 from src.payloads.media_inputs import MediaInputPayload
+from src.payloads.media_search import MediaSearchPayload
 from src.payloads.series import build_series_release_info
 
 
@@ -225,6 +230,96 @@ def test_typed_episode_present_in_tvdb_data_still_stores_as_before() -> None:
     assert mapping["episode_name"] == "Pilot"
     assert mapping["assignment_method"] == "manual"
     assert mapping["confidence"] == 1.0
+
+
+def test_load_episode_data_shows_status_when_tvdb_episodes_empty() -> None:
+    # TVDB returned a payload but with no episodes at all for this series --
+    # the tree would otherwise stay empty with no explanation
+    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv")])
+    mapper.media_search_payload = MediaSearchPayload(
+        tvdb_data={"episodes_by_type": {}}
+    )
+
+    mapper._load_episode_data()
+
+    assert mapper.episodes_stats_label.text() == NO_TVDB_EPISODE_DATA_MESSAGE
+    assert mapper.has_tvdb_episode_data() is False
+
+
+def test_load_episode_data_shows_status_when_tvdb_data_missing() -> None:
+    # no TVDB lookup happened at all (tvdb_data is None)
+    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv")])
+    mapper.media_search_payload = MediaSearchPayload(tvdb_data=None)
+
+    mapper._load_episode_data()
+
+    assert mapper.episodes_stats_label.text() == NO_TVDB_EPISODE_DATA_MESSAGE
+    assert mapper.has_tvdb_episode_data() is False
+
+
+def test_load_episode_data_populates_normally_when_tvdb_has_episodes() -> None:
+    # sanity check: the status message must not leak into the normal path
+    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv")])
+    mapper.media_search_payload = MediaSearchPayload(
+        tvdb_data={
+            "episodes_by_type": {
+                0: {
+                    "type_name": "Aired Order",
+                    "episodes": [
+                        {"seasonNumber": 1, "number": 1, "name": "Pilot"},
+                    ],
+                }
+            }
+        }
+    )
+
+    mapper._load_episode_data()
+
+    assert mapper.has_tvdb_episode_data() is True
+    assert mapper.episodes_stats_label.text() != NO_TVDB_EPISODE_DATA_MESSAGE
+    assert "1 available" in mapper.episodes_stats_label.text()
+
+
+def test_has_unmapped_files_reflects_mapping_completeness() -> None:
+    mapper = _make_mapper_with_files([Path("a.mkv"), Path("b.mkv")])
+    assert mapper.has_unmapped_files() is True
+
+    mapper.file_episode_mappings = {
+        Path("a.mkv"): {"season": 1, "episode": 1},
+        Path("b.mkv"): {"season": 1, "episode": 2},
+    }
+    assert mapper.has_unmapped_files() is False
+
+
+def test_on_table_item_changed_logs_instead_of_swallowing_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from src.frontend.custom_widgets import series_episode_mapper as mapper_module
+
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mapper, "_store_mapping", _boom)
+
+    logged: list[str] = []
+    monkeypatch.setattr(
+        mapper_module.LOG,
+        "warning",
+        lambda source, message: logged.append(message),
+    )
+
+    season_item = mapper.files_table.item(0, 1)
+    episode_item = mapper.files_table.item(0, 2)
+    season_item.setText("1")
+    episode_item.setText("1")
+
+    assert len(logged) == 1
+    assert "boom" in logged[0]
+    assert file_path.name in logged[0]
 
 
 def test_correcting_unverified_episode_to_tvdb_match_clears_amber_cells() -> None:
