@@ -45,7 +45,7 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import block_all_signals, build_h_line
+from src.frontend.utils import build_h_line
 from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage

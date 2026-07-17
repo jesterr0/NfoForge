@@ -38,7 +38,7 @@ from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import ComparisonPair, ImageUploadData
+from src.packages.custom_types import ImageUploadData
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.version import __version__, program_name, program_url
