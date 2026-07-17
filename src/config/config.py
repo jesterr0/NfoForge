@@ -150,17 +150,11 @@ class ConfigManager(TypedTomlOperations):
 
             self._config_snapshot = loaded_text
             try:
-                self.codec.validate_schema(loaded_document)
+                self._toml_data = self._validate_document(loaded_document, default_toml)
             except ConfigSchemaError as error:
                 if not error.config_path:
                     error.config_path = config_path
                 raise
-            self._toml_data = self.codec.merge_defaults(
-                loaded_document,
-                tomlkit.parse(default_toml),
-            )
-            self.codec.validate_types(self._toml_data, self._default_document)
-            self.decode(self._toml_data)
             # only update the active profile name once loading has fully
             # succeeded -- otherwise a profile that fails schema validation
             # (raising `ConfigSchemaError` above) would get persisted as
@@ -181,6 +175,33 @@ class ConfigManager(TypedTomlOperations):
             if config_file:
                 self.program.current_config = config_file
         self._active_profile_path = config_path
+
+    def _validate_document(
+        self,
+        document: MutableMapping[str, Any],
+        default_toml: str,
+        dry_run: bool = False,
+    ) -> MutableMapping[str, Any]:
+        """Run the validate/merge/decode sequence `load_profile` applies to
+        a loaded profile: schema check, merge defaults (against a fresh
+        parse of ``default_toml``), per-key type validation against
+        ``self._default_document``, then `decode` (which also runs
+        `validate_settings`).
+
+        Shared by `load_profile` (the real load, ``dry_run=False``) and
+        `_try_migrate_unversioned_profile`'s trial validation
+        (``dry_run=True``, never persisted) so the two paths cannot drift
+        apart if this sequence ever changes.
+
+        Returns the defaults-merged document. Raises whatever the
+        underlying steps raise (e.g. `ConfigSchemaError`, `ConfigError`) on
+        failure.
+        """
+        self.codec.validate_schema(document)
+        merged = self.codec.merge_defaults(document, tomlkit.parse(default_toml))
+        self.codec.validate_types(merged, self._default_document)
+        self.decode(merged, dry_run=dry_run)
+        return merged
 
     def _try_migrate_unversioned_profile(
         self,
@@ -216,12 +237,7 @@ class ConfigManager(TypedTomlOperations):
 
         try:
             trial_document = tomlkit.parse(self.codec.dumps(migrated_document))
-            self.codec.validate_schema(trial_document)
-            merged_trial = self.codec.merge_defaults(
-                trial_document, tomlkit.parse(default_toml)
-            )
-            self.codec.validate_types(merged_trial, self._default_document)
-            self.decode(merged_trial, dry_run=True)
+            self._validate_document(trial_document, default_toml, dry_run=True)
         except Exception:
             return None
 
