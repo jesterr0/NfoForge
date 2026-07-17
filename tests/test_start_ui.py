@@ -52,8 +52,8 @@ def test_plain_config_error_routes_to_generic_recovery_handler(
     monkeypatch.setattr(
         start_ui.NfoForge,
         "_offer_archive_and_regenerate",
-        lambda self, config_path, error_text, issue_description: recovery_calls.append(
-            (config_path, error_text, issue_description)
+        lambda self, config_path, error_text, issue_description, title: (
+            recovery_calls.append((config_path, error_text, issue_description, title))
         ),
     )
     fatal_calls = []
@@ -68,10 +68,13 @@ def test_plain_config_error_routes_to_generic_recovery_handler(
 
     assert fatal_calls == []
     assert len(recovery_calls) == 1
-    config_path, error_text, issue_description = recovery_calls[0]
+    config_path, error_text, issue_description, title = recovery_calls[0]
     assert config_path == test_paths.user_configs / "test.toml"
     assert "boom" in error_text
     assert "invalid or unsupported value" in issue_description
+    # a generic value-error ConfigError isn't a schema incompatibility, so
+    # the dialog title must say so rather than reusing the schema wording
+    assert title == "Invalid Config"
 
 
 def test_config_error_falls_back_to_fatal_when_path_unresolvable(
@@ -137,6 +140,29 @@ def test_resolve_config_path_defaults_missing_current_config_key(
     app = _bare_nfoforge(None)
 
     assert app._resolve_config_path() == test_paths.user_configs / "config.toml"
+
+
+def test_schema_error_recovery_uses_incompatible_config_title() -> None:
+    """A `ConfigSchemaError` is a genuine schema incompatibility (unlike a
+    generic value-error `ConfigError`), so its recovery dialog must keep the
+    "Incompatible Config" title rather than the generic "Invalid Config"
+    one.
+    """
+    recovery_calls = []
+    app = _bare_nfoforge("test")
+    app._offer_archive_and_regenerate = (
+        lambda config_path, error_text, issue_description, title: (
+            recovery_calls.append((config_path, error_text, issue_description, title))
+        )
+    )
+
+    app._handle_config_schema_error(
+        ConfigSchemaError("bad schema", config_path=Path("test.toml"))
+    )
+
+    assert len(recovery_calls) == 1
+    _config_path, _error_text, _issue_description, title = recovery_calls[0]
+    assert title == "Incompatible Config"
 
 
 def test_config_schema_error_still_prefers_schema_specific_handler(

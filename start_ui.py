@@ -145,6 +145,7 @@ class NfoForge:
             config_path,
             str(error),
             "Your existing settings could not be fully migrated.",
+            title="Incompatible Config",
         )
 
     def _handle_config_error(self, error: ConfigError) -> None:
@@ -168,6 +169,7 @@ class NfoForge:
             config_path,
             str(error),
             "Your existing configuration has an invalid or unsupported value.",
+            title="Invalid Config",
         )
 
     def _resolve_config_path(self) -> Path | None:
@@ -191,11 +193,11 @@ class NfoForge:
             return None
 
     def _offer_archive_and_regenerate(
-        self, config_path: Path, error_text: str, issue_description: str
+        self, config_path: Path, error_text: str, issue_description: str, title: str
     ) -> None:
         response = QMessageBox.question(
             self.splash_screen,
-            "Incompatible Config",
+            title,
             (
                 f"{error_text}\n\n"
                 f"{issue_description}\n\n"
