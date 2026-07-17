@@ -665,14 +665,3 @@ class ProcessPage(BaseWizardPage):
     def initializePage(self) -> None:
         self.add_tracker_items()
 
-    @Slot()
-    def reset_page(self) -> None:
-        self.save_config = False
-        self.processing_mode = UploadProcessMode.DUPE_CHECK
-        self.dupe_worker = None
-        self.process_worker = None
-        self.tracker_process_tree.clear()
-        self.text_widget.clear()
-        self.progress_bar.reset()
-        self.progress_bar.hide()
-        self.open_temp_output_btn.hide()

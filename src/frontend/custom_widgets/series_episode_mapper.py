@@ -468,30 +468,6 @@ class SeriesEpisodeMapper(QWidget):
         self._populate_files_table()
         self._auto_match_files()
 
-    def clear_data(self) -> None:
-        """Clear all data and reset the widget"""
-        self.media_input_payload = None
-        self.media_search_payload = None
-
-        # clear all data structures
-        self.available_episodes.clear()
-        self.episodes_by_type.clear()
-        self.file_episode_mappings.clear()
-        self.episode_items.clear()
-
-        # clear UI elements
-        self.files_table.setRowCount(0)
-        self.episodes_tree.clear()
-        self.episode_order_combo.clear()
-        self._release_format_manually_selected = False
-        self._set_release_format(EpisodeFormat.STANDARD, manually_selected=False)
-        self.episode_filter_combo.clear()
-        self.episode_filter_combo.addItem("All Seasons", "all")
-        self.episode_search_box.clear()
-
-        # update stats
-        self._update_all_stats()
-
     def _load_episode_data(self):
         """Load all available episode data from TVDB"""
         self.available_episodes.clear()
@@ -1585,8 +1561,6 @@ class SeriesEpisodeMapper(QWidget):
 
         if "absolute" in order_type or "absolute" in order_name:
             return EpisodeFormat.ANIME_ABSOLUTE
-        # if "dvd" in order_type or "dvd" in order_name:
-        #     return EpisodeFormat.DVD
         return EpisodeFormat.STANDARD
 
     def _set_release_format(

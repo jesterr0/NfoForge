@@ -119,10 +119,6 @@ class MainWindowWizard(QWizard):
     def nextId(self) -> int:
         """Control the flow between pages based on conditions"""
         current_page = WizardPages(self.currentId())
-        # if self.config.DEV_MODE:
-        #     return self._flow_dev(current_page)
-        # else:
-        #     return self._flow_production(current_page)
         return self._flow_production(current_page)
 
     @Slot(str)
@@ -291,58 +287,6 @@ class MainWindowWizard(QWizard):
             return -1
 
         return -1
-
-    # def _flow_dev(self, current_page: WizardPages) -> int:
-    #     if current_page in self._START_PAGES:
-    #         # return WizardPages.MEDIA_SEARCH_PAGE.value
-    #         return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
-
-    #     elif current_page == WizardPages.MEDIA_SEARCH_PAGE:
-    #         if self.config.settings.movie.enabled:
-    #             # Route to appropriate rename page based on media type
-    #             if (
-    #                 self.context.media_search
-    #                 and self.context.media_search.media_type == MediaType.SERIES
-    #             ):
-    #                 return WizardPages.RENAME_ENCODE_SERIES_PAGE.value
-    #             else:
-    #                 return WizardPages.RENAME_ENCODE_PAGE.value
-    #         elif (
-    #             not self.config.settings.movie.enabled
-    #             and self.config.settings.screenshots.enabled
-    #         ):
-    #             return WizardPages.IMAGES_PAGE.value
-    #         else:
-    #             return WizardPages.TRACKERS_PAGE.value
-
-    #     elif current_page == WizardPages.RENAME_ENCODE_PAGE:
-    #         if self.config.settings.screenshots.enabled:
-    #             return WizardPages.IMAGES_PAGE.value
-    #         else:
-    #             return WizardPages.TRACKERS_PAGE.value
-
-    #     elif current_page == WizardPages.RENAME_ENCODE_SERIES_PAGE:
-    #         if self.config.settings.screenshots.enabled:
-    #             return WizardPages.IMAGES_PAGE.value
-    #         else:
-    #             return WizardPages.TRACKERS_PAGE.value
-
-    #     elif current_page == WizardPages.IMAGES_PAGE:
-    #         return WizardPages.TRACKERS_PAGE.value
-
-    #     elif current_page == WizardPages.TRACKERS_PAGE:
-    #         return WizardPages.RELEASE_NOTES_PAGE.value
-
-    #     elif current_page == WizardPages.RELEASE_NOTES_PAGE:
-    #         return WizardPages.NFO_TEMPLATE_PAGE.value
-
-    #     elif current_page == WizardPages.NFO_TEMPLATE_PAGE:
-    #         return WizardPages.PROCESS_PAGE.value
-
-    #     elif current_page == WizardPages.PROCESS_PAGE:
-    #         return -1
-
-    #     return -1
 
     def _generate_new_pages(self) -> list[BaseWizardPage]:
         """Helper method to generate wizard page instances and return them."""

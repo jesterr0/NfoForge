@@ -5,4 +5,3 @@ class EpisodeFormat(CaseInsensitiveStrEnum):
     STANDARD = "Standard"
     DAILY_DATE = "Daily / Date"
     ANIME_ABSOLUTE = "Anime / Absolute"
-    DVD = "DVD"

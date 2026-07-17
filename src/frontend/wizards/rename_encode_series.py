@@ -50,7 +50,6 @@ from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
-from src.payloads.episodes import EpisodeSelection
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -88,11 +87,8 @@ class RenameEncodeSeries(BaseWizardPage):
         self.config = config
         self.context = context
         self.backend = RenameEncodeSeriesBackEnd()
-        self._input_ext: str | None = None
         self._token_window: QWidget | None = None
         self._overridden_tokens = set()
-        self._current_episode_selection: EpisodeSelection | None = None
-        self._current_episode_batch = None
 
         # rename loop vars
         self._rename_loop: QEventLoop | None = None
@@ -840,31 +836,6 @@ class RenameEncodeSeries(BaseWizardPage):
             elif "proper" in text:
                 self.proper_reason_lbl.show()
                 self.proper_reason_combo.show()
-
-    def reset_page(self) -> None:
-        """Reset the page to default state."""
-        block_all_signals(self, True)
-        for combo_box in (
-            self.edition_combo,
-            self.frame_size_combo,
-            self.localization_combo,
-            self.re_release_combo,
-        ):
-            combo_box.setCurrentIndex(0)
-        self._reset_re_release_reason_widgets()
-        self.release_group_entry.clear()
-        self.options_scroll_area.verticalScrollBar().setValue(0)
-        self.override_group.setChecked(False)
-        self.episode_count_label.setText("No episodes loaded")
-
-        self._input_ext = None
-        self._current_episode_selection = None
-        self._current_episode_batch = None
-        self._close_token_window()
-        self._overridden_tokens.clear()
-
-        self.backend.reset()
-        block_all_signals(self, False)
 
     @staticmethod
     def _update_combo_box(

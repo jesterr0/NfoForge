@@ -549,14 +549,3 @@ class MediaInput(BaseWizardPage):
         self.script_entry.setPlaceholderText(self.SCRIPT_PLACEHOLDER_TXT)
         self.comparison_widget.hide()
 
-    @Slot()
-    def reset_page(self) -> None:
-        self.media_input_entry.clear()
-        self.media_input_entry.setPlaceholderText(self.MEDIA_PLACEHOLDER_TXT)
-        self.file_tree.hide()
-        self.file_tree.clear_tree()
-        self.progress_bar.reset()
-        self.progress_bar.hide()
-        self.worker = None
-        self._loading_completed = False
-        self._reset_comparison_widget(True)
