@@ -2429,9 +2429,13 @@ class TokenReplacer:
             if get_air_date and get_air_date.get("aired"):
                 air_date = get_air_date.get("aired")
 
+            episode_name = episode_data.get("episode_name")
+            if self._is_placeholder_episode_title(episode_name):
+                episode_name = None
+
             data = (
                 season_episode_str,
-                episode_data.get("episode_name"),
+                episode_name,
                 air_date if air_date else None,
             )
             # prepend filename/stem to the metadata block so the filename is shown at the top
@@ -2507,7 +2511,9 @@ class TokenReplacer:
                     block_lines.append(season_episode_str)
 
                 episode_name = episode_data.get("episode_name")
-                if episode_name:
+                if episode_name and not self._is_placeholder_episode_title(
+                    episode_name
+                ):
                     block_lines.append(str(episode_name))
 
                 air_date = ""
@@ -2573,7 +2579,9 @@ class TokenReplacer:
                     parts.append(season_episode_str)
 
                 episode_name = episode_data.get("episode_name")
-                if episode_name:
+                if episode_name and not self._is_placeholder_episode_title(
+                    episode_name
+                ):
                     parts.append(str(episode_name))
 
                 air_date = ""

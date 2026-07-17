@@ -270,6 +270,62 @@ def test_episode_title_tokens_none_name_stays_empty_no_crash() -> None:
     assert replacer._episode_title_exact(_td()) == ""
 
 
+@pytest.mark.parametrize("placeholder_name", ["TBA", "Episode 12"])
+def test_episode_metadata_omits_tvdb_placeholder_name(placeholder_name: str) -> None:
+    # {episode_metadata} must not leak a TVDB placeholder episode name into
+    # the NFO body, consistent with the episode-title tokens' handling.
+    replacer = _series_replacer_with_episode_name(placeholder_name)
+    out = replacer._episode_metadata(token_data=TokenData())
+
+    assert placeholder_name not in out
+    assert "Season 01 Episode 02" in out
+
+
+def test_episode_metadata_includes_real_episode_name() -> None:
+    replacer = _series_replacer_with_episode_name("The Beginning")
+    out = replacer._episode_metadata(token_data=TokenData())
+
+    assert "The Beginning" in out
+
+
+@pytest.mark.parametrize("placeholder_name", ["TBA", "Episode 12"])
+def test_episode_metadata_mediainfo_omits_tvdb_placeholder_name(
+    placeholder_name: str,
+) -> None:
+    replacer = _series_replacer_with_episode_name(placeholder_name)
+    out = replacer._episode_metadata_mediainfo(token_data=TokenData())
+
+    assert placeholder_name not in out
+    assert "Season 01 Episode 02" in out
+
+
+def test_episode_metadata_mediainfo_includes_real_episode_name() -> None:
+    replacer = _series_replacer_with_episode_name("The Beginning")
+    out = replacer._episode_metadata_mediainfo(token_data=TokenData())
+
+    assert "The Beginning" in out
+
+
+@pytest.mark.parametrize("placeholder_name", ["TBA", "Episode 12"])
+def test_get_metadata_synopsis_omits_tvdb_placeholder_name(
+    placeholder_name: str,
+) -> None:
+    # get_metadata_synopsis is not wired to a {...} token yet (planned,
+    # unwired), so it's exercised by calling the method directly.
+    replacer = _series_replacer_with_episode_name(placeholder_name)
+    out = replacer.get_metadata_synopsis()
+
+    assert placeholder_name not in out
+    assert "Season 01 Episode 02" in out
+
+
+def test_get_metadata_synopsis_includes_real_episode_name() -> None:
+    replacer = _series_replacer_with_episode_name("The Beginning")
+    out = replacer.get_metadata_synopsis()
+
+    assert "The Beginning" in out
+
+
 def test_episode_number_absolute_falls_back_when_tvdb_value_is_zero() -> None:
     # TVDB commonly stores absoluteNumber: 0 for non-anime episodes; that
     # should be treated as "no absolute number" and fall back to the
