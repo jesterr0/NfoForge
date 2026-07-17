@@ -40,6 +40,52 @@ NO_TVDB_EPISODE_DATA_MESSAGE = (
 )
 
 
+def match_by_absolute(
+    files_parsed: dict[Any, int | None],
+    absolute_episodes: list[dict[str, Any]],
+) -> dict[Any, dict[str, Any]]:
+    """Match files to TVDB absolute-order episodes by absolute episode number.
+
+    This is a pure, Qt-free helper so it can be unit-tested without a widget.
+
+    Args:
+        files_parsed: maps an arbitrary, hashable file identifier (a
+            ``Path``, a filename string, a row index, etc. -- the caller
+            decides) to that file's parsed absolute episode number. This is
+            typically guessit's ``episode`` value for an anime/absolute
+            release that carries no season component, e.g.
+            ``"[Group] Show - 025.mkv"`` parses to ``25``. A value of
+            ``None`` means the file had no parseable number and is skipped.
+        absolute_episodes: the list of TVDB episode dicts for the
+            "Absolute Order" season type, i.e.
+            ``episodes_by_type[type_id]["episodes"]`` for the entry whose
+            ``type`` is ``"absolute"``. Each dict is expected to carry an
+            ``absoluteNumber`` key (and typically ``seasonNumber``/``number``
+            identifying where that absolute episode lives in aired order).
+
+    Returns:
+        A dict with the same keys as ``files_parsed``, but containing only
+        the keys that produced a match, mapped to the matched episode dict
+        from ``absolute_episodes``. Keys with no parseable number, or whose
+        number doesn't appear in ``absolute_episodes``, are omitted.
+    """
+    episodes_by_absolute_number: dict[int, dict[str, Any]] = {}
+    for episode_data in absolute_episodes:
+        absolute_number = episode_data.get("absoluteNumber")
+        if absolute_number is None:
+            continue
+        episodes_by_absolute_number.setdefault(absolute_number, episode_data)
+
+    matches: dict[Any, dict[str, Any]] = {}
+    for file_key, absolute_number in files_parsed.items():
+        if absolute_number is None:
+            continue
+        episode_data = episodes_by_absolute_number.get(absolute_number)
+        if episode_data is not None:
+            matches[file_key] = episode_data
+    return matches
+
+
 class EnhancedFileTableItem(QTableWidgetItem):
     """Enhanced table item for files with episode data"""
 
@@ -553,6 +599,23 @@ class SeriesEpisodeMapper(QWidget):
 
         return best_match
 
+    def _get_absolute_order_episodes(self) -> list[dict[str, Any]]:
+        """Return TVDB's "Absolute Order" episode list, if one was fetched.
+
+        This scans all season types the mapper knows about rather than only
+        the currently selected TVDB order, so absolute-number matching keeps
+        working even when the user is viewing episodes in Aired/DVD order
+        while the Anime/Absolute release format is selected -- the release
+        format only controls title/filename tokens and doesn't change which
+        TVDB order is displayed.
+        """
+        for type_data in self.episodes_by_type.values():
+            order_type = str(type_data.get("type", "")).lower()
+            order_name = str(type_data.get("type_name", "")).lower()
+            if "absolute" in order_type or "absolute" in order_name:
+                return type_data.get("episodes", [])
+        return []
+
     def _auto_match_files(self) -> None:
         """Enhanced auto-matching with fuzzy fallback"""
         if not self.available_episodes:
@@ -560,6 +623,13 @@ class SeriesEpisodeMapper(QWidget):
 
         matched_count = 0
         fuzzy_matched_count = 0
+
+        absolute_format_active = (
+            self.get_series_format() == EpisodeFormat.ANIME_ABSOLUTE
+        )
+        absolute_episodes = (
+            self._get_absolute_order_episodes() if absolute_format_active else []
+        )
 
         for row in range(self.files_table.rowCount()):
             filename_item = self.files_table.item(row, 0)
@@ -615,6 +685,38 @@ class SeriesEpisodeMapper(QWidget):
                 )
                 matched_count += 1
                 continue
+
+            # stage 1b: anime/absolute-numbered releases (e.g.
+            # "[Group] Show - 025.mkv") carry no season, just an absolute
+            # episode number, so stage 1 above never matches them. When the
+            # Anime/Absolute release format is active, match that number
+            # against TVDB's absolute-order episode list instead.
+            if absolute_format_active and absolute_episodes and episode is not None:
+                absolute_match = match_by_absolute(
+                    {file_path: episode}, absolute_episodes
+                )
+                absolute_episode_data = absolute_match.get(file_path)
+                if absolute_episode_data is not None:
+                    matched_season = absolute_episode_data.get("seasonNumber")
+                    matched_episode = absolute_episode_data.get("number")
+                    if matched_season is not None and matched_episode is not None:
+                        confidence = 0.9
+                        method = "absolute"
+
+                        self._store_mapping(
+                            file_path,
+                            matched_season,
+                            matched_episode,
+                            absolute_episode_data,
+                            confidence,
+                            method,
+                            episode_end=episode_end,
+                        )
+                        self._update_file_row_assignment(
+                            row, matched_season, matched_episode, confidence, method
+                        )
+                        matched_count += 1
+                        continue
 
             # stage 2: try fuzzy matching (medium confidence)
             fuzzy_result = self._fuzzy_match_episode_name(file_path.stem)

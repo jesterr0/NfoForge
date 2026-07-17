@@ -11,6 +11,7 @@ from src.enums.series import EpisodeFormat
 from src.frontend.custom_widgets.series_episode_mapper import (
     NO_TVDB_EPISODE_DATA_MESSAGE,
     SeriesEpisodeMapper,
+    match_by_absolute,
 )
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
@@ -320,6 +321,107 @@ def test_on_table_item_changed_logs_instead_of_swallowing_exceptions(
     assert len(logged) == 1
     assert "boom" in logged[0]
     assert file_path.name in logged[0]
+
+
+def test_match_by_absolute_maps_files_to_absolute_numbered_episodes() -> None:
+    files_parsed = {"ep25.mkv": 25, "ep26.mkv": 26}
+    absolute_episodes = [
+        {"seasonNumber": 2, "number": 3, "absoluteNumber": 25, "name": "Ep 25"},
+        {"seasonNumber": 2, "number": 4, "absoluteNumber": 26, "name": "Ep 26"},
+    ]
+
+    matches = match_by_absolute(files_parsed, absolute_episodes)
+
+    assert matches["ep25.mkv"]["seasonNumber"] == 2
+    assert matches["ep25.mkv"]["number"] == 3
+    assert matches["ep26.mkv"]["seasonNumber"] == 2
+    assert matches["ep26.mkv"]["number"] == 4
+
+
+def test_match_by_absolute_skips_unmatched_absolute_numbers() -> None:
+    files_parsed = {"ep99.mkv": 99}
+    absolute_episodes = [{"seasonNumber": 2, "number": 3, "absoluteNumber": 25}]
+
+    assert match_by_absolute(files_parsed, absolute_episodes) == {}
+
+
+def test_match_by_absolute_skips_files_with_no_parsed_number() -> None:
+    files_parsed = {"no_number.mkv": None}
+    absolute_episodes = [{"seasonNumber": 1, "number": 1, "absoluteNumber": 1}]
+
+    assert match_by_absolute(files_parsed, absolute_episodes) == {}
+
+
+def test_match_by_absolute_handles_empty_inputs() -> None:
+    assert match_by_absolute({}, []) == {}
+    assert match_by_absolute({"ep1.mkv": 1}, []) == {}
+    assert match_by_absolute({}, [{"absoluteNumber": 1}]) == {}
+
+
+def test_auto_match_files_matches_anime_absolute_numbered_file() -> None:
+    # anime/absolute releases like "[Group] Show - 025.mkv" carry no season,
+    # only an absolute episode number -- these should auto-match against
+    # TVDB's absolute-order episode list when the Anime/Absolute release
+    # format is active, even though the currently selected TVDB order
+    # (defaulted to the first available type) is "Aired Order"
+    file_path = Path("[Group] Show - 025.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show"),
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_format=EpisodeFormat.ANIME_ABSOLUTE,
+    )
+    media_search = MediaSearchPayload(
+        tvdb_data={
+            "episodes_by_type": {
+                1: {
+                    "type_name": "Aired Order",
+                    "type": "official",
+                    "episodes": [
+                        {
+                            "seasonNumber": 2,
+                            "number": 3,
+                            "absoluteNumber": 25,
+                            "name": "Ep 25",
+                        },
+                        {
+                            "seasonNumber": 2,
+                            "number": 4,
+                            "absoluteNumber": 26,
+                            "name": "Ep 26",
+                        },
+                    ],
+                },
+                3: {
+                    "type_name": "Absolute Order",
+                    "type": "absolute",
+                    "episodes": [
+                        {
+                            "seasonNumber": 2,
+                            "number": 3,
+                            "absoluteNumber": 25,
+                            "name": "Ep 25",
+                        },
+                        {
+                            "seasonNumber": 2,
+                            "number": 4,
+                            "absoluteNumber": 26,
+                            "name": "Ep 26",
+                        },
+                    ],
+                },
+            }
+        }
+    )
+
+    QApplication.instance() or QApplication([])
+    mapper = SeriesEpisodeMapper()
+    mapper.load_data(media_input, media_search)
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 2
+    assert mapping["episode"] == 3
+    assert mapping["assignment_method"] == "absolute"
 
 
 def test_correcting_unverified_episode_to_tvdb_match_clears_amber_cells() -> None:
