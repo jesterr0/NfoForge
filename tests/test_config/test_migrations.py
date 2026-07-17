@@ -170,3 +170,42 @@ def test_migration_normalizes_legacy_newline_sequence() -> None:
 
     assert not unmapped
     assert new["template_settings"]["newline_sequence"] == "\n"
+
+
+def test_migration_renames_tokens_in_template_settings() -> None:
+    """[template_settings] holds no token-string fields today, but the
+    rename sweep must cover it anyway (forward-safety) the same way it
+    already covers user_tokens.tokens and tracker title overrides.
+    """
+    old = {
+        "general": {},
+        "movie_rename": {
+            "mvr_enabled": True,
+            "mvr_replace_illegal_chars": True,
+            "mvr_colon_replace_filename": 3,
+            "mvr_colon_replace_title": 3,
+            "mvr_parse_filename_attributes": True,
+            "mvr_token": "",
+            "mvr_title_token": "",
+            "mvr_clean_title_rules": [],
+            "mvr_clean_title_rules_modified": False,
+            "mvr_release_group": "",
+            "mvr_mi_video_dynamic_range": {
+                "resolutions": {},
+                "hdr_types": {},
+                "custom_strings": {},
+            },
+        },
+        "template_settings": {
+            "some_future_token_field": "{movie_title} {mi_audio_codec}",
+            "block_syntax_color": "#89689d",
+        },
+    }
+    new, unmapped = migrate_unversioned_to_v2(old)
+
+    assert not unmapped
+    assert (
+        new["template_settings"]["some_future_token_field"] == "{title} {audio_codec}"
+    )
+    # non-token config is left untouched
+    assert new["template_settings"]["block_syntax_color"] == "#89689d"

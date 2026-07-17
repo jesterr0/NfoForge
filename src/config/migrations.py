@@ -81,6 +81,30 @@ def _rename_tokens(value: str) -> str:
     return _MI_PREFIX_RE.sub("{", value)
 
 
+def _rename_template_settings_tokens(
+    template_settings: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Apply the token rename map to any ``[template_settings]`` string
+    values that reference tokens.
+
+    None of schema 1's ``[template_settings]`` keys (``newline_sequence``,
+    ``block_syntax_color``, etc.) are token strings today, so this call is
+    forward-safety: it keeps the same rename sweep already applied to
+    ``user_tokens.tokens`` and each tracker's title token override from
+    silently missing a future ``[template_settings]`` field that is. Only
+    string values containing ``{`` are considered, and a key is only
+    rewritten if the rename actually changes it, so unrelated config
+    (colors, booleans, the newline sequence) is left untouched.
+    """
+    new_template_settings: dict[str, Any] = dict(template_settings)
+    for key, value in template_settings.items():
+        if isinstance(value, str) and "{" in value:
+            renamed = _rename_tokens(value)
+            if renamed != value:
+                new_template_settings[key] = renamed
+    return new_template_settings
+
+
 def _rename_tracker_title_overrides(tracker: Mapping[str, Any]) -> dict[str, Any]:
     """Apply the token rename map to each ``[tracker.*]`` section's
     persisted ``mvr_title_token_override`` string.
@@ -223,6 +247,14 @@ def migrate_unversioned_to_v2(
             new_template_settings = dict(template_settings)
             new_template_settings["newline_sequence"] = fixed
             new_doc["template_settings"] = new_template_settings
+
+    # Apply token renames to any [template_settings] string values that
+    # reference tokens (see _rename_template_settings_tokens).
+    template_settings = new_doc.get("template_settings")
+    if isinstance(template_settings, Mapping):
+        new_doc["template_settings"] = _rename_template_settings_tokens(
+            template_settings
+        )
 
     # Apply token renames to persisted user-defined token strings.
     user_tokens = new_doc.get("user_tokens")
