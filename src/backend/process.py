@@ -1355,9 +1355,7 @@ class ProcessBackEnd:
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
-                episode_number=release_info.episode_start
-                if not release_info.is_pack
-                else None,
+                episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.HUNO:
@@ -1378,9 +1376,7 @@ class ProcessBackEnd:
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
-                episode_number=release_info.episode_start
-                if not release_info.is_pack
-                else None,
+                episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.LST:
@@ -1407,9 +1403,7 @@ class ProcessBackEnd:
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
-                episode_number=release_info.episode_start
-                if not release_info.is_pack
-                else None,
+                episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.DARK_PEERS:
@@ -1429,9 +1423,7 @@ class ProcessBackEnd:
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
-                episode_number=release_info.episode_start
-                if not release_info.is_pack
-                else None,
+                episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.SHARE_ISLAND:
@@ -1453,9 +1445,7 @@ class ProcessBackEnd:
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
-                episode_number=release_info.episode_start
-                if not release_info.is_pack
-                else None,
+                episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.UPLOAD_CX:
@@ -1476,9 +1466,7 @@ class ProcessBackEnd:
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
-                episode_number=release_info.episode_start
-                if not release_info.is_pack
-                else None,
+                episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.ONLY_ENCODES:
@@ -1499,9 +1487,7 @@ class ProcessBackEnd:
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
-                episode_number=release_info.episode_start
-                if not release_info.is_pack
-                else None,
+                episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
 
