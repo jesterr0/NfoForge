@@ -47,6 +47,15 @@ from src.version import __version__, program_name, program_url
 class TokenReplacer:
     FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
 
+    # TVDB placeholder episode titles that should render as empty rather
+    # than landing in output verbatim: exactly "TBA", or "Episode" followed
+    # by optional whitespace and digits (e.g. "Episode 12", "Episode12").
+    # Anchored on both ends so real titles like "TBA Confidential" or
+    # "Episode of Care" are left untouched.
+    _PLACEHOLDER_EPISODE_TITLE_RE = re.compile(
+        r"^(?:tba|episode\s*\d+)$", re.IGNORECASE
+    )
+
     __slots__ = (
         # __init__
         "media_input_obj",
@@ -2268,6 +2277,8 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
+        if self._is_placeholder_episode_title(title):
+            title = ""
 
         # apply basic formatting
         title = self._title_formatting_standard(title)
@@ -2283,6 +2294,8 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
+        if self._is_placeholder_episode_title(title):
+            title = ""
         title = self._title_formatting_cleaned(title, self.title_clean_rules)
         return self._optional_user_input(title, token_data)
 
@@ -2296,6 +2309,8 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
+        if self._is_placeholder_episode_title(title):
+            title = ""
         return self._optional_user_input(title, token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:
@@ -3208,6 +3223,19 @@ class TokenReplacer:
             if mapped_season == season and mapped_episode == episode:
                 return mapped_data
         return None
+
+    @staticmethod
+    def _is_placeholder_episode_title(name: str | None) -> bool:
+        """Return True when *name* is a TVDB placeholder episode title
+        ("TBA", "Episode 12") that should be treated as no title at all.
+
+        ``name`` may be ``None`` (a manually-mapped episode with no TVDB
+        match synthesizes ``name: None``); that is not a placeholder match,
+        just an absent title, and is handled safely here without raising.
+        """
+        if not name:
+            return False
+        return bool(TokenReplacer._PLACEHOLDER_EPISODE_TITLE_RE.match(name.strip()))
 
     @staticmethod
     def _title_formatting_standard(title: str) -> str:
