@@ -348,7 +348,8 @@ class RenameEncodeSeries(BaseWizardPage):
             release_group_name if release_group_name else ""
         )
 
-        # Initial call to update_generated_name will trigger preview generation
+        # Initial call to update_generated_name populates the override token
+        # grid (using the first mapped episode as a representative preview)
         self.update_generated_name()
 
     def validatePage(self) -> bool:
@@ -765,6 +766,54 @@ class RenameEncodeSeries(BaseWizardPage):
             self.backend.override_tokens["release_group"] = release_group
         else:
             self.backend.override_tokens.pop("release_group", None)
+
+        # Run the renamer for a representative (first mapped) episode so the
+        # override token grid mirrors the movie page's live preview. Without
+        # a mapped episode there is nothing to preview yet.
+        episode_map = self.context.media_input.series_episode_map
+        if not episode_map:
+            self.rename_token_control.reset()
+            return
+
+        _, media_data = next(iter(episode_map.items()))
+
+        user_tokens = {
+            k: v
+            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        }
+
+        get_file_name = self.backend.series_renamer(
+            media_input_obj=self.context.media_input,
+            token=token,
+            colon_replacement=self.config.settings.series.filename_colon_replace,
+            media_search_payload=self.context.media_search,
+            title_clean_rules=self.config.settings.global_management.title_clean_rules,
+            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+            user_tokens=user_tokens,
+            season_num=media_data["season"],
+            episode_num=media_data["episode"],
+            episode_format=self.context.media_input.series_episode_format,
+            multi_episode_style=self.config.settings.series.multi_episode_style,
+            season_end=media_data["season"],
+        )
+
+        if get_file_name and self.backend.token_replacer:
+            # update rename token control. unlike the movie page's default
+            # token, the series default tokens pipe {season_number} and
+            # {episode_number} through filters (e.g. "{season_number|zfill(2)}"),
+            # so the sort pattern must tolerate an optional "|filter" segment or
+            # those two series-specific tokens would never appear in the grid.
+            sort_token_order = re.findall(
+                r"\{(?:[:][^:}]+:)*([a-z_]+)(?:\|[^:}]*)?(?:[:][^:}]+:)*\}", token
+            )
+            sort_token_data = self.backend.token_replacer.token_data.get_dict()  # pyright: ignore[reportAttributeAccessIssue]
+            sorted_token_data = {
+                k: sort_token_data[k]
+                for k in sort_token_order
+                if k in sort_token_data and sort_token_data[k]
+            }
+            self.rename_token_control.populate_table(sorted_token_data)
 
     def _reset_re_release_reason_widgets(self) -> None:
         """Hide and reset both repack and proper reason widgets."""
