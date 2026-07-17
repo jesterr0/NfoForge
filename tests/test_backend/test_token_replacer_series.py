@@ -408,6 +408,88 @@ def test_episode_number_range_style_end_to_end_template() -> None:
     assert output == "S01E01-03"
 
 
+def _season_replacer(
+    token: str,
+    season: int = 1,
+    season_end: int | None = 5,
+) -> TokenReplacer:
+    file_path = Path("Show.S01.mkv")
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES, tvdb_data={"episodes": []}
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=season,
+        season_end=season_end,
+    )
+
+
+def test_season_number_renders_multi_season_pack_range() -> None:
+    output = _season_replacer("{season_number}", season=1, season_end=5).get_output()
+
+    assert output == "01-S05"
+
+
+def test_season_number_end_to_end_template_renders_multi_season_range() -> None:
+    # end-to-end proof using the shape of the default series tokens
+    # ("S{season_number|zfill(2)}"): a complete-series pack (season 1 through
+    # 5) must render "S01-S05", not collapse to just the lowest season.
+    output = _season_replacer(
+        "S{season_number|zfill(2)}", season=1, season_end=5
+    ).get_output()
+
+    assert output == "S01-S05"
+
+
+@pytest.mark.parametrize("season_end", [None, 1])
+def test_season_number_single_season_unchanged(season_end: int | None) -> None:
+    # single season (season_end is None, or equals season_number): the raw
+    # season number renders unchanged, exactly as it did before this feature.
+    output = _season_replacer(
+        "{season_number}", season=1, season_end=season_end
+    ).get_output()
+
+    assert output == "1"
+
+
+@pytest.mark.parametrize("season_end", [None, 1])
+def test_season_number_single_season_template_zfill_unchanged(
+    season_end: int | None,
+) -> None:
+    output = _season_replacer(
+        "S{season_number|zfill(2)}", season=1, season_end=season_end
+    ).get_output()
+
+    assert output == "S01"
+
+
+def test_season_number_season_zero_special_still_renders() -> None:
+    # season 0 (specials) is a valid season number, not falsy/absent; a
+    # single-season specials pack must still render "0", not blank out due to
+    # a truthiness check.
+    output = _season_replacer("{season_number}", season=0, season_end=None).get_output()
+
+    assert output == "0"
+
+
+def test_season_number_season_zero_multi_season_pack_range() -> None:
+    # season 0 is a valid start of a range too (explicit comparisons, not
+    # truthiness, must gate the multi-season branch).
+    output = _season_replacer("{season_number}", season=0, season_end=2).get_output()
+
+    assert output == "00-S02"
+
+
 def test_air_date_is_series_level_first_aired_distinct_from_episode_air_date() -> None:
     # {air_date} is series-level (parallels the movie {release_date} token) and
     # must differ from {episode_air_date}, which stays the selected episode's

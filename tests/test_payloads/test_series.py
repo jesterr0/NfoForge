@@ -6,9 +6,12 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from src.backend.process import ProcessBackEnd
+from src.backend.token_replacer import TokenReplacer
+from src.backend.tokens import FileToken
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.frontend.custom_widgets.series_episode_mapper import (
     NO_TVDB_EPISODE_DATA_MESSAGE,
     SeriesEpisodeMapper,
@@ -199,10 +202,54 @@ def test_release_info_token_kwargs_omit_episode_for_pack() -> None:
         release_info, MultiEpisodeStyle.RANGE
     ) == {
         "season_number": 2,
+        "season_end": 2,
         "episode_number": None,
         "episode_format": EpisodeFormat.STANDARD,
         "multi_episode_style": MultiEpisodeStyle.RANGE,
     }
+
+
+def test_release_info_token_kwargs_multi_season_pack_feeds_range_into_token_replacer() -> (
+    None
+):
+    # end-to-end proof of the bug this task fixes: a complete-series pack
+    # spanning seasons 1-5 must title/NFO as "S01-S05", not collapse to just
+    # the lowest season ("S01"). release_info -> _release_info_token_kwargs
+    # -> TokenReplacer -> the default series token shape
+    # ("S{season_number|zfill(2)}").
+    file_one = Path("Show.S01E01.mkv")
+    file_two = Path("Show.S05E10.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show Seasons 1-5"),
+        media_type=MediaType.SERIES,
+        file_list=[file_one, file_two],
+        series_episode_map={
+            file_one: {"season": 1, "episode": 1},
+            file_two: {"season": 5, "episode": 10},
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+    release_info = build_series_release_info(media_input)
+
+    kwargs = ProcessBackEnd._release_info_token_kwargs(
+        release_info, MultiEpisodeStyle.RANGE
+    )
+    assert kwargs["season_number"] == 1
+    assert kwargs["season_end"] == 5
+
+    output = TokenReplacer(
+        media_input_obj=media_input,
+        media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
+        token_string="S{season_number|zfill(2)}",
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        **kwargs,
+    ).get_output()
+
+    assert output == "S01-S05"
 
 
 def test_is_valid_rejects_duplicate_episode_targets() -> None:

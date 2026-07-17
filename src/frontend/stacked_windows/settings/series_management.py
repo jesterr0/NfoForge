@@ -340,6 +340,7 @@ class SeriesManagementSettings(BaseSettings):
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
             flat_filters=self.config.plugin_registry.flat_filters,
             season_number=1,
+            season_end=1,
             episode_number=1,
             multi_episode_style=MultiEpisodeStyle(
                 self.multi_episode_style_combo.currentData()

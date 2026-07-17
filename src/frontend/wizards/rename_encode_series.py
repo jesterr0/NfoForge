@@ -403,6 +403,11 @@ class RenameEncodeSeries(BaseWizardPage):
                 episode_num=media_data["episode"],
                 episode_format=self.context.media_input.series_episode_format,
                 multi_episode_style=self.config.settings.series.multi_episode_style,
+                # each renamed file belongs to exactly one season, so season_end
+                # matches season_num here (single-season, unchanged rendering);
+                # the multi-season {season_number} range only applies to the
+                # aggregate release title/NFO (see ProcessBackEnd).
+                season_end=media_data["season"],
             )
 
             if renamed_file:

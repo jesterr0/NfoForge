@@ -1606,6 +1606,7 @@ class ProcessBackEnd:
     ) -> dict[str, Any]:
         return {
             "season_number": release_info.season,
+            "season_end": release_info.season_end,
             "episode_number": (
                 release_info.episode_start if not release_info.is_pack else None
             ),

@@ -78,6 +78,7 @@ class TokenReplacer:
         "parse_filename_attributes",
         # series exclusive args
         "season_number",
+        "season_end",
         "episode_number",
         "episode_format",
         "multi_episode_style",
@@ -125,6 +126,7 @@ class TokenReplacer:
         dummy_screen_shots: bool = False,
         parse_filename_attributes: bool = False,
         season_number: int | None = None,
+        season_end: int | None = None,
         episode_number: int | None = None,
         episode_format: EpisodeFormat | None = None,
         multi_episode_style: MultiEpisodeStyle = MultiEpisodeStyle.RANGE,
@@ -170,6 +172,11 @@ class TokenReplacer:
             parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
               detected from the filename.
             season_number (Optional[int]): Season number.
+            season_end (Optional[int]): Highest season number in a multi-season pack. When
+                set and different from `season_number`, the {season_number} token renders
+                a pre-padded "SS-Seend" range instead of the raw start season (e.g.
+                season_number=1, season_end=5 -> "01-S05"). Ignored (single season) when
+                None or equal to `season_number`.
             episode_number (Optional[int]): Episode number.
             episode_format (Optional[EpisodeFormat]): Episode format (Standard, Daily, Anime).
             multi_episode_style (MultiEpisodeStyle): How the {episode_number} token renders a
@@ -209,6 +216,7 @@ class TokenReplacer:
         self.parse_filename_attributes = parse_filename_attributes
         # series exclusive args
         self.season_number = season_number
+        self.season_end = season_end
         self.episode_number = episode_number
         self.episode_format = episode_format
         self.multi_episode_style = MultiEpisodeStyle(multi_episode_style)
@@ -2131,7 +2139,18 @@ class TokenReplacer:
 
     def _season_number(self, token_data: TokenData) -> str:
         season = self._validate_int_var(self.season_number)
-        int_val = str(season) if season is not None else ""
+        if season is None:
+            return self._optional_user_input("", token_data)
+
+        # a multi-season pack (season_end set and higher than the start season)
+        # renders a pre-padded "SS-Seend" range so a template's own |zfill(2) is
+        # a harmless no-op; a single season renders exactly as it did before.
+        season_end = self._validate_int_var(self.season_end)
+        if season_end is not None and season_end != season:
+            int_val = f"{season:02d}-S{season_end:02d}"
+        else:
+            int_val = str(season)
+
         return self._optional_user_input(int_val, token_data)
 
     def _episode_air_date(self, token_data: TokenData) -> str:

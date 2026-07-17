@@ -32,6 +32,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         user_tokens: dict[str, str] | None,
         episode_format: EpisodeFormat,
         multi_episode_style: MultiEpisodeStyle,
+        season_end: int | None = None,
     ) -> Path | None:
         """Rename series file.
 
@@ -45,6 +46,8 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             user_tokens: User-defined tokens
             episode_format: Episode format (Standard, Daily, Anime)
             multi_episode_style: How multi-episode spans render in {episode_number}
+            season_end: Highest season number in a multi-season pack, for {season_number}
+                range rendering. None (or equal to season_num) keeps single-season output.
 
         Returns:
             Path object with the generated filename (no extension), or None if failed
@@ -64,6 +67,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             override_tokens=self.override_tokens,
             user_tokens=user_tokens,
             season_number=season_num,
+            season_end=season_end,
             episode_number=episode_num,
             episode_format=episode_format,
             multi_episode_style=multi_episode_style,
