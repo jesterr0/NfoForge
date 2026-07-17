@@ -262,6 +262,40 @@ def test_is_valid_rejects_duplicate_episode_targets() -> None:
     assert mapper.is_valid() is False
 
 
+def test_is_valid_rejects_overlapping_multi_episode_ranges() -> None:
+    # file A claims S01E01-E02 (a multi-episode range) and file B claims
+    # S01E02 alone -- their start tuples (1, 1) and (1, 2) differ, so an
+    # exact-duplicate-only check would wrongly pass this, even though both
+    # files claim S01E02.
+    mapper = _make_mapper_with_files([Path("a.mkv"), Path("b.mkv")])
+    mapper.file_episode_mappings = {
+        Path("a.mkv"): {"season": 1, "episode": 1, "episode_end": 2},
+        Path("b.mkv"): {"season": 1, "episode": 2},
+    }
+    assert mapper.is_valid() is False
+
+
+def test_is_valid_accepts_non_overlapping_multi_episode_ranges() -> None:
+    # two files, each spanning a distinct pair of episodes -- no overlap
+    mapper = _make_mapper_with_files([Path("a.mkv"), Path("b.mkv")])
+    mapper.file_episode_mappings = {
+        Path("a.mkv"): {"season": 1, "episode": 1, "episode_end": 2},
+        Path("b.mkv"): {"season": 1, "episode": 3, "episode_end": 4},
+    }
+    assert mapper.is_valid() is True
+
+
+def test_is_valid_accepts_normal_single_episode_pack() -> None:
+    # a normal pack where every file maps to exactly one, distinct episode
+    # (no episode_end set) must still validate as before
+    mapper = _make_mapper_with_files([Path("a.mkv"), Path("b.mkv")])
+    mapper.file_episode_mappings = {
+        Path("a.mkv"): {"season": 1, "episode": 1},
+        Path("b.mkv"): {"season": 1, "episode": 2},
+    }
+    assert mapper.is_valid() is True
+
+
 def test_auto_match_files_carries_episode_range_for_multi_episode_file() -> None:
     # a single file spanning multiple episodes (e.g. "S01E01E02", common for
     # anime) should keep the full range instead of collapsing to episode 1

@@ -1521,18 +1521,46 @@ class SeriesEpisodeMapper(QWidget):
         return self.file_episode_mappings
 
     def is_valid(self) -> bool:
-        """Check that every file is mapped and no two files target the same episode."""
+        """Check that every file is mapped and no two files target overlapping episodes.
+
+        A mapping is expanded to every ``(season, episode)`` pair it covers --
+        a normal single-episode mapping covers just its own ``episode``, while
+        a multi-episode mapping (``episode_end`` set, e.g. a single
+        "S01E01E02" file) covers every episode from ``episode`` through
+        ``episode_end`` inclusive. If any ``(season, episode)`` pair is
+        claimed by more than one file, the mappings overlap and this returns
+        ``False`` -- this generalizes the old exact-duplicate-start check,
+        which missed overlaps like file A "S01E01-E02" and file B "S01E02":
+        their start tuples ``(1, 1)`` and ``(1, 2)`` differ even though both
+        claim S01E02.
+        """
         if not self.media_input_payload or not self.media_input_payload.file_list:
             return False
 
         if len(self.file_episode_mappings) != len(self.media_input_payload.file_list):
             return False
 
-        targets = [
-            (m.get("season"), m.get("episode"))
-            for m in self.file_episode_mappings.values()
-        ]
-        return len(targets) == len(set(targets))
+        claimed_targets: set[tuple[Any, Any]] = set()
+        for mapping in self.file_episode_mappings.values():
+            season = mapping.get("season")
+            episode = mapping.get("episode")
+            episode_end = mapping.get("episode_end")
+            range_end = episode_end if episode_end is not None else episode
+
+            if episode is None or range_end is None:
+                target = (season, episode)
+                if target in claimed_targets:
+                    return False
+                claimed_targets.add(target)
+                continue
+
+            for target_episode in range(episode, range_end + 1):
+                target = (season, target_episode)
+                if target in claimed_targets:
+                    return False
+                claimed_targets.add(target)
+
+        return True
 
     def has_tvdb_episode_data(self) -> bool:
         """Whether TVDB returned any episode data for the current series."""
