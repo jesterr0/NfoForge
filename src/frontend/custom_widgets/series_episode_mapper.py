@@ -690,8 +690,18 @@ class SeriesEpisodeMapper(QWidget):
             # "[Group] Show - 025.mkv") carry no season, just an absolute
             # episode number, so stage 1 above never matches them. When the
             # Anime/Absolute release format is active, match that number
-            # against TVDB's absolute-order episode list instead.
-            if absolute_format_active and absolute_episodes and episode is not None:
+            # against TVDB's absolute-order episode list instead. The
+            # `season is None` guard is required: a file that DID parse a
+            # real season (e.g. "Show.S05E03.mkv" for a season TVDB has no
+            # data for) must fall through to fuzzy/unmatched instead of
+            # having its episode digit reinterpreted as an unrelated
+            # absolute number.
+            if (
+                absolute_format_active
+                and absolute_episodes
+                and episode is not None
+                and season is None
+            ):
                 absolute_match = match_by_absolute(
                     {file_path: episode}, absolute_episodes
                 )
@@ -703,6 +713,28 @@ class SeriesEpisodeMapper(QWidget):
                         confidence = 0.9
                         method = "absolute"
 
+                        # translate the range end through the same absolute
+                        # index used for the primary episode, e.g. for
+                        # "[Group] Show - 025-026.mkv" (episode_end=26) so it
+                        # renders as the in-season end (S02E04) rather than
+                        # the raw absolute number. If the end number doesn't
+                        # resolve, or resolves into a different season than
+                        # the start, drop it rather than store a bogus value.
+                        matched_episode_end = None
+                        if episode_end is not None:
+                            end_match = match_by_absolute(
+                                {file_path: episode_end}, absolute_episodes
+                            )
+                            end_episode_data = end_match.get(file_path)
+                            if end_episode_data is not None:
+                                end_season = end_episode_data.get("seasonNumber")
+                                end_number = end_episode_data.get("number")
+                                if (
+                                    end_season == matched_season
+                                    and end_number is not None
+                                ):
+                                    matched_episode_end = end_number
+
                         self._store_mapping(
                             file_path,
                             matched_season,
@@ -710,7 +742,7 @@ class SeriesEpisodeMapper(QWidget):
                             absolute_episode_data,
                             confidence,
                             method,
-                            episode_end=episode_end,
+                            episode_end=matched_episode_end,
                         )
                         self._update_file_row_assignment(
                             row, matched_season, matched_episode, confidence, method
