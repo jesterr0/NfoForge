@@ -133,9 +133,16 @@ def test_editing_override_token_row_feeds_back_into_generated_name(
 
     # simulate the user editing the "season_number" row's value cell; the
     # real edit path goes through QTableWidget.itemChanged -> _item_changed,
-    # which defers the row_modified emit by one tick via QTimer.singleShot
+    # which defers the row_modified emit by one tick via QTimer.singleShot.
+    # Poll for it instead of a single fixed-length wait: a single short
+    # QTest.qWait can miss the deferred emit on a busier run (e.g. when
+    # other Qt widgets were constructed earlier in the same test session),
+    # since it only pumps the event loop for that fixed window.
     table.item(row, 1).setText("99")
-    QTest.qWait(50)
+    for _ in range(20):
+        if "season_number" in page.backend.override_tokens:
+            break
+        QTest.qWait(25)
 
     assert page.backend.override_tokens["season_number"] == "99"
     assert "season_number" in page._overridden_tokens

@@ -246,7 +246,7 @@ class MoviesManagementSettings(BaseSettings):
     def _update_file_token_example(self) -> None:
         self._update_example(
             token_str=self.format_file_name_token_input.text(),
-            colon_replace=ColonReplace(self.title_colon_replace.currentData()),
+            colon_replace=ColonReplace(self.fn_colon_replace.currentData()),
             file_name_mode=True,
             qline=self.format_file_name_token_example,
         )
