@@ -843,15 +843,20 @@ class SeriesEpisodeMapper(QWidget):
             # key), so stage 1 above never matches them. When the
             # Daily/Date release format is active, match that date against
             # the currently loaded episode list's `aired` field instead.
-            # The `not (season and episode)` guard mirrors stage 1b: a file
-            # that DID parse a real, usable season+episode must fall
+            # The `season is None and episode is None` guard mirrors stage
+            # 1b: a file that DID parse a real season/episode must fall
             # through to fuzzy/unmatched instead of being reinterpreted by
-            # date.
+            # date. This must use identity checks, not truthiness -- TVDB
+            # uses season 0 for specials, and `season == 0` is falsy in
+            # Python, so a truthiness check would wrongly treat a genuinely
+            # parsed "S00E01" as season-and-episode-less and let it be
+            # hijacked by date.
             parsed_date = parsed_data.get("date")
             if (
                 daily_format_active
                 and parsed_date is not None
-                and not (season and episode)
+                and season is None
+                and episode is None
             ):
                 daily_episodes = self._get_available_episodes_flat()
                 daily_match = match_by_air_date(

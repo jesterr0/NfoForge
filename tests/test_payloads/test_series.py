@@ -716,3 +716,46 @@ def test_auto_match_files_does_not_daily_match_file_with_real_season_episode() -
 
     mapping = mapper.file_episode_mappings.get(file_path)
     assert mapping is None or mapping["assignment_method"] != "daily"
+
+
+def test_auto_match_files_does_not_daily_match_special_episode() -> None:
+    # regression guard: TVDB uses season 0 for specials, and `season == 0`
+    # is falsy in Python. A truthiness guard (`not (season and episode)`)
+    # would treat a genuinely parsed "Show.S00E01.2024.05.01.mkv"
+    # (season=0, episode=1, date=2024-05-01) as if it had no season/episode
+    # at all, letting stage 1c reinterpret it by date and silently hijack it
+    # onto an unrelated episode that happens to share that air date. TVDB
+    # has no S00E01 entry here, so the file must fall through to
+    # fuzzy/unmatched instead of ever being stored via the "daily" method.
+    file_path = Path("Show.S00E01.2024.05.01.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show"),
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_format=EpisodeFormat.DAILY_DATE,
+    )
+    media_search = MediaSearchPayload(
+        tvdb_data={
+            "episodes_by_type": {
+                0: {
+                    "type_name": "Aired Order",
+                    "type": "official",
+                    "episodes": [
+                        {
+                            "seasonNumber": 1,
+                            "number": 1,
+                            "aired": "2024-05-01",
+                            "name": "Totally Unrelated Episode",
+                        },
+                    ],
+                },
+            }
+        }
+    )
+
+    QApplication.instance() or QApplication([])
+    mapper = SeriesEpisodeMapper()
+    mapper.load_data(media_input, media_search)
+
+    mapping = mapper.file_episode_mappings.get(file_path)
+    assert mapping is None or mapping["assignment_method"] != "daily"
