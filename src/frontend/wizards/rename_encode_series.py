@@ -976,6 +976,9 @@ class SeriesRenameTokenControl(QWidget):
     def reset(self) -> None:
         """Reset the table."""
         self.table.blockSignals(True)
-        self.table.setRowCount(0)
-        self.table.clearContents()
-        self.table.setAutoScroll(False)
+        try:
+            self.table.setRowCount(0)
+            self.table.clearContents()
+            self.table.setAutoScroll(False)
+        finally:
+            self.table.blockSignals(False)

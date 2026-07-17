@@ -228,7 +228,15 @@ class MainWindowWizard(QWizard):
 
     def _remove_all_pages(self) -> None:
         for page_id in reversed(self.pageIds()):
+            page = self.page(page_id)
             self.removePage(page_id)
+            # removePage() only detaches the page from the wizard -- it does
+            # not delete the widget, so its GSigs connections (e.g. MediaSearch's
+            # settings_close) stay alive. Schedule the old instance for
+            # deletion so "Start Over" doesn't keep accumulating live, still
+            # connected page objects each time fresh pages are built.
+            if page is not None:
+                page.deleteLater()
 
     def _connect_current_id_changed(self) -> None:
         self.currentIdChanged.connect(self._handle_page_change)

@@ -150,3 +150,21 @@ def test_editing_override_token_row_feeds_back_into_generated_name(
     # the regenerated grid must reflect the overridden value
     token_values = page.rename_token_control.get_token_values()
     assert token_values.get("{season_number}") == "99"
+
+
+def test_series_rename_token_control_reset_restores_signals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard: SeriesRenameTokenControl.reset() called
+    table.blockSignals(True) but never called blockSignals(False), so once
+    reset() ran the table's signals stayed permanently blocked. It was dead
+    code until update_generated_name started calling it from the
+    no-mapped-episode branch. Signals must be restored after reset()."""
+    page = _make_series_rename_page(tmp_path, monkeypatch)
+
+    table = page.rename_token_control.table
+    assert table.signalsBlocked() is False
+
+    page.rename_token_control.reset()
+
+    assert table.signalsBlocked() is False
