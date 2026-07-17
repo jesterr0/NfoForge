@@ -10,6 +10,19 @@ from src.enums.series import EpisodeFormat
 from src.payloads.media_inputs import MediaInputPayload
 
 
+def format_multi_season_range(season: int, season_end: int) -> str:
+    """Render a multi-season numeric range as "01-S05" (no leading "S" on
+    the start season).
+
+    Shared by ``SeriesReleaseInfo.season_tag`` (which prepends its own
+    leading "S") and ``TokenReplacer._season_number`` (whose token template
+    supplies the leading "S" itself, e.g. ``S{season_number|zfill(2)}``) so
+    the two independent call sites can't drift apart on how a season range
+    is padded/joined.
+    """
+    return f"{season:02d}-S{season_end:02d}"
+
+
 @dataclass(slots=True)
 class SeriesReleaseInfo:
     media_type: MediaType | None
@@ -59,7 +72,7 @@ class SeriesReleaseInfo:
         if self.season is None:
             return None
         if self.season_end is not None and self.season_end != self.season:
-            return f"S{self.season:02d}-S{self.season_end:02d}"
+            return f"S{format_multi_season_range(self.season, self.season_end)}"
         return f"S{self.season:02d}"
 
     @property

@@ -41,6 +41,7 @@ from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import ImageUploadData
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.series import format_multi_season_range
 from src.version import __version__, program_name, program_url
 
 
@@ -1894,7 +1895,7 @@ class TokenReplacer:
         # a harmless no-op; a single season renders exactly as it did before.
         season_end = self._validate_int_var(self.season_end)
         if season_end is not None and season_end != season:
-            int_val = f"{season:02d}-S{season_end:02d}"
+            int_val = format_multi_season_range(season, season_end)
         else:
             int_val = str(season)
 
