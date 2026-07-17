@@ -11,6 +11,23 @@ if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
+def _incomplete_mapping_message(series_mapper: SeriesEpisodeMapper) -> str:
+    """Choose the warning text for an incomplete series episode mapping.
+
+    Distinguishes the "TVDB has no episode data for this series" case (the
+    user needs to enter season/episode numbers manually) from the plain
+    "some files still aren't mapped" case (the user just needs to finish
+    mapping the remaining files).
+    """
+    if series_mapper.has_unmapped_files() and not series_mapper.has_tvdb_episode_data():
+        return (
+            "TVDB returned no episode data for this series, so files could not "
+            "be auto-matched. Enter a season and episode number for each file "
+            "manually before continuing."
+        )
+    return "Please ensure all files are properly mapped to episodes before continuing."
+
+
 class SeriesMatch(BaseWizardPage):
     def __init__(
         self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
@@ -42,7 +59,7 @@ class SeriesMatch(BaseWizardPage):
             QMessageBox.warning(
                 self,
                 "Incomplete Mapping",
-                "Please ensure all files are properly mapped to episodes before continuing.",
+                _incomplete_mapping_message(self.series_mapper),
             )
             return False
 

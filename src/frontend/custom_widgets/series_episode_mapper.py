@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +32,134 @@ from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.series import EpisodeFormat
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+
+NO_TVDB_EPISODE_DATA_MESSAGE = (
+    "TVDB returned no episode data for this series; enter season/episode manually."
+)
+NO_TVDB_EPISODE_DATA_STYLE = "color: #b3261e; font-weight: bold;"
+
+
+def match_by_absolute(
+    files_parsed: dict[Any, int | None],
+    absolute_episodes: list[dict[str, Any]],
+) -> dict[Any, dict[str, Any]]:
+    """Match files to TVDB absolute-order episodes by absolute episode number.
+
+    This is a pure, Qt-free helper so it can be unit-tested without a widget.
+
+    Args:
+        files_parsed: maps an arbitrary, hashable file identifier (a
+            ``Path``, a filename string, a row index, etc. -- the caller
+            decides) to that file's parsed absolute episode number. This is
+            typically guessit's ``episode`` value for an anime/absolute
+            release that carries no season component, e.g.
+            ``"[Group] Show - 025.mkv"`` parses to ``25``. A value of
+            ``None`` means the file had no parseable number and is skipped.
+        absolute_episodes: the list of TVDB episode dicts for the
+            "Absolute Order" season type, i.e.
+            ``episodes_by_type[type_id]["episodes"]`` for the entry whose
+            ``type`` is ``"absolute"``. Each dict is expected to carry an
+            ``absoluteNumber`` key (and typically ``seasonNumber``/``number``
+            identifying where that absolute episode lives in aired order).
+
+    Returns:
+        A dict with the same keys as ``files_parsed``, but containing only
+        the keys that produced a match, mapped to the matched episode dict
+        from ``absolute_episodes``. Keys with no parseable number, or whose
+        number doesn't appear in ``absolute_episodes``, are omitted.
+    """
+    episodes_by_absolute_number: dict[int, dict[str, Any]] = {}
+    for episode_data in absolute_episodes:
+        absolute_number = episode_data.get("absoluteNumber")
+        if absolute_number is None:
+            continue
+        episodes_by_absolute_number.setdefault(absolute_number, episode_data)
+
+    matches: dict[Any, dict[str, Any]] = {}
+    for file_key, absolute_number in files_parsed.items():
+        if absolute_number is None:
+            continue
+        episode_data = episodes_by_absolute_number.get(absolute_number)
+        if episode_data is not None:
+            matches[file_key] = episode_data
+    return matches
+
+
+def _normalize_air_date(value: Any) -> str | None:
+    """Normalize a date-like value to an ISO "YYYY-MM-DD" string.
+
+    Accepts ``datetime.date``/``datetime.datetime`` (what guessit returns
+    for a parsed filename date) as well as a string (what TVDB's ``aired``
+    field carries, e.g. ``"2024-05-01"``). Returns ``None`` if ``value`` is
+    ``None``, empty, or not a recognizable date.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return date.fromisoformat(text[:10]).isoformat()
+        except ValueError:
+            return None
+    return None
+
+
+def match_by_air_date(
+    files_parsed: dict[Any, Any],
+    episodes: list[dict[str, Any]],
+) -> dict[Any, dict[str, Any]]:
+    """Match files to TVDB episodes by air date.
+
+    This is a pure, Qt-free helper so it can be unit-tested without a widget.
+    It mirrors ``match_by_absolute`` but keys on air date instead of
+    absolute episode number, for daily/date releases (e.g.
+    "Show.2024.05.01.mkv") that carry no season/episode component at all.
+
+    Args:
+        files_parsed: maps an arbitrary, hashable file identifier (a
+            ``Path``, a filename string, a row index, etc. -- the caller
+            decides) to that file's parsed date. This is typically
+            guessit's ``date`` value, a ``datetime.date`` (or
+            ``datetime.datetime``). A value of ``None`` means the file had
+            no parseable date and is skipped.
+        episodes: the list of TVDB episode dicts to search, each expected
+            to carry ``seasonNumber``/``number`` (identifying the episode)
+            and an ``aired`` date string (e.g. ``"2024-05-01"``).
+
+    Returns:
+        A dict with the same keys as ``files_parsed``, but containing only
+        the keys that produced a match, mapped to the matched episode dict
+        from ``episodes``. Keys with no parseable date, or whose date
+        doesn't match any episode's ``aired`` date, are omitted. Dates are
+        normalized (see ``_normalize_air_date``) before comparison so a
+        ``datetime.date``/``datetime.datetime`` parsed value compares equal
+        to TVDB's ISO date string.
+    """
+    episodes_by_date: dict[str, dict[str, Any]] = {}
+    for episode_data in episodes:
+        normalized_aired = _normalize_air_date(episode_data.get("aired"))
+        if normalized_aired is None:
+            continue
+        episodes_by_date.setdefault(normalized_aired, episode_data)
+
+    matches: dict[Any, dict[str, Any]] = {}
+    for file_key, parsed_date in files_parsed.items():
+        normalized_parsed = _normalize_air_date(parsed_date)
+        if normalized_parsed is None:
+            continue
+        episode_data = episodes_by_date.get(normalized_parsed)
+        if episode_data is not None:
+            matches[file_key] = episode_data
+    return matches
 
 
 class EnhancedFileTableItem(QTableWidgetItem):
@@ -342,47 +469,34 @@ class SeriesEpisodeMapper(QWidget):
         self._populate_files_table()
         self._auto_match_files()
 
-    def clear_data(self) -> None:
-        """Clear all data and reset the widget"""
-        self.media_input_payload = None
-        self.media_search_payload = None
-
-        # clear all data structures
-        self.available_episodes.clear()
-        self.episodes_by_type.clear()
-        self.file_episode_mappings.clear()
-        self.episode_items.clear()
-
-        # clear UI elements
-        self.files_table.setRowCount(0)
-        self.episodes_tree.clear()
-        self.episode_order_combo.clear()
-        self._release_format_manually_selected = False
-        self._set_release_format(EpisodeFormat.STANDARD, manually_selected=False)
-        self.episode_filter_combo.clear()
-        self.episode_filter_combo.addItem("All Seasons", "all")
-        self.episode_search_box.clear()
-
-        # update stats
-        self._update_all_stats()
-
     def _load_episode_data(self):
         """Load all available episode data from TVDB"""
         self.available_episodes.clear()
         # store episodes organized by season type
         self.episodes_by_type = {}
 
-        if not (
-            self.media_search_payload
-            and self.media_search_payload.tvdb_data
-            and "episodes_by_type" in self.media_search_payload.tvdb_data
-        ):
+        tvdb_data = (
+            self.media_search_payload.tvdb_data if self.media_search_payload else None
+        )
+        episodes_by_type = tvdb_data.get("episodes_by_type") if tvdb_data else None
+
+        if not episodes_by_type:
+            # TVDB returned no episode data at all for this series (or the
+            # lookup never populated tvdb_data in the first place). Surface
+            # this clearly rather than leaving the episodes tree empty with
+            # no explanation -- the user can still map files manually. Style
+            # it distinctly so it isn't mistaken for the plain stats message
+            # this label normally shows.
+            self.episodes_stats_label.setStyleSheet(NO_TVDB_EPISODE_DATA_STYLE)
+            self.episodes_stats_label.setText(NO_TVDB_EPISODE_DATA_MESSAGE)
             return
 
-        tvdb_data = self.media_search_payload.tvdb_data
+        # TVDB returned real episode data: clear any warning styling left
+        # over from a previous "no episode data" state so it doesn't stick.
+        self.episodes_stats_label.setStyleSheet("")
 
         # store all episode types for UI
-        self.episodes_by_type = tvdb_data["episodes_by_type"]
+        self.episodes_by_type = episodes_by_type
 
         # setup dynamic episode order combo based on available types
         self._setup_episode_order_combo_from_data()
@@ -513,8 +627,12 @@ class SeriesEpisodeMapper(QWidget):
         best_match = None
         best_score = 0
 
-        # search in specified season or all seasons
-        seasons_to_search = [season] if season else self.available_episodes.keys()
+        # search in specified season or all seasons. identity check, not
+        # truthiness -- season 0 is a valid TVDB season (specials), and
+        # `season == 0` is falsy in Python.
+        seasons_to_search = (
+            [season] if season is not None else self.available_episodes.keys()
+        )
 
         for search_season in seasons_to_search:
             if search_season not in self.available_episodes:
@@ -544,6 +662,35 @@ class SeriesEpisodeMapper(QWidget):
 
         return best_match
 
+    def _get_absolute_order_episodes(self) -> list[dict[str, Any]]:
+        """Return TVDB's "Absolute Order" episode list, if one was fetched.
+
+        This scans all season types the mapper knows about rather than only
+        the currently selected TVDB order, so absolute-number matching keeps
+        working even when the user is viewing episodes in Aired/DVD order
+        while the Anime/Absolute release format is selected -- the release
+        format only controls title/filename tokens and doesn't change which
+        TVDB order is displayed.
+        """
+        for type_data in self.episodes_by_type.values():
+            order_type = str(type_data.get("type", "")).lower()
+            order_name = str(type_data.get("type_name", "")).lower()
+            if "absolute" in order_type or "absolute" in order_name:
+                return type_data.get("episodes", [])
+        return []
+
+    def _get_available_episodes_flat(self) -> list[dict[str, Any]]:
+        """Flatten ``self.available_episodes`` (season -> episode -> data)
+        into a single list of episode dicts, for matchers that key on a
+        field (like ``aired``) rather than the season/episode structure --
+        e.g. air-date matching for daily/date releases.
+        """
+        return [
+            episode_data
+            for season_episodes in self.available_episodes.values()
+            for episode_data in season_episodes.values()
+        ]
+
     def _auto_match_files(self) -> None:
         """Enhanced auto-matching with fuzzy fallback"""
         if not self.available_episodes:
@@ -551,6 +698,14 @@ class SeriesEpisodeMapper(QWidget):
 
         matched_count = 0
         fuzzy_matched_count = 0
+
+        absolute_format_active = (
+            self.get_series_format() == EpisodeFormat.ANIME_ABSOLUTE
+        )
+        absolute_episodes = (
+            self._get_absolute_order_episodes() if absolute_format_active else []
+        )
+        daily_format_active = self.get_series_format() == EpisodeFormat.DAILY_DATE
 
         for row in range(self.files_table.rowCount()):
             filename_item = self.files_table.item(row, 0)
@@ -566,12 +721,29 @@ class SeriesEpisodeMapper(QWidget):
 
             if isinstance(season, list):
                 season = season[0] if season else None
-            if isinstance(episode, list):
-                episode = episode[0] if episode else None
 
+            # guessit returns a list of episode numbers for files that span
+            # multiple episodes (e.g. "S01E01E02"). keep the lowest as the
+            # primary episode and carry the highest as the range end so a
+            # single file's multi-episode span isn't collapsed to episode 1.
+            episode_end = None
+            if isinstance(episode, list):
+                if episode:
+                    episode = sorted(episode)
+                    episode, episode_end = episode[0], episode[-1]
+                    if episode_end == episode:
+                        episode_end = None
+                else:
+                    episode = None
+
+            # this must use identity checks, not truthiness -- TVDB uses
+            # season 0 for specials, and `season == 0` is falsy in Python,
+            # so a truthiness check would skip a genuinely parsed "S00E05"
+            # even though `available_episodes` has that exact entry (it's
+            # populated with an `is not None` check, so season 0 is valid).
             if (
-                season
-                and episode
+                season is not None
+                and episode is not None
                 and season in self.available_episodes
                 and episode in self.available_episodes[season]
             ):
@@ -581,13 +753,129 @@ class SeriesEpisodeMapper(QWidget):
                 method = "regex"
 
                 self._store_mapping(
-                    file_path, season, episode, episode_data, confidence, method
+                    file_path,
+                    season,
+                    episode,
+                    episode_data,
+                    confidence,
+                    method,
+                    episode_end=episode_end,
                 )
                 self._update_file_row_assignment(
                     row, season, episode, confidence, method
                 )
                 matched_count += 1
                 continue
+
+            # stage 1b: anime/absolute-numbered releases (e.g.
+            # "[Group] Show - 025.mkv") carry no season, just an absolute
+            # episode number, so stage 1 above never matches them. When the
+            # Anime/Absolute release format is active, match that number
+            # against TVDB's absolute-order episode list instead. The
+            # `season is None` guard is required: a file that DID parse a
+            # real season (e.g. "Show.S05E03.mkv" for a season TVDB has no
+            # data for) must fall through to fuzzy/unmatched instead of
+            # having its episode digit reinterpreted as an unrelated
+            # absolute number.
+            if (
+                absolute_format_active
+                and absolute_episodes
+                and episode is not None
+                and season is None
+            ):
+                absolute_match = match_by_absolute(
+                    {file_path: episode}, absolute_episodes
+                )
+                absolute_episode_data = absolute_match.get(file_path)
+                if absolute_episode_data is not None:
+                    matched_season = absolute_episode_data.get("seasonNumber")
+                    matched_episode = absolute_episode_data.get("number")
+                    if matched_season is not None and matched_episode is not None:
+                        confidence = 0.9
+                        method = "absolute"
+
+                        # translate the range end through the same absolute
+                        # index used for the primary episode, e.g. for
+                        # "[Group] Show - 025-026.mkv" (episode_end=26) so it
+                        # renders as the in-season end (S02E04) rather than
+                        # the raw absolute number. If the end number doesn't
+                        # resolve, or resolves into a different season than
+                        # the start, drop it rather than store a bogus value.
+                        matched_episode_end = None
+                        if episode_end is not None:
+                            end_match = match_by_absolute(
+                                {file_path: episode_end}, absolute_episodes
+                            )
+                            end_episode_data = end_match.get(file_path)
+                            if end_episode_data is not None:
+                                end_season = end_episode_data.get("seasonNumber")
+                                end_number = end_episode_data.get("number")
+                                if (
+                                    end_season == matched_season
+                                    and end_number is not None
+                                ):
+                                    matched_episode_end = end_number
+
+                        self._store_mapping(
+                            file_path,
+                            matched_season,
+                            matched_episode,
+                            absolute_episode_data,
+                            confidence,
+                            method,
+                            episode_end=matched_episode_end,
+                        )
+                        self._update_file_row_assignment(
+                            row, matched_season, matched_episode, confidence, method
+                        )
+                        matched_count += 1
+                        continue
+
+            # stage 1c: daily/date releases (e.g. "Show.2024.05.01.mkv")
+            # carry no season/episode, just an air date (guessit's `date`
+            # key), so stage 1 above never matches them. When the
+            # Daily/Date release format is active, match that date against
+            # the currently loaded episode list's `aired` field instead.
+            # The `season is None and episode is None` guard mirrors stage
+            # 1b: a file that DID parse a real season/episode must fall
+            # through to fuzzy/unmatched instead of being reinterpreted by
+            # date. This must use identity checks, not truthiness -- TVDB
+            # uses season 0 for specials, and `season == 0` is falsy in
+            # Python, so a truthiness check would wrongly treat a genuinely
+            # parsed "S00E01" as season-and-episode-less and let it be
+            # hijacked by date.
+            parsed_date = parsed_data.get("date")
+            if (
+                daily_format_active
+                and parsed_date is not None
+                and season is None
+                and episode is None
+            ):
+                daily_episodes = self._get_available_episodes_flat()
+                daily_match = match_by_air_date(
+                    {file_path: parsed_date}, daily_episodes
+                )
+                daily_episode_data = daily_match.get(file_path)
+                if daily_episode_data is not None:
+                    matched_season = daily_episode_data.get("seasonNumber")
+                    matched_episode = daily_episode_data.get("number")
+                    if matched_season is not None and matched_episode is not None:
+                        confidence = 0.9
+                        method = "daily"
+
+                        self._store_mapping(
+                            file_path,
+                            matched_season,
+                            matched_episode,
+                            daily_episode_data,
+                            confidence,
+                            method,
+                        )
+                        self._update_file_row_assignment(
+                            row, matched_season, matched_episode, confidence, method
+                        )
+                        matched_count += 1
+                        continue
 
             # stage 2: try fuzzy matching (medium confidence)
             fuzzy_result = self._fuzzy_match_episode_name(file_path.stem)
@@ -660,11 +948,18 @@ class SeriesEpisodeMapper(QWidget):
         episode_data: dict,
         confidence: float,
         method: str,
+        episode_end: int | None = None,
     ) -> None:
-        """Store file-to-episode mapping"""
+        """Store file-to-episode mapping.
+
+        ``episode_end`` carries the last episode number for a file that spans
+        multiple episodes (e.g. a single "S01E01E02" file). It is ``None``
+        for a normal single-episode mapping.
+        """
         self.file_episode_mappings[file_path] = {
             "season": season,
             "episode": episode,
+            "episode_end": episode_end,
             "episode_data": episode_data,
             "episode_name": episode_data.get("name", "Unknown"),
             "confidence": confidence,
@@ -675,29 +970,40 @@ class SeriesEpisodeMapper(QWidget):
         self, row: int, season: int, episode: int, confidence: float, method: str
     ):
         """Update file table row with assignment data"""
-        # season (editable, numeric)
-        season_item = NumericTableItem(str(season))
-        self.files_table.setItem(row, 1, season_item)
+        # block signals while populating cells programmatically: setItem()
+        # fires itemChanged, which would otherwise re-enter
+        # _on_table_item_changed and re-store this mapping through the
+        # "manual" path, clobbering the method/confidence (and episode_end)
+        # that were just computed here.
+        self.files_table.blockSignals(True)
+        try:
+            # season (editable, numeric)
+            season_item = NumericTableItem(str(season))
+            self.files_table.setItem(row, 1, season_item)
 
-        # episode (editable, numeric)
-        episode_item = NumericTableItem(str(episode))
-        self.files_table.setItem(row, 2, episode_item)
+            # episode (editable, numeric)
+            episode_item = NumericTableItem(str(episode))
+            self.files_table.setItem(row, 2, episode_item)
 
-        # confidence with color coding (read only)
-        confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
-        confidence_item.setFlags(confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        if confidence >= 0.9:
-            confidence_item.setBackground(Qt.GlobalColor.green)
-        elif confidence >= 0.7:
-            confidence_item.setBackground(Qt.GlobalColor.yellow)
-        else:
-            confidence_item.setBackground(Qt.GlobalColor.red)
-        self.files_table.setItem(row, 3, confidence_item)
+            # confidence with color coding (read only)
+            confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
+            confidence_item.setFlags(
+                confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+            )
+            if confidence >= 0.9:
+                confidence_item.setBackground(Qt.GlobalColor.green)
+            elif confidence >= 0.7:
+                confidence_item.setBackground(Qt.GlobalColor.yellow)
+            else:
+                confidence_item.setBackground(Qt.GlobalColor.red)
+            self.files_table.setItem(row, 3, confidence_item)
 
-        # method (read only)
-        method_item = QTableWidgetItem(method)
-        method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        self.files_table.setItem(row, 4, method_item)
+            # method (read only)
+            method_item = QTableWidgetItem(method)
+            method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.files_table.setItem(row, 4, method_item)
+        finally:
+            self.files_table.blockSignals(False)
 
     def _clear_all_assignments(self) -> None:
         """Clear all file assignments"""
@@ -1049,37 +1355,80 @@ class SeriesEpisodeMapper(QWidget):
                 return
 
             # check if episode exists in TVDB data
-            if (
+            has_tvdb_match = (
                 season in self.available_episodes
                 and episode in self.available_episodes[season]
-            ):
+            )
+            if has_tvdb_match:
                 episode_data = self.available_episodes[season][episode]
-                confidence = 1.0  # 100%
-                method = "manual"
-
-                # store the mapping
-                self._store_mapping(
-                    file_path, season, episode, episode_data, confidence, method
-                )
-
-                # update confidence and method columns
-                confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
-                confidence_item.setFlags(
-                    confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-                )
-                confidence_item.setBackground(Qt.GlobalColor.green)  # Manual = green
-                self.files_table.setItem(row, 3, confidence_item)
-
-                method_item = QTableWidgetItem(method)
-                method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.files_table.setItem(row, 4, method_item)
             else:
-                # clear confidence and method for invalid episodes
-                self._clear_row_assignment_data(row)
+                # TVDB has no data for this season/episode (or no episode
+                # data at all for the series): still store what the user
+                # typed using a minimal synthesized payload instead of
+                # clearing the row. Otherwise the user has no way to map
+                # this file at all, and the wizard has no Back button to
+                # escape the resulting dead end.
+                episode_data = {
+                    "season": season,
+                    "episode": episode,
+                    "name": None,
+                    "aired": None,
+                }
 
-        except Exception as _e:
-            pass
-            # TODO: log?
+            confidence = 1.0  # 100%
+            method = "manual"
+
+            # store the mapping
+            self._store_mapping(
+                file_path, season, episode, episode_data, confidence, method
+            )
+
+            # update confidence and method columns
+            confidence_item = QTableWidgetItem(f"{confidence * 100:.0f}%")
+            confidence_item.setFlags(
+                confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
+            )
+            method_item = QTableWidgetItem(method)
+            method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+
+            if has_tvdb_match:
+                confidence_item.setBackground(Qt.GlobalColor.green)  # Manual = green
+                # season/episode items are already attached to the table;
+                # a previous edit may have painted them amber (unverified
+                # manual mapping) before this correction matched TVDB
+                # data, so reset them back to the table default. block
+                # signals while touching them so setBackground() (which
+                # emits itemChanged) doesn't re-enter this slot
+                self.files_table.blockSignals(True)
+                try:
+                    season_item.setBackground(Qt.GlobalColor.transparent)
+                    episode_item.setBackground(Qt.GlobalColor.transparent)
+                finally:
+                    self.files_table.blockSignals(False)
+            else:
+                # amber: manual entry not confirmed against TVDB data
+                unverified_color = QColor(255, 205, 120)
+                confidence_item.setBackground(unverified_color)
+                method_item.setBackground(unverified_color)
+                # season/episode items are already attached to the table;
+                # block signals while touching them so setBackground()
+                # (which emits itemChanged) doesn't re-enter this slot
+                self.files_table.blockSignals(True)
+                try:
+                    season_item.setBackground(unverified_color)
+                    episode_item.setBackground(unverified_color)
+                finally:
+                    self.files_table.blockSignals(False)
+
+            self.files_table.setItem(row, 3, confidence_item)
+            self.files_table.setItem(row, 4, method_item)
+
+        except Exception as e:
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to process manual season/episode edit for "
+                f"'{file_path.name}': {e}",
+            )
 
         # update stats and refresh display
         self._update_all_stats()
@@ -1099,6 +1448,21 @@ class SeriesEpisodeMapper(QWidget):
         method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
         self.files_table.setItem(row, 4, method_item)
 
+        # reset season/episode background: a previous edit may have
+        # painted them amber (unverified manual mapping), but the mapping
+        # no longer exists so the cells should show no special color.
+        # block signals while touching them so setBackground() (which
+        # emits itemChanged) doesn't re-enter _on_table_item_changed
+        season_item = self.files_table.item(row, 1)
+        episode_item = self.files_table.item(row, 2)
+        if season_item is not None and episode_item is not None:
+            self.files_table.blockSignals(True)
+            try:
+                season_item.setBackground(Qt.GlobalColor.transparent)
+                episode_item.setBackground(Qt.GlobalColor.transparent)
+            finally:
+                self.files_table.blockSignals(False)
+
     # public API
     def load_media_search_data(self, media_search_payload: MediaSearchPayload) -> None:
         """Load new media search data and refresh the episode display"""
@@ -1115,17 +1479,22 @@ class SeriesEpisodeMapper(QWidget):
         self._auto_match_files()
 
     def get_file_episode_mappings(self) -> dict[Path, dict[str, Any]]:
-        """Get the current file-to-episode mappings"""
+        """Get the current file-to-episode mappings.
+
+        Each mapping value may include an ``episode_end`` key (``int | None``)
+        when a single file spans multiple episodes (e.g. "S01E01E02").
+        """
         return self.file_episode_mappings.copy()
 
     def get_simple_mappings(self) -> dict[str, dict[str, Any]]:
-        """Get simplified mappings: {filename: {season, episode, confidence_percent}}"""
+        """Get simplified mappings: {filename: {season, episode, episode_end, confidence_percent}}"""
         simple_mappings = {}
 
         for file_path, mapping_data in self.file_episode_mappings.items():
             simple_mappings[file_path.name] = {
                 "season": mapping_data["season"],
                 "episode": mapping_data["episode"],
+                "episode_end": mapping_data.get("episode_end"),
                 # convert to 0-100%
                 "confidence": int(mapping_data["confidence"] * 100),
                 "method": mapping_data["assignment_method"],
@@ -1135,13 +1504,14 @@ class SeriesEpisodeMapper(QWidget):
         return simple_mappings
 
     def get_path_mappings(self) -> dict[str, dict[str, Any]]:
-        """Get mappings with full file paths: {file_path: {season, episode, confidence_percent}}"""
+        """Get mappings with full file paths: {file_path: {season, episode, episode_end, confidence_percent}}"""
         path_mappings = {}
 
         for file_path, mapping_data in self.file_episode_mappings.items():
             path_mappings[str(file_path)] = {
                 "season": mapping_data["season"],
                 "episode": mapping_data["episode"],
+                "episode_end": mapping_data.get("episode_end"),
                 # convert to 0-100%
                 "confidence": int(mapping_data["confidence"] * 100),
                 "method": mapping_data["assignment_method"],
@@ -1151,15 +1521,64 @@ class SeriesEpisodeMapper(QWidget):
         return path_mappings
 
     def get_episode_map(self) -> dict | None:
-        """Get episode mappings"""
+        """Get episode mappings.
+
+        Values may include an ``episode_end`` key (``int | None``) marking the
+        last episode number for a file that spans multiple episodes.
+        """
         return self.file_episode_mappings
 
     def is_valid(self) -> bool:
-        """Check if all files are properly assigned"""
+        """Check that every file is mapped and no two files target overlapping episodes.
+
+        A mapping is expanded to every ``(season, episode)`` pair it covers --
+        a normal single-episode mapping covers just its own ``episode``, while
+        a multi-episode mapping (``episode_end`` set, e.g. a single
+        "S01E01E02" file) covers every episode from ``episode`` through
+        ``episode_end`` inclusive. If any ``(season, episode)`` pair is
+        claimed by more than one file, the mappings overlap and this returns
+        ``False`` -- this generalizes the old exact-duplicate-start check,
+        which missed overlaps like file A "S01E01-E02" and file B "S01E02":
+        their start tuples ``(1, 1)`` and ``(1, 2)`` differ even though both
+        claim S01E02.
+        """
         if not self.media_input_payload or not self.media_input_payload.file_list:
             return False
 
-        return len(self.file_episode_mappings) == len(
+        if len(self.file_episode_mappings) != len(self.media_input_payload.file_list):
+            return False
+
+        claimed_targets: set[tuple[Any, Any]] = set()
+        for mapping in self.file_episode_mappings.values():
+            season = mapping.get("season")
+            episode = mapping.get("episode")
+            episode_end = mapping.get("episode_end")
+            range_end = episode_end if episode_end is not None else episode
+
+            if episode is None or range_end is None:
+                target = (season, episode)
+                if target in claimed_targets:
+                    return False
+                claimed_targets.add(target)
+                continue
+
+            for target_episode in range(episode, range_end + 1):
+                target = (season, target_episode)
+                if target in claimed_targets:
+                    return False
+                claimed_targets.add(target)
+
+        return True
+
+    def has_tvdb_episode_data(self) -> bool:
+        """Whether TVDB returned any episode data for the current series."""
+        return bool(self.episodes_by_type)
+
+    def has_unmapped_files(self) -> bool:
+        """Whether at least one input file still lacks a season/episode mapping."""
+        if not self.media_input_payload or not self.media_input_payload.file_list:
+            return False
+        return len(self.file_episode_mappings) < len(
             self.media_input_payload.file_list
         )
 
@@ -1187,8 +1606,6 @@ class SeriesEpisodeMapper(QWidget):
 
         if "absolute" in order_type or "absolute" in order_name:
             return EpisodeFormat.ANIME_ABSOLUTE
-        # if "dvd" in order_type or "dvd" in order_name:
-        #     return EpisodeFormat.DVD
         return EpisodeFormat.STANDARD
 
     def _set_release_format(

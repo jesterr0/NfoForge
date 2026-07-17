@@ -137,6 +137,10 @@ class SandboxSeriesMapperPage(QWizardPage):
         self.context.media_input.series_episode_map = (
             self.series_mapper.get_episode_map()
         )
+        # update config with the selected episode format
+        self.context.media_input.series_episode_format = (
+            self.series_mapper.get_series_format()
+        )
         return True
 
     def initializePage(self) -> None:
@@ -247,6 +251,10 @@ class SandboxMainWindow(QMainWindow):
         self.status_bar.showMessage("Ready")
         GSigs().main_window_update_status_tip.connect(self._update_status_bar)
         GSigs().main_window_clear_status_tip.connect(self._clear_status_bar)
+        # mirror MainWindow's re-entrancy guard so the sandbox window disables
+        # itself while a worker (e.g. MediaInfo parsing) is running, preventing
+        # a second click from starting a second worker
+        GSigs().main_window_set_disabled.connect(self._toggle_state)
 
         self.wizard = SandboxWizard(config, context, self)
         self.wizard.accepted.connect(self.accept)
@@ -272,6 +280,11 @@ class SandboxMainWindow(QMainWindow):
         """Reject the dialog"""
         self._result = QDialog.DialogCode.Rejected
         self.close()
+
+    @Slot(bool)
+    def _toggle_state(self, state: bool) -> None:
+        """Disable/enable the window (mirrors MainWindow._toggle_state)"""
+        self.setDisabled(state)
 
     @Slot(str, int)
     def _update_status_bar(self, msg: str, _timer: int) -> None:

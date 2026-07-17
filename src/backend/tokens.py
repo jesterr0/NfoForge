@@ -187,15 +187,20 @@ class Tokens:
     REMUX = FileToken("{remux}", "REMUX")
     SOURCE = FileToken("{source}", "Source media (BluRay/DVD)")
     # series exclusive FileTokens
-    AIR_DATE = FileToken("{air_date}", "Air date (series - UTC)")
+    AIR_DATE = FileToken("{air_date}", "Air date (series first aired - UTC)")
     SEASON_NUMBER = FileToken("{season_number}", "Season number (1, 2, 3, etc.)")
     EPISODE_AIR_DATE = FileToken("{episode_air_date}", "Episode air date (UTC)")
     EPISODE_NUMBER = FileToken("{episode_number}", "Episode number (1, 2, 3, etc.)")
     EPISODE_NUMBER_ABSOLUTE = FileToken(
-        "{episode_number_absolute}", "Episode number (1, 2, 3, etc.)"
+        "{episode_number_absolute}", "Absolute episode number (1, 2, 3, etc.)"
+    )
+    END_EPISODE_NUMBER = FileToken(
+        "{end_episode_number}",
+        "End episode number for a multi-episode file (blank for single episodes).",
     )
     EPISODE_TITLE = FileToken(
-        "{episode_title}", "Title parsed from media databases with minimal formatting"
+        "{episode_title}",
+        "Episode title parsed from media databases with minimal formatting",
     )
     EPISODE_TITLE_CLEAN = FileToken(
         "{episode_title_clean}", "Clean title parsed from media databases"

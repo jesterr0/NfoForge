@@ -45,12 +45,11 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import block_all_signals, build_h_line
+from src.frontend.utils import build_h_line
 from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
-from src.payloads.episodes import EpisodeSelection
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -88,11 +87,8 @@ class RenameEncodeSeries(BaseWizardPage):
         self.config = config
         self.context = context
         self.backend = RenameEncodeSeriesBackEnd()
-        self._input_ext: str | None = None
         self._token_window: QWidget | None = None
         self._overridden_tokens = set()
-        self._current_episode_selection: EpisodeSelection | None = None
-        self._current_episode_batch = None
 
         # rename loop vars
         self._rename_loop: QEventLoop | None = None
@@ -348,7 +344,8 @@ class RenameEncodeSeries(BaseWizardPage):
             release_group_name if release_group_name else ""
         )
 
-        # Initial call to update_generated_name will trigger preview generation
+        # Initial call to update_generated_name populates the override token
+        # grid (using the first mapped episode as a representative preview)
         self.update_generated_name()
 
     def validatePage(self) -> bool:
@@ -402,6 +399,12 @@ class RenameEncodeSeries(BaseWizardPage):
                 season_num=media_data["season"],
                 episode_num=media_data["episode"],
                 episode_format=self.context.media_input.series_episode_format,
+                multi_episode_style=self.config.settings.series.multi_episode_style,
+                # each renamed file belongs to exactly one season, so season_end
+                # matches season_num here (single-season, unchanged rendering);
+                # the multi-season {season_number} range only applies to the
+                # aggregate release title/NFO (see ProcessBackEnd).
+                season_end=media_data["season"],
             )
 
             if renamed_file:
@@ -760,6 +763,54 @@ class RenameEncodeSeries(BaseWizardPage):
         else:
             self.backend.override_tokens.pop("release_group", None)
 
+        # Run the renamer for a representative (first mapped) episode so the
+        # override token grid mirrors the movie page's live preview. Without
+        # a mapped episode there is nothing to preview yet.
+        episode_map = self.context.media_input.series_episode_map
+        if not episode_map:
+            self.rename_token_control.reset()
+            return
+
+        _, media_data = next(iter(episode_map.items()))
+
+        user_tokens = {
+            k: v
+            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
+            if TokenSelection(t) is TokenSelection.FILE_TOKEN
+        }
+
+        get_file_name = self.backend.series_renamer(
+            media_input_obj=self.context.media_input,
+            token=token,
+            colon_replacement=self.config.settings.series.filename_colon_replace,
+            media_search_payload=self.context.media_search,
+            title_clean_rules=self.config.settings.global_management.title_clean_rules,
+            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+            user_tokens=user_tokens,
+            season_num=media_data["season"],
+            episode_num=media_data["episode"],
+            episode_format=self.context.media_input.series_episode_format,
+            multi_episode_style=self.config.settings.series.multi_episode_style,
+            season_end=media_data["season"],
+        )
+
+        if get_file_name and self.backend.token_replacer:
+            # update rename token control. unlike the movie page's default
+            # token, the series default tokens pipe {season_number} and
+            # {episode_number} through filters (e.g. "{season_number|zfill(2)}"),
+            # so the sort pattern must tolerate an optional "|filter" segment or
+            # those two series-specific tokens would never appear in the grid.
+            sort_token_order = re.findall(
+                r"\{(?:[:][^:}]+:)*([a-z_]+)(?:\|[^:}]*)?(?:[:][^:}]+:)*\}", token
+            )
+            sort_token_data = self.backend.token_replacer.token_data.get_dict()  # pyright: ignore[reportAttributeAccessIssue]
+            sorted_token_data = {
+                k: sort_token_data[k]
+                for k in sort_token_order
+                if k in sort_token_data and sort_token_data[k]
+            }
+            self.rename_token_control.populate_table(sorted_token_data)
+
     def _reset_re_release_reason_widgets(self) -> None:
         """Hide and reset both repack and proper reason widgets."""
         for lbl, combo in [
@@ -785,31 +836,6 @@ class RenameEncodeSeries(BaseWizardPage):
             elif "proper" in text:
                 self.proper_reason_lbl.show()
                 self.proper_reason_combo.show()
-
-    def reset_page(self) -> None:
-        """Reset the page to default state."""
-        block_all_signals(self, True)
-        for combo_box in (
-            self.edition_combo,
-            self.frame_size_combo,
-            self.localization_combo,
-            self.re_release_combo,
-        ):
-            combo_box.setCurrentIndex(0)
-        self._reset_re_release_reason_widgets()
-        self.release_group_entry.clear()
-        self.options_scroll_area.verticalScrollBar().setValue(0)
-        self.override_group.setChecked(False)
-        self.episode_count_label.setText("No episodes loaded")
-
-        self._input_ext = None
-        self._current_episode_selection = None
-        self._current_episode_batch = None
-        self._close_token_window()
-        self._overridden_tokens.clear()
-
-        self.backend.reset()
-        block_all_signals(self, False)
 
     @staticmethod
     def _update_combo_box(
@@ -950,6 +976,9 @@ class SeriesRenameTokenControl(QWidget):
     def reset(self) -> None:
         """Reset the table."""
         self.table.blockSignals(True)
-        self.table.setRowCount(0)
-        self.table.clearContents()
-        self.table.setAutoScroll(False)
+        try:
+            self.table.setRowCount(0)
+            self.table.clearContents()
+            self.table.setAutoScroll(False)
+        finally:
+            self.table.blockSignals(False)

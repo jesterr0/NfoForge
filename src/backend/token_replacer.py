@@ -32,19 +32,30 @@ from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
 from src.enums.media_type import MediaType
+from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.rename import QualitySelection
 from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import ComparisonPair, ImageUploadData
+from src.packages.custom_types import ImageUploadData
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.series import format_multi_season_range
 from src.version import __version__, program_name, program_url
 
 
 class TokenReplacer:
     FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
+
+    # TVDB placeholder episode titles that should render as empty rather
+    # than landing in output verbatim: exactly "TBA", or "Episode" followed
+    # by optional whitespace and digits (e.g. "Episode 12", "Episode12").
+    # Anchored on both ends so real titles like "TBA Confidential" or
+    # "Episode of Care" are left untouched.
+    _PLACEHOLDER_EPISODE_TITLE_RE = re.compile(
+        r"^(?:tba|episode\s*\d+)$", re.IGNORECASE
+    )
 
     __slots__ = (
         # __init__
@@ -77,8 +88,10 @@ class TokenReplacer:
         "parse_filename_attributes",
         # series exclusive args
         "season_number",
+        "season_end",
         "episode_number",
         "episode_format",
+        "multi_episode_style",
         # derived properties (computed from payload)
         "primary_file",
         "source_file",
@@ -123,8 +136,10 @@ class TokenReplacer:
         dummy_screen_shots: bool = False,
         parse_filename_attributes: bool = False,
         season_number: int | None = None,
+        season_end: int | None = None,
         episode_number: int | None = None,
         episode_format: EpisodeFormat | None = None,
+        multi_episode_style: MultiEpisodeStyle = MultiEpisodeStyle.RANGE,
     ):
         """
         Takes a MediaInputPayload and outputs formatted strings based on tokens.
@@ -167,8 +182,16 @@ class TokenReplacer:
             parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
               detected from the filename.
             season_number (Optional[int]): Season number.
+            season_end (Optional[int]): Highest season number in a multi-season pack. When
+                set and different from `season_number`, the {season_number} token renders
+                a pre-padded "SS-Seend" range instead of the raw start season (e.g.
+                season_number=1, season_end=5 -> "01-S05"). Ignored (single season) when
+                None or equal to `season_number`.
             episode_number (Optional[int]): Episode number.
             episode_format (Optional[EpisodeFormat]): Episode format (Standard, Daily, Anime).
+            multi_episode_style (MultiEpisodeStyle): How the {episode_number} token renders a
+                multi-episode file's span (e.g. RANGE -> "01-03", SCENE -> "01-E03"). Ignored for
+                single-episode files, whose {episode_number} stays the raw start number.
             flat_filters (Optional[dict[str, Callable[..., str]]]): Custom filters for flat mode.
                 Dictionary mapping filter names to callable functions that take (value, *args) and return str.
         """
@@ -203,8 +226,10 @@ class TokenReplacer:
         self.parse_filename_attributes = parse_filename_attributes
         # series exclusive args
         self.season_number = season_number
+        self.season_end = season_end
         self.episode_number = episode_number
         self.episode_format = episode_format
+        self.multi_episode_style = MultiEpisodeStyle(multi_episode_style)
 
         # derive file references from payload (paths are always current after renames)
         self.primary_file = self._get_primary_file()
@@ -259,80 +284,6 @@ class TokenReplacer:
         primary = self._get_primary_file()
         return self.media_input_obj.file_list_mediainfo.get(primary)
 
-    # def set_active_file(self, file_path: Path) -> None:
-    #     """
-    #     Set the active file for token processing.
-
-    #     Args:
-    #         file_path: Path to the file to make active
-    #     """
-    #     if file_path not in self.media_input_obj.file_list:
-    #         raise ValueError(f"File {file_path} not found in media input file list")
-
-    #     # Update primary file and related properties
-    #     self.primary_file = file_path
-    #     self.media_info_obj = (
-    #         self.media_input_obj.file_list_mediainfo.get(file_path)
-    #         if self.media_input_obj.file_list_mediainfo
-    #         else None
-    #     )
-    #     self.guess_name = guessit(file_path.name)
-
-    #     # For series, extract episode info from filename
-    #     if self.is_series_mode:
-    #         self._update_episode_info_from_file(file_path)
-
-    # def get_output_for_file(self, file_path: Path) -> str | None:
-    #     """
-    #     Generate output for a specific file without permanently changing context.
-
-    #     Args:
-    #         file_path: Path to the file to process
-
-    #     Returns:
-    #         Formatted string for the file
-    #     """
-    #     # Store original state
-    #     original_primary = self.primary_file
-    #     original_media_info = self.media_info_obj
-    #     original_guess = self.guess_name
-    #     original_season = self.season_number
-    #     original_episode = self.episode_number
-
-    #     try:
-    #         # Temporarily set the active file
-    #         self.set_active_file(file_path)
-
-    #         # Generate output
-    #         return self.get_output()
-
-    #     finally:
-    #         # Restore original state
-    #         self.primary_file = original_primary
-    #         self.media_info_obj = original_media_info
-    #         self.guess_name = original_guess
-    #         self.season_number = original_season
-    #         self.episode_number = original_episode
-
-    # def get_output_for_all_files(self) -> dict[Path, str]:
-    #     """
-    #     Generate outputs for all files in the file list.
-
-    #     Returns:
-    #         Dictionary mapping file paths to their formatted outputs
-    #     """
-    #     outputs = {}
-    #     for file_path in self.media_input_obj.file_list:
-    #         try:
-    #             output = self.get_output_for_file(file_path)
-    #             if output:
-    #                 outputs[file_path] = output
-    #         except Exception as e:
-    #             # Log error but continue with other files
-    #             print(f"Error processing {file_path}: {e}")
-
-    #     return outputs
-
     def _get_source_mediainfo(self) -> MediaInfo | None:
         """Get MediaInfo for the source file."""
         if not self.source_file:
@@ -344,203 +295,15 @@ class TokenReplacer:
 
         return None
 
-        # Get from file_list_mediainfo if available
-        if self.media_input_obj.file_list_mediainfo:
-            return self.media_input_obj.file_list_mediainfo.get(self.source_file)
-
-        return None
-
-    # def get_batch_outputs(
-    #     self, template_per_file: dict[Path, str] | None = None
-    # ) -> dict[Path, str]:
-    #     """
-    #     Generate outputs for multiple files, optionally with different templates per file.
-
-    #     Args:
-    #         template_per_file: Optional dict mapping file paths to specific token strings.
-    #                           If None, uses the instance's token_string for all files.
-
-    #     Returns:
-    #         Dictionary mapping file paths to their formatted outputs
-    #     """
-    #     outputs = {}
-    #     original_token_string = self.token_string
-
-    #     for file_path in self.media_input_obj.file_list:
-    #         try:
-    #             # Set custom template if provided
-    #             if template_per_file and file_path in template_per_file:
-    #                 self.token_string = template_per_file[file_path]
-
-    #             output = self.get_output_for_file(file_path)
-    #             if output:
-    #                 outputs[file_path] = output
-
-    #         except Exception as e:
-    #             print(f"Error processing {file_path}: {e}")
-    #         finally:
-    #             # Restore original template
-    #             self.token_string = original_token_string
-
-    #     return outputs
-
-    # @property
-    # def active_file_info(self) -> dict[str, Any]:
-    #     """
-    #     Get information about the currently active file.
-
-    #     Returns:
-    #         Dictionary with current file context information
-    #     """
-    #     return {
-    #         "file_path": self.primary_file,
-    #         "has_mediainfo": self.media_info_obj is not None,
-    #         "season_number": self.season_number,
-    #         "episode_number": self.episode_number,
-    #         "guessit_info": self.guess_name,
-    #         "is_series_mode": self.is_series_mode,
-    #         "is_comparison_mode": self.is_comparison_mode,
-    #     }
-
     @property
     def media_input(self) -> Path:
         """Backward compatibility property."""
         return self.primary_file
 
-    # @property
-    # def is_comparison_mode(self) -> bool:
-    #     """Check if we're in comparison mode."""
-    #     return self.media_input_obj.comparison_pair is not None
-
     @property
     def is_series_mode(self) -> bool:
         """Check if we're processing a series."""
         return self.media_input_obj.media_type == MediaType.SERIES
-
-    # @property
-    # def is_movie_mode(self) -> bool:
-    #     """Check if we're processing a movie."""
-    #     return self.media_input_obj.media_type == MediaType.MOVIE
-
-    # def get_series_output(self, episode_file: Path) -> str | None:
-    #     """
-    #     Generate output for a specific episode file in a series.
-
-    #     Args:
-    #         episode_file: Specific episode file to process
-
-    #     Returns:
-    #         Formatted string for the episode
-    #     """
-    #     if not self.is_series_mode:
-    #         raise ValueError(
-    #             "get_series_output can only be used with series media type"
-    #         )
-
-    #     # Temporarily update context for this episode
-    #     original_primary = self.primary_file
-    #     original_media_info = self.media_info_obj
-    #     original_guess = self.guess_name
-
-    #     try:
-    #         # Update to episode-specific data
-    #         self.primary_file = episode_file
-    #         self.media_info_obj = (
-    #             self.media_input_obj.file_list_mediainfo.get(episode_file)
-    #             if self.media_input_obj.file_list_mediainfo
-    #             else None
-    #         )
-    #         self.guess_name = guessit(episode_file.name)
-
-    #         # Extract episode info from filename
-    #         self._update_episode_info_from_file(episode_file)
-
-    #         # Generate output
-    #         return self.get_output()
-
-    #     finally:
-    #         # Restore original values
-    #         self.primary_file = original_primary
-    #         self.media_info_obj = original_media_info
-    #         self.guess_name = original_guess
-
-    # def get_all_series_outputs(self) -> dict[Path, str]:
-    #     """Generate outputs for all episodes in a series."""
-    #     if not self.is_series_mode:
-    #         raise ValueError(
-    #             "get_all_series_outputs can only be used with series media type"
-    #         )
-
-    #     outputs = {}
-    #     for episode_file in self.media_input_obj.file_list:
-    #         try:
-    #             output = self.get_series_output(episode_file)
-    #             if output:
-    #                 outputs[episode_file] = output
-    #         except Exception as e:
-    #             # Log error but continue with other episodes
-    #             print(f"Error processing {episode_file}: {e}")
-
-    #     return outputs
-
-    # def _update_episode_info_from_file(self, episode_file: Path) -> None:
-    #     """Extract season and episode numbers from filename."""
-    #     guess_info = guessit(episode_file.name)
-
-    #     # Update season/episode numbers if found
-    #     if "season" in guess_info:
-    #         self.season_number = guess_info["season"]
-    #     if "episode" in guess_info:
-    #         self.episode_number = guess_info["episode"]
-
-    # @classmethod
-    # def from_legacy_inputs(  # TODO: remove i doubt we will ever need this
-    #     cls,
-    #     media_input: Path,
-    #     token_string: str,
-    #     source_file: Path | None = None,
-    #     media_info_obj: MediaInfo | None = None,
-    #     source_file_mi_obj: MediaInfo | None = None,
-    #     **kwargs,
-    # ) -> "TokenReplacer":
-    #     """
-    #     Create TokenReplacer from legacy single-file inputs.
-    #     Provides backward compatibility.
-    #     """
-    #     # create MediaInputPayload from legacy inputs
-    #     file_list = [media_input] if media_input.is_file() else []
-
-    #     # build file_list_mediainfo
-    #     file_list_mediainfo = {}
-    #     if media_info_obj:
-    #         file_list_mediainfo[media_input] = media_info_obj
-    #     elif media_input.exists():
-    #         media_info = MediaInfo.parse(str(media_input))
-    #         file_list_mediainfo[media_input] = media_info
-
-    #     # add source file to file list and mediainfo if provided
-    #     if source_file:
-    #         file_list.append(source_file)
-    #         if source_file_mi_obj:
-    #             file_list_mediainfo[source_file] = source_file_mi_obj
-    #         elif source_file.exists():
-    #             media_info = MediaInfo.parse(str(source_file))
-    #             file_list_mediainfo[source_file] = media_info
-
-    #     # create comparison pair if we have both source and media files
-    #     comparison_pair = None
-    #     if source_file:
-    #         comparison_pair = ComparisonPair(source=source_file, media=media_input)
-
-    #     payload = MediaInputPayload(
-    #         input_path=media_input,
-    #         file_list=file_list,
-    #         file_list_mediainfo=file_list_mediainfo if file_list_mediainfo else None,
-    #         comparison_pair=comparison_pair,
-    #         media_type=MediaType.MOVIE,  # Default to movie for legacy
-    #     )
-
-    #     return cls(payload, token_string, **kwargs)
 
     def get_output(self) -> str | None:
         """
@@ -1001,6 +764,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.EPISODE_NUMBER_ABSOLUTE.token:
             return self._episode_number_absolute(token_data)
 
+        elif token_data.bracket_token == Tokens.END_EPISODE_NUMBER.token:
+            return self._end_episode_number(token_data)
+
         elif token_data.bracket_token == Tokens.EPISODE_TITLE.token:
             return self._episode_title(token_data)
 
@@ -1155,20 +921,21 @@ class TokenReplacer:
                         self.colon_replace, formatted_title
                     )
 
-            # apply specific formatting for 'title_clean' tokens
+            # apply specific formatting for '*title_clean' tokens (match braced literals)
             if filled_tokens:
-                if "title_clean" in formatted_title:
+                if "{title_clean}" in formatted_title:
                     formatted_title = formatted_title.replace(
-                        "{title_clean}", filled_tokens["title_clean"]
+                        "{title_clean}", filled_tokens.get("title_clean", "")
                     )
-                if "episode_title_clean" in formatted_title:
+                if "{episode_title_clean}" in formatted_title:
                     formatted_title = formatted_title.replace(
-                        "{episode_title_clean}", filled_tokens["episode_title_clean"]
+                        "{episode_title_clean}",
+                        filled_tokens.get("episode_title_clean", ""),
                     )
-                if "imdb_aka_fallback_title_clean" in formatted_title:
+                if "{imdb_aka_fallback_title_clean}" in formatted_title:
                     formatted_title = formatted_title.replace(
                         "{imdb_aka_fallback_title_clean}",
-                        filled_tokens["imdb_aka_fallback_title_clean"],
+                        filled_tokens.get("imdb_aka_fallback_title_clean", ""),
                     )
 
             # remove unfilled tokens if needed
@@ -1212,15 +979,13 @@ class TokenReplacer:
             raise InvalidTokenError("Invalid 'unfilled_token_mode'")
 
     def _air_date(self, token_data: TokenData) -> str:
+        """Series-level first-aired date (parallels the movie {release_date} token)."""
         if self.media_search_obj.media_type is not MediaType.SERIES:
             return ""
-        get_info = self._verify_series_info()
-        if not get_info:
+        tvdb_data = self.media_search_obj.tvdb_data
+        if not tvdb_data:
             return ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if not episode_data:
-            return ""
-        return self._optional_user_input(episode_data.get("aired", ""), token_data)
+        return self._optional_user_input(tvdb_data.get("firstAired", ""), token_data)
 
     def _edition(self, token_data: TokenData) -> str:
         if self.edition_override:
@@ -2122,7 +1887,18 @@ class TokenReplacer:
 
     def _season_number(self, token_data: TokenData) -> str:
         season = self._validate_int_var(self.season_number)
-        int_val = str(season) if season is not None else ""
+        if season is None:
+            return self._optional_user_input("", token_data)
+
+        # a multi-season pack (season_end set and higher than the start season)
+        # renders a pre-padded "SS-Seend" range so a template's own |zfill(2) is
+        # a harmless no-op; a single season renders exactly as it did before.
+        season_end = self._validate_int_var(self.season_end)
+        if season_end is not None and season_end != season:
+            int_val = format_multi_season_range(season, season_end)
+        else:
+            int_val = str(season)
+
         return self._optional_user_input(int_val, token_data)
 
     def _episode_air_date(self, token_data: TokenData) -> str:
@@ -2139,8 +1915,60 @@ class TokenReplacer:
 
     def _episode_number(self, token_data: TokenData) -> str:
         episode = self._validate_int_var(self.episode_number)
-        int_val = str(episode) if episode is not None else ""
+        if episode is None:
+            return self._optional_user_input("", token_data)
+
+        # multi-episode files render a style-aware span (already zero-padded);
+        # single-episode files keep the raw start number so a template's own
+        # |zfill filter still pads it exactly as before.
+        designator = self._multi_episode_designator(episode)
+        int_val = designator if designator is not None else str(episode)
         return self._optional_user_input(int_val, token_data)
+
+    def _multi_episode_designator(self, episode: int) -> str | None:
+        """Render the season/episode span designator for a multi-episode file
+        per the configured ``MultiEpisodeStyle``, or ``None`` when the file
+        covers a single episode (the caller then emits the raw start number).
+
+        The span is read from the selected per-file mapping's ``episode_end``
+        (Task 4.1), and numbers are pre-padded to width 2 so a template's own
+        ``|zfill(2)`` on the composite string is a harmless no-op. Given
+        season S, start=1, end=3 the styles render:
+
+        - EXTEND (0):          ``01-03``
+        - DUPLICATE (1):       ``01.S{S:02}E03`` (e.g. ``01.S01E03``)
+        - REPEAT (2):          ``01E03``
+        - SCENE (3):           ``01-E03``
+        - RANGE (4):           ``01-03``
+        - PREFIXED_RANGE (5):  ``01-E03``
+
+        EXTEND collapses to RANGE and PREFIXED_RANGE collapses to SCENE
+        because the mapping stores only the start and end episode numbers, not
+        the full intermediate episode list those two styles would expand.
+        """
+        season = self._validate_int_var(self.season_number)
+        if season is None:
+            return None
+
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if not mapped_episode:
+            return None
+
+        end_episode = self._validate_int_var(mapped_episode.get("episode_end"))
+        if end_episode is None or end_episode <= episode:
+            return None
+
+        start = f"{episode:02d}"
+        end = f"{end_episode:02d}"
+        style = self.multi_episode_style
+        if style is MultiEpisodeStyle.DUPLICATE:
+            return f"{start}.S{season:02d}E{end}"
+        if style is MultiEpisodeStyle.REPEAT:
+            return f"{start}E{end}"
+        if style in (MultiEpisodeStyle.SCENE, MultiEpisodeStyle.PREFIXED_RANGE):
+            return f"{start}-E{end}"
+        # EXTEND and RANGE (and any future member) -> plain zero-padded range
+        return f"{start}-{end}"
 
     def _episode_number_absolute(self, token_data: TokenData) -> str:
         get_info = self._verify_series_info()
@@ -2151,13 +1979,32 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
-        if absolute_number is None:
+        if not absolute_number:  # None or 0 (TVDB uses 0 for non-anime episodes)
             absolute_number = self._validate_int_var(self.episode_number)
 
         return self._optional_user_input(
             str(absolute_number) if absolute_number is not None else "",
             token_data,
         )
+
+    def _end_episode_number(self, token_data: TokenData) -> str:
+        """Range end for a multi-episode file; blank when the file covers a
+        single episode (``episode_end`` is None/absent or matches the start
+        episode number)."""
+        get_info = self._verify_series_info()
+        if not get_info:
+            return ""
+
+        season, episode = get_info
+        end_episode = None
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if mapped_episode:
+            end_episode = self._validate_int_var(mapped_episode.get("episode_end"))
+
+        if end_episode is None or end_episode == episode:
+            return self._optional_user_input("", token_data)
+
+        return self._optional_user_input(str(end_episode), token_data)
 
     def _episode_title(self, token_data: TokenData) -> str:
         get_info = self._verify_series_info()
@@ -2169,6 +2016,8 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
+        if self._is_placeholder_episode_title(title):
+            title = ""
 
         # apply basic formatting
         title = self._title_formatting_standard(title)
@@ -2184,6 +2033,8 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
+        if self._is_placeholder_episode_title(title):
+            title = ""
         title = self._title_formatting_cleaned(title, self.title_clean_rules)
         return self._optional_user_input(title, token_data)
 
@@ -2197,6 +2048,8 @@ class TokenReplacer:
         episode_data = self._get_selected_episode_data(*get_info)
         if episode_data:
             title = episode_data.get("name", "")
+        if self._is_placeholder_episode_title(title):
+            title = ""
         return self._optional_user_input(title, token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:
@@ -2504,20 +2357,22 @@ class TokenReplacer:
         output = ""
 
         # video
-        v_track = mi_obj.video_tracks[0]
-        v_avg_bitrate = calculate_avg_bitrate(v_track)
-        resolution = VideoResolutionAnalyzer(mi_obj).get_resolution()
-        video_data = (
-            v_track.format,
-            f"{v_avg_bitrate} kbps" if v_avg_bitrate else None,
-            resolution if resolution else None,
-            f"{v_track.frame_rate} FPS" if v_track.frame_rate else "",
-            v_track.other_display_aspect_ratio[0]
-            if v_track.other_display_aspect_ratio
-            else None,
-            v_track.format_profile,
-        )
-        output += " / ".join(str(x) for x in video_data if x)
+        video_tracks = getattr(mi_obj, "video_tracks", []) or []
+        if video_tracks:
+            v_track = video_tracks[0]
+            v_avg_bitrate = calculate_avg_bitrate(v_track)
+            resolution = VideoResolutionAnalyzer(mi_obj).get_resolution()
+            video_data = (
+                v_track.format,
+                f"{v_avg_bitrate} kbps" if v_avg_bitrate else None,
+                resolution if resolution else None,
+                f"{v_track.frame_rate} FPS" if v_track.frame_rate else "",
+                v_track.other_display_aspect_ratio[0]
+                if v_track.other_display_aspect_ratio
+                else None,
+                v_track.format_profile,
+            )
+            output += " / ".join(str(x) for x in video_data if x)
 
         # audios
         audio_s = []
@@ -2539,44 +2394,56 @@ class TokenReplacer:
         output += "\n" + "\n".join(" / ".join(str(x) for x in a if x) for a in audio_s)
         return output
 
+    def _season_episode_label(self, season_num, episode_num) -> str:
+        """Build a "Season XX Episode XX" label, treating `0` as a valid value.
+
+        Season/episode `0` (e.g. specials) is a legitimate value and must not
+        be dropped by a falsy check like `if season_num:`.
+        """
+        parts = []
+        if season_num is not None:
+            parts.append(f"Season {str(season_num).zfill(2)}")
+        if episode_num is not None:
+            parts.append(f"Episode {str(episode_num).zfill(2)}")
+        return " ".join(parts)
+
     def _episode_metadata(self, token_data: TokenData) -> str:
-        if not self.is_series_mode or not self.media_input_obj.series_episode_map:
+        if (
+            not self.is_series_mode
+            or not self.media_input_obj.file_list
+            or not self.media_input_obj.series_episode_map
+        ):
             return ""
 
         epi_data = []
-        for episode, episode_data in self.media_input_obj.series_episode_map.items():
-            # `episode` is expected to be a Path (filename) in the map keys
-            season_episode_str = ""
+        for file_path in self.media_input_obj.file_list:
+            episode_data = self.media_input_obj.series_episode_map.get(file_path)
+            if not episode_data:
+                continue
+
             season_num = episode_data.get("season")
             episode_num = episode_data.get("episode")
-            if season_num:
-                season_episode_str += f"Season {str(season_num).zfill(2)}"
-            if episode_num:
-                season_episode_str += (
-                    f" Episode {str(episode_num).zfill(2)}"
-                    if season_num
-                    else f"Episode {str(episode_num).zfill(2)}"
-                )
+            season_episode_str = self._season_episode_label(season_num, episode_num)
 
             air_date = ""
             get_air_date = episode_data.get("episode_data")
             if get_air_date and get_air_date.get("aired"):
                 air_date = get_air_date.get("aired")
 
+            episode_name = episode_data.get("episode_name")
+            if self._is_placeholder_episode_title(episode_name):
+                episode_name = None
+
             data = (
                 season_episode_str,
-                episode_data.get("episode_name"),
+                episode_name,
                 air_date if air_date else None,
             )
             # prepend filename/stem to the metadata block so the filename is shown at the top
-            # use `episode.stem` if `episode` looks like a Path-like object, otherwise fall back
-            filename_header = ""
             try:
-                # path-like objects have .stem
-                filename_header = episode.stem
+                filename_header = file_path.stem
             except Exception:
-                # fallback to string cast
-                filename_header = str(episode)
+                filename_header = str(file_path)
 
             if data:
                 meta_block = "\n".join(str(x) for x in data if x)
@@ -2635,23 +2502,19 @@ class TokenReplacer:
             )
 
             if episode_data:
-                season_episode_str = ""
                 season_num = episode_data.get("season")
                 episode_num = episode_data.get("episode")
-                if season_num:
-                    season_episode_str += f"Season {str(season_num).zfill(2)}"
-                if episode_num:
-                    season_episode_str += (
-                        f" Episode {str(episode_num).zfill(2)}"
-                        if season_num
-                        else f"Episode {str(episode_num).zfill(2)}"
-                    )
+                season_episode_str = self._season_episode_label(
+                    season_num, episode_num
+                )
 
                 if season_episode_str:
                     block_lines.append(season_episode_str)
 
                 episode_name = episode_data.get("episode_name")
-                if episode_name:
+                if episode_name and not self._is_placeholder_episode_title(
+                    episode_name
+                ):
                     block_lines.append(str(episode_name))
 
                 air_date = ""
@@ -2707,23 +2570,19 @@ class TokenReplacer:
                 else None
             )
             if episode_data:
-                season_episode_str = ""
                 season_num = episode_data.get("season")
                 episode_num = episode_data.get("episode")
-                if season_num:
-                    season_episode_str += f"Season {str(season_num).zfill(2)}"
-                if episode_num:
-                    season_episode_str += (
-                        f" Episode {str(episode_num).zfill(2)}"
-                        if season_num
-                        else f"Episode {str(episode_num).zfill(2)}"
-                    )
+                season_episode_str = self._season_episode_label(
+                    season_num, episode_num
+                )
 
                 if season_episode_str:
                     parts.append(season_episode_str)
 
                 episode_name = episode_data.get("episode_name")
-                if episode_name:
+                if episode_name and not self._is_placeholder_episode_title(
+                    episode_name
+                ):
                     parts.append(str(episode_name))
 
                 air_date = ""
@@ -2750,35 +2609,127 @@ class TokenReplacer:
 
         return "\n\n".join(combined)
 
-    def _get_tvdb_data_count(
-        self, data_key: str, cache_key: str, token_data: TokenData
+    def _get_series_total_count(
+        self,
+        cache_key: str,
+        tmdb_key: str,
+        tvdb_key: str,
+        tvdb_counter: Callable[[list], int],
+        token_data: TokenData,
     ) -> str:
-        """Helper method to get count from TVDB data with caching."""
+        """Helper method to get a total seasons/episodes count with caching.
+
+        Prefers TMDB's rollup counts (`number_of_seasons`/`number_of_episodes`),
+        which already exclude season 0 (specials). TVDB's `series/extended`
+        response has no equivalent rollup field, so when TMDB data isn't
+        available we fall back to TVDB, using `tvdb_counter` to collapse its
+        raw rows into a real count.
+        """
         # check cache first
         if cache_key in self._series_cache:
             return self._optional_user_input(
                 str(self._series_cache[cache_key]), token_data
             )
 
-        # early return if no TVDB data
-        if not self.media_search_obj or not self.media_search_obj.tvdb_data:
-            return self._optional_user_input("", token_data)
+        count = None
 
-        # get data from TVDB
-        data = self.media_search_obj.tvdb_data.get(data_key)
-        if not data:
+        # prefer TMDB's clean rollup counts when available
+        tmdb_data = self.media_search_obj.tmdb_data if self.media_search_obj else None
+        if tmdb_data:
+            tmdb_count = tmdb_data.get(tmdb_key)
+            if tmdb_count:
+                count = int(tmdb_count)
+
+        # fall back to TVDB
+        if count is None:
+            tvdb_data = (
+                self.media_search_obj.tvdb_data if self.media_search_obj else None
+            )
+            rows = tvdb_data.get(tvdb_key) if tvdb_data else None
+            if rows:
+                count = tvdb_counter(rows)
+
+        if not count:
             return self._optional_user_input("", token_data)
 
         # cache and return count
-        count = len(data)
         self._series_cache[cache_key] = count
         return self._optional_user_input(str(count), token_data)
 
+    @staticmethod
+    def _count_tvdb_seasons(seasons: list) -> int:
+        """Count real seasons from TVDB's per-season-type "seasons" rows.
+
+        TVDB's `series/extended` "seasons" list has one row per
+        (season-type x season) combination -- aired/official, DVD, absolute,
+        and regional orders can each contribute a row for the same season
+        number -- plus a row for season 0 (specials). `len(...)` on that list
+        wildly overcounts, so this filters down to a single season-type and
+        drops season 0.
+
+        The list has no ordering guarantee, so "official" (the codebase's
+        canonical/aired order -- see `TVDBSeasonType.AIRED_ORDER` and
+        `media_search.py`'s `season_type.api_param == "official"` checks) is
+        always preferred when present, regardless of where it falls in the
+        list. Only when no "official"-typed rows exist at all does this fall
+        back to whichever other season-type is encountered first.
+        """
+        official_numbers: set[int] = set()
+        has_official = False
+
+        fallback_type = None
+        fallback_numbers: set[int] = set()
+
+        for row in seasons:
+            number = row.get("number")
+            row_type = row.get("type") or {}
+            type_name = row_type.get("type") or row_type.get("name")
+
+            if type_name == "official":
+                has_official = True
+                if number is not None and number != 0:
+                    official_numbers.add(number)
+                continue
+
+            if number is None or number == 0:
+                continue
+            if fallback_type is None:
+                fallback_type = type_name
+            elif type_name != fallback_type:
+                continue
+            fallback_numbers.add(number)
+
+        if has_official:
+            return len(official_numbers)
+        return len(fallback_numbers)
+
+    @staticmethod
+    def _count_tvdb_episodes(episodes: list) -> int:
+        """Count real episodes from TVDB's "episodes" rows, excluding season 0 (specials)."""
+        count = 0
+        for row in episodes:
+            if isinstance(row, dict) and row.get("seasonNumber") == 0:
+                continue
+            count += 1
+        return count
+
     def _total_seasons(self, token_data: TokenData) -> str:
-        return self._get_tvdb_data_count("seasons", "total_seasons", token_data)
+        return self._get_series_total_count(
+            cache_key="total_seasons",
+            tmdb_key="number_of_seasons",
+            tvdb_key="seasons",
+            tvdb_counter=self._count_tvdb_seasons,
+            token_data=token_data,
+        )
 
     def _total_episodes(self, token_data: TokenData) -> str:
-        return self._get_tvdb_data_count("episodes", "total_episodes", token_data)
+        return self._get_series_total_count(
+            cache_key="total_episodes",
+            tmdb_key="number_of_episodes",
+            tvdb_key="episodes",
+            tvdb_counter=self._count_tvdb_episodes,
+            token_data=token_data,
+        )
 
     def _program_info(self, token_data: TokenData) -> str:
         return self._optional_user_input(f"{program_name} v{__version__}", token_data)
@@ -3014,6 +2965,19 @@ class TokenReplacer:
             if mapped_season == season and mapped_episode == episode:
                 return mapped_data
         return None
+
+    @staticmethod
+    def _is_placeholder_episode_title(name: str | None) -> bool:
+        """Return True when *name* is a TVDB placeholder episode title
+        ("TBA", "Episode 12") that should be treated as no title at all.
+
+        ``name`` may be ``None`` (a manually-mapped episode with no TVDB
+        match synthesizes ``name: None``); that is not a placeholder match,
+        just an absent title, and is handled safely here without raising.
+        """
+        if not name:
+            return False
+        return bool(TokenReplacer._PLACEHOLDER_EPISODE_TITLE_RE.match(name.strip()))
 
     @staticmethod
     def _title_formatting_standard(title: str) -> str:

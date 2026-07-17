@@ -5,6 +5,7 @@ import traceback
 from multiprocessing import freeze_support as mp_freeze_support
 from pathlib import Path
 
+import tomlkit
 from PySide6.QtCore import QTimer, QtMsgType, Slot, qInstallMessageHandler
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -101,10 +102,15 @@ class NfoForge:
         try:
             self.config = ConfigManager(self.config_file)
         except ConfigSchemaError as error:
+            # `ConfigSchemaError` is a subclass of `ConfigError`, so this
+            # branch must stay ahead of the plain `ConfigError` one below --
+            # it offers a migration-flavored recovery message, whereas the
+            # generic branch is for a current-schema config that is
+            # otherwise salvageable (e.g. a bad value/type for one field).
             self._handle_config_schema_error(error)
             return
         except ConfigError as error:
-            self._error_on_splash(str(error))
+            self._handle_config_error(error)
             return
         if not self.config:
             raise AttributeError("Failed to load config")
@@ -124,18 +130,80 @@ class NfoForge:
             QApplication.quit()
 
     def _handle_config_schema_error(self, error: ConfigSchemaError) -> None:
+        # note: by the time this fires, ConfigManager has already attempted
+        # an automatic in-place migration (see `ConfigManager.load_profile`
+        # / `migrate_unversioned_to_v2`) and either it wasn't applicable
+        # (schema_version present but unsupported) or it failed to fully
+        # account for the user's settings. Either way, settings cannot be
+        # preserved from here, so this dialog makes that explicit.
         config_path = error.config_path
         if not config_path:
             self._error_on_splash(str(error))
             return
 
+        self._offer_archive_and_regenerate(
+            config_path,
+            str(error),
+            "Your existing settings could not be fully migrated.",
+            title="Incompatible Config",
+        )
+
+    def _handle_config_error(self, error: ConfigError) -> None:
+        """Handle a non-schema `ConfigError` -- e.g. an invalid or
+        unsupported value in an otherwise current-schema config, such as an
+        int written where a float is expected -- by offering the same
+        archive+regenerate recovery path used for an incompatible schema,
+        instead of a fatal quit.
+
+        Unlike `ConfigSchemaError`, a plain `ConfigError` carries no
+        `config_path` (it can be raised before `ConfigManager` has fully
+        constructed, so there is no object to attach one to), so the path is
+        independently resolved from the config the app was asked to load.
+        """
+        config_path = self._resolve_config_path()
+        if not config_path:
+            self._error_on_splash(str(error))
+            return
+
+        self._offer_archive_and_regenerate(
+            config_path,
+            str(error),
+            "Your existing configuration has an invalid or unsupported value.",
+            title="Invalid Config",
+        )
+
+    def _resolve_config_path(self) -> Path | None:
+        """Best-effort resolution of the profile path the app was trying to
+        load, for use when a plain `ConfigError` (no `config_path`
+        attribute) is raised without a fully constructed `ConfigManager` to
+        ask instead."""
+        try:
+            paths = ConfigPaths()
+            config_file = self.config_file
+            if not config_file and paths.program.exists():
+                program_doc = tomlkit.parse(paths.program.read_text(encoding="utf-8"))
+                # mirrors `ConfigManager.decode_program`, which defaults a
+                # missing `current_config` key to "config" -- keep both
+                # resolutions of an absent key in agreement.
+                config_file = program_doc.get("current_config", "config")
+            if not config_file:
+                return None
+            return paths.user_configs / f"{config_file}.toml"
+        except Exception:
+            return None
+
+    def _offer_archive_and_regenerate(
+        self, config_path: Path, error_text: str, issue_description: str, title: str
+    ) -> None:
         response = QMessageBox.question(
             self.splash_screen,
-            "Incompatible Config",
+            title,
             (
-                f"{error}\n\n"
+                f"{error_text}\n\n"
+                f"{issue_description}\n\n"
                 "Would you like NfoForge to archive this config and generate a "
-                "new default config?\n\n"
+                "new default config? Settings will reset and must be "
+                "re-entered.\n\n"
                 f"Current config:\n{config_path}"
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -163,8 +231,10 @@ class NfoForge:
             self.splash_screen,
             "Config Recreated",
             (
-                "A new default config was generated.\n\n"
-                f"Old config backup:\n{backup_path}"
+                f"{issue_description}\n\n"
+                f"The old config has been backed up to:\n{backup_path}\n\n"
+                "A new default config has been created; settings must be "
+                "re-entered."
             ),
         )
         self._continue_init()

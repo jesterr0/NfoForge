@@ -1,6 +1,6 @@
 | Token | Description |
 |-------|-------------|
-| `{air_date}` | Air date (series - UTC) |
+| `{air_date}` | Air date (series first aired - UTC) |
 | `{audio_bitrate}` | Audio bitrate (640000) |
 | `{audio_bitrate_formatted}` | Audio bitrate formatted (640 kb/s) |
 | `{audio_channel_s}` | Audio channels (5.1) |
@@ -22,10 +22,11 @@
 | `{audio_language_multi}` | Audio languages ('Multi' will be returned if there are 3 or more tracks with unique languages) |
 | `{audio_sample_rate}` | Audio sample rate (48.0 kHz) |
 | `{edition}` | Edition |
+| `{end_episode_number}` | End episode number for a multi-episode file (blank for single episodes). |
 | `{episode_air_date}` | Episode air date (UTC) |
 | `{episode_number}` | Episode number (1, 2, 3, etc.) |
-| `{episode_number_absolute}` | Episode number (1, 2, 3, etc.) |
-| `{episode_title}` | Title parsed from media databases with minimal formatting |
+| `{episode_number_absolute}` | Absolute episode number (1, 2, 3, etc.) |
+| `{episode_title}` | Episode title parsed from media databases with minimal formatting |
 | `{episode_title_clean}` | Clean title parsed from media databases |
 | `{episode_title_exact}` | Title parsed from media databases with no modifications |
 | `{frame_size}` | Frame size (IMAX/Open Matte) |
