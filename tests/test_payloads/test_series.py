@@ -70,6 +70,115 @@ def test_build_series_release_info_detects_special() -> None:
     assert release_info.display_tag == "S00E01"
 
 
+def test_build_series_release_info_multi_season_pack_renders_season_range() -> None:
+    # a pack spanning multiple seasons (e.g. S01-S05) must keep the season
+    # span instead of collapsing to the lowest season via min()
+    file_one = Path("Show.S01E01.mkv")
+    file_two = Path("Show.S05E10.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show Seasons 1-5"),
+        media_type=MediaType.SERIES,
+        file_list=[file_one, file_two],
+        series_episode_map={
+            file_one: {"season": 1, "episode": 1},
+            file_two: {"season": 5, "episode": 10},
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == 1
+    assert release_info.season_end == 5
+    assert release_info.display_tag == "S01-S05"
+
+
+def test_build_series_release_info_single_season_pack_tag_unchanged() -> None:
+    # a pack confined to a single season must still render "S02", not a
+    # degenerate "S02-S02" range
+    file_one = Path("Show.S02E01.mkv")
+    file_two = Path("Show.S02E02.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show Season 2"),
+        media_type=MediaType.SERIES,
+        file_list=[file_one, file_two],
+        series_episode_map={
+            file_one: {"season": 2, "episode": 1},
+            file_two: {"season": 2, "episode": 2},
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == 2
+    assert release_info.season_end in (2, None)
+    assert release_info.display_tag == "S02"
+
+
+def test_build_series_release_info_single_episode_season_end_unchanged() -> None:
+    # a single episode (not a pack) must render exactly as before
+    file_path = Path("Show.S01E01.mkv")
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_map={file_path: {"season": 1, "episode": 1}},
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == 1
+    assert release_info.season_end in (1, None)
+    assert release_info.display_tag == "S01E01"
+
+
+def test_build_series_release_info_pure_specials_pack_is_special() -> None:
+    # a pack where every season is 0 is a genuine specials pack
+    file_one = Path("Show.S00E01.mkv")
+    file_two = Path("Show.S00E02.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show Specials"),
+        media_type=MediaType.SERIES,
+        file_list=[file_one, file_two],
+        series_episode_map={
+            file_one: {"season": 0, "episode": 1},
+            file_two: {"season": 0, "episode": 2},
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == 0
+    assert release_info.season_end == 0
+    assert release_info.is_special is True
+
+
+def test_build_series_release_info_mixed_specials_and_season_pack_not_special() -> None:
+    # a pack containing season 0 alongside a real season must NOT be flagged
+    # special -- season == 0 only because min() picks the specials season
+    file_one = Path("Show.S00E01.mkv")
+    file_two = Path("Show.S01E01.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show Season 1 Plus Specials"),
+        media_type=MediaType.SERIES,
+        file_list=[file_one, file_two],
+        series_episode_map={
+            file_one: {"season": 0, "episode": 1},
+            file_two: {"season": 1, "episode": 1},
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == 0
+    assert release_info.season_end == 1
+    assert release_info.is_special is False
+
+
 def test_release_info_token_kwargs_omit_episode_for_pack() -> None:
     file_one = Path("Show.S02E03.mkv")
     file_two = Path("Show.S02E04.mkv")

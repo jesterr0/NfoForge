@@ -17,6 +17,7 @@ class SeriesReleaseInfo:
     primary_file: Path | None
     title_path: Path | None
     season: int | None = None
+    season_end: int | None = None
     episode_start: int | None = None
     episode_end: int | None = None
     episode_count: int = 0
@@ -32,7 +33,10 @@ class SeriesReleaseInfo:
 
     @property
     def is_special(self) -> bool:
-        return self.is_series and self.season == 0
+        # a pack is only "special" when EVERY season in it is season 0 (a
+        # pure specials pack); a mixed pack containing season 0 alongside
+        # real seasons (season == 0 via min()) must not be flagged special.
+        return self.is_series and self.season == 0 and self.season_end in (0, None)
 
     @property
     def is_hd(self) -> bool:
@@ -52,7 +56,11 @@ class SeriesReleaseInfo:
 
     @property
     def season_tag(self) -> str | None:
-        return f"S{self.season:02d}" if self.season is not None else None
+        if self.season is None:
+            return None
+        if self.season_end is not None and self.season_end != self.season:
+            return f"S{self.season:02d}-S{self.season_end:02d}"
+        return f"S{self.season:02d}"
 
     @property
     def episode_tag(self) -> str | None:
@@ -107,6 +115,7 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
                 )
 
     season = min(seasons) if seasons else None
+    season_end = max(seasons) if seasons else None
     episode_start = min(episode_starts) if episode_starts else None
     episode_end = max(episode_ends) if episode_ends else None
     episode_count = max(len(file_list), len(mappings), len(episode_starts))
@@ -117,6 +126,7 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
         primary_file=primary_file,
         title_path=media_input.input_path if episode_count > 1 else primary_file,
         season=season,
+        season_end=season_end,
         episode_start=episode_start,
         episode_end=episode_end,
         episode_count=episode_count,
