@@ -1,3 +1,4 @@
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from src.frontend.custom_widgets.series_episode_mapper import (
     NO_TVDB_EPISODE_DATA_MESSAGE,
     SeriesEpisodeMapper,
     match_by_absolute,
+    match_by_air_date,
 )
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
@@ -578,3 +580,139 @@ def test_correcting_unverified_episode_to_tvdb_match_clears_amber_cells() -> Non
     episode_item.setText("")
     assert season_item.background().color() != unverified_color
     assert episode_item.background().color() != unverified_color
+
+
+def test_match_by_air_date_matches_file_parsed_date_to_episode_aired_date() -> None:
+    files_parsed = {"Show.2024.05.01.mkv": date(2024, 5, 1)}
+    episodes = [
+        {"seasonNumber": 1, "number": 1, "aired": "2024-05-01", "name": "Day One"},
+        {"seasonNumber": 1, "number": 2, "aired": "2024-05-02", "name": "Day Two"},
+    ]
+
+    matches = match_by_air_date(files_parsed, episodes)
+
+    assert matches["Show.2024.05.01.mkv"]["seasonNumber"] == 1
+    assert matches["Show.2024.05.01.mkv"]["number"] == 1
+    assert matches["Show.2024.05.01.mkv"]["name"] == "Day One"
+
+
+def test_match_by_air_date_normalizes_datetime_against_iso_string() -> None:
+    # guessit can return either a `datetime.date` or `datetime.datetime` for
+    # a parsed date; the episode's "aired" field is always an ISO
+    # "YYYY-MM-DD" string. Both must normalize to the same comparison key.
+    files_parsed = {"a.mkv": datetime(2024, 5, 1, 0, 0, 0), "b.mkv": date(2024, 5, 1)}
+    episodes = [{"seasonNumber": 1, "number": 1, "aired": "2024-05-01"}]
+
+    matches = match_by_air_date(files_parsed, episodes)
+
+    assert matches["a.mkv"]["number"] == 1
+    assert matches["b.mkv"]["number"] == 1
+
+
+def test_match_by_air_date_skips_unmatched_dates() -> None:
+    files_parsed = {"Show.2024.12.25.mkv": date(2024, 12, 25)}
+    episodes = [{"seasonNumber": 1, "number": 1, "aired": "2024-05-01"}]
+
+    assert match_by_air_date(files_parsed, episodes) == {}
+
+
+def test_match_by_air_date_skips_files_with_no_parsed_date() -> None:
+    files_parsed = {"no_date.mkv": None}
+    episodes = [{"seasonNumber": 1, "number": 1, "aired": "2024-05-01"}]
+
+    assert match_by_air_date(files_parsed, episodes) == {}
+
+
+def test_match_by_air_date_handles_empty_inputs() -> None:
+    assert match_by_air_date({}, []) == {}
+    assert match_by_air_date({"a.mkv": date(2024, 5, 1)}, []) == {}
+    assert match_by_air_date({}, [{"aired": "2024-05-01"}]) == {}
+
+
+def test_auto_match_files_matches_daily_date_release() -> None:
+    # a daily/date release like "Show.2024.05.01.mkv" carries no
+    # season/episode -- only a date -- so stage 1 never matches it. With
+    # the Daily/Date release format active, it should auto-match against
+    # the episode whose "aired" field equals the parsed date.
+    file_path = Path("Show.2024.05.01.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show"),
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_format=EpisodeFormat.DAILY_DATE,
+    )
+    media_search = MediaSearchPayload(
+        tvdb_data={
+            "episodes_by_type": {
+                0: {
+                    "type_name": "Aired Order",
+                    "type": "official",
+                    "episodes": [
+                        {
+                            "seasonNumber": 1,
+                            "number": 1,
+                            "aired": "2024-05-01",
+                            "name": "Day One",
+                        },
+                        {
+                            "seasonNumber": 1,
+                            "number": 2,
+                            "aired": "2024-05-02",
+                            "name": "Day Two",
+                        },
+                    ],
+                },
+            }
+        }
+    )
+
+    QApplication.instance() or QApplication([])
+    mapper = SeriesEpisodeMapper()
+    mapper.load_data(media_input, media_search)
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 1
+    assert mapping["episode"] == 1
+    assert mapping["assignment_method"] == "daily"
+
+
+def test_auto_match_files_does_not_daily_match_file_with_real_season_episode() -> None:
+    # regression guard (mirrors the absolute-matching hijack bug): a normal
+    # "Show.S02E03.mkv" file must NOT be reinterpreted as a daily/date
+    # release just because the Daily/Date release format happens to be
+    # active. TVDB has no data for this exact season/episode (so stage 1
+    # can't match it either), but the file still carries a genuinely
+    # parsed season+episode, so it must fall through to fuzzy/unmatched
+    # instead of ever being stored via the "daily" method.
+    file_path = Path("Show.S02E03.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show"),
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_format=EpisodeFormat.DAILY_DATE,
+    )
+    media_search = MediaSearchPayload(
+        tvdb_data={
+            "episodes_by_type": {
+                0: {
+                    "type_name": "Aired Order",
+                    "type": "official",
+                    "episodes": [
+                        {
+                            "seasonNumber": 1,
+                            "number": 1,
+                            "aired": "2024-05-01",
+                            "name": "Totally Unrelated Episode",
+                        },
+                    ],
+                },
+            }
+        }
+    )
+
+    QApplication.instance() or QApplication([])
+    mapper = SeriesEpisodeMapper()
+    mapper.load_data(media_input, media_search)
+
+    mapping = mapper.file_episode_mappings.get(file_path)
+    assert mapping is None or mapping["assignment_method"] != "daily"

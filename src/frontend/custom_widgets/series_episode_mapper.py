@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +82,80 @@ def match_by_absolute(
         if absolute_number is None:
             continue
         episode_data = episodes_by_absolute_number.get(absolute_number)
+        if episode_data is not None:
+            matches[file_key] = episode_data
+    return matches
+
+
+def _normalize_air_date(value: Any) -> str | None:
+    """Normalize a date-like value to an ISO "YYYY-MM-DD" string.
+
+    Accepts ``datetime.date``/``datetime.datetime`` (what guessit returns
+    for a parsed filename date) as well as a string (what TVDB's ``aired``
+    field carries, e.g. ``"2024-05-01"``). Returns ``None`` if ``value`` is
+    ``None``, empty, or not a recognizable date.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        try:
+            return date.fromisoformat(text[:10]).isoformat()
+        except ValueError:
+            return None
+    return None
+
+
+def match_by_air_date(
+    files_parsed: dict[Any, Any],
+    episodes: list[dict[str, Any]],
+) -> dict[Any, dict[str, Any]]:
+    """Match files to TVDB episodes by air date.
+
+    This is a pure, Qt-free helper so it can be unit-tested without a widget.
+    It mirrors ``match_by_absolute`` but keys on air date instead of
+    absolute episode number, for daily/date releases (e.g.
+    "Show.2024.05.01.mkv") that carry no season/episode component at all.
+
+    Args:
+        files_parsed: maps an arbitrary, hashable file identifier (a
+            ``Path``, a filename string, a row index, etc. -- the caller
+            decides) to that file's parsed date. This is typically
+            guessit's ``date`` value, a ``datetime.date`` (or
+            ``datetime.datetime``). A value of ``None`` means the file had
+            no parseable date and is skipped.
+        episodes: the list of TVDB episode dicts to search, each expected
+            to carry ``seasonNumber``/``number`` (identifying the episode)
+            and an ``aired`` date string (e.g. ``"2024-05-01"``).
+
+    Returns:
+        A dict with the same keys as ``files_parsed``, but containing only
+        the keys that produced a match, mapped to the matched episode dict
+        from ``episodes``. Keys with no parseable date, or whose date
+        doesn't match any episode's ``aired`` date, are omitted. Dates are
+        normalized (see ``_normalize_air_date``) before comparison so a
+        ``datetime.date``/``datetime.datetime`` parsed value compares equal
+        to TVDB's ISO date string.
+    """
+    episodes_by_date: dict[str, dict[str, Any]] = {}
+    for episode_data in episodes:
+        normalized_aired = _normalize_air_date(episode_data.get("aired"))
+        if normalized_aired is None:
+            continue
+        episodes_by_date.setdefault(normalized_aired, episode_data)
+
+    matches: dict[Any, dict[str, Any]] = {}
+    for file_key, parsed_date in files_parsed.items():
+        normalized_parsed = _normalize_air_date(parsed_date)
+        if normalized_parsed is None:
+            continue
+        episode_data = episodes_by_date.get(normalized_parsed)
         if episode_data is not None:
             matches[file_key] = episode_data
     return matches
@@ -616,6 +691,18 @@ class SeriesEpisodeMapper(QWidget):
                 return type_data.get("episodes", [])
         return []
 
+    def _get_available_episodes_flat(self) -> list[dict[str, Any]]:
+        """Flatten ``self.available_episodes`` (season -> episode -> data)
+        into a single list of episode dicts, for matchers that key on a
+        field (like ``aired``) rather than the season/episode structure --
+        e.g. air-date matching for daily/date releases.
+        """
+        return [
+            episode_data
+            for season_episodes in self.available_episodes.values()
+            for episode_data in season_episodes.values()
+        ]
+
     def _auto_match_files(self) -> None:
         """Enhanced auto-matching with fuzzy fallback"""
         if not self.available_episodes:
@@ -630,6 +717,7 @@ class SeriesEpisodeMapper(QWidget):
         absolute_episodes = (
             self._get_absolute_order_episodes() if absolute_format_active else []
         )
+        daily_format_active = self.get_series_format() == EpisodeFormat.DAILY_DATE
 
         for row in range(self.files_table.rowCount()):
             filename_item = self.files_table.item(row, 0)
@@ -743,6 +831,47 @@ class SeriesEpisodeMapper(QWidget):
                             confidence,
                             method,
                             episode_end=matched_episode_end,
+                        )
+                        self._update_file_row_assignment(
+                            row, matched_season, matched_episode, confidence, method
+                        )
+                        matched_count += 1
+                        continue
+
+            # stage 1c: daily/date releases (e.g. "Show.2024.05.01.mkv")
+            # carry no season/episode, just an air date (guessit's `date`
+            # key), so stage 1 above never matches them. When the
+            # Daily/Date release format is active, match that date against
+            # the currently loaded episode list's `aired` field instead.
+            # The `not (season and episode)` guard mirrors stage 1b: a file
+            # that DID parse a real, usable season+episode must fall
+            # through to fuzzy/unmatched instead of being reinterpreted by
+            # date.
+            parsed_date = parsed_data.get("date")
+            if (
+                daily_format_active
+                and parsed_date is not None
+                and not (season and episode)
+            ):
+                daily_episodes = self._get_available_episodes_flat()
+                daily_match = match_by_air_date(
+                    {file_path: parsed_date}, daily_episodes
+                )
+                daily_episode_data = daily_match.get(file_path)
+                if daily_episode_data is not None:
+                    matched_season = daily_episode_data.get("seasonNumber")
+                    matched_episode = daily_episode_data.get("number")
+                    if matched_season is not None and matched_episode is not None:
+                        confidence = 0.9
+                        method = "daily"
+
+                        self._store_mapping(
+                            file_path,
+                            matched_season,
+                            matched_episode,
+                            daily_episode_data,
+                            confidence,
+                            method,
                         )
                         self._update_file_row_assignment(
                             row, matched_season, matched_episode, confidence, method
