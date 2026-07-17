@@ -2680,14 +2680,9 @@ class TokenReplacer:
         fallback_numbers: set[int] = set()
 
         for row in seasons:
-            if not isinstance(row, dict):
-                continue
             number = row.get("number")
-            row_type = row.get("type")
-            if isinstance(row_type, dict):
-                type_name = row_type.get("type") or row_type.get("name")
-            else:
-                type_name = row_type
+            row_type = row.get("type") or {}
+            type_name = row_type.get("type") or row_type.get("name")
 
             if type_name == "official":
                 has_official = True
