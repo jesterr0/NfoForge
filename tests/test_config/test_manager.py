@@ -526,6 +526,59 @@ def test_load_profile_leaves_on_disk_current_config_unchanged_on_schema_error(
     assert on_disk_after["current_config"] == "test"
 
 
+def test_load_profile_keeps_toml_data_consistent_with_settings_past_schema_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reload that fails *past* schema validation -- at `validate_types` or
+    `decode`, not at the `schema_version` check -- must not leave
+    `_toml_data` holding the new (invalid) profile's merged document while
+    `settings` still holds the old profile.
+
+    `_toml_data` is only reassigned once `_validate_document` fully succeeds
+    (schema check, merge, `validate_types`, `decode`); if it fails at any
+    later step, the assignment never happens and `_toml_data` stays exactly
+    where it was, consistent with `settings`. This is a deliberate
+    improvement over the previous eager-assignment behavior, where
+    `_toml_data` was updated to the merged (but not yet fully validated)
+    document *before* `validate_types`/`decode` ran, so a failure at those
+    later steps left `_toml_data` and `settings` pointing at two different
+    profiles. The schema-failure tests above (using `schema_version = 99`)
+    fail at the very first step and so never exercise this path.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    # profile A ("test") is loaded successfully -- capture its known-good
+    # state, present in both `_toml_data` and the decoded `settings`.
+    assert manager.settings.general.timeout == 60
+    general_a = cast(MutableMapping[str, Any], manager._toml_data["general"])
+    assert general_a["timeout"] == 60
+
+    # profile B passes schema validation (a current `schema_version` is
+    # present) but fails `validate_types`: `general.timeout` is a string
+    # where the default document has an int.
+    broken_profile = paths.user_configs / "broken.toml"
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    broken_general = cast(MutableMapping[str, Any], document["general"])
+    broken_general["timeout"] = "not-a-number"
+    broken_profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ConfigError) as exc_info:
+        manager.load_profile("broken")
+    # must fail past schema validation, not at it
+    assert not isinstance(exc_info.value, ConfigSchemaError)
+
+    # `_toml_data` must still reflect profile A, matching `settings` --
+    # never the failed profile's (invalid) value.
+    assert manager.settings.general.timeout == 60
+    general_after = cast(MutableMapping[str, Any], manager._toml_data["general"])
+    assert general_after["timeout"] == 60
+
+
 def test_atomic_write_failure_preserves_original(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

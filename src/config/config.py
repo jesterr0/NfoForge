@@ -150,6 +150,15 @@ class ConfigManager(TypedTomlOperations):
 
             self._config_snapshot = loaded_text
             try:
+                # Assigned atomically: only if the full validate/merge/decode
+                # sequence succeeds. This is intentional -- if validation
+                # fails at any step (schema, `validate_types`, or `decode`),
+                # `self._toml_data` must NOT be reassigned, so it stays
+                # consistent with `self.settings`, which is likewise only
+                # ever updated on a fully successful `decode`. A failed
+                # reload therefore leaves the previously-loaded profile's
+                # state intact instead of mixing the new (invalid) document
+                # with the old settings.
                 self._toml_data = self._validate_document(loaded_document, default_toml)
             except ConfigSchemaError as error:
                 if not error.config_path:
