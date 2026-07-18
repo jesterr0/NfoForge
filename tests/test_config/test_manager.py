@@ -594,3 +594,19 @@ def test_atomic_write_failure_preserves_original(
         atomic_write_text(destination, "replacement")
 
     assert destination.read_text(encoding="utf-8") == "original"
+
+
+def test_default_season_folder_token_is_scene_style() -> None:
+    defaults = tomlkit.parse(
+        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
+    )
+    series = cast(MutableMapping[str, Any], defaults["series_management"])
+    token = str(series["tvr_season_folder_token"])
+
+    # the dead default used {season}, which is not a real token; the valid
+    # token is {season_number}
+    assert "{season}" not in token
+    assert "{season_number" in token
+    # no episode tokens belong in a season-pack folder name
+    assert "{episode_number" not in token
+    assert "{episode_title_clean}" not in token
