@@ -337,6 +337,8 @@ class SeriesManagementSettings(BaseSettings):
             colon_replace=ColonReplace(self.fn_colon_replace.currentData()),
             file_name_mode=True,
             qline=self.season_folder_example,
+            episode_number=None,
+            season_end=3,
         )
 
     def _update_example(
@@ -346,6 +348,8 @@ class SeriesManagementSettings(BaseSettings):
         file_name_mode: bool,
         qline: QLineEdit,
         override_title_rules: list[tuple[str, str]] | None = None,
+        episode_number: int | None = 1,
+        season_end: int = 1,
     ) -> str:
         user_tokens = {
             k: v
@@ -370,8 +374,8 @@ class SeriesManagementSettings(BaseSettings):
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
             flat_filters=self.config.plugin_registry.flat_filters,
             season_number=1,
-            season_end=1,
-            episode_number=1,
+            season_end=season_end,
+            episode_number=episode_number,
             multi_episode_style=MultiEpisodeStyle(
                 self.multi_episode_style_combo.currentData()
             ),

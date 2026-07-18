@@ -106,6 +106,7 @@ def test_build_folder_rename_targets_single_file_unchanged(tmp_path: Path) -> No
     )
 
     assert result == rename_map
+    assert result is not rename_map  # guard-fail path returns a copy, not the input
 
 
 def test_build_folder_rename_targets_nested_unchanged(tmp_path: Path) -> None:
