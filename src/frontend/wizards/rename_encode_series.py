@@ -50,6 +50,7 @@ from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
+from src.payloads.series import build_series_release_info
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -414,6 +415,33 @@ class RenameEncodeSeries(BaseWizardPage):
                 self.context.media_input.file_list_rename_map[media_file] = (
                     renamed_output
                 )
+
+        # rename the opened folder to a season-pack name, mirroring the movie
+        # flow. build_folder_rename_targets only relocates the map when a
+        # directory was opened and every episode sits directly inside it.
+        release_info = build_series_release_info(self.context.media_input)
+        folder_name = ""
+        if release_info.season is not None:
+            folder_path = self.backend.series_folder_renamer(
+                media_input_obj=self.context.media_input,
+                token=self.config.settings.series.season_folder_token,
+                colon_replacement=self.config.settings.series.filename_colon_replace,
+                media_search_payload=self.context.media_search,
+                title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+                user_tokens=user_tokens,
+                season_num=release_info.season,
+                season_end=release_info.season_end,
+            )
+            if folder_path:
+                folder_name = folder_path.name
+        self.context.media_input.file_list_rename_map = (
+            self.backend.build_folder_rename_targets(
+                input_path=self.context.media_input.input_path,
+                rename_map=self.context.media_input.file_list_rename_map,
+                folder_name=folder_name,
+            )
+        )
 
         # Check if there are any effective renames
         effective_renames = {
