@@ -128,3 +128,28 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             # file_name_mode appends the primary file's extension; a folder has
             # none, so strip the single trailing suffix it added.
             return Path(data).with_suffix("")
+
+    @staticmethod
+    def build_folder_rename_targets(
+        input_path: Path | None,
+        rename_map: dict[Path, Path],
+        folder_name: str,
+    ) -> dict[Path, Path]:
+        """Relocate every rename target into ``input_path.parent / folder_name``.
+
+        Only fires when a directory was opened and every mapped file sits
+        directly inside it (mirrors the movie flow's folder guard). Returns a new
+        mapping on success, or a copy of the original mapping unchanged when the
+        guard fails or ``folder_name`` is empty.
+        """
+        if (
+            not input_path
+            or not folder_name
+            or not rename_map
+            or not input_path.is_dir()
+            or any(src.parent != input_path for src in rename_map)
+        ):
+            return dict(rename_map)
+
+        new_folder = input_path.parent / folder_name
+        return {src: new_folder / trg.name for src, trg in rename_map.items()}
