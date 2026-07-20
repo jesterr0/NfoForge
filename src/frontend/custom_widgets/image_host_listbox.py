@@ -1,4 +1,6 @@
-from PySide6.QtCore import Qt, Signal, Slot
+from typing import Any
+
+from PySide6.QtCore import QPoint, Qt, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -23,7 +25,7 @@ class ImageHostEditBase(QWidget):
     load_data = Signal()
     save_data = Signal()
 
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -52,7 +54,7 @@ class ImageHostEditBase(QWidget):
         self.main_layout.addLayout(layout)
         return layout
 
-    def add_widget_to_layout(self, widget: QWidget, **kwargs) -> None:
+    def add_widget_to_layout(self, widget: QWidget, **kwargs: Any) -> None:
         self.main_layout.addWidget(widget, **kwargs)
 
     def add_layout_to_layout(self, layout: QLayout) -> None:
@@ -70,7 +72,7 @@ class ImageHostEditBase(QWidget):
 
 
 class CheveretoV3Edit(ImageHostEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.username_lbl = QLabel("Username", self)
@@ -113,7 +115,7 @@ class CheveretoV3Edit(ImageHostEditBase):
 
 
 class CheveretoV4Edit(ImageHostEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.api_key_lbl = QLabel("API Key", self)
@@ -145,7 +147,7 @@ class CheveretoV4Edit(ImageHostEditBase):
 
 
 class ImageBBEdit(ImageHostEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.base_url.setDisabled(True)
@@ -176,7 +178,7 @@ class ImageBBEdit(ImageHostEditBase):
 
 
 class ImageBoxEdit(ImageHostEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.base_url.setDisabled(True)
@@ -199,7 +201,7 @@ class ImageBoxEdit(ImageHostEditBase):
 
 
 class PTPIMGEdit(ImageHostEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.base_url.setDisabled(True)
@@ -238,7 +240,7 @@ class PTPIMGEdit(ImageHostEditBase):
 
 
 class ImageHostListBox(QWidget):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -283,8 +285,10 @@ class ImageHostListBox(QWidget):
 
         self.tree.blockSignals(False)
 
-    def add_child_widget(self, parent_item, image_host: ImageHost) -> None:
-        image_widget = None
+    def add_child_widget(
+        self, parent_item: QTreeWidgetItem, image_host: ImageHost
+    ) -> None:
+        image_widget: ImageHostEditBase | None = None
         if image_host is ImageHost.CHEVERETO_V3:
             image_widget = CheveretoV3Edit(self.config, self)
         elif image_host is ImageHost.CHEVERETO_V4:
@@ -314,7 +318,7 @@ class ImageHostListBox(QWidget):
                     if image_edit and isinstance(image_edit, ImageHostEditBase):
                         image_edit.validate_data()
 
-    def _open_context_menu(self, position) -> None:
+    def _open_context_menu(self, position: QPoint) -> None:
         """Opens the right-click context menu for expanding and collapsing all trackers"""
         menu = QMenu()
 
