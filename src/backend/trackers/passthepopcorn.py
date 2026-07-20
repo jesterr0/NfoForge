@@ -307,7 +307,7 @@ class PTPUploader:
             tags = ""
             get_tags = media_search_payload.imdb_data.genres
             if get_tags:
-                tags = ", ".join((str(x).lower() for x in get_tags))
+                tags = ", ".join(str(x).lower() for x in get_tags)
             if not get_tags:
                 tags = ", ".join(
                     str(x.name).lower() for x in media_search_payload.genres
