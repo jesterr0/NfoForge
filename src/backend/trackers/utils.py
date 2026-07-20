@@ -101,7 +101,7 @@ def looks_like_torrent(
         return False
 
     # fast header check
-    ctype = (headers or {}).get("Content-Type", "").lower()
+    ctype = str((headers or {}).get("Content-Type", "")).lower()
     if "application/x-bittorrent" in ctype:
         return True
 
