@@ -43,7 +43,7 @@ mvr_title_override_enabled = true
 mvr_title_colon_replace = 3
 mvr_title_token_override = ""
 mvr_title_replace_map = [['''\s''', "."]]
-anonymous = 0
+anonymous = false
 api_key = ""
 username = ""
 password = ""
@@ -90,12 +90,12 @@ mvr_title_override_enabled = false
 mvr_title_token_override = ""
 mvr_title_replace_map = []
 mvr_title_colon_replace = 3
-anonymous = 0
+anonymous = false
 api_key = ""
 rss_key = ""
 promo = 0
 live_release = 1
-internal = 0
+internal = false
 image_width = 350
 
 [tracker.pass_the_popcorn]
@@ -137,15 +137,15 @@ mvr_title_token_override = ""
 mvr_title_replace_map = []
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-stream_optimized = 0
-opt_in_to_mod_queue = 0
-featured = 0
-free = 0
-double_up = 0
-sticky = 0
+anonymous = false
+internal = false
+personal_release = false
+stream_optimized = false
+opt_in_to_mod_queue = false
+featured = false
+free = false
+double_up = false
+sticky = false
 image_width = 350
 
 [tracker.aither]
@@ -174,15 +174,15 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-stream_optimized = 0
-opt_in_to_mod_queue = 0
-featured = 0
-free = 0
-double_up = 0
-sticky = 0
+anonymous = false
+internal = false
+personal_release = false
+stream_optimized = false
+opt_in_to_mod_queue = false
+featured = false
+free = false
+double_up = false
+sticky = false
 image_width = 350
 
 [tracker.huno]
@@ -211,9 +211,9 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-stream_optimized = 0
+anonymous = false
+internal = false
+stream_optimized = false
 image_width = 350
 
 [tracker.lst]
@@ -242,15 +242,15 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-mod_queue_opt_in = 0
-draft_queue_opt_in = 0
-featured = 0
-free = 0
-double_up = 0
-sticky = 0
+anonymous = false
+internal = false
+personal_release = false
+mod_queue_opt_in = false
+draft_queue_opt_in = false
+featured = false
+free = false
+double_up = false
+sticky = false
 image_width = 500
 
 [tracker.dark_peers]
@@ -279,9 +279,9 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
+anonymous = false
+internal = false
+personal_release = false
 image_width = 500
 
 [tracker.shareisland]
@@ -310,10 +310,10 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-opt_in_to_mod_queue = 0
+anonymous = false
+internal = false
+personal_release = false
+opt_in_to_mod_queue = false
 image_width = 350
 
 [tracker.uploadcx]
@@ -342,9 +342,9 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
+anonymous = false
+internal = false
+personal_release = false
 image_width = 500
 
 [tracker.only_encodes]
@@ -373,9 +373,9 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
+anonymous = false
+internal = false
+personal_release = false
 image_width = 500
 
 [torrent_client]
