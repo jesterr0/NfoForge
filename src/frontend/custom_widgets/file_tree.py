@@ -27,7 +27,7 @@ class FileSystemTreeView(QTreeView):
         path: PathLike[str] | Path | None = None,
         read_only: bool = True,
         parent: QWidget | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(parent=parent, **kwargs)
         self.setObjectName("fileSystemTreeView")
@@ -36,7 +36,7 @@ class FileSystemTreeView(QTreeView):
 
         self.read_only = read_only
 
-        self.items = {}
+        self.items: dict[str, str] = {}
         self.item_meta: dict[str, dict[str, Any]] = {}
 
         self._model = QStandardItemModel()
@@ -76,10 +76,10 @@ class FileSystemTreeView(QTreeView):
             if is_dir:
                 self.add_items(root_item, path)
 
-    def add_items(self, parent_item, path) -> None:
+    def add_items(self, parent_item: QStandardItem, path: PathLike[str] | Path) -> None:
         path = Path(path)
-        directories = []
-        files = []
+        directories: list[Path] = []
+        files: list[Path] = []
 
         # use os.scandir for efficient metadata gathering
         if path.is_dir():
@@ -190,7 +190,7 @@ class FileSystemTreeView(QTreeView):
     def _collect_checked_items(
         self,
         parent_item: QStandardItem,
-        checked_items: list,
+        checked_items: list[dict[str, Any]],
         root_path: Path | None,
         treat_all_checked: bool = False,
     ) -> None:
@@ -248,7 +248,7 @@ class FileSystemTreeView(QTreeView):
             system_icon = self.icon_provider.icon(file_info)
             # check if we got a meaningful icon (not just the generic file icon)
             if not system_icon.isNull():
-                return system_icon
+                return QIcon(system_icon)
         except Exception:
             pass
 
@@ -277,7 +277,7 @@ class FileSystemTreeView(QTreeView):
             pass
 
         # final fallback to generic file icon
-        return self.icon_provider.icon(QFileIconProvider.IconType.File)
+        return QIcon(self.icon_provider.icon(QFileIconProvider.IconType.File))
 
     @staticmethod
     def get_file_size_in_gb(file_input: Path) -> str:

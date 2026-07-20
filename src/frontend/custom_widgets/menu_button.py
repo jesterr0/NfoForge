@@ -71,8 +71,8 @@ class CustomPopup(QWidget):
                 list_item.setCheckState(Qt.CheckState.Unchecked)
             self.list_widget.addItem(list_item)
 
-    def get_checked_items(self) -> list[str | None]:
-        checked_items = []
+    def get_checked_items(self) -> list[str]:
+        checked_items: list[str] = []
         for index in range(self.list_widget.count()):
             list_item = self.list_widget.item(index)
             if list_item.checkState() == Qt.CheckState.Checked:
@@ -110,7 +110,7 @@ class CustomButtonMenu(QToolButton):
     def update_items(self, items: Sequence[tuple[str, bool]]) -> None:
         self.popup.update_menu(items)
 
-    def get_checked_items(self) -> list[str | None]:
+    def get_checked_items(self) -> list[str]:
         return self.popup.get_checked_items()
 
     def _clicked(self) -> None:

@@ -41,6 +41,9 @@ NO_TVDB_EPISODE_DATA_MESSAGE = (
 )
 NO_TVDB_EPISODE_DATA_STYLE = "color: #b3261e; font-weight: bold;"
 
+EpisodeData = dict[str, Any]
+EpisodeMapping = dict[str, Any]
+
 
 def match_by_absolute(
     files_parsed: dict[Any, int | None],
@@ -82,9 +85,9 @@ def match_by_absolute(
     for file_key, absolute_number in files_parsed.items():
         if absolute_number is None:
             continue
-        episode_data = episodes_by_absolute_number.get(absolute_number)
-        if episode_data is not None:
-            matches[file_key] = episode_data
+        matched_episode = episodes_by_absolute_number.get(absolute_number)
+        if matched_episode is not None:
+            matches[file_key] = matched_episode
     return matches
 
 
@@ -156,9 +159,9 @@ def match_by_air_date(
         normalized_parsed = _normalize_air_date(parsed_date)
         if normalized_parsed is None:
             continue
-        episode_data = episodes_by_date.get(normalized_parsed)
-        if episode_data is not None:
-            matches[file_key] = episode_data
+        matched_episode = episodes_by_date.get(normalized_parsed)
+        if matched_episode is not None:
+            matches[file_key] = matched_episode
     return matches
 
 
@@ -168,9 +171,9 @@ class EnhancedFileTableItem(QTableWidgetItem):
     def __init__(self, text: str, file_path: Path) -> None:
         super().__init__(text)
         self.file_path = file_path
-        self.parsed_data = {}
-        self.assigned_season = None
-        self.assigned_episode = None
+        self.parsed_data: EpisodeData = {}
+        self.assigned_season: int | None = None
+        self.assigned_episode: int | None = None
         self.confidence = 0.0
         self.assignment_method = "unassigned"
 
@@ -183,7 +186,7 @@ class NumericTableItem(QTableWidgetItem):
         # set flags to be editable
         self.setFlags(self.flags() | Qt.ItemFlag.ItemIsEditable)
 
-    def setData(self, role, value):
+    def setData(self, role: int, value: Any) -> None:
         """Override setData to validate numeric input"""
         if role == Qt.ItemDataRole.EditRole:
             # only allow numeric values
@@ -206,13 +209,13 @@ class EpisodeListItem:
 
     season: int
     episode: int
-    episode_data: dict
+    episode_data: EpisodeData
     name: str = ""
     is_assigned: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.name:
-            self.name = self.episode_data.get("name", "Unknown Episode")
+            self.name = str(self.episode_data.get("name", "Unknown Episode"))
 
 
 class SeriesEpisodeMapper(QWidget):
@@ -230,10 +233,10 @@ class SeriesEpisodeMapper(QWidget):
         self.media_search_payload = None
 
         # episode data and mappings
-        self.available_episodes = {}  # {season: {episode: episode_data}}
-        self.episodes_by_type = {}  # enhanced episode data organized by season type
-        self.file_episode_mappings = {}  # {file_path: {season, episode, confidence, etc}}
-        self.episode_items = []  # list of EpisodeListItem objects
+        self.available_episodes: dict[int, dict[int, EpisodeData]] = {}
+        self.episodes_by_type: dict[Any, EpisodeData] = {}
+        self.file_episode_mappings: dict[Path, EpisodeMapping] = {}
+        self.episode_items: list[EpisodeListItem] = []
         self._release_format_manually_selected = False
         self._loading_release_format_combo = False
 
@@ -469,7 +472,7 @@ class SeriesEpisodeMapper(QWidget):
         self._populate_files_table()
         self._auto_match_files()
 
-    def _load_episode_data(self):
+    def _load_episode_data(self) -> None:
         """Load all available episode data from TVDB"""
         self.available_episodes.clear()
         # store episodes organized by season type
@@ -535,7 +538,7 @@ class SeriesEpisodeMapper(QWidget):
         for row, file_path in enumerate(self.media_input_payload.file_list):
             # parse file with guessit
             try:
-                parsed_data = guessit(str(file_path))
+                parsed_data: EpisodeData = dict(guessit(str(file_path)))
             except Exception:
                 parsed_data = {}
 
@@ -624,8 +627,8 @@ class SeriesEpisodeMapper(QWidget):
         if len(episode_title) < 3:
             return None
 
-        best_match = None
-        best_score = 0
+        best_match: tuple[int, int, float] | None = None
+        best_score = 0.0
 
         # search in specified season or all seasons. identity check, not
         # truthiness -- season 0 is a valid TVDB season (specials), and
@@ -676,7 +679,13 @@ class SeriesEpisodeMapper(QWidget):
             order_type = str(type_data.get("type", "")).lower()
             order_name = str(type_data.get("type_name", "")).lower()
             if "absolute" in order_type or "absolute" in order_name:
-                return type_data.get("episodes", [])
+                episodes = type_data.get("episodes", [])
+                if isinstance(episodes, list):
+                    return [
+                        dict(episode)
+                        for episode in episodes
+                        if isinstance(episode, dict)
+                    ]
         return []
 
     def _get_available_episodes_flat(self) -> list[dict[str, Any]]:
@@ -945,7 +954,7 @@ class SeriesEpisodeMapper(QWidget):
         file_path: Path,
         season: int,
         episode: int,
-        episode_data: dict,
+        episode_data: EpisodeData,
         confidence: float,
         method: str,
         episode_end: int | None = None,
@@ -968,7 +977,7 @@ class SeriesEpisodeMapper(QWidget):
 
     def _update_file_row_assignment(
         self, row: int, season: int, episode: int, confidence: float, method: str
-    ):
+    ) -> None:
         """Update file table row with assignment data"""
         # block signals while populating cells programmatically: setItem()
         # fires itemChanged, which would otherwise re-enter
@@ -1081,7 +1090,7 @@ class SeriesEpisodeMapper(QWidget):
         self.episode_filter_combo.addItem("All Seasons", "all")
 
         # count episodes per season in current ordering
-        season_counts = {}
+        season_counts: dict[int, int] = {}
         for episode_item in self.episode_items:
             season = episode_item.season
             if season not in season_counts:
@@ -1117,7 +1126,7 @@ class SeriesEpisodeMapper(QWidget):
             filter_data = "all"
 
         # get all assigned episodes for marking purposes
-        assigned_episodes = set()
+        assigned_episodes: set[tuple[int, int]] = set()
         for mapping in self.file_episode_mappings.values():
             assigned_episodes.add((mapping["season"], mapping["episode"]))
 
@@ -1129,7 +1138,7 @@ class SeriesEpisodeMapper(QWidget):
             ) in assigned_episodes
 
         # count total episodes per season from ALL episodes in current ordering
-        total_episodes_per_season = {}
+        total_episodes_per_season: dict[int, int] = {}
         for episode in self.episode_items:
             season = episode.season
             if season not in total_episodes_per_season:
@@ -1137,7 +1146,7 @@ class SeriesEpisodeMapper(QWidget):
             total_episodes_per_season[season] += 1
 
         # group episodes by season (apply filters)
-        seasons_data = {}
+        seasons_data: dict[int, list[EpisodeListItem]] = {}
         for episode_item in self.episode_items:
             # apply season filter
             if filter_data != "all" and episode_item.season != filter_data:
@@ -1271,7 +1280,7 @@ class SeriesEpisodeMapper(QWidget):
             f"Episodes: {total_episodes} available, {assigned_episodes} assigned"
         )
 
-    def _update_all_stats(self):
+    def _update_all_stats(self) -> None:
         """Update all statistics"""
         self._update_files_stats()
         self._update_episodes_stats()
@@ -1310,7 +1319,7 @@ class SeriesEpisodeMapper(QWidget):
     #     pass
 
     @Slot(QTableWidgetItem)
-    def _on_table_item_changed(self, item) -> None:
+    def _on_table_item_changed(self, item: QTableWidgetItem) -> None:
         """Handle direct editing of season/episode in table"""
         if not item:
             return
@@ -1488,7 +1497,7 @@ class SeriesEpisodeMapper(QWidget):
 
     def get_simple_mappings(self) -> dict[str, dict[str, Any]]:
         """Get simplified mappings: {filename: {season, episode, episode_end, confidence_percent}}"""
-        simple_mappings = {}
+        simple_mappings: dict[str, dict[str, Any]] = {}
 
         for file_path, mapping_data in self.file_episode_mappings.items():
             simple_mappings[file_path.name] = {
@@ -1505,7 +1514,7 @@ class SeriesEpisodeMapper(QWidget):
 
     def get_path_mappings(self) -> dict[str, dict[str, Any]]:
         """Get mappings with full file paths: {file_path: {season, episode, episode_end, confidence_percent}}"""
-        path_mappings = {}
+        path_mappings: dict[str, dict[str, Any]] = {}
 
         for file_path, mapping_data in self.file_episode_mappings.items():
             path_mappings[str(file_path)] = {
@@ -1520,7 +1529,7 @@ class SeriesEpisodeMapper(QWidget):
 
         return path_mappings
 
-    def get_episode_map(self) -> dict | None:
+    def get_episode_map(self) -> dict[Path, EpisodeMapping]:
         """Get episode mappings.
 
         Values may include an ``episode_end`` key (``int | None``) marking the

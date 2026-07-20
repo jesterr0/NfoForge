@@ -81,6 +81,10 @@ def mkbrr_generate_torrent(
     max_piece_size: int | None,
     cb: Callable[[int], None],
 ) -> Torrent | None:
+    announce_url = tracker_info.announce_url
+    if not announce_url:
+        raise ValueError("Cannot create a torrent without a tracker announce URL")
+
     cmd_line = [
         str(mkbrr_path),
         "create",
@@ -89,7 +93,7 @@ def mkbrr_generate_torrent(
         str(output_path),
         "--private",
         "--tracker",
-        tracker_info.announce_url,
+        announce_url,
     ]
     if max_piece_size:
         cmd_line.extend(

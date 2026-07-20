@@ -1,7 +1,8 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import QPoint, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -31,15 +32,22 @@ from src.payloads.clients import TorrentClient
 from src.payloads.watch_folder import WatchFolder
 
 
+class ClientTester(Protocol):
+    def test(self) -> tuple[bool, str]: ...
+
+
+ClientTesterFactory = Callable[[TorrentClient], ClientTester]
+
+
 class ClientTestWorker(QThread):
     job_finished = Signal(tuple)
     job_failed = Signal(str)
 
     def __init__(
         self,
-        test_class: Callable | None = None,
-        test_args: tuple | None = None,
-        parent=None,
+        test_class: ClientTesterFactory,
+        test_args: tuple[TorrentClient],
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.test_class = test_class
@@ -47,13 +55,9 @@ class ClientTestWorker(QThread):
 
     def run(self) -> None:
         try:
-            if self.test_class:
-                if self.test_args:
-                    test_class = self.test_class(*self.test_args)
-                else:
-                    test_class = self.test_class()
-                status, message = test_class.test()
-                self.job_finished.emit((status, message))
+            test_client = self.test_class(*self.test_args)
+            status, message = test_client.test()
+            self.job_finished.emit((status, message))
         except Exception as e:
             self.job_failed.emit(f"Error: {e}")
 
@@ -62,13 +66,13 @@ class ClientEditBase(QFrame):
     test_client_signal = Signal(object)
     test_client_signal_completed = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.specific_params_layout = QVBoxLayout()
         self.specific_params_map: dict[str, QLineEdit | QCheckBox] = {}
 
-        self.test_class: Callable | None = None
+        self.test_class: ClientTesterFactory | None = None
         self.client_test_worker: ClientTestWorker | None = None
         self.test_client_signal.connect(self._test_client)
 
@@ -83,20 +87,23 @@ class ClientEditBase(QFrame):
                 label_text = self.BOOL_PARAM_LABELS.get(
                     key, key.title().replace("_", " ")
                 )
-                widget = QCheckBox(self)
-                widget.setChecked(value)
-                self.specific_params_map[key] = widget
-                form = self.build_form_layout(label_text, widget)
+                checkbox = QCheckBox(self)
+                checkbox.setChecked(value)
+                self.specific_params_map[key] = checkbox
+                form = self.build_form_layout(label_text, checkbox)
                 self.specific_params_layout.addLayout(form)
             else:
-                widget = QLineEdit(self)
-                widget.setText(value)
-                self.specific_params_map[key] = widget
-                form = self.build_form_layout(key.title().replace("_", " "), widget)
+                text_input = QLineEdit(self)
+                text_input.setText(value)
+                self.specific_params_map[key] = text_input
+                form = self.build_form_layout(key.title().replace("_", " "), text_input)
                 self.specific_params_layout.addLayout(form)
 
     @Slot(object)
     def _test_client(self, test_payload: TorrentClient) -> None:
+        if self.test_class is None:
+            self._test_worker_failed("No client test handler is configured")
+            return
         self.client_test_worker = ClientTestWorker(
             self.test_class, (test_payload,), parent=self
         )
@@ -105,7 +112,7 @@ class ClientEditBase(QFrame):
         self.client_test_worker.start()
 
     @Slot(tuple)
-    def _test_worker_finished(self, result: tuple) -> None:
+    def _test_worker_finished(self, result: tuple[bool, str]) -> None:
         _, message = result
         self.test_client_signal_completed.emit()
         QMessageBox.information(self, "Result", message)
@@ -124,7 +131,7 @@ class ClientEditBase(QFrame):
 
 
 class ClientEdit(ClientEditBase):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.host = QLineEdit(parent=self)
@@ -167,7 +174,7 @@ class ClientEdit(ClientEditBase):
 
 
 class ClientEditURI(ClientEditBase):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.host = QLineEdit(parent=self)
@@ -197,7 +204,7 @@ class ClientEditURI(ClientEditBase):
 
 
 class ClientEditWatchFolder(ClientEditBase):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.path = QLineEdit(parent=self)
@@ -224,19 +231,19 @@ class ClientListWidget(QWidget):
         TorrentClientSelection.RTORRENT,
         TorrentClientSelection.TRANSMISSION,
     )
-    CLIENT_CLASS_MAP = {
+    CLIENT_CLASS_MAP: dict[TorrentClientSelection, ClientTesterFactory] = {
         TorrentClientSelection.QBITTORRENT: QBittorrentClient,
         TorrentClientSelection.DELUGE: DelugeClient,
         TorrentClientSelection.RTORRENT: RTorrentClient,
         TorrentClientSelection.TRANSMISSION: TransmissionClient,
     }
 
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
 
-        self._save_settings_map = {}
+        self._save_settings_map: dict[TorrentClientSelection, ClientEditBase] = {}
 
         self.tree = QTreeWidget(self)
         self.tree.setHeaderHidden(True)
@@ -284,7 +291,7 @@ class ClientListWidget(QWidget):
 
     def add_child_widgets(
         self,
-        parent_item,
+        parent_item: QTreeWidgetItem,
         client: TorrentClientSelection,
         client_info: TorrentClient | WatchFolder,
     ) -> None:
@@ -292,34 +299,41 @@ class ClientListWidget(QWidget):
         child_layout = QVBoxLayout(child_widget)
         child_layout.setContentsMargins(0, 0, 0, 0)
 
-        client_widget = None
+        client_widget: ClientEditBase | None = None
         if client in self.FULL_CLIENTS and isinstance(client_info, TorrentClient):
-            client_widget = ClientEdit()
-            client_widget.host.setText(client_info.host)
+            full_client_widget = ClientEdit()
+            full_client_widget.host.setText(client_info.host)
             if client_info.port:
-                client_widget.port.setValue(client_info.port)
-            client_widget.user.setText(client_info.user)
-            client_widget.password.setText(client_info.password)
-            client_widget.build_widgets_from_dict(client_info.specific_params)
-            client_widget.test_class = self.CLIENT_CLASS_MAP[client]
-            client_widget.test_client_signal.connect(self._test_client)
-            client_widget.test_client_signal_completed.connect(self.testing_ended.emit)
+                full_client_widget.port.setValue(client_info.port)
+            full_client_widget.user.setText(client_info.user)
+            full_client_widget.password.setText(client_info.password)
+            full_client_widget.build_widgets_from_dict(client_info.specific_params)
+            full_client_widget.test_class = self.CLIENT_CLASS_MAP[client]
+            full_client_widget.test_client_signal.connect(self._test_client)
+            full_client_widget.test_client_signal_completed.connect(
+                self.testing_ended.emit
+            )
+            client_widget = full_client_widget
 
         elif client in self.URI_CLIENTS and isinstance(client_info, TorrentClient):
-            client_widget = ClientEditURI()
-            client_widget.host.setText(client_info.host)
-            client_widget.build_widgets_from_dict(client_info.specific_params)
-            client_widget.test_class = self.CLIENT_CLASS_MAP[client]
-            client_widget.test_client_signal.connect(self._test_client)
-            client_widget.test_client_signal_completed.connect(self.testing_ended.emit)
+            uri_client_widget = ClientEditURI()
+            uri_client_widget.host.setText(client_info.host)
+            uri_client_widget.build_widgets_from_dict(client_info.specific_params)
+            uri_client_widget.test_class = self.CLIENT_CLASS_MAP[client]
+            uri_client_widget.test_client_signal.connect(self._test_client)
+            uri_client_widget.test_client_signal_completed.connect(
+                self.testing_ended.emit
+            )
+            client_widget = uri_client_widget
 
         elif client == TorrentClientSelection.WATCH_FOLDER and isinstance(
             client_info, WatchFolder
         ):
-            client_widget = ClientEditWatchFolder()
-            client_widget.path.setText(
+            watch_folder_widget = ClientEditWatchFolder()
+            watch_folder_widget.path.setText(
                 str(client_info.path) if client_info.path else ""
             )
+            client_widget = watch_folder_widget
 
         if not client_widget:
             raise AttributeError("Failed to build 'client_widget'")
@@ -332,7 +346,7 @@ class ClientListWidget(QWidget):
         child_item = QTreeWidgetItem(parent_item)
         self.tree.setItemWidget(child_item, 0, child_widget)
 
-    def _open_context_menu(self, position) -> None:
+    def _open_context_menu(self, position: QPoint) -> None:
         """Opens the right-click context menu for expanding and collapsing all items"""
         menu = QMenu()
 
@@ -383,7 +397,9 @@ class ClientListWidget(QWidget):
         )
 
         if client in self.FULL_CLIENTS and isinstance(client_attributes, TorrentClient):
-            full_client_widget: ClientEdit = self._save_settings_map[client]
+            full_client_widget = self._save_settings_map[client]
+            if not isinstance(full_client_widget, ClientEdit):
+                raise TypeError(f"Expected full client editor for {client}")
             client_attributes.host = full_client_widget.host.text().strip()
             client_attributes.port = full_client_widget.port.value()
             client_attributes.user = full_client_widget.user.text().strip()
@@ -397,7 +413,9 @@ class ClientListWidget(QWidget):
         elif client in self.URI_CLIENTS and isinstance(
             client_attributes, TorrentClient
         ):
-            uri_client_widget: ClientEditURI = self._save_settings_map[client]
+            uri_client_widget = self._save_settings_map[client]
+            if not isinstance(uri_client_widget, ClientEditURI):
+                raise TypeError(f"Expected URI client editor for {client}")
             client_attributes.host = uri_client_widget.host.text().strip()
             for key, val_widget in uri_client_widget.specific_params_map.items():
                 client_attributes.specific_params[key] = val_widget.text().strip()
@@ -405,14 +423,16 @@ class ClientListWidget(QWidget):
         elif client == TorrentClientSelection.WATCH_FOLDER and isinstance(
             client_attributes, WatchFolder
         ):
-            watch_folder: ClientEditWatchFolder = self._save_settings_map[client]
+            watch_folder = self._save_settings_map[client]
+            if not isinstance(watch_folder, ClientEditWatchFolder):
+                raise TypeError("Expected watch-folder editor")
             watch_folder_path = watch_folder.path.text().strip()
             client_attributes.path = (
                 Path(watch_folder_path) if watch_folder_path else None
             )
 
-    def get_selected_clients(self) -> list[TorrentClientSelection | None]:
-        selected_items = []
+    def get_selected_clients(self) -> list[TorrentClientSelection]:
+        selected_items: list[TorrentClientSelection] = []
 
         for i in range(self.tree.topLevelItemCount()):
             parent_item = self.tree.topLevelItem(i)

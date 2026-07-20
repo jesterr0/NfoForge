@@ -1,7 +1,8 @@
 import re
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 import niquests
 import regex
@@ -44,7 +45,7 @@ from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
-CategoryEnums = (
+CategoryEnums: TypeAlias = (
     ReelFlixCategory
     | AitherCategory
     | HunoCategory
@@ -54,7 +55,7 @@ CategoryEnums = (
     | UploadCXCategory
     | OnlyEncodesCategory
 )
-ResolutionEnums = (
+ResolutionEnums: TypeAlias = (
     ReelFlixResolution
     | AitherResolution
     | HunoResolution
@@ -64,7 +65,7 @@ ResolutionEnums = (
     | UploadCXResolution
     | OnlyEncodesResolution
 )
-TypeEnums = (
+TypeEnums: TypeAlias = (
     ReelFlixType
     | AitherType
     | HunoType
@@ -105,9 +106,9 @@ class Unit3dBaseUploader:
         torrent_file: Path,
         input_path: Path,
         mediainfo_obj: MediaInfo,
-        cat_enum: type[CategoryEnums],
-        res_enum: type[ResolutionEnums],
-        type_enum: type[TypeEnums],
+        cat_enum: type[Enum],
+        res_enum: type[Enum],
+        type_enum: type[Enum],
         timeout: int = 60,
     ) -> None:
         self.tracker_name = tracker_name
@@ -290,7 +291,7 @@ class Unit3dBaseUploader:
             raise TrackerError(
                 f"{self.tracker_name} does not support {self.media_type} uploads"
             )
-        return self.cat_enum(category).value
+        return str(self.cat_enum(category).value)
 
     def _get_type_id(self) -> str:
         title_lowered = str(self.input_path.stem).lower()
@@ -298,7 +299,9 @@ class Unit3dBaseUploader:
 
         # remux
         if "remux" in title_lowered:
-            return self.type_enum.REMUX.value
+            remux_value = getattr(self.type_enum, "REMUX", None)
+            if remux_value is not None:
+                return str(remux_value.value)
 
         # disc
         if regex.search(
@@ -315,18 +318,20 @@ class Unit3dBaseUploader:
             ),
             title_lowered,
         ):
-            return self.type_enum.DISC.value
+            disc_value = getattr(self.type_enum, "DISC", None)
+            if disc_value is not None:
+                return str(disc_value.value)
 
         # web
         if "web" in title_lowered:
             if re.search(r"\bweb[._ -]?dl\b", title_lowered):
                 webdl_value = getattr(self.type_enum, "WEBDL", None)
                 if webdl_value:
-                    return webdl_value.value
+                    return str(webdl_value.value)
             elif re.search(r"\bweb[._ -]?rip\b", title_lowered):
                 webrip_value = getattr(self.type_enum, "WEBRIP", None)
                 if webrip_value:
-                    return webrip_value.value
+                    return str(webrip_value.value)
             elif re.search(
                 r"\b(?:480|576|720|1080|2160|4320)[pi][._ -]?web\b"
                 r"|\bweb[._ -]?(?:480|576|720|1080|2160|4320)[pi]\b"
@@ -347,13 +352,13 @@ class Unit3dBaseUploader:
                 # real HDTV release can't be overridden.
                 webdl_value = getattr(self.type_enum, "WEBDL", None)
                 if webdl_value:
-                    return webdl_value.value
+                    return str(webdl_value.value)
 
         # hdtv
         if "hdtv" in title_lowered or "hd-tv" in title_lowered:
             hdtv_value = getattr(self.type_enum, "HDTV", None)
             if hdtv_value:
-                return hdtv_value.value
+                return str(hdtv_value.value)
 
         # encodes
         if any(
@@ -367,7 +372,7 @@ class Unit3dBaseUploader:
         ):
             encode_value = getattr(self.type_enum, "ENCODE", None)
             if encode_value:
-                return encode_value.value
+                return str(encode_value.value)
 
         raise TrackerError(f"Failed to determine 'Type ID' for {self.tracker_name}")
 
@@ -376,23 +381,25 @@ class Unit3dBaseUploader:
             resolution = self.res_enum(
                 VideoResolutionAnalyzer(self.mediainfo_obj).get_resolution()
             ).value
-            return resolution
+            return str(resolution)
         except ValueError:
             title_lowered = self.input_path.stem.lower()
             res_map = {
-                "4320p": self.res_enum.RES_4320P,
-                "2160p": self.res_enum.RES_2160P,
-                "1080p": self.res_enum.RES_1080P,
-                "1080i": self.res_enum.RES_1080I,
-                "720p": self.res_enum.RES_720P,
-                "576p": self.res_enum.RES_576P,
-                "576i": self.res_enum.RES_576I,
-                "480p": self.res_enum.RES_480P,
-                "480i": self.res_enum.RES_480I,
+                "4320p": "RES_4320P",
+                "2160p": "RES_2160P",
+                "1080p": "RES_1080P",
+                "1080i": "RES_1080I",
+                "720p": "RES_720P",
+                "576p": "RES_576P",
+                "576i": "RES_576I",
+                "480p": "RES_480P",
+                "480i": "RES_480I",
             }
-            for res, enum in res_map.items():
+            for res, enum_name in res_map.items():
                 if res in title_lowered:
-                    return enum.value
+                    resolution_value = getattr(self.res_enum, enum_name, None)
+                    if resolution_value is not None:
+                        return str(resolution_value.value)
 
         raise TrackerError(
             f"Failed to determine 'Resolution ID' for {self.tracker_name}"
@@ -436,10 +443,10 @@ class Unit3dBaseSearch:
         self.timeout = timeout
 
     def search(self, file_name: str) -> list[TrackerSearchResult]:
-        params = {
+        params: dict[str, str] = {
             "api_token": self.api_key,
             "file_name": file_name,
-            "perPage": 50,
+            "perPage": "50",
         }
 
         results = None
@@ -470,8 +477,10 @@ class Unit3dBaseSearch:
         )
         return results
 
-    def _convert_response(self, data: dict | None) -> list[TrackerSearchResult]:
-        results = []
+    def _convert_response(
+        self, data: dict[str, Any] | None
+    ) -> list[TrackerSearchResult]:
+        results: list[TrackerSearchResult] = []
         if data:
             for item in data.get("data", []):
                 if item:

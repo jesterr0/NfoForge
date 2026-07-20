@@ -1,17 +1,18 @@
-from PySide6.QtGui import QPainter, QPen
-from PySide6.QtWidgets import QSplitter, QSplitterHandle
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPainter, QPaintEvent, QPen
+from PySide6.QtWidgets import QSplitter, QSplitterHandle, QWidget
 from typing_extensions import override
 
 
 class CustomSplitterHandle(QSplitterHandle):
     """Custom splitter handle with better visual appearance"""
 
-    def __init__(self, orientation, parent) -> None:
+    def __init__(self, orientation: Qt.Orientation, parent: QSplitter) -> None:
         super().__init__(orientation, parent)
         self.setMinimumSize(12, 12)
 
     @override
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Custom paint event for a nicer handle appearance"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -56,8 +57,10 @@ class CustomSplitterHandle(QSplitterHandle):
 class CustomSplitter(QSplitter):
     """Custom splitter with enhanced handle"""
 
-    def __init__(self, orientation, parent=None, *kwargs) -> None:
-        super().__init__(orientation=orientation, parent=parent, *kwargs)
+    def __init__(
+        self, orientation: Qt.Orientation, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(orientation=orientation, parent=parent)
         self.setHandleWidth(12)
         self.setChildrenCollapsible(False)
 

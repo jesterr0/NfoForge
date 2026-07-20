@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from src.plugins.plugin_wizard_base import BaseWizardPage
+from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 
 @dataclass(slots=True)

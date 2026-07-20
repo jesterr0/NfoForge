@@ -1,7 +1,8 @@
 from collections.abc import Set as AbstractSet
 from enum import Enum
+from typing import Any
 
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -35,7 +36,7 @@ class TrackerEditBase(QFrame):
     load_data = Signal()
     save_data = Signal()
 
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -83,7 +84,7 @@ class TrackerEditBase(QFrame):
         self.settings_layout.addLayout(layout)
         return layout
 
-    def add_widget_to_layout(self, widget: QWidget, **kwargs) -> None:
+    def add_widget_to_layout(self, widget: QWidget, **kwargs: Any) -> None:
         self.settings_layout.addWidget(widget, **kwargs)
 
     def add_screen_shot_settings(self) -> None:
@@ -139,7 +140,7 @@ class TrackerEditBase(QFrame):
 
 
 class MTVTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         anonymous_lbl = QLabel("Anonymous", self)
@@ -266,7 +267,7 @@ class MTVTrackerEdit(TrackerEditBase):
 
 
 class TLTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         username_lbl = QLabel("Username", self)
@@ -342,7 +343,7 @@ class TLTrackerEdit(TrackerEditBase):
 
 
 class BHDTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         anonymous_lbl = QLabel("Anonymous", self)
@@ -457,7 +458,7 @@ class BHDTrackerEdit(TrackerEditBase):
 
 
 class PTPTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_user_lbl = QLabel("API User", self)
@@ -551,7 +552,7 @@ class PTPTrackerEdit(TrackerEditBase):
 
 
 class RFTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -676,7 +677,7 @@ class RFTrackerEdit(TrackerEditBase):
 
 
 class AitherTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -801,7 +802,7 @@ class AitherTrackerEdit(TrackerEditBase):
 
 
 class HunoTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -873,7 +874,7 @@ class HunoTrackerEdit(TrackerEditBase):
 
 
 class LSTTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -998,7 +999,7 @@ class LSTTrackerEdit(TrackerEditBase):
 
 
 class DarkPeersEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -1083,7 +1084,7 @@ class DarkPeersEdit(TrackerEditBase):
 
 
 class ShareIslandEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -1169,7 +1170,7 @@ class ShareIslandEdit(TrackerEditBase):
 
 
 class UploadCXEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -1241,7 +1242,7 @@ class UploadCXEdit(TrackerEditBase):
 
 
 class OnlyEncodesEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         api_key_lbl = QLabel("API Key", self)
@@ -1319,7 +1320,7 @@ class OnlyEncodesEdit(TrackerEditBase):
 
 
 class TrackerListWidget(QWidget):
-    def __init__(self, config: ConfigManager, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -1373,7 +1374,9 @@ class TrackerListWidget(QWidget):
 
         self.tree.blockSignals(False)
 
-    def add_child_widget(self, parent_item, tracker: TrackerSelection) -> None:
+    def add_child_widget(
+        self, parent_item: QTreeWidgetItem, tracker: TrackerSelection
+    ) -> None:
         tracker_widget = None
         if tracker is TrackerSelection.MORE_THAN_TV:
             tracker_widget = MTVTrackerEdit(self.config, self)
@@ -1405,7 +1408,7 @@ class TrackerListWidget(QWidget):
             child_item = QTreeWidgetItem(parent_item)
             self.tree.setItemWidget(child_item, 0, tracker_widget)
 
-    def _open_context_menu(self, position) -> None:
+    def _open_context_menu(self, position: QPoint) -> None:
         """Opens the right-click context menu for expanding and collapsing all trackers"""
         menu = QMenu()
 
