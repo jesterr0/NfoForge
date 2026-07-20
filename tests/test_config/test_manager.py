@@ -656,6 +656,31 @@ def test_tracker_bool_flag_roundtrips_through_save(
     assert type(raw) is bool and raw is True
 
 
+def test_beyond_hd_stream_and_localization_flags_persist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`BeyondHDInfo.add_localization_to_custom_edition` and `stream_optimized`
+    are real, user-facing checkboxes that persisted on release configs. The
+    typed-config refactor dropped both from the decode and save paths (and the
+    packaged default), so toggling them no longer survived a reload. They must
+    round-trip like every other tracker flag.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.trackers.beyond_hd.add_localization_to_custom_edition = True
+    manager.settings.trackers.beyond_hd.stream_optimized = True
+    manager.save()
+    manager.load_profile("test")  # must not raise
+
+    assert manager.settings.trackers.beyond_hd.add_localization_to_custom_edition is True
+    assert manager.settings.trackers.beyond_hd.stream_optimized is True
+
+
 def test_int_tracker_flag_is_coerced_and_persisted_as_bool(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

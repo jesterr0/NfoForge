@@ -97,6 +97,8 @@ promo = 0
 live_release = 1
 internal = false
 image_width = 350
+add_localization_to_custom_edition = false
+stream_optimized = false
 
 [tracker.pass_the_popcorn]
 upload_enabled = true

@@ -309,6 +309,12 @@ class TypedTomlOperations:
             ).value
             bhd_data["internal"] = self.settings.trackers.beyond_hd.internal
             bhd_data["image_width"] = self.settings.trackers.beyond_hd.image_width
+            bhd_data["add_localization_to_custom_edition"] = (
+                self.settings.trackers.beyond_hd.add_localization_to_custom_edition
+            )
+            bhd_data["stream_optimized"] = (
+                self.settings.trackers.beyond_hd.stream_optimized
+            )
 
             # PassThePopcorn tracker
             ptp_data = self._ensure_toml_table(tracker_data, "pass_the_popcorn")
@@ -1223,6 +1229,10 @@ class TypedTomlOperations:
                 live_release=BHDLiveRelease(bhd_tracker_data["live_release"]),
                 internal=bhd_tracker_data["internal"],
                 image_width=bhd_tracker_data["image_width"],
+                add_localization_to_custom_edition=bhd_tracker_data[
+                    "add_localization_to_custom_edition"
+                ],
+                stream_optimized=bhd_tracker_data["stream_optimized"],
             )
 
             ptp_tracker_data = tracker_data["pass_the_popcorn"]
