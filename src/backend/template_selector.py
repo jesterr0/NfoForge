@@ -104,7 +104,7 @@ class TemplateSelectorBackEnd:
             _path = tuple(self.templates.values())[idx]
 
         if _path:
-            with open(_path, "r", encoding="utf-8") as template:
+            with open(_path, encoding="utf-8") as template:
                 return template.read()
 
     def create_template(self, path: PathLike[str] | str, media_type: MediaType) -> Path:
