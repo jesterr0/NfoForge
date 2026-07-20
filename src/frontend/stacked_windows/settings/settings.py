@@ -156,7 +156,7 @@ class Settings(QWidget):
         layout.addLayout(right_layout_box)
 
     @Slot(object)
-    def _swap_tab(self, tab: SettingsTabs):
+    def _swap_tab(self, tab: SettingsTabs) -> None:
         self.tab_widget.setCurrentWidget(self.settings_map[tab])
 
     def _cancel_settings(self) -> None:
@@ -164,15 +164,14 @@ class Settings(QWidget):
         GSigs().settings_close.emit()
 
     def _save_new_config(self) -> None:
-        save_cfg, _ = QFileDialog.getSaveFileName(
+        save_cfg_path, _ = QFileDialog.getSaveFileName(
             parent=self,
             caption="Save Config As",
             filter="*.toml",
             dir=str(self.config.paths.user_configs),
         )
-        if save_cfg:
-            save_cfg = Path(save_cfg)
-            self.config.save_as(save_cfg)
+        if save_cfg_path:
+            self.config.save_as(Path(save_cfg_path))
             self.general_settings_content.load_selected_configs()
             self._apply_settings()
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from guessit import guessit
 from PySide6.QtCore import Qt, Slot
@@ -23,12 +24,18 @@ from src.frontend.utils import set_top_parent_geometry
 from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.media_search import MediaSearch
 
+if TYPE_CHECKING:
+    from src.frontend.windows.main_window import MainWindow
+
 
 class SandboxMediaInputPage(QWizardPage):
     """Wrapper page for MediaInput in sandbox mode"""
 
     def __init__(
-        self, config: ConfigManager, context: ProcessingContext, parent=None
+        self,
+        config: ConfigManager,
+        context: ProcessingContext,
+        parent: QWidget,
     ) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Input")
@@ -58,7 +65,10 @@ class SandboxMediaSearchPage(QWizardPage):
     """Wrapper page for MediaSearch in sandbox mode"""
 
     def __init__(
-        self, config: ConfigManager, context: ProcessingContext, parent=None
+        self,
+        config: ConfigManager,
+        context: ProcessingContext,
+        parent: QWidget,
     ) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Search")
@@ -109,7 +119,10 @@ class SandboxSeriesMapperPage(QWizardPage):
     """Page for series episode mapping"""
 
     def __init__(
-        self, config: ConfigManager, context: ProcessingContext, parent=None
+        self,
+        config: ConfigManager,
+        context: ProcessingContext,
+        parent: QWidget,
     ) -> None:
         super().__init__(parent)
         self.setTitle("Sandbox Series Mapping")
@@ -163,7 +176,10 @@ class SandboxWizard(QWizard):
     PAGE_SERIES_MAPPER = 2
 
     def __init__(
-        self, config: ConfigManager, context: ProcessingContext, parent=None
+        self,
+        config: ConfigManager,
+        context: ProcessingContext,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Sandbox Input")
@@ -213,7 +229,8 @@ class SandboxWizard(QWizard):
                 )
                 if (
                     item_data
-                    and MediaType.search_type(item_data.get("media_type"))
+                    and isinstance(item_data.get("media_type"), str)
+                    and MediaType.search_type(item_data["media_type"])
                     is MediaType.SERIES
                 ):
                     return self.PAGE_SERIES_MAPPER
@@ -234,7 +251,10 @@ class SandboxMainWindow(QMainWindow):
     """Main window for sandbox input with built-in status bar to mimic NfoForge's main window"""
 
     def __init__(
-        self, config: ConfigManager, context: ProcessingContext, parent=None
+        self,
+        config: ConfigManager,
+        context: ProcessingContext,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowFlags(

@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QToolButton,
+    QWidget,
     QWizardPage,
 )
 
@@ -32,7 +33,7 @@ class BaseWizardPage(QWizardPage):
         self,
         config: ConfigManager,
         context: ProcessingContext,
-        parent: "MainWindow | Any",
+        parent: QWidget,
     ) -> None:
         super().__init__(parent)
         # self._custom_abstract_method_check()
@@ -68,7 +69,7 @@ class BaseWizardPage(QWizardPage):
         return generate_unique_date_name(path.stem)
 
     @staticmethod
-    def find_largest_media(directory: Path, extensions: Iterable) -> Path | None:
+    def find_largest_media(directory: Path, extensions: Iterable[str]) -> Path | None:
         return find_largest_file_in_directory(directory, extensions, False)
 
     @staticmethod

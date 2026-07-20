@@ -1,14 +1,23 @@
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QLabel
 
 from src.backend.tokens import TokenSelection
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.custom_token_editor import CustomTokenEditor
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class UserTokenSettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("userTokenSettings")
 

@@ -1,5 +1,7 @@
-from PySide6.QtCore import QEvent, Qt, Slot
-from PySide6.QtGui import QColor, QPalette
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import QEvent, QObject, Qt, Slot
+from PySide6.QtGui import QColor, QPalette, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -11,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.config.config import ConfigManager
 from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
@@ -24,9 +27,15 @@ from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class ScreenShotSettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("screenShotSettings")
 
@@ -209,7 +218,7 @@ class ScreenShotSettings(BaseSettings):
         )
         self.optimize_cpu_cores_percent.setSingleStep(0.1)
         self.optimize_cpu_cores_percent.setRange(0.1, 1.0)
-        self.optimize_cpu_cores_percent.wheelEvent = self._disable_scrollwheel_spinbox
+        self.optimize_cpu_cores_percent.installEventFilter(self)
         self.optimize_cpu_cores_percent.valueChanged.connect(self._optimize_cpu_changed)
 
         image_host_config_label = QLabel("Image Hosts Configuration", self)
@@ -525,14 +534,21 @@ class ScreenShotSettings(BaseSettings):
         )
 
     def _build_spinbox(
-        self, step: int, min_max_range: tuple[int, int], parent=None
+        self,
+        step: int,
+        min_max_range: tuple[int, int],
+        parent: QWidget | None = None,
     ) -> QSpinBox:
         spinbox = QSpinBox(parent)
         spinbox.setRange(*min_max_range)
         spinbox.setSingleStep(step)
-        spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        spinbox.installEventFilter(self)
         return spinbox
 
-    @staticmethod
-    def _disable_scrollwheel_spinbox(event: QEvent) -> None:
-        event.ignore()
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if isinstance(watched, QSpinBox | QDoubleSpinBox) and isinstance(
+            event, QWheelEvent
+        ):
+            event.ignore()
+            return True
+        return super().eventFilter(watched, event)

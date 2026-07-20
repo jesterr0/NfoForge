@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.backend.media_input import MediaInputBackEnd
@@ -47,8 +48,8 @@ class MediaInput(BaseWizardPage):
         self,
         config: ConfigManager,
         context: ProcessingContext,
-        parent: "MainWindow | Any",
-        on_finished_cb: Callable | None = None,
+        parent: QWidget,
+        on_finished_cb: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(config, context, parent)
         self.setObjectName("mediaInput")
@@ -344,7 +345,7 @@ class MediaInput(BaseWizardPage):
         if open_dir:
             self._update_media_input(Path(open_dir))
 
-    def _update_media_input(self, data: Sequence | Path) -> None:
+    def _update_media_input(self, data: Sequence[Path] | Path) -> None:
         # uncheck/clear comparison section on new files opened
         self.comparison_toggle_btn.setChecked(False)
         self._toggle_comparison_mode(False)
@@ -429,6 +430,7 @@ class MediaInput(BaseWizardPage):
             return str(path)
         elif path and path.is_file():
             return str(path.parent)
+        return None
 
     @Slot(bool)
     def _toggle_comparison_mode(self, enabled: bool) -> None:
@@ -461,6 +463,7 @@ class MediaInput(BaseWizardPage):
                     # only return if it's a file, not a directory
                     if Path(file_path).is_file():
                         return file_path
+        return None
 
     def get_comparison_pair(self) -> ComparisonPair | None:
         """Get the comparison match as a tuple (source_file, selected_file)."""
@@ -477,6 +480,7 @@ class MediaInput(BaseWizardPage):
                 media=Path(selected_file),
                 script=Path(script_file) if script_file else None,
             )
+        return None
 
     def _auto_select_single_comp_tree_file(self) -> None:
         """

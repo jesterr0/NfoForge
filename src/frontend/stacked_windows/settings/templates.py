@@ -1,4 +1,5 @@
 import re
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QColor, QPalette
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
@@ -27,6 +29,10 @@ from src.frontend.utils import (
     create_form_layout,
 )
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 NEWLINE_SEQUENCE_OPTIONS = (
     ("\\r", "\r"),
     ("\\n", "\n"),
@@ -35,7 +41,9 @@ NEWLINE_SEQUENCE_OPTIONS = (
 
 
 class TemplatesSettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("templatesSettings")
 
@@ -475,7 +483,7 @@ class TemplatesSettings(BaseSettings):
         self.update_jinja_engine_settings()
 
     @Slot(object)
-    def update_jinja_engine_settings(self, _event=None) -> None:
+    def update_jinja_engine_settings(self, _event: object = None) -> None:
         update_map = {
             "trim_blocks": self.trim_blocks_toggle.isChecked(),
             "lstrip_blocks": self.lstrip_blocks_toggle.isChecked(),

@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 from urllib import parse as url_parse
 
 from guessit import guessit
-from PySide6.QtCore import QSize, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QCursor, QPixmap
+from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtGui import QCursor, QMouseEvent, QPixmap
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.backend.media_search import MediaSearchBackEnd
@@ -51,7 +52,12 @@ class QueuedWorker(QThread):
     job_finished = Signal(OrderedDict)
     job_failed = Signal(str)
 
-    def __init__(self, backend, query, parent=None) -> None:
+    def __init__(
+        self,
+        backend: MediaSearchBackEnd,
+        query: str,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent=parent)
         self.backend = backend
         self.query = query
@@ -78,7 +84,7 @@ class IDParseWorker(QThread):
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
         tmdb_id: str = "",
-        parent=None,
+        parent: QObject | None = None,
     ) -> None:
         super().__init__(parent=parent)
         self.backend = backend
@@ -114,13 +120,27 @@ class IDParseWorker(QThread):
             async_loop.close()
 
 
+class LinkLabel(QLabel):
+    def __init__(
+        self,
+        on_click: Callable[[QMouseEvent], None],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._on_click = on_click
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        self._on_click(event)
+        super().mousePressEvent(event)
+
+
 class MediaSearch(BaseWizardPage):
     def __init__(
         self,
         config: ConfigManager,
         context: ProcessingContext,
-        parent: "MainWindow | Any",
-        on_finished_cb: Callable | None = None,
+        parent: QWidget,
+        on_finished_cb: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(config, context, parent)
         self.setTitle("Search")
@@ -165,10 +185,9 @@ class MediaSearch(BaseWizardPage):
             Qt.TransformationMode.SmoothTransformation,
         )
 
-        imdb_label = QLabel()
+        imdb_label = LinkLabel(self._open_imdb_link)
         imdb_label.setPixmap(imdb_image)
         imdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        imdb_label.mousePressEvent = self._open_imdb_link
         self.imdb_id_entry = QLineEdit()
         self.imdb_id_entry.setPlaceholderText("Automatic")
 
@@ -179,10 +198,9 @@ class MediaSearch(BaseWizardPage):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        tmdb_label = QLabel()
+        tmdb_label = LinkLabel(self._open_tmdb_link)
         tmdb_label.setPixmap(tmdb_image)
         tmdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        tmdb_label.mousePressEvent = self._open_tmdb_link
         self.tmdb_id_entry = QLineEdit()
 
         tvdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tvdb.png").resolve()))
@@ -192,10 +210,9 @@ class MediaSearch(BaseWizardPage):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        tvdb_label = QLabel()
+        tvdb_label = LinkLabel(self._open_tvdb_link)
         tvdb_label.setPixmap(tvdb_image)
         tvdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        tvdb_label.mousePressEvent = self._open_tvdb_link
         self.tvdb_id_entry = QLineEdit()
         self.tvdb_id_entry.setPlaceholderText("Automatic")
 
@@ -206,10 +223,9 @@ class MediaSearch(BaseWizardPage):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        mal_label = QLabel()
+        mal_label = LinkLabel(self._open_mal_link)
         mal_label.setPixmap(mal_image)
         mal_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        mal_label.mousePressEvent = self._open_mal_link
         self.mal_id_entry = QLineEdit()
         self.mal_id_entry.setPlaceholderText("Automatic")
 
@@ -332,18 +348,32 @@ class MediaSearch(BaseWizardPage):
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
         if item_data:
+            media_type = item_data.get("media_type")
+            title = item_data.get("title")
+            year = item_data.get("year")
+            raw_data = item_data.get("raw_data")
+            genre_ids = item_data.get("genre_ids")
             self.id_parse_worker = IDParseWorker(
                 backend=self.backend,
-                media_type=MediaType.search_type(item_data.get("media_type"))
-                or MediaType.MOVIE,
+                media_type=MediaType.search_type(str(media_type)) or MediaType.MOVIE,
                 imdb_id=self.imdb_id_entry.text().strip(),
-                tmdb_title=item_data.get("title"),
-                tmdb_year=int(item_data.get("year")),
-                original_language=item_data.get("raw_data", {}).get(
-                    "original_language"
+                tmdb_title=str(title or ""),
+                tmdb_year=int(year) if isinstance(year, int | str) else 0,
+                original_language=(
+                    str(raw_data.get("original_language") or "")
+                    if isinstance(raw_data, dict)
+                    else ""
                 ),
-                tmdb_genres=item_data.get("genre_ids", []),
-                tmdb_id=item_data.get("tmdb_id"),
+                tmdb_genres=(
+                    [
+                        genre
+                        for genre in genre_ids
+                        if isinstance(genre, TMDBGenreIDsMovies)
+                    ]
+                    if isinstance(genre_ids, list)
+                    else []
+                ),
+                tmdb_id=str(item_data.get("tmdb_id") or ""),
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
@@ -354,7 +384,7 @@ class MediaSearch(BaseWizardPage):
             self.id_parse_worker.start()
 
     @Slot(object)
-    def _detected_id_data(self, media_data: dict | None) -> None:
+    def _detected_id_data(self, media_data: dict[str, Any] | None) -> None:
         try:
             self._update_payload_data(media_data)
             self.other_ids_parsed = True
@@ -369,7 +399,7 @@ class MediaSearch(BaseWizardPage):
             GSigs().main_window_set_disabled.emit(False)
             GSigs().main_window_clear_status_tip.emit()
 
-    def _update_payload_data(self, media_data: dict | None = None) -> None:
+    def _update_payload_data(self, media_data: dict[str, Any] | None = None) -> None:
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
         if not item_data:
@@ -377,7 +407,7 @@ class MediaSearch(BaseWizardPage):
 
         # update both payloads with the correct MediaType
         self.context.media_input.media_type = self.context.media_search.media_type = (
-            MediaType.strict_search_type(item_data.get("media_type"))
+            MediaType.strict_search_type(str(item_data.get("media_type") or ""))
         )
         self.context.media_search.imdb_id = self.imdb_id_entry.text()
         self.context.media_search.tmdb_id = self.tmdb_id_entry.text()
@@ -476,8 +506,10 @@ class MediaSearch(BaseWizardPage):
 
     def initializePage(self) -> None:
         if not self._check_media_api_keys():
-            if self.main_window.wizard:
-                QTimer.singleShot(1, self.main_window.wizard.reset_wizard)
+            wizard = getattr(self.main_window, "wizard", None)
+            reset_wizard = getattr(wizard, "reset_wizard", None)
+            if callable(reset_wizard):
+                QTimer.singleShot(1, reset_wizard)
             return
 
         input_path = self.context.media_input.input_path
@@ -508,7 +540,7 @@ class MediaSearch(BaseWizardPage):
                 raise MediaParsingError(
                     f"Failed to determine title name for input {file_path.name}"
                 )
-            return extracted_title
+            return str(extracted_title)
 
     def _check_media_api_keys(self) -> bool:
         required_keys = {"TMDB (v3)": self.config.settings.api_keys.tmdb}
@@ -537,8 +569,9 @@ class MediaSearch(BaseWizardPage):
     def _get_current_item_data(self) -> dict[str, Any] | None:
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
-        if item_data:
-            return item_data
+        if isinstance(item_data, dict):
+            return dict(item_data)
+        return None
 
     def _open_external_link(
         self, id_entry: QLineEdit, id_url: str, search_url: str, fallback_url: str
@@ -573,10 +606,10 @@ class MediaSearch(BaseWizardPage):
             self.queued_worker.start()
 
     @Slot(OrderedDict)
-    def _handle_search_result(self, result) -> None:
+    def _handle_search_result(self, result: OrderedDict[str, Any]) -> None:
         self.listbox.clear()
         if result:
-            self.listbox.addItems(result)
+            self.listbox.addItems(list(result))
             self.listbox.setCurrentRow(0)
             self._select_media()
         else:
@@ -613,7 +646,7 @@ class MediaSearch(BaseWizardPage):
             self.media_type_label.setText(item_data.get("media_type", ""))
 
     @Slot()
-    def _open_imdb_link(self, _):
+    def _open_imdb_link(self, _event: QMouseEvent) -> None:
         self._open_external_link(
             self.imdb_id_entry,
             "https://imdb.com/title/{}/",
@@ -622,7 +655,7 @@ class MediaSearch(BaseWizardPage):
         )
 
     @Slot()
-    def _open_tmdb_link(self, _):
+    def _open_tmdb_link(self, _event: QMouseEvent) -> None:
         self._open_external_link(
             self.tmdb_id_entry,
             "https://www.themoviedb.org/movie/{}/",
@@ -631,7 +664,7 @@ class MediaSearch(BaseWizardPage):
         )
 
     @Slot()
-    def _open_tvdb_link(self, _):
+    def _open_tvdb_link(self, _event: QMouseEvent) -> None:
         self._open_external_link(
             self.tvdb_id_entry,
             "https://thetvdb.com/search?query={}",
@@ -640,7 +673,7 @@ class MediaSearch(BaseWizardPage):
         )
 
     @Slot()
-    def _open_mal_link(self, _):
+    def _open_mal_link(self, _event: QMouseEvent) -> None:
         self._open_external_link(
             self.mal_id_entry,
             "https://myanimelist.net/anime/{}",

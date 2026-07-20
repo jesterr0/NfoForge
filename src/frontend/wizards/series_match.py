@@ -44,7 +44,7 @@ class SeriesMatch(BaseWizardPage):
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addWidget(self.series_mapper)
 
-    def initializePage(self):
+    def initializePage(self) -> None:
         """Initialize the page and load data into the series mapper"""
         # load data into the series mapper
         if self.context.media_input and self.context.media_search:

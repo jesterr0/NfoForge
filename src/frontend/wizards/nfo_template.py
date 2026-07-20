@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 class NfoTemplate(BaseWizardPage):
     def __init__(
         self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
-    ):
+    ) -> None:
         super().__init__(config, context, parent)
         self.setTitle("NFO Template")
         self.setObjectName("nfoTemplate")
@@ -40,7 +40,7 @@ class NfoTemplate(BaseWizardPage):
         layout = QVBoxLayout(self)
         layout.addWidget(self.template_selector)
 
-    def initializePage(self):
+    def initializePage(self) -> None:
         self.template_selector.load_templates()
         self.template_selector.text_edit.clear_keyword_highlights()
         self.template_selector.text_edit.highlight_keywords(

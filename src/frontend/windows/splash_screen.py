@@ -139,17 +139,17 @@ class SplashScreenLoader(QThread):
 
         # load user plugins
         plugin_loader = PluginLoader(self.update_splash_msg)
-        plugins = plugin_loader.load_plugins()
-        self.config.plugin_registry.plugins.update(plugins)
+        loaded_plugins = plugin_loader.load_plugins()
+        self.config.plugin_registry.plugins.update(loaded_plugins)
         self._update_flat_filters_with_plugins()
 
         # check if we have missing keys and remove them from the running config
-        plugins = self.config.plugin_registry.plugins.keys()
-        if self.config.settings.plugins.wizard_page not in plugins:
+        plugin_names = self.config.plugin_registry.plugins.keys()
+        if self.config.settings.plugins.wizard_page not in plugin_names:
             self.config.settings.plugins.wizard_page = None
-        if self.config.settings.plugins.token_replacer not in plugins:
+        if self.config.settings.plugins.token_replacer not in plugin_names:
             self.config.settings.plugins.token_replacer = None
-        if self.config.settings.plugins.pre_upload not in plugins:
+        if self.config.settings.plugins.pre_upload not in plugin_names:
             self.config.settings.plugins.pre_upload = None
         self.config.save()
 

@@ -1,8 +1,8 @@
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QSize, Qt, QTimer, Slot
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -25,6 +25,7 @@ from src.backend.utils.file_utilities import (
     get_dir_size,
     open_explorer,
 )
+from src.config.config import ConfigManager
 from src.enums.logging_settings import LogLevel
 from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
@@ -37,9 +38,18 @@ from src.frontend.utils import build_h_line, create_form_layout
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.logger.nfo_forge_logger import LOG
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class GeneralSettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self,
+        config: ConfigManager,
+        main_window: "MainWindow",
+        parent: "Settings",
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("generalSettings")
 
@@ -74,7 +84,7 @@ class GeneralSettings(BaseSettings):
         )
         self.ui_scale_factor_spinbox.setToolTip(scale_factor_lbl.toolTip())
         self.ui_scale_factor_spinbox.lineEdit().setReadOnly(True)
-        self.ui_scale_factor_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.ui_scale_factor_spinbox)
         self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
         GSigs().scale_factor_changed.connect(self.sync_scale_factor_spinbox)
 
@@ -142,7 +152,7 @@ class GeneralSettings(BaseSettings):
         global_timeout_lbl.setToolTip("Sets global timeout for network requests")
         self.global_timeout_spinbox = QSpinBox(self)
         self.global_timeout_spinbox.setRange(2, 120)
-        self.global_timeout_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.global_timeout_spinbox)
 
         tmdb_language_lbl = QLabel("TMDB Language", self)
         tmdb_language_lbl.setToolTip(
@@ -187,7 +197,7 @@ class GeneralSettings(BaseSettings):
 
         self.max_log_files_spinbox = QSpinBox(self)
         self.max_log_files_spinbox.setRange(10, 500)
-        self.max_log_files_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.max_log_files_spinbox)
 
         open_logs_lbl = QLabel("View Logs", self)
         self.open_log_directory = QToolButton(self)
@@ -346,7 +356,7 @@ class GeneralSettings(BaseSettings):
         try:
             self.config.load_profile(target)
         except ConfigSchemaError as error:
-            self.selected_config.setCurrentText(previous)
+            self.selected_config.setCurrentText(previous or "")
             QMessageBox.critical(
                 self,
                 "Incompatible Config",
@@ -467,12 +477,14 @@ class GeneralSettings(BaseSettings):
         For what ever reason ```QApplication.instance()``` doesn't type hint correctly so we
         can ignore these errors for now.
         """
-        app = QApplication.instance()
+        app = cast(QApplication | None, QApplication.instance())
+        if app is None:
+            return
         get_theme = NfoForgeTheme(self.theme_combo.currentData()).theme()
         if get_theme:
-            app.styleHints().setColorScheme(get_theme)  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            app.styleHints().setColorScheme(get_theme)
         else:
-            app.styleHints().unsetColorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            app.styleHints().unsetColorScheme()
 
     @Slot(int)
     def _on_scale_factor_changed(self, value: int) -> None:
@@ -508,9 +520,9 @@ class GeneralSettings(BaseSettings):
             else "",
         )
         if wd:
-            wd = Path(wd)
-            self.working_dir_entry.setText(str(wd))
-            self.config.settings.general.working_dir = wd
+            working_dir = Path(wd)
+            self.working_dir_entry.setText(str(working_dir))
+            self.config.settings.general.working_dir = working_dir
 
     @Slot()
     def _handle_open_working_dir_click(self) -> None:
@@ -541,7 +553,7 @@ class GeneralSettings(BaseSettings):
                     item.unlink()
 
     @Slot()
-    def _swap_dep_tab(self):
+    def _swap_dep_tab(self) -> None:
         GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
     def _load_plugin_combos(self) -> None:
@@ -668,8 +680,13 @@ class GeneralSettings(BaseSettings):
             self.config.settings.general.enable_prompt_overview
         )
         self.enable_mkbrr.setChecked(self.config.defaults.general.enable_mkbrr)
-        self.working_dir_entry.setText(str(self.config.default_working_dir()))
+        self.working_dir_entry.setText(str(self.config.defaults.general.working_dir))
 
-    @staticmethod
-    def _disable_scrollwheel_spinbox(event: QWheelEvent) -> None:
-        event.ignore()
+    def _disable_scrollwheel_spinbox(self, spinbox: QSpinBox) -> None:
+        spinbox.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if isinstance(watched, QSpinBox) and event.type() is QEvent.Type.Wheel:
+            event.ignore()
+            return True
+        return bool(super().eventFilter(watched, event))

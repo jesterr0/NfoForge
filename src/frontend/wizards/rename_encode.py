@@ -85,7 +85,7 @@ class RenameEncode(BaseWizardPage):
         self.backend = RenameEncodeBackEnd()
         self._input_ext: str | None = None
         self._token_window: QWidget | None = None
-        self._overridden_tokens = set()
+        self._overridden_tokens: set[str] = set()
 
         # rename loop vars
         self._rename_loop: QEventLoop | None = None
@@ -488,7 +488,9 @@ class RenameEncode(BaseWizardPage):
         QMessageBox.warning(self, "Error", failure)
 
     def _pre_load_attribute_combos(self, filename: str) -> None:
-        def select_combo_by_regex(norm_list, combo):
+        def select_combo_by_regex(
+            norm_list: Sequence[RenameNormalization], combo: CustomComboBox
+        ) -> None:
             for item in norm_list:
                 for pat in item.re_gex:
                     if re.search(pat, filename, flags=re.I):
@@ -779,7 +781,7 @@ class RenameEncode(BaseWizardPage):
 class RenameTokenControl(QWidget):
     row_modified = Signal(tuple)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         desc = QLabel(
@@ -860,9 +862,9 @@ class RenameTokenControl(QWidget):
                 ),
             )
 
-    def get_token_values(self) -> dict:
+    def get_token_values(self) -> dict[str, str]:
         """Return a dict of token: value"""
-        values = {}
+        values: dict[str, str] = {}
         for row in range(self.table.rowCount()):
             token = self.table.item(row, 0)
             value = self.table.item(row, 1)

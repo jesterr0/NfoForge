@@ -1,13 +1,22 @@
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QLabel
 
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import create_form_layout
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class SecuritySettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("securitySettings")
 

@@ -108,7 +108,7 @@ class MainWindowWizard(QWizard):
         GSigs().wizard_next_button_reset_txt.connect(self._reset_next_button_text)
         GSigs().wizard_end_early.connect(self.end_early)
 
-    def keyPressEvent(self, event: QKeyEvent):
+    def keyPressEvent(self, event: QKeyEvent) -> None:
         # prevent enter/return key from pressing "Next" on the wizard
         if event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Escape):
             pass

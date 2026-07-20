@@ -1,16 +1,28 @@
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QGroupBox, QVBoxLayout, QWidget
 
-from src.config.models import DynamicRangeSettings
+from src.config.config import ConfigManager
+from src.config.models import DynamicRangeSettings, DynamicRangeSettingsData
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
+
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
 
 
 class GlobalManagementSettings(BaseSettings):
     """Movie and Series global settings"""
 
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self,
+        config: ConfigManager,
+        main_window: "MainWindow",
+        parent: "Settings",
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("globalManagementSettings")
 
@@ -67,7 +79,7 @@ class GlobalManagementSettings(BaseSettings):
         self.token_table.replacement_list_widget.blockSignals(False)
 
     @Slot(list)
-    def _title_clean_rules_user_change(self, data: list) -> None:
+    def _title_clean_rules_user_change(self, data: list[object]) -> None:
         self.title_clean_rules_modified = True
         # emit signal with live data for real-time updates
         GSigs().global_management_state_changed.emit({"title_clean_rules": data})
@@ -83,7 +95,9 @@ class GlobalManagementSettings(BaseSettings):
             )
 
     @Slot(object)
-    def _video_dynamic_range_update_live_cfg(self, data: dict) -> None:
+    def _video_dynamic_range_update_live_cfg(
+        self, data: DynamicRangeSettingsData
+    ) -> None:
         if data:
             self.config.settings.global_management.video_dynamic_range = (
                 DynamicRangeSettings(**data)

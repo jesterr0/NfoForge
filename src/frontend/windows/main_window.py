@@ -1,7 +1,7 @@
 import webbrowser
 from collections.abc import Sequence
 from queue import Queue
-from typing import Type
+from typing import Any
 
 from PySide6.QtCore import QByteArray, QTimer, Slot
 from PySide6.QtGui import QCloseEvent, QKeySequence, QShortcut
@@ -282,20 +282,25 @@ class MainWindow(QMainWindow):
             self.show()
 
     @Slot(str, str, object)
-    def ask_prompt(self, prompt_title: str, prompt: str, queue: Queue) -> None:
+    def ask_prompt(
+        self, prompt_title: str, prompt: str, queue: Queue[tuple[bool, str]]
+    ) -> None:
         """Can be used anywhere in the program, thread safe way to get more data and return it via queue.put()"""
         user_input, ok = QInputDialog.getText(self, prompt_title, prompt)
         queue.put((ok, user_input))
 
     @Slot(str, object, object)
     def ask_multi_prompt(
-        self, prompt_title: str, prompts: Sequence[str], queue: Queue
+        self,
+        prompt_title: str,
+        prompts: Sequence[str],
+        queue: Queue[tuple[bool, dict[str, str] | None]],
     ) -> None:
         result = MultiPromptDialog(prompt_title, prompts, self).get_results()
         queue.put(result)
 
     @Slot(object, object)
-    def ask_custom_prompt(self, widget: Type[QDialog], queue: Queue) -> None:
+    def ask_custom_prompt(self, widget: type[QDialog], queue: Queue[Any]) -> None:
         usr_widget = widget(self)
         usr_widget.exec()
         results = getattr(usr_widget, "results", None)

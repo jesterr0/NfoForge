@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pymediainfo import MediaInfo
-from PySide6.QtCore import QSize, Qt, QThread, Signal, SignalInstance, Slot
+from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal, SignalInstance, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -82,7 +82,7 @@ class QueuedWorker(QThread):
         progress_signal: SignalInstance,
         source_file: Path | None = None,
         source_file_mi_obj: MediaInfo | None = None,
-        parent=None,
+        parent: QObject | None = None,
     ) -> None:
         """
         Generate images and emit progress signals.
@@ -371,7 +371,7 @@ class ImagesPage(BaseWizardPage):
         # log used data
         if self.context.shared_data.loaded_images:
             img_path_data = "\n".join(
-                (str(p) for p in self.context.shared_data.loaded_images)
+                str(p) for p in self.context.shared_data.loaded_images
             )
             LOG.info(
                 LOG.LOG_SOURCE.FE,
@@ -379,7 +379,7 @@ class ImagesPage(BaseWizardPage):
             )
         if self.context.shared_data.url_data:
             img_url_data = "\n".join(
-                (str(url_d) for url_d in self.context.shared_data.url_data)
+                str(url_d) for url_d in self.context.shared_data.url_data
             )
             LOG.info(
                 LOG.LOG_SOURCE.FE,
@@ -451,7 +451,7 @@ class ImagesPage(BaseWizardPage):
         return True
 
     def _read_advanced_script(self, script: PathLike[str]) -> str:
-        with open(script, "r", encoding="utf-8") as read_script:
+        with open(script, encoding="utf-8") as read_script:
             return read_script.read()
 
     @Slot()
@@ -512,7 +512,9 @@ class ImagesPage(BaseWizardPage):
         self.loading_complete = state
         self.completeChanged.emit()
 
-    def _generate_job_args(self) -> tuple:
+    def _generate_job_args(
+        self,
+    ) -> tuple[ScreenShotMode, MediaInfo | None, MediaInfo, bool]:
         """Determine image generation args."""
         file_list = self.context.media_input.file_list
         mi_file_list = self.context.media_input.file_list_mediainfo
@@ -552,7 +554,7 @@ class ImagesPage(BaseWizardPage):
             )
         self.image_dir = self.context.media_input.working_dir / "images"
 
-    def _get_sub_names(self, comparison_subs) -> SubNames | None:
+    def _get_sub_names(self, comparison_subs: bool) -> SubNames | None:
         if comparison_subs:
             return SubNames(
                 self.config.settings.screenshots.comparison_source_name,
@@ -562,17 +564,17 @@ class ImagesPage(BaseWizardPage):
 
     def _start_queued_worker(
         self,
-        ss_mode,
-        media_file_mi_obj,
-        source_file_mi_obj,
-        subtitle_color,
-        subtitle_outline_color,
-        sub_names,
-        sub_size,
-        subtitle_alignment,
+        ss_mode: ScreenShotMode,
+        media_file_mi_obj: MediaInfo,
+        source_file_mi_obj: MediaInfo | None,
+        subtitle_color: str,
+        subtitle_outline_color: str,
+        sub_names: SubNames | None,
+        sub_size: int,
+        subtitle_alignment: SubtitleAlignment,
         crop_mode: Cropping,
         script_values: ScriptValues | None,
-        re_sync,
+        re_sync: int,
     ) -> None:
         if (
             not self.media_file
