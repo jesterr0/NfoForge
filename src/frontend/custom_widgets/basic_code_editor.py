@@ -1,6 +1,6 @@
 import re
 import sys
-from typing import NamedTuple, Pattern
+from typing import Any, NamedTuple, cast
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal, Slot
 from PySide6.QtGui import (
@@ -37,14 +37,14 @@ from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 HighlightKeywords = NamedTuple(
     "HighlightKeywords",
-    (("pattern", Pattern), ("color", str), ("first_occurrence_only", bool)),
+    (("pattern", re.Pattern[str]), ("color", str), ("first_occurrence_only", bool)),
 )
 
 
 class CustomHighlighter(QSyntaxHighlighter):
-    def __init__(self, parent: QTextDocument | None = None):
-        super().__init__(parent)  # pyright: ignore [reportCallIssue, reportArgumentType]
-        self.patterns_colors = []
+    def __init__(self, parent: QTextDocument) -> None:
+        super().__init__(parent)
+        self.patterns_colors: list[HighlightKeywords] = []
 
     def set_patterns(self, patterns_colors: list[HighlightKeywords]) -> None:
         self.patterns_colors = patterns_colors
@@ -92,7 +92,7 @@ class CustomHighlighter(QSyntaxHighlighter):
 
 
 class LineNumberArea(QWidget):
-    def __init__(self, editor) -> None:
+    def __init__(self, editor: "CodeEditor") -> None:
         QWidget.__init__(self, editor)
         self._code_editor = editor
 
@@ -123,8 +123,8 @@ class CodeEditor(QPlainTextEdit):
         pop_out_expansion: bool = False,
         pop_out_name: str = "Editor",
         pop_out_geometry: QRect | None = None,
-        parent=None,
-        **kwargs,
+        parent: QWidget | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(parent, **kwargs)
         self.setFrameShape(QFrame.Shape.Box)
@@ -183,7 +183,7 @@ class CodeEditor(QPlainTextEdit):
             self.expand_icon.hide()
             self.installEventFilter(self)
 
-    def set_monospace_font(self):
+    def set_monospace_font(self) -> None:
         if "Fira Mono" in QFontDatabase().families():
             self.setFont(QFont("Fira Mono"))
         else:
@@ -202,7 +202,7 @@ class CodeEditor(QPlainTextEdit):
         )
 
         # calculate the width based on the number of digits
-        space = 3 + self.fontMetrics().horizontalAdvance("9") * digits
+        space = 3 + int(self.fontMetrics().horizontalAdvance("9")) * digits
         return space
 
     def resizeEvent(self, e: QResizeEvent) -> None:
@@ -221,10 +221,10 @@ class CodeEditor(QPlainTextEdit):
                 self.line_number_area.update()
         return super().event(e)
 
-    def get_theme_colors(self):
-        app = QApplication.instance()
+    def get_theme_colors(self) -> tuple[str, str]:
+        app = cast(QApplication | None, QApplication.instance())
         if app:
-            color_scheme = app.styleHints().colorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            color_scheme = app.styleHints().colorScheme()
             scheme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
             return self.THEMES[scheme]["box_color"], self.THEMES[scheme]["font_color"]
         return "#e6e6e6", "#A9A9A9"
@@ -256,7 +256,7 @@ class CodeEditor(QPlainTextEdit):
             block_number += 1
 
     @Slot(int)
-    def update_line_number_area_width(self, _newBlockCount) -> None:
+    def update_line_number_area_width(self, _new_block_count: int) -> None:
         self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
 
     @Slot(QRect, int)
@@ -272,10 +272,10 @@ class CodeEditor(QPlainTextEdit):
 
     @Slot()
     def highlight_current_line(self) -> None:
-        extra_selections = []
+        extra_selections: list[QTextEdit.ExtraSelection] = []
 
         if not self.isReadOnly():
-            selection = QTextEdit.ExtraSelection()
+            selection = cast(Any, QTextEdit.ExtraSelection())
 
             line_color = QColor(self.box_color)
             selection.format.setBackground(line_color)  # pyright: ignore [reportAttributeAccessIssue]
@@ -379,9 +379,9 @@ class CodeEditor(QPlainTextEdit):
                 self.expand_icon.show()
             elif event.type() == QEvent.Type.Leave:
                 self.expand_icon.hide()
-        return super().eventFilter(obj, event)
+        return bool(super().eventFilter(obj, event))
 
-    def expand_editor_popup(self):
+    def expand_editor_popup(self) -> None:
         # build dialog
         dlg = QDialog(self)
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)

@@ -2,7 +2,7 @@ from collections.abc import Set as AbstractSet
 from enum import Enum
 from typing import Any
 
-from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -134,9 +134,14 @@ class TrackerEditBase(QFrame):
         if current_index >= 0:
             widget.setCurrentIndex(current_index)
 
-    @staticmethod
-    def _disable_scrollwheel_spinbox(event: QEvent) -> None:
-        event.ignore()
+    def _disable_scrollwheel_spinbox(self, spinbox: QSpinBox) -> None:
+        spinbox.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if isinstance(watched, QSpinBox) and event.type() is QEvent.Type.Wheel:
+            event.ignore()
+            return True
+        return bool(super().eventFilter(watched, event))
 
 
 class MTVTrackerEdit(TrackerEditBase):
@@ -181,7 +186,7 @@ class MTVTrackerEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(100, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
         self.add_pair_to_layout(api_key_lbl, self.api_key)
@@ -379,7 +384,7 @@ class BHDTrackerEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(100, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
         self.add_pair_to_layout(api_key_lbl, self.api_key)
@@ -576,7 +581,7 @@ class RFTrackerEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
@@ -701,7 +706,7 @@ class AitherTrackerEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
@@ -820,7 +825,7 @@ class HunoTrackerEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
@@ -898,7 +903,7 @@ class LSTTrackerEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
@@ -1017,7 +1022,7 @@ class DarkPeersEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
@@ -1105,7 +1110,7 @@ class ShareIslandEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
@@ -1188,7 +1193,7 @@ class UploadCXEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
@@ -1260,7 +1265,7 @@ class OnlyEncodesEdit(TrackerEditBase):
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
-        self.image_width.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.image_width)
 
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
@@ -1377,7 +1382,7 @@ class TrackerListWidget(QWidget):
     def add_child_widget(
         self, parent_item: QTreeWidgetItem, tracker: TrackerSelection
     ) -> None:
-        tracker_widget = None
+        tracker_widget: TrackerEditBase | None = None
         if tracker is TrackerSelection.MORE_THAN_TV:
             tracker_widget = MTVTrackerEdit(self.config, self)
         elif tracker is TrackerSelection.TORRENT_LEECH:
