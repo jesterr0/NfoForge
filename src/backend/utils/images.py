@@ -1,7 +1,6 @@
 import re
 import shutil
 from pathlib import Path
-from typing import Tuple, Union
 
 from pymediainfo import MediaInfo
 
@@ -81,7 +80,7 @@ def get_frame_rate(mi_obj: MediaInfo) -> float:
 
 def create_directories(
     output_dir: Path, sync_dir: bool = False
-) -> Union[Tuple[Path, Path], Tuple[Path, Path, Path]]:
+) -> tuple[Path, Path] | tuple[Path, Path, Path]:
     """
     Creates 2 directories and returns them in a tuple if sync_dir = False
     Creates 3 directories and returns them in a tuple if sync_dir = True
