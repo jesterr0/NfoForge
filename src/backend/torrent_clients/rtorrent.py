@@ -99,7 +99,7 @@ class RTorrentClient:
                 torrent_file = torrent_file.with_name(torrent_file.stem + "_r.torrent")
                 bencode.bwrite(fast_resume, torrent_file)
             return torrent_file
-        except EnvironmentError as e:
+        except OSError as e:
             raise TrackerClientError(f"Error making fast-resume data: {e}") from e
         except Exception as exc_e:
             raise TrackerClientError(
