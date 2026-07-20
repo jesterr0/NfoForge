@@ -5,7 +5,10 @@ from typing import Any
 
 import aiohttp
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.exceptions import ImageUploadError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
@@ -132,16 +135,14 @@ class PTPIMGUploader(BaseImageHostUploader):
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
-    async def upload(  # type: ignore[override]
-        self,
-        filepaths: Sequence[Path],
-        batch_size: int = 4,
-        progress_callback: Callable[[int], Awaitable[None]] | None = None,
-    ) -> dict[int, ImageUploadData] | None:
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
         """Upload images to ImageBB."""
-        return await ptpimg_upload(
-            api_key=self.api_key,
-            filepaths=filepaths,
-            batch_size=4,
-            progress_callback=progress_callback,
+        return (
+            await ptpimg_upload(
+                api_key=self.api_key,
+                filepaths=request.filepaths,
+                batch_size=request.batch_size,
+                progress_callback=request.progress_callback,
+            )
+            or {}
         )

@@ -5,7 +5,10 @@ from pathlib import Path
 from pyimgbox import Gallery as ImgBoxGallery
 from pyimgbox import Submission
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.packages.custom_types import ImageUploadData
 
 
@@ -130,25 +133,18 @@ class ImageBoxUploader(BaseImageHostUploader):
 
     __slots__ = ()
 
-    async def upload(  # type: ignore[override]
-        self,
-        filepaths: Sequence[Path],
-        title: str | None = None,
-        thumb_width: int = 350,
-        square_thumbs: bool = False,
-        adult: bool = False,
-        comments_enabled: bool = False,
-        batch_size: int = 4,
-        progress_callback: Callable[[int], Awaitable[None]] | None = None,
-    ) -> dict[int, ImageUploadData] | None:
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
         """Upload images to ImageBox."""
-        return await image_box_upload(
-            filepaths=filepaths,
-            title=title,
-            thumb_width=thumb_width,
-            square_thumbs=square_thumbs,
-            adult=adult,
-            comments_enabled=comments_enabled,
-            batch_size=batch_size,
-            progress_callback=progress_callback,
+        return (
+            await image_box_upload(
+                filepaths=request.filepaths,
+                title=request.title,
+                thumb_width=request.thumb_width,
+                square_thumbs=request.square_thumbs,
+                adult=request.adult,
+                comments_enabled=request.comments_enabled,
+                batch_size=request.batch_size,
+                progress_callback=request.progress_callback,
+            )
+            or {}
         )

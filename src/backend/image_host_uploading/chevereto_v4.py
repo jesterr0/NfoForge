@@ -6,7 +6,10 @@ from typing import Any, cast
 
 import aiohttp
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.exceptions import ImageUploadError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
@@ -117,16 +120,15 @@ class CheveretoV4Uploader(BaseImageHostUploader):
         self.api_key = api_key
         self.url = url
 
-    async def upload(  # type: ignore[override]
-        self,
-        filepaths: Sequence[Path],
-        progress_callback: Callable[[int], Awaitable[None]] | None = None,
-    ) -> dict[int, ImageUploadData] | None:
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
         """Upload images to Chevereto V4."""
-        return await chevereto_v4_upload(
-            api_key=self.api_key,
-            url=self.url,
-            filepaths=filepaths,
-            batch_size=4,
-            progress_callback=progress_callback,
+        return (
+            await chevereto_v4_upload(
+                api_key=self.api_key,
+                url=self.url,
+                filepaths=request.filepaths,
+                batch_size=request.batch_size,
+                progress_callback=request.progress_callback,
+            )
+            or {}
         )

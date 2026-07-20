@@ -832,7 +832,9 @@ def test_default_config_round_trips_without_key_drift(
     orphans = default_keys - saved_keys
     assert not orphans, f"default ships keys the code never writes: {sorted(orphans)}"
 
-    unexpected = {k for k in saved_keys - default_keys if "tvr_title_overrides" not in k}
+    unexpected = {
+        k for k in saved_keys - default_keys if "tvr_title_overrides" not in k
+    }
     assert not unexpected, (
         f"save writes keys missing from the default config: {sorted(unexpected)}"
     )

@@ -8,7 +8,10 @@ from typing import Any, cast
 from PySide6.QtCore import SignalInstance
 from torf import Torrent
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
 from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
@@ -1052,7 +1055,9 @@ class ProcessBackEnd:
             uploader = self._get_uploader_for_host(img_host)
             image_uploader.register_uploader(str(img_host), uploader)
 
-            job_id = image_uploader.add_job(str(img_host), filepaths)
+            job_id = image_uploader.add_job(
+                str(img_host), ImageUploadRequest(filepaths=filepaths)
+            )
             jobs[job_id] = img_host
             host_to_job[img_host] = job_id
 

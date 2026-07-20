@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from queue import Queue
-from typing import Any, Self, cast
+from typing import Any, Self
 
 from PySide6.QtCore import QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QCursor, QIcon
@@ -32,85 +32,60 @@ def _application() -> QApplication:
     return application
 
 
-def icon_button_factory(base_class: type[QToolButton]) -> type[QToolButton]:
-    """Factory function to create an IconButton class inheriting from the specified base class."""
+class AutoThemeIconButton(QToolButton):
+    """A QToolButton that swaps between light and dark SVG assets."""
 
-    class IconButton(base_class):
-        def __init__(
-            self,
-            icon: str,
-            object_name: str,
-            width: int,
-            height: int,
-            text_included: bool = False,
-            parent: QWidget | None = None,
-        ) -> None:
-            """Initializes the IconButton object."""
-            super().__init__(parent)
+    def __init__(
+        self,
+        icon: str,
+        object_name: str,
+        width: int,
+        height: int,
+        text_included: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.icon_name = icon
+        self.icon_width = width
+        self.icon_height = height
+        self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon_name
 
-            self.icon_name = icon
-            self.object_name = object_name
-            self.icon_width = width
-            self.icon_height = height
-            self.text_included = text_included
-            self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon_name
+        self.setObjectName(object_name)
+        self.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+            if text_included
+            else Qt.ToolButtonStyle.ToolButtonIconOnly
+        )
+        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-            self.setObjectName(self.object_name)
+        app = _application()
+        app.styleHints().colorSchemeChanged.connect(self.update_icon)
+        self.update_icon(app.styleHints().colorScheme())
 
-            # set up the button's initial properties
-            self.setup_button()
-
-            # connect to color scheme change signal
-            self.app = _application()
-            self.app.styleHints().colorSchemeChanged.connect(self.update_icon)
-
-            # set the initial icon based on the current color scheme
-            self.update_icon(self.app.styleHints().colorScheme())
-
-        def setup_button(self) -> None:
-            """Sets up the button's initial properties."""
-            self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-            if self.text_included:
-                self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-            self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        @Slot(Qt.ColorScheme)
-        def update_icon(self, color_scheme: Qt.ColorScheme) -> None:
-            """Updates the button icon based on the color scheme."""
-            if color_scheme == Qt.ColorScheme.Dark:
-                dark_icon_path = self.svg_path.parent / (
-                    self.svg_path.stem + "_dark.svg"
-                )
-                # set the dark mode icon
-                self.setIcon(QIcon(str(dark_icon_path)))
-            else:
-                # set the light mode icon
-                self.setIcon(QIcon(str(self.svg_path)))
-            self.setIconSize(QSize(self.icon_width, self.icon_height))
-
-        def get_button(self) -> QToolButton:
-            """Returns the button instance (self)."""
-            return self
-
-    return IconButton
+    @Slot(Qt.ColorScheme)
+    def update_icon(self, color_scheme: Qt.ColorScheme) -> None:
+        """Update the icon for the active color scheme."""
+        icon_path = self.svg_path
+        if color_scheme == Qt.ColorScheme.Dark:
+            icon_path = self.svg_path.parent / (self.svg_path.stem + "_dark.svg")
+        self.setIcon(QIcon(str(icon_path)))
+        self.setIconSize(QSize(self.icon_width, self.icon_height))
 
 
 def build_auto_theme_icon_buttons(
-    widget: type[QToolButton],
     icon: str,
     object_name: str,
     width: int,
     height: int,
     text_included: bool = False,
     parent: QWidget | None = None,
-) -> QToolButton:
+) -> AutoThemeIconButton:
     """
     Builds and returns an IconButton instance that can swap SVG files based on the theme.
 
     This does require an included "*_dark.svg" version of each file that will use this.
     """
-    IconButton = icon_button_factory(widget)
-    icon_button = cast(Any, IconButton)(
+    return AutoThemeIconButton(
         icon=icon,
         object_name=object_name,
         width=width,
@@ -118,7 +93,6 @@ def build_auto_theme_icon_buttons(
         text_included=text_included,
         parent=parent,
     )
-    return cast(QToolButton, icon_button.get_button())
 
 
 class SvgWidget(QSvgWidget):

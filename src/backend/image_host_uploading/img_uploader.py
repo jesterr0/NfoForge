@@ -1,9 +1,13 @@
 import asyncio
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.packages.custom_types import ImageUploadData
 
 
@@ -20,12 +24,7 @@ class ImageUploader:
         self._lock = asyncio.Lock()
         self._jobs: dict[
             str,
-            tuple[
-                BaseImageHostUploader,
-                Sequence[Path],
-                tuple[object, ...],
-                dict[str, object],
-            ],
+            tuple[BaseImageHostUploader, ImageUploadRequest],
         ] = {}
         self._progress_trackers: dict[str, dict[str, int]] = {}
         self._uploaders: dict[str, BaseImageHostUploader] = {}
@@ -39,24 +38,21 @@ class ImageUploader:
     def add_job(
         self,
         host_name: str,
-        filepaths: Sequence[Path],
-        *args: object,
-        **kwargs: object,
+        request: ImageUploadRequest,
     ) -> str:
         """Queue an upload job for a specific image host."""
         if host_name not in self._uploaders:
             raise ValueError(f"No uploader registered for host: {host_name}")
 
         job_id = str(uuid.uuid4())
-        total_files = len(filepaths)
+        total_files = len(request.filepaths)
 
         self._progress_trackers[job_id] = {
             "total": total_files,
             "remaining": total_files,
         }
 
-        # store uploader + filepaths (delayed execution)
-        self._jobs[job_id] = (self._uploaders[host_name], filepaths, args, kwargs)
+        self._jobs[job_id] = (self._uploaders[host_name], request)
 
         return job_id
 
@@ -95,8 +91,8 @@ class ImageUploader:
         results: dict[str, dict[int, ImageUploadData]] = {}
 
         tasks = [
-            self._run_job(job_id, uploader, filepaths, args, kwargs, results)
-            for job_id, (uploader, filepaths, args, kwargs) in self._jobs.items()
+            self._run_job(job_id, uploader, request, results)
+            for job_id, (uploader, request) in self._jobs.items()
         ]
 
         await asyncio.gather(*tasks)
@@ -106,9 +102,7 @@ class ImageUploader:
         self,
         job_id: str,
         uploader: BaseImageHostUploader,
-        filepaths: Sequence[Path],
-        args: tuple[object, ...],
-        kwargs: dict[str, object],
+        request: ImageUploadRequest,
         results: dict[str, dict[int, ImageUploadData]],
     ) -> None:
         """Runs a single job and stores its results."""
@@ -117,6 +111,6 @@ class ImageUploader:
             await self.upload_progress(job_id)
 
         upload_results = await uploader.upload(
-            filepaths, progress_callback=progress_callback, *args, **kwargs
+            replace(request, progress_callback=progress_callback)
         )
-        results[job_id] = upload_results or {}
+        results[job_id] = upload_results
