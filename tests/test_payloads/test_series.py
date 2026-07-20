@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication
 
 from src.backend.process import ProcessBackEnd
 from src.backend.token_replacer import TokenReplacer
@@ -24,8 +23,6 @@ from src.payloads.series import SeriesReleaseInfo, build_series_release_info
 
 
 def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
-    # a QApplication instance is required to construct any QWidget
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.media_input_payload = MediaInputPayload(
         input_path=Path("Show Season 1"),
@@ -492,9 +489,7 @@ def test_load_episode_data_shows_status_when_tvdb_episodes_empty() -> None:
     # TVDB returned a payload but with no episodes at all for this series --
     # the tree would otherwise stay empty with no explanation
     mapper = _make_mapper_with_files([Path("Show.S01E01.mkv")])
-    mapper.media_search_payload = MediaSearchPayload(
-        tvdb_data={"episodes_by_type": {}}
-    )
+    mapper.media_search_payload = MediaSearchPayload(tvdb_data={"episodes_by_type": {}})
 
     mapper._load_episode_data()
 
@@ -706,7 +701,6 @@ def test_auto_match_files_matches_anime_absolute_numbered_file() -> None:
         }
     )
 
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.load_data(media_input, media_search)
 
@@ -761,7 +755,6 @@ def test_auto_match_files_does_not_absolute_match_real_season_not_in_tvdb() -> N
         }
     )
 
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.load_data(media_input, media_search)
 
@@ -807,7 +800,6 @@ def test_auto_match_files_translates_episode_end_through_absolute_index() -> Non
         }
     )
 
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.load_data(media_input, media_search)
 
@@ -956,7 +948,6 @@ def test_auto_match_files_matches_daily_date_release() -> None:
         }
     )
 
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.load_data(media_input, media_search)
 
@@ -1000,7 +991,6 @@ def test_auto_match_files_does_not_daily_match_file_with_real_season_episode() -
         }
     )
 
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.load_data(media_input, media_search)
 
@@ -1043,7 +1033,6 @@ def test_auto_match_files_does_not_daily_match_special_episode() -> None:
         }
     )
 
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.load_data(media_input, media_search)
 

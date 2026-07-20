@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
@@ -44,9 +43,6 @@ def _make_movie_rename_page(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
-
-    # a QApplication instance is required to construct any QWidget
-    QApplication.instance() or QApplication([])
 
     manager = ConfigManager("test", _paths(tmp_path))
 

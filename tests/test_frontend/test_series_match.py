@@ -1,7 +1,5 @@
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
-
 from src.enums.media_type import MediaType
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.frontend.wizards.series_match import _incomplete_mapping_message
@@ -9,8 +7,6 @@ from src.payloads.media_inputs import MediaInputPayload
 
 
 def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
-    # a QApplication instance is required to construct any QWidget
-    QApplication.instance() or QApplication([])
     mapper = SeriesEpisodeMapper()
     mapper.media_input_payload = MediaInputPayload(
         input_path=Path("Show Season 1"),
@@ -35,9 +31,7 @@ def test_incomplete_mapping_message_when_tvdb_has_no_episodes() -> None:
 def test_incomplete_mapping_message_for_plain_unmapped_files_with_tvdb_data() -> None:
     # TVDB has episode data, but the user simply hasn't finished mapping
     # every file yet -- this must use the generic "finish mapping" message
-    mapper = _make_mapper_with_files(
-        [Path("Show.S01E01.mkv"), Path("Show.S01E02.mkv")]
-    )
+    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv"), Path("Show.S01E02.mkv")])
     mapper.episodes_by_type = {
         0: {
             "type_name": "Aired Order",

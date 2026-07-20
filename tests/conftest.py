@@ -2,10 +2,8 @@
 
 Sets the Qt platform plugin to "offscreen" before Qt is ever imported so the
 suite is safe to run on a headless CI runner (no X server/display required).
-Individual test modules are free to keep constructing their own
-``QApplication`` ad hoc (``QApplication.instance() or QApplication([])``);
-this module only guarantees the offscreen default and offers a shared
-session-scoped fixture for tests that want to adopt it.
+Provides one shared ``QApplication`` for the whole test session. Qt permits
+only one application instance per process, and all widget tests can reuse it.
 """
 
 import os
@@ -17,17 +15,13 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
 
-@pytest.fixture(scope="session")
-def qapp() -> QApplication:
-    """Shared QApplication instance for tests that construct QWidgets.
-
-    Reuses an existing instance if one is already alive (e.g. created by a
-    test module before adopting this fixture) rather than constructing a
-    second one, which Qt does not allow.
-    """
+@pytest.fixture(scope="session", autouse=True)
+def qapp() -> QApplication | QCoreApplication:
+    """Create one QApplication for all tests that construct QWidgets."""
     app = QApplication.instance()
     if app is None:
         app = QApplication([])

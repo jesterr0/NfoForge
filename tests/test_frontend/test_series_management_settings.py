@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QWidget
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
@@ -41,9 +41,6 @@ def _make_series_management_settings(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
-
-    # a QApplication instance is required to construct any QWidget
-    QApplication.instance() or QApplication([])
 
     paths = _paths(tmp_path)
     manager = ConfigManager("test", paths)

@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QApplication, QWizard, QWizardPage
+from PySide6.QtWidgets import QWizard, QWizardPage
 
 from src.frontend.wizards.wizard import MainWindowWizard
 
@@ -29,8 +29,6 @@ def test_remove_all_pages_schedules_deletion_and_detaches_pages() -> None:
     instead of constructing the full MainWindowWizard (which requires a real
     MainWindow parent and heavier page dependencies).
     """
-    QApplication.instance() or QApplication([])
-
     wizard = QWizard()
     pages = [_SpyPage(), _SpyPage(), _SpyPage()]
     for idx, page in enumerate(pages, start=1):

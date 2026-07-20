@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
@@ -41,9 +40,6 @@ def _paths(tmp_path: Path) -> ConfigPaths:
 
 
 def _make_series_mapper_page() -> SandboxSeriesMapperPage:
-    # a QApplication instance is required to construct any QWidget
-    QApplication.instance() or QApplication([])
-
     file_list = [Path("Show.S01E01.mkv")]
     media_input = MediaInputPayload(
         input_path=Path("Show Season 1"),
@@ -94,9 +90,6 @@ def test_sandbox_main_window_disables_itself_while_main_window_set_disabled(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
-
-    # a QApplication instance is required to construct any QWidget
-    QApplication.instance() or QApplication([])
 
     manager = ConfigManager("test", _paths(tmp_path))
     context = ProcessingContext()

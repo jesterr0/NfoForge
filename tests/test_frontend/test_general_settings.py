@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 import tomlkit
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
+from PySide6.QtWidgets import QMessageBox, QWidget
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
@@ -51,9 +51,6 @@ def _make_general_settings(
     # `_swap_config` surfaces a modal QMessageBox on failure; stub it out so
     # the test doesn't block waiting for a user click.
     monkeypatch.setattr(QMessageBox, "critical", lambda *args, **kwargs: None)
-
-    # a QApplication instance is required to construct any QWidget
-    QApplication.instance() or QApplication([])
 
     paths = _paths(tmp_path)
     manager = ConfigManager("test", paths)
