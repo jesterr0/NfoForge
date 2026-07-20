@@ -10,13 +10,16 @@ from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.darkpeers import DarkPeersUploader
 from src.backend.trackers.huno import HunoUploader
 from src.backend.trackers.lst import LSTUploader
+from src.backend.trackers.media_support import (
+    TRACKER_SUPPORTED_MEDIA,
+    UNSUPPORTED_MOVIE_TRACKERS,
+    UNSUPPORTED_SERIES_TRACKERS,
+    supports_media,
+    supports_series_upload,
+)
 from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.onlyencodes import OnlyEncodesUploader
 from src.backend.trackers.reelflix import ReelFlixUploader
-from src.backend.trackers.series_support import (
-    UNSUPPORTED_SERIES_TRACKERS,
-    supports_series_upload,
-)
 from src.backend.trackers.shareisland import ShareIslandUploader
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
@@ -58,6 +61,34 @@ def test_series_tracker_support_matrix(
 ) -> None:
     assert supports_series_upload(tracker) is expected
     assert (tracker not in UNSUPPORTED_SERIES_TRACKERS) is expected
+
+
+def test_every_tracker_has_a_supported_media_row() -> None:
+    """TRACKER_SUPPORTED_MEDIA is the single source of truth for media support;
+    a newly added TrackerSelection must not be silently omitted from it."""
+    missing = set(TrackerSelection) - set(TRACKER_SUPPORTED_MEDIA)
+    assert not missing, f"trackers missing a media-support row: {missing}"
+    # every row must declare at least one supported media type
+    for tracker, media in TRACKER_SUPPORTED_MEDIA.items():
+        assert media, tracker
+
+
+@pytest.mark.parametrize("tracker", list(TrackerSelection))
+def test_all_trackers_support_movie_uploads(tracker: TrackerSelection) -> None:
+    """Every tracker supports movie uploads today, so the derived movie
+    exclusion set is empty."""
+    assert supports_media(tracker, MediaType.MOVIE) is True
+
+
+def test_derived_sets_match_supported_media_rows() -> None:
+    """The derived exclusion sets must always agree with the source table."""
+    assert UNSUPPORTED_SERIES_TRACKERS == frozenset(
+        t for t, m in TRACKER_SUPPORTED_MEDIA.items() if MediaType.SERIES not in m
+    )
+    assert UNSUPPORTED_MOVIE_TRACKERS == frozenset(
+        t for t, m in TRACKER_SUPPORTED_MEDIA.items() if MediaType.MOVIE not in m
+    )
+    assert UNSUPPORTED_MOVIE_TRACKERS == frozenset()
 
 
 @pytest.mark.parametrize(
