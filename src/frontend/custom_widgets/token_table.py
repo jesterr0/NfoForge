@@ -1,4 +1,5 @@
 import weakref
+from collections.abc import Sequence
 
 from PySide6.QtCore import QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QCursor, Qt
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.tokens import TITLE_CLEAN_REPLACE_DEF
+from src.backend.tokens import TITLE_CLEAN_REPLACE_DEF, TokenType
 from src.frontend.custom_widgets.dynamic_range_widget import DynamicRangeWidget
 from src.frontend.custom_widgets.replacement_list_widget import (
     LoadedReplacementListWidget,
@@ -29,12 +30,12 @@ class TokenTable(QWidget):
 
     def __init__(
         self,
-        tokens: list | None = None,
+        tokens: Sequence[TokenType] | None = None,
         remove_brackets: bool = False,
         show_tokens: bool = True,
         allow_edits: bool = False,
         debounce_delay: int = 300,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         """
         Initialize TokenTable widget.
@@ -143,7 +144,9 @@ class TokenTable(QWidget):
             self.main_layout.addWidget(video_dynamic_range_lbl)
             self.main_layout.addWidget(self.video_dynamic_range)
 
-    def populate_table(self, tokens: list, remove_brackets: bool) -> None:
+    def populate_table(
+        self, tokens: Sequence[TokenType], remove_brackets: bool
+    ) -> None:
         self.table.setRowCount(0)
         self.table.clearContents()
 
@@ -189,7 +192,7 @@ class TokenTable(QWidget):
             self.table.setRowHidden(row, not match)
 
     @Slot(int, int)
-    def copy_token_to_clipboard(self, row: int, _: int):
+    def copy_token_to_clipboard(self, row: int, _: int) -> None:
         token = self.table.item(row, 0)
         if not token:
             return
@@ -205,14 +208,14 @@ class TokenTable(QWidget):
         # use a weakref here to prevent runtime errors if the window is destroyed before the singleShot fires
         self_ref = weakref.ref(self)
 
-        def restore():
+        def restore() -> None:
             self_obj = self_ref()
             if self_obj and self_obj.table:
                 self_obj.copy_status(row, 0, token_text)
 
         QTimer.singleShot(1000, restore)
 
-    def copy_status(self, row: int, column: int, text: str):
+    def copy_status(self, row: int, column: int, text: str) -> None:
         self.table.setItem(row, column, QTableWidgetItem(text))
 
     def load_replacement_rules(self, mvr_replace_rules: list[tuple[str, str]]) -> None:
@@ -228,7 +231,7 @@ class TokenTable(QWidget):
             self.replacement_list_widget.apply_defaults()
 
     @Slot(list)
-    def _on_replacement_rules_changed(self, _rules: list) -> None:
+    def _on_replacement_rules_changed(self, _rules: list[tuple[str, str]]) -> None:
         """Handle changes to replacement rules with debouncing"""
         self._replacement_rules_timer.start()
 
@@ -243,7 +246,7 @@ class TokenTable(QWidget):
         self._emit_replacement_rules_changed()
 
     @Slot(object)
-    def _on_video_dynamic_range_changed(self, _data: dict) -> None:
+    def _on_video_dynamic_range_changed(self, _data: dict[str, object]) -> None:
         """Handle changes to video dynamic range with debouncing"""
         self._video_dynamic_range_timer.start()
 

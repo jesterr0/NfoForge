@@ -16,7 +16,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
 
     __slots__ = ("token_replacer", "override_tokens")
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     def series_renamer(
@@ -77,6 +77,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         data = self.token_replacer.get_output()
         if data:
             return Path(data)
+        return None
 
     def series_folder_renamer(
         self,
@@ -128,6 +129,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             # file_name_mode appends the primary file's extension; a folder has
             # none, so strip the single trailing suffix it added.
             return Path(data).with_suffix("")
+        return None
 
     @staticmethod
     def build_folder_rename_targets(

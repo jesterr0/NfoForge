@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from queue import Queue
-from typing import Any, Type
+from typing import Any, Self, cast
 
 from PySide6.QtCore import QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QCursor, QIcon
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QLayout,
     QStackedWidget,
+    QToolButton,
     QWidget,
 )
 
@@ -22,7 +23,16 @@ from src.frontend.global_signals import GSigs
 from src.plugins.plugin_prompt_dialog import PluginPromptDialog
 
 
-def icon_button_factory(base_class):
+def _application() -> QApplication:
+    application = QApplication.instance()
+    if not isinstance(application, QApplication):
+        raise RuntimeError(
+            "A QApplication instance is required before creating widgets"
+        )
+    return application
+
+
+def icon_button_factory(base_class: type[QToolButton]) -> type[QToolButton]:
     """Factory function to create an IconButton class inheriting from the specified base class."""
 
     class IconButton(base_class):
@@ -33,17 +43,17 @@ def icon_button_factory(base_class):
             width: int,
             height: int,
             text_included: bool = False,
-            parent=None,
-        ):
+            parent: QWidget | None = None,
+        ) -> None:
             """Initializes the IconButton object."""
             super().__init__(parent)
 
-            self.icon = icon
+            self.icon_name = icon
             self.object_name = object_name
             self.icon_width = width
             self.icon_height = height
             self.text_included = text_included
-            self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon
+            self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon_name
 
             self.setObjectName(self.object_name)
 
@@ -51,13 +61,13 @@ def icon_button_factory(base_class):
             self.setup_button()
 
             # connect to color scheme change signal
-            self.app = QApplication.instance()
-            self.app.styleHints().colorSchemeChanged.connect(self.update_icon)  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            self.app = _application()
+            self.app.styleHints().colorSchemeChanged.connect(self.update_icon)
 
             # set the initial icon based on the current color scheme
-            self.update_icon(self.app.styleHints().colorScheme())  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            self.update_icon(self.app.styleHints().colorScheme())
 
-        def setup_button(self):
+        def setup_button(self) -> None:
             """Sets up the button's initial properties."""
             self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             if self.text_included:
@@ -65,7 +75,7 @@ def icon_button_factory(base_class):
             self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         @Slot(Qt.ColorScheme)
-        def update_icon(self, color_scheme: Qt.ColorScheme):
+        def update_icon(self, color_scheme: Qt.ColorScheme) -> None:
             """Updates the button icon based on the color scheme."""
             if color_scheme == Qt.ColorScheme.Dark:
                 dark_icon_path = self.svg_path.parent / (
@@ -78,7 +88,7 @@ def icon_button_factory(base_class):
                 self.setIcon(QIcon(str(self.svg_path)))
             self.setIconSize(QSize(self.icon_width, self.icon_height))
 
-        def get_button(self):
+        def get_button(self) -> QToolButton:
             """Returns the button instance (self)."""
             return self
 
@@ -86,21 +96,21 @@ def icon_button_factory(base_class):
 
 
 def build_auto_theme_icon_buttons(
-    widget,
+    widget: type[QToolButton],
     icon: str,
     object_name: str,
     width: int,
     height: int,
     text_included: bool = False,
     parent: QWidget | None = None,
-) -> Any:
+) -> QToolButton:
     """
     Builds and returns an IconButton instance that can swap SVG files based on the theme.
 
     This does require an included "*_dark.svg" version of each file that will use this.
     """
     IconButton = icon_button_factory(widget)
-    icon_button = IconButton(
+    icon_button = cast(Any, IconButton)(
         icon=icon,
         object_name=object_name,
         width=width,
@@ -108,7 +118,7 @@ def build_auto_theme_icon_buttons(
         text_included=text_included,
         parent=parent,
     )
-    return icon_button.get_button()
+    return cast(QToolButton, icon_button.get_button())
 
 
 class SvgWidget(QSvgWidget):
@@ -117,8 +127,8 @@ class SvgWidget(QSvgWidget):
         icon: str,
         icon_width: int,
         icon_height: int,
-        parent=None,
-    ):
+        parent: QWidget | None = None,
+    ) -> None:
         """Initializes the SvgWidget that updates based on color scheme changes."""
         super().__init__(parent)
 
@@ -128,14 +138,14 @@ class SvgWidget(QSvgWidget):
         self.svg_path = Path(RUNTIME_DIR) / "svg" / self.icon
 
         # connect to color scheme change signal
-        self.app = QApplication.instance()
-        self.app.styleHints().colorSchemeChanged.connect(self.update_icon)  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+        self.app = _application()
+        self.app.styleHints().colorSchemeChanged.connect(self.update_icon)
 
         # set the initial icon based on the current color scheme
-        self.update_icon(self.app.styleHints().colorScheme())  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+        self.update_icon(self.app.styleHints().colorScheme())
 
     @Slot(Qt.ColorScheme)
-    def update_icon(self, color_scheme: Qt.ColorScheme):
+    def update_icon(self, color_scheme: Qt.ColorScheme) -> None:
         """Updates the SVG icon based on the color scheme."""
         if color_scheme == Qt.ColorScheme.Dark:
             dark_icon_path = self.svg_path.parent / (self.svg_path.stem + "_dark.svg")
@@ -147,7 +157,9 @@ class SvgWidget(QSvgWidget):
         self.setFixedSize(QSize(self.icon_width, self.icon_height))
 
 
-def build_auto_theme_svg_widget(icon: str, width: int, height: int, parent=None):
+def build_auto_theme_svg_widget(
+    icon: str, width: int, height: int, parent: QWidget | None = None
+) -> SvgWidget:
     """
     Builds and returns an SvgWidget instance that can swap SVG files based on the theme.
 
@@ -205,7 +217,7 @@ def create_form_layout(
     widget1: QWidget,
     widget2: QWidget | None = None,
     margins: tuple[int, int, int, int] | None = None,
-):
+) -> QFormLayout:
     """margins (tuple[int, int, int, int] | None, optional): Left, top, right, bottom"""
     form_layout = QFormLayout()
     if margins:
@@ -219,15 +231,17 @@ def create_form_layout(
 class QWidgetTempStyle:
     """Singleton to temporarily manipulate stylesheets of widgets for warnings."""
 
-    __slots__ = ("timers",)
+    __slots__ = ("timers", "styles")
     timers: "weakref.WeakKeyDictionary[QWidget, QTimer]"
+    styles: "weakref.WeakKeyDictionary[QWidget, str]"
 
-    _instance = None
+    _instance: Self | None = None
 
-    def __new__(cls, *args, **kwargs) -> "QWidgetTempStyle":
+    def __new__(cls) -> Self:
         if not cls._instance:
             cls._instance = super().__new__(cls)
             cls._instance.timers = weakref.WeakKeyDictionary()
+            cls._instance.styles = weakref.WeakKeyDictionary()
         return cls._instance
 
     def set_temp_style(
@@ -241,16 +255,16 @@ class QWidgetTempStyle:
         if widget in self.timers:
             self.timers[widget].stop()
 
-        if not hasattr(widget, "_original_style"):
-            widget._original_style = widget.styleSheet()  # type: ignore
+        if widget not in self.styles:
+            self.styles[widget] = widget.styleSheet()
         widget.setStyleSheet(temp_style)
         timer = QTimer(singleShot=True, interval=duration)
 
-        def restore():
+        def restore() -> None:
             # only restore if the widget still exists and has the temp style
-            if hasattr(widget, "_original_style"):
-                widget.setStyleSheet(widget._original_style)  # type: ignore
-                del widget._original_style  # type: ignore
+            original_style = self.styles.pop(widget, None)
+            if original_style is not None:
+                widget.setStyleSheet(original_style)
             self.timers.pop(widget, None)
 
         timer.timeout.connect(restore)
@@ -300,7 +314,7 @@ def ask_thread_safe_prompt(title: str, prompt: str) -> tuple[bool, str]:
     Returns:
         tuple[bool, str]: bool = user pressed Ok, str = user input
     """
-    q = Queue()
+    q: Queue[tuple[bool, str]] = Queue()
     GSigs().ask_prompt.emit(title, prompt, q)
     result = q.get()
     q.task_done()
@@ -319,14 +333,14 @@ def ask_thread_safe_multi_prompt(
     Returns:
         tuple[bool, dict[str, str]]: bool = user pressed Ok, dict = user input with keys from the prompts.
     """
-    q = Queue()
+    q: Queue[tuple[bool, dict[str, str]]] = Queue()
     GSigs().ask_multi_prompt.emit(title, prompts, q)
     result = q.get()
     q.task_done()
     return result
 
 
-def ask_thread_safe_custom_prompt(widget: Type[PluginPromptDialog]) -> Any:
+def ask_thread_safe_custom_prompt(widget: type[PluginPromptDialog]) -> Any:
     """Uses a queue to wait for a message from where ever sent over QT signals
 
     Args:
@@ -348,7 +362,7 @@ def ask_thread_safe_custom_prompt(widget: Type[PluginPromptDialog]) -> Any:
     Returns:
         Any: What ever the users widget returns from `results`.
     """
-    q = Queue()
+    q: Queue[Any] = Queue()
     GSigs().ask_custom_prompt.emit(widget, q)
     result = q.get()
     q.task_done()

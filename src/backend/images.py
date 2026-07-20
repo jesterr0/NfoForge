@@ -4,6 +4,7 @@ import re
 import subprocess
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any
 
 import oslex2
 from pymediainfo import MediaInfo
@@ -33,7 +34,7 @@ from src.packages.custom_types import AdvancedResize, CropValues, SubNames
 
 class ImageGeneration(ABC):
     @abstractmethod
-    def generate_images(self, **kwargs):
+    def generate_images(self, **kwargs: Any) -> int:
         raise NotImplementedError()
 
     def run_ffmpeg_command(
@@ -83,7 +84,9 @@ class ImageGeneration(ABC):
             LOG.error(LOG.LOG_SOURCE.BE, f"Error while running FFMPEG command ({e}).")
             return 1
 
-    def run_frame_forge_command(self, command: list, signal: SignalInstance) -> int:
+    def run_frame_forge_command(
+        self, command: list[str], signal: SignalInstance
+    ) -> int:
         completed = False
         progress = 0
         LOG.debug(LOG.LOG_SOURCE.BE, f"FrameForge command: {' '.join(command)}")
@@ -127,7 +130,7 @@ class ImageGeneration(ABC):
 
 
 class BasicImageGeneration(ImageGeneration):
-    def generate_images(self, **kwargs):
+    def generate_images(self, **kwargs: Any) -> int:
         return self.basic_image_generation(**kwargs)
 
     def basic_image_generation(
@@ -248,7 +251,7 @@ class BasicImageGeneration(ImageGeneration):
 
 
 class ComparisonImageGeneration(ImageGeneration):
-    def generate_images(self, **kwargs):
+    def generate_images(self, **kwargs: Any) -> int:
         return self.comparison_image_generation(**kwargs)
 
     def comparison_image_generation(
@@ -427,8 +430,8 @@ class ComparisonImageGeneration(ImageGeneration):
 
     def generate_comp_frames(
         self,
-        input_video,
-        output_pattern,
+        input_video: Path,
+        output_pattern: str,
         text_overlay: str | None,
         sub_size: int,
         mi_object: MediaInfo,
@@ -929,7 +932,7 @@ class ComparisonImageGeneration(ImageGeneration):
 
 
 class FrameForgeImageGeneration(ImageGeneration):
-    def generate_images(self, **kwargs):
+    def generate_images(self, **kwargs: Any) -> int:
         return self.frame_forge_image_generation(**kwargs)
 
     # TODO: need to remove all extra args we don't need
@@ -1100,6 +1103,7 @@ class FrameForgeImageGeneration(ImageGeneration):
                 return "-", re_sync_str.replace("-", "")
             else:
                 return "", re_sync_str
+        return None
 
 
 class ImagesBackEnd:

@@ -51,7 +51,7 @@ class ScriptParser:
 
     @staticmethod
     def parse_adv_resize(data: str) -> AdvancedResize | None:
-        src_left = src_top = src_width = src_height = 0
+        src_left = src_top = src_width = src_height = 0.0
 
         src_left_search = re.search(r"src_left\s?=(\s?\d*\.*\d*)?", data)
         if src_left_search and src_left_search.group(1):
@@ -66,9 +66,9 @@ class ScriptParser:
             data,
         )
         if src_width_search:
-            src_width_search = src_width_search.groupdict()
-            src_width_vpy = src_width_search.get("vpy")
-            src_width_avs = src_width_search.get("avs")
+            src_width_groups = src_width_search.groupdict()
+            src_width_vpy = src_width_groups.get("vpy")
+            src_width_avs = src_width_groups.get("avs")
             if src_width_vpy:
                 extract_w_numbers = re.search(r"\d+", str(src_width_vpy))
                 if extract_w_numbers:
@@ -81,9 +81,9 @@ class ScriptParser:
             data,
         )
         if src_height_search:
-            src_height_search = src_height_search.groupdict()
-            src_height_vpy = src_height_search.get("vpy")
-            src_height_avs = src_height_search.get("avs")
+            src_height_groups = src_height_search.groupdict()
+            src_height_vpy = src_height_groups.get("vpy")
+            src_height_avs = src_height_groups.get("avs")
             if src_height_vpy:
                 extract_h_numbers = re.search(r"\d+", str(src_height_vpy))
                 if extract_h_numbers:
@@ -137,23 +137,3 @@ class ScriptParser:
             bottom = abs(int(split_data[3].strip()))
 
         return CropValues(top, bottom, left, right)
-
-
-# This is an old helper function, I don't think we'll need it anymore but we'll keep it
-# just in case.
-# def parse_scripts(script: str) -> CropValues:
-#     text_data = script.splitlines()
-#     if text_data:
-#         for data in text_data:
-#             if data.startswith("#"):
-#                 continue
-
-#             crop_data_vpy = re.search(r"core.std.Crop\(clip,\s(.+)\)", data)
-#             if crop_data_vpy:
-#                 return parse_vpy_data(crop_data_vpy.group(1))
-
-#             crop_data_avs = re.search(r"Crop\((.+)\)", data)
-#             if crop_data_avs:
-#                 return parse_avs_data(crop_data_avs.group(1))
-
-#     return CropValues(0, 0, 0, 0)

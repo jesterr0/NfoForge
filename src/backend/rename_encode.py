@@ -15,9 +15,9 @@ from src.payloads.media_search import MediaSearchPayload
 class RenameEncodeBackEnd:
     __slots__ = ("token_replacer", "override_tokens")
 
-    def __init__(self):
-        self.token_replacer = TokenReplacer | None
-        self.override_tokens = {}
+    def __init__(self) -> None:
+        self.token_replacer: TokenReplacer | None = None
+        self.override_tokens: dict[str, str] = {}
 
     def media_renamer(
         self,
@@ -46,6 +46,7 @@ class RenameEncodeBackEnd:
         data = self.token_replacer.get_output()
         if data:
             return Path(data)
+        return None
 
     def reset(self) -> None:
         self.token_replacer = None
@@ -76,6 +77,7 @@ class RenameEncodeBackEnd:
             return QualitySelection.HDTV
         elif "SDTV" in source:
             return QualitySelection.SDTV
+        return None
 
     @staticmethod
     def execute_renames(

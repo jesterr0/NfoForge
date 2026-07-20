@@ -1,4 +1,5 @@
 from functools import partial
+from typing import Any, Self
 
 import qtawesome as qta
 from PySide6.QtCore import QObject, QSize, Qt, Slot
@@ -11,27 +12,32 @@ class QTAwesomeThemeSwapper(QObject):
     LIGHT_COLOR = "#000000"
     DARK_COLOR = "#FFFFFF"
 
-    _instance = None
+    _instance: Self | None = None
+    _initialized: bool
 
-    def __new__(cls, *args, **kwargs) -> "QTAwesomeThemeSwapper":
+    def __new__(cls) -> Self:
         if not cls._instance:
-            cls._instance = super().__new__(cls, *args, **kwargs)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:
         # ensure we've only initialized once
-        if not hasattr(self, "_initialized"):
+        if not getattr(self, "_initialized", False):
             super().__init__()
             # list of (widget, icon_name, icon_kwargs)
-            self._icon_widgets = []
+            self._icon_widgets: list[tuple[Any, str, dict[str, Any]]] = []
             self._initialized = True
 
             # connect to color scheme change signal
             self.app = QApplication.instance()
-            self.app.styleHints().colorSchemeChanged.connect(self.update_icon)  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            if not isinstance(self.app, QApplication):
+                raise RuntimeError(
+                    "A QApplication instance is required before creating widgets"
+                )
+            self.app.styleHints().colorSchemeChanged.connect(self.update_icon)
 
             # set the initial icon based on the current color scheme
-            self.update_icon(self.app.styleHints().colorScheme())  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            self.update_icon(self.app.styleHints().colorScheme())
 
     @Slot(Qt.ColorScheme)
     def update_icon(self, color_scheme: Qt.ColorScheme) -> None:
@@ -46,7 +52,7 @@ class QTAwesomeThemeSwapper(QObject):
         widget: QToolButton | QPushButton | qta.IconWidget,
         icon_name: str,
         icon_size: QSize | None = None,
-        **icon_kwargs,
+        **icon_kwargs: Any,
     ) -> None:
         """Register a widget and its icon info for theme swapping."""
         self._icon_widgets.append((widget, icon_name, icon_kwargs))
@@ -63,7 +69,7 @@ class QTAwesomeThemeSwapper(QObject):
         # connect to widget's destroyed signal to de register automatically
         widget.destroyed.connect(partial(self.deregister, widget))
 
-    def deregister(self, widget):
+    def deregister(self, widget: Any) -> None:
         """Remove a widget from icon management."""
         self._icon_widgets = [
             (w, icon_name, icon_kwargs)
@@ -71,7 +77,7 @@ class QTAwesomeThemeSwapper(QObject):
             if w is not widget
         ]
 
-    def swap_all_icons(self, color):
+    def swap_all_icons(self, color: str) -> None:
         """Update all registered icons to the new color."""
         for widget, icon_name, icon_kwargs in self._icon_widgets:
             icon_args = dict(icon_kwargs)

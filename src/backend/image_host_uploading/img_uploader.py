@@ -18,9 +18,17 @@ class ImageUploader:
         self.progress_signal = progress_signal
         self.delete_job_as_completed = delete_job_as_completed
         self._lock = asyncio.Lock()
-        self._jobs = {}  # stores (uploader, filepaths)
-        self._progress_trackers = {}
-        self._uploaders = {}
+        self._jobs: dict[
+            str,
+            tuple[
+                BaseImageHostUploader,
+                Sequence[Path],
+                tuple[object, ...],
+                dict[str, object],
+            ],
+        ] = {}
+        self._progress_trackers: dict[str, dict[str, int]] = {}
+        self._uploaders: dict[str, BaseImageHostUploader] = {}
 
     def register_uploader(
         self, host_name: str, uploader: BaseImageHostUploader
@@ -29,7 +37,11 @@ class ImageUploader:
         self._uploaders[host_name] = uploader
 
     def add_job(
-        self, host_name: str, filepaths: Sequence[Path], *args, **kwargs
+        self,
+        host_name: str,
+        filepaths: Sequence[Path],
+        *args: object,
+        **kwargs: object,
     ) -> str:
         """Queue an upload job for a specific image host."""
         if host_name not in self._uploaders:
@@ -80,7 +92,7 @@ class ImageUploader:
 
     async def start_jobs(self) -> dict[str, dict[int, ImageUploadData]]:
         """Starts all registered jobs and collects results."""
-        results = {}
+        results: dict[str, dict[int, ImageUploadData]] = {}
 
         tasks = [
             self._run_job(job_id, uploader, filepaths, args, kwargs, results)
@@ -91,8 +103,14 @@ class ImageUploader:
         return results
 
     async def _run_job(
-        self, job_id: str, uploader, filepaths, args, kwargs, results: dict
-    ):
+        self,
+        job_id: str,
+        uploader: BaseImageHostUploader,
+        filepaths: Sequence[Path],
+        args: tuple[object, ...],
+        kwargs: dict[str, object],
+        results: dict[str, dict[int, ImageUploadData]],
+    ) -> None:
         """Runs a single job and stores its results."""
 
         async def progress_callback(_idx: int) -> None:
@@ -101,4 +119,4 @@ class ImageUploader:
         upload_results = await uploader.upload(
             filepaths, progress_callback=progress_callback, *args, **kwargs
         )
-        results[job_id] = upload_results
+        results[job_id] = upload_results or {}

@@ -1,10 +1,13 @@
+from typing import Self
+
 from PySide6.QtCore import QObject, Signal
 
 
 class GlobalSignals(QObject):
     """Singleton used to keep up with global signals"""
 
-    _instance = None
+    _instance: Self | None = None
+    _initialized: bool
 
     ########### SIGNALS ###########
     ask_prompt = Signal(str, str, object)  # prompt title, prompt, Queue
@@ -50,14 +53,14 @@ class GlobalSignals(QObject):
     overview_prompt_response = Signal(object)
     ########### SIGNALS ###########
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls) -> Self:
         if not cls._instance:
-            cls._instance = super().__new__(cls, *args, **kwargs)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QObject | None = None) -> None:
         # ensure we've only initialized once
-        if not hasattr(self, "_initialized"):
+        if not getattr(self, "_initialized", False):
             super().__init__(parent)
             self._initialized = True
 

@@ -7,7 +7,9 @@ class FontScalingManager(QObject):
     scaling_changed = Signal(float)
     scaling_changed_by_user = Signal(float)
 
-    def __init__(self, initial_scale_factor: float = 1.0, parent=None):
+    def __init__(
+        self, initial_scale_factor: float = 1.0, parent: QObject | None = None
+    ) -> None:
         super().__init__(parent)
         self._scale_factor = initial_scale_factor
         self._base_font_size = 12
@@ -15,7 +17,7 @@ class FontScalingManager(QObject):
         self._max_scale = 3.0
         self._scale_step = 0.1
 
-    def setup_shortcuts(self, widget: QWidget):
+    def setup_shortcuts(self, widget: QWidget) -> None:
         """Setup keyboard shortcuts for font scaling."""
         zoom_in_action = QAction("Font Zoom In", widget)
         zoom_in_action.setShortcut(QKeySequence("Ctrl++"))
@@ -41,21 +43,23 @@ class FontScalingManager(QObject):
         if self._scale_factor != 1.0:
             self._apply_font_scaling()
 
-    def zoom_in(self):
+    def zoom_in(self) -> None:
         """Increase font scaling."""
         new_scale = min(self._scale_factor + self._scale_step, self._max_scale)
         self.set_scale_factor(new_scale, user_initiated=True)
 
-    def zoom_out(self):
+    def zoom_out(self) -> None:
         """Decrease font scaling."""
         new_scale = max(self._scale_factor - self._scale_step, self._min_scale)
         self.set_scale_factor(new_scale, user_initiated=True)
 
-    def reset_zoom(self):
+    def reset_zoom(self) -> None:
         """Reset font scaling to 100%."""
         self.set_scale_factor(1.0, user_initiated=True)
 
-    def set_scale_factor(self, scale_factor: float, user_initiated: bool = False):
+    def set_scale_factor(
+        self, scale_factor: float, user_initiated: bool = False
+    ) -> None:
         """Set the font scale factor."""
         if scale_factor == self._scale_factor:
             return
@@ -74,7 +78,7 @@ class FontScalingManager(QObject):
         """Get the current font scale factor."""
         return self._scale_factor
 
-    def _apply_font_scaling(self):
+    def _apply_font_scaling(self) -> None:
         """Apply font scaling to the application."""
         app = QApplication.instance()
         if app and isinstance(app, QApplication):

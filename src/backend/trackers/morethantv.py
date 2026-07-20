@@ -12,6 +12,7 @@ import niquests
 import pyotp
 from bs4 import BeautifulSoup
 from bs4 import Tag as bs4Tag
+from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 from unidecode import unidecode
 
@@ -50,7 +51,7 @@ def mtv_uploader(
     source_origin: MTVSourceOrigin,
     cookie_dir: Path,
     timeout: int,
-):
+) -> Path:
     torrent_file = Path(torrent_file)
     uploader = MTVUploader(
         torrent_input=torrent_file,
@@ -327,7 +328,7 @@ class MTVUploader:
             data["taglist"] = f"{data['taglist']} {get_source_origin[1]}"
 
         # open file in binary
-        files = {}
+        files: MultiPartFilesAltType = {}
         with open(torrent_file, "rb") as f:
             files["file_input"] = (torrent_file.name, f.read())
 
@@ -427,7 +428,7 @@ class MTVUploader:
         resolution >= 720 lines (interlaced or progressive) is HD; below 720
         is SD. Works on a full release title or a bare resolution string."""
         match = MTVUploader._RESOLUTION_TOKEN.search(text.lower())
-        return bool(match) and int(match.group(1)) >= 720
+        return match is not None and int(match.group(1)) >= 720
 
     @staticmethod
     def _get_cat_id(
@@ -528,7 +529,7 @@ class MTVUploader:
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         media_type: MediaType,
         is_pack: bool,
-    ) -> set:
+    ) -> set[str]:
         tags = self.find_audio_tags(self.mediainfo_obj)
         tags.update(self.find_genre_tags(genre_ids))
         tags.update(self.find_resolution_tags(resolution))
@@ -541,7 +542,7 @@ class MTVUploader:
         return tags
 
     @staticmethod
-    def find_audio_tags(mediainfo_obj: MediaInfo) -> set:
+    def find_audio_tags(mediainfo_obj: MediaInfo) -> set[str]:
         format_to_tag = {
             AudioFormats.AAC.value: MTVAudioTags.AAC.value,
             AudioFormats.AC3.value: MTVAudioTags.DD.value,
@@ -555,7 +556,7 @@ class MTVUploader:
             AudioFormats.TRUEHD.value: MTVAudioTags.TRUEHD.value,
         }
 
-        audio_tags = set()
+        audio_tags: set[str] = set()
 
         for track in mediainfo_obj.audio_tracks:
             audio_format = track.format or ""
@@ -581,8 +582,8 @@ class MTVUploader:
     @staticmethod
     def find_genre_tags(
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-    ) -> set:
-        genres = set()
+    ) -> set[str]:
+        genres: set[str] = set()
         for item in genre_ids:
             if item not in (TMDBGenreIDsMovies.UNDEFINED, TMDBGenreIDsSeries.UNDEFINED):
                 name = str(item.name).replace("_", ".").lower()
@@ -590,8 +591,8 @@ class MTVUploader:
         return genres
 
     @staticmethod
-    def find_resolution_tags(resolution: str) -> set:
-        res_set = set()
+    def find_resolution_tags(resolution: str) -> set[str]:
+        res_set: set[str] = set()
         res_set.add(resolution)
         if resolution in ("2160p", "4320p"):
             res_set.add("uhd")
@@ -600,8 +601,8 @@ class MTVUploader:
         return res_set
 
     @staticmethod
-    def find_type_source_tags(input_path: Path) -> set:
-        type_source = set()
+    def find_type_source_tags(input_path: Path) -> set[str]:
+        type_source: set[str] = set()
         stem_lowered = input_path.stem.lower()
         for item in ("remux", "webdl", "webrip", "hdtv", "bluray", "dvd", "hddvd"):
             if item in stem_lowered:
@@ -611,22 +612,22 @@ class MTVUploader:
     @staticmethod
     def find_type_tags(
         media_type: MediaType, resolution: str, is_pack: bool = False
-    ) -> set:
+    ) -> set[str]:
         if media_type is MediaType.MOVIE:
             return MTVUploader.find_movies_tags(resolution)
-        elif media_type is MediaType.SERIES:
-            return MTVUploader.find_series_tags(resolution, is_pack)
+        # there is only movie/series so this can only be series
+        return MTVUploader.find_series_tags(resolution, is_pack)
 
     @staticmethod
-    def find_movies_tags(resolution: str) -> set:
-        movies = set()
+    def find_movies_tags(resolution: str) -> set[str]:
+        movies: set[str] = set()
         if MTVUploader._is_hd(resolution):
             movies.add("hd.movie")
         return movies
 
     @staticmethod
-    def find_series_tags(resolution: str, is_pack: bool = False) -> set:
-        series = set()
+    def find_series_tags(resolution: str, is_pack: bool = False) -> set[str]:
+        series: set[str] = set()
         hd = MTVUploader._is_hd(resolution)
         if is_pack:
             series.add("hd.season" if hd else "sd.season")
@@ -636,8 +637,8 @@ class MTVUploader:
         return series
 
     @staticmethod
-    def find_video_codec_tags(mediainfo_obj: MediaInfo) -> set:
-        v_codecs = set()
+    def find_video_codec_tags(mediainfo_obj: MediaInfo) -> set[str]:
+        v_codecs: set[str] = set()
         for track in mediainfo_obj.video_tracks:
             codec = track.format
             if codec:
@@ -649,17 +650,17 @@ class MTVUploader:
         return v_codecs
 
     @staticmethod
-    def find_release_group_tags(input_path: Path) -> set:
+    def find_release_group_tags(input_path: Path) -> set[str]:
         # TODO: add different logic for movies vs series
-        release_group_set = set()
+        release_group_set: set[str] = set()
         release_group = guessit.guessit(input_path).get("release_group", "")
         if release_group:
             release_group_set.add(f"{release_group.lower()}.release")
         return release_group_set
 
     @staticmethod
-    def has_subtitles_tags(mediainfo_obj: MediaInfo) -> set:
-        has_subtitles = set()
+    def has_subtitles_tags(mediainfo_obj: MediaInfo) -> set[str]:
+        has_subtitles: set[str] = set()
         try:
             gen_track = mediainfo_obj.general_tracks[0].count_of_text_streams
             if gen_track and int(gen_track) > 0:
@@ -742,7 +743,7 @@ class MTVSearch:
             raise TrackerError(f"Failed to parse XML: {unhandled_error}")
 
     def handle_xml(self, xml_str: str | None) -> list[TrackerSearchResult]:
-        results = []
+        results: list[TrackerSearchResult] = []
         if not xml_str:
             return results
         tree = ET.ElementTree(ET.fromstring(xml_str))
@@ -789,6 +790,7 @@ class MTVSearch:
         check = item.find(value)
         if check is not None:
             return check.text
+        return None
 
     @staticmethod
     def int_cast_fb(i: Any) -> int | Any:
@@ -804,3 +806,4 @@ class MTVSearch:
         check = item.find(value)
         if check is not None and check.text:
             return datetime.strptime(check.text, "%a, %d %b %Y %H:%M:%S %z")
+        return None
