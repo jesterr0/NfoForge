@@ -596,6 +596,192 @@ def test_atomic_write_failure_preserves_original(
     assert destination.read_text(encoding="utf-8") == "original"
 
 
+def test_bool_tracker_flag_config_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tracker flag persisted as a real boolean must load without raising.
+
+    Regression: `tracker.*.anonymous` (and the other tracker checkbox flags)
+    is a `bool` in the model, the UI (`QCheckBox.isChecked()`) and the write
+    path, but the packaged default shipped it as the int `0`. The moment the
+    app wrote the config back from its own model the value became a TOML
+    `true`/`false`, and `validate_types` -- which deliberately refuses to
+    treat `bool` as `int` -- then rejected the very config the app produced
+    with `Invalid type at tracker.more_than_tv.anonymous: expected int, got
+    bool` on the next launch.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    tracker = cast(MutableMapping[str, Any], document["tracker"])
+    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
+    more_than_tv["anonymous"] = True  # a real bool, as the app writes it
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)  # must not raise
+
+    assert manager.settings.trackers.more_than_tv.anonymous is True
+
+
+def test_tracker_bool_flag_roundtrips_through_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Setting a tracker flag from the UI (`QCheckBox.isChecked()` -> a real
+    `bool`) and saving must produce a config that reloads cleanly -- the exact
+    write-then-relaunch sequence that first surfaced the bug."""
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.trackers.more_than_tv.anonymous = True  # isChecked()
+    manager.save()
+    manager.load_profile("test")  # must not raise
+
+    assert manager.settings.trackers.more_than_tv.anonymous is True
+    saved = tomlkit.parse(
+        (paths.user_configs / "test.toml").read_text(encoding="utf-8")
+    )
+    tracker = cast(MutableMapping[str, Any], saved["tracker"])
+    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
+    raw = more_than_tv["anonymous"]
+    raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
+    assert type(raw) is bool and raw is True
+
+
+def test_beyond_hd_stream_and_localization_flags_persist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`BeyondHDInfo.add_localization_to_custom_edition` and `stream_optimized`
+    are real, user-facing checkboxes that persisted on release configs. The
+    typed-config refactor dropped both from the decode and save paths (and the
+    packaged default), so toggling them no longer survived a reload. They must
+    round-trip like every other tracker flag.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.trackers.beyond_hd.add_localization_to_custom_edition = True
+    manager.settings.trackers.beyond_hd.stream_optimized = True
+    manager.save()
+    manager.load_profile("test")  # must not raise
+
+    assert manager.settings.trackers.beyond_hd.add_localization_to_custom_edition is True
+    assert manager.settings.trackers.beyond_hd.stream_optimized is True
+
+
+def test_int_tracker_flag_is_coerced_and_persisted_as_bool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A profile still holding the legacy int `anonymous = 0` must self-heal
+    to a bool rather than fail `validate_types` against the now-boolean
+    default, and the healed value must be written back as a real TOML bool so
+    the two representations converge."""
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    tracker = cast(MutableMapping[str, Any], document["tracker"])
+    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
+    more_than_tv["anonymous"] = 0  # legacy int representation
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)  # must not raise
+
+    assert manager.settings.trackers.more_than_tv.anonymous is False
+    # the healed value is persisted as a real TOML boolean, not an int
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
+    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
+    raw = saved_mtv["anonymous"]
+    raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
+    assert type(raw) is bool
+    ConfigManager("test", paths)  # a fresh load of the healed file is clean
+
+
+def test_schema1_int_tracker_flags_load_as_bool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real release users are on schema 1, which stored the tracker flags as
+    the int `0`. Migrating to schema 2 -- whose default now declares them
+    `bool` -- must coerce them so the migrated document validates, instead of
+    tripping `validate_types` and forcing an archive+regenerate on upgrade.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    fixture_text = Path("tests/test_config/fixtures/schema1_config.toml").read_text(
+        encoding="utf-8"
+    )
+    assert "anonymous = 0" in fixture_text  # guard: the fixture is the int form
+    profile.write_text(fixture_text, encoding="utf-8")
+
+    manager = ConfigManager("test", paths)  # must migrate + load, not raise
+
+    assert manager.settings.trackers.more_than_tv.anonymous is False
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    assert saved["schema_version"] == 2
+    saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
+    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
+    raw = saved_mtv["anonymous"]
+    raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
+    assert type(raw) is bool
+
+
+def test_coerce_bool_flags_normalizes_int_flags() -> None:
+    """`coerce_bool_flags` turns a persisted int 0/1 into a bool where the
+    default declares a bool, and leaves genuine ints, enum-backed ints and
+    non-0/1 values alone (the latter so real corruption still surfaces as a
+    type error rather than being silently coerced)."""
+    defaults = {
+        "tracker": {
+            "more_than_tv": {
+                "anonymous": False,  # bool flag
+                "internal": False,  # bool flag
+                "row_space": 0,  # genuine int
+                "promo": 0,  # enum-backed int
+            }
+        }
+    }
+    document: dict[str, Any] = {
+        "tracker": {
+            "more_than_tv": {
+                "anonymous": 1,  # legacy int for a bool flag -> True
+                "internal": 5,  # not 0/1 -> left for validate_types to reject
+                "row_space": 0,  # int default -> untouched
+                "promo": 2,  # int default -> untouched
+            }
+        }
+    }
+
+    TomlConfigCodec.coerce_bool_flags(document, defaults)
+
+    mtv = document["tracker"]["more_than_tv"]
+    assert mtv["anonymous"] is True
+    assert type(mtv["internal"]) is int and mtv["internal"] == 5
+    assert type(mtv["row_space"]) is int and mtv["row_space"] == 0
+    assert type(mtv["promo"]) is int and mtv["promo"] == 2
+
+
 def test_default_season_folder_token_is_scene_style() -> None:
     defaults = tomlkit.parse(
         Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
