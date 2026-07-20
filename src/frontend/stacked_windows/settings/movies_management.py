@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from functools import partial
+from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QSize, QTimer, Slot
 from PySide6.QtWidgets import (
@@ -15,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.token_replacer import ColonReplace, TokenReplacer, UnfilledTokenRemoval
+from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
@@ -23,7 +24,9 @@ from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
 )
-from src.config.models import DynamicRangeSettings
+from src.config.config import ConfigManager
+from src.config.models import DynamicRangeSettings, DynamicRangeSettingsData
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -35,13 +38,19 @@ from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class MoviesManagementSettings(BaseSettings):
     """Movie specific settings"""
 
     TRACKERS_OVERRIDE_NOT_SUPPORTED = (TrackerSelection.PASS_THE_POPCORN,)
 
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("movieManagementSettings")
 
@@ -54,8 +63,8 @@ class MoviesManagementSettings(BaseSettings):
         )
 
         # live state cache for real-time updates
-        self._live_title_clean_rules = None
-        self._live_video_dynamic_range = None
+        self._live_title_clean_rules: list[tuple[str, str]] | None = None
+        self._live_video_dynamic_range: DynamicRangeSettings | None = None
 
         # controls
         # rename
@@ -262,8 +271,9 @@ class MoviesManagementSettings(BaseSettings):
 
         # if override widget is enabled we'll update the title portion of it's widget if
         # there is no token for that widget
-        override_widget: TrackerFormatOverride = (
-            self.tracker_over_ride_stacked_widget.currentWidget()  # pyright: ignore [reportAssignmentType]
+        override_widget = cast(
+            TrackerFormatOverride,
+            self.tracker_over_ride_stacked_widget.currentWidget(),
         )
         if (
             override_widget.enabled_checkbox.isChecked()
@@ -425,7 +435,7 @@ class MoviesManagementSettings(BaseSettings):
         self._update_all_examples()
         QTimer.singleShot(1, self._delayed_unblock_override_widgets)
 
-    def _delayed_unblock_override_widgets(self):
+    def _delayed_unblock_override_widgets(self) -> None:
         """
         This prevents un-needed calls that are slightly 'expensive' that can happen when
         loading data into the override UI elements.
@@ -556,13 +566,17 @@ class MoviesManagementSettings(BaseSettings):
         self._update_file_token_example()
 
     @Slot(object)
-    def _global_management_state_changed(self, data: dict) -> None:
+    def _global_management_state_changed(self, data: dict[str, object]) -> None:
         """Handle real-time updates from global management settings"""
-        if "title_clean_rules" in data:
-            self._live_title_clean_rules = data["title_clean_rules"]
-        if "video_dynamic_range" in data:
+        title_clean_rules = data.get("title_clean_rules")
+        if isinstance(title_clean_rules, list):
+            self._live_title_clean_rules = cast(
+                list[tuple[str, str]], title_clean_rules
+            )
+        video_dynamic_range = data.get("video_dynamic_range")
+        if isinstance(video_dynamic_range, dict):
             self._live_video_dynamic_range = DynamicRangeSettings(
-                **data["video_dynamic_range"]
+                **cast(DynamicRangeSettingsData, video_dynamic_range)
             )
         self._update_all_examples()
 

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QEventLoop, QObject, QThread, Signal, Slot
 from PySide6.QtGui import Qt, QTextCursor
@@ -37,7 +37,8 @@ from src.frontend.custom_widgets.prompt_token_editor_dialog import (
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-from src.packages.custom_types import ImageUploadFromTo
+from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.payloads.image_hosts import ImagePayloadBase
 from src.payloads.tracker_search_result import TrackerSearchResult
 
 if TYPE_CHECKING:
@@ -114,8 +115,10 @@ class ProcessWorker(BaseWorker):
         self.tracker_data = tracker_data
         self.context = context
 
-        self._prompt_tokens_response = None
-        self._overview_prompt = None
+        self._prompt_tokens_response: dict[str, str] | None = None
+        self._overview_prompt: dict[TrackerSelection, dict[str, str | None]] | None = (
+            None
+        )
 
     def run(self) -> None:
         try:
@@ -148,7 +151,7 @@ class ProcessWorker(BaseWorker):
         self, tokens: Sequence[str] | None
     ) -> dict[str, str] | None:
         if not tokens:
-            return
+            return None
 
         self._prompt_tokens_response = None
         self.prompt_tokens_signal.emit(tokens)
@@ -156,9 +159,7 @@ class ProcessWorker(BaseWorker):
         loop = QEventLoop()
 
         @Slot(object)
-        def on_response(
-            response: dict[TrackerSelection, dict[str | None, str]] | None,
-        ) -> None:
+        def on_response(response: dict[str, str] | None) -> None:
             self._prompt_tokens_response = response
             loop.quit()
 
@@ -171,10 +172,10 @@ class ProcessWorker(BaseWorker):
         return self._prompt_tokens_response
 
     def overview_prompt_and_wait_cb(
-        self, data: dict[TrackerSelection, dict[str | None, str]] | None
-    ) -> dict[TrackerSelection, dict[str | None, str]] | None:
+        self, data: dict[TrackerSelection, dict[str, str | None]] | None
+    ) -> dict[TrackerSelection, dict[str, str | None]] | None:
         if not data:
-            return
+            return None
 
         self._overview_prompt = None
         self.overview_signal.emit(data)
@@ -184,7 +185,7 @@ class ProcessWorker(BaseWorker):
 
         @Slot(object)
         def on_response(
-            response: dict[TrackerSelection, dict[str | None, str]] | None,
+            response: dict[TrackerSelection, dict[str, str | None]] | None,
         ) -> None:
             self._overview_prompt = response
             loop.quit()
@@ -498,7 +499,7 @@ class ProcessPage(BaseWizardPage):
 
     @Slot(object)
     def _on_overview_signal(
-        self, data: dict[TrackerSelection, dict[str | None, str]]
+        self, data: dict[TrackerSelection, dict[str, str | None]]
     ) -> None:
         result = data
         prompt = OverviewDialog(data, self)
@@ -508,10 +509,21 @@ class ProcessPage(BaseWizardPage):
 
     def _update_last_used_host(self) -> None:
         start_data = deepcopy(self.config.settings.trackers.last_used_image_host)
-        for _, (
-            _,
-            (_, (tracker, img_dest)),
-        ), _ in self.tracker_process_tree.get_item_values():
+        for row in self.tracker_process_tree.get_item_values():
+            _, (_, (_, (tracker, img_dest))), _ = cast(
+                tuple[
+                    str,
+                    tuple[
+                        str,
+                        tuple[
+                            ImageUploadFromTo,
+                            tuple[TrackerSelection, ImageHost | ImageSource],
+                        ],
+                    ],
+                    str,
+                ],
+                row,
+            )
             try:
                 self.config.settings.trackers.last_used_image_host[
                     TrackerSelection(tracker)
@@ -527,7 +539,9 @@ class ProcessPage(BaseWizardPage):
         # sort the trackers in the users desired order before displaying them
         if self.context.shared_data.selected_trackers:
             upload_type = ImageSource.IMAGES
-            enabled_img_hosts = {ImageHost.DISABLED: False}
+            enabled_img_hosts: dict[
+                ImageHost | ImageSource, bool | ImagePayloadBase | list[ImageUploadData]
+            ] = {ImageHost.DISABLED: False}
 
             # if url data is detected add that to the potential options
             if self.context.shared_data.url_data:
@@ -604,11 +618,22 @@ class ProcessPage(BaseWizardPage):
             raise ValueError("Failed to detect MediaInputPayload.working_dir")
 
         # build data
-        tracker_data = {}
-        for tracker, (
-            combo_text,
-            (image_host_data, _),
-        ), _ in self.tracker_process_tree.get_item_values():
+        tracker_data: dict[str, dict[str, Path | str | ImageUploadFromTo]] = {}
+        for row in self.tracker_process_tree.get_item_values():
+            tracker, (combo_text, (image_host_data, _)), _ = cast(
+                tuple[
+                    str,
+                    tuple[
+                        str,
+                        tuple[
+                            ImageUploadFromTo,
+                            tuple[TrackerSelection, ImageHost | ImageSource],
+                        ],
+                    ],
+                    str,
+                ],
+                row,
+            )
             process_dir_out = process_dir / tracker.lower()
             process_dir_out.mkdir(parents=True, exist_ok=True)
             torrent_out = Path(process_dir_out / f"{detected_input.stem}.torrent")
@@ -631,7 +656,7 @@ class ProcessPage(BaseWizardPage):
                             dir=str(process_dir_out) if process_dir_out else "",
                         )
                         if not new_torrent_out:
-                            return
+                            return None
                         torrent_out = Path(new_torrent_out)
             tracker_data[tracker] = {
                 "path": torrent_out,
@@ -646,10 +671,10 @@ class ProcessPage(BaseWizardPage):
 
         return tracker_data
 
-    def get_theme_colors(self):
-        app = QApplication.instance()
+    def get_theme_colors(self) -> str:
+        app = cast(QApplication | None, QApplication.instance())
         if app:
-            color_scheme = app.styleHints().colorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            color_scheme = app.styleHints().colorScheme()
             scheme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
             return self.THEMES[scheme]["box_color"]
         return "#e6e6e6"
