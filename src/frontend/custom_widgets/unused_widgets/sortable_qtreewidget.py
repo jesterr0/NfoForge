@@ -1,12 +1,14 @@
 from collections.abc import Sequence
 
 from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QHeaderView,
     QTreeWidget,
     QTreeWidgetItem,
+    QWidget,
 )
 
 
@@ -38,8 +40,8 @@ class SortableQTreeWidget(QTreeWidget):
         self,
         headers: Sequence[str],
         rows: Sequence[Sequence[str]] | None = None,
-        parent=None,
-    ):
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
@@ -70,6 +72,8 @@ class SortableQTreeWidget(QTreeWidget):
         key_exists = None
         for idx in range(self.topLevelItemCount()):
             sub_item = self.topLevelItem(idx)
+            if sub_item is None:
+                continue
             if sub_item.text(0) == key:
                 sub_item.setText(col, new_value)
                 return key
@@ -110,12 +114,14 @@ class SortableQTreeWidget(QTreeWidget):
 
     def get_item_values(self) -> list[tuple[str, ...]]:
         """Quickly returns a list of all elements in order how they are currently displayed"""
-        return [
-            tuple(self.topLevelItem(idx).text(i) for i in range(self.header_len))
-            for idx in range(self.topLevelItemCount())
-        ]
+        values: list[tuple[str, ...]] = []
+        for idx in range(self.topLevelItemCount()):
+            item = self.topLevelItem(idx)
+            if item is not None:
+                values.append(tuple(item.text(i) for i in range(self.header_len)))
+        return values
 
-    def dropEvent(self, event) -> None:
+    def dropEvent(self, event: QDropEvent) -> None:
         old_values = self.get_item_values()
         super().dropEvent(event)
         new_values = self.get_item_values()
@@ -126,7 +132,7 @@ class SortableQTreeWidget(QTreeWidget):
 if __name__ == "__main__":
 
     @Slot(list)
-    def items_updated(e: list) -> None:
+    def items_updated(e: list[object]) -> None:
         print(e)
 
     app = QApplication([])

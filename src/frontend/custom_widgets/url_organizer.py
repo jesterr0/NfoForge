@@ -1,4 +1,4 @@
-from PySide6.QtCore import Slot
+from PySide6.QtCore import QEvent, QObject, Slot
 from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -19,7 +19,7 @@ class URLOrganizer(QWidget):
         f"https://fakeimage.com/img/{str(i).zfill(2)}.png" for i in range(1, 13)
     ]
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("urlOrganizer")
 
@@ -28,7 +28,7 @@ class URLOrganizer(QWidget):
         # control Widgets
         self.column_count_lbl = QLabel("Columns", self)
         self.column_count_spinbox = QSpinBox(self)
-        self.column_count_spinbox.wheelEvent = self._ignore_wheel_event
+        self.column_count_spinbox.installEventFilter(self)
         self.column_count_spinbox.setRange(1, 4)
         self.column_count_spinbox.valueChanged.connect(self.update_example)
         self.column_count_layout = self._build_v_layout(
@@ -37,7 +37,7 @@ class URLOrganizer(QWidget):
 
         self.column_space_lbl = QLabel("Column Space", self)
         self.column_space_spinbox = QSpinBox(self)
-        self.column_space_spinbox.wheelEvent = self._ignore_wheel_event
+        self.column_space_spinbox.installEventFilter(self)
         self.column_space_spinbox.setRange(1, 10)
         self.column_space_spinbox.valueChanged.connect(self.update_example)
         self.column_space_layout = self._build_v_layout(
@@ -46,7 +46,7 @@ class URLOrganizer(QWidget):
 
         self.row_space_lbl = QLabel("Row Space", self)
         self.row_space_spinbox = QSpinBox(self)
-        self.row_space_spinbox.wheelEvent = self._ignore_wheel_event
+        self.row_space_spinbox.installEventFilter(self)
         self.row_space_spinbox.setRange(0, 10)
         self.row_space_spinbox.valueChanged.connect(self.update_example)
         self.row_space_layout = self._build_v_layout(
@@ -154,6 +154,12 @@ class URLOrganizer(QWidget):
         layout.addWidget(widget_2)
         return layout
 
-    @staticmethod
-    def _ignore_wheel_event(event: QWheelEvent) -> None:
-        event.ignore()
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched in {
+            self.column_count_spinbox,
+            self.column_space_spinbox,
+            self.row_space_spinbox,
+        } and isinstance(event, QWheelEvent):
+            event.ignore()
+            return True
+        return super().eventFilter(watched, event)

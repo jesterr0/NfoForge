@@ -1,6 +1,5 @@
 import re
 from pathlib import Path
-from typing import List
 
 from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtWidgets import (
@@ -29,7 +28,7 @@ from src.payloads.script import ScriptValues
 class CropWidget(QWidget):
     crop_confirmed = Signal(ScriptValues)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.parsed_script: ScriptValues | None = None
@@ -112,7 +111,7 @@ class CropWidget(QWidget):
             self._read_text_file(script_path)
 
     @Slot(list)
-    def _handle_drop(self, file_data: List[Path]) -> None:
+    def _handle_drop(self, file_data: list[Path]) -> None:
         if file_data:
             self._read_text_file(file_data[0])
 
@@ -125,7 +124,7 @@ class CropWidget(QWidget):
             self._read_text_file(Path(script_input))
 
     def _read_text_file(self, file_path: Path) -> None:
-        with open(file_path, "r", encoding="utf-8") as text_file:
+        with open(file_path, encoding="utf-8") as text_file:
             data = text_file.read()
             self.text_box.clear()
             if data:
@@ -185,7 +184,7 @@ class CropWidget(QWidget):
 
 
 class CropWidgetDialog(QDialog):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self.setWindowTitle("Crop")
@@ -214,3 +213,4 @@ class CropWidgetDialog(QDialog):
         result = self.exec()
         if result == QDialog.DialogCode.Accepted:
             return self._result
+        return None

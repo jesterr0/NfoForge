@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeAlias, overload
+from typing import Literal, TypeAlias, TypedDict, overload
 
 from src.backend.tokens import TokenSelection
 from src.enums.cropping import Cropping
@@ -55,6 +55,12 @@ HdrType: TypeAlias = Literal[
     "DV HDR10",
     "DV HDR10+",
 ]
+
+
+class DynamicRangeSettingsData(TypedDict):
+    resolutions: dict[ResolutionKey, bool]
+    hdr_types: dict[HdrType, bool]
+    custom_strings: dict[HdrType, str]
 
 
 @dataclass(slots=True)
@@ -184,9 +190,7 @@ class DynamicRangeSettings:
 
     def to_dict(
         self,
-    ) -> dict[
-        str, dict[ResolutionKey, bool] | dict[HdrType, bool] | dict[HdrType, str]
-    ]:
+    ) -> DynamicRangeSettingsData:
         return {
             "resolutions": dict[ResolutionKey, bool](self.resolutions),
             "hdr_types": dict[HdrType, bool](self.hdr_types),

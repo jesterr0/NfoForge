@@ -1,6 +1,5 @@
 from collections.abc import Sequence
 from functools import partial
-from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, Slot
 from PySide6.QtGui import QBrush
@@ -13,6 +12,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.frontend.custom_widgets.list_box_editor import ListBoxEditor
@@ -22,9 +22,9 @@ from src.frontend.utils import set_top_parent_geometry
 class PromptTokenEditorDialog(QDialog):
     def __init__(
         self,
-        items: Sequence[str] | dict[str, Any],
+        items: Sequence[str] | dict[str, str],
         warn_missing: bool = False,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("promptTokenEditorDialog")
@@ -34,7 +34,7 @@ class PromptTokenEditorDialog(QDialog):
 
         self._results_data: dict[str, str] | None = None
         # key: QListWidgetItem, value: QTimer
-        self._flash_timers = {}
+        self._flash_timers: dict[str, QTimer] = {}
 
         lbl = QLabel(
             '<h4 style="margin: 0; margin-bottom: 3px; padding: 0;">Prompt Tokens:</h4>'
@@ -75,7 +75,7 @@ class PromptTokenEditorDialog(QDialog):
         self.main_layout.addLayout(btn_layout)
 
     @Slot()
-    def _on_accept(self):
+    def _on_accept(self) -> None:
         # retrieve edited data from the editor
         self._results_data = self.editor.get_data()
         if self.warn_on_missing.isChecked():
@@ -104,7 +104,7 @@ class PromptTokenEditorDialog(QDialog):
                     return
         self.accept()
 
-    def get_results(self):
+    def get_results(self) -> dict[str, str] | None:
         return self._results_data
 
     def _reset_color(self, item: QListWidgetItem, key: str) -> None:

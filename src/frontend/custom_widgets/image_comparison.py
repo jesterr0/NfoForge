@@ -1,6 +1,5 @@
 from os import PathLike
 from pathlib import Path
-from typing import Union
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QPainter, QPen, QPixmap
@@ -20,7 +19,9 @@ from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 class SideBySideImage(QWidget):
     offset_applied = Signal(object)  # Optional[int]
 
-    def __init__(self, sync_dir: Union[str, PathLike], parent=None):
+    def __init__(
+        self, sync_dir: str | PathLike[str], parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
 
         # vars
@@ -125,7 +126,7 @@ class SideBySideImage(QWidget):
         layout.addLayout(button_layout, stretch=1)
         self.setLayout(layout)
 
-    def send_offset(self):
+    def send_offset(self) -> None:
         reference_frame_num = int(
             self.reference_img[self.ref_index].stem.split("__")[1]
         )
@@ -134,7 +135,7 @@ class SideBySideImage(QWidget):
         )
         self.offset_applied.emit(offset_frame_num - reference_frame_num)
 
-    def swap_ref(self):
+    def swap_ref(self) -> None:
         if self.ref_index == 0:
             self.ref_index = 1
         elif self.ref_index == 1:
@@ -148,14 +149,14 @@ class SideBySideImage(QWidget):
         self.slider.setValue(5000)
         self.updateImage()
 
-    def change_frame(self, direction):
+    def change_frame(self, direction: int) -> None:
         new_index = self.sync_img_index + direction
         if 0 <= new_index < self.sync_dir_len:
             self.sync_img_index = new_index
             self.sync_img = QPixmap(self.sync_frames[self.sync_img_index])
             self.updateImage()
 
-    def updateImage(self):
+    def updateImage(self, _value: int | None = None) -> None:
         blend_factor = self.slider.value() / 10000.0
 
         # Calculate the width for each image

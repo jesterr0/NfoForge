@@ -19,7 +19,9 @@ from src.frontend.utils import set_top_parent_geometry
 
 class OverviewDialog(QDialog):
     def __init__(
-        self, tracker_nfos: dict[TrackerSelection, dict[str | None, str]], parent=None
+        self,
+        tracker_nfos: dict[TrackerSelection, dict[str, str | None]],
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("overviewDialog")
@@ -28,7 +30,7 @@ class OverviewDialog(QDialog):
         set_top_parent_geometry(self)
 
         self._original = tracker_nfos
-        self._edits = {}
+        self._edits: dict[TrackerSelection, dict[str, str | None]] = {}
 
         info_lbl = QLabel(
             f'<h3 style="margin: 0; margin-bottom: 6px;">{self.windowTitle()}</h3>'
@@ -48,8 +50,8 @@ class OverviewDialog(QDialog):
         inner_layout = QVBoxLayout(inner)
         inner_layout.setSpacing(0)
 
-        self.title_edits = {}
-        self.nfo_edits = {}
+        self.title_edits: dict[TrackerSelection, QLineEdit] = {}
+        self.nfo_edits: dict[TrackerSelection, CodeEditor] = {}
 
         for tracker, data in tracker_nfos.items():
             title = data.get("title")
@@ -85,7 +87,7 @@ class OverviewDialog(QDialog):
                     pop_out_name=f"NFO ({tracker})",
                     parent=group_box,
                 )
-                nfo_edit.setPlainText(data.get("nfo", ""))
+                nfo_edit.setPlainText(data.get("nfo") or "")
                 nfo_edit.setMinimumHeight(450)
                 self.nfo_edits[tracker] = nfo_edit
 
@@ -116,7 +118,7 @@ class OverviewDialog(QDialog):
         self.main_layout.addWidget(scroll)
         self.main_layout.addLayout(btn_layout)
 
-    def get_results(self) -> dict[TrackerSelection, dict[str | None, str]]:
+    def get_results(self) -> dict[TrackerSelection, dict[str, str | None]]:
         if self.result() == QDialog.DialogCode.Accepted:
             return {
                 tracker: {
@@ -136,7 +138,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle("fusion")
 
-    tracker_nfos = {
+    tracker_nfos: dict[TrackerSelection, dict[str, str | None]] = {
         TrackerSelection.MORE_THAN_TV: {"title": "SomeTitleA", "nfo": "Some Nfo A"},
         TrackerSelection.TORRENT_LEECH: {"title": "SomeTitleB", "nfo": "Some Nfo B"},
         TrackerSelection.PASS_THE_POPCORN: {"nfo": "Some Nfo B"},

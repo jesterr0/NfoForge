@@ -1,5 +1,4 @@
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Mapping, Sequence
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
@@ -17,11 +16,11 @@ from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 
 
 class ListBoxEditor(QWidget):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("listBoxEditor")
 
-        self.data = {}
+        self.data: dict[str, str] = {}
 
         self.listbox = QListWidget(self)
         self.listbox.setFrameShape(QFrame.Shape.Box)
@@ -34,18 +33,18 @@ class ListBoxEditor(QWidget):
         self.main_layout.addWidget(self.listbox, stretch=1)
         self.main_layout.addWidget(self.editor, stretch=3)
 
-    def load_items(self, items: Sequence[str] | dict[str, Any]) -> None:
+    def load_items(self, items: Sequence[str] | Mapping[str, str]) -> None:
         self.listbox.clear()
-        if isinstance(items, dict):
-            self.data = items
-            self.listbox.addItems(items.keys())
+        if isinstance(items, Mapping):
+            self.data = dict(items)
+            self.listbox.addItems(list(items))
         else:
             self.data = {token: "" for token in items}
             self.listbox.addItems(items)
         if items:
             self.listbox.setCurrentRow(0)
 
-    def get_data(self) -> dict[str, Any]:
+    def get_data(self) -> dict[str, str]:
         # save current editor content before returning
         current_item = self.listbox.currentItem()
         if current_item:
@@ -75,7 +74,7 @@ if __name__ == "__main__":
     from PySide6.QtWidgets import QApplication, QDialog, QPushButton, QVBoxLayout
 
     class TestDialog(QDialog):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("Test")
             layout = QVBoxLayout(self)
@@ -88,7 +87,7 @@ if __name__ == "__main__":
             layout.addWidget(btn)
             self.setLayout(layout)
 
-        def print_data(self):
+        def print_data(self) -> None:
             print(self.editor.get_data())
 
     app = QApplication(sys.argv)

@@ -122,7 +122,7 @@ class TypedTomlOperations:
         parent: Mapping[str, Any],
         key: str,
     ) -> dict[str, Any]:
-        return cast(dict[str, Any], cls._toml_table(parent, key).unwrap())
+        return cls._toml_table(parent, key).unwrap()
 
     def save(self, save_path: Path | None = None) -> None:
         """Converts config payload object to TOML and writes to a file"""
@@ -1127,7 +1127,7 @@ class TypedTomlOperations:
                 if x in TrackerSelection._value2member_map_
             ]
             tracker_order.extend(e for e in TrackerSelection if e not in tracker_order)
-            last_used_img_host = {}
+            last_used_img_host: dict[TrackerSelection, ImageHost | ImageSource] = {}
             for tracker, image_dest in tracker_settings["last_used_img_host"].items():
                 try:
                     last_used_img_host[TrackerSelection(tracker)] = ImageHost(

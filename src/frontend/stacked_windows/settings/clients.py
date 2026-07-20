@@ -1,13 +1,22 @@
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Slot
 
+from src.config.config import ConfigManager
 from src.enums.torrent_client import TorrentClientSelection
 from src.frontend.custom_widgets.client_listbox import ClientListWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class ClientsSettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("clientsSettings")
 

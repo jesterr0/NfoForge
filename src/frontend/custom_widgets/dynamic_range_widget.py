@@ -1,5 +1,3 @@
-from collections.abc import Mapping
-
 from PySide6.QtCore import QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -12,7 +10,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-DynamicRangeState = dict[str, dict[str, bool] | dict[str, str]]
+from src.config.models import DynamicRangeSettingsData, HdrType, ResolutionKey
 
 
 class DynamicRangeWidget(QWidget):
@@ -23,15 +21,16 @@ class DynamicRangeWidget(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("dynamicRangeWidget")
-        self._last_state: DynamicRangeState | None = None
+        self._last_state: DynamicRangeSettingsData | None = None
         self._debounce_timer = QTimer(self, singleShot=True, interval=debounce_interval)
         self._debounce_timer.timeout.connect(self._emit_state_if_changed)
 
         # resolution
         res_group = QGroupBox("Active in resolution:")
         res_layout = QHBoxLayout()
-        self.res_checkboxes: dict[str, QCheckBox] = {}
-        for res in ["720p", "1080p", "2160p"]:
+        self.res_checkboxes: dict[ResolutionKey, QCheckBox] = {}
+        resolutions: tuple[ResolutionKey, ...] = ("720p", "1080p", "2160p")
+        for res in resolutions:
             cb = QCheckBox(res, self)
             self.res_checkboxes[res] = cb
             res_layout.addWidget(cb)
@@ -41,8 +40,8 @@ class DynamicRangeWidget(QWidget):
         # HDR types
         hdr_group = QGroupBox("HDR Types Returned:")
         hdr_layout_v = QVBoxLayout()
-        self.hdr_checkboxes: dict[str, QCheckBox] = {}
-        hdr_types = [
+        self.hdr_checkboxes: dict[HdrType, QCheckBox] = {}
+        hdr_types: tuple[HdrType, ...] = (
             "SDR",
             "PQ",
             "HLG",
@@ -51,7 +50,7 @@ class DynamicRangeWidget(QWidget):
             "DV",
             "DV HDR10",
             "DV HDR10+",
-        ]
+        )
         # split into two rows
         for i in range(0, len(hdr_types), 4):
             row_layout = QHBoxLayout()
@@ -66,7 +65,7 @@ class DynamicRangeWidget(QWidget):
         # custom Dynamic Range Strings
         custom_group = QGroupBox("Custom Dynamic Range Strings:")
         custom_layout = QFormLayout()
-        self.custom_edits: dict[str, QLineEdit] = {}
+        self.custom_edits: dict[HdrType, QLineEdit] = {}
         for hdr in hdr_types:
             edit = QLineEdit(self)
             self.custom_edits[hdr] = edit
@@ -80,7 +79,7 @@ class DynamicRangeWidget(QWidget):
         self.main_layout.addWidget(custom_group)
         self.main_layout.addStretch()
 
-    def to_dict(self) -> DynamicRangeState:
+    def to_dict(self) -> DynamicRangeSettingsData:
         """Example output:
         ```python
         {'resolutions': {'720p': False, '1080p': False, '2160p': False},
@@ -97,7 +96,7 @@ class DynamicRangeWidget(QWidget):
             },
         }
 
-    def from_dict(self, settings: Mapping[str, Mapping[str, bool | str]]) -> None:
+    def from_dict(self, settings: DynamicRangeSettingsData) -> None:
         """Expected input:
         ```python
         {'resolutions': {'720p': False, '1080p': False, '2160p': False},
@@ -107,15 +106,15 @@ class DynamicRangeWidget(QWidget):
         'DV': '', 'DV HDR10': '', 'DV HDR10+': ''}}
         ```"""
         self.blockSignals(True)
-        for k, v in settings.get("resolutions", {}).items():
-            if k in self.res_checkboxes and isinstance(v, bool):
-                self.res_checkboxes[k].setChecked(v)
-        for k, v in settings.get("hdr_types", {}).items():
-            if k in self.hdr_checkboxes and isinstance(v, bool):
-                self.hdr_checkboxes[k].setChecked(v)
-        for k, v in settings.get("custom_strings", {}).items():
-            if k in self.custom_edits and isinstance(v, str):
-                self.custom_edits[k].setText(v)
+        for resolution, enabled in settings["resolutions"].items():
+            if resolution in self.res_checkboxes:
+                self.res_checkboxes[resolution].setChecked(enabled)
+        for hdr_type, enabled in settings["hdr_types"].items():
+            if hdr_type in self.hdr_checkboxes:
+                self.hdr_checkboxes[hdr_type].setChecked(enabled)
+        for hdr_type, custom_string in settings["custom_strings"].items():
+            if hdr_type in self.custom_edits:
+                self.custom_edits[hdr_type].setText(custom_string)
         self._last_state = self.to_dict()
         self.blockSignals(False)
 

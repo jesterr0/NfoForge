@@ -1,6 +1,6 @@
 import platform
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtWidgets import (
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 from qtawesome import IconWidget
 
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.dnd_factory import (
     DNDButton,
     DNDLineEdit,
@@ -26,9 +27,15 @@ from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class DependencySettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("dependencySettings")
 

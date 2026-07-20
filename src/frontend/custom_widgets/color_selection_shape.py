@@ -22,18 +22,20 @@ class ColorSelectionShape(QWidget):
         initial_color: QColor = QColor("white"),
         enable_alpha: bool = False,
         circle: bool = False,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.current_color = initial_color
         self.setFixedSize(QSize(width, height))
         self.enable_alpha = enable_alpha
+        self.circle = circle
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        if circle:
-            self.paintEvent = self.circlePaintEvent
+    def paintEvent(self, event: QPaintEvent) -> None:
+        if self.circle:
+            self.circlePaintEvent(event)
         else:
-            self.paintEvent = self.squaredPaintEvent
+            self.squaredPaintEvent(event)
 
     def circlePaintEvent(self, event: QPaintEvent) -> None:
         """Draw the circle with the current color."""
@@ -99,20 +101,20 @@ if __name__ == "__main__":
     app = QApplication([])
 
     class MainWindow(QWidget):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("Color Circle Example")
-            self.setLayout(QVBoxLayout())
+            self.main_layout = QVBoxLayout(self)
 
             # create a color circle and add it to the layout
             self.color_circle = ColorSelectionShape(
                 initial_color=QColor("blue"), circle=True
             )
-            self.layout().addWidget(self.color_circle)
+            self.main_layout.addWidget(self.color_circle)
 
             # add a button to demonstrate other UI elements
             self.test_button = QPushButton("Click Me!")
-            self.layout().addWidget(self.test_button)
+            self.main_layout.addWidget(self.test_button)
 
     main_window = MainWindow()
     main_window.show()

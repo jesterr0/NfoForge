@@ -1,10 +1,11 @@
+from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from jinja2.exceptions import TemplateSyntaxError
 from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -42,6 +43,17 @@ if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
+class TokenTableWindow(QWidget):
+    def __init__(
+        self, parent: QWidget, on_close: Callable[[QCloseEvent], None]
+    ) -> None:
+        super().__init__(parent, Qt.WindowType.Window)
+        self._on_close = on_close
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self._on_close(event)
+
+
 class TemplateSelector(QWidget):
     destroy_token_window = Signal()
     hide_parent = Signal(bool)
@@ -52,7 +64,7 @@ class TemplateSelector(QWidget):
         context: ProcessingContext,
         sandbox: bool,
         main_window: "MainWindow",
-        parent=None,
+        parent: QWidget | None = None,
         toggle_prompt_tokens: QCheckBox | None = None,
     ) -> None:
         """
@@ -272,7 +284,9 @@ class TemplateSelector(QWidget):
     @Slot()
     def show_tokens(self) -> None:
         if self.token_btn.isChecked():
-            self.token_table_window = QWidget(self, Qt.WindowType.Window)
+            self.token_table_window = TokenTableWindow(
+                self, self.close_token_table_window
+            )
             self.token_table_window.setWindowTitle("Tokens")
             self.token_table_window.setMinimumSize(600, 400)
             self.token_table_window.setWindowFlag(
@@ -286,13 +300,12 @@ class TemplateSelector(QWidget):
                 )
             )
             self.token_table_window.setLayout(layout)
-            self.token_table_window.closeEvent = self.close_token_table_window
             self.token_table_window.show()
         elif not self.token_btn.isChecked() and self.token_table_window:
             self.token_table_window.close()
             self.token_table_window = None
 
-    def close_token_table_window(self, event) -> None:
+    def close_token_table_window(self, event: QCloseEvent) -> None:
         if self.token_table_window:
             self.token_btn.setChecked(False)
             event.accept()
@@ -628,10 +641,10 @@ class TemplateSelector(QWidget):
         return sorted(Tokens().get_token_objects()) + user_tokens
 
     @Slot(bool)
-    def _clear_sandbox_input_prompt_tokens_cache(self, _) -> None:
+    def _clear_sandbox_input_prompt_tokens_cache(self, _: bool) -> None:
         self.reset_sandbox_preview_cache(True)
 
-    def reset_sandbox_preview_cache(self, reset_tokens: bool = False):
+    def reset_sandbox_preview_cache(self, reset_tokens: bool = False) -> None:
         if self.preview_btn.isChecked():
             self.preview_btn.setChecked(False)
             self.preview_template()

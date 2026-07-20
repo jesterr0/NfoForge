@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.token_replacer import ColonReplace
+from src.enums.token_replacer import ColonReplace
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.replacement_list_widget import (
     LoadedReplacementListWidget,
@@ -19,7 +19,7 @@ from src.frontend.utils import build_h_line
 class TrackerFormatOverride(QWidget):
     setting_changed = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.enabled_checkbox = QCheckBox("Enable Override", self)
@@ -116,7 +116,7 @@ class TrackerFormatOverride(QWidget):
         self.setting_changed.emit()
 
     @Slot(list)
-    def _rules_changed(self, _data: list) -> None:
+    def _rules_changed(self, _data: list[object]) -> None:
         self.setting_changed.emit()
 
     def set_colon_replace(self, item: str) -> None:
