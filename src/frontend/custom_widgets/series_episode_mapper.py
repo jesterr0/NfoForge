@@ -1578,9 +1578,7 @@ class SeriesEpisodeMapper(QWidget):
         """Whether at least one input file still lacks a season/episode mapping."""
         if not self.media_input_payload or not self.media_input_payload.file_list:
             return False
-        return len(self.file_episode_mappings) < len(
-            self.media_input_payload.file_list
-        )
+        return len(self.file_episode_mappings) < len(self.media_input_payload.file_list)
 
     def get_series_format(self) -> EpisodeFormat:
         """Get the output format for renaming/title tokens."""

@@ -7,7 +7,7 @@ from subprocess import run
 
 
 def find_largest_file_in_directory(
-    directory: PathLike[str], extensions: Iterable, recursive: bool = False
+    directory: PathLike[str], extensions: Iterable[str], recursive: bool = False
 ) -> Path | None:
     largest_file = None
     largest_size = 0

@@ -135,7 +135,7 @@ class Tokens:
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
     )
     VIDEO_FORMAT = FileToken("{video_format}", "Video format (AVC/HEVC/MPEG Video)")
-    VIDEO_HEIGHT = FileToken("{video_height}", "Video height (1040)")
+    VIDEO_HEIGHT: TokenType = FileToken("{video_height}", "Video height (1040)")
     VIDEO_LANGUAGE_FULL = FileToken("{video_language_full}", "Video language (English)")
     VIDEO_LANGUAGE_ISO_639_1 = FileToken(
         "{video_language_iso_639_1}", "Video language (EN)"
@@ -143,7 +143,7 @@ class Tokens:
     VIDEO_LANGUAGE_ISO_639_2 = FileToken(
         "{video_language_iso_639_2}", "Video language (ENG)"
     )
-    VIDEO_WIDTH = FileToken("{video_width}", "Video width (1920)")
+    VIDEO_WIDTH: TokenType = FileToken("{video_width}", "Video width (1920)")
     TITLE = FileToken(
         "{title}", "Title parsed from media databases with minimal formatting"
     )

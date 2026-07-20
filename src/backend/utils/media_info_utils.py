@@ -13,6 +13,7 @@ def calculate_avg_bitrate(mi_track: Track) -> int | None:
             / 1000
         )
         return avg_bitrate
+    return None
 
 
 def calculate_avg_video_bit_rate(mi_object: MediaInfo | None) -> int | None:
@@ -42,7 +43,7 @@ def calculate_avg_video_bit_rate(mi_object: MediaInfo | None) -> int | None:
 
 
 class MinimalMediaInfo:
-    def __init__(self, file_input: PathLike):
+    def __init__(self, file_input: PathLike[str]) -> None:
         self.file_input = Path(file_input)
 
     def get_full_mi_str(self, cleansed: bool = False) -> str:

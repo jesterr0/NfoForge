@@ -61,7 +61,7 @@ def _series_replacer(token: str) -> TokenReplacer:
                         "name": "Default Order Title",
                         "aired": "2020-01-02",
                     }
-                ]
+                ],
             },
         ),
         token_string=token,

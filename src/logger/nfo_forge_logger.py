@@ -2,8 +2,10 @@ import json
 import logging
 import sys
 from datetime import datetime
+from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from typing import Any, TextIO
 
 import shortuuid
 
@@ -28,8 +30,8 @@ class Logger:
         self.logger.setLevel(log_level.value)
         self.log_file = log_file
         self.log_level = log_level
-        self.file_handler = None
-        self.console_handler = None
+        self.file_handler: RotatingFileHandler | None = None
+        self.console_handler: StreamHandler[TextIO] | None = None
         self.to_console = to_console
         self.dumps = log_file.parent / "dumps"
 
@@ -111,7 +113,7 @@ class Logger:
                 del_file.unlink()
 
     def dump_debug_data(
-        self, file_output: Path, debug_type: DebugDataType, data: str | dict
+        self, file_output: Path, debug_type: DebugDataType, data: str | dict[str, Any]
     ) -> None:
         self._check_dump_type(debug_type, data)
         file_output = self._generate_dump_file_path(Path(file_output), debug_type)
@@ -132,7 +134,9 @@ class Logger:
         )
         return self.dumps / file_name
 
-    def _check_dump_type(self, debug_type: DebugDataType, data: str | dict) -> None:
+    def _check_dump_type(
+        self, debug_type: DebugDataType, data: str | dict[str, Any]
+    ) -> None:
         if debug_type == self.DUMP_TYPE.JSON and not isinstance(data, dict):
             raise DebugDumpError(
                 "Invalid data type for JSON debug dump: expected 'dict'"
@@ -143,7 +147,9 @@ class Logger:
                 "Invalid data type for text debug dump: expected 'str'"
             )
 
-    def _dump_debug_data_json(self, file_output: Path, data: dict | None) -> None:
+    def _dump_debug_data_json(
+        self, file_output: Path, data: dict[str, Any] | None
+    ) -> None:
         if data:
             with open(file_output, "w") as json_file:
                 self.debug(

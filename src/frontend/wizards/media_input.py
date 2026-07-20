@@ -548,4 +548,3 @@ class MediaInput(BaseWizardPage):
         self.script_entry.clear()
         self.script_entry.setPlaceholderText(self.SCRIPT_PLACEHOLDER_TXT)
         self.comparison_widget.hide()
-

@@ -7,6 +7,8 @@ class BaseImageHostUploader(ABC):
     """Abstract base class for image host uploaders"""
 
     @abstractmethod
-    async def upload(self, *args, **kwargs) -> dict[int, ImageUploadData] | None:
+    async def upload(
+        self, *args: object, **kwargs: object
+    ) -> dict[int, ImageUploadData] | None:
         """Uploads images and reports progress"""
         pass

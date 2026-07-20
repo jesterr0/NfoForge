@@ -13,7 +13,7 @@ class TorrentClientSelection(CaseInsensitiveEnum):
     WATCH_FOLDER = auto_enum()
 
     @override
-    def __str__(self):
+    def __str__(self) -> str:
         str_map = {
             TorrentClientSelection.QBITTORRENT: "QBittorrent",
             TorrentClientSelection.DELUGE: "Deluge",

@@ -1,13 +1,13 @@
 import re
 
 
-def normalize_super_sub(text):
+def normalize_super_sub(text: str) -> str:
     """Converts super strings to their normal counter parts with spaces"""
     superscript_map = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹", "0123456789")
     subscript_map = str.maketrans("₀₁₂₃₄₅₆₇₈₉", "0123456789")
 
     # find occurrences of superscript/subscript numbers
-    def replacer(match):
+    def replacer(match: re.Match[str]) -> str:
         before, script, after = match.groups()
         normalized = script.translate(superscript_map).translate(subscript_map)
 

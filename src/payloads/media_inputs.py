@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pymediainfo import MediaInfo
 
@@ -22,7 +23,7 @@ class MediaInputPayload:
     comparison_pair: ComparisonPair | None = None
 
     # series stuff
-    series_episode_map: dict[Path, dict] | None = None
+    series_episode_map: dict[Path, dict[str, Any]] | None = None
     series_episode_format: EpisodeFormat = EpisodeFormat.STANDARD
 
     def has_basic_data(self) -> bool:

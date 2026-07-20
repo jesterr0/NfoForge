@@ -327,15 +327,12 @@ class Unit3dBaseUploader:
                 webrip_value = getattr(self.type_enum, "WEBRIP", None)
                 if webrip_value:
                     return webrip_value.value
-            elif (
-                re.search(
-                    r"\b(?:480|576|720|1080|2160|4320)[pi][._ -]?web\b"
-                    r"|\bweb[._ -]?(?:480|576|720|1080|2160|4320)[pi]\b"
-                    r"|\bweb[._ -]?(?:[xh][._ -]?26[45]|hevc|avc)\b",
-                    title_lowered,
-                )
-                and not ("hdtv" in title_lowered or "hd-tv" in title_lowered)
-            ):
+            elif re.search(
+                r"\b(?:480|576|720|1080|2160|4320)[pi][._ -]?web\b"
+                r"|\bweb[._ -]?(?:480|576|720|1080|2160|4320)[pi]\b"
+                r"|\bweb[._ -]?(?:[xh][._ -]?26[45]|hevc|avc)\b",
+                title_lowered,
+            ) and not ("hdtv" in title_lowered or "hd-tv" in title_lowered):
                 # bare "WEB" (no -DL/-Rip suffix) is a common scene/P2P source
                 # tag for episodic web releases (e.g. "S01E01.1080p.WEB.H264").
                 # Treat it the same as WEB-DL rather than falling through to

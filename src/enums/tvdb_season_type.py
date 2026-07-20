@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Self
 
 
 class TVDBSeasonType(Enum):
@@ -8,18 +9,18 @@ class TVDBSeasonType(Enum):
     DVD_ORDER = (2, "dvd", "DVD Order")
     ABSOLUTE_ORDER = (3, "absolute", "Absolute Order")
 
-    def __init__(self, type_id: int, api_param: str, display_name: str):
+    def __init__(self, type_id: int, api_param: str, display_name: str) -> None:
         self.type_id = type_id
         self.api_param = api_param
         self.display_name = display_name
 
     @classmethod
-    def get_main_types(cls: type["TVDBSeasonType"]):
+    def get_main_types(cls: type[Self]) -> list["TVDBSeasonType"]:
         """Get the three main season types we care about."""
         return [cls.AIRED_ORDER, cls.DVD_ORDER, cls.ABSOLUTE_ORDER]
 
     @classmethod
-    def get_by_id(cls: type["TVDBSeasonType"], type_id: int):
+    def get_by_id(cls: type[Self], type_id: int) -> Self | None:
         """Get season type by its ID."""
         for season_type in cls:
             if season_type.type_id == type_id:
@@ -27,7 +28,7 @@ class TVDBSeasonType(Enum):
         return None
 
     @classmethod
-    def get_by_api_param(cls: type["TVDBSeasonType"], api_param: str):
+    def get_by_api_param(cls: type[Self], api_param: str) -> Self | None:
         """Get season type by its API parameter (e.g., 'official', 'dvd', 'absolute')."""
         for season_type in cls:
             if season_type.api_param == api_param:
@@ -35,7 +36,9 @@ class TVDBSeasonType(Enum):
         return None
 
     @classmethod
-    def from_tvdb_season_type_info(cls: type["TVDBSeasonType"], season_type_info: dict):
+    def from_tvdb_season_type_info(
+        cls: type[Self], season_type_info: dict[str, object]
+    ) -> Self | None:
         """
         Get season type from TVDB seasonTypes data structure.
         Tries ID mapping first, then falls back to type name mapping.
@@ -50,13 +53,13 @@ class TVDBSeasonType(Enum):
         season_type_name = season_type_info.get("type")
 
         # try mapping by ID first
-        if season_type_id is not None:
+        if isinstance(season_type_id, int):
             season_type = cls.get_by_id(season_type_id)
             if season_type:
                 return season_type
 
         # fall back to mapping by API parameter name
-        if season_type_name:
+        if isinstance(season_type_name, str) and season_type_name:
             return cls.get_by_api_param(season_type_name)
 
         return None

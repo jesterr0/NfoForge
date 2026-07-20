@@ -66,12 +66,12 @@ MediaInfo
 class TemplateSelectorBackEnd:
     __slots__ = ("template_dir", "templates")
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.template_dir = RUNTIME_DIR / "templates"
         self.template_dir.mkdir(exist_ok=True, parents=True)
-        self.templates = {}
+        self.templates: dict[str, Path] = {}
 
-    def load_templates(self) -> dict[str, str]:
+    def load_templates(self) -> dict[str, Path]:
         self.templates.clear()
         for item in self.template_dir.iterdir():
             if item.is_file() and item.suffix == ".txt":
@@ -106,6 +106,7 @@ class TemplateSelectorBackEnd:
         if _path:
             with open(_path, encoding="utf-8") as template:
                 return template.read()
+        return None
 
     def create_template(self, path: PathLike[str] | str, media_type: MediaType) -> Path:
         with open(path, "w", encoding="utf-8") as new_template:

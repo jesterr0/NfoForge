@@ -153,9 +153,7 @@ class SeriesManagementSettings(BaseSettings):
             "untouched."
         )
         self.season_folder_token = QLineEdit(self)
-        self.season_folder_token.textChanged.connect(
-            self._update_season_folder_example
-        )
+        self.season_folder_token.textChanged.connect(self._update_season_folder_example)
         self.season_folder_example = QLineEdit(self, readOnly=True, frame=False)
         season_folder_v_box = QVBoxLayout()
         season_folder_v_box.setContentsMargins(0, 0, 0, 0)

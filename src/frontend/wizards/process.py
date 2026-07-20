@@ -664,4 +664,3 @@ class ProcessPage(BaseWizardPage):
 
     def initializePage(self) -> None:
         self.add_tracker_items()
-

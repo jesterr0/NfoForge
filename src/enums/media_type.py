@@ -12,6 +12,7 @@ class MediaType(CaseInsensitiveStrEnum):
             return cls.MOVIE
         elif val in ("tv", "series", "show", "anime"):
             return cls.SERIES
+        return None
 
     @classmethod
     def strict_search_type(cls, val: str) -> "MediaType":

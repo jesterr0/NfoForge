@@ -1,8 +1,8 @@
 import re
 from ast import literal_eval
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import unidecode
 from auto_qpf import ChapterGenerator
@@ -102,8 +102,9 @@ class TokenReplacer:
         # vars (set during __init__)
         "guessit_language",
         "token_data",
-        # series vars
-        "_series_cache",
+        # series caches
+        "_series_counts",
+        "_series_episode_cache",
     )
 
     def __init__(
@@ -243,8 +244,9 @@ class TokenReplacer:
         self.guessit_language = self._guessit_language()
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
-        # series cache
-        self._series_cache = {}
+        # series counts and episode lookups have different key/value shapes
+        self._series_counts: dict[str, int] = {}
+        self._series_episode_cache: dict[int, dict[int, dict[str, Any]]] = {}
 
         if not self.flatten and not self.jinja_engine:
             raise AttributeError(
@@ -317,34 +319,39 @@ class TokenReplacer:
         """
         if self.flatten:
             tokens = self._parse_user_input()
-            filled_tokens = {
-                token.token: self._get_token_value(token) for token in tokens
-            }
-            self._update_token_data(filled_tokens)
-            return self._format_token_string(filled_tokens)
+            flattened_tokens: dict[str, str] = {}
+            for token in tokens:
+                if token.token is None:
+                    continue
+                token_value = self._get_token_value(token)
+                flattened_tokens[token.token] = (
+                    token_value if isinstance(token_value, str) else ""
+                )
+            self._update_token_data(flattened_tokens)
+            return self._format_token_string(flattened_tokens)
         else:
-            filled_tokens = {
-                token.token: self._get_token_value(token)
-                for token in self._parse_jinja_input()
-            }
+            jinja_tokens: dict[str, object] = {}
+            for token in self._parse_jinja_input():
+                if token.token is not None:
+                    jinja_tokens[token.token] = self._get_token_value(token)
             # add user tokens to the context for jinja2 rendering
             if self.user_tokens:
                 for key, value in self.user_tokens.items():
-                    filled_tokens[key] = value
-            self._update_token_data(filled_tokens)
+                    jinja_tokens[key] = value
+            self._update_token_data(jinja_tokens)
             if not self.jinja_engine:
                 raise AttributeError("Could not detect 'jinja_engine'")
             jinja_output = self.jinja_engine.render_from_str(
                 self.token_string,
-                filled_tokens,
+                jinja_tokens,
             )
             return jinja_output
 
-    def _update_token_data(self, filled_tokens: dict):
+    def _update_token_data(self, filled_tokens: Mapping[str, object]) -> None:
         for key, value in filled_tokens.items():
             setattr(self.token_data, key, value)
 
-    def _parse_user_input(self):
+    def _parse_user_input(self) -> set[TokenData]:
         """
         Extract valid tokens from user input string, supporting |filter and :opt=x:.
         Filters are always parsed and applied.
@@ -470,13 +477,13 @@ class TokenReplacer:
                     and token_data.token in self.FILENAME_ATTRIBUTES
                 ):
                     continue
-                value = self._media_tokens(token_data)
-                if value:
-                    return value
+                media_value = self._media_tokens(token_data)
+                if media_value:
+                    return media_value
             elif token_type == NfoToken:
-                value = self._nfo_tokens(token_data)
-                if value:
-                    return value
+                nfo_value = self._nfo_tokens(token_data)
+                if nfo_value:
+                    return nfo_value
 
         return ""
 
@@ -540,7 +547,7 @@ class TokenReplacer:
                 if (args_str.startswith('"') and args_str.endswith('"')) or (
                     args_str.startswith("'") and args_str.endswith("'")
                 ):
-                    args = [args_str[1:-1]]
+                    args = (args_str[1:-1],)
                 else:
                     args = (args_str,)
         else:
@@ -911,7 +918,7 @@ class TokenReplacer:
 
         return ""
 
-    def _format_token_string(self, filled_tokens) -> str | None:
+    def _format_token_string(self, filled_tokens: dict[str, str]) -> str | None:
         try:
             formatted_title = self.token_string
             for key, value in filled_tokens.items():
@@ -991,13 +998,13 @@ class TokenReplacer:
         if self.edition_override:
             return self._optional_user_input(self.edition_override, token_data)
 
-        def collect_editions(source, key):
+        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
             """Helper function to collect edition data from a source."""
             values = source.get(key, [])
             return values if isinstance(values, list) else [values]
 
         # ensure we have unique editions
-        normalized_edition_set = set()
+        normalized_edition_set: set[object] = set()
 
         # search the entire filename for edition patterns
         filename = self.media_input.stem.lower()
@@ -1025,19 +1032,21 @@ class TokenReplacer:
             if not matched:
                 normalized_edition_set.add(item)
 
-        return self._optional_user_input(" ".join(normalized_edition_set), token_data)
+        return self._optional_user_input(
+            " ".join(str(item) for item in normalized_edition_set), token_data
+        )
 
     def _frame_size(self, token_data: TokenData) -> str:
         if self.frame_size_override:
             return self._optional_user_input(self.frame_size_override, token_data)
 
-        def collect_editions(source, key):
+        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
             """Helper function to collect edition data from a source."""
             values = source.get(key, [])
             return values if isinstance(values, list) else [values]
 
         # ensure we have unique editions
-        edition_set = set()
+        edition_set: set[object] = set()
 
         # collect editions from `guess_name`
         edition_set.update(collect_editions(self.guess_name, "edition"))
@@ -1063,10 +1072,13 @@ class TokenReplacer:
                 if "imax" in item_lowered:
                     normalized_edition_set.add("IMAX")
                     break
-            edition_set = normalized_edition_set
+                edition_set.clear()
+                edition_set.add("IMAX")
 
         # convert the set back to a string, joining with spaces
-        return self._optional_user_input(" ".join(edition_set), token_data)
+        return self._optional_user_input(
+            " ".join(str(item) for item in edition_set), token_data
+        )
 
     def _hybrid(self, token_data: TokenData) -> str:
         return self._optional_user_input(
@@ -1199,7 +1211,7 @@ class TokenReplacer:
                     else:
                         language = "+".join(language_s)
         else:
-            language = get_language_str(guess_lang, char_code)
+            language = get_language_str(guess_lang, char_code) or ""
 
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             language_list = {
@@ -1232,7 +1244,7 @@ class TokenReplacer:
                 else:
                     all_lang = " ".join(language_s)
         else:
-            all_lang = get_full_language_str(guess_lang)
+            all_lang = get_full_language_str(guess_lang) or ""
 
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             language_set = {
@@ -1243,7 +1255,7 @@ class TokenReplacer:
 
             if language_set:
                 if len(language_set) == 1:
-                    all_lang = get_full_language_str(next(iter(language_set)))
+                    all_lang = get_full_language_str(next(iter(language_set))) or ""
                 else:
                     all_lang = " ".join(
                         [get_full_language_str(x) or "" for x in language_set]
@@ -1356,7 +1368,7 @@ class TokenReplacer:
 
     def _guessit_codec(self) -> str:
         """Extract codec from guessit."""
-        video_codec = self.guess_name.get("video_codec", "")
+        video_codec = str(self.guess_name.get("video_codec", ""))
         if video_codec in ["H.264", "H.265"]:
             video_codec = video_codec.replace("H.", "x")
         return video_codec
@@ -1376,7 +1388,7 @@ class TokenReplacer:
             return ""
 
         if detect_video_codec == "AV1":
-            return track.format
+            return str(track.format)
         elif detect_video_codec == "AVC":
             if is_remux:
                 return "AVC"
@@ -1394,9 +1406,9 @@ class TokenReplacer:
         elif detect_video_codec == "MPEG Video":
             return self._mpeg_codec(track)
         elif detect_video_codec == "VC-1":
-            return track.format
+            return str(track.format)
         elif detect_video_codec in ["VP8", "VP9"]:
-            return track.format
+            return str(track.format)
 
         return ""
 
@@ -1629,7 +1641,7 @@ class TokenReplacer:
         detect_language = ""
         if self.media_info_obj and self.media_info_obj.video_tracks:
             track = self.media_info_obj.video_tracks[0]
-            detect_language = get_language_mi(track, char_code)
+            detect_language = get_language_mi(track, char_code) or ""
 
         return self._optional_user_input(detect_language, token_data)
 
@@ -2109,12 +2121,10 @@ class TokenReplacer:
 
     def _video_bit_rate(self, token_data: TokenData, num_only: bool) -> str:
         mi_bit_rate = calculate_avg_video_bit_rate(self.media_info_obj)
-        if mi_bit_rate:
-            if num_only:
-                mi_bit_rate = str(mi_bit_rate)
-            else:
-                mi_bit_rate = f"{mi_bit_rate} kbps"
-        return self._optional_user_input(str(mi_bit_rate), token_data)
+        if mi_bit_rate is None:
+            return self._optional_user_input("", token_data)
+        output = str(mi_bit_rate) if num_only else f"{mi_bit_rate} kbps"
+        return self._optional_user_input(output, token_data)
 
     def _repack(self, token_data: TokenData) -> str:
         repack = ""
@@ -2138,7 +2148,7 @@ class TokenReplacer:
             detect_jinja_repack_n = self.jinja_engine.environment.globals.get(
                 "repack_n", ""
             )
-            if detect_jinja_repack_n:
+            if isinstance(detect_jinja_repack_n, str) and detect_jinja_repack_n:
                 detect_repack = re.search(
                     r"(repack\d*)", detect_jinja_repack_n, flags=re.IGNORECASE
                 )
@@ -2150,9 +2160,11 @@ class TokenReplacer:
     def _repack_reason(self, token_data: TokenData) -> str:
         repack_reason = ""
         if self.jinja_engine:
-            repack_reason = self.jinja_engine.environment.globals.get(
+            configured_reason = self.jinja_engine.environment.globals.get(
                 "repack_reason", ""
             )
+            if isinstance(configured_reason, str):
+                repack_reason = configured_reason
         return self._optional_user_input(repack_reason, token_data)
 
     def _screen_shots(self, token_data: TokenData) -> str:
@@ -2315,7 +2327,7 @@ class TokenReplacer:
             detect_jinja_proper_n = self.jinja_engine.environment.globals.get(
                 "proper_n", ""
             )
-            if detect_jinja_proper_n:
+            if isinstance(detect_jinja_proper_n, str) and detect_jinja_proper_n:
                 detect_proper = re.search(
                     r"(proper\d*)", detect_jinja_proper_n, flags=re.IGNORECASE
                 )
@@ -2327,9 +2339,11 @@ class TokenReplacer:
     def _proper_reason(self, token_data: TokenData) -> str:
         proper_reason = ""
         if self.jinja_engine:
-            proper_reason = self.jinja_engine.environment.globals.get(
+            configured_reason = self.jinja_engine.environment.globals.get(
                 "proper_reason", ""
             )
+            if isinstance(configured_reason, str):
+                proper_reason = configured_reason
         return self._optional_user_input(proper_reason, token_data)
 
     def _episode_mediainfo(self, token_data: TokenData) -> str:
@@ -2394,7 +2408,7 @@ class TokenReplacer:
         output += "\n" + "\n".join(" / ".join(str(x) for x in a if x) for a in audio_s)
         return output
 
-    def _season_episode_label(self, season_num, episode_num) -> str:
+    def _season_episode_label(self, season_num: object, episode_num: object) -> str:
         """Build a "Season XX Episode XX" label, treating `0` as a valid value.
 
         Season/episode `0` (e.g. specials) is a legitimate value and must not
@@ -2504,9 +2518,7 @@ class TokenReplacer:
             if episode_data:
                 season_num = episode_data.get("season")
                 episode_num = episode_data.get("episode")
-                season_episode_str = self._season_episode_label(
-                    season_num, episode_num
-                )
+                season_episode_str = self._season_episode_label(season_num, episode_num)
 
                 if season_episode_str:
                     block_lines.append(season_episode_str)
@@ -2532,7 +2544,7 @@ class TokenReplacer:
             "\n\n".join(output_blocks) if output_blocks else "", token_data
         )
 
-    def get_metadata_synopsis(self):
+    def get_metadata_synopsis(self) -> str:
         """Build a combined metadata + mediainfo synopsis per-file.
 
         Output format (per file):
@@ -2552,7 +2564,7 @@ class TokenReplacer:
         ):
             return ""
 
-        combined = []
+        combined: list[str] = []
         for file_path in self.media_input_obj.file_list:
             parts: list[str] = []
 
@@ -2572,9 +2584,7 @@ class TokenReplacer:
             if episode_data:
                 season_num = episode_data.get("season")
                 episode_num = episode_data.get("episode")
-                season_episode_str = self._season_episode_label(
-                    season_num, episode_num
-                )
+                season_episode_str = self._season_episode_label(season_num, episode_num)
 
                 if season_episode_str:
                     parts.append(season_episode_str)
@@ -2614,7 +2624,7 @@ class TokenReplacer:
         cache_key: str,
         tmdb_key: str,
         tvdb_key: str,
-        tvdb_counter: Callable[[list], int],
+        tvdb_counter: Callable[[list[dict[str, Any]]], int],
         token_data: TokenData,
     ) -> str:
         """Helper method to get a total seasons/episodes count with caching.
@@ -2626,9 +2636,9 @@ class TokenReplacer:
         raw rows into a real count.
         """
         # check cache first
-        if cache_key in self._series_cache:
+        if cache_key in self._series_counts:
             return self._optional_user_input(
-                str(self._series_cache[cache_key]), token_data
+                str(self._series_counts[cache_key]), token_data
             )
 
         count = None
@@ -2646,18 +2656,18 @@ class TokenReplacer:
                 self.media_search_obj.tvdb_data if self.media_search_obj else None
             )
             rows = tvdb_data.get(tvdb_key) if tvdb_data else None
-            if rows:
-                count = tvdb_counter(rows)
+            if isinstance(rows, list) and all(isinstance(row, dict) for row in rows):
+                count = tvdb_counter(cast(list[dict[str, Any]], rows))
 
         if not count:
             return self._optional_user_input("", token_data)
 
         # cache and return count
-        self._series_cache[cache_key] = count
+        self._series_counts[cache_key] = count
         return self._optional_user_input(str(count), token_data)
 
     @staticmethod
-    def _count_tvdb_seasons(seasons: list) -> int:
+    def _count_tvdb_seasons(seasons: list[dict[str, Any]]) -> int:
         """Count real seasons from TVDB's per-season-type "seasons" rows.
 
         TVDB's `series/extended` "seasons" list has one row per
@@ -2682,8 +2692,12 @@ class TokenReplacer:
 
         for row in seasons:
             number = row.get("number")
-            row_type = row.get("type") or {}
-            type_name = row_type.get("type") or row_type.get("name")
+            row_type = row.get("type")
+            type_name = (
+                row_type.get("type") or row_type.get("name")
+                if isinstance(row_type, dict)
+                else None
+            )
 
             if type_name == "official":
                 has_official = True
@@ -2704,7 +2718,7 @@ class TokenReplacer:
         return len(fallback_numbers)
 
     @staticmethod
-    def _count_tvdb_episodes(episodes: list) -> int:
+    def _count_tvdb_episodes(episodes: list[dict[str, Any]]) -> int:
         """Count real episodes from TVDB's "episodes" rows, excluding season 0 (specials)."""
         count = 0
         for row in episodes:
@@ -2771,9 +2785,9 @@ class TokenReplacer:
             )
 
         if hasattr(babel_instance, "alpha2"):
-            return babel_instance.alpha2.upper()
+            return str(babel_instance.alpha2).upper()
         if hasattr(babel_instance, "alpha3"):
-            return babel_instance.alpha3.upper()
+            return str(babel_instance.alpha3).upper()
         if hasattr(babel_instance, "name"):
             return str(babel_instance.name)
 
@@ -2797,7 +2811,7 @@ class TokenReplacer:
         return output if output else ""
 
     def _detect_resolution(self, mi_obj: MediaInfo | None, remove_scan: bool) -> str:
-        resolution = self.guess_name.get("screen_size", "")
+        resolution = str(self.guess_name.get("screen_size", ""))
 
         if mi_obj:
             detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
@@ -2882,12 +2896,12 @@ class TokenReplacer:
         season_num = self._validate_int_var(self.season_number)
         episode_num = self._validate_int_var(self.episode_number)
         if season_num is None or episode_num is None:
-            return
+            return None
 
         # if no valid object return
         tvdb_data = self.media_search_obj.tvdb_data
         if not tvdb_data:
-            return
+            return None
 
         return season_num, episode_num
 
@@ -2907,8 +2921,8 @@ class TokenReplacer:
         ```
         """
         # check cache first for a faster lookup
-        if self._series_cache:
-            cached_data = self._series_cache.get(season, {}).get(episode)
+        if self._series_episode_cache:
+            cached_data = self._series_episode_cache.get(season, {}).get(episode)
             if cached_data:
                 return cached_data
 
@@ -2923,11 +2937,12 @@ class TokenReplacer:
                 continue
             try:
                 if int(s) == season and int(e) == episode:
+                    episode_data = cast(dict[str, Any], ep)
                     # initialize season dict if it doesn't exist
-                    if season not in self._series_cache:
-                        self._series_cache[season] = {}
-                    self._series_cache[season][episode] = ep
-                    return ep
+                    if season not in self._series_episode_cache:
+                        self._series_episode_cache[season] = {}
+                    self._series_episode_cache[season][episode] = episode_data
+                    return episode_data
             except ValueError:
                 continue
 
@@ -2941,7 +2956,7 @@ class TokenReplacer:
         if mapped_episode:
             episode_data = mapped_episode.get("episode_data")
             if isinstance(episode_data, dict):
-                return episode_data
+                return cast(dict[str, Any], episode_data)
             if mapped_episode.get("episode_name"):
                 return {
                     "seasonNumber": season,
@@ -3017,16 +3032,18 @@ class TokenReplacer:
             return media_str.replace(":", " -")
         elif colon_replace == ColonReplace.REPLACE_WITH_SPACE_DASH_SPACE:
             return media_str.replace(":", " - ")
+        raise InvalidTokenError("Invalid 'colon_replace'")
 
     @staticmethod
     def _validate_int_var(val: Any, allow_negative: bool = False) -> int | None:
         """Accept any input and return it if it's a valid int"""
         if val is None:
-            return
+            return None
         if isinstance(val, int):
             if not allow_negative and val < 0:
-                return
+                return None
             return val
+        return None
 
 
 # Individual File Processing

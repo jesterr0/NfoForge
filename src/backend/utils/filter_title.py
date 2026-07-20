@@ -9,7 +9,7 @@ class EditionTitleExtractorPayload:
 
 
 # TODO: potentially replace this with guessit
-def edition_and_title_extractor(name_to_check) -> EditionTitleExtractorPayload:
+def edition_and_title_extractor(name_to_check: str) -> EditionTitleExtractorPayload:
     """function to check edition and get title of movie only"""
     check_for_edition_lst = re.findall(
         r"director(?:'?s)?\w?(?:.cut)?|extended\w?(?:.cut)?|theatrical\w?(?:.cut)?|unrated|imax"
@@ -153,11 +153,8 @@ def edition_and_title_extractor(name_to_check) -> EditionTitleExtractorPayload:
         search_index = movie_input_filtered.find("bluray")
         movie_input_filtered = movie_input_filtered[:search_index]
 
-    # split string
-    movie_input_filtered = movie_input_filtered.split(".")
-
-    # rejoin string and strip off any excess white space
-    movie_input_filtered = " ".join(movie_input_filtered).strip()
+    # split, rejoin, and strip off any excess white space
+    movie_input_filtered = " ".join(movie_input_filtered.split(".")).strip()
 
     payload = EditionTitleExtractorPayload(extracted_editions, movie_input_filtered)
 

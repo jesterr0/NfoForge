@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 from imdbinfo.models import MovieDetail
 
@@ -12,11 +13,11 @@ class MediaSearchPayload:
     imdb_id: str | None = None
     imdb_data: MovieDetail | None = None
     tmdb_id: str | None = None
-    tmdb_data: dict | None = None
+    tmdb_data: dict[str, Any] | None = None
     tvdb_id: str | None = None
-    tvdb_data: dict | None = None
+    tvdb_data: dict[str, Any] | None = None
     anilist_id: str | None = None
-    anilist_data: dict | None = None
+    anilist_data: dict[str, Any] | None = None
     mal_id: str | None = None
     title: str | None = None
     year: int | None = None
