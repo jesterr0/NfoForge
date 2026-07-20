@@ -1,12 +1,14 @@
 import pickle
 import re
 from pathlib import Path
+from typing import Any
 
 import niquests
 import pyotp
 import regex
 from guessit import guessit
 from imdbinfo.models import MovieDetail
+from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.utils import TRACKER_HEADERS
@@ -333,7 +335,7 @@ class PTPUploader:
 
         # upload the torrent
         with self._session as response:
-            files = {}
+            files: MultiPartFilesAltType = {}
             with open(torrent_file, "rb") as t_file:
                 files.update(
                     {
@@ -437,7 +439,7 @@ class PTPUploader:
         #     LOG.debug(LOG.LOG_SOURCE.BE, f"Failed to get distributor data: {e}")
 
         # editions
-        def collect_editions(source, key: str) -> list:
+        def collect_editions(source: dict[str, Any], key: str) -> list[Any]:
             """Helper function to collect edition data from a source."""
             values = source.get(key, [])
             return values if isinstance(values, list) else [values]
@@ -551,7 +553,7 @@ class PTPUploader:
                 ptp_type = PTPType.STAND_UP_COMEDY
             elif imdb_type == "concert":
                 ptp_type = PTPType.LIVE_PERFORMANCE
-        return ptp_type.value
+        return str(ptp_type.value)
 
     def _get_codec(self, input_path: Path) -> str:
         title_lowered = str(input_path.stem).lower()
@@ -574,30 +576,30 @@ class PTPUploader:
         ):
             input_file_size = input_path.stat().st_size
             if input_file_size <= 26_843_545_600:
-                return PTPCodec.BD25.value
+                return str(PTPCodec.BD25.value)
             elif input_file_size <= 53_687_091_200:
                 if "1080i" in title_lowered or "1080p" in title_lowered:
-                    return PTPCodec.BD50.value
+                    return str(PTPCodec.BD50.value)
                 elif "2160p" in title_lowered:
-                    return PTPCodec.BD50.value
+                    return str(PTPCodec.BD50.value)
             elif input_file_size <= 70_866_960_384:
-                return PTPCodec.BD66.value
+                return str(PTPCodec.BD66.value)
             elif input_file_size <= 107_374_182_400:
-                return PTPCodec.BD100.value
+                return str(PTPCodec.BD100.value)
 
         # dvd5/dvd9
         elif "dvd5" in title_lowered_strip_periods:
-            return PTPCodec.DVD5.value
+            return str(PTPCodec.DVD5.value)
         elif "dvd9" in title_lowered_strip_periods:
-            return PTPCodec.DVD9.value
+            return str(PTPCodec.DVD9.value)
 
         # encodes
         elif self.mediainfo_obj.video_tracks[0].format == "AVC":
-            return PTPCodec.H264.value
+            return str(PTPCodec.H264.value)
         elif self.mediainfo_obj.video_tracks[0].format == "HEVC":
-            return PTPCodec.H265.value
+            return str(PTPCodec.H265.value)
 
-        return PTPCodec.AUTO_DETECT.value
+        return str(PTPCodec.AUTO_DETECT.value)
 
     def _resolution(self) -> str:
         try:
@@ -606,36 +608,36 @@ class PTPUploader:
             ).value
         except ValueError:
             resolution = PTPResolution.OTHER.value
-        return resolution
+        return str(resolution)
 
     def _get_container(self, input_path: Path) -> str:
         extension = input_path.suffix
         if extension == ".mkv":
-            return PTPContainer.MKV.value
+            return str(PTPContainer.MKV.value)
         elif extension == ".mp4":
-            return PTPContainer.MP4.value
+            return str(PTPContainer.MP4.value)
         elif extension in (".mpeg", ".mpg"):
-            return PTPContainer.MPG.value
-        return PTPContainer.AUTO_DETECT.value
+            return str(PTPContainer.MPG.value)
+        return str(PTPContainer.AUTO_DETECT.value)
 
     def _source(self, input_path: Path) -> str:
         title_lowered = str(input_path.stem).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
         if "bluray" in title_lowered:
-            return PTPSource.BLU_RAY.value
+            return str(PTPSource.BLU_RAY.value)
         elif "hddvd" in title_lowered:
-            return PTPSource.HD_DVD.value
+            return str(PTPSource.HD_DVD.value)
         elif "dvd" in title_lowered:
-            return PTPSource.DVD.value
+            return str(PTPSource.DVD.value)
         elif "hdtv" in title_lowered:
-            return PTPSource.HDTV.value
+            return str(PTPSource.HDTV.value)
         elif "web" in title_lowered:
-            return PTPSource.WEB.value
-        return PTPSource.OTHER.value
+            return str(PTPSource.WEB.value)
+        return str(PTPSource.OTHER.value)
 
-    def _subtitles(self):
-        subs = set()
+    def _subtitles(self) -> list[int]:
+        subs: set[int] = set()
         for text_track in self.mediainfo_obj.text_tracks:
             language = text_track.language
             if text_track.forced == "Yes" and language == "en":
@@ -720,11 +722,12 @@ class PTPUploader:
                                 )
                     if token:
                         self._save_cookies()
-                        return token
+                        return str(token)
         except niquests.RequestException as e:
             raise TrackerError(f"Server error: {e}")
         except Exception as unhandled_exception:
             raise TrackerError(f"Unhandled exception: {unhandled_exception}")
+        return None
 
     def _validate_session(self) -> str | None:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
@@ -753,9 +756,10 @@ class PTPUploader:
                     else None
                 )
                 if find_token:
-                    return find_token.group(1)
+                    return str(find_token.group(1))
         except niquests.RequestException:
             return None
+        return None
 
     def _save_cookies(self) -> None:
         with open(self.cookie_path, "wb") as file:
@@ -828,17 +832,17 @@ class PTPSearch:
         file_name: str,
         imdb_id: str | None = None,
     ) -> list[TrackerSearchResult]:
-        results = []
+        results: list[TrackerSearchResult] = []
 
         headers = {
             "ApiUser": self.api_user,
             "ApiKey": self.api_key,
             "User-Agent": TRACKER_HEADERS["User-Agent"],
         }
-        params = {
+        params: dict[str, str] = {
             "searchstr": movie_title,
-            "year": movie_year,
-            "noredirect": 1,
+            "year": str(movie_year),
+            "noredirect": "1",
             "action": "advanced",
         }
         if imdb_id:
@@ -856,7 +860,9 @@ class PTPSearch:
             )
             if response.ok and response.status_code == 200:
                 response_json = response.json()
-                movies: list[dict] = response_json.get("Movies", [])
+                movies = response_json.get("Movies", [])
+                if not isinstance(movies, list):
+                    return results
                 for torrent in movies:
                     for movie_file in torrent.get("Torrents", []):
                         for item in movie_file.get("FileList", []):
@@ -905,6 +911,8 @@ class PTPSearch:
             if response.ok and response.status_code == 200:
                 response_json = response.json()
                 if response_json.get("Page", "") == "Details":
-                    return response_json.get("GroupId")
+                    group_id = response_json.get("GroupId")
+                    return str(group_id) if group_id is not None else None
         except niquests.exceptions.RequestException as error_message:
             raise TrackerError(error_message)
+        return None

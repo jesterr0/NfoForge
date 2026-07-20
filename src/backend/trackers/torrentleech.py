@@ -2,8 +2,10 @@ import pickle
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import niquests
+from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.utils import TRACKER_HEADERS
@@ -89,7 +91,7 @@ class TLUploader:
             LOG.error(LOG.LOG_SOURCE.BE, request_error_msg)
             raise TrackerError(request_error_msg)
 
-    def _get_files(self, nfo: str, torrent_file: Path) -> dict:
+    def _get_files(self, nfo: str, torrent_file: Path) -> MultiPartFilesAltType:
         with open(torrent_file, "rb") as t_file:
             return {"nfo": nfo, "torrent": (str(torrent_file), t_file.read())}
 
@@ -99,7 +101,7 @@ class TLUploader:
         resolution: str,
         media_type: MediaType,
         is_pack: bool = False,
-    ) -> dict:
+    ) -> dict[str, str | int]:
         return {
             "announcekey": self.announce_key,
             "category": self._detect_category(title, resolution, media_type, is_pack),
@@ -117,29 +119,29 @@ class TLUploader:
         title_lowered = title.lower()
         if media_type is MediaType.SERIES:
             if is_pack:
-                return TLCategories.TV_BOX_SETS.value
+                return int(TLCategories.TV_BOX_SETS.value)
             if resolution in {"720p", "1080p", "1080i", "2160p", "4320p"}:
-                return TLCategories.TV_EPISODES_HD.value
-            return TLCategories.TV_EPISODES.value
+                return int(TLCategories.TV_EPISODES_HD.value)
+            return int(TLCategories.TV_EPISODES.value)
 
         if "bluray" in title_lowered or "blu-ray" in title_lowered:
             if resolution in {"720p", "1080p"}:
-                return TLCategories.MOVIE_BLURAY_RIP.value
+                return int(TLCategories.MOVIE_BLURAY_RIP.value)
             elif resolution == "2160p":
-                return TLCategories.MOVIE_4K.value
+                return int(TLCategories.MOVIE_4K.value)
             else:
                 raise TrackerError(
                     "Resolution must be one of '720p', '1080p' or '2160p'"
                 )
         # TODO: will need to add check if it's a movie for SERIES
         elif "webrip" in title_lowered or "webdl" in title_lowered:
-            return TLCategories.MOVIE_WEB_RIP.value
+            return int(TLCategories.MOVIE_WEB_RIP.value)
         elif "dvd" in title_lowered:
             if "rip" in title_lowered:
-                return TLCategories.MOVIE_DVD_RIP.value
-            return TLCategories.MOVIE_DVD.value
+                return int(TLCategories.MOVIE_DVD_RIP.value)
+            return int(TLCategories.MOVIE_DVD.value)
         elif "hdtv" in title_lowered:
-            return TLCategories.MOVIE_HD_RIP.value
+            return int(TLCategories.MOVIE_HD_RIP.value)
         else:
             raise TrackerError("Failed to determine proper TorrentLeech category")
 
@@ -223,14 +225,15 @@ class TLSearch:
             return search_results
         else:
             raise TrackerError(
-                f"Error searching for media. Status code: {response.status_code} Message: {response.content}"
+                f"Error searching for media. Status code: {response.status_code} "
+                f"Message: {(response.content or b'').decode(errors='replace')}"
             )
 
     def _sort_results(
-        self, results_list: list[dict | None]
+        self, results_list: list[dict[str, Any] | None]
     ) -> list[TrackerSearchResult]:
         """Convert TL Torznab output to easily parse in the UI"""
-        results = []
+        results: list[TrackerSearchResult] = []
         for release in results_list:
             if release:
                 result = TrackerSearchResult(
@@ -307,7 +310,9 @@ class TLSearch:
                 )
 
         response = self._session.get(self.LOGIN_URL, timeout=self.timeout)
-        csrf_token = response.cookies.get("csrf_token")  # pyright: ignore[reportAttributeAccessIssue]
+        # cookies = cast(Mapping[str, str], response.cookies)
+        cookies = response.cookies
+        csrf_token = cookies.get("csrf_token")
 
         data = {
             "username": self.username,
@@ -320,7 +325,10 @@ class TLSearch:
 
         response = self._session.post(self.LOGIN_URL, data=data, timeout=self.timeout)
         if not response.ok:
-            login_error_message = f"Failed to login to TorrentLeech. Status code: {response.status_code} Message: {response.content}"
+            login_error_message = (
+                f"Failed to login to TorrentLeech. Status code: {response.status_code} "
+                f"Message: {(response.content or b'').decode(errors='replace')}"
+            )
             LOG.error(LOG.LOG_SOURCE.BE, login_error_message)
             raise TrackerError(login_error_message)
 
@@ -338,6 +346,7 @@ class TLSearch:
                     return True
         except niquests.RequestException:
             return False
+        return False
 
     def _save_cookies(self) -> None:
         with open(self.cookie_path, "wb") as file:

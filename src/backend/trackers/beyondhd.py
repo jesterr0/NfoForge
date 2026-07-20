@@ -5,6 +5,7 @@ from typing import Any
 
 import niquests
 import regex
+from niquests.typing import MultiPartFilesAltType
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -234,6 +235,8 @@ class BHDUploader:
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
             raise TrackerError(requests_exc_error_msg)
 
+        return None
+
     def _build_upload_payload(
         self,
         tracker_title: str | None,
@@ -325,6 +328,7 @@ class BHDUploader:
             return BHDCategoryID.MOVIE.value
         elif self.media_type is MediaType.SERIES:
             return BHDCategoryID.TV.value
+        return None
 
     def _type(self) -> str:
         title_lowered = str(self.input_path.stem).lower()
@@ -420,7 +424,7 @@ class BHDUploader:
                 "to upload to BeyondHD"
             )
 
-    def _files(self) -> dict:
+    def _files(self) -> MultiPartFilesAltType:
         with open(self.torrent_file, "rb") as torrent_file:
             return {
                 "file": torrent_file.read(),
@@ -477,8 +481,10 @@ class BHDSearch:
 
         return results
 
-    def _convert_response(self, data: list[dict]) -> list[TrackerSearchResult]:
-        results = []
+    def _convert_response(
+        self, data: list[dict[str, Any]]
+    ) -> list[TrackerSearchResult]:
+        results: list[TrackerSearchResult] = []
 
         for release in data:
             result = TrackerSearchResult(
@@ -500,7 +506,7 @@ class BHDSearch:
         return results
 
     @staticmethod
-    def _check_response(response_json: dict) -> None:
+    def _check_response(response_json: dict[str, Any]) -> None:
         try:
             if not response_json["status_code"]:
                 if "invalid api key" in str(response_json["status_message"]).lower():
