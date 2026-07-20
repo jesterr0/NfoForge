@@ -23,7 +23,7 @@ class ComparisonFileMatcher(QWidget):
     # emitted when user accepts a match
     match_accepted = Signal(object, object)  # Path(source_file), Path(selected_file)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("comparisonFileMatcher")
         self._root_path: Path | None = None
@@ -116,7 +116,8 @@ class ComparisonFileMatcher(QWidget):
                     file_path = self.file_tree.items[item_text]
                     # only return if it's a file, not a directory
                     if Path(file_path).is_file():
-                        return file_path
+                        return str(file_path)
+        return None
 
     @Slot()
     def _accept_match(self) -> None:

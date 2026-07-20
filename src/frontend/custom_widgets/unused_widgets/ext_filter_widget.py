@@ -44,16 +44,19 @@ class ExtFilterWidget(QWidget):
         )
         self.setLayout(self.form_layout)
 
-    def update_items(self, items: Iterable[str]) -> None:
-        """Updates the widget, accepts an iterable of extension strings"""
-        self.filtered_ext_basic_menu.update_items(items)
-        self._load_accepted_files_txt(items)
+    def update_items(self, items: Iterable[tuple[str, bool]]) -> None:
+        """Update the widget with extension names and their enabled states."""
+        item_list = list(items)
+        self.filtered_ext_basic_menu.update_items(item_list)
+        self._load_accepted_files_txt(item_list)
 
     def get_accepted_items(self) -> list[str]:
         """Returns a list of selected extensions"""
         return [x for x in self.filtered_ext_basic_display.text().split(", ")]
 
-    def _load_accepted_files_txt(self, accepted_files: Iterable) -> None:
+    def _load_accepted_files_txt(
+        self, accepted_files: Iterable[tuple[str, bool]]
+    ) -> None:
         files_list = [item for item, toggle in accepted_files if toggle]
         self.filtered_ext_basic_display.clear()
         self.filtered_ext_basic_display.setText(", ".join(files_list))

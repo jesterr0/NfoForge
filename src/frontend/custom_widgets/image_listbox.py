@@ -2,11 +2,11 @@ from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
-from PySide6.QtWidgets import QFrame, QListWidget, QListWidgetItem
+from PySide6.QtWidgets import QFrame, QListWidget, QListWidgetItem, QWidget
 
 
 class ThumbnailListWidget(QListWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setViewMode(QListWidget.ViewMode.IconMode)
         self.setIconSize(QSize(250, 250))
@@ -17,7 +17,7 @@ class ThumbnailListWidget(QListWidget):
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
 
-    def add_thumbnail(self, image_path: Path):
+    def add_thumbnail(self, image_path: Path) -> None:
         item = QListWidgetItem(QIcon(str(image_path)), "")
         self.addItem(item)
 
