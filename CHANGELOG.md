@@ -130,6 +130,8 @@
 - Potential error reading audio track layouts with a core.
 - Properly catch/handle errors when loading the program when a plugin wizard page threw an error.
 - Fixed config round-trip bug for qBittorrent super_seeding
+- Properly check for hostname before initialization for Transmission
+- Check instance of object before stripping it for save directory/label in Transmission
 
 ### Removed
 

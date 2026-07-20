@@ -26,6 +26,9 @@ class TransmissionClient:
         self.transmission_config = config
         self.timeout = timeout
 
+        if not self.transmission_config.host:
+            raise TrackerClientError("Hostname must be defined")
+
         try:
             self.client = TransmissionClientFromUrl(
                 url=self.transmission_config.host, timeout=self.timeout
@@ -85,9 +88,9 @@ class TransmissionClient:
             )
 
     def _get_label(self) -> tuple[str] | None:
-        label = self.transmission_config.specific_params.get("label", "").strip()
-        return (label,) if label else None
+        label = self.transmission_config.specific_params.get("label")
+        return (label.strip(),) if isinstance(label, str) else None
 
     def _get_save_directory(self) -> str | None:
-        path = self.transmission_config.specific_params.get("path", "").strip()
-        return path if path else None
+        path = self.transmission_config.specific_params.get("path")
+        return path.strip() if isinstance(path, str) else None
