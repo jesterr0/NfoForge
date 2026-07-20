@@ -132,6 +132,8 @@
 - Fixed config round-trip bug for qBittorrent super_seeding
 - Properly check for hostname before initialization for Transmission
 - Check instance of object before stripping it for save directory/label in Transmission
+- Properly check for hostname before initialization for Deluge
+- Check instance of object before stripping it for save directory/label in Deluge
 
 ### Removed
 

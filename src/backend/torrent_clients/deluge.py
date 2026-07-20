@@ -13,6 +13,11 @@ class DelugeClient:
         self.deluge_config = config
         self.timeout = timeout
 
+        if not self.deluge_config.host or not self.deluge_config.password:
+            raise TrackerClientError(
+                "Host and password must be defined when initializing DelugeClient"
+            )
+
         self.client = DelugeWebClient(
             url=self.deluge_config.host, password=self.deluge_config.password
         )
@@ -59,9 +64,9 @@ class DelugeClient:
             raise TrackerClientError(f"Failed to inject torrent: {e}")
 
     def _get_label(self) -> str | None:
-        label = self.deluge_config.specific_params.get("label", "").strip()
-        return label if label else None
+        label = self.deluge_config.specific_params.get("label")
+        return label.strip() if isinstance(label, str) else None
 
     def _get_save_directory(self) -> str | None:
-        path = self.deluge_config.specific_params.get("path", "").strip()
-        return path if path else None
+        path = self.deluge_config.specific_params.get("path")
+        return path.strip() if isinstance(path, str) else None
