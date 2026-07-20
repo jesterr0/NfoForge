@@ -135,6 +135,7 @@
 - Check instance of object before stripping it for save directory/label in Transmission
 - Properly check for hostname before initialization for Deluge
 - Check instance of object before stripping it for save directory/label in Deluge
+- Image subtitle size above 2160p would result in no image subtitle size
 
 ### Removed
 

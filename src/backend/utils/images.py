@@ -179,7 +179,7 @@ def ffmpeg_crop_to_crop_values(
     return CropValues(top=top, bottom=bottom, left=left, right=right)
 
 
-def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int | None:
+def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int:
     """
     Takes source height and compares it to pixels returning the first option
     that it falls under.
@@ -197,9 +197,7 @@ def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int | 
         return h720
     elif height <= 1080:
         return h1080
-    elif height <= 2160:
-        return h2160
-    return None
+    return h2160
 
 
 def extract_images_from_str(
