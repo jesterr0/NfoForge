@@ -26,13 +26,14 @@ class MediaInputBackEnd:
     ) -> dict[Path, MediaInfo]:
         """Async version with controlled concurrency to avoid overwhelming the disk."""
         self._completed_files = 0
-        self._semaphore = asyncio.Semaphore(max_concurrent)
+        semaphore = asyncio.Semaphore(max_concurrent)
+        self._semaphore = semaphore
 
         total = len(files)
-        media_info_data = {}
+        media_info_data: dict[Path, MediaInfo] = {}
 
         async def process_file(file_path: Path) -> tuple[Path, MediaInfo | None]:
-            async with self._semaphore:  # pyright: ignore [reportOptionalContextManager]
+            async with semaphore:
                 # run MediaInfo.parse in thread pool to avoid blocking
                 loop = asyncio.get_event_loop()
                 media_info = await loop.run_in_executor(

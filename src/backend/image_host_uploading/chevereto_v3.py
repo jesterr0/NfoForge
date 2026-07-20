@@ -106,7 +106,7 @@ async def _create_album(
         album_id = album_json["album"]["id_encoded"]
         if not album_id:
             raise ImageUploadError("Failed to determine album id")
-        return album_id
+        return str(album_id)
 
 
 async def _upload_image(
@@ -115,7 +115,7 @@ async def _upload_image(
     auth_code: str,
     album_id: str,
     img: Path,
-    cb: Callable[[int], Awaitable] | None,
+    cb: Callable[[int], Awaitable[None]] | None,
     idx: int,
     retries: int = 3,
 ) -> ImageUploadData:
@@ -168,7 +168,7 @@ async def _upload_images(
     album_id: str,
     filepaths: Sequence[PathLike[str] | Path | str],
     batch_size: int,
-    cb: Callable[[int], Awaitable] | None,
+    cb: Callable[[int], Awaitable[None]] | None,
 ) -> dict[int, ImageUploadData]:
     tasks = [
         asyncio.create_task(
@@ -192,7 +192,7 @@ async def chevereto_v3_upload(
     filepaths: Sequence[Path],
     batch_size: int = 4,
     album_name: str | None = None,
-    progress_callback: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData]:
     base_url = _clean_url(base_url)
     filepaths = sorted(filepaths)
@@ -233,12 +233,12 @@ class CheveretoV3Uploader(BaseImageHostUploader):
         self.user = user
         self.password = password
 
-    async def upload(
+    async def upload(  # type: ignore[override]
         self,
         filepaths: Sequence[Path],
         batch_size: int = 4,
         album_name: str | None = None,
-        progress_callback: Callable[[int], Awaitable] | None = None,
+        progress_callback: Callable[[int], Awaitable[None]] | None = None,
     ) -> dict[int, ImageUploadData] | None:
         """Upload images to Chevereto V3."""
         return await chevereto_v3_upload(

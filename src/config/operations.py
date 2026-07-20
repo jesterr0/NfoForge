@@ -122,7 +122,7 @@ class TypedTomlOperations:
         parent: Mapping[str, Any],
         key: str,
     ) -> dict[str, Any]:
-        return cls._toml_table(parent, key).unwrap()
+        return cast(dict[str, Any], cls._toml_table(parent, key).unwrap())
 
     def save(self, save_path: Path | None = None) -> None:
         """Converts config payload object to TOML and writes to a file"""
@@ -1855,8 +1855,8 @@ class TypedTomlOperations:
     @staticmethod
     def _serialize_series_title_overrides(
         tracker_info: TrackerInfo,
-    ) -> dict[str, dict]:
-        overrides = {}
+    ) -> dict[str, dict[str, Any]]:
+        overrides: dict[str, dict[str, Any]] = {}
         existing = tracker_info.tvr_title_overrides or {}
         for episode_format in SUPPORTED_TVR_FORMATS:
             override = existing.get(episode_format, TitleOverridePayload())

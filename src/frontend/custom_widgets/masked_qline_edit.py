@@ -4,10 +4,8 @@ from PySide6.QtWidgets import QLineEdit, QWidget
 
 
 class MaskedQLineEdit(QLineEdit):
-    def __init__(
-        self, parent: QWidget | None = None, masked: bool = False, **kwargs
-    ) -> None:
-        super().__init__(parent, **kwargs)
+    def __init__(self, parent: QWidget | None = None, masked: bool = False) -> None:
+        super().__init__(parent)
 
         if masked:
             self.setEchoMode(QLineEdit.EchoMode.Password)

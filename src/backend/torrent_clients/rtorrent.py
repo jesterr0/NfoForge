@@ -12,19 +12,19 @@ from src.exceptions import TrackerClientError
 from src.payloads.clients import TorrentClient
 
 
-class Bunch(dict):
+class Bunch(dict[str, Any]):
     """Generic attribute container that also acts as a dict."""
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         try:
             return self[name]
         except KeyError:
             raise AttributeError(f"'Bunch' object has no attribute '{name}'")
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: Any) -> None:
         self[name] = value
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"Bunch({', '.join(f'{k}={v!r}' for k, v in sorted(self.items()))})"
 
 
@@ -81,7 +81,7 @@ class RTorrentClient:
     def confirm_injection(self, info_hash: str) -> bool:
         return bool(self.client.d.name(info_hash))
 
-    def _build_command(self, torrent_file: Path) -> list:
+    def _build_command(self, torrent_file: Path) -> list[Any]:
         command: list[Any] = [xmlrpc.client.Binary(self._to_bytes(torrent_file))]
         if label := self.rtorrent_config.specific_params.get("label"):
             command.append(f"d.custom1.set={label}")

@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from typing import Any
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QPoint, Signal
 from PySide6.QtGui import QAction, Qt
 from PySide6.QtWidgets import (
     QApplication,
@@ -25,11 +25,11 @@ class ComboBoxTreeWidget(QTreeWidget):
         headers: Sequence[str],
         rows: Sequence[tuple[Sequence[str], list[tuple[int, list[tuple[str, Any]]]]]]
         | None = None,
-        parent=None,
-    ):
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.combo_box_map: dict[tuple[QTreeWidgetItem, int], QComboBox] = {}
-        self.combo_options: list[set] = []
+        self.combo_options: list[set[str]] = []
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
         self.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
@@ -60,6 +60,8 @@ class ComboBoxTreeWidget(QTreeWidget):
         key_exists = None
         for idx in range(self.topLevelItemCount()):
             sub_item = self.topLevelItem(idx)
+            if sub_item is None:
+                continue
             if sub_item.text(0) == key:
                 sub_item.setText(col, new_value)
                 return key
@@ -108,6 +110,7 @@ class ComboBoxTreeWidget(QTreeWidget):
         if combo_data:
             for col_index, combo_items in combo_data:
                 return self.add_combobox_to_row(item, col_index, combo_items)
+        return None
 
     def add_combobox_to_row(
         self, item: QTreeWidgetItem, col_index: int, combo_items: list[tuple[str, Any]]
@@ -122,7 +125,7 @@ class ComboBoxTreeWidget(QTreeWidget):
         layout.addWidget(combo_box, stretch=3)
         layout.addStretch(2)
 
-        option_set = set()
+        option_set: set[str] = set()
         for txt, data in combo_items:
             combo_box.addItem(txt, data)
             option_set.add(txt)
@@ -144,10 +147,12 @@ class ComboBoxTreeWidget(QTreeWidget):
             if index != -1:
                 combo_box.setCurrentIndex(index)
 
-    def get_item_values(self) -> list[tuple[str, str, tuple[str, Any]]]:
-        values = []
+    def get_item_values(self) -> list[tuple[str | tuple[str, Any], ...]]:
+        values: list[tuple[str | tuple[str, Any], ...]] = []
         for idx in range(self.topLevelItemCount()):
             item = self.topLevelItem(idx)
+            if item is None:
+                continue
             row_values: list[Any] = []
             for col_index in range(self.header_len):
                 # check if a combo box exists in this column
@@ -161,7 +166,7 @@ class ComboBoxTreeWidget(QTreeWidget):
             values.append(tuple(row_values))
         return values
 
-    def _open_context_menu(self, position) -> None:
+    def _open_context_menu(self, position: QPoint) -> None:
         """Opens the right-click context menu for setting all combo boxes in a column"""
         common_options = self.get_common_options()
         if common_options:

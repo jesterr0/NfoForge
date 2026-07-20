@@ -677,7 +677,9 @@ def test_beyond_hd_stream_and_localization_flags_persist(
     manager.save()
     manager.load_profile("test")  # must not raise
 
-    assert manager.settings.trackers.beyond_hd.add_localization_to_custom_edition is True
+    assert (
+        manager.settings.trackers.beyond_hd.add_localization_to_custom_edition is True
+    )
     assert manager.settings.trackers.beyond_hd.stream_optimized is True
 
 

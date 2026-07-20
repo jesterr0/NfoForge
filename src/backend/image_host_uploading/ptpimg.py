@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 import aiohttp
 
@@ -19,7 +20,7 @@ async def upload_image(
     data: dict[str, str],
     file_path: Path,
     retries: int = 3,
-) -> dict | str:
+) -> dict[str, Any] | str:
     """Uploads an image using aiohttp with retries and proper error handling."""
     for attempt in range(retries):
         try:
@@ -64,9 +65,11 @@ async def _ptpimg_upload_batch(
     api_key: str,
     filepaths: Sequence[Path],
     start_index: int,
-    cb: Callable[[int], Awaitable] | None = None,
+    cb: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData]:
-    async def upload_single_image(filepath: Path, index: int):
+    async def upload_single_image(
+        filepath: Path, index: int
+    ) -> tuple[int, ImageUploadData]:
         response = await upload_image(session, url, headers, payload, filepath)
         if not isinstance(response, str):
             raise ImageUploadError(
@@ -96,7 +99,7 @@ async def ptpimg_upload(
     api_key: str,
     filepaths: Sequence[Path],
     batch_size: int = 4,
-    progress_callback: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     if not api_key:
         raise ValueError("You are required to have an API key")
@@ -129,11 +132,11 @@ class PTPIMGUploader(BaseImageHostUploader):
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
-    async def upload(
+    async def upload(  # type: ignore[override]
         self,
         filepaths: Sequence[Path],
         batch_size: int = 4,
-        progress_callback: Callable[[int], Awaitable] | None = None,
+        progress_callback: Callable[[int], Awaitable[None]] | None = None,
     ) -> dict[int, ImageUploadData] | None:
         """Upload images to ImageBB."""
         return await ptpimg_upload(

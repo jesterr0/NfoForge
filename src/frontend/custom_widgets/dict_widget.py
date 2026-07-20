@@ -1,7 +1,7 @@
 import sys
 
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCloseEvent, QCursor, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -23,7 +23,7 @@ from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 class AddKeyDialog(QDialog):
     FIXED_WIDTH = 250
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlags(
             self.windowFlags()
@@ -58,7 +58,7 @@ class AddKeyDialog(QDialog):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(frame)
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self.activateWindow()
         self.raise_()
@@ -71,17 +71,20 @@ class AddKeyDialog(QDialog):
 
 class DictWidget(QWidget):
     def __init__(
-        self, data: dict[str, str] | None = None, del_interval: int = 2500, parent=None
+        self,
+        data: dict[str, str] | None = None,
+        del_interval: int = 2500,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.data = data if data is not None else {}
         self.keys = list(self.data.keys())
         self.adding_new = False
-        self.last_idx = None
+        self.last_idx: int | None = None
         self.del_interval = del_interval
-        self.delete_timer = None
-        self.delete_pending_idx = None
-        self.original_text = None
+        self.delete_timer: QTimer | None = None
+        self.delete_pending_idx: int | None = None
+        self.original_text: str | None = None
 
         self.combo = CustomComboBox(
             completer=True, completer_strict=True, disable_mouse_wheel=True, parent=self
@@ -177,7 +180,10 @@ class DictWidget(QWidget):
         dialog = AddKeyDialog(self)
         cursor_pos = QCursor.pos()
         # clamp dialog position to stay on screen
-        screen = QApplication.primaryScreen().geometry()
+        primary_screen = QApplication.primaryScreen()
+        if primary_screen is None:
+            raise RuntimeError("A screen is required to position the add-key dialog")
+        screen = primary_screen.geometry()
         x = max(0, cursor_pos.x() - dialog.FIXED_WIDTH)
         y = min(max(0, cursor_pos.y()), screen.height() - dialog.height())
         dialog.move(x, y)
@@ -220,7 +226,7 @@ class DictWidget(QWidget):
             self.combo.removeItem(idx)
             self.update_text(self.combo.currentIndex())
 
-    def update_text(self, idx) -> None:
+    def update_text(self, idx: int) -> None:
         # reset delete timer on key change
         if self.delete_timer and self.delete_timer.isActive():
             self.delete_timer.stop()
@@ -245,7 +251,7 @@ class DictWidget(QWidget):
         # update last_idx
         self.last_idx = idx
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         # timer cleanup
         if self.delete_timer and self.delete_timer.isActive():
             self.delete_timer.stop()

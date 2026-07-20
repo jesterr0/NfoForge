@@ -2,6 +2,7 @@ import asyncio
 import base64
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
+from typing import Any, cast
 
 import aiohttp
 
@@ -24,7 +25,7 @@ def _create_api_url(image_url: str) -> str:
 
 async def upload_image(
     url: str, api_key: str, image_data: str, retries: int = 3
-) -> dict:
+) -> dict[str, Any]:
     """Upload a single image to the specified URL using the provided API key with retries."""
     async with aiohttp.ClientSession() as session:
         for attempt in range(retries):
@@ -33,7 +34,7 @@ async def upload_image(
                     url, data={"key": api_key, "image": image_data}
                 ) as response:
                     if response.status == 200:
-                        return await response.json()
+                        return cast(dict[str, Any], await response.json())
                     elif response.status in {429, 500, 502, 503, 504}:
                         await asyncio.sleep(2**attempt)
                     else:
@@ -55,7 +56,7 @@ async def _chevereto_V4_upload_batch(
     url: str,
     batch: Sequence[Path],
     start_index: int,
-    cb: Callable[[int], Awaitable] | None = None,
+    cb: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData]:
     """Upload a batch of images to Chevereto V4."""
     batch_results = {}
@@ -79,7 +80,7 @@ async def chevereto_v4_upload(
     url: str,
     filepaths: Sequence[Path],
     batch_size: int = 4,
-    progress_callback: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     """Upload images to Chevereto V4 in batches."""
     if not api_key:
@@ -116,10 +117,10 @@ class CheveretoV4Uploader(BaseImageHostUploader):
         self.api_key = api_key
         self.url = url
 
-    async def upload(
+    async def upload(  # type: ignore[override]
         self,
         filepaths: Sequence[Path],
-        progress_callback: Callable[[int], Awaitable] | None = None,
+        progress_callback: Callable[[int], Awaitable[None]] | None = None,
     ) -> dict[int, ImageUploadData] | None:
         """Upload images to Chevereto V4."""
         return await chevereto_v4_upload(

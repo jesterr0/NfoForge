@@ -24,13 +24,13 @@ class CropDetect:
         crop = self._convert_raw_to_crop_params(largest_common_crop)
         return crop
 
-    def _detect_crop_in_segments(self) -> list:
+    def _detect_crop_in_segments(self) -> list[str]:
         crop_params_list = self._run_crop_detect(
             self.file_input, self.segments * self.frames
         )
         return crop_params_list
 
-    def _run_crop_detect(self, input_video, num_frames) -> list[str]:
+    def _run_crop_detect(self, input_video: Path, num_frames: int) -> list[str]:
         command = (
             str(self.ffmpeg),
             "-i",
@@ -62,7 +62,7 @@ class CropDetect:
 
     def _convert_raw_to_crop_params(self, raw_crop: str | None) -> str | None:
         if not raw_crop:
-            return
+            return None
         width, height, x, y = map(int, raw_crop)
         # ensure even values for video encoding compatibility
         width = self._round_up_to_even(width)
@@ -72,7 +72,9 @@ class CropDetect:
         return f"crop={width}:{height}:{x}:{y}"
 
     @staticmethod
-    def _get_largest_common_crop_params(crop_params_list: list) -> str | None:
+    def _get_largest_common_crop_params(
+        crop_params_list: list[str],
+    ) -> str | None:
         # count the occurrences of each crop parameter set
         counter = Counter(crop_params_list)
 

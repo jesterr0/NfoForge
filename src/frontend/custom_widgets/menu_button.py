@@ -152,7 +152,7 @@ if __name__ == "__main__":
     ]
 
     class MainWindow(QMainWindow):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__()
 
             self.setWindowTitle("Custom Popup Example")

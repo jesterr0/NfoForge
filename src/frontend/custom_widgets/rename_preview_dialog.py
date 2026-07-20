@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
@@ -16,7 +17,7 @@ from src.frontend.utils import set_top_parent_geometry
 class RenamePreviewDialog(QDialog):
     """Dialog to preview file/folder renames with diff-style visualization."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Rename Preview")
         self.setWindowFlag(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)

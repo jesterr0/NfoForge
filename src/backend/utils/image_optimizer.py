@@ -2,6 +2,7 @@ import shutil
 from collections.abc import Callable, Sequence
 from multiprocessing import Manager, Pool, cpu_count
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -22,14 +23,16 @@ class MultiProcessImageOptimizer:
         on_job_done: Callable[[Path, int, int], None] | None = None,
         on_all_jobs_done: Callable[[], None] | None = None,
         cpu_fraction: float = 0.25,
-    ):
+    ) -> None:
         """Initialize the customizable pool executor."""
         self.max_workers = max_workers or self._get_optimize_workers(cpu_fraction)
         self.batch_size = batch_size
         self.on_job_done = on_job_done
         self.on_all_jobs_done = on_all_jobs_done
 
-    def _job_callback(self, result, completed_jobs, total_jobs, lock):
+    def _job_callback(
+        self, result: Path, completed_jobs: Any, total_jobs: int, lock: Any
+    ) -> None:
         """Updates progress after a job completes."""
         with lock:
             completed_jobs.value += 1
@@ -40,10 +43,10 @@ class MultiProcessImageOptimizer:
         self,
         job_batch: Sequence[Path],
         output_dir: Path,
-        completed_jobs,
+        completed_jobs: Any,
         total_jobs: int,
-        lock,
-    ):
+        lock: Any,
+    ) -> None:
         """Process a batch of jobs concurrently using multiprocessing."""
         with Pool(self.max_workers) as pool:
             for in_path in job_batch:
@@ -102,10 +105,10 @@ if __name__ == "__main__":
     ]
 
     # callbacks
-    def job_done_callback(png_path: Path, completed: int, total: int):
+    def job_done_callback(png_path: Path, completed: int, total: int) -> None:
         print(f"✔ {completed}/{total} - Job completed: {png_path}")
 
-    def all_jobs_done_callback():
+    def all_jobs_done_callback() -> None:
         print("🎉 All jobs completed!")
 
     optimizer = MultiProcessImageOptimizer(

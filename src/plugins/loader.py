@@ -4,6 +4,7 @@ import traceback
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from pymediainfo import MediaInfo
@@ -85,7 +86,7 @@ class PluginLoader:
         except AttributeError:
             raise PluginError(f"Failed to load plugin package: {package_name}")
 
-    def _load_package_module(self, package_name: str):
+    def _load_package_module(self, package_name: str) -> ModuleType:
         """Dynamically import the main module within a plugin package."""
         # import the module as a package submodule
         module = importlib.import_module(package_name)
@@ -146,7 +147,9 @@ class PluginLoader:
         )
 
     def _validate_plugin_functions(
-        self, plugin_payload: PluginPayload, functions: dict
+        self,
+        plugin_payload: PluginPayload,
+        functions: dict[str, dict[str, object]],
     ) -> None:
         for func_name, expected_kwargs in functions.items():
             func = getattr(plugin_payload, func_name, None)

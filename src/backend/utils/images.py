@@ -154,7 +154,9 @@ def vapoursynth_to_ffmpeg_crop(
     return f"crop={cropped_width}:{cropped_height}:{x}:{y}"
 
 
-def ffmpeg_crop_to_crop_values(ffmpeg_crop: str, source_width: int, source_height: int):
+def ffmpeg_crop_to_crop_values(
+    ffmpeg_crop: str, source_width: int, source_height: int
+) -> CropValues:
     """
     Converts an FFmpeg crop string (crop=width:height:x:y) to CropValues (top, bottom, left, right).
 
@@ -197,6 +199,7 @@ def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int | 
         return h1080
     elif height <= 2160:
         return h2160
+    return None
 
 
 def extract_images_from_str(

@@ -290,7 +290,7 @@ class ComparisonImageGeneration(ImageGeneration):
             media_file_mi_obj.video_tracks[0].height,
         )
 
-        detect_crop = ""
+        detect_crop: str | None = ""
         if crop_values and crop_mode != Cropping.DISABLED:
             user_crop_msg = (
                 "Applying user defined crops "

@@ -1,8 +1,8 @@
 import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Signal, SignalInstance, Slot
-from PySide6.QtGui import QPixmap, Qt
+from PySide6.QtCore import QObject, QThread, Signal, SignalInstance, Slot
+from PySide6.QtGui import QPixmap, QShowEvent, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -115,7 +115,10 @@ class SplashScreenLoader(QThread):
     success = Signal(str)
 
     def __init__(
-        self, config: ConfigManager, update_splash_msg: SignalInstance, parent=None
+        self,
+        config: ConfigManager,
+        update_splash_msg: SignalInstance,
+        parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.config = config
@@ -157,6 +160,7 @@ class SplashScreenLoader(QThread):
                 f"{failures}\n\n"
                 "See the application log for full error details."
             )
+        return None
 
     def _update_built_in_plugins(self) -> None:
         built_in_plugins = {
@@ -186,7 +190,7 @@ class SplashScreen(QWidget):
     update_message_box = Signal(str)
     config_selected = Signal(str)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.resize(426, 240)
@@ -239,7 +243,7 @@ class SplashScreen(QWidget):
             self.message_box, stretch=1, alignment=Qt.AlignmentFlag.AlignBottom
         )
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self.splash_img.setFixedSize(self.size())
 

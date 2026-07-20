@@ -1,4 +1,5 @@
 import platform
+from collections.abc import Mapping
 
 import flatbencode as bencode
 from niquests.structures import CaseInsensitiveDict
@@ -94,7 +95,8 @@ def format_image_tag(
 
 
 def looks_like_torrent(
-    content: bytes, headers: dict | CaseInsensitiveDict | None = None
+    content: bytes,
+    headers: Mapping[str, str] | CaseInsensitiveDict[str] | None = None,
 ) -> bool:
     """Return True if response content (and optional headers) look like a .torrent."""
     if not content:

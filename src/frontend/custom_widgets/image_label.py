@@ -1,27 +1,27 @@
 from PySide6.QtCore import QPointF
-from PySide6.QtGui import QImage, QPainter, QTransform
+from PySide6.QtGui import QImage, QPainter, QPaintEvent, QTransform
 from PySide6.QtWidgets import QApplication, QWidget
 
 
 class ImageLabel(QWidget):
     """Custom widget for displaying images with scaling."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the ImageLabel widget."""
         super().__init__(parent)
         self._image: QImage | None = None
 
-    def setImage(self, image: QImage):
+    def setImage(self, image: QImage) -> None:
         """Set the image to be displayed."""
         self._image = image
         self.update()
 
-    def clearImage(self):
+    def clearImage(self) -> None:
         """Clear the currently displayed image."""
         self._image = None
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Handle the paint event to draw the image."""
         if self._image is None or self._image.isNull():
             return
