@@ -1,4 +1,6 @@
-from collections.abc import MutableMapping
+import dataclasses
+import enum
+from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 from typing import Any, cast
 
@@ -35,6 +37,18 @@ def _paths(tmp_path: Path) -> ConfigPaths:
         user_configs=tmp_path / "user",
         tracker_cookies=tmp_path / "cookies",
     )
+
+
+def _leaf_key_paths(document: Mapping[str, Any], prefix: str = "") -> set[str]:
+    """Every dotted leaf-key path in a parsed TOML document."""
+    paths: set[str] = set()
+    for key, value in document.items():
+        path = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(value, Mapping):
+            paths |= _leaf_key_paths(value, path)
+        else:
+            paths.add(path)
+    return paths
 
 
 def test_manager_loads_nested_typed_settings(
@@ -782,6 +796,103 @@ def test_coerce_bool_flags_normalizes_int_flags() -> None:
     assert type(mtv["internal"]) is int and mtv["internal"] == 5
     assert type(mtv["row_space"]) is int and mtv["row_space"] == 0
     assert type(mtv["promo"]) is int and mtv["promo"] == 2
+
+
+def test_default_config_round_trips_without_key_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guard against schema drift between the packaged default and the code.
+
+    Loading the default and saving it back writes every field the model
+    knows about. Comparing the saved document's keys against the packaged
+    default catches two failure modes:
+
+    - orphan keys: a key ships in the default that ``save`` never writes
+      (e.g. a leftover from a removed feature) -- these must not exist.
+    - missing keys: ``save`` writes a key the default omits. The only
+      legitimate case is the per-tracker ``tvr_title_overrides`` tables,
+      which are intentionally not shipped and are seeded on save; anything
+      else means the default is behind the model.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    manager.save()
+
+    saved = tomlkit.parse(
+        (paths.user_configs / "test.toml").read_text(encoding="utf-8")
+    )
+    default_doc = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    saved_keys = _leaf_key_paths(saved)
+    default_keys = _leaf_key_paths(default_doc)
+
+    orphans = default_keys - saved_keys
+    assert not orphans, f"default ships keys the code never writes: {sorted(orphans)}"
+
+    unexpected = {k for k in saved_keys - default_keys if "tvr_title_overrides" not in k}
+    assert not unexpected, (
+        f"save writes keys missing from the default config: {sorted(unexpected)}"
+    )
+
+
+def test_all_tracker_scalar_fields_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every scalar tracker field must survive a save/reload.
+
+    A field dropped from ``decode`` or ``save`` (as ``add_localization_to_
+    custom_edition`` and ``stream_optimized`` were for BeyondHD) silently
+    reverts to its dataclass default on reload. Mutate every bool/int/str/
+    enum field on every tracker to a distinct value, save, reload, and
+    assert each mutation persisted -- a drop makes the round-trip fail.
+    Container fields (lists, the ``tvr_title_overrides`` mapping) and
+    ``None`` values are skipped.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    def probe(current: object, field_name: str) -> object | None:
+        # bool before int: bool is an int subclass; enum before int: IntEnum
+        # is both. Return None to skip a field.
+        if isinstance(current, bool):
+            return not current
+        if isinstance(current, enum.Enum):
+            return next((m for m in type(current) if m != current), None)
+        if isinstance(current, str):
+            return f"probe-{field_name}"
+        if isinstance(current, int):
+            return current + 7
+        return None
+
+    changes: dict[TrackerSelection, dict[str, object]] = {}
+    for selection, tracker in manager.settings.trackers.by_selection().items():
+        field_changes: dict[str, object] = {}
+        for f in dataclasses.fields(tracker):
+            new_value = probe(getattr(tracker, f.name), f.name)
+            if new_value is None:
+                continue
+            setattr(tracker, f.name, new_value)
+            field_changes[f.name] = new_value
+        changes[selection] = field_changes
+
+    manager.save()
+    manager.load_profile("test")
+
+    reloaded = manager.settings.trackers.by_selection()
+    for selection, field_changes in changes.items():
+        tracker = reloaded[selection]
+        for name, expected in field_changes.items():
+            assert getattr(tracker, name) == expected, (
+                f"{selection.value}.{name} did not survive save/reload "
+                f"(dropped from decode or save?)"
+            )
 
 
 def test_default_season_folder_token_is_scene_style() -> None:
