@@ -1066,14 +1066,12 @@ class TokenReplacer:
 
         # normalize some editions
         if edition_set:
-            normalized_edition_set = set()
+            normalized_edition_set: set[object] = set()
             for item in edition_set:
-                item_lowered = str(item).lower()
-                if "imax" in item_lowered:
+                if "imax" in str(item).lower():
                     normalized_edition_set.add("IMAX")
                     break
-                edition_set.clear()
-                edition_set.add("IMAX")
+            edition_set = normalized_edition_set
 
         # convert the set back to a string, joining with spaces
         return self._optional_user_input(
