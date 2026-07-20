@@ -605,9 +605,8 @@ class ComparisonImageGeneration(ImageGeneration):
     def check_draw_text(ffmpeg_path: Path) -> bool:
         result = subprocess.run(
             [str(ffmpeg_path), "-filters"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
             text=True,
+            capture_output=True,
         )
         if "drawtext" in result.stdout:
             return True
