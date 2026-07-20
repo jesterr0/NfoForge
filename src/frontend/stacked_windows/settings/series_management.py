@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
+from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_FILE_NAME_1,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
@@ -66,7 +67,11 @@ class FormatWidgets(TypedDict):
 class SeriesManagementSettings(BaseSettings):
     """Series specific settings"""
 
-    TRACKERS_OVERRIDE_NOT_SUPPORTED = (TrackerSelection.PASS_THE_POPCORN,)
+    # Trackers that support series uploads but not the per-format title
+    # override feature. Movie-only trackers can't receive series at all and are
+    # excluded separately via UNSUPPORTED_SERIES_TRACKERS, so none are listed
+    # here today.
+    TRACKERS_OVERRIDE_NOT_SUPPORTED: tuple[TrackerSelection, ...] = ()
     _FORMAT_ORDER = SUPPORTED_TVR_FORMATS
 
     def __init__(
@@ -269,7 +274,10 @@ class SeriesManagementSettings(BaseSettings):
         tracker_stacked = ResizableStackedWidget(container)
 
         for tracker in self.config.settings.trackers.by_selection().keys():
-            if tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED:
+            if (
+                tracker in UNSUPPORTED_SERIES_TRACKERS
+                or tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED
+            ):
                 continue
             tfo = TrackerFormatOverride(container)
             tfo.setting_changed.connect(

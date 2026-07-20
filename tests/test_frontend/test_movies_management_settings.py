@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QWidget
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.enums.token_replacer import ColonReplace
+from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.movies_management import (
     MoviesManagementSettings,
 )
@@ -57,6 +58,24 @@ def _make_movies_management_settings(
     # the Qt event loop next (e.g. via QTest.qWait elsewhere).
     QTest.qWait(20)
     return widget, manager
+
+
+def test_reelflix_offered_but_ptp_excluded_from_movie_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ReelFliX is a movie tracker and must be offered as a movie title
+    override target. PassThePopcorn supports movies but not the override
+    feature (strict naming), so it must be excluded."""
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    override_trackers = set(widget.tracker_override_map.keys())
+    combo = widget.tracker_selection
+    combo_trackers = {combo.itemData(i) for i in range(combo.count())}
+
+    assert TrackerSelection.REELFLIX in override_trackers
+    assert TrackerSelection.REELFLIX in combo_trackers
+    assert TrackerSelection.PASS_THE_POPCORN not in override_trackers
+    assert TrackerSelection.PASS_THE_POPCORN not in combo_trackers
 
 
 def test_filename_and_title_examples_use_their_own_colon_replace_setting(

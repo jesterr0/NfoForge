@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import QWidget
 
+from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.enums.multi_episode_style import MultiEpisodeStyle
@@ -50,6 +51,28 @@ def _make_series_management_settings(
         config=manager, main_window=None, parent=fake_settings_window
     )
     return widget, manager
+
+
+def test_movie_only_trackers_are_not_offered_as_series_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Movie-only trackers (ReelFliX, PassThePopcorn) can't upload series, so
+    they must not be selectable as per-format title override targets on the
+    Series Config screen. Every series-capable tracker must still be offered."""
+    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
+
+    assert UNSUPPORTED_SERIES_TRACKERS, "expected at least one movie-only tracker"
+    all_trackers = set(manager.settings.trackers.by_selection().keys())
+    expected_offered = all_trackers - UNSUPPORTED_SERIES_TRACKERS
+
+    for fmt, fmt_widgets in widget._format_widgets.items():
+        override_trackers = set(fmt_widgets["tracker_override_map"].keys())
+        combo = fmt_widgets["tracker_selection"]
+        combo_trackers = {combo.itemData(i) for i in range(combo.count())}
+
+        assert override_trackers == expected_offered, fmt
+        assert combo_trackers == expected_offered, fmt
+        assert override_trackers.isdisjoint(UNSUPPORTED_SERIES_TRACKERS), fmt
 
 
 def test_multi_episode_style_combo_loads_from_config(

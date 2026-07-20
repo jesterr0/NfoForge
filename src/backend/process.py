@@ -59,8 +59,8 @@ from src.backend.trackers import (
     ulcx_uploader,
 )
 from src.backend.trackers.beyondhd import BHDUploader
+from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.morethantv import MTVUploader
-from src.backend.trackers.series_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag

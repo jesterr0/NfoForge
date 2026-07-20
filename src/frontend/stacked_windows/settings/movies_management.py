@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
+from src.backend.trackers.media_support import UNSUPPORTED_MOVIE_TRACKERS
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
@@ -46,7 +47,12 @@ if TYPE_CHECKING:
 class MoviesManagementSettings(BaseSettings):
     """Movie specific settings"""
 
-    TRACKERS_OVERRIDE_NOT_SUPPORTED = (TrackerSelection.PASS_THE_POPCORN,)
+    # Trackers that support movie uploads but not the title override feature
+    # (PassThePopcorn has strict naming rules). Trackers that can't take movies
+    # at all are excluded separately via UNSUPPORTED_MOVIE_TRACKERS.
+    TRACKERS_OVERRIDE_NOT_SUPPORTED: tuple[TrackerSelection, ...] = (
+        TrackerSelection.PASS_THE_POPCORN,
+    )
 
     def __init__(
         self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
@@ -209,7 +215,10 @@ class MoviesManagementSettings(BaseSettings):
         self.tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
         self.tracker_over_ride_stacked_widget = ResizableStackedWidget(self)
         for tracker in self.config.settings.trackers.by_selection().keys():
-            if tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED:
+            if (
+                tracker in UNSUPPORTED_MOVIE_TRACKERS
+                or tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED
+            ):
                 continue
             tracker_format_override = TrackerFormatOverride(self)
             tracker_format_override.setting_changed.connect(
