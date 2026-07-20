@@ -193,7 +193,8 @@ class ConfigManager(TypedTomlOperations):
     ) -> MutableMapping[str, Any]:
         """Run the validate/merge/decode sequence `load_profile` applies to
         a loaded profile: schema check, merge defaults (against a fresh
-        parse of ``default_toml``), per-key type validation against
+        parse of ``default_toml``), coerce legacy int 0/1 flags to bool where
+        the default is a bool, per-key type validation against
         ``self._default_document``, then `decode` (which also runs
         `validate_settings`).
 
@@ -208,6 +209,12 @@ class ConfigManager(TypedTomlOperations):
         """
         self.codec.validate_schema(document)
         merged = self.codec.merge_defaults(document, tomlkit.parse(default_toml))
+        # Normalize legacy integer 0/1 tracker flags to bool where the default
+        # declares a bool, before per-key type validation. This self-heals both
+        # a config the app previously wrote as a real bool (default now bool ->
+        # no-op) and one still holding the old int representation (e.g. a
+        # schema-1 migration that copied the tracker section forward verbatim).
+        self.codec.coerce_bool_flags(merged, self._default_document)
         self.codec.validate_types(merged, self._default_document)
         self.decode(merged, dry_run=dry_run)
         return merged

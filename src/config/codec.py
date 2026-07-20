@@ -62,6 +62,49 @@ class TomlConfigCodec:
                     cls.merge_defaults(current, value)
         return document
 
+    @classmethod
+    def coerce_bool_flags(
+        cls,
+        document: MutableMapping[str, Any],
+        defaults: Mapping[str, Any],
+    ) -> MutableMapping[str, Any]:
+        """Coerce persisted ints to ``bool`` where the default declares a bool.
+
+        Some boolean tracker flags (e.g. ``tracker.*.anonymous``) were shipped
+        in the packaged default as the int ``0`` while the model, the UI (a
+        ``QCheckBox``) and the write path all treat them as ``bool``. Once the
+        app wrote such a value back from its own model it became a TOML
+        ``true``/``false``, which `validate_types` -- which deliberately
+        refuses to treat ``bool`` as ``int`` -- would then reject on the next
+        load. The default now declares these as real booleans; this pass
+        normalizes any lingering integer ``0``/``1`` (from an older default, a
+        hand-edited profile, or a schema-1 migration that copied the tracker
+        section forward verbatim) to ``bool`` so both representations converge
+        on the default's type before `validate_types` runs. Non-0/1 integers
+        are left untouched so genuinely bad values still surface as a type
+        error rather than being silently coerced.
+        """
+        for key, expected in defaults.items():
+            if key not in document:
+                continue
+            if isinstance(expected, MutableMapping):
+                current = document.get(key)
+                if isinstance(current, MutableMapping):
+                    cls.coerce_bool_flags(current, expected)
+                continue
+            expected_value = (
+                expected.unwrap() if hasattr(expected, "unwrap") else expected
+            )
+            actual = document[key]
+            actual_value = actual.unwrap() if hasattr(actual, "unwrap") else actual
+            if (
+                type(expected_value) is bool
+                and type(actual_value) is int  # excludes bool, an int subclass
+                and actual_value in (0, 1)
+            ):
+                document[key] = bool(actual_value)
+        return document
+
     @staticmethod
     def dumps(document: Mapping[str, Any]) -> str:
         return tomlkit.dumps(document)
