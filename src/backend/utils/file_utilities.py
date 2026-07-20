@@ -1,9 +1,9 @@
+from collections.abc import Iterable
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from platform import system
 from subprocess import run
-from typing import Iterable
 
 
 def find_largest_file_in_directory(
