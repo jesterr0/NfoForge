@@ -1,0 +1,93 @@
+from pathlib import Path
+from unittest.mock import ANY, MagicMock, patch
+
+import pytest
+
+from src.backend.trackers.huno import HunoUploader
+from src.backend.trackers.unit3d_base import Unit3dBaseUploader
+from src.enums.media_type import MediaType
+from src.exceptions import TrackerError
+
+
+def _uploader(torrent_file: Path) -> HunoUploader:
+    return HunoUploader(
+        media_type=MediaType.MOVIE,
+        api_key="api-key",
+        torrent_file=torrent_file,
+        input_path=torrent_file.parent / "Example.2026.1080p.WEB-DL-GRP",
+        mediainfo_obj=MagicMock(),
+    )
+
+
+@patch("src.backend.trackers.unit3d_base.niquests.get")
+def test_unit3d_download_replaces_generated_torrent_atomically(
+    get: MagicMock, tmp_path: Path
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+    response = MagicMock()
+    response.headers = {"Content-Type": "application/x-bittorrent"}
+    response.iter_content.return_value = [b"d8:announce1:ae"]
+    get.return_value.__enter__.return_value = response
+
+    result = _uploader(torrent_file)._download_uploaded_torrent(
+        "https://tracker.example/torrents/download/123.key"
+    )
+
+    assert result == torrent_file
+    assert torrent_file.read_bytes() == b"d8:announce1:ae"
+    assert not list(tmp_path.glob("*.part"))
+    get.assert_called_once_with(
+        "https://tracker.example/torrents/download/123.key",
+        headers=ANY,
+        timeout=60,
+        stream=True,
+    )
+    response.raise_for_status.assert_called_once_with()
+    response.iter_content.assert_called_once_with(chunk_size=64 * 1024)
+
+
+@patch("src.backend.trackers.unit3d_base.niquests.get")
+def test_unit3d_download_preserves_original_torrent_on_invalid_response(
+    get: MagicMock, tmp_path: Path
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+    response = MagicMock()
+    response.headers = {"Content-Type": "text/html"}
+    response.iter_content.return_value = [b"<html>Access denied</html>"]
+    get.return_value.__enter__.return_value = response
+
+    with pytest.raises(TrackerError, match="not a valid torrent"):
+        _uploader(torrent_file)._download_uploaded_torrent(
+            "https://tracker.example/torrents/download/123.key"
+        )
+
+    assert torrent_file.read_bytes() == b"original torrent"
+    assert not list(tmp_path.glob("*.part"))
+
+
+@patch.object(Unit3dBaseUploader, "_download_uploaded_torrent")
+@patch.object(Unit3dBaseUploader, "_build_upload_payload", return_value={})
+@patch("src.backend.trackers.unit3d_base.niquests.post")
+def test_unit3d_upload_redownloads_tracker_torrent_before_success(
+    post: MagicMock,
+    _build_payload: MagicMock,
+    download_torrent: MagicMock,
+    tmp_path: Path,
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"generated torrent")
+    response = MagicMock()
+    response.json.return_value = {
+        "success": True,
+        "message": "Torrent uploaded successfully.",
+        "data": "https://tracker.example/torrents/download/123.key",
+    }
+    post.return_value.__enter__.return_value = response
+    uploader = _uploader(torrent_file)
+
+    assert uploader.upload(tracker_title="Example") is True
+    download_torrent.assert_called_once_with(
+        "https://tracker.example/torrents/download/123.key"
+    )

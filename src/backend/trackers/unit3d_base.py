@@ -1,14 +1,20 @@
+import os
 import re
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from tempfile import mkstemp
 from typing import Any, TypeAlias
 
 import niquests
 import regex
 from pymediainfo import MediaInfo
 
-from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
+from src.backend.trackers.utils import (
+    TRACKER_HEADERS,
+    looks_like_torrent,
+    tracker_string_replace_map,
+)
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -186,7 +192,16 @@ class Unit3dBaseUploader:
                 # {'success': True, 'data': 'https://baseurl/torrent/download/45835.keydata', 'message': 'Torrent uploaded successfully.'}
                 message = response_json.get("message")
                 context = response_json.get("data")
-                if response_json.get("success") is True and "successfully" in message:
+                if (
+                    response_json.get("success") is True
+                    and isinstance(message, str)
+                    and "successfully" in message
+                ):
+                    if not isinstance(context, str) or not context:
+                        raise TrackerError(
+                            "Tracker did not return a torrent download URL"
+                        )
+                    self._download_uploaded_torrent(context)
                     return True
                 else:
                     error_msg = f"Message='{message}' Context='{context}'"
@@ -197,6 +212,40 @@ class Unit3dBaseUploader:
             raise TrackerError(requests_exc_error_msg)
         finally:
             open_torrent.close()
+
+    def _download_uploaded_torrent(self, download_url: str) -> Path:
+        """Stream the tracker-generated torrent to its final path atomically."""
+        destination = self.torrent_file
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        file_descriptor, temporary_name = mkstemp(
+            prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
+        )
+        temporary_path = Path(temporary_name)
+        try:
+            with os.fdopen(file_descriptor, "wb") as torrent_file:
+                with niquests.get(
+                    download_url,
+                    headers=TRACKER_HEADERS,
+                    timeout=self.timeout,
+                    stream=True,
+                ) as response:
+                    response.raise_for_status()
+                    response_headers = dict(response.headers)
+                    for chunk in response.iter_content(chunk_size=64 * 1024):
+                        if chunk:
+                            torrent_file.write(chunk)
+
+            content = temporary_path.read_bytes()
+            if not looks_like_torrent(content, response_headers):
+                raise TrackerError("Downloaded file is not a valid torrent")
+            temporary_path.replace(destination)
+            return destination
+        except (niquests.exceptions.RequestException, OSError) as error:
+            raise TrackerError(
+                f"Failed to download torrent from {self.tracker_name}: {error}"
+            ) from error
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     def _build_upload_payload(
         self,
