@@ -123,6 +123,7 @@
 - Added early tracker UX guard
   - Series workflows disable known unsupported trackers: PTP and ReelFliX.
 - Add mypy for static type checking for most of the codebase (TODO: edit this before release to say for full code base)
+- Now supports latest deluge-web-client (=>2.x.x)
 
 ### Fixed
 

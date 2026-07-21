@@ -28,7 +28,7 @@ dependencies = [
     "qbittorrent-api>=2025.11.1",
     "bencode-py>=4.0.0",
     "transmission-rpc>=7.0.11",
-    "deluge-web-client>=1.0.7",   # TODO: add support for >=2.0.3
+    "deluge-web-client>=2.0.3",
     "niquests[speedups]>=3.20.1",
     "regex>=2025.11.3",
     "stdlib-list>=0.12.0",

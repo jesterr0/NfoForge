@@ -620,14 +620,14 @@ wheels = [
 
 [[package]]
 name = "deluge-web-client"
-version = "1.0.7"
+version = "2.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "niquests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0f/97/3e437a0f92732a7eb4dbce9aed45338a93f5c52282b61c2bf1e279f40911/deluge_web_client-1.0.7.tar.gz", hash = "sha256:d2850fdfa3b2b2bc8be1f9811fe905d1537ffafb822361d424a21f0d01171d8f", size = 9687, upload-time = "2025-06-24T23:48:22.975Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/f3/bfcc00d5973d3c8c2aa97119595c4ef7cf03ebf56d18ef514e841232253d/deluge_web_client-2.0.3.tar.gz", hash = "sha256:04d520dc53da901ca183dad7b1ee944e3f2f17c79fd06e87eefbf158d54ce21a", size = 22114, upload-time = "2025-12-16T15:47:53.063Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/c8/5aab6fa5479cb9c472f9ec6fe29824e527a0005eee28fdc853b010597605/deluge_web_client-1.0.7-py3-none-any.whl", hash = "sha256:52fca1330df7aa5d6a0c113a40599ec6467e89d363e22ddef7c6ad8f86419d86", size = 9809, upload-time = "2025-06-24T23:48:21.562Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/66/23da92614b9af86434e474df528b4f27b7a2c158f7484990c00b46394c35/deluge_web_client-2.0.3-py3-none-any.whl", hash = "sha256:e16dc0bd63bbc813ba5bcaf38eebbe3a6d8b3c222091832c119c50903af4d0a2", size = 14353, upload-time = "2025-12-16T15:47:51.932Z" },
 ]
 
 [[package]]
@@ -1438,7 +1438,7 @@ requires-dist = [
     { name = "bencode-py", specifier = ">=4.0.0" },
     { name = "cython", marker = "extra == 'dev'", specifier = ">=3.0.12" },
     { name = "debugpy", marker = "extra == 'dev'" },
-    { name = "deluge-web-client", specifier = ">=1.0.7" },
+    { name = "deluge-web-client", specifier = ">=2.0.3" },
     { name = "flatbencode" },
     { name = "guessit", specifier = ">=4.1.0" },
     { name = "imdbinfo", specifier = ">=0.6.4" },
