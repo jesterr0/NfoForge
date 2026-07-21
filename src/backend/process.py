@@ -18,7 +18,6 @@ from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.image_host_uploading.img_downloader import ImageDownloader
 from src.backend.image_host_uploading.img_uploader import ImageUploader
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
-from src.backend.image_host_uploading.ptpimg import PTPIMGUploader
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenSelection
@@ -1082,8 +1081,6 @@ class ProcessBackEnd:
             return ImageBoxUploader()
         elif img_host is ImageHost.IMAGE_BB:
             return self._create_imgbb_uploader()
-        elif img_host is ImageHost.PTPIMG:
-            return self._create_ptpimg_uploader()
         else:
             raise ImageHostError(f"Unsupported image host: {img_host}")
 
@@ -1141,21 +1138,6 @@ class ProcessBackEnd:
         if not imgbb_payload.api_key or not imgbb_payload.base_url:
             raise ImageHostError("Missing 'API Key' for ImageBB.")
         return ImageBBUploader(api_key=imgbb_payload.api_key)
-
-    def _create_ptpimg_uploader(self) -> PTPIMGUploader:
-        """
-        Creates an uploader instance for PTPIMG.
-
-        Returns:
-            PTPIMGUploader: The uploader instance.
-
-        Raises:
-            ImageHostError: If required credentials are missing.
-        """
-        ptpimg_payload = self.config.settings.image_hosts.ptpimg
-        if not ptpimg_payload.api_key or not ptpimg_payload.base_url:
-            raise ImageHostError("Missing 'API Key' for PTPIMG.")
-        return PTPIMGUploader(api_key=ptpimg_payload.api_key)
 
     def _map_uploaded_urls(
         self,
@@ -1315,7 +1297,6 @@ class ProcessBackEnd:
                 nfo=nfo,
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
-                ptp_img_api_key=self.config.settings.trackers.pass_the_popcorn.api_key,
                 cookie_dir=self.config.paths.tracker_cookies,
                 totp=ptp_payload.totp,
                 timeout=self.config.settings.general.timeout,

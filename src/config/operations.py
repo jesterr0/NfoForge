@@ -55,7 +55,6 @@ from src.payloads.image_hosts import (
     CheveretoV4Payload,
     ImageBBPayload,
     ImageBoxPayload,
-    PTPIMGPayload,
 )
 from src.payloads.trackers import (
     AitherInfo,
@@ -972,12 +971,6 @@ class TypedTomlOperations:
             img_box_data["enabled"] = self.settings.image_hosts.image_box.enabled
             img_box_data["base_url"] = self.settings.image_hosts.image_box.base_url
 
-            # ptpimg
-            ptpimg_data = self._ensure_toml_table(image_hosts, "ptpimg")
-            ptpimg_data["enabled"] = self.settings.image_hosts.ptpimg.enabled
-            ptpimg_data["base_url"] = self.settings.image_hosts.ptpimg.base_url
-            ptpimg_data["api_key"] = self.settings.image_hosts.ptpimg.api_key
-
             # urls
             urls_settings = self._toml_table(self._toml_data, "urls")
             urls_settings["alt"] = self.settings.urls.alt
@@ -1592,7 +1585,6 @@ class TypedTomlOperations:
             chevereto_v4 = CheveretoV4Payload(**image_hosts["chevereto_v4"])
             image_bb = ImageBBPayload(**image_hosts["image_bb"])
             image_box = ImageBoxPayload(**image_hosts["image_box"])
-            ptpimg = PTPIMGPayload(**image_hosts["ptpimg"])
 
             # urls
             urls_settings = self._toml_mapping(toml_data, "urls")
@@ -1782,7 +1774,6 @@ class TypedTomlOperations:
                     chevereto_v4=chevereto_v4,
                     image_bb=image_bb,
                     image_box=image_box,
-                    ptpimg=ptpimg,
                 ),
                 urls=UrlSettings(
                     alt=str(urls_settings["alt"]),

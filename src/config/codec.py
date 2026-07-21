@@ -12,7 +12,7 @@ TomlMutableMapping = TypeVar("TomlMutableMapping", bound=MutableMapping[str, Any
 class TomlConfigCodec:
     """Document-level TOML schema utilities used by the typed config manager."""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     @classmethod
     def validate_schema(cls, document: Mapping[str, Any]) -> None:

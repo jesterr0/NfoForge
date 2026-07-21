@@ -54,7 +54,6 @@ Movies are supported, and series support is now available for standard TV episod
 - Chevereto v3/v4
 - ImageBox
 - ImageBB
-- PTPIMG
 
 ## Requirements
 

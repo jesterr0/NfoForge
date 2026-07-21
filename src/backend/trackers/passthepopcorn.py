@@ -1,6 +1,8 @@
+import asyncio
 import pickle
 import re
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import niquests
@@ -11,6 +13,8 @@ from imdbinfo.models import MovieDetail
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
+from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
+from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.trackers.passthepopcorn import (
@@ -38,7 +42,6 @@ def ptp_uploader(
     nfo: str,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
-    ptp_img_api_key: str | None,
     cookie_dir: Path,
     totp: str | None = None,
     timeout: int = 60,
@@ -70,7 +73,6 @@ def ptp_uploader(
         torrent_file=torrent_file,
         input_path=input_path,
         nfo=nfo,
-        ptp_img_api_key=ptp_img_api_key,
         group_id=group_id,
     )
 
@@ -256,16 +258,12 @@ class PTPUploader:
         torrent_file: Path,
         input_path: Path,
         nfo: str,
-        ptp_img_api_key: str | None,
         group_id: str | None = None,
     ) -> bool | None:
         if not media_search_payload.imdb_data:
             raise TrackerError("Missing IMDb data")
         if not media_search_payload.tmdb_data:
             raise TrackerError("Missing TMDB data")
-        if not ptp_img_api_key:
-            raise TrackerError("Missing PTPIMG API key")
-
         data = {
             "submit": "true",
             "remaster_year": "",
@@ -304,7 +302,7 @@ class PTPUploader:
                 raise TrackerError(
                     "Couldn't automatically detect a poster for PassThePopcorn"
                 )
-            ptp_url = self._ptp_img_upload(get_poster, ptp_img_api_key)
+            image_box_url = self._upload_poster_to_imgbox(get_poster)
 
             tags = ""
             get_tags = media_search_payload.imdb_data.genres
@@ -322,7 +320,7 @@ class PTPUploader:
                 "year": media_search_payload.imdb_data.year
                 if media_search_payload.imdb_data.year
                 else media_search_payload.tmdb_data.get("year", ""),
-                "image": ptp_url,
+                "image": image_box_url,
                 "tags": tags,
                 "album_desc": media_search_payload.imdb_data.plot
                 if media_search_payload.imdb_data.plot
@@ -378,33 +376,31 @@ class PTPUploader:
             else:
                 return True
 
-    def _ptp_img_upload(self, image_url: str, ptp_img_api_key: str) -> str:
-        payload = {
-            "format": "json",
-            "api_key": ptp_img_api_key,
-            "link-upload": image_url,
-        }
-        headers = {"referer": "https://ptpimg.me/index.php"}
-        url = "https://ptpimg.me/upload.php"
-
-        response = niquests.post(url, headers=headers, data=payload)
+    def _upload_poster_to_imgbox(self, image_url: str) -> str:
+        """Download a new-group poster and host it on ImageBox for PTP."""
         try:
-            response_json = response.json()
-            ptpimg_code = response_json[0]["code"]
-            ptpimg_ext = response_json[0]["ext"]
-            img_url = f"https://ptpimg.me/{ptpimg_code}.{ptpimg_ext}"
-            return img_url
-        except Exception as e:
-            raise TrackerError(f"Failed to re host image to ptpimg host: {e}")
+            response = niquests.get(image_url, timeout=self.timeout)
+            response.raise_for_status()
+            poster_content = response.content
+            if poster_content is None:
+                raise TrackerError("Poster download returned no content")
+            with TemporaryDirectory(prefix="nfoforge-ptp-") as directory:
+                poster_path = Path(directory) / "poster.jpg"
+                poster_path.write_bytes(poster_content)
+                uploaded = asyncio.run(
+                    ImageBoxUploader().upload(
+                        ImageUploadRequest(filepaths=(poster_path,))
+                    )
+                )
+        except Exception as error:
+            raise TrackerError(
+                f"Failed to host PassThePopcorn poster on ImageBox: {error}"
+            ) from error
 
-    def _upload_images_to_ptp(self, urls: list[str], ptp_img_api_key: str) -> list[str]:
-        images = []
-        for img in urls:
-            if "ptpimg.me" not in img:
-                images.append(self._ptp_img_upload(img, ptp_img_api_key))
-            else:
-                images.append(img)
-        return images
+        image_data = uploaded.get(0)
+        if not image_data or not image_data.url:
+            raise TrackerError("ImageBox did not return a URL for the PTP poster")
+        return image_data.url
 
     def _extract_image_urls(self, url_data: str) -> list[str]:
         get_raw_url_images = re.findall(r"\[url=(.+?)\]", url_data)

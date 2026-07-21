@@ -7,7 +7,6 @@ import tomlkit
 
 from src.config.codec import TomlConfigCodec
 from src.config.dependencies import FindDependencies
-from src.config.migrations import migrate_unversioned_to_v2
 from src.config.models import AppConfig, ProgramConfig
 from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
@@ -136,18 +135,6 @@ class ConfigManager(TypedTomlOperations):
             loaded_text = config_path.read_text(encoding="utf-8")
             loaded_document = tomlkit.parse(loaded_text)
 
-            if "schema_version" not in loaded_document:
-                migrated_document = self._try_migrate_unversioned_profile(
-                    loaded_document, default_toml
-                )
-                if migrated_document is not None:
-                    loaded_text = self.codec.dumps(migrated_document)
-                    atomic_write_text(config_path, loaded_text)
-                    # re-parse so downstream merge/validate/decode operate on
-                    # a real TOML document, consistent with the normal
-                    # (non-migration) load path
-                    loaded_document = tomlkit.parse(loaded_text)
-
             self._config_snapshot = loaded_text
             try:
                 # Assigned atomically: only if the full validate/merge/decode
@@ -198,11 +185,6 @@ class ConfigManager(TypedTomlOperations):
         ``self._default_document``, then `decode` (which also runs
         `validate_settings`).
 
-        Shared by `load_profile` (the real load, ``dry_run=False``) and
-        `_try_migrate_unversioned_profile`'s trial validation
-        (``dry_run=True``, never persisted) so the two paths cannot drift
-        apart if this sequence ever changes.
-
         Returns the defaults-merged document. Raises whatever the
         underlying steps raise (e.g. `ConfigSchemaError`, `ConfigError`) on
         failure.
@@ -212,52 +194,12 @@ class ConfigManager(TypedTomlOperations):
         # Normalize legacy integer 0/1 tracker flags to bool where the default
         # declares a bool, before per-key type validation. This self-heals both
         # a config the app previously wrote as a real bool (default now bool ->
-        # no-op) and one still holding the old int representation (e.g. a
-        # schema-1 migration that copied the tracker section forward verbatim).
+        # no-op) and one still holding the old integer representation from a
+        # hand-edited or earlier profile.
         self.codec.coerce_bool_flags(merged, self._default_document)
         self.codec.validate_types(merged, self._default_document)
         self.decode(merged, dry_run=dry_run)
         return merged
-
-    def _try_migrate_unversioned_profile(
-        self,
-        loaded_document: MutableMapping[str, Any],
-        default_toml: str,
-    ) -> MutableMapping[str, Any] | None:
-        """Attempt to migrate an unversioned ("schema 1") profile to schema 2.
-
-        Returns the migrated document on success -- but only after proving it
-        actually validates, by running it through the exact same validation
-        `load_profile` applies to a normal, already-current-schema config:
-        schema check, merge defaults, per-key type validation, and a decode
-        (which also runs `validate_settings`). That trial run happens on an
-        in-memory copy only (`decode(..., dry_run=True)`), never on the
-        document that gets persisted, so a migration that maps structurally
-        but produces an invalid document can't destroy the original file.
-
-        Returns ``None`` if migration is not possible (some section could
-        not be mapped), the migrated document fails validation, or anything
-        raised, in which case the caller must leave the original
-        document/file untouched and fall through to the normal
-        `ConfigSchemaError` path so the existing archive+regenerate flow can
-        take over.
-        """
-        try:
-            migrated_document, unmapped = migrate_unversioned_to_v2(
-                loaded_document, self._default_document
-            )
-        except Exception:
-            return None
-        if unmapped:
-            return None
-
-        try:
-            trial_document = tomlkit.parse(self.codec.dumps(migrated_document))
-            self._validate_document(trial_document, default_toml, dry_run=True)
-        except Exception:
-            return None
-
-        return migrated_document
 
     def save_as(self, save_path: Path) -> None:
         """Save the current settings under a new profile name."""

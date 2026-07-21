@@ -23,7 +23,6 @@ from src.payloads.image_hosts import (
     ImageBBPayload,
     ImageBoxPayload,
     ImagePayloadBase,
-    PTPIMGPayload,
 )
 from src.payloads.trackers import (
     AitherInfo,
@@ -322,7 +321,6 @@ class ImageHostSettings:
     chevereto_v4: CheveretoV4Payload
     image_bb: ImageBBPayload
     image_box: ImageBoxPayload
-    ptpimg: PTPIMGPayload
 
     def by_selection(self) -> dict[ImageHost, ImagePayloadBase]:
         return {
@@ -330,7 +328,6 @@ class ImageHostSettings:
             ImageHost.CHEVERETO_V4: self.chevereto_v4,
             ImageHost.IMAGE_BB: self.image_bb,
             ImageHost.IMAGE_BOX: self.image_box,
-            ImageHost.PTPIMG: self.ptpimg,
         }
 
 

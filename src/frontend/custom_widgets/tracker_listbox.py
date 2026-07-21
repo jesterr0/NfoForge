@@ -2,13 +2,12 @@ from collections.abc import Set as AbstractSet
 from enum import Enum
 from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QFrame,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMenu,
@@ -27,7 +26,6 @@ from src.enums.url_type import URLType
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.url_organizer import URLOrganizer
-from src.frontend.global_signals import GSigs
 from src.frontend.utils import build_h_line
 from src.payloads.trackers import TrackerInfo
 
@@ -1448,29 +1446,9 @@ class TrackerListWidget(QWidget):
         tracker_attributes: TrackerInfo = self.config.settings.trackers.by_selection()[
             curr_tracker
         ]
-        if curr_tracker is TrackerSelection.PASS_THE_POPCORN:
-            if not self._validate_ptp():
-                self._update_check_no_signals(item, column, Qt.CheckState.Unchecked)
-                return
         tracker_attributes.enabled = (
             True if item.checkState(column) == Qt.CheckState.Checked else False
         )
-
-    def _validate_ptp(self) -> bool:
-        if not self.config.settings.image_hosts.ptpimg.api_key:
-            text, ok = QInputDialog.getText(
-                self,
-                "PTPIMG",
-                "PassThePopcorn requires PTPIMG key, please add this now.",
-            )
-            if ok and text:
-                text = text.strip()
-                self.config.settings.image_hosts.ptpimg.api_key = text
-                self.config.save()
-                QTimer.singleShot(1, GSigs().settings_refresh.emit)
-            else:
-                return False
-        return True
 
     def _update_check_no_signals(
         self, item: QTreeWidgetItem, column: int, check_state: Qt.CheckState
