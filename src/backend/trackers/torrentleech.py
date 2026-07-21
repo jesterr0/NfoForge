@@ -27,6 +27,7 @@ def tl_upload(
     media_type: MediaType,
     is_pack: bool,
     timeout: int,
+    is_anime: bool = False,
 ) -> bool | None:
     uploader = TLUploader(announce_key=announce_key, timeout=timeout)
     return uploader.upload(
@@ -36,6 +37,7 @@ def tl_upload(
         mediainfo_obj=mediainfo_obj,
         media_type=media_type,
         is_pack=is_pack,
+        is_anime=is_anime,
     )
 
 
@@ -58,10 +60,17 @@ class TLUploader:
         mediainfo_obj: MediaInfo,
         media_type: MediaType,
         is_pack: bool,
+        is_anime: bool = False,
     ) -> bool | None:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
-        data = self._get_data(torrent_file.stem, get_resolution, media_type, is_pack)
+        data = self._get_data(
+            torrent_file.stem,
+            get_resolution,
+            media_type,
+            is_pack,
+            is_anime,
+        )
         if tracker_title:
             data["name"] = self.generate_release_title(tracker_title)
 
@@ -102,10 +111,13 @@ class TLUploader:
         resolution: str,
         media_type: MediaType,
         is_pack: bool = False,
+        is_anime: bool = False,
     ) -> dict[str, str | int]:
         return {
             "announcekey": self.announce_key,
-            "category": self._detect_category(title, resolution, media_type, is_pack),
+            "category": self._detect_category(
+                title, resolution, media_type, is_pack, is_anime
+            ),
         }
 
     @staticmethod
@@ -114,9 +126,11 @@ class TLUploader:
         resolution: str,
         media_type: MediaType,
         is_pack: bool = False,
+        is_anime: bool = False,
     ) -> int:
-        # TODO: This will still need some TLC. We need a cleaner way to determine whats what
-        # and pass it to all trackers
+        if is_anime:
+            return int(TLCategories.ANIME.value)
+
         title_lowered = title.lower()
         if media_type is MediaType.SERIES:
             if is_pack:

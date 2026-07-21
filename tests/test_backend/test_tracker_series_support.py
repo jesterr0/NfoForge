@@ -1,10 +1,12 @@
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pymediainfo import MediaInfo
 
+from src.backend.process import ProcessBackEnd, _is_anime_release
 from src.backend.trackers.aither import AitherUploader
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.darkpeers import DarkPeersUploader
@@ -25,6 +27,7 @@ from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.uploadcx import UploadCXUploader
 from src.enums.media_type import MediaType
+from src.enums.series import EpisodeFormat
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherType
 from src.enums.trackers.beyondhd import (
@@ -37,6 +40,8 @@ from src.enums.trackers.beyondhd import (
 from src.enums.trackers.morethantv import MTVCategories
 from src.enums.trackers.torrentleech import TLCategories
 from src.exceptions import TrackerError
+from src.payloads.media_inputs import MediaInputPayload
+from src.payloads.media_search import MediaSearchPayload
 
 
 @pytest.mark.parametrize(
@@ -121,6 +126,84 @@ def test_torrentleech_series_category_mapping(
         )
         == expected.value
     )
+
+
+@pytest.mark.parametrize(
+    ("title", "resolution", "media_type", "is_pack"),
+    [
+        ("Example.Film.2026.2160p.BluRay", "2160p", MediaType.MOVIE, False),
+        ("Example.Show.S01.1080p.WEB-DL", "1080p", MediaType.SERIES, True),
+        ("Example.Show.S01E01.1080p.WEB-DL", "1080p", MediaType.SERIES, False),
+    ],
+)
+def test_torrentleech_anime_category_overrides_standard_categories(
+    title: str, resolution: str, media_type: MediaType, is_pack: bool
+) -> None:
+    assert (
+        TLUploader._detect_category(
+            title=title,
+            resolution=resolution,
+            media_type=media_type,
+            is_pack=is_pack,
+            is_anime=True,
+        )
+        == TLCategories.ANIME.value
+    )
+
+
+@pytest.mark.parametrize(
+    ("anilist_id", "anilist_data", "episode_format", "expected"),
+    [
+        ("123", None, EpisodeFormat.STANDARD, True),
+        (None, {"id": "123"}, EpisodeFormat.STANDARD, True),
+        (None, None, EpisodeFormat.ANIME_ABSOLUTE, True),
+        (None, None, EpisodeFormat.STANDARD, False),
+    ],
+)
+def test_torrentleech_anime_signal_uses_metadata_or_series_format(
+    anilist_id: str | None,
+    anilist_data: dict[str, str] | None,
+    episode_format: EpisodeFormat,
+    expected: bool,
+) -> None:
+    media_input = MediaInputPayload(series_episode_format=episode_format)
+    media_search = MediaSearchPayload(
+        anilist_id=anilist_id,
+        anilist_data=anilist_data,
+    )
+
+    assert _is_anime_release(media_input, media_search) is expected
+
+
+@patch("src.backend.process.tl_upload", return_value=True)
+def test_torrentleech_upload_receives_derived_anime_signal(
+    tl_upload: MagicMock,
+) -> None:
+    process = object.__new__(ProcessBackEnd)
+    process.config = MagicMock()
+    process.config.settings.trackers.torrent_leech.torrent_passkey = "announce-key"
+    process.config.settings.general.timeout = 60
+
+    context = MagicMock()
+    context.media_input.require_first_file.return_value = Path("episode.mkv")
+    context.media_input.require_mediainfo.return_value = MagicMock()
+    context.media_input.require_media_type.return_value = MediaType.SERIES
+    context.media_input.series_episode_format = EpisodeFormat.STANDARD
+    context.media_search = MediaSearchPayload(anilist_id="123")
+    release_info = MagicMock(is_pack=False)
+
+    assert (
+        process.upload(
+            tracker=TrackerSelection.TORRENT_LEECH,
+            torrent_file=Path("release.torrent"),
+            nfo="",
+            tracker_title="Example Show",
+            context=context,
+            release_info=release_info,
+        )
+        is True
+    )
+    assert tl_upload.call_args.kwargs["is_anime"] is True
 
 
 @pytest.mark.parametrize(

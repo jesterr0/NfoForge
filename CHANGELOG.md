@@ -126,6 +126,7 @@
 - Now supports latest deluge-web-client (=>2.x.x)
 - Remove support for PTPIMG
 - Optimized UNIT3D torrent re-download with regression testing
+- Properly detect and pass anime to TorrentLeech
 
 ### Fixed
 
