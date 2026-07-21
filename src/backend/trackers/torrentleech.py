@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import niquests
+from niquests.cookies import RequestsCookieJar
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
@@ -310,8 +311,8 @@ class TLSearch:
                 )
 
         response = self._session.get(self.LOGIN_URL, timeout=self.timeout)
-        # cookies = cast(Mapping[str, str], response.cookies)
-        cookies = response.cookies
+        # below isn't properly typed in niquests
+        cookies: dict[Any, Any] = response.cookies  # type: ignore
         csrf_token = cookies.get("csrf_token")
 
         data = {
