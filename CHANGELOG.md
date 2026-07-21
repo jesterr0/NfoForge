@@ -122,7 +122,7 @@
 - New template button is now a drop down menu that allows the user to select a series vs. movies template for a basic default template designed for that media type
 - Added early tracker UX guard
   - Series workflows disable known unsupported trackers: PTP and ReelFliX.
-- Add mypy for static type checking for most of the codebase (TODO: edit this before release to say for full code base)
+- Add mypy for static type checking for most of the codebase
 - Now supports latest deluge-web-client (=>2.x.x)
 
 ### Fixed
