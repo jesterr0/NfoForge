@@ -1,8 +1,10 @@
 from pathlib import Path
+from typing import cast
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QDialogButtonBox,
     QLabel,
@@ -16,6 +18,24 @@ from src.frontend.utils import set_top_parent_geometry
 
 class RenamePreviewDialog(QDialog):
     """Dialog to preview file/folder renames with diff-style visualization."""
+
+    THEMES = {
+        "dark": {
+            "removed_bg": "#5a2626",
+            "removed_fg": "#ffcdd2",
+            "added_bg": "#2a5233",
+            "added_fg": "#c8e6c9",
+        },
+        "light": {
+            "removed_bg": "#ffc8c8",
+            "removed_fg": "#6b1010",
+            "added_bg": "#c8ffc8",
+            "added_fg": "#0f5323",
+        },
+    }
+
+    # class level default so `event()` is safe if a palette change lands mid construction
+    _rename_map: dict[Path, Path] | None = None
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -61,6 +81,14 @@ class RenamePreviewDialog(QDialog):
         Args:
             rename_map: Dictionary mapping original paths to renamed paths
         """
+        self._rename_map = rename_map
+        self._render_renames()
+
+    def _render_renames(self) -> None:
+        """Render the stored rename map using colors for the active color scheme."""
+        rename_map = self._rename_map
+        self.text_viewer.clear()
+
         if not rename_map:
             self.text_viewer.setPlainText("No renames detected")
             self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
@@ -87,11 +115,17 @@ class RenamePreviewDialog(QDialog):
         bold_font.setBold(True)
         bold_format.setFont(bold_font)
 
+        # explicit foregrounds are required, the default text color is light in dark
+        # mode and would be unreadable against the highlight background
+        colors = self.get_theme_colors()
+
         removed_format = QTextCharFormat()
-        removed_format.setBackground(QColor(255, 200, 200))  # light red
+        removed_format.setBackground(QColor(colors["removed_bg"]))
+        removed_format.setForeground(QColor(colors["removed_fg"]))
 
         added_format = QTextCharFormat()
-        added_format.setBackground(QColor(200, 255, 200))  # light green
+        added_format.setBackground(QColor(colors["added_bg"]))
+        added_format.setForeground(QColor(colors["added_fg"]))
 
         normal_format = QTextCharFormat()
 
@@ -139,6 +173,19 @@ class RenamePreviewDialog(QDialog):
         # move cursor to start
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.text_viewer.setTextCursor(cursor)
+
+    def event(self, e: QEvent) -> bool:
+        if e.type() == QEvent.Type.PaletteChange and self._rename_map is not None:
+            self._render_renames()
+        return super().event(e)
+
+    def get_theme_colors(self) -> dict[str, str]:
+        app = cast(QApplication | None, QApplication.instance())
+        if app:
+            color_scheme = app.styleHints().colorScheme()
+            scheme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
+            return self.THEMES[scheme]
+        return self.THEMES["light"]
 
     def _get_diff_parts(
         self, old: str, new: str
