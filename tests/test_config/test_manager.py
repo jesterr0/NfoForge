@@ -347,32 +347,13 @@ def test_manager_rejects_invalid_newline_sequence(
         ConfigManager("test", paths)
 
 
-def test_load_profile_rejects_legacy_config_without_mutating(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
-        lambda self, dependencies: None,
-    )
-    paths = _paths(tmp_path)
-    profile = paths.user_configs / "test.toml"
-    profile.parent.mkdir(parents=True)
-    fixture_text = Path("tests/test_config/fixtures/schema1_config.toml").read_text(
-        encoding="utf-8"
-    )
-    profile.write_text(fixture_text, encoding="utf-8")
-
-    with pytest.raises(ConfigSchemaError, match="Missing configuration schema_version"):
-        ConfigManager("test", paths)
-
-    assert profile.read_text(encoding="utf-8") == fixture_text
-    assert not (profile.parent / "old_configs").exists()
-
-
 def test_load_profile_rejects_unversioned_config_without_mutating(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Unversioned configs are handed to the archive-and-regenerate flow."""
+    """An unversioned config the migration chain cannot fully map (here: no
+    `[movie_rename]` section at all) is handed to the archive-and-regenerate
+    flow, with the original left untouched. ConfigManager never auto-archives.
+    """
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
@@ -674,29 +655,6 @@ def test_int_tracker_flag_is_coerced_and_persisted_as_bool(
     ConfigManager("test", paths)  # a fresh load of the healed file is clean
 
 
-def test_schema1_int_tracker_flags_are_rejected(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Breaking-schema profiles are rejected before legacy values are loaded."""
-    monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
-        lambda self, dependencies: None,
-    )
-    paths = _paths(tmp_path)
-    profile = paths.user_configs / "test.toml"
-    profile.parent.mkdir(parents=True)
-    fixture_text = Path("tests/test_config/fixtures/schema1_config.toml").read_text(
-        encoding="utf-8"
-    )
-    assert "anonymous = 0" in fixture_text  # guard: the fixture is the int form
-    profile.write_text(fixture_text, encoding="utf-8")
-
-    with pytest.raises(ConfigSchemaError, match="Missing configuration schema_version"):
-        ConfigManager("test", paths)
-
-    assert profile.read_text(encoding="utf-8") == fixture_text
-
-
 def test_coerce_bool_flags_normalizes_int_flags() -> None:
     """`coerce_bool_flags` turns a persisted int 0/1 into a bool where the
     default declares a bool, and leaves genuine ints, enum-backed ints and
@@ -845,3 +803,135 @@ def test_default_season_folder_token_is_scene_style() -> None:
     # no episode tokens belong in a season-pack folder name
     assert "{episode_number" not in token
     assert "{episode_title_clean}" not in token
+
+
+def _write_fixture_profile(paths: ConfigPaths, fixture: str) -> tuple[Path, str]:
+    """Install a fixture config as the "test" profile. Returns the profile
+    path and the exact text written, so a test can assert the file was left
+    byte-for-byte untouched."""
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True, exist_ok=True)
+    text = Path(f"tests/test_config/fixtures/{fixture}").read_text(encoding="utf-8")
+    profile.write_text(text, encoding="utf-8")
+    return profile, text
+
+
+def test_load_profile_migrates_schema1_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A schema-1 profile must be carried all the way to the current schema
+    version by the migration chain, not just to the next version up."""
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile, _ = _write_fixture_profile(paths, "schema1_config.toml")
+
+    manager = ConfigManager("test", paths)  # should migrate, not raise
+
+    reloaded = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    assert reloaded["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
+    assert reloaded["movie_management"]["mvr_release_group"] == "CustomReleaseGroup"
+    assert "movie_rename" not in reloaded
+    # migrated in place; the archive/backup path must not have been taken
+    assert not (profile.parent / "old_configs").exists()
+    assert manager.settings.movie.release_group == "CustomReleaseGroup"
+    assert manager.settings.trackers.more_than_tv.username == "custom_mtv_user"
+
+
+def test_load_profile_migrates_schema2_to_current(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reported regression: a schema-2 profile (every user who ran a
+    build between the two bumps) must migrate rather than being rejected as
+    unsupported and offered an archive+regenerate."""
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile, _ = _write_fixture_profile(paths, "schema2_config.toml")
+
+    manager = ConfigManager("test", paths)  # should migrate, not raise
+
+    reloaded = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    assert reloaded["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
+    # user settings survive the hop
+    assert manager.settings.general.releasers_name == "SchemaTwoUser"
+    assert manager.settings.movie.release_group == "SchemaTwoGroup"
+    # the removed image host is dropped, taking its stale API key with it
+    image_hosts = cast(MutableMapping[str, Any], reloaded["image_hosts"])
+    assert "ptpimg" not in image_hosts
+    assert "dead-ptpimg-key" not in profile.read_text(encoding="utf-8")
+    assert not (profile.parent / "old_configs").exists()
+
+
+def test_migration_validation_failure_preserves_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A config that migrates structurally (no `unmapped` sections) but whose
+    resulting document fails validation must NOT be written to disk. The
+    manager must fall through to the same `ConfigSchemaError`
+    archive/regenerate path used when migration can't map sections at all,
+    leaving the original file byte-for-byte untouched.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile, fixture_text = _write_fixture_profile(paths, "schema1_config.toml")
+
+    # Force the post-migration validation step to fail, simulating a
+    # migrated document that maps structurally but doesn't actually
+    # validate (e.g. a bad type/value that survived the section mapping).
+    original_decode = ConfigManager.decode
+
+    def fake_decode(
+        self: object,
+        toml_data: object,
+        build_defaults: bool = False,
+        dry_run: bool = False,
+    ) -> None:
+        if dry_run:
+            raise ConfigError("forced migration validation failure")
+        return original_decode(self, toml_data, build_defaults=build_defaults)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ConfigManager, "decode", fake_decode)
+
+    with pytest.raises(ConfigError, match="Missing configuration schema_version"):
+        ConfigManager("test", paths)
+
+    # the original schema-1 file must be left completely untouched -- no
+    # partial/invalid migrated document was ever persisted
+    assert profile.read_text(encoding="utf-8") == fixture_text
+    assert not (profile.parent / "old_configs").exists()
+
+
+def test_schema1_int_tracker_flags_load_as_bool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real release users are on schema 1, which stored the tracker flags as
+    the int `0`. Migrating -- to a schema whose default declares them `bool`
+    -- must coerce them so the migrated document validates, instead of
+    tripping `validate_types` and forcing an archive+regenerate on upgrade.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile, fixture_text = _write_fixture_profile(paths, "schema1_config.toml")
+    assert "anonymous = 0" in fixture_text  # guard: the fixture is the int form
+
+    manager = ConfigManager("test", paths)  # must migrate + load, not raise
+
+    assert manager.settings.trackers.more_than_tv.anonymous is False
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    assert saved["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
+    saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
+    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
+    raw = saved_mtv["anonymous"]
+    raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
+    assert type(raw) is bool

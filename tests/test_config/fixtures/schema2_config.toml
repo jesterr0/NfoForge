@@ -1,0 +1,581 @@
+schema_version = 2
+
+[general]
+ui_suffix = ""
+ui_scale_factor = 1.0
+nfo_forge_theme = 1
+enable_plugins = false
+releasers_name = "SchemaTwoUser"
+tmdb_language = "en-US"
+timeout = 60
+enable_prompt_overview = true
+enable_mkbrr = true
+log_level = 20
+log_total = 50
+working_dir = ""
+
+[dependencies]
+ffmpeg = ""
+ffprobe = ""
+frame_forge = ""
+mkbrr = ""
+
+[api_keys]
+tmdb_api_key = ""
+
+[tracker.settings]
+tracker_order = []
+last_used_img_host = {}
+
+[tracker.more_than_tv]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "MTV"
+comments = ""
+nfo_template = ""
+max_piece_size = 8000000
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_colon_replace = 3
+mvr_title_token_override = ""
+mvr_title_replace_map = [['''\s''', "."]]
+anonymous = false
+api_key = ""
+username = ""
+password = ""
+totp = ""
+group_description = ""
+additional_tags = ""
+source_origin = 1
+image_width = 350
+
+[tracker.torrent_leech]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "TorrentLeech.org"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 2
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = ""
+mvr_title_replace_map = [["\\.", "[space]"]]
+mvr_title_colon_replace = 3
+username = ""
+password = ""
+torrent_passkey = ""
+alt_2_fa_token = ""
+
+[tracker.beyond_hd]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "BHD"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+anonymous = false
+api_key = ""
+rss_key = ""
+promo = 0
+live_release = 1
+internal = false
+image_width = 350
+add_localization_to_custom_edition = false
+stream_optimized = false
+
+[tracker.pass_the_popcorn]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "PTP"
+comments = ""
+nfo_template = ""
+max_piece_size = 16777216
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_user = ""
+api_key = ""
+username = ""
+password = ""
+totp = ""
+
+[tracker.reelflix]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "ReelFliX"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+stream_optimized = false
+opt_in_to_mod_queue = false
+featured = false
+free = false
+double_up = false
+sticky = false
+image_width = 350
+
+[tracker.aither]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "Aither"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+stream_optimized = false
+opt_in_to_mod_queue = false
+featured = false
+free = false
+double_up = false
+sticky = false
+image_width = 350
+
+[tracker.huno]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "HUNO"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {video_codec} {video_dynamic_range} {audio_codec} {audio_channel_s} {audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+stream_optimized = false
+image_width = 350
+
+[tracker.lst]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "LST"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+mod_queue_opt_in = false
+draft_queue_opt_in = false
+featured = false
+free = false
+double_up = false
+sticky = false
+image_width = 500
+
+[tracker.dark_peers]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "DarkPeers"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.shareisland]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "ShareIsland"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {audio_language_all_full|upper|replace(' ',' - ')} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+opt_in_to_mod_queue = false
+image_width = 350
+
+[tracker.uploadcx]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "ULCX"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.only_encodes]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "OE"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[torrent_client]
+
+[torrent_client.qbittorrent]
+enabled = false
+host = "http://127.0.0.1"
+port = 0
+user = ""
+password = ""
+specific_params = { "category" = "", "super_seeding" = false }
+
+[torrent_client.deluge]
+enabled = false
+host = "http://127.0.0.1"
+port = 0
+user = ""
+password = ""
+specific_params = { "label" = "", "path" = "" }
+
+[torrent_client.rtorrent]
+enabled = false
+host = "https://<user>:<password>@www.url.com/plugins/httprpc/action.php"
+port = 0
+user = ""
+password = ""
+specific_params = { "label" = "", "path" = "" }
+
+[torrent_client.transmission]
+enabled = false
+host = "http://<user>:<password>@127.0.0.1/transmission/rpc"
+port = 0
+user = ""
+password = ""
+specific_params = { "label" = "", "path" = "" }
+
+[watch_folder]
+enabled = false
+path = ""
+
+[movie_management]
+mvr_enabled = true
+mvr_replace_illegal_chars = true
+mvr_colon_replace_filename = 3
+mvr_colon_replace_title = 3
+mvr_parse_filename_attributes = true
+mvr_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+mvr_title_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+# TODO: move to global at the top?
+mvr_release_group = "SchemaTwoGroup"
+
+[series_management]
+tvr_enabled = true
+tvr_replace_illegal_chars = true
+tvr_colon_replace_filename = 3
+tvr_colon_replace_title = 3
+tvr_parse_filename_attributes = true
+tvr_standard_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_daily_episode_token = "{title_clean} {episode_air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_anime_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_season_folder_token = "{title_clean} S{season_number|zfill(2)} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_multi_episode_style = 4
+tvr_standard_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_daily_title_token = "{title_clean} {episode_air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_anime_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_release_group = ""
+
+[global_management]
+title_clean_rules = [
+    [
+        "",
+        "[unidecode]",
+    ],
+    [
+        "&",
+        "and",
+    ],
+    [
+        "'",
+        "[remove]",
+    ],
+    [
+        "[^a-zA-Z0-9]",
+        "[space]",
+    ],
+    [
+        '\s{2,}',
+        "[space]",
+    ],
+]
+title_clean_rules_modified = false
+
+[global_management.video_dynamic_range.resolutions]
+720p = false
+1080p = false
+2160p = true
+
+[global_management.video_dynamic_range.hdr_types]
+SDR = true
+PQ = false
+HLG = false
+HDR10 = true
+"HDR10+" = true
+DV = true
+"DV HDR10" = true
+"DV HDR10+" = true
+
+[global_management.video_dynamic_range.custom_strings]
+SDR = "SDR"
+PQ = ""
+HLG = ""
+HDR10 = "HDR"
+"HDR10+" = "HDR10Plus"
+DV = "DV"
+"DV HDR10" = "DV HDR"
+"DV HDR10+" = "DV HDR10Plus"
+
+[user_tokens.tokens]
+
+[screenshots]
+crop_mode = 2
+screenshots_enabled = false
+screen_shot_count = 20
+ss_mode = 1
+sub_size_height_720 = 12
+sub_size_height_1080 = 16
+sub_size_height_2160 = 32
+subtitle_alignment = 7
+subtitle_color = "#f5c70a"
+subtitle_outline_color = "#000000"
+trim_start = 20
+trim_end = 20
+min_required_selected_screens = 4
+max_required_selected_screens = 12
+comparison_subtitles = true
+comparison_subtitle_source_name = "Source"
+comparison_subtitle_encode_name = "Encode"
+optimize_generated_images = true
+optimize_dl_url_images = true
+optimize_dl_url_images_percentage = 0.25
+indexer = 1
+image_plugin = 1
+
+[image_hosts.chevereto_v3]
+enabled = false
+base_url = ""
+user = ""
+password = ""
+
+[image_hosts.chevereto_v4]
+enabled = false
+base_url = ""
+api_key = ""
+
+[image_hosts.image_bb]
+enabled = false
+base_url = "https://api.imgbb.com/"
+api_key = ""
+
+[image_hosts.image_box]
+enabled = false
+base_url = "https://imgbox.com/"
+
+[image_hosts.ptpimg]
+enabled = false
+base_url = "https://ptpimg.me/"
+api_key = "dead-ptpimg-key"
+
+[urls]
+alt = ""
+columns = 1
+vertical = 1
+horizontal = 1
+mode = 0
+type = 1
+image_width = 0
+urls_manual = 0
+
+[plugins]
+wizard_page = ""
+token_replacer = ""
+pre_upload = ""
+
+[template_settings]
+block_syntax_color = "#A4036F"
+variable_syntax_color = "#048BA8"
+comment_syntax_color = "#16DB93"
+trim_blocks = 1
+lstrip_blocks = 1
+newline_sequence = "\n"
+keep_trailing_newline = 0
+enable_sandbox_prompt_tokens = true
+
+[release_notes]
+enable_release_notes = false
+last_used_release_note = ""
+
+[release_notes.notes]
+
+[widget_settings]
+prompt_token_editor_warn_on_missing = true

@@ -132,10 +132,11 @@ class NfoForge:
     def _handle_config_schema_error(self, error: ConfigSchemaError) -> None:
         # note: by the time this fires, ConfigManager has already attempted
         # an automatic in-place migration (see `ConfigManager.load_profile`
-        # / `migrate_unversioned_to_v2`) and either it wasn't applicable
-        # (schema_version present but unsupported) or it failed to fully
-        # account for the user's settings. Either way, settings cannot be
-        # preserved from here, so this dialog makes that explicit.
+        # / `migrate_document`) and either it wasn't applicable (the config
+        # declares a version newer than this build supports, or a malformed
+        # one) or it failed to fully account for the user's settings. Either
+        # way, settings cannot be preserved from here, so this dialog makes
+        # that explicit.
         config_path = error.config_path
         if not config_path:
             self._error_on_splash(str(error))
