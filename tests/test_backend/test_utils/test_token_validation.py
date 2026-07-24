@@ -55,10 +55,9 @@ def test_for_loop_target_is_not_flagged() -> None:
 
 
 def test_if_nested_set_is_not_flagged() -> None:
-    # The leading top-level `{% set s = '' %}` means `s` is never reported by
-    # `find_undeclared_variables` in the first place, and the constant `{% if
-    # 1 %}` condition is folded away -- so this also passes regardless of
-    # `_bound_names`.
+    # The leading top-level `{% set s = '' %}` means `s` is already bound at
+    # an outer scope, so `find_undeclared_variables` never reports it in the
+    # first place -- this also passes regardless of `_bound_names`.
     template = "{% set s = '' %}{% if 1 %}{% set s = 'v' %}{% endif %}{{ s }}"
     assert find_unknown_tokens(template, _env()) == set()
 

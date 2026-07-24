@@ -46,10 +46,10 @@ def _bound_names(node: nodes.Node) -> set[str]:
 
     `meta.find_undeclared_variables` is already scope-aware and omits most
     `{% set %}` bindings by itself. It can still report one bound inside an
-    `{% if %}` -- Jinja lets that binding leak out of the block, but whether
-    the analyzer catches it depends on the condition not being constant-
-    folded and there being no same-named binding at an outer scope -- so
-    those are collected here to keep a working template from being flagged.
+    `{% if %}` -- Jinja lets that binding leak out of the block, and the
+    analyzer only omits it when a same-named binding already exists at an
+    outer scope -- so those are collected here to keep a working template
+    from being flagged.
 
     Recurses rather than using `find_all` so the walk can stop at a scope
     boundary. `Node.find_all` yields descendants but not the node it is called
