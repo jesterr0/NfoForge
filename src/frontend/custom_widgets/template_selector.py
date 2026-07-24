@@ -629,33 +629,40 @@ class TemplateSelector(QWidget):
                 self.text_edit.setReadOnly(False)
                 raise
 
-            try:
-                if self.config.settings.general.enable_plugins:
-                    token_replacer_plugin = self.config.settings.plugins.token_replacer
-                    if token_replacer_plugin:
-                        plugin = self.config.plugin_registry.plugins[
-                            token_replacer_plugin
-                        ].token_replacer
-                        if plugin and callable(plugin):
-                            selected_template = self.template_combo.currentText()
-                            tracker_s = [
-                                tracker
-                                for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
-                                if tracker_settings.nfo_template == selected_template
-                            ]
-                            replace_tokens = plugin(
-                                config=self.config, input_str=nfo, tracker_s=tracker_s
-                            )
-                            nfo = replace_tokens if replace_tokens else nfo
-            except Exception:
-                # we attempt to execute the plugin, but since some data is filled in process step
-                # it might not be available.
-                pass
-
-            self.text_edit.setPlainText(nfo)
+            self.text_edit.setPlainText(self._apply_token_replacer_plugin(nfo))
         else:
             self.text_edit.setReadOnly(False)
             self.text_edit.setPlainText(self.old_text if self.old_text else "")
+
+    def _apply_token_replacer_plugin(self, nfo: str) -> str:
+        """Fill the token replacer plugin's tokens for the preview.
+
+        Returns the NFO unchanged when no plugin applies, or when the plugin
+        cannot render.
+        """
+        try:
+            if self.config.settings.general.enable_plugins:
+                token_replacer_plugin = self.config.settings.plugins.token_replacer
+                if token_replacer_plugin:
+                    plugin = self.config.plugin_registry.plugins[
+                        token_replacer_plugin
+                    ].token_replacer
+                    if plugin and callable(plugin):
+                        selected_template = self.template_combo.currentText()
+                        tracker_s = [
+                            tracker
+                            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
+                            if tracker_settings.nfo_template == selected_template
+                        ]
+                        replace_tokens = plugin(
+                            config=self.config, input_str=nfo, tracker_s=tracker_s
+                        )
+                        nfo = replace_tokens if replace_tokens else nfo
+        except Exception:
+            # we attempt to execute the plugin, but since some data is filled in process step
+            # it might not be available.
+            pass
+        return nfo
 
     @Slot()
     def maximize_template(self) -> None:
