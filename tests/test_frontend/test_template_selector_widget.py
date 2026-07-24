@@ -77,3 +77,73 @@ def test_set_syntax_highlights_replaces_rather_than_accumulates(
     selector.set_syntax_highlights(_static_patterns())
 
     assert len(selector.text_edit.highlighter.patterns_colors) == 2
+
+
+def test_unknown_token_pattern_is_appended_after_the_static_patterns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Order matters: the highlighter applies patterns in list order and later
+    # `setFormat` calls overwrite earlier ones for the same span, so the
+    # warning colour must be applied after the variable colour to win.
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.set_syntax_highlights(_static_patterns())
+    selector.text_edit.setPlainText("{{ mi_video_codec }}")
+
+    selector._refresh_unknown_tokens()
+
+    applied = selector.text_edit.highlighter.patterns_colors
+    assert len(applied) == 3
+    assert applied[-1].color.lower() == "#e1401d"
+    assert applied[-1].pattern.findall("{{ mi_video_codec }}") == ["mi_video_codec"]
+
+
+def test_no_extra_pattern_when_every_token_resolves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.set_syntax_highlights(_static_patterns())
+    selector.text_edit.setPlainText("{{ video_bit_rate }}")
+
+    selector._refresh_unknown_tokens()
+
+    assert len(selector.text_edit.highlighter.patterns_colors) == 2
+    assert selector.unknown_tokens == set()
+
+
+def test_unknown_tokens_are_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.text_edit.setPlainText(
+        "{{ mi_video_codec }} / {{ video_bit_rate }} / {{ mi_video_bit_rate }}"
+    )
+
+    selector._refresh_unknown_tokens()
+
+    assert selector.unknown_tokens == {"mi_video_codec", "mi_video_bit_rate"}
+
+
+def test_unparseable_template_clears_the_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.set_syntax_highlights(_static_patterns())
+    selector.text_edit.setPlainText("{% if %}")
+
+    selector._refresh_unknown_tokens()
+
+    assert selector.unknown_tokens == set()
+    assert len(selector.text_edit.highlighter.patterns_colors) == 2
+
+
+def test_blank_warning_colour_falls_back_to_the_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.config.settings.templates.warning_syntax_color = ""
+    selector.text_edit.setPlainText("{{ mi_video_codec }}")
+
+    selector._refresh_unknown_tokens()
+
+    applied = selector.text_edit.highlighter.patterns_colors
+    assert applied[-1].color.lower() == "#e1401d"

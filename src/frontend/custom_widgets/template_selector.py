@@ -24,6 +24,10 @@ from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import Tokens, TokenType
 from src.backend.utils.token_utils import get_prompt_tokens
+from src.backend.utils.token_validation import (
+    build_unknown_token_pattern,
+    find_unknown_tokens,
+)
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
@@ -94,6 +98,9 @@ class TemplateSelector(QWidget):
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
         self._static_highlights: list[HighlightKeywords] = []
+        self.unknown_tokens: set[str] = set()
+        self._unknown_token_timer = QTimer(self, singleShot=True, interval=400)
+        self._unknown_token_timer.timeout.connect(self._refresh_unknown_tokens)
         self.cached_sandbox_prompt_tokens: dict[str, str] | None = None
         self._del_timer = QTimer(self, singleShot=True, interval=3000)
         self._del_timer.timeout.connect(self._del_timer_done)
@@ -214,6 +221,7 @@ class TemplateSelector(QWidget):
             line_numbers=True, wrap_text=False, mono_font=True, parent=self
         )
         self.text_edit.save_contents.connect(self.save_template)
+        self.text_edit.textChanged.connect(self._unknown_token_timer.start)
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addLayout(self.template_control_layout)
@@ -239,9 +247,41 @@ class TemplateSelector(QWidget):
         self._static_highlights = list(patterns)
         self._apply_highlights()
 
+    @Slot()
+    def _refresh_unknown_tokens(self) -> None:
+        """Recompute the unknown-token set and reapply the highlights.
+
+        Advisory only: this never blocks an edit, a save, or a preview. While
+        the preview is showing, the editor holds rendered output rather than
+        template source, so the check is skipped.
+        """
+        if self.preview_btn.isChecked():
+            return
+
+        self.unknown_tokens = find_unknown_tokens(
+            self.text_edit.toPlainText(),
+            self.context.jinja_engine.environment,
+        )
+        self._apply_highlights()
+
     def _apply_highlights(self) -> None:
+        patterns = list(self._static_highlights)
+        unknown_pattern = build_unknown_token_pattern(self.unknown_tokens)
+        if unknown_pattern is not None:
+            # Falls back to the packaged default when the user has cleared the
+            # colour, rather than handing the highlighter an empty string. The
+            # three static colours guard the same way with `if <color>:` at
+            # `settings/templates.py:563-590`.
+            color = (
+                self.config.settings.templates.warning_syntax_color
+                or self.config.defaults.templates.warning_syntax_color
+            )
+            # Appended last so it overrides the variable colour on the same
+            # span: the highlighter applies patterns in order and later
+            # `setFormat` calls overwrite earlier ones.
+            patterns.append(HighlightKeywords(unknown_pattern, color, False))
         self.text_edit.clear_keyword_highlights()
-        self.text_edit.highlight_keywords(list(self._static_highlights))
+        self.text_edit.highlight_keywords(patterns)
 
     def create_template_index_map(self) -> dict[str, int]:
         return {name: i for i, name in enumerate(self.backend.templates.keys())}
