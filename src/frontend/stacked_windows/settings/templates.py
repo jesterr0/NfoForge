@@ -550,7 +550,9 @@ class TemplatesSettings(BaseSettings):
         self.update_template_selector_syntax()
 
     def update_template_selector_syntax(self) -> None:
-        self.template_selector.set_syntax_highlights(self.jinja_syntax_highlights())
+        self.template_selector.set_syntax_highlights(
+            self.jinja_syntax_highlights(), self.warning_syntax_color.get_hex_color()
+        )
 
     def _current_newline_sequence(self) -> str:
         value = self.newline_sequence.currentData()

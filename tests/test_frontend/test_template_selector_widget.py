@@ -80,6 +80,26 @@ def test_set_syntax_highlights_replaces_rather_than_accumulates(
     assert len(selector.text_edit.highlighter.patterns_colors) == 2
 
 
+def test_set_syntax_highlights_replaces_rather_than_accumulates_the_warning_pattern(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The invariant above is meaningless while `unknown_tokens` is empty, since
+    # there is no warning pattern either way. With one present and refreshed,
+    # reapplying the static patterns must rebuild -- not lose or duplicate --
+    # the warning pattern.
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.set_syntax_highlights(_static_patterns())
+    selector.text_edit.setPlainText("{{ mi_video_codec }}")
+    selector._refresh_unknown_tokens()
+
+    selector.set_syntax_highlights(_static_patterns())
+
+    assert (
+        len(selector.text_edit.highlighter.patterns_colors)
+        == len(_static_patterns()) + 1
+    )
+
+
 def test_unknown_token_pattern_is_appended_after_the_static_patterns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -148,6 +168,22 @@ def test_blank_warning_colour_falls_back_to_the_default(
 
     applied = selector.text_edit.highlighter.patterns_colors
     assert applied[-1].color.lower() == "#e1401d"
+
+
+def test_warning_colour_override_wins_over_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The settings picker passes its own value so the editor can live-preview
+    # a change before it is saved; config (unchanged here) must not win.
+    selector = _make_selector(tmp_path, monkeypatch)
+    assert selector.config.settings.templates.warning_syntax_color.lower() != "#00ff00"
+    selector.set_syntax_highlights(_static_patterns(), "#00ff00")
+    selector.text_edit.setPlainText("{{ mi_video_codec }}")
+
+    selector._refresh_unknown_tokens()
+
+    applied = selector.text_edit.highlighter.patterns_colors
+    assert applied[-1].color.lower() == "#00ff00"
 
 
 def test_status_message_is_unchanged_when_everything_resolves() -> None:

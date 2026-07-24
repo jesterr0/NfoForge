@@ -64,3 +64,20 @@ def test_apply_defaults_restores_warning_color(
     widget.apply_defaults()
 
     assert widget.warning_syntax_color.get_hex_color().lower() == "#e1401d"
+
+
+def test_warning_swatch_change_live_previews_the_editor_highlight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The embedded editor must recolour from the widget, not from config --
+    # config is only written in `_save_settings`, so this is what proves the
+    # sample line and the editor stay in sync before the user saves.
+    widget, _ = _make_templates_settings(tmp_path, monkeypatch)
+    widget.template_selector.text_edit.setPlainText("{{ mi_video_codec }}")
+    widget.template_selector._refresh_unknown_tokens()
+
+    widget.warning_syntax_color.update_color(QColor("#00ff00"))
+    widget.warning_syntax_color.color_changed.emit(QColor("#00ff00"))
+
+    applied = widget.template_selector.text_edit.highlighter.patterns_colors
+    assert applied[-1].color.lower() == "#00ff00"
