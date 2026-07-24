@@ -7,7 +7,10 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
-from src.frontend.custom_widgets.template_selector import TemplateSelector, saved_status_message
+from src.frontend.custom_widgets.template_selector import (
+    TemplateSelector,
+    saved_status_message,
+)
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
@@ -33,9 +36,7 @@ def _paths(tmp_path: Path) -> ConfigPaths:
     )
 
 
-def _make_selector(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> TemplateSelector:
+def _make_selector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TemplateSelector:
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
