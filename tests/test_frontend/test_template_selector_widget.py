@@ -105,7 +105,7 @@ def test_unknown_token_pattern_is_appended_after_the_static_patterns(
 ) -> None:
     # Order matters: the highlighter applies patterns in list order and later
     # `setFormat` calls overwrite earlier ones for the same span, so the
-    # warning colour must be applied after the variable colour to win.
+    # warning color must be applied after the variable color to win.
     selector = _make_selector(tmp_path, monkeypatch)
     selector.set_syntax_highlights(_static_patterns())
     selector.text_edit.setPlainText("{{ mi_video_codec }}")
@@ -157,7 +157,7 @@ def test_unparseable_template_clears_the_warning(
     assert len(selector.text_edit.highlighter.patterns_colors) == 2
 
 
-def test_blank_warning_colour_falls_back_to_the_default(
+def test_blank_warning_color_falls_back_to_the_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     selector = _make_selector(tmp_path, monkeypatch)
@@ -170,7 +170,7 @@ def test_blank_warning_colour_falls_back_to_the_default(
     assert applied[-1].color.lower() == "#e1401d"
 
 
-def test_warning_colour_override_wins_over_config(
+def test_warning_color_override_wins_over_config(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The settings picker passes its own value so the editor can live-preview

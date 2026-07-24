@@ -69,7 +69,7 @@ def test_apply_defaults_restores_warning_color(
 def test_warning_swatch_change_live_previews_the_editor_highlight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The embedded editor must recolour from the widget, not from config --
+    # The embedded editor must recolor from the widget, not from config --
     # config is only written in `_save_settings`, so this is what proves the
     # sample line and the editor stay in sync before the user saves.
     widget, _ = _make_templates_settings(tmp_path, monkeypatch)
@@ -110,9 +110,9 @@ def test_reload_after_cancel_resyncs_the_live_preview_override(
     # Guards the Cancel/reload desync: `_load_saved_settings` writes the
     # warning pair last, and `_update_warning_entry_text_color` (called
     # before the swatch itself is reset) pushes the live-preview override
-    # into the selector using the swatch's PRE-reset colour. Without an
+    # into the selector using the swatch's PRE-reset color. Without an
     # explicit re-sync after every swatch holds its final value, the
-    # embedded editor keeps highlighting with the colour the user backed
+    # embedded editor keeps highlighting with the color the user backed
     # out of.
     widget, _ = _make_templates_settings(tmp_path, monkeypatch)
     widget.template_selector.text_edit.setPlainText("{{ mi_video_codec }}")

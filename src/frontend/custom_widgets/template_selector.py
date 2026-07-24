@@ -259,7 +259,7 @@ class TemplateSelector(QWidget):
         highlight is appended to this list on every recompute and would
         otherwise be lost whenever a caller reapplies the static patterns.
 
-        `warning_color`, when given, overrides the configured warning colour
+        `warning_color`, when given, overrides the configured warning color
         so a picker widget can live-preview a change before it is saved. Pass
         None (the default) to fall back to config, which is what the wizard
         page does -- it has no picker widget of its own.
@@ -293,14 +293,14 @@ class TemplateSelector(QWidget):
             # before it is saved to config. Falls back to the packaged
             # default when both that and config are blank, rather than
             # handing the highlighter an empty string. The three static
-            # colours guard the same way with `if <color>:` at
+            # colors guard the same way with `if <color>:` at
             # `settings/templates.py:563-590`.
             color = (
                 self._warning_color
                 or self.config.settings.templates.warning_syntax_color
                 or self.config.defaults.templates.warning_syntax_color
             )
-            # Appended last so it overrides the variable colour on the same
+            # Appended last so it overrides the variable color on the same
             # span: the highlighter applies patterns in order and later
             # `setFormat` calls overwrite earlier ones.
             patterns.append(HighlightKeywords(unknown_pattern, color, False))

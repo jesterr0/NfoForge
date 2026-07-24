@@ -373,9 +373,9 @@ class TemplatesSettings(BaseSettings):
         # warning pair calls `_update_warning_entry_text_color` (which
         # pushes the live-preview override into the selector) BEFORE
         # `update_color` resets the swatch, so the selector is left holding
-        # the pre-reset colour -- and, being last, nothing after it re-syncs
+        # the pre-reset color -- and, being last, nothing after it re-syncs
         # the override. Re-run it explicitly so Cancel can't leave the
-        # embedded editor highlighting with a colour the user just backed
+        # embedded editor highlighting with a color the user just backed
         # out of.
         self.update_template_selector_syntax()
 
