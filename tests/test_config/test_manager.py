@@ -935,3 +935,28 @@ def test_schema1_int_tracker_flags_load_as_bool(
     raw = saved_mtv["anonymous"]
     raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
     assert type(raw) is bool
+
+
+def test_warning_syntax_color_backfills_when_a_profile_lacks_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A profile written before this key existed gains it on load.
+
+    This is why the key needs no schema bump: `merge_defaults` backfills any
+    key the packaged default declares but the profile lacks. If this test ever
+    fails, the key would need a migration rather than a default.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    del document["template_settings"]["warning_syntax_color"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")
+
+    assert manager.settings.templates.warning_syntax_color == "#E1401D"

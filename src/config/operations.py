@@ -1011,6 +1011,9 @@ class TypedTomlOperations:
             template_settings["comment_syntax_color"] = (
                 self.settings.templates.comment_syntax_color
             )
+            template_settings["warning_syntax_color"] = (
+                self.settings.templates.warning_syntax_color
+            )
             template_settings["trim_blocks"] = int(self.settings.templates.trim_blocks)
             template_settings["lstrip_blocks"] = int(
                 self.settings.templates.lstrip_blocks
@@ -1796,6 +1799,7 @@ class TypedTomlOperations:
                         template_settings["variable_syntax_color"]
                     ),
                     comment_syntax_color=str(template_settings["comment_syntax_color"]),
+                    warning_syntax_color=str(template_settings["warning_syntax_color"]),
                     trim_blocks=bool(template_settings["trim_blocks"]),
                     lstrip_blocks=bool(template_settings["lstrip_blocks"]),
                     newline_sequence=str(template_settings["newline_sequence"]),
