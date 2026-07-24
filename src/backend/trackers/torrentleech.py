@@ -232,8 +232,8 @@ class TLSearch:
     def _search_movie(self, file_input: str) -> list[TrackerSearchResult] | None:
         """
         Example output:
-        [{'fid': '241265476', 'filename': 'Chaos.Theory.2007.REPACK.BluRay.1080p.DD.5.1.x264-BHDStudio.torrent',
-        'name': 'Chaos Theory 2007 REPACK BluRay 1080p DD 5 1 x264-BHDStudio', 'addedTimestamp': '2024-04-22 00:13:12',
+        [{'fid': '241265476', 'filename': 'Some.File.2007.REPACK.BluRay.1080p.DD.5.1.x264-SomeGROUP.torrent',
+        'name': 'Some File 2007 REPACK BluRay 1080p DD 5 1 x264-SomeGROUP', 'addedTimestamp': '2024-04-22 00:13:12',
         'categoryID': 14, 'size': 5297940903, 'completed': 49, 'seeders': 23, 'leechers': 0, 'numComments': 0, 'tags':
         ['comedy', 'Drama', 'Romance'], 'new': False, 'imdbID': 'tt0460745', 'rating': 6.9, 'genres': 'Comedy, Drama,
         Romance', 'tvmazeID': '', 'igdbID': '', 'download_multiplier': 1, 'uploader': 'jlw4049'}]
