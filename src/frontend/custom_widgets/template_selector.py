@@ -42,6 +42,7 @@ from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.sandbox_wizard import SandboxMainWindow
+from src.logger.nfo_forge_logger import LOG
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -637,32 +638,60 @@ class TemplateSelector(QWidget):
     def _apply_token_replacer_plugin(self, nfo: str) -> str:
         """Fill the token replacer plugin's tokens for the preview.
 
-        Returns the NFO unchanged when no plugin applies, or when the plugin
-        cannot render.
+        Returns the NFO unchanged when no plugin applies, when the template does
+        not belong to exactly one tracker, or when the plugin fails. A preview is
+        not a run: a plugin that cannot render here must not stop the user
+        editing, so a failure is reported and the host's own output kept.
         """
+        if not self.config.settings.general.enable_plugins:
+            return nfo
+        token_replacer_plugin = self.config.settings.plugins.token_replacer
+        if not token_replacer_plugin:
+            return nfo
+        plugin = self.config.plugin_registry.plugins[
+            token_replacer_plugin
+        ].token_replacer
+        if not plugin or not callable(plugin):
+            return nfo
+
+        selected_template = self.template_combo.currentText()
+        tracker_s = [
+            tracker
+            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
+            if tracker_settings.nfo_template == selected_template
+        ]
+        # processing always calls the plugin for exactly one tracker, so a template
+        # shared by several (or wired to none) has no format to render as: leave
+        # its tokens alone rather than guess one
+        if len(tracker_s) != 1:
+            return nfo
+
         try:
-            if self.config.settings.general.enable_plugins:
-                token_replacer_plugin = self.config.settings.plugins.token_replacer
-                if token_replacer_plugin:
-                    plugin = self.config.plugin_registry.plugins[
-                        token_replacer_plugin
-                    ].token_replacer
-                    if plugin and callable(plugin):
-                        selected_template = self.template_combo.currentText()
-                        tracker_s = [
-                            tracker
-                            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
-                            if tracker_settings.nfo_template == selected_template
-                        ]
-                        replace_tokens = plugin(
-                            config=self.config, input_str=nfo, tracker_s=tracker_s
-                        )
-                        nfo = replace_tokens if replace_tokens else nfo
-        except Exception:
-            # we attempt to execute the plugin, but since some data is filled in process step
-            # it might not be available.
-            pass
-        return nfo
+            replace_tokens = plugin(
+                config=self.config,
+                context=self.context,
+                input_str=nfo,
+                tracker_s=tracker_s,
+                tracker_images=None,
+                # nothing is uploaded until the process page, so a plugin's image
+                # tokens stand in for now
+                dummy_screen_shots=True,
+            )
+        except Exception as plugin_error:
+            # reported rather than swallowed: leaving the tokens raw without a word
+            # is what makes a working template look broken
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Token replacer plugin failed during preview: {plugin_error}",
+            )
+            QMessageBox.warning(
+                self,
+                "Plugin Preview",
+                "The token replacer plugin could not fill its tokens in this "
+                f"preview, so they are left as they are.\n\n{plugin_error}",
+            )
+            return nfo
+        return replace_tokens if replace_tokens else nfo
 
     @Slot()
     def maximize_template(self) -> None:
