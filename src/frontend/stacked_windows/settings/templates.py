@@ -153,6 +153,26 @@ class TemplatesSettings(BaseSettings):
             self._update_comment_entry_text_color
         )
 
+        self.warning_syntax_lbl = QLabel("Unrecognised Token", self)
+        self.warning_syntax_lbl.setToolTip(
+            "Sets the highlight color for tokens that will not resolve when "
+            "the template renders"
+        )
+        self.warning_syntax_entry = QLineEdit(
+            self, text="{{ unknown_token }}", readOnly=True, frame=False
+        )
+        self.warning_entries = (self.warning_syntax_entry,)
+
+        self.warning_syntax_color = ColorSelectionShape(
+            width=14, height=14, parent=self
+        )
+        self.warning_syntax_color.setToolTip(
+            "Sets syntax highlighting color for unrecognised tokens"
+        )
+        self.warning_syntax_color.color_changed.connect(
+            self._update_warning_entry_text_color
+        )
+
         self.trim_blocks_toggle = QCheckBox("Trim Blocks", self)
         self.trim_blocks_toggle.toggled.connect(self.update_jinja_engine_settings)
         self.trim_blocks_toggle.setToolTip(
@@ -269,6 +289,15 @@ class TemplatesSettings(BaseSettings):
             )
         )
 
+        self.add_layout(
+            create_form_layout(
+                self.combine_lbl_color_selection(
+                    self.warning_syntax_lbl, self.warning_syntax_color
+                ),
+                self.warning_syntax_entry,
+            )
+        )
+
         self.add_layout(toggle_layout)
         self.add_layout(
             create_form_layout(self.newline_sequence_lbl, self.newline_sequence)
@@ -301,6 +330,12 @@ class TemplatesSettings(BaseSettings):
             self._update_text_color(widget, color)
         self.update_template_selector_syntax()
 
+    @Slot(object)
+    def _update_warning_entry_text_color(self, color: QColor) -> None:
+        for widget in self.warning_entries:
+            self._update_text_color(widget, color)
+        self.update_template_selector_syntax()
+
     @Slot()
     def _load_saved_settings(self) -> None:
         payload = self.config.settings.templates
@@ -315,6 +350,10 @@ class TemplatesSettings(BaseSettings):
         comment_color = QColor(self.config.settings.templates.comment_syntax_color)
         self._update_comment_entry_text_color(comment_color)
         self.comment_syntax_color.update_color(comment_color)
+
+        warning_color = QColor(self.config.settings.templates.warning_syntax_color)
+        self._update_warning_entry_text_color(warning_color)
+        self.warning_syntax_color.update_color(warning_color)
 
         self.trim_blocks_toggle.setChecked(payload.trim_blocks)
         self.lstrip_blocks_toggle.setChecked(payload.lstrip_blocks)
@@ -348,6 +387,9 @@ class TemplatesSettings(BaseSettings):
         )
         self.config.settings.templates.comment_syntax_color = (
             self.comment_syntax_color.get_hex_color()
+        )
+        self.config.settings.templates.warning_syntax_color = (
+            self.warning_syntax_color.get_hex_color()
         )
 
         self.config.settings.templates.trim_blocks = self.trim_blocks_toggle.isChecked()
@@ -462,6 +504,10 @@ class TemplatesSettings(BaseSettings):
         comment_color = QColor(self.config.defaults.templates.comment_syntax_color)
         self._update_comment_entry_text_color(comment_color)
         self.comment_syntax_color.update_color(comment_color)
+
+        warning_color = QColor(self.config.defaults.templates.warning_syntax_color)
+        self._update_warning_entry_text_color(warning_color)
+        self.warning_syntax_color.update_color(warning_color)
 
         self.trim_blocks_toggle.setChecked(self.config.defaults.templates.trim_blocks)
         self.lstrip_blocks_toggle.setChecked(
