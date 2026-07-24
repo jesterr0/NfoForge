@@ -102,6 +102,9 @@
 - Plugin Changes:
   - `pre_upload` plugin is no longer passed kwargs `media_file, mi_obj, source_path`. These can be gathered from the context object easily.
     - You now can access these payloads via the passed `context`.
+  - Run state has moved off of `ConfigManager` and on to the `ProcessingContext` that plugins are passed. `config.shared_data` and `config.media_input_payload` no longer exist - use `context.shared_data`, `context.media_input`, `context.media_search` and `context.jinja_engine` instead.
+  - `MediaInputPayload` no longer describes a single encode. `encode_file_mi_obj` has been replaced by `file_list`, `file_list_mediainfo` _(keyed by path)_ and `comparison_pair`, so a plugin can reach every file in a series pack rather than only one.
+    - Input paths are **not** stable for the length of a run. The rename page renames the media and re-points `file_list`, `file_list_mediainfo`, `series_episode_map` and `comparison_pair` at the new paths. A plugin holding its own data keyed by an input path has to re-key it when that happens, or keep what it needs directly rather than looking it up again later.
 - Improved the visuals of tracker format override widget.
 - File rename no longer happens during processing stage.
 - Updated dependencies:
