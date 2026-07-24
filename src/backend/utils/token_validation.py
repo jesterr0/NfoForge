@@ -26,19 +26,29 @@ from src.backend.tokens import Tokens
 _RUNTIME_TOKEN_PREFIXES = ("usr_", "prompt_")
 
 
-# `{% for %}`, `{% macro %}`, and `{% call %}` each open a scope: a name bound
-# inside one does not exist after the block ends. Bindings inside them are
-# therefore NOT collected as known -- such a name really does render blank
-# afterwards, which is exactly what this module exists to report.
-_SCOPE_OPENING_NODES = (nodes.For, nodes.Macro, nodes.CallBlock)
+# `{% for %}`, `{% macro %}`, `{% call %}`, `{% with %}`, `{% filter %}`, and
+# `{% block %}` each open a scope: a name bound inside one does not exist
+# after the block ends. Bindings inside them are therefore NOT collected as
+# known -- such a name really does render blank afterwards, which is exactly
+# what this module exists to report.
+_SCOPE_OPENING_NODES = (
+    nodes.For,
+    nodes.Macro,
+    nodes.CallBlock,
+    nodes.With,
+    nodes.FilterBlock,
+    nodes.Block,
+)
 
 
 def _bound_names(node: nodes.Node) -> set[str]:
     """Names the template binds at a scope that outlives the binding.
 
     `meta.find_undeclared_variables` is already scope-aware and omits most
-    `{% set %}` bindings by itself. It does still report one bound inside an
-    `{% if %}`, even though Jinja lets that binding leak out of the block, so
+    `{% set %}` bindings by itself. It can still report one bound inside an
+    `{% if %}` -- Jinja lets that binding leak out of the block, but whether
+    the analyzer catches it depends on the condition not being constant-
+    folded and there being no same-named binding at an outer scope -- so
     those are collected here to keep a working template from being flagged.
 
     Recurses rather than using `find_all` so the walk can stop at a scope

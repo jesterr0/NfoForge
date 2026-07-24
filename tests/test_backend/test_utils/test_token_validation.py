@@ -34,14 +34,17 @@ def test_environment_global_is_not_flagged() -> None:
 
 
 def test_simple_set_binding_is_not_flagged() -> None:
-    # Regression guard: `Node.find_all` does not yield the node it is called
-    # on, and a simple `{% set %}` target *is* a `nodes.Name`. A walk-only
-    # implementation misses this and reports `scan_type` as unknown.
+    # `meta.find_undeclared_variables` never reports a top-level `{% set %}`
+    # target in the first place, so this pins the baseline behaviour and
+    # passes regardless of what `_bound_names` does.
     template = "{% set scan_type = 'Progressive' %}{{ scan_type }}"
     assert find_unknown_tokens(template, _env()) == set()
 
 
 def test_set_block_binding_is_not_flagged() -> None:
+    # As above: a top-level `{% set %}` target (block form included) is never
+    # reported by `find_undeclared_variables`, so this passes regardless of
+    # `_bound_names`.
     template = "{% set body %}text{% endset %}{{ body }}"
     assert find_unknown_tokens(template, _env()) == set()
 
@@ -52,11 +55,33 @@ def test_for_loop_target_is_not_flagged() -> None:
 
 
 def test_if_nested_set_is_not_flagged() -> None:
-    # Jinja lets a binding made inside `{% if %}` leak out of the block, so
-    # the later reference resolves. `find_undeclared_variables` reports it
-    # anyway, and flagging it would mark a working template. This is the
-    # shape used by a real user template.
+    # The leading top-level `{% set s = '' %}` means `s` is never reported by
+    # `find_undeclared_variables` in the first place, and the constant `{% if
+    # 1 %}` condition is folded away -- so this also passes regardless of
+    # `_bound_names`.
     template = "{% set s = '' %}{% if 1 %}{% set s = 'v' %}{% endif %}{{ s }}"
+    assert find_unknown_tokens(template, _env()) == set()
+
+
+def test_conditional_simple_set_is_not_flagged() -> None:
+    # Guards the `isinstance(target, nodes.Name)` branch: a conditional
+    # binding IS reported by find_undeclared_variables, so only _bound_names
+    # keeps it from being flagged. Non-constant condition, no outer binding.
+    template = "{% if video_height %}{% set s = 'v' %}{% endif %}{{ s }}"
+    assert find_unknown_tokens(template, _env()) == set()
+
+
+def test_conditional_tuple_set_is_not_flagged() -> None:
+    # Guards the `target.find_all(nodes.Name)` branch: tuple targets are
+    # reached only by the walk, not the isinstance check.
+    template = "{% if video_height %}{% set a, b = 1, 2 %}{% endif %}{{ a }}{{ b }}"
+    assert find_unknown_tokens(template, _env()) == set()
+
+
+def test_set_block_nested_binding_is_not_flagged() -> None:
+    # Guards the recursive descent: the inner binding is only reachable by
+    # recursing into the AssignBlock child.
+    template = "{% set body %}{% set inner = 1 %}{% endset %}{{ inner }}"
     assert find_unknown_tokens(template, _env()) == set()
 
 
@@ -82,6 +107,21 @@ def test_call_scoped_set_used_outside_the_call_is_flagged() -> None:
         "{% call m() %}{% set c = 1 %}{% endcall %}{{ c }}"
     )
     assert find_unknown_tokens(template, _env()) == {"c"}
+
+
+def test_with_scoped_set_used_outside_is_flagged() -> None:
+    template = "{% with %}{% set q = 1 %}{% endwith %}{{ q }}"
+    assert find_unknown_tokens(template, _env()) == {"q"}
+
+
+def test_filter_block_scoped_set_used_outside_is_flagged() -> None:
+    template = "{% filter upper %}{% set q = 1 %}{% endfilter %}{{ q }}"
+    assert find_unknown_tokens(template, _env()) == {"q"}
+
+
+def test_block_scoped_set_used_outside_is_flagged() -> None:
+    template = "{% block b %}{% set q = 1 %}{% endblock %}{{ q }}"
+    assert find_unknown_tokens(template, _env()) == {"q"}
 
 
 def test_user_and_prompt_prefixed_names_are_not_flagged() -> None:
