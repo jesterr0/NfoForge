@@ -191,8 +191,8 @@ def test_status_message_is_unchanged_when_everything_resolves() -> None:
 
 
 def test_status_message_is_singular_for_one_unknown_token() -> None:
-    assert saved_status_message(1) == "Saved template - 1 unrecognised token"
+    assert saved_status_message(1) == "Saved template - 1 unrecognized token"
 
 
 def test_status_message_is_plural_for_several_unknown_tokens() -> None:
-    assert saved_status_message(3) == "Saved template - 3 unrecognised tokens"
+    assert saved_status_message(3) == "Saved template - 3 unrecognized tokens"

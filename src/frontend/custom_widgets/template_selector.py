@@ -51,12 +51,12 @@ def saved_status_message(unknown_count: int) -> str:
     """The status tip shown after a template is saved.
 
     The count is advisory: the save has already happened by the time this is
-    shown, and an unrecognised token never prevents one.
+    shown, and an unrecognized token never prevents one.
     """
     if not unknown_count:
         return "Saved template"
     noun = "token" if unknown_count == 1 else "tokens"
-    return f"Saved template - {unknown_count} unrecognised {noun}"
+    return f"Saved template - {unknown_count} unrecognized {noun}"
 
 
 class TokenTableWindow(QWidget):

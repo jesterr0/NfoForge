@@ -153,7 +153,7 @@ class TemplatesSettings(BaseSettings):
             self._update_comment_entry_text_color
         )
 
-        self.warning_syntax_lbl = QLabel("Unrecognised Token", self)
+        self.warning_syntax_lbl = QLabel("Unrecognized Token", self)
         self.warning_syntax_lbl.setToolTip(
             "Sets the highlight color for tokens that will not resolve when "
             "the template renders"
@@ -167,7 +167,7 @@ class TemplatesSettings(BaseSettings):
             width=14, height=14, parent=self
         )
         self.warning_syntax_color.setToolTip(
-            "Sets syntax highlighting color for unrecognised tokens"
+            "Sets syntax highlighting color for unrecognized tokens"
         )
         self.warning_syntax_color.color_changed.connect(
             self._update_warning_entry_text_color
