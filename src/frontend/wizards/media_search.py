@@ -67,7 +67,11 @@ class QueuedWorker(QThread):
             result = self.backend._parse_tmdb_api(self.query)
             self.job_finished.emit(OrderedDict(result))
         except Exception as e:
-            self.job_failed.emit(f"Failed to parse TMDB: {e}\n{traceback.format_exc()}")
+            LOG.error(
+                LOG.LOG_SOURCE.BE,
+                f"Media search failed for {self.query!r}: {traceback.format_exc()}",
+            )
+            self.job_failed.emit(str(e) or "Media search failed.")
 
 
 class IDParseWorker(QThread):
@@ -113,9 +117,11 @@ class IDParseWorker(QThread):
             )
             self.job_finished.emit(parse_other_ids)
         except Exception as e:
-            self.job_failed.emit(
-                f"Failed to parse ID data: ({e})\n{traceback.format_exc()}"
+            LOG.error(
+                LOG.LOG_SOURCE.BE,
+                f"Media metadata lookup failed: {traceback.format_exc()}",
             )
+            self.job_failed.emit(str(e) or "Media metadata lookup failed.")
         finally:
             async_loop.close()
 
@@ -154,6 +160,7 @@ class MediaSearch(BaseWizardPage):
         self.backend = MediaSearchBackEnd(
             api_key=self.config.settings.api_keys.tmdb,
             language=self.config.settings.general.tmdb_language,
+            timeout=self.config.settings.general.timeout,
         )
 
         # listen for settings changes to update language
@@ -305,6 +312,9 @@ class MediaSearch(BaseWizardPage):
         self.main_layout.addWidget(search_box)
 
     def validatePage(self) -> bool:
+        if not self.loading_complete or not self._get_current_item_data():
+            return False
+
         invalid_entries = self._check_invalid_entries((self.tmdb_id_entry,))
         if invalid_entries:
             return False
@@ -345,7 +355,11 @@ class MediaSearch(BaseWizardPage):
 
     def _search_other_ids(self) -> None:
         GSigs().main_window_set_disabled.emit(True)
-        current_item = self.listbox.currentItem().text()
+        current_item_widget = self.listbox.currentItem()
+        if current_item_widget is None:
+            GSigs().main_window_set_disabled.emit(False)
+            return
+        current_item = current_item_widget.text()
         item_data = self.backend.media_data.get(current_item)
         if item_data:
             media_type = item_data.get("media_type")
@@ -393,8 +407,8 @@ class MediaSearch(BaseWizardPage):
                 self._on_finished_cb()
             else:
                 GSigs().wizard_next.emit()
-        except Exception:
-            raise
+        except Exception as error:
+            self._failed_search(str(error))
         finally:
             GSigs().main_window_set_disabled.emit(False)
             GSigs().main_window_clear_status_tip.emit()
@@ -567,7 +581,10 @@ class MediaSearch(BaseWizardPage):
         return True
 
     def _get_current_item_data(self) -> dict[str, Any] | None:
-        current_item = self.listbox.currentItem().text()
+        current_item_widget = self.listbox.currentItem()
+        if current_item_widget is None:
+            return None
+        current_item = current_item_widget.text()
         item_data = self.backend.media_data.get(current_item)
         if isinstance(item_data, dict):
             return dict(item_data)
@@ -592,18 +609,21 @@ class MediaSearch(BaseWizardPage):
         self.loading_complete = False
         self.completeChanged.emit()
 
-        if self.search_entry.text().strip() != "":
-            self.reset_page(all_widgets=False)
-            self.listbox.addItem("Loading please wait...")
-            if self.queued_worker is not None and self.queued_worker.isRunning():
-                self.queued_worker.terminate()
+        query = self.search_entry.text().strip()
+        if self.queued_worker is not None and self.queued_worker.isRunning():
+            self.queued_worker.terminate()
+        self.reset_page(all_widgets=False)
 
-            self.queued_worker = QueuedWorker(
-                self.backend, self.search_entry.text(), parent=self
-            )
-            self.queued_worker.job_finished.connect(self._handle_search_result)
-            self.queued_worker.job_failed.connect(self._failed_search)
-            self.queued_worker.start()
+        if not query:
+            self.listbox.addItem("Enter a title to search...")
+            return
+
+        self.listbox.addItem("Loading please wait...")
+
+        self.queued_worker = QueuedWorker(self.backend, query, parent=self)
+        self.queued_worker.job_finished.connect(self._handle_search_result)
+        self.queued_worker.job_failed.connect(self._failed_search)
+        self.queued_worker.start()
 
     @Slot(OrderedDict)
     def _handle_search_result(self, result: OrderedDict[str, Any]) -> None:
@@ -615,18 +635,28 @@ class MediaSearch(BaseWizardPage):
         else:
             self.listbox.addItem("No results, try again...")
 
-        # enables the next button
-        self.loading_complete = True
+        self.loading_complete = bool(result)
         self.completeChanged.emit()
 
     @Slot(str)
     def _failed_search(self, error_str: str) -> None:
+        self.loading_complete = False
+        self.other_ids_parsed = False
+        self.backend.media_data.clear()
+        self.context.media_search.reset()
+        self.context.media_input.media_type = None
         self.listbox.clear()
-        self.listbox.addItem(f"No results, {error_str}")
-        self.search_entry.clear()
-        self.search_entry.setPlaceholderText("Manually input title")
+        self.listbox.addItem(f"Search unavailable: {error_str}")
+        self.listbox.setDisabled(False)
+        self.completeChanged.emit()
+        GSigs().wizard_next_button_reset_txt.emit()
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
+        QMessageBox.warning(
+            self,
+            "Media Search Unavailable",
+            f"{error_str}\n\nCheck your internet connection and try searching again.",
+        )
 
     @Slot()
     def _select_media(self) -> None:
@@ -700,6 +730,9 @@ class MediaSearch(BaseWizardPage):
         self.loading_complete = False
         self.id_parse_worker = None
         self.other_ids_parsed = False
+        self.backend.media_data.clear()
+        self.context.media_search.reset()
+        self.context.media_input.media_type = None
 
         self.backend.update_api_key(self.config.settings.api_keys.tmdb)
 

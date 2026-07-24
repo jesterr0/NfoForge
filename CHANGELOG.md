@@ -129,6 +129,7 @@
 - Remove support for PTPIMG
 - Optimized UNIT3D torrent re-download with regression testing
 - Properly detect and pass anime to TorrentLeech
+- Block/stop processing when media search is unavailable due to network issues/no internet
 
 ### Fixed
 

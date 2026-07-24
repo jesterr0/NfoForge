@@ -77,6 +77,10 @@ class MediaSearchError(NfoForgeError):
     """Custom exception for media search related errors"""
 
 
+class MediaSearchUnavailableError(MediaSearchError):
+    """Raised when a required media metadata service cannot be reached."""
+
+
 class ImageHostError(NfoForgeError):
     """Custom exception for image host related errors"""
 

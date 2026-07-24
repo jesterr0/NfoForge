@@ -15,6 +15,7 @@ from src.backend.utils.super_sub import normalize_super_sub
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
+from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -24,10 +25,12 @@ class MediaSearchBackEnd:
         api_key: str | None = None,
         language: str = "en-US",
         use_base_language_for_images: bool = True,
+        timeout: int = 60,
     ) -> None:
         self.media_data: dict[str, dict[str, Any]] = {}
         self.session = niquests.Session()
         self.use_base_language_for_images = use_base_language_for_images
+        self.timeout = max(1, timeout)
         self.params = {
             "api_key": api_key,
             "language": language,
@@ -51,6 +54,10 @@ class MediaSearchBackEnd:
 
     def _parse_tmdb_api(self, media_str: str) -> dict[str, dict[str, Any]]:
         media_title, media_year = self._guessit(media_str)
+
+        # ensure we don't leave a previous successful search available while a new
+        # request is in flight or if that request fails.
+        self.media_data.clear()
 
         multi_url = (
             f"https://api.themoviedb.org/3/search/multi?page=1&query={media_title}"
@@ -143,17 +150,35 @@ class MediaSearchBackEnd:
 
     def _fetch_tmdb_results(self, url: str) -> list[dict[str, Any]]:
         try:
-            with self.session.get(url, params=self.params) as response:
+            with self.session.get(
+                url, params=self.params, timeout=self.timeout
+            ) as response:
                 response.raise_for_status()
-                response_data = cast(dict[str, Any], response.json())
+                response_json = response.json()
+                if not isinstance(response_json, dict):
+                    raise MediaSearchError("TMDB returned an invalid search response.")
+                response_data = cast(dict[str, Any], response_json)
                 results = response_data.get("results", [])
                 return (
                     cast(list[dict[str, Any]], results)
                     if isinstance(results, list)
                     else []
                 )
-        except niquests.exceptions.ConnectionError:
-            return []
+        except (
+            niquests.exceptions.ConnectionError,
+            niquests.exceptions.Timeout,
+            niquests.exceptions.ProxyError,
+            niquests.exceptions.SSLError,
+        ) as error:
+            raise MediaSearchUnavailableError(
+                "TMDB search is unavailable. Check your internet connection and try again."
+            ) from error
+        except niquests.exceptions.RequestException as error:
+            raise MediaSearchError(f"TMDB search failed: {error}") from error
+        except (TypeError, ValueError) as error:
+            raise MediaSearchError(
+                "TMDB returned an invalid search response."
+            ) from error
 
     def fetch_complete_tmdb_data_for_selection(
         self, media_id: str | int, media_type: MediaType
@@ -189,11 +214,36 @@ class MediaSearchBackEnd:
             image_params["language"] = base_language
 
         try:
-            with self.session.get(url, params=image_params) as response:
+            with self.session.get(
+                url, params=image_params, timeout=self.timeout
+            ) as response:
                 response.raise_for_status()
-                return cast(dict[str, Any], response.json())
-        except niquests.exceptions.ConnectionError:
-            return {}
+                response_json = response.json()
+                if not isinstance(response_json, dict):
+                    raise MediaSearchError(
+                        "TMDB returned an invalid metadata response."
+                    )
+                response_data = cast(dict[str, Any], response_json)
+                if not response_data:
+                    raise MediaSearchError(
+                        "TMDB returned no metadata for the selection."
+                    )
+                return response_data
+        except (
+            niquests.exceptions.ConnectionError,
+            niquests.exceptions.Timeout,
+            niquests.exceptions.ProxyError,
+            niquests.exceptions.SSLError,
+        ) as error:
+            raise MediaSearchUnavailableError(
+                "TMDB metadata is unavailable. Check your internet connection and try again."
+            ) from error
+        except niquests.exceptions.RequestException as error:
+            raise MediaSearchError(f"TMDB metadata lookup failed: {error}") from error
+        except (TypeError, ValueError) as error:
+            raise MediaSearchError(
+                "TMDB returned an invalid metadata response."
+            ) from error
 
     @staticmethod
     def _guessit(input_string: str) -> tuple[str | None, str]:
@@ -236,6 +286,11 @@ class MediaSearchBackEnd:
 
         tasks: dict[str, asyncio.Task[Any]] = {}
 
+        if media_type is MediaType.SERIES and not (imdb_id or tvdb_id):
+            raise MediaSearchError(
+                "TVDB metadata could not be located for this series selection."
+            )
+
         # only add tasks if we have valid IMDb ID
         if imdb_id:
             tasks["imdb_data"] = asyncio.create_task(self.parse_imdb_data(imdb_id))
@@ -264,19 +319,35 @@ class MediaSearchBackEnd:
         for key, task in tasks.items():
             try:
                 result = await task
+                if key == "tvdb_data" and not isinstance(result, dict):
+                    raise MediaSearchError(
+                        "TVDB metadata could not be loaded for this series selection."
+                    )
                 results[key] = {"success": True, "result": result}
             except Exception as e:
+                if key == "tvdb_data":
+                    if isinstance(e, MediaSearchError):
+                        raise
+                    raise MediaSearchUnavailableError(
+                        "TVDB metadata is unavailable. Check your internet connection and try again."
+                    ) from e
                 results[key] = {"success": False, "error": str(e)}
         return results
 
     async def parse_tvdb_data(
         self, imdb_id: str | None, tvdb_id: int | None
     ) -> dict[str, Any] | None:
-        tvdb_parse = tvdb_v4_official.TVDB(self._get_tvdb_k())
+        tvdb_parse = await asyncio.wait_for(
+            asyncio.to_thread(tvdb_v4_official.TVDB, self._get_tvdb_k()),
+            timeout=self.timeout,
+        )
 
         # if we have imdb_id but failed to detect tvdb_id we'll use tvdb api to find the id
         if not tvdb_id and imdb_id:
-            find_tvdb_id = tvdb_parse.search_by_remote_id(imdb_id)
+            find_tvdb_id = await asyncio.wait_for(
+                asyncio.to_thread(tvdb_parse.search_by_remote_id, imdb_id),
+                timeout=self.timeout,
+            )
             if find_tvdb_id and isinstance(find_tvdb_id, list):
                 first_result = find_tvdb_id[0]
                 if isinstance(first_result, dict):
@@ -297,8 +368,14 @@ class MediaSearchBackEnd:
         # now we can extensively parse the data from the API
         if tvdb_id:
             # get the main series data (it will have a default type)
-            raw_series_data = tvdb_parse.get_series_extended(
-                tvdb_id, meta="episodes", short=True
+            raw_series_data = await asyncio.wait_for(
+                asyncio.to_thread(
+                    tvdb_parse.get_series_extended,
+                    tvdb_id,
+                    meta="episodes",
+                    short=True,
+                ),
+                timeout=self.timeout,
             )
 
             if not isinstance(raw_series_data, dict):
@@ -352,18 +429,17 @@ class MediaSearchBackEnd:
             ) -> list[dict[str, Any]]:
                 """Fetch episodes for a specific season type"""
                 try:
-                    # note: tvdb_v4_official is synchronous, so we wrap in executor
-                    loop = asyncio.get_event_loop()
-
                     # for aired/official episodes, we already have them from main data, skip
                     if season_type.api_param == "official":
                         return default_episodes
 
-                    episodes_response = await loop.run_in_executor(
-                        None,
-                        lambda: tvdb_parse.get_series_episodes(
-                            tvdb_id, season_type=season_type.api_param
+                    episodes_response = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            tvdb_parse.get_series_episodes,
+                            tvdb_id,
+                            season_type=season_type.api_param,
                         ),
+                        timeout=self.timeout,
                     )
 
                     if isinstance(episodes_response, dict):
@@ -488,18 +564,21 @@ class MediaSearchBackEnd:
         )
         return base64.b64decode(b64_bytes).decode()
 
-    @staticmethod
-    async def parse_imdb_data(imdb_id: str | None) -> MovieDetail | None:
+    async def parse_imdb_data(self, imdb_id: str | None) -> MovieDetail | None:
         if not imdb_id:
             return None
-        get_movie = imdb_get_movie(imdb_id, "en")
+        get_movie = await asyncio.wait_for(
+            asyncio.to_thread(imdb_get_movie, imdb_id, "en"),
+            timeout=self.timeout,
+        )
         if get_movie:
             return get_movie
         return None
 
-    @staticmethod
-    async def parse_ani_list(tmdb_title: str, tmdb_year: int) -> dict[str, Any] | None:
-        matcher = MatchAnilistTitle(tmdb_title, tmdb_year)
+    async def parse_ani_list(
+        self, tmdb_title: str, tmdb_year: int
+    ) -> dict[str, Any] | None:
+        matcher = MatchAnilistTitle(tmdb_title, tmdb_year, self.timeout)
         best_match = await matcher.match()
         if best_match:
             # {'id': 21519, 'idMal': 32281, 'title': {'romaji': 'Kimi no Na wa.', 'english': 'Your Name.', 'native': '君の名は。'}, 'seasonYear': 2016, 'episodes': 1}
@@ -508,13 +587,13 @@ class MediaSearchBackEnd:
 
 
 class MatchAnilistTitle:
-    def __init__(self, title: str, year: int) -> None:
+    def __init__(self, title: str, year: int, timeout: int = 60) -> None:
         self.title = title
         self.year = year
+        self.timeout = max(1, timeout)
         self.data: dict[str, Any] | None = None
 
-    @staticmethod
-    async def parse_ani_list(tmdb_title: str) -> dict[str, Any]:
+    async def parse_ani_list(self, tmdb_title: str) -> dict[str, Any]:
         query = """
             query ($search: String) {
                 Page (page: 1) {
@@ -540,7 +619,9 @@ class MatchAnilistTitle:
             niquests.post,
             "https://graphql.anilist.co",
             json={"query": query, "variables": variables},
+            timeout=self.timeout,
         )
+        response.raise_for_status()
         response_json = response.json()
         return cast(dict[str, Any], response_json)
 
