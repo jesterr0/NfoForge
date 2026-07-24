@@ -110,7 +110,7 @@ class TemplateSelector(QWidget):
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
         self._static_highlights: list[HighlightKeywords] = []
-        self._warning_color: str | None = None
+        self._warning_color: str = ""
         self.unknown_tokens: set[str] = set()
         self._unknown_token_timer = QTimer(self, singleShot=True, interval=400)
         self._unknown_token_timer.timeout.connect(self._refresh_unknown_tokens)
@@ -251,7 +251,7 @@ class TemplateSelector(QWidget):
         return self.template_combo.currentText()
 
     def set_syntax_highlights(
-        self, patterns: list[HighlightKeywords], warning_color: str | None = None
+        self, patterns: list[HighlightKeywords], warning_color: str
     ) -> None:
         """Set the editor's static highlight patterns.
 
@@ -259,10 +259,10 @@ class TemplateSelector(QWidget):
         highlight is appended to this list on every recompute and would
         otherwise be lost whenever a caller reapplies the static patterns.
 
-        `warning_color`, when given, overrides the configured warning color
-        so a picker widget can live-preview a change before it is saved. Pass
-        None (the default) to fall back to config, which is what the wizard
-        page does -- it has no picker widget of its own.
+        Every color, including `warning_color`, comes from the caller -- the
+        same as the three static delimiter colors, which arrive already
+        baked into `patterns`. This widget holds no config knowledge about
+        colors of its own.
         """
         self._static_highlights = list(patterns)
         self._warning_color = warning_color
@@ -288,22 +288,13 @@ class TemplateSelector(QWidget):
     def _apply_highlights(self) -> None:
         patterns = list(self._static_highlights)
         unknown_pattern = build_unknown_token_pattern(self.unknown_tokens)
-        if unknown_pattern is not None:
-            # `_warning_color` lets the settings picker live-preview a change
-            # before it is saved to config. Falls back to the packaged
-            # default when both that and config are blank, rather than
-            # handing the highlighter an empty string. The three static
-            # colors guard the same way with `if <color>:` at
-            # `settings/templates.py:563-590`.
-            color = (
-                self._warning_color
-                or self.config.settings.templates.warning_syntax_color
-                or self.config.defaults.templates.warning_syntax_color
-            )
+        if unknown_pattern is not None and self._warning_color:
             # Appended last so it overrides the variable color on the same
             # span: the highlighter applies patterns in order and later
             # `setFormat` calls overwrite earlier ones.
-            patterns.append(HighlightKeywords(unknown_pattern, color, False))
+            patterns.append(
+                HighlightKeywords(unknown_pattern, self._warning_color, False)
+            )
         self.text_edit.highlight_keywords(patterns)
 
     def create_template_index_map(self) -> dict[str, int]:

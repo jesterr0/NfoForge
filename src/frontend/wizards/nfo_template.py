@@ -42,7 +42,10 @@ class NfoTemplate(BaseWizardPage):
 
     def initializePage(self) -> None:
         self.template_selector.load_templates()
-        self.template_selector.set_syntax_highlights(self.get_syntax_highlights())
+        self.template_selector.set_syntax_highlights(
+            self.get_syntax_highlights(),
+            self.config.settings.templates.warning_syntax_color,
+        )
 
         try:
             self.template_selector.read_template()

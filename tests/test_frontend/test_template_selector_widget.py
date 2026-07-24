@@ -51,6 +51,9 @@ def _make_selector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TemplateS
     )
 
 
+WARNING_COLOR = "#e1401d"
+
+
 def _static_patterns() -> list[HighlightKeywords]:
     return [
         HighlightKeywords(re.compile(r"\{%.*?%\}"), "#A4036F", False),
@@ -64,7 +67,7 @@ def test_set_syntax_highlights_applies_the_patterns(
     selector = _make_selector(tmp_path, monkeypatch)
     patterns = _static_patterns()
 
-    selector.set_syntax_highlights(patterns)
+    selector.set_syntax_highlights(patterns, WARNING_COLOR)
 
     assert selector.text_edit.highlighter.patterns_colors == patterns
 
@@ -74,8 +77,8 @@ def test_set_syntax_highlights_replaces_rather_than_accumulates(
 ) -> None:
     selector = _make_selector(tmp_path, monkeypatch)
 
-    selector.set_syntax_highlights(_static_patterns())
-    selector.set_syntax_highlights(_static_patterns())
+    selector.set_syntax_highlights(_static_patterns(), WARNING_COLOR)
+    selector.set_syntax_highlights(_static_patterns(), WARNING_COLOR)
 
     assert len(selector.text_edit.highlighter.patterns_colors) == 2
 
@@ -88,11 +91,11 @@ def test_set_syntax_highlights_replaces_rather_than_accumulates_the_warning_patt
     # reapplying the static patterns must rebuild -- not lose or duplicate --
     # the warning pattern.
     selector = _make_selector(tmp_path, monkeypatch)
-    selector.set_syntax_highlights(_static_patterns())
+    selector.set_syntax_highlights(_static_patterns(), WARNING_COLOR)
     selector.text_edit.setPlainText("{{ mi_video_codec }}")
     selector._refresh_unknown_tokens()
 
-    selector.set_syntax_highlights(_static_patterns())
+    selector.set_syntax_highlights(_static_patterns(), WARNING_COLOR)
 
     assert (
         len(selector.text_edit.highlighter.patterns_colors)
@@ -107,7 +110,7 @@ def test_unknown_token_pattern_is_appended_after_the_static_patterns(
     # `setFormat` calls overwrite earlier ones for the same span, so the
     # warning color must be applied after the variable color to win.
     selector = _make_selector(tmp_path, monkeypatch)
-    selector.set_syntax_highlights(_static_patterns())
+    selector.set_syntax_highlights(_static_patterns(), WARNING_COLOR)
     selector.text_edit.setPlainText("{{ mi_video_codec }}")
 
     selector._refresh_unknown_tokens()
@@ -122,7 +125,7 @@ def test_no_extra_pattern_when_every_token_resolves(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     selector = _make_selector(tmp_path, monkeypatch)
-    selector.set_syntax_highlights(_static_patterns())
+    selector.set_syntax_highlights(_static_patterns(), WARNING_COLOR)
     selector.text_edit.setPlainText("{{ video_bit_rate }}")
 
     selector._refresh_unknown_tokens()
@@ -148,7 +151,7 @@ def test_unparseable_template_clears_the_warning(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     selector = _make_selector(tmp_path, monkeypatch)
-    selector.set_syntax_highlights(_static_patterns())
+    selector.set_syntax_highlights(_static_patterns(), WARNING_COLOR)
     selector.text_edit.setPlainText("{% if %}")
 
     selector._refresh_unknown_tokens()
@@ -157,26 +160,30 @@ def test_unparseable_template_clears_the_warning(
     assert len(selector.text_edit.highlighter.patterns_colors) == 2
 
 
-def test_blank_warning_color_falls_back_to_the_default(
+def test_blank_warning_color_skips_the_warning_pattern(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Mirrors the `if <color>:` guard the three static colors already use in
+    # `jinja_syntax_highlights`: a blank color means no highlight pattern,
+    # not a fallback lookup. The selector holds no config knowledge of its
+    # own to fall back to.
     selector = _make_selector(tmp_path, monkeypatch)
-    selector.config.settings.templates.warning_syntax_color = ""
+    patterns = _static_patterns()
+    selector.set_syntax_highlights(patterns, "")
     selector.text_edit.setPlainText("{{ mi_video_codec }}")
 
     selector._refresh_unknown_tokens()
 
     applied = selector.text_edit.highlighter.patterns_colors
-    assert applied[-1].color.lower() == "#e1401d"
+    assert applied == patterns
 
 
-def test_warning_color_override_wins_over_config(
+def test_warning_color_comes_from_the_caller(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The settings picker passes its own value so the editor can live-preview
-    # a change before it is saved; config (unchanged here) must not win.
+    # There is no config path left to override: every color, including the
+    # warning color, is supplied by the caller.
     selector = _make_selector(tmp_path, monkeypatch)
-    assert selector.config.settings.templates.warning_syntax_color.lower() != "#00ff00"
     selector.set_syntax_highlights(_static_patterns(), "#00ff00")
     selector.text_edit.setPlainText("{{ mi_video_codec }}")
 
