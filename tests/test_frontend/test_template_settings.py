@@ -81,3 +81,30 @@ def test_warning_swatch_change_live_previews_the_editor_highlight(
 
     applied = widget.template_selector.text_edit.highlighter.patterns_colors
     assert applied[-1].color.lower() == "#00ff00"
+
+
+def test_reload_after_cancel_resyncs_the_live_preview_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Guards the Cancel/reload desync: `_load_saved_settings` writes the
+    # warning pair last, and `_update_warning_entry_text_color` (called
+    # before the swatch itself is reset) pushes the live-preview override
+    # into the selector using the swatch's PRE-reset colour. Without an
+    # explicit re-sync after every swatch holds its final value, the
+    # embedded editor keeps highlighting with the colour the user backed
+    # out of.
+    widget, _ = _make_templates_settings(tmp_path, monkeypatch)
+    widget.template_selector.text_edit.setPlainText("{{ mi_video_codec }}")
+    widget.template_selector._refresh_unknown_tokens()
+
+    widget.warning_syntax_color.update_color(QColor("#00ff00"))
+    widget.warning_syntax_color.color_changed.emit(QColor("#00ff00"))
+
+    applied = widget.template_selector.text_edit.highlighter.patterns_colors
+    assert applied[-1].color.lower() == "#00ff00"
+
+    # Cancel calls `SettingsWindow._reload_settings()`, which emits this.
+    widget.load_saved_settings.emit()
+
+    applied = widget.template_selector.text_edit.highlighter.patterns_colors
+    assert applied[-1].color.lower() == "#e1401d"
