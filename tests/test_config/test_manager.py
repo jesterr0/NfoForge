@@ -960,3 +960,25 @@ def test_warning_syntax_color_backfills_when_a_profile_lacks_it(
     manager.load_profile("test")
 
     assert manager.settings.templates.warning_syntax_color == "#E1401D"
+
+
+def test_warning_syntax_color_is_written_on_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Covers the write path the read-back test above does not: setting the
+    key and saving must persist the value to the profile TOML.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.templates.warning_syntax_color = "#123ABC"
+    manager.save()
+
+    profile = paths.user_configs / "test.toml"
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    template_settings = cast(MutableMapping[str, Any], saved["template_settings"])
+    assert template_settings["warning_syntax_color"] == "#123ABC"
