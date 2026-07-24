@@ -83,6 +83,27 @@ def test_warning_swatch_change_live_previews_the_editor_highlight(
     assert applied[-1].color.lower() == "#00ff00"
 
 
+def test_color_changed_signal_is_wired_to_the_live_preview_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pins the `color_changed.connect(...)` wiring itself, rather than only
+    # the effect of manually emitting the signal: a test that only emits
+    # `color_changed` and checks the result would stay green even if that
+    # connect call were deleted, since nothing forces the emit to travel
+    # through the real connection. `SignalInstance.disconnect` returns
+    # whether it actually removed a connection, so this fails loudly if the
+    # slot was never wired up.
+    widget, _ = _make_templates_settings(tmp_path, monkeypatch)
+    was_connected = widget.warning_syntax_color.color_changed.disconnect(
+        widget._update_warning_entry_text_color
+    )
+    assert was_connected
+    # restore the connection so the widget behaves normally if reused
+    widget.warning_syntax_color.color_changed.connect(
+        widget._update_warning_entry_text_color
+    )
+
+
 def test_reload_after_cancel_resyncs_the_live_preview_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
