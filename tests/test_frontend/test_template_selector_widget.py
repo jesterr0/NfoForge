@@ -7,7 +7,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
-from src.frontend.custom_widgets.template_selector import TemplateSelector
+from src.frontend.custom_widgets.template_selector import TemplateSelector, saved_status_message
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
@@ -147,3 +147,15 @@ def test_blank_warning_colour_falls_back_to_the_default(
 
     applied = selector.text_edit.highlighter.patterns_colors
     assert applied[-1].color.lower() == "#e1401d"
+
+
+def test_status_message_is_unchanged_when_everything_resolves() -> None:
+    assert saved_status_message(0) == "Saved template"
+
+
+def test_status_message_is_singular_for_one_unknown_token() -> None:
+    assert saved_status_message(1) == "Saved template - 1 unrecognised token"
+
+
+def test_status_message_is_plural_for_several_unknown_tokens() -> None:
+    assert saved_status_message(3) == "Saved template - 3 unrecognised tokens"

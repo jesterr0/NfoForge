@@ -47,6 +47,18 @@ if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
+def saved_status_message(unknown_count: int) -> str:
+    """The status tip shown after a template is saved.
+
+    The count is advisory: the save has already happened by the time this is
+    shown, and an unrecognised token never prevents one.
+    """
+    if not unknown_count:
+        return "Saved template"
+    noun = "token" if unknown_count == 1 else "tokens"
+    return f"Saved template - {unknown_count} unrecognised {noun}"
+
+
 class TokenTableWindow(QWidget):
     def __init__(
         self, parent: QWidget, on_close: Callable[[QCloseEvent], None]
@@ -415,7 +427,10 @@ class TemplateSelector(QWidget):
                 self.template_combo.currentText()
             ]
             self.backend.save_template(selected_template, self.text_edit.toPlainText())
-            GSigs().main_window_update_status_tip.emit("Saved template", 3000)
+            self._refresh_unknown_tokens()
+            GSigs().main_window_update_status_tip.emit(
+                saved_status_message(len(self.unknown_tokens)), 3000
+            )
 
     @Slot()
     def delete_template(self) -> None:
