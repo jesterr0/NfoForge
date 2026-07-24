@@ -77,6 +77,59 @@ class MediaInputPayload:
             raise RuntimeError(f"Failed to get MediaInfo object for '{fp}'")
         return mi
 
+    def apply_rename_mapping(
+        self,
+        rename_mapping: dict[Path, Path],
+        updated_input_path: Path | None = None,
+    ) -> None:
+        """Re-point every path this payload holds at its renamed location.
+
+        Called after the renames have been executed on disk. Every field keyed
+        by (or holding) an input path has to move together, otherwise later
+        pages look up a path that no longer exists, e.g. the screenshots page
+        resolving `comparison_pair.media` against `file_list_mediainfo`.
+
+        Args:
+            rename_mapping: Map of old path -> new path for renamed files.
+            updated_input_path: New input path, when the rename moved it.
+        """
+        if not rename_mapping:
+            return
+
+        for i, old_path in enumerate(self.file_list):
+            if old_path in rename_mapping:
+                self.file_list[i] = rename_mapping[old_path]
+
+        if self.file_list_mediainfo:
+            self.file_list_mediainfo = {
+                rename_mapping.get(old_path, old_path): mi_obj
+                for old_path, mi_obj in self.file_list_mediainfo.items()
+            }
+
+        if self.series_episode_map:
+            self.series_episode_map = {
+                rename_mapping.get(old_path, old_path): ep_data
+                for old_path, ep_data in self.series_episode_map.items()
+            }
+
+        # the comparison media is one of the renamed files; the source usually
+        # sits outside the rename set but still moves when its folder is renamed
+        if self.comparison_pair:
+            self.comparison_pair = self.comparison_pair._replace(
+                source=rename_mapping.get(
+                    self.comparison_pair.source, self.comparison_pair.source
+                ),
+                media=rename_mapping.get(
+                    self.comparison_pair.media, self.comparison_pair.media
+                ),
+            )
+
+        if updated_input_path:
+            self.input_path = updated_input_path
+
+        # renames are complete
+        self.file_list_rename_map.clear()
+
     def reset(self, input_path: Path | None = None) -> None:
         """Reset all fields to initial state."""
         self.input_path = input_path

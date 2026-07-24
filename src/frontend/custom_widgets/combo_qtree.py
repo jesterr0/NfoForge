@@ -17,6 +17,21 @@ from PySide6.QtWidgets import (
 from typing_extensions import override
 
 
+class _UserData:
+    """Holds combo box item data so Qt hands back the object that was stored.
+
+    PySide6 converts a sequence passed as ``userData`` into a plain list on the
+    way back out, so a NamedTuple such as ``ImageUploadFromTo`` returns as a
+    list and fails every ``isinstance`` check downstream. Qt passes an ordinary
+    Python object through untouched, so wrapping keeps the payload intact.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
+
+
 class ComboBoxTreeWidget(QTreeWidget):
     combo_changed = Signal(QComboBox, int)  # combobox widget, idx
 
@@ -127,7 +142,7 @@ class ComboBoxTreeWidget(QTreeWidget):
 
         option_set: set[str] = set()
         for txt, data in combo_items:
-            combo_box.addItem(txt, data)
+            combo_box.addItem(txt, _UserData(data))
             option_set.add(txt)
 
         self.combo_options.append(option_set)
@@ -147,6 +162,12 @@ class ComboBoxTreeWidget(QTreeWidget):
             if index != -1:
                 combo_box.setCurrentIndex(index)
 
+    @staticmethod
+    def _item_data(combo_box: QComboBox) -> Any:
+        """Unwrap the payload stored for the current item."""
+        data = combo_box.currentData()
+        return data.value if isinstance(data, _UserData) else data
+
     def get_item_values(self) -> list[tuple[str | tuple[str, Any], ...]]:
         values: list[tuple[str | tuple[str, Any], ...]] = []
         for idx in range(self.topLevelItemCount()):
@@ -159,7 +180,7 @@ class ComboBoxTreeWidget(QTreeWidget):
                 if (item, col_index) in self.combo_box_map:
                     combo_box = self.combo_box_map[(item, col_index)]
                     row_values.append(
-                        (combo_box.currentText(), combo_box.currentData())
+                        (combo_box.currentText(), self._item_data(combo_box))
                     )
                 else:
                     row_values.append(item.text(col_index))

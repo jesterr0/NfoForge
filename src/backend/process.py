@@ -877,6 +877,10 @@ class ProcessBackEnd:
                 if not img_from:
                     img_from = image_host_data.img_from
                 img_to = image_host_data.img_to
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"Image destination for {tracker_name}: {img_to!r} (from {image_host_data.img_from!r})",
+                )
 
                 # track the image host to be used for each tracker
                 if isinstance(img_to, ImageHost) and img_to is not ImageHost.DISABLED:
@@ -885,6 +889,14 @@ class ProcessBackEnd:
                     to_url = True
 
                 tracker_to_host_map[TrackerSelection(tracker_name)] = img_to
+            else:
+                # the tracker cannot be mapped to a destination at all, so it will
+                # reach the NFO stage with no images and no other explanation
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No usable image host data for {tracker_name}, expected ImageUploadFromTo "
+                    f"and got {type(image_host_data).__name__}: {image_host_data!r}",
+                )
 
         # handle image host uploads
         if to_image_hosts or to_url:
@@ -913,6 +925,16 @@ class ProcessBackEnd:
                 )
             else:
                 files_to_upload = context.shared_data.loaded_images
+
+            if not files_to_upload:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No images available to upload to {len(to_image_hosts)} image host(s), "
+                    "every tracker will be processed without images",
+                )
+                queued_text_update(
+                    "<br />No images available to upload, continuing without images"
+                )
 
             if files_to_upload:
                 # optimize images if enabled
@@ -955,10 +977,21 @@ class ProcessBackEnd:
                 )
                 async_loop.close()
 
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"Upload results returned for image host(s): {sorted(str(h) for h in upload_results)}",
+                )
+
                 # map the uploaded image hosts to the appropriate trackers
                 for tracker, img_host in tracker_to_host_map.items():
                     if img_host in upload_results:
                         url_data[tracker] = upload_results[img_host]
+                    else:
+                        LOG.debug(
+                            LOG.LOG_SOURCE.BE,
+                            f"No uploaded images for {tracker}, its destination {img_host!r} "
+                            "was not part of this upload",
+                        )
 
         # using URLs as is
         if to_url:
@@ -974,6 +1007,24 @@ class ProcessBackEnd:
             queued_text_update(
                 f"<br />Using {len(context.shared_data.url_data)} URLs for {url_host_count} tracker(s)",
             )
+
+        # trackers missing here reach the NFO stage with no images, which is a
+        # supported outcome but an easy one to mistake for a failure, so say so
+        without_images = [
+            str(TrackerSelection(tracker_name))
+            for tracker_name in process_dict
+            if TrackerSelection(tracker_name) not in url_data
+        ]
+        if without_images:
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                f"Tracker(s) with no images: {', '.join(without_images)}",
+            )
+        LOG.debug(
+            LOG.LOG_SOURCE.BE,
+            "Image handling resolved "
+            f"{ {str(tracker): len(imgs) for tracker, imgs in url_data.items()} }",
+        )
 
         return url_data
 

@@ -485,41 +485,11 @@ class RenameEncodeSeries(BaseWizardPage):
                 if not self._rename_mapping:
                     return False
 
-                # Update file_list with renamed paths
-                for i, old_path in enumerate(self.context.media_input.file_list):
-                    if old_path in self._rename_mapping:
-                        self.context.media_input.file_list[i] = self._rename_mapping[
-                            old_path
-                        ]
-
-                # Update file_list_mediainfo keys
-                if self.context.media_input.file_list_mediainfo:
-                    new_mediainfo = {}
-                    for (
-                        old_path,
-                        mi_obj,
-                    ) in self.context.media_input.file_list_mediainfo.items():
-                        new_path = self._rename_mapping.get(old_path, old_path)
-                        new_mediainfo[new_path] = mi_obj
-                    self.context.media_input.file_list_mediainfo = new_mediainfo
-
-                # Update series_episode_map keys if it exists
-                if self.context.media_input.series_episode_map:
-                    new_episode_map = {}
-                    for (
-                        old_path,
-                        ep_data,
-                    ) in self.context.media_input.series_episode_map.items():
-                        new_path = self._rename_mapping.get(old_path, old_path)
-                        new_episode_map[new_path] = ep_data
-                    self.context.media_input.series_episode_map = new_episode_map
-
-                # Update input_path if it changed
-                if self._updated_input_path:
-                    self.context.media_input.input_path = self._updated_input_path
-
-                # Clear the rename map
-                self.context.media_input.file_list_rename_map.clear()
+                # Re-point file_list, file_list_mediainfo, series_episode_map,
+                # the comparison pair and input_path at the renamed files
+                self.context.media_input.apply_rename_mapping(
+                    self._rename_mapping, self._updated_input_path
+                )
 
             except Exception as e:
                 QMessageBox.critical(
