@@ -72,6 +72,18 @@ def test_macro_scoped_set_used_outside_the_macro_is_flagged() -> None:
     assert find_unknown_tokens(template, _env()) == {"q"}
 
 
+def test_call_scoped_set_used_outside_the_call_is_flagged() -> None:
+    # `{% call %}` is the third scope-opening construct in
+    # `_SCOPE_OPENING_NODES`; without this it is the one named case with no
+    # regression cover, so a change to the walk could silently reintroduce
+    # the false negative for it alone.
+    template = (
+        "{% macro m() %}{{ caller() }}{% endmacro %}"
+        "{% call m() %}{% set c = 1 %}{% endcall %}{{ c }}"
+    )
+    assert find_unknown_tokens(template, _env()) == {"c"}
+
+
 def test_user_and_prompt_prefixed_names_are_not_flagged() -> None:
     assert find_unknown_tokens("{{ usr_custom }}{{ prompt_note }}", _env()) == set()
 
