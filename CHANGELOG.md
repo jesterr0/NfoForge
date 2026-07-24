@@ -40,6 +40,7 @@
   - Gives the user a chance to confirm the rename or go back and make changes.
 - ImageViewer widget now has a draggable splitter, this way the user can resize/collapse the log/image portion of the widget.
 - Series support during flow to handle mapping/renaming
+- Now checks tracker health before attempting to upload
 
 ### Changed
 

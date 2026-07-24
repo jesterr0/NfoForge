@@ -58,6 +58,7 @@ from src.backend.trackers import (
     ulcx_uploader,
 )
 from src.backend.trackers.beyondhd import BHDUploader
+from src.backend.trackers.health import ensure_tracker_health
 from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.torrentleech import TLUploader
@@ -479,6 +480,7 @@ class ProcessBackEnd:
 
         self.progress_bar_cb = progress_bar_cb
         base_torrent_file: Path | None = None
+        tracker_health_cache: dict[TrackerSelection, bool] = {}
 
         # determine maximum piece size for the current tracker(s)
         max_piece_size = self.determine_max_piece_size(process_dict)
@@ -773,9 +775,15 @@ class ProcessBackEnd:
 
             # upload
             if tracker_info.upload_enabled and pre_upload_processing is not False:
-                queued_text_update("<br /><span>Uploading release</span>")
+                queued_text_update("<br /><span>Checking tracker availability</span>")
                 execute_upload = None
                 try:
+                    ensure_tracker_health(
+                        tracker=cur_tracker,
+                        timeout=self.config.settings.general.timeout,
+                        cache=tracker_health_cache,
+                    )
+                    queued_text_update("<br /><span>Uploading release</span>")
                     execute_upload = self.upload(
                         tracker=cur_tracker,
                         torrent_file=torrent_path,

@@ -39,6 +39,7 @@ dependencies = [
     "oslex2>=1.0.0",
     "qtawesome>=1.4.0",
     "urllib3>=2.6.2",
+    "tenacity>=9.1.4",
 ]
 
 [project.optional-dependencies]
