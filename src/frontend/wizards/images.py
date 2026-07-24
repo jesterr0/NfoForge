@@ -413,25 +413,27 @@ class ImagesPage(BaseWizardPage):
                 return
 
             if not self._compare_resolutions():
-                # if manual we will prompt the crop dialog widget
+                # a comparison script is the source of truth for cropping, so when
+                # it carries usable values apply them directly rather than asking
+                # the user to confirm crops they already described in the script
+                if crop_mode is not Cropping.DISABLED and comp_pair.script:
+                    parse_script = ScriptParser(
+                        comp_pair.script.read_text(encoding="utf-8")
+                    ).get_data()
+                    if not parse_script.all_zeros():
+                        self._execute_image_generation(script_values=parse_script)
+                        return
+
+                # without a script (or with one that has no crops in it) manual
+                # mode prompts the crop dialog widget
                 if crop_mode is Cropping.MANUAL:
                     dlg = CropWidgetDialog(self)
-                    # if we have the script pre-load it even if using manual
+                    # if we have the script pre-load it to work from
                     if comp_pair.script:
                         dlg.load_script(comp_pair.script)
                     script_values = dlg.exec_crop()
                     if script_values:
                         self._execute_image_generation(script_values=script_values)
-                        return
-                # if auto and there is a script already we can apply the values if they are valid
-                elif crop_mode is Cropping.AUTO and comp_pair.script:
-                    parse_script = ScriptParser(comp_pair.script.read_text()).get_data()
-                    if not parse_script.all_zeros():
-                        self._execute_image_generation(
-                            script_values=ScriptParser(
-                                comp_pair.script.read_text()
-                            ).get_data()
-                        )
                         return
 
         # if comparison logic was not needed just fall back to regular generation
