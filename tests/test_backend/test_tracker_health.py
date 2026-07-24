@@ -61,7 +61,8 @@ def test_health_check_blocks_request_failures(
         ensure_tracker_health(TrackerSelection.PASS_THE_POPCORN, timeout=2, cache=cache)
 
     assert cache == {TrackerSelection.PASS_THE_POPCORN: False}
-    get.assert_called_once_with(
+    assert get.call_count == 3
+    get.assert_called_with(
         TrackerSelection.PASS_THE_POPCORN.get_root_url(),
         headers=ANY,
         timeout=2,

@@ -69,7 +69,7 @@ class DarkPeersUploader(Unit3dBaseUploader):
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.DARK_PEERS,
-            base_url="https://darkpeers.org",
+            base_url=TrackerSelection.DARK_PEERS.get_root_url(),
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
@@ -90,7 +90,7 @@ class DarkPeersSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.DARK_PEERS,
-            base_url="https://darkpeers.org",
+            base_url=TrackerSelection.DARK_PEERS.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

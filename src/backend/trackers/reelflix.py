@@ -77,7 +77,7 @@ class ReelFlixUploader(Unit3dBaseUploader):
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.REELFLIX,
-            base_url="https://reelflix.xyz",
+            base_url=TrackerSelection.REELFLIX.get_root_url(),
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
@@ -98,7 +98,7 @@ class ReelFlixSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.REELFLIX,
-            base_url="https://reelflix.xyz",
+            base_url=TrackerSelection.REELFLIX.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

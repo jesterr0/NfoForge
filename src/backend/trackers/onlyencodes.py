@@ -73,7 +73,7 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.ONLY_ENCODES,
-            base_url="https://onlyencodes.cc",
+            base_url=TrackerSelection.ONLY_ENCODES.get_root_url(),
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
@@ -115,7 +115,7 @@ class OnlyEncodesSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.ONLY_ENCODES,
-            base_url="https://onlyencodes.cc",
+            base_url=TrackerSelection.ONLY_ENCODES.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

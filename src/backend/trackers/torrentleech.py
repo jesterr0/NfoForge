@@ -12,6 +12,7 @@ from pymediainfo import MediaInfo
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.torrentleech import TLCategories
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
@@ -42,7 +43,9 @@ def tl_upload(
 
 
 class TLUploader:
-    UPLOAD_URL: str = "https://www.torrentleech.org/torrents/upload/apiupload"
+    UPLOAD_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}torrents/upload/apiupload"
+    )
 
     def __init__(
         self,
@@ -179,12 +182,18 @@ class TLUploader:
 
 
 class TLSearch:
-    LOGIN_URL: str = "https://www.torrentleech.org/user/account/login/"
+    LOGIN_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}user/account/login/"
+    )
     SEARCH_URL: str = (
-        "https://www.torrentleech.org/torrents/browse/list/exact/1/query/"
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}torrents/browse/list/exact/1/query/"
         "{media_title}/orderby/added/order/desc"
     )
-    TORRENT_URL: str = "https://www.torrentleech.me/torrent/{torrent_id}"
+    # TORRENT_URL needs to be .me
+    TORRENT_URL: str = (
+        TrackerSelection.TORRENT_LEECH.get_root_url().replace(".org", ".me")
+        + "torrent/{torrent_id}"
+    )
 
     def __init__(
         self,

@@ -71,7 +71,7 @@ class UploadCXUploader(Unit3dBaseUploader):
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.UPLOAD_CX,
-            base_url="https://upload.cx",
+            base_url=TrackerSelection.UPLOAD_CX.get_root_url(),
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
@@ -92,7 +92,7 @@ class UploadCXSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.UPLOAD_CX,
-            base_url="https://upload.cx",
+            base_url=TrackerSelection.UPLOAD_CX.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

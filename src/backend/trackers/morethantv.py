@@ -21,6 +21,7 @@ from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.audio_formats import AudioFormats
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.morethantv import (
     MTVAudioTags,
     MTVCategories,
@@ -80,10 +81,10 @@ def mtv_uploader(
 
 
 class MTVUploader:
-    LOGIN_URL = "https://www.morethantv.me/login"
-    LOGIN_URL_2FA = "https://www.morethantv.me/twofactor/login"
-    UPLOAD_URL = "https://www.morethantv.me/upload.php"
-    SEARCH_URL = "https://www.morethantv.me/api/torznab"
+    LOGIN_URL = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}login"
+    LOGIN_URL_2FA = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}twofactor/login"
+    UPLOAD_URL = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}upload.php"
+    SEARCH_URL = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}api/torznab"
 
     def __init__(
         self,

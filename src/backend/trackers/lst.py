@@ -81,7 +81,7 @@ class LSTUploader(Unit3dBaseUploader):
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.LST,
-            base_url="https://lst.gg",
+            base_url=TrackerSelection.LST.get_root_url(),
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
@@ -109,7 +109,7 @@ class LSTSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.LST,
-            base_url="https://lst.gg",
+            base_url=TrackerSelection.LST.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

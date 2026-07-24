@@ -10,6 +10,7 @@ from niquests.typing import MultiPartFilesAltType
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.beyondhd import (
     BHDCategoryID,
     BHDEdition,
@@ -149,7 +150,9 @@ class BHDUploader:
         is_special: bool = False,
         timeout: int = 60,
     ) -> None:
-        self._upload_url = f"https://beyond-hd.me/api/upload/{api_key}"
+        self._upload_url = (
+            f"{TrackerSelection.BEYOND_HD.get_root_url()}api/upload/{api_key}"
+        )
         self.torrent_file = torrent_file
         self.input_path = input_path
         self.media_type = media_type
@@ -451,7 +454,9 @@ class BHDSearch:
     def __init__(
         self, api_key: str, rss_key: str | None = None, timeout: int = 60
     ) -> None:
-        self._search_url = f"https://beyond-hd.me/api/torrents/{api_key}"
+        self._search_url = (
+            f"{TrackerSelection.BEYOND_HD.get_root_url()}api/torrents/{api_key}"
+        )
         self._rss_key = rss_key
         self._timeout = timeout
 

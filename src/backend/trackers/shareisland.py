@@ -73,7 +73,7 @@ class ShareIslandUploader(Unit3dBaseUploader):
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.SHARE_ISLAND,
-            base_url="https://shareisland.org",
+            base_url=TrackerSelection.SHARE_ISLAND.get_root_url(),
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
@@ -94,7 +94,7 @@ class ShareIslandSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.SHARE_ISLAND,
-            base_url="https://shareisland.org",
+            base_url=TrackerSelection.SHARE_ISLAND.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

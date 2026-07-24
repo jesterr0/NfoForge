@@ -17,6 +17,7 @@ from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.passthepopcorn import (
     PTPCodec,
     PTPContainer,
@@ -89,9 +90,11 @@ class PTPUploader:
         "_session",
     )
 
-    URL = "https://passthepopcorn.me/torrents.php"
-    UPLOAD_URL = "https://passthepopcorn.me/upload.php"
-    LOGIN_URL = "https://passthepopcorn.me/ajax.php?action=login"
+    URL = f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}torrents.php"
+    UPLOAD_URL = f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}upload.php"
+    LOGIN_URL = (
+        f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}ajax.php?action=login"
+    )
 
     FLAT_SUB_LANGUAGE_MAP = {
         "Arabic": 22,
@@ -287,10 +290,10 @@ class PTPUploader:
 
         # determine url
         if group_id:
-            url = f"https://passthepopcorn.me/upload.php?groupid={group_id}"
+            url = f"{self.UPLOAD_URL}?groupid={group_id}"
             data["groupid"] = group_id
         else:
-            url = "https://passthepopcorn.me/upload.php"
+            url = self.UPLOAD_URL
             get_poster = media_search_payload.imdb_data.cover_url
             if not get_poster:
                 get_poster = (
@@ -814,7 +817,7 @@ class PTPSearch:
 
     __slots__ = ("api_user", "api_key", "timeout")
 
-    URL = "https://passthepopcorn.me/torrents.php"
+    URL = f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}torrents.php"
 
     def __init__(self, api_user: str, api_key: str, timeout: int = 60) -> None:
         self.api_user = api_user
