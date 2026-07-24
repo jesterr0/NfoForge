@@ -355,6 +355,7 @@ class TemplateSettings:
     block_syntax_color: str
     variable_syntax_color: str
     comment_syntax_color: str
+    warning_syntax_color: str
     trim_blocks: bool
     lstrip_blocks: bool
     newline_sequence: str

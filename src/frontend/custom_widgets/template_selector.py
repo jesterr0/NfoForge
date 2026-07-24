@@ -24,11 +24,15 @@ from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import Tokens, TokenType
 from src.backend.utils.token_utils import get_prompt_tokens
+from src.backend.utils.token_validation import (
+    build_unknown_token_pattern,
+    find_unknown_tokens,
+)
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.basic_code_editor import CodeEditor
+from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
 from src.frontend.custom_widgets.prompt_token_editor_dialog import (
@@ -41,6 +45,18 @@ from src.frontend.wizards.sandbox_wizard import SandboxMainWindow
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
+
+
+def saved_status_message(unknown_count: int) -> str:
+    """The status tip shown after a template is saved.
+
+    The count is advisory: the save has already happened by the time this is
+    shown, and an unrecognized token never prevents one.
+    """
+    if not unknown_count:
+        return "Saved template"
+    noun = "token" if unknown_count == 1 else "tokens"
+    return f"Saved template - {unknown_count} unrecognized {noun}"
 
 
 class TokenTableWindow(QWidget):
@@ -93,6 +109,11 @@ class TemplateSelector(QWidget):
         self.templates = self.backend.templates
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
+        self._static_highlights: list[HighlightKeywords] = []
+        self._warning_color: str = ""
+        self.unknown_tokens: set[str] = set()
+        self._unknown_token_timer = QTimer(self, singleShot=True, interval=400)
+        self._unknown_token_timer.timeout.connect(self._refresh_unknown_tokens)
         self.cached_sandbox_prompt_tokens: dict[str, str] | None = None
         self._del_timer = QTimer(self, singleShot=True, interval=3000)
         self._del_timer.timeout.connect(self._del_timer_done)
@@ -213,6 +234,7 @@ class TemplateSelector(QWidget):
             line_numbers=True, wrap_text=False, mono_font=True, parent=self
         )
         self.text_edit.save_contents.connect(self.save_template)
+        self.text_edit.textChanged.connect(self._unknown_token_timer.start)
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addLayout(self.template_control_layout)
@@ -227,6 +249,53 @@ class TemplateSelector(QWidget):
 
     def get_selected_template_name(self) -> str:
         return self.template_combo.currentText()
+
+    def set_syntax_highlights(
+        self, patterns: list[HighlightKeywords], warning_color: str
+    ) -> None:
+        """Set the editor's static highlight patterns.
+
+        Stored rather than passed straight through, because the unknown-token
+        highlight is appended to this list on every recompute and would
+        otherwise be lost whenever a caller reapplies the static patterns.
+
+        Every color, including `warning_color`, comes from the caller -- the
+        same as the three static delimiter colors, which arrive already
+        baked into `patterns`. This widget holds no config knowledge about
+        colors of its own.
+        """
+        self._static_highlights = list(patterns)
+        self._warning_color = warning_color
+        self._apply_highlights()
+
+    @Slot()
+    def _refresh_unknown_tokens(self) -> None:
+        """Recompute the unknown-token set and reapply the highlights.
+
+        Advisory only: this never blocks an edit, a save, or a preview. While
+        the preview is showing, the editor holds rendered output rather than
+        template source, so the check is skipped.
+        """
+        if self.preview_btn.isChecked():
+            return
+
+        self.unknown_tokens = find_unknown_tokens(
+            self.text_edit.toPlainText(),
+            self.context.jinja_engine.environment,
+        )
+        self._apply_highlights()
+
+    def _apply_highlights(self) -> None:
+        patterns = list(self._static_highlights)
+        unknown_pattern = build_unknown_token_pattern(self.unknown_tokens)
+        if unknown_pattern is not None and self._warning_color:
+            # Appended last so it overrides the variable color on the same
+            # span: the highlighter applies patterns in order and later
+            # `setFormat` calls overwrite earlier ones.
+            patterns.append(
+                HighlightKeywords(unknown_pattern, self._warning_color, False)
+            )
+        self.text_edit.highlight_keywords(patterns)
 
     def create_template_index_map(self) -> dict[str, int]:
         return {name: i for i, name in enumerate(self.backend.templates.keys())}
@@ -360,7 +429,10 @@ class TemplateSelector(QWidget):
                 self.template_combo.currentText()
             ]
             self.backend.save_template(selected_template, self.text_edit.toPlainText())
-            GSigs().main_window_update_status_tip.emit("Saved template", 3000)
+            self._refresh_unknown_tokens()
+            GSigs().main_window_update_status_tip.emit(
+                saved_status_message(len(self.unknown_tokens)), 3000
+            )
 
     @Slot()
     def delete_template(self) -> None:

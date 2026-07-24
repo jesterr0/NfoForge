@@ -560,6 +560,7 @@ pre_upload = ""
 block_syntax_color = "#A4036F"
 variable_syntax_color = "#048BA8"
 comment_syntax_color = "#16DB93"
+warning_syntax_color = "#E1401D"
 trim_blocks = 1
 lstrip_blocks = 1
 newline_sequence = "\n"
