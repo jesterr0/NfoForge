@@ -28,7 +28,7 @@ from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.basic_code_editor import CodeEditor
+from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
 from src.frontend.custom_widgets.prompt_token_editor_dialog import (
@@ -93,6 +93,7 @@ class TemplateSelector(QWidget):
         self.templates = self.backend.templates
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
+        self._static_highlights: list[HighlightKeywords] = []
         self.cached_sandbox_prompt_tokens: dict[str, str] | None = None
         self._del_timer = QTimer(self, singleShot=True, interval=3000)
         self._del_timer.timeout.connect(self._del_timer_done)
@@ -227,6 +228,20 @@ class TemplateSelector(QWidget):
 
     def get_selected_template_name(self) -> str:
         return self.template_combo.currentText()
+
+    def set_syntax_highlights(self, patterns: list[HighlightKeywords]) -> None:
+        """Set the editor's static highlight patterns.
+
+        Stored rather than passed straight through, because the unknown-token
+        highlight is appended to this list on every recompute and would
+        otherwise be lost whenever a caller reapplies the static patterns.
+        """
+        self._static_highlights = list(patterns)
+        self._apply_highlights()
+
+    def _apply_highlights(self) -> None:
+        self.text_edit.clear_keyword_highlights()
+        self.text_edit.highlight_keywords(list(self._static_highlights))
 
     def create_template_index_map(self) -> dict[str, int]:
         return {name: i for i, name in enumerate(self.backend.templates.keys())}
