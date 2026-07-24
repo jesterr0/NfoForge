@@ -26,21 +26,37 @@ from src.backend.tokens import Tokens
 _RUNTIME_TOKEN_PREFIXES = ("usr_", "prompt_")
 
 
-def _bound_names(ast: nodes.Template) -> set[str]:
-    """Names the template binds itself via `{% set %}` or `{% for %}`.
+# `{% for %}`, `{% macro %}`, and `{% call %}` each open a scope: a name bound
+# inside one does not exist after the block ends. Bindings inside them are
+# therefore NOT collected as known -- such a name really does render blank
+# afterwards, which is exactly what this module exists to report.
+_SCOPE_OPENING_NODES = (nodes.For, nodes.Macro, nodes.CallBlock)
 
-    `Node.find_all` yields descendants but not the node it is called on, and a
-    simple `{% set x = ... %}` target *is* a `nodes.Name`. Walking the target
-    alone therefore misses every simple assignment, so the target is
-    type-checked directly as well as walked (the walk covers tuple targets
-    such as `{% for a, b in pairs %}`).
+
+def _bound_names(node: nodes.Node) -> set[str]:
+    """Names the template binds at a scope that outlives the binding.
+
+    `meta.find_undeclared_variables` is already scope-aware and omits most
+    `{% set %}` bindings by itself. It does still report one bound inside an
+    `{% if %}`, even though Jinja lets that binding leak out of the block, so
+    those are collected here to keep a working template from being flagged.
+
+    Recurses rather than using `find_all` so the walk can stop at a scope
+    boundary. `Node.find_all` yields descendants but not the node it is called
+    on, and a simple `{% set x = ... %}` target *is* a `nodes.Name`, so each
+    target is type-checked directly as well as walked (the walk covers tuple
+    targets such as `{% set a, b = 1, 2 %}`).
     """
     bound: set[str] = set()
-    for assignment in ast.find_all((nodes.Assign, nodes.AssignBlock, nodes.For)):
-        target = assignment.target
-        if isinstance(target, nodes.Name):
-            bound.add(target.name)
-        bound.update(name.name for name in target.find_all(nodes.Name))
+    for child in node.iter_child_nodes():
+        if isinstance(child, _SCOPE_OPENING_NODES):
+            continue
+        if isinstance(child, nodes.Assign | nodes.AssignBlock):
+            target = child.target
+            if isinstance(target, nodes.Name):
+                bound.add(target.name)
+            bound.update(name.name for name in target.find_all(nodes.Name))
+        bound |= _bound_names(child)
     return bound
 
 

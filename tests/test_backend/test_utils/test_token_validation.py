@@ -51,6 +51,27 @@ def test_for_loop_target_is_not_flagged() -> None:
     assert find_unknown_tokens(template, _env()) == set()
 
 
+def test_if_nested_set_is_not_flagged() -> None:
+    # Jinja lets a binding made inside `{% if %}` leak out of the block, so
+    # the later reference resolves. `find_undeclared_variables` reports it
+    # anyway, and flagging it would mark a working template. This is the
+    # shape used by a real user template.
+    template = "{% set s = '' %}{% if 1 %}{% set s = 'v' %}{% endif %}{{ s }}"
+    assert find_unknown_tokens(template, _env()) == set()
+
+
+def test_loop_scoped_set_used_outside_the_loop_is_flagged() -> None:
+    # The binding does not outlive the loop, so this really does render
+    # blank -- the exact silent-blank failure this module exists to catch.
+    template = "{% for i in ['A'] %}{% set y = i %}{% endfor %}{{ y }}"
+    assert find_unknown_tokens(template, _env()) == {"y"}
+
+
+def test_macro_scoped_set_used_outside_the_macro_is_flagged() -> None:
+    template = "{% macro m() %}{% set q = 1 %}{% endmacro %}{{ q }}"
+    assert find_unknown_tokens(template, _env()) == {"q"}
+
+
 def test_user_and_prompt_prefixed_names_are_not_flagged() -> None:
     assert find_unknown_tokens("{{ usr_custom }}{{ prompt_note }}", _env()) == set()
 
