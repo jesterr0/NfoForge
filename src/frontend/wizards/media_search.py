@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.filter_title import edition_and_title_extractor as extract_title
+from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
@@ -544,7 +545,7 @@ class MediaSearch(BaseWizardPage):
 
     def _get_title_only(self, file_path: Path) -> str:
         guess = guessit(file_path.stem, {"excludes": ["language"]})
-        title = guess.get("title")
+        title = get_guessit_title(guess)
         year = guess.get("year")
         if title and year:
             return f"{title} {year}"

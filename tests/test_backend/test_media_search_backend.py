@@ -40,6 +40,16 @@ def test_tmdb_connection_failure_is_not_reported_as_empty_results(
         backend._fetch_tmdb_results("https://example.invalid/search")
 
 
+def test_guessit_list_title_uses_first_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    backend = MediaSearchBackEnd(api_key="key")
+    monkeypatch.setattr(
+        "src.backend.media_search.guessit",
+        lambda *_args, **_kwargs: {"title": ["Primary", "Alternative"], "year": "2024"},
+    )
+
+    assert backend._guessit("ignored filename") == ("Primary", "2024")
+
+
 def test_tmdb_empty_successful_search_disables_results() -> None:
     backend = MediaSearchBackEnd(api_key="key")
     backend.session.get = lambda *_args, **_kwargs: _Response({"results": []})  # type: ignore[method-assign]

@@ -4,7 +4,9 @@ from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
+from src.payloads.media_search import MediaSearchPayload
 
 
 def _td() -> TokenData:
@@ -50,3 +52,23 @@ def test_frame_size_normalizes_imax_without_mutating_during_iteration() -> None:
     assert any("imax" not in str(e).lower() for e in editions)
 
     assert replacer._frame_size(_td()) == "IMAX"
+
+
+def test_title_tokens_use_first_guessit_title_when_list_shaped(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.backend.token_replacer.guessit",
+        lambda *_args, **_kwargs: {"title": ["Primary Title", "Alternative"]},
+    )
+    replacer = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{title_exact}",
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+    assert replacer._title_exact(_td()) == "Primary Title"

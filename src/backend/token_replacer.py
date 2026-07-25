@@ -17,6 +17,7 @@ from pymediainfo import MediaInfo, Track
 from src.backend.tokens import FileToken, NfoToken, TokenData, Tokens, TokenType
 from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
+from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.language import (
     get_full_language_str,
     get_language_mi,
@@ -99,6 +100,7 @@ class TokenReplacer:
         "source_file_mi_obj",
         "guess_name",
         "guess_source_name",
+        "guessit_title",
         # vars (set during __init__)
         "guessit_language",
         "token_data",
@@ -241,6 +243,7 @@ class TokenReplacer:
         self.guess_source_name = (
             guessit(self.source_file.name) if self.source_file else None
         )
+        self.guessit_title = get_guessit_title(self.guess_name)
         self.guessit_language = self._guessit_language()
         self.token_data = Tokens.generate_token_dataclass(token_type)
 
@@ -1655,7 +1658,7 @@ class TokenReplacer:
         title = (
             self.media_search_obj.title
             if self.media_search_obj.title
-            else self.guess_name.get("title", "")
+            else self.guessit_title
         )
         title = self._title_formatting_standard(title)
         return self._optional_user_input(title, token_data)
@@ -1664,7 +1667,7 @@ class TokenReplacer:
         title = (
             self.media_search_obj.title
             if self.media_search_obj.title
-            else self.guess_name.get("title", "")
+            else self.guessit_title
         )
         title = self._title_formatting_cleaned(title, self.title_clean_rules)
         return self._optional_user_input(title, token_data)
@@ -1673,7 +1676,7 @@ class TokenReplacer:
         title = (
             self.media_search_obj.title
             if self.media_search_obj.title
-            else self.guess_name.get("title", "")
+            else self.guessit_title
         )
         return self._optional_user_input(title, token_data)
 

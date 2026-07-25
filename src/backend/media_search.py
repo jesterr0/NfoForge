@@ -11,6 +11,7 @@ from imdbinfo.models import MovieDetail
 from rapidfuzz import fuzz
 from unidecode import unidecode
 
+from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.super_sub import normalize_super_sub
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
@@ -246,10 +247,11 @@ class MediaSearchBackEnd:
             ) from error
 
     @staticmethod
-    def _guessit(input_string: str) -> tuple[str | None, str]:
+    def _guessit(input_string: str) -> tuple[str, str]:
         get_info = guessit(input_string, {"excludes": ["language"]})
-        title = get_info.get("title")
-        year = get_info.get("year", "")
+        title = get_guessit_title(get_info)
+        year_value = get_info.get("year", "")
+        year = str(year_value) if year_value else ""
         if not title and year:
             title = input_string.split(str(year))[0].strip()
         elif not title and not year:

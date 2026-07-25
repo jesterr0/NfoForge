@@ -53,6 +53,18 @@ def test_empty_search_result_does_not_complete_page(tmp_path: Path) -> None:
     assert page.listbox.item(0).text() == "No results, try again..."
 
 
+def test_title_guess_uses_first_title_when_guessit_returns_a_list(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    monkeypatch.setattr(
+        "src.frontend.wizards.media_search.guessit",
+        lambda *_args, **_kwargs: {"title": ["Primary", "Alternative"], "year": 2024},
+    )
+
+    assert page._get_title_only(Path("ignored.mkv")) == "Primary 2024"
+
+
 def test_failed_search_clears_payload_and_preserves_query(
     monkeypatch, tmp_path: Path
 ) -> None:
