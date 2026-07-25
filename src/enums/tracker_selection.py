@@ -36,7 +36,7 @@ TRACKER_ROOT_URLS: Mapping[TrackerSelection, str] = MappingProxyType(
         TrackerSelection.TORRENT_LEECH: "https://www.torrentleech.org/",
         TrackerSelection.BEYOND_HD: "https://beyond-hd.me/",
         TrackerSelection.PASS_THE_POPCORN: "https://passthepopcorn.me/",
-        TrackerSelection.REELFLIX: "https://reelflix.xyz/",
+        TrackerSelection.REELFLIX: "https://reelflix.cc/",
         TrackerSelection.AITHER: "https://aither.cc/",
         TrackerSelection.HUNO: "https://hawke.uno/",
         TrackerSelection.LST: "https://lst.gg/",
