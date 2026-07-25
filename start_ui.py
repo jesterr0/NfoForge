@@ -1,7 +1,9 @@
 # relevant documentation
 # https://doc.qt.io/qtforpython-6/index.html#
+import faulthandler
 import sys
 import traceback
+from datetime import datetime
 from multiprocessing import freeze_support as mp_freeze_support
 from pathlib import Path
 
@@ -66,8 +68,41 @@ class NfoForge:
         return True
 
     def _setup_exception_hooks(self) -> None:
+        self._enable_crash_dump()
         sys.excepthook = self.exception_handler
         qInstallMessageHandler(self.qt_message_handler)
+
+    def _enable_crash_dump(self) -> None:
+        """Leave a Python stack behind if the process dies without warning.
+
+        A segfault or access violation inside Qt or its bindings raises no
+        Python exception and emits no Qt message, so neither `exception_handler`
+        nor `qt_message_handler` ever runs: the application disappears and the
+        log simply stops. faulthandler installs handlers for the fatal signals
+        themselves and writes out every thread's Python stack when one arrives,
+        which is the only record of where such a crash happened.
+
+        The handle is kept on the instance on purpose. faulthandler writes to
+        the descriptor while the process is already dying, so closing it or
+        letting it be collected would leave the dump going nowhere. Appending
+        keeps earlier crashes, and line buffering is what gets the bytes to disk
+        before the process goes.
+        """
+        self._crash_log_handle = None
+        crash_log = LOG.log_file.parent / "crash.log"
+        try:
+            handle = open(crash_log, "a", buffering=1, encoding="utf-8")
+        except OSError as error:
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Could not open the crash log ({crash_log}): {error}",
+            )
+            return
+        # the log file is per run but this one is appended across runs, so a
+        # dump is unattributable without naming the run it belongs to
+        handle.write(f"\n=== {datetime.now().isoformat()} {LOG.log_file.name} ===\n")
+        self._crash_log_handle = handle
+        faulthandler.enable(file=handle)
 
     def _setup_font(self) -> None:
         font_folder = RUNTIME_DIR / "fonts"
@@ -297,6 +332,13 @@ class NfoForge:
             QtMsgType.QtFatalMsg,
         ):
             LOG.critical(LOG.LOG_SOURCE.FE, f"Qt Error: {message}")
+            if mode == QtMsgType.QtFatalMsg:
+                # Qt aborts as soon as this returns, so there is no application
+                # left to show a dialog against: _error_message_box runs exec(),
+                # spinning a nested event loop mid-teardown, which can hang or
+                # die before anyone reads it. The log line above is what
+                # survives, and is what a crash report is built from.
+                return
             self._error_message_box("QtError", message)
 
     def _error_message_box(
