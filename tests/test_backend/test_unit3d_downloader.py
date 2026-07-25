@@ -67,13 +67,11 @@ def test_unit3d_download_preserves_original_torrent_on_invalid_response(
     assert not list(tmp_path.glob("*.part"))
 
 
-@patch.object(Unit3dBaseUploader, "_download_uploaded_torrent")
 @patch.object(Unit3dBaseUploader, "_build_upload_payload", return_value={})
 @patch("src.backend.trackers.unit3d_base.niquests.post")
 def test_unit3d_upload_redownloads_tracker_torrent_before_success(
     post: MagicMock,
     _build_payload: MagicMock,
-    download_torrent: MagicMock,
     tmp_path: Path,
 ) -> None:
     torrent_file = tmp_path / "release.torrent"
@@ -87,7 +85,19 @@ def test_unit3d_upload_redownloads_tracker_torrent_before_success(
     post.return_value.__enter__.return_value = response
     uploader = _uploader(torrent_file)
 
-    assert uploader.upload(tracker_title="Example") is True
+    def replace_uploaded_torrent(_download_url: str) -> None:
+        replacement = tmp_path / "replacement.torrent"
+        replacement.write_bytes(b"tracker torrent")
+        replacement.replace(torrent_file)
+
+    with patch.object(
+        Unit3dBaseUploader,
+        "_download_uploaded_torrent",
+        side_effect=replace_uploaded_torrent,
+    ) as download_torrent:
+        assert uploader.upload(tracker_title="Example") is True
+
+    assert torrent_file.read_bytes() == b"tracker torrent"
     download_torrent.assert_called_once_with(
         "https://tracker.example/torrents/download/123.key"
     )

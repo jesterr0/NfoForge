@@ -178,40 +178,41 @@ class Unit3dBaseUploader:
 
         LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
 
-        open_torrent = self.torrent_file.open(mode="rb")
         try:
-            with niquests.post(
-                url=self.upload_url,
-                files={"torrent": open_torrent},
-                params=params,
-                data=upload_payload,
-                headers=TRACKER_HEADERS,
-                timeout=self.timeout,
-            ) as response:
-                response_json = response.json()
-                # {'success': True, 'data': 'https://baseurl/torrent/download/45835.keydata', 'message': 'Torrent uploaded successfully.'}
-                message = response_json.get("message")
-                context = response_json.get("data")
-                if (
-                    response_json.get("success") is True
-                    and isinstance(message, str)
-                    and "successfully" in message
-                ):
-                    if not isinstance(context, str) or not context:
-                        raise TrackerError(
-                            "Tracker did not return a torrent download URL"
-                        )
-                    self._download_uploaded_torrent(context)
-                    return True
-                else:
-                    error_msg = f"Message='{message}' Context='{context}'"
-                    raise TrackerError(error_msg)
+            with self.torrent_file.open(mode="rb") as open_torrent:
+                with niquests.post(
+                    url=self.upload_url,
+                    files={"torrent": open_torrent},
+                    params=params,
+                    data=upload_payload,
+                    headers=TRACKER_HEADERS,
+                    timeout=self.timeout,
+                ) as response:
+                    response_json = response.json()
+                    # {'success': True, 'data': 'https://baseurl/torrent/download/45835.keydata', 'message': 'Torrent uploaded successfully.'}
+                    message = response_json.get("message")
+                    context = response_json.get("data")
+                    if (
+                        response_json.get("success") is True
+                        and isinstance(message, str)
+                        and "successfully" in message
+                    ):
+                        if not isinstance(context, str) or not context:
+                            raise TrackerError(
+                                "Tracker did not return a torrent download URL"
+                            )
+                        download_url = context
+                    else:
+                        error_msg = f"Message='{message}' Context='{context}'"
+                        raise TrackerError(error_msg)
+
+            # The source torrent must be closed before replacing it on Windows.
+            self._download_uploaded_torrent(download_url)
+            return True
         except (niquests.exceptions.RequestException, TrackerError) as error:
             requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
             raise TrackerError(requests_exc_error_msg)
-        finally:
-            open_torrent.close()
 
     def _download_uploaded_torrent(self, download_url: str) -> Path:
         """Stream the tracker-generated torrent to its final path atomically."""
