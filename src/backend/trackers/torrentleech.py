@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import niquests
-from niquests.cookies import RequestsCookieJar
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 

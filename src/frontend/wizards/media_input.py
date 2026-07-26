@@ -1,6 +1,6 @@
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pymediainfo import MediaInfo
 from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal, Slot
@@ -29,9 +29,6 @@ from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import ComparisonPair
-
-if TYPE_CHECKING:
-    from src.frontend.windows.main_window import MainWindow
 
 
 class MediaInput(BaseWizardPage):

@@ -7,7 +7,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from pymediainfo import MediaInfo
 from PySide6.QtCore import SignalInstance
 
 from src.backend.utils.working_dir import CURRENT_DIR

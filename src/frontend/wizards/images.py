@@ -44,7 +44,6 @@ from src.frontend.stacked_windows.cropping import CropWidgetDialog
 from src.frontend.utils import build_v_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.windows.image_viewer import ImageViewer
-from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import SubNames

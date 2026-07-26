@@ -61,7 +61,10 @@ docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 line-length = 88
 
 [tool.ruff.lint]
-select = ["I", "UP"]
+# `select` replaces ruff's defaults rather than extending them, so "F"
+# (pyflakes) has to be listed explicitly or unused imports, redefinitions,
+# undefined names, and unused locals go unlinted.
+select = ["F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

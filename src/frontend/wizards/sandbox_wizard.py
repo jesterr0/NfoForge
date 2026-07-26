@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from guessit import guessit
 from PySide6.QtCore import Qt, Slot
@@ -24,9 +23,6 @@ from src.frontend.global_signals import GSigs
 from src.frontend.utils import set_top_parent_geometry
 from src.frontend.wizards.media_input import MediaInput
 from src.frontend.wizards.media_search import MediaSearch
-
-if TYPE_CHECKING:
-    from src.frontend.windows.main_window import MainWindow
 
 
 class SandboxMediaInputPage(QWizardPage):

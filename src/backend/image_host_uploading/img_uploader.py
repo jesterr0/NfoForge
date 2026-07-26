@@ -1,8 +1,7 @@
 import asyncio
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import replace
-from pathlib import Path
 
 from src.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,

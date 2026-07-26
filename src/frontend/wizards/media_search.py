@@ -4,7 +4,7 @@ import webbrowser
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib import parse as url_parse
 
 from guessit import guessit
@@ -44,9 +44,6 @@ from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-
-if TYPE_CHECKING:
-    from src.frontend.windows.main_window import MainWindow
 
 
 class QueuedWorker(QThread):
