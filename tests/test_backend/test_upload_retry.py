@@ -100,3 +100,77 @@ def test_cancel_decision_stops_processing(
         )
 
     assert upload.call_count == 1
+
+
+def test_user_retry_runs_the_upload_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A RETRY decision restarts the whole attempt budget and can succeed."""
+    monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    upload = MagicMock(
+        side_effect=[TrackerError("invalid API key", retryable=False), True]
+    )
+    callback = MagicMock(return_value=UploadRetryAction.RETRY)
+    kwargs = _kwargs(tmp_path)
+
+    result, skipped = _backend()._upload_tracker_with_retry(
+        upload_request=upload,
+        upload_retry_cb=callback,
+        **kwargs,
+    )
+
+    assert result is True
+    assert skipped is False
+    assert upload.call_count == 2
+    callback.assert_called_once()
+
+
+def test_automatic_attempts_are_exhausted_before_prompting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Retryable failures use the full automatic budget, then reach the user."""
+    monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        process_module, "wait_exponential", lambda **_kwargs: wait_none()
+    )
+    upload = MagicMock(side_effect=TrackerError("temporary timeout", retryable=True))
+    callback = MagicMock(return_value=UploadRetryAction.SKIP)
+    kwargs = _kwargs(tmp_path)
+
+    result, skipped = _backend()._upload_tracker_with_retry(
+        upload_request=upload,
+        upload_retry_cb=callback,
+        **kwargs,
+    )
+
+    assert result is None
+    assert skipped is True
+    assert upload.call_count == ProcessBackEnd.AUTOMATIC_UPLOAD_ATTEMPTS
+    failure = callback.call_args.args[0]
+    assert failure.attempt == ProcessBackEnd.AUTOMATIC_UPLOAD_ATTEMPTS
+
+
+def test_server_accepted_failure_prompts_on_the_first_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A possibly-accepted upload must reach the user without a silent re-POST."""
+    monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    upload = MagicMock(
+        side_effect=TrackerError(
+            "read timed out", retryable=True, server_accepted=True
+        )
+    )
+    callback = MagicMock(return_value=UploadRetryAction.SKIP)
+    kwargs = _kwargs(tmp_path)
+
+    result, skipped = _backend()._upload_tracker_with_retry(
+        upload_request=upload,
+        upload_retry_cb=callback,
+        **kwargs,
+    )
+
+    assert result is None
+    assert skipped is True
+    assert upload.call_count == 1
+    failure = callback.call_args.args[0]
+    assert failure.server_accepted is True
