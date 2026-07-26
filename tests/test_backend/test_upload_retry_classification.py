@@ -5,7 +5,9 @@ import niquests
 import pytest
 
 from src.backend.process import ProcessBackEnd
+from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.huno import HunoUploader
+from src.backend.trackers.torrentleech import TLUploader
 from src.backend.upload_retry import classify_upload_post_error
 from src.enums.media_type import MediaType
 from src.exceptions import TrackerError
@@ -104,17 +106,115 @@ def test_connect_timeout_on_upload_is_still_retried_automatically(
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
 
 
+def _upload_raising_from_response(
+    response_json: dict[str, object], status_code: int, tmp_path: Path
+) -> TrackerError:
+    """Run a real UNIT3D upload where the tracker responds with a structured failure."""
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+    mock_response = MagicMock()
+    mock_response.__enter__.return_value = mock_response
+    mock_response.__exit__.return_value = False
+    mock_response.json.return_value = response_json
+    mock_response.status_code = status_code
+    with (
+        patch.object(HunoUploader, "_build_upload_payload", return_value={}),
+        patch(
+            "src.backend.trackers.unit3d_base.niquests.post",
+            return_value=mock_response,
+        ),
+    ):
+        with pytest.raises(TrackerError) as excinfo:
+            _uploader(torrent_file).upload(
+                tracker_title="Example.2026.1080p.WEB-DL-GRP"
+            )
+    return excinfo.value
+
+
+def test_unit3d_408_response_is_retryable(tmp_path: Path) -> None:
+    """A structured 408 from a UNIT3D tracker must agree with the generic rule."""
+    error = _upload_raising_from_response(
+        {"success": False, "message": "Rate limited", "data": None}, 408, tmp_path
+    )
+
+    assert error.status_code == 408
+    assert error.retryable is True
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
+def test_beyondhd_408_response_is_retryable(tmp_path: Path) -> None:
+    """A structured 408 from BeyondHD must agree with the generic status-code rule."""
+    uploader = BHDUploader(
+        api_key="api-key",
+        torrent_file=tmp_path / "release.torrent",
+        input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+        media_type=MediaType.MOVIE,
+    )
+    mock_response = MagicMock(ok=False, status_code=408, reason="Request Timeout")
+    with (
+        patch.object(BHDUploader, "_build_upload_payload", return_value={}),
+        patch.object(BHDUploader, "_files", return_value={}),
+        patch(
+            "src.backend.trackers.beyondhd.niquests.post", return_value=mock_response
+        ),
+    ):
+        with pytest.raises(TrackerError) as excinfo:
+            uploader.upload(tracker_title="Example.2026.1080p.WEB-DL-GRP")
+
+    error = excinfo.value
+    assert error.status_code == 408
+    assert error.retryable is True
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
+def test_torrentleech_408_response_is_retryable(tmp_path: Path) -> None:
+    """A structured 408 from TorrentLeech must agree with the generic status-code rule."""
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+    uploader = TLUploader(announce_key="key")
+    mock_response = MagicMock(
+        ok=False, status_code=408, reason="Request Timeout", text="body"
+    )
+    with (
+        patch.object(TLUploader, "_get_data", return_value={}),
+        patch("src.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
+        patch(
+            "src.backend.trackers.torrentleech.niquests.post",
+            return_value=mock_response,
+        ),
+    ):
+        with pytest.raises(TrackerError) as excinfo:
+            uploader.upload(
+                nfo="nfo contents",
+                tracker_title=None,
+                torrent_file=torrent_file,
+                mediainfo_obj=MagicMock(),
+                media_type=MediaType.MOVIE,
+                is_pack=False,
+            )
+
+    error = excinfo.value
+    assert error.status_code == 408
+    assert error.retryable is True
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
 def test_unannotated_error_is_not_retried_automatically() -> None:
     """With every tracker annotated, an unknown error must not be guessed at."""
     assert ProcessBackEnd._is_automatic_upload_retryable(TrackerError("boom")) is False
 
 
 def test_error_text_no_longer_drives_retry_decisions() -> None:
-    """Tracker HTML containing 'timeout' must not flip a permanent failure."""
+    """An un-annotated error containing 'timeout' must not be guessed retryable.
+
+    ``retryable`` and ``status_code`` are both left unset, so this is the only
+    construction that actually reaches the code path the marker list used to
+    occupy; a substring match on "gateway timeout advice" would have flipped
+    the old heuristic to retryable.
+    """
     error = TrackerError(
         "There was an error uploading to TorrentLeech: 403 "
         "(Forbidden - <html><body>gateway timeout advice</body></html>)",
-        retryable=False,
     )
 
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
@@ -132,6 +232,16 @@ def test_status_code_still_drives_retry_when_retryable_is_unset() -> None:
             TrackerError("forbidden", status_code=403)
         )
         is False
+    )
+
+
+def test_http_408_is_retryable_via_status_code() -> None:
+    """A 408 means the request body never fully arrived, so retrying is safe."""
+    assert (
+        ProcessBackEnd._is_automatic_upload_retryable(
+            TrackerError("request timeout", status_code=408)
+        )
+        is True
     )
 
 

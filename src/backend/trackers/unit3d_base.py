@@ -213,7 +213,11 @@ class Unit3dBaseUploader:
                             error_msg,
                             retryable=(
                                 isinstance(status_code, int)
-                                and (status_code == 429 or status_code >= 500)
+                                and (
+                                    status_code == 408
+                                    or status_code == 429
+                                    or status_code >= 500
+                                )
                             ),
                             status_code=(
                                 status_code if isinstance(status_code, int) else None
