@@ -17,6 +17,7 @@ from src.backend.trackers.utils import (
     looks_like_torrent,
     tracker_string_replace_map,
 )
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -235,7 +236,12 @@ class Unit3dBaseUploader:
         except niquests.exceptions.RequestException as error:
             requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
-            raise TrackerError(requests_exc_error_msg, retryable=True) from error
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
 
     def _download_uploaded_torrent(self, download_url: str) -> Path:
         """Stream the tracker-generated torrent to its final path atomically."""
