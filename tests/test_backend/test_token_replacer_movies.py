@@ -72,3 +72,28 @@ def test_title_tokens_use_first_guessit_title_when_list_shaped(
     )
 
     assert replacer._title_exact(_td()) == "Primary Title"
+
+
+def _movie_filename(token_string: str) -> str | None:
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string=token_string,
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    ).get_output()
+
+
+def test_empty_token_at_either_end_leaves_no_stray_separator() -> None:
+    # _format_token_string collapses runs of dots before it appends the file
+    # suffix, so it cannot see the doubled dot that a trailing empty token
+    # creates. A leading empty token is worse than cosmetic: a name starting
+    # with "." is a hidden file on Unix.
+    #
+    # {video_3d} is empty for this fixture, so each of these differs from the
+    # control only by a token that contributes nothing.
+    assert _movie_filename("{title_exact}") == "Movie.Name.mkv"
+    assert _movie_filename("{title_exact}.{video_3d}") == "Movie.Name.mkv"
+    assert _movie_filename("{video_3d}.{title_exact}") == "Movie.Name.mkv"
