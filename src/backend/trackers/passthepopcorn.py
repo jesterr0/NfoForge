@@ -891,7 +891,7 @@ class PTPSearch:
 
             return results
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(error_message)
+            raise TrackerError(str(error_message))
 
     def get_group_id(self, imdb_id: str) -> str | None:
         params = {
@@ -913,5 +913,5 @@ class PTPSearch:
                     group_id = response_json.get("GroupId")
                     return str(group_id) if group_id is not None else None
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(error_message)
+            raise TrackerError(str(error_message))
         return None

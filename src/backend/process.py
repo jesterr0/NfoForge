@@ -5,7 +5,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
+import niquests
 from PySide6.QtCore import SignalInstance
+from tenacity import Retrying, retry_if_exception, stop_after_attempt
+from tenacity.wait import wait_exponential
 from torf import Torrent
 
 from src.backend.image_host_uploading.base_image_host import (
@@ -64,6 +67,11 @@ from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
+from src.backend.upload_retry import (
+    UploadFailure,
+    UploadFailurePhase,
+    UploadRetryAction,
+)
 from src.backend.utils.anime import is_anime_release
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
@@ -82,7 +90,7 @@ from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ImageHostError, TrackerError
+from src.exceptions import ImageHostError, ProcessCancelled, TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 from src.payloads.media_inputs import MediaInputPayload
@@ -94,6 +102,8 @@ from src.payloads.watch_folder import WatchFolder
 
 
 class ProcessBackEnd:
+    AUTOMATIC_UPLOAD_ATTEMPTS = 3
+
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
         self.template_selector_be = TemplateSelectorBackEnd()
@@ -442,6 +452,164 @@ class ProcessBackEnd:
         except Exception as e:
             return tracker_sel, False, str(e)
 
+    @staticmethod
+    def _upload_error_phase(error: Exception) -> UploadFailurePhase:
+        phase = getattr(error, "phase", None)
+        if phase == "health_check":
+            return UploadFailurePhase.HEALTH_CHECK
+        if phase == "download":
+            return UploadFailurePhase.DOWNLOAD
+        if phase == "injection":
+            return UploadFailurePhase.INJECTION
+        return UploadFailurePhase.UPLOAD
+
+    @staticmethod
+    def _is_automatic_upload_retryable(error: BaseException) -> bool:
+        """Return whether retrying the upload request is safe enough to automate."""
+        if getattr(error, "server_accepted", False):
+            # The POST may already have succeeded. Retrying the whole upload can
+            # create a duplicate; only an explicit user decision may continue.
+            return False
+
+        retryable = getattr(error, "retryable", None)
+        if retryable is not None:
+            return bool(retryable)
+
+        status_code = getattr(error, "status_code", None)
+        if isinstance(status_code, int):
+            return status_code == 408 or status_code == 429 or status_code >= 500
+
+        if isinstance(error, niquests.exceptions.RequestException):
+            return True
+        if isinstance(error.__cause__, niquests.exceptions.RequestException):
+            return True
+        if isinstance(error.__context__, niquests.exceptions.RequestException):
+            return True
+
+        message = str(error).lower()
+        return any(
+            marker in message
+            for marker in (
+                "timed out",
+                "timeout",
+                "connection reset",
+                "connection aborted",
+                "temporarily unavailable",
+                "service unavailable",
+                "http 408",
+                "http 429",
+                "http 500",
+                "http 502",
+                "http 503",
+                "http 504",
+                "status code: 408",
+                "status code: 429",
+                "status code: 500",
+                "status code: 502",
+                "status code: 503",
+                "status code: 504",
+            )
+        )
+
+    def _upload_tracker_with_retry(
+        self,
+        *,
+        tracker: TrackerSelection,
+        torrent_path: Path,
+        tracker_health_cache: dict[TrackerSelection, bool],
+        upload_request: Callable[[], Path | bool | str | None],
+        queued_status_update: Callable[[str, str], None],
+        queued_text_update: Callable[[str], None],
+        caught_error: SignalInstance,
+        upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
+    ) -> tuple[Path | bool | str | None, bool]:
+        """Run one tracker upload with bounded automatic and user retries."""
+        total_attempts = 0
+        manual_retries = 0
+
+        while True:
+
+            def upload_once() -> Path | bool | str:
+                nonlocal total_attempts
+                total_attempts += 1
+                if total_attempts > 1:
+                    # A previous health result may have become stale while the
+                    # user waited or the automatic backoff elapsed.
+                    tracker_health_cache.pop(tracker, None)
+                ensure_tracker_health(
+                    tracker=tracker,
+                    timeout=self.config.settings.general.timeout,
+                    cache=tracker_health_cache,
+                )
+                result = upload_request()
+                if not result:
+                    raise TrackerError(
+                        f"{tracker} did not report a successful upload",
+                        retryable=False,
+                    )
+                return result
+
+            def before_sleep(retry_state: object) -> None:
+                # Retrying's concrete state exposes the attempt number, but the
+                # callback is intentionally kept duck-typed for static checks.
+                attempt_number = getattr(retry_state, "attempt_number", total_attempts)
+                tracker_health_cache.pop(tracker, None)
+                queued_status_update(
+                    str(tracker),
+                    f"↻ Retrying upload ({attempt_number}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})",
+                )
+                queued_text_update(
+                    f"<br /><span>Temporary upload failure for <b>{tracker}</b>; "
+                    f"retrying ({attempt_number}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})</span>"
+                )
+
+            try:
+                retrying = Retrying(
+                    retry=retry_if_exception(self._is_automatic_upload_retryable),
+                    stop=stop_after_attempt(self.AUTOMATIC_UPLOAD_ATTEMPTS),
+                    wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+                    before_sleep=before_sleep,
+                    reraise=True,
+                )
+                return retrying(upload_once), False
+            except ProcessCancelled:
+                raise
+            except Exception as error:
+                retryable = self._is_automatic_upload_retryable(error)
+                failure = UploadFailure(
+                    tracker=tracker,
+                    phase=self._upload_error_phase(error),
+                    message=str(error),
+                    attempt=total_attempts,
+                    automatic_attempts=self.AUTOMATIC_UPLOAD_ATTEMPTS,
+                    retryable=retryable,
+                    server_accepted=bool(getattr(error, "server_accepted", False)),
+                    torrent_path=torrent_path,
+                )
+                queued_status_update(str(tracker), "⚠️ Failed - awaiting action")
+                queued_text_update(
+                    f'<br /><span style="font-weight: bold; color: red;">'
+                    f"Upload failed for {tracker}: {error}</span>"
+                )
+                caught_error.emit(f"Upload Error: {traceback.format_exc()}")
+
+                if upload_retry_cb is None:
+                    return None, False
+
+                action = upload_retry_cb(failure)
+                if action is UploadRetryAction.RETRY:
+                    manual_retries += 1
+                    queued_status_update(
+                        str(tracker),
+                        f"↻ Retrying upload (manual attempt {manual_retries})",
+                    )
+                    continue
+                if action is UploadRetryAction.CANCEL:
+                    queued_status_update(str(tracker), "⏹ Cancelled")
+                    raise ProcessCancelled from error
+                queued_status_update(str(tracker), "⏭ Skipped")
+                return None, True
+
     def process_trackers(
         self,
         process_dict: dict[str, Any],
@@ -458,6 +626,7 @@ class ProcessBackEnd:
             dict[TrackerSelection, dict[str, str | None]] | None,
         ]
         | None = None,
+        upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None = None,
     ) -> None:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
@@ -766,21 +935,31 @@ class ProcessBackEnd:
             if tracker_info.upload_enabled and pre_upload_processing is not False:
                 queued_text_update("<br /><span>Checking tracker availability</span>")
                 execute_upload = None
+                skipped_upload = False
                 try:
-                    ensure_tracker_health(
-                        tracker=cur_tracker,
-                        timeout=self.config.settings.general.timeout,
-                        cache=tracker_health_cache,
-                    )
                     queued_text_update("<br /><span>Uploading release</span>")
-                    execute_upload = self.upload(
+                    execute_upload, skipped_upload = self._upload_tracker_with_retry(
                         tracker=cur_tracker,
-                        torrent_file=torrent_path,
-                        nfo=nfo,
-                        tracker_title=cur_tracker_title,
-                        context=context,
-                        release_info=release_info,
+                        torrent_path=torrent_path,
+                        tracker_health_cache=tracker_health_cache,
+                        upload_request=lambda: self.upload(
+                            tracker=cur_tracker,
+                            torrent_file=torrent_path,
+                            nfo=nfo,
+                            tracker_title=cur_tracker_title,
+                            context=context,
+                            release_info=release_info,
+                        ),
+                        queued_status_update=queued_status_update,
+                        queued_text_update=queued_text_update,
+                        caught_error=caught_error,
+                        upload_retry_cb=upload_retry_cb,
                     )
+                except ProcessCancelled:
+                    for remaining_tracker in list(process_dict)[idx:]:
+                        queued_status_update(remaining_tracker, "⏹ Cancelled")
+                    self.disconnect_from_clients()
+                    raise
                 except Exception as upload_error:
                     queued_text_update(
                         '<br /><br /><p style="font-weight: bold; color: red;">Failed to upload '
@@ -808,11 +987,16 @@ class ProcessBackEnd:
                         )
                         caught_error.emit(f"Injection Error: {traceback.format_exc()}")
                 else:
-                    queued_text_update(
-                        '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
-                        "check logs for information</span>"
-                    )
-                    queued_status_update(tracker_name, "❌ Failed")
+                    if skipped_upload:
+                        queued_text_update(
+                            "<br /><span>Skipped upload after user decision</span>"
+                        )
+                    else:
+                        queued_text_update(
+                            '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
+                            "check logs for information</span>"
+                        )
+                        queued_status_update(tracker_name, "❌ Failed")
             elif not tracker_info.upload_enabled and pre_upload_processing is None:
                 queued_text_update(
                     "<br /><span>Skipping upload & injection, upload is disabled</span>"

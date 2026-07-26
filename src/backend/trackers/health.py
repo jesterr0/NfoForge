@@ -55,11 +55,20 @@ def ensure_tracker_health(
         )
     except RequestException as error:
         cache[tracker] = False
-        raise TrackerError(f"{tracker} is unavailable: {error}") from error
+        raise TrackerError(
+            f"{tracker} is unavailable: {error}",
+            retryable=True,
+            phase="health_check",
+        ) from error
 
     if status_code >= 400:
         cache[tracker] = False
         detail = f" ({reason})" if reason else ""
-        raise TrackerError(f"{tracker} is unavailable (HTTP {status_code}{detail})")
+        raise TrackerError(
+            f"{tracker} is unavailable (HTTP {status_code}{detail})",
+            retryable=status_code == 429 or status_code >= 500,
+            phase="health_check",
+            status_code=status_code,
+        )
 
     cache[tracker] = True

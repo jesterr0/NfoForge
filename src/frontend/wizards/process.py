@@ -22,13 +22,17 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.process import ProcessBackEnd
+from src.backend.upload_retry import (
+    UploadFailure,
+    UploadRetryAction,
+)
 from src.backend.utils.file_utilities import open_explorer
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
-from src.exceptions import ProcessError
+from src.exceptions import ProcessCancelled, ProcessError
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.custom_widgets.overview_dialog import OverviewDialog
 from src.frontend.custom_widgets.prompt_token_editor_dialog import (
@@ -102,6 +106,8 @@ class ProcessWorker(BaseWorker):
     progress_signal = Signal(int)
     prompt_tokens_signal = Signal(list)
     overview_signal = Signal(object)
+    upload_retry_signal = Signal(object)
+    job_cancelled = Signal()
 
     def __init__(
         self,
@@ -132,8 +138,11 @@ class ProcessWorker(BaseWorker):
                 context=self.context,
                 token_prompt_cb=self.token_prompt_and_wait_cb,
                 overview_cb=self.overview_prompt_and_wait_cb,
+                upload_retry_cb=self.upload_retry_and_wait_cb,
             )
             self.job_finished.emit()
+        except ProcessCancelled:
+            self.job_cancelled.emit()
         except Exception as e:
             self.job_failed.emit(
                 f"Failed to process trackers: {e}", traceback.format_exc()
@@ -197,6 +206,24 @@ class ProcessWorker(BaseWorker):
 
         # return response
         return self._overview_prompt
+
+    def upload_retry_and_wait_cb(self, failure: UploadFailure) -> UploadRetryAction:
+        """Ask the frontend what to do with a failed tracker upload."""
+        response: UploadRetryAction | None = None
+        self.upload_retry_signal.emit(failure)
+        loop = QEventLoop()
+
+        @Slot(object)
+        def on_response(action: UploadRetryAction) -> None:
+            nonlocal response
+            response = action
+            loop.quit()
+
+        GSigs().upload_retry_response.connect(on_response)
+        loop.exec_()
+        GSigs().upload_retry_response.disconnect(on_response)
+
+        return response or UploadRetryAction.CANCEL
 
 
 class ProcessPage(BaseWizardPage):
@@ -301,6 +328,7 @@ class ProcessPage(BaseWizardPage):
             )
             self.process_worker.caught_error.connect(self._log_caught_error)
             self.process_worker.job_finished.connect(self._on_finished)
+            self.process_worker.job_cancelled.connect(self._on_cancelled)
             self.process_worker.queued_status_update.connect(self._on_status_update)
             self.process_worker.progress_signal.connect(self._on_progress_update)
             self.process_worker.job_failed.connect(self._on_failed)
@@ -312,6 +340,9 @@ class ProcessPage(BaseWizardPage):
                 self._on_prompt_tokens_signal
             )
             self.process_worker.overview_signal.connect(self._on_overview_signal)
+            self.process_worker.upload_retry_signal.connect(
+                self._on_upload_retry_signal
+            )
             self.process_worker.start()
 
     @Slot(object)
@@ -390,11 +421,63 @@ class ProcessPage(BaseWizardPage):
         self._job_ended()
         GSigs().wizard_process_btn_set_hidden.emit()
 
+    @Slot()
+    def _on_cancelled(self) -> None:
+        self._job_ended()
+        self._on_text_update(
+            "<br /><span style='font-weight: bold;'>Remaining processing cancelled.</span>"
+        )
+
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
         self._on_text_update(f"<br /><p>{e}</p>")
         LOG.error(LOG.LOG_SOURCE.FE, trace_back)
+
+    @Slot(object)
+    def _on_upload_retry_signal(self, failure: UploadFailure) -> None:
+        """Present a retry/skip/cancel choice while the worker waits."""
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle(f"Upload failed: {failure.tracker}")
+        dialog.setText(
+            f"{failure.tracker} failed during {failure.phase.name.lower().replace('_', ' ')}."
+        )
+        details = (
+            f"Attempts: {failure.attempt} "
+            f"({failure.automatic_attempts} automatic attempts)\n\n"
+            f"{failure.message}"
+        )
+        if failure.torrent_path:
+            details += f"\n\nOutput: {failure.torrent_path.parent}"
+        if failure.server_accepted:
+            details += (
+                "\n\nThe tracker may already have accepted this upload. "
+                "Retrying could create a duplicate."
+            )
+        elif not failure.retryable:
+            details += (
+                "\n\nThis does not look like a temporary failure; verify the "
+                "tracker settings before retrying."
+            )
+        dialog.setInformativeText(details)
+
+        retry_button = dialog.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+        skip_button = dialog.addButton(
+            "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
+        )
+        dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(retry_button)
+        dialog.exec()
+
+        clicked = dialog.clickedButton()
+        if clicked is retry_button:
+            action = UploadRetryAction.RETRY
+        elif clicked is skip_button:
+            action = UploadRetryAction.SKIP
+        else:
+            action = UploadRetryAction.CANCEL
+        GSigs().upload_retry_response.emit(action)
 
     def _job_ended(self) -> None:
         self.dupe_worker = None
