@@ -98,3 +98,18 @@ def test_media_type_token_drives_the_movie_branch_of_a_conditional() -> None:
     ).get_output()
 
     assert output == "movie"
+
+
+def test_is_anime_token_renders_for_an_anime_film() -> None:
+    # AniList is queried on Animation genre plus Japanese original language,
+    # with no media type condition, so anime films resolve too.
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ is_anime }}",
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.MOVIE, anilist_id="123"
+        ),
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "Anime"

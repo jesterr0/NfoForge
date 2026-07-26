@@ -15,6 +15,7 @@ from jinja2 import meta
 from pymediainfo import MediaInfo, Track
 
 from src.backend.tokens import FileToken, NfoToken, TokenData, Tokens, TokenType
+from src.backend.utils.anime import is_anime_release
 from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
 from src.backend.utils.guessit_helpers import get_guessit_title
@@ -791,6 +792,9 @@ class TokenReplacer:
     def _nfo_tokens(self, token_data: TokenData) -> str | Sequence[Any] | None:
         if token_data.bracket_token == Tokens.MEDIA_TYPE.token:
             return self._media_type(token_data)
+
+        elif token_data.bracket_token == Tokens.IS_ANIME.token:
+            return self._is_anime(token_data)
 
         elif token_data.bracket_token == Tokens.CHAPTER_TYPE.token:
             return self._chapter_type(token_data)
@@ -2758,6 +2762,13 @@ class TokenReplacer:
         if not media_type:
             return ""
         return self._optional_user_input(str(media_type), token_data)
+
+    def _is_anime(self, token_data: TokenData) -> str:
+        # A word rather than a bool: Jinja treats any non-empty string as true,
+        # so returning "False" here would make {% if is_anime %} always fire.
+        if not is_anime_release(self.media_input_obj, self.media_search_obj):
+            return ""
+        return self._optional_user_input("Anime", token_data)
 
     def _program_info(self, token_data: TokenData) -> str:
         return self._optional_user_input(f"{program_name} v{__version__}", token_data)
