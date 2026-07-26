@@ -1,12 +1,14 @@
 | Token | Description |
 |-------|-------------|
 | `{air_date}` | Air date (series first aired - UTC) |
+| `{atmos}` | Returns 'Atmos' if Atmos was detected |
 | `{audio_bitrate}` | Audio bitrate (640000) |
 | `{audio_bitrate_formatted}` | Audio bitrate formatted (640 kb/s) |
 | `{audio_channel_s}` | Audio channels (5.1) |
 | `{audio_channel_s_i}` | Audio channels (6) |
 | `{audio_channel_s_layout}` | Audio channel layout (L R C LFE Ls Rs Lb Rb) |
 | `{audio_codec}` | Audio codec |
+| `{audio_codec_no_atmos}` | Audio codec with Atmos removed (TrueHD) |
 | `{audio_commercial_name}` | Audio commercial name (Dolby Digital Plus) |
 | `{audio_compression}` | Audio compression (Lossy) |
 | `{audio_format_info}` | Audio format info (Enhanced AC-3) |

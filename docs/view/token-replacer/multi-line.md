@@ -143,6 +143,42 @@ Title                   : Big Buck Bunny (2008)
 Edition                 : Extended Cut
 ```
 
+**Media type and anime conditionals:**
+
+`{{ media_type }}` renders `Movie` or `Series`, and `{{ is_anime }}` renders `Anime` or nothing at all. Both let one template serve every release.
+
+```jinja
+Info
+Title                   : {{ title_exact }} {{ release_year_parentheses }}
+{% if media_type == "Series" %}
+Season                  : {{ season_number }}
+Episodes                : {{ total_episodes }}
+{% else %}
+Runtime                 : {{ duration_short }}
+{% endif %}
+{% if is_anime %}
+Absolute episode        : {{ episode_number_absolute }}
+{% endif %}
+```
+
+<!-- prettier-ignore -->
+!!! info
+    The comparison is case sensitive: `media_type == "series"` never matches. `{{ is_anime }}` renders an empty string when the release is not anime, which Jinja treats as false, so `{% if is_anime %}` works on its own.
+
+**Audio codec and Atmos:**
+
+`{{ audio_codec_no_atmos }}` is the codec with the Atmos tag removed, and `{{ atmos }}` is the tag on its own. Together they rebuild `{{ audio_codec }}`, with the tag always rendered as `Atmos`.
+
+```jinja
+Audio                   : {{ audio_codec_no_atmos }} {{ audio_channel_s }}{% if atmos %} + {{ atmos }}{% endif %}
+```
+
+**Output:**
+
+```text
+Audio                   : TrueHD 7.1 + Atmos
+```
+
 ### Jinja Filters
 
 While I can't go over all of what jinja [supports](https://jinja.palletsprojects.com/en/stable/templates/#list-of-builtin-filters) _(it would take forever and they have very clean documentation)_, I figured I could go over a quick useful example called the **replace** filter. This works identically to Pythons built in string function replace.

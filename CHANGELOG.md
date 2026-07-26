@@ -24,12 +24,16 @@
     - `{episode_title}`- Title parsed from media databases with minimal formatting.
     - `{episode_title_clean}`- Clean title parsed from media databases.
     - `{episode_title_exact}`- Title parsed from media databases with no modifications.
+    - `{audio_codec_no_atmos}`- Audio codec with Atmos removed (TrueHD).
+    - `{atmos}`- Returns 'Atmos' if Atmos was detected.
   - **NfoTokens**:
     - `{total_seasons}`- Total seasons in series.
     - `{total_episodes}`- Total episodes in season/series.
     - `{episode_mediainfo}` - Synopsis of all episodes mediainfo.
     - `{episode_metadata}` - Synopsis of all episodes metadata.
     - `{episode_metadata_mediainfo}` - Synopsis of all episodes metadata + mediainfo.
+    - `{media_type}`- Media type (Movie/Series).
+    - `{is_anime}`- Returns 'Anime' if the release is anime.
 - Built **Series Mapper** _(for series)_:
   - New widget that will allow the user to match their episode(s) with aired, dvd, or absolute data parsed from **TVDB**. This data will allow NfoForge to accurately rename/manage files throughout the rest of the work flow.
   - New wizard page for the user to access this during the workflow.

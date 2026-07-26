@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pymediainfo import MediaInfo
 
-from src.backend.process import ProcessBackEnd, _is_anime_release
+from src.backend.process import ProcessBackEnd
 from src.backend.trackers.aither import AitherUploader
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.darkpeers import DarkPeersUploader
@@ -26,6 +26,7 @@ from src.backend.trackers.shareisland import ShareIslandUploader
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.uploadcx import UploadCXUploader
+from src.backend.utils.anime import is_anime_release
 from src.enums.media_type import MediaType
 from src.enums.series import EpisodeFormat
 from src.enums.tracker_selection import TrackerSelection
@@ -172,7 +173,7 @@ def test_torrentleech_anime_signal_uses_metadata_or_series_format(
         anilist_data=anilist_data,
     )
 
-    assert _is_anime_release(media_input, media_search) is expected
+    assert is_anime_release(media_input, media_search) is expected
 
 
 @patch("src.backend.process.tl_upload", return_value=True)

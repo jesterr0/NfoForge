@@ -64,6 +64,7 @@ from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
+from src.backend.utils.anime import is_anime_release
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
     format_image_data_to_comparison,
@@ -78,7 +79,6 @@ from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
@@ -91,17 +91,6 @@ from src.payloads.series import SeriesReleaseInfo, build_series_release_info
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
-
-
-def _is_anime_release(
-    media_input: MediaInputPayload, media_search: MediaSearchPayload
-) -> bool:
-    """Return whether confirmed metadata or user-selected mapping marks anime."""
-    return bool(
-        media_search.anilist_id
-        or media_search.anilist_data
-        or media_input.series_episode_format is EpisodeFormat.ANIME_ABSOLUTE
-    )
 
 
 class ProcessBackEnd:
@@ -1308,7 +1297,7 @@ class ProcessBackEnd:
                 mediainfo_obj=mediainfo_obj,
                 media_type=media_type,
                 is_pack=release_info.is_pack,
-                is_anime=_is_anime_release(context.media_input, media_search_obj),
+                is_anime=is_anime_release(context.media_input, media_search_obj),
                 timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.BEYOND_HD:

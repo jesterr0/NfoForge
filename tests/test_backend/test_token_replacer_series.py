@@ -13,6 +13,7 @@ from src.backend.utils.example_parsed_series_data import (
 )
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
+from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_inputs import MediaInputPayload
@@ -867,3 +868,103 @@ def test_get_mi_synopsis_handles_no_video_track() -> None:
     out = replacer.get_mi_synopsis(fake_mi_no_video)
 
     assert isinstance(out, str)
+
+
+def test_media_type_token_renders_series() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ media_type }}",
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "Series"
+
+
+def test_media_type_token_drives_the_series_branch_of_a_conditional() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "series"
+
+
+@pytest.mark.parametrize(
+    ("anilist_id", "anilist_data", "episode_format", "expected"),
+    [
+        ("123", None, EpisodeFormat.STANDARD, "Anime"),
+        (None, {"id": 123}, EpisodeFormat.STANDARD, "Anime"),
+        (None, None, EpisodeFormat.ANIME_ABSOLUTE, "Anime"),
+        (None, None, EpisodeFormat.STANDARD, ""),
+    ],
+)
+def test_is_anime_token_covers_each_signal(
+    anilist_id: str | None,
+    anilist_data: dict[str, int] | None,
+    episode_format: EpisodeFormat,
+    expected: str,
+) -> None:
+    # Each of the three positive signals gets its own case: a change that drops
+    # one of them from the shared helper would otherwise still pass.
+    media_file = Path("Show.S01E01.mkv")
+    media_input = MediaInputPayload(
+        input_path=media_file,
+        media_type=MediaType.SERIES,
+        file_list=[media_file],
+        file_list_mediainfo={media_file: EXAMPLE_MEDIAINFO_OBJ},
+        series_episode_format=episode_format,
+    )
+
+    output = TokenReplacer(
+        media_input_obj=media_input,
+        token_string="{{ is_anime }}",
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            anilist_id=anilist_id,
+            anilist_data=anilist_data,
+        ),
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == expected
+
+
+def test_is_anime_token_is_falsy_in_a_conditional_when_not_anime() -> None:
+    # Guards the reason the token renders "Anime"/"" instead of "True"/"False":
+    # a non-empty string is truthy in Jinja, so "False" would break every
+    # {% if is_anime %} block.
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{% if is_anime %}anime{% else %}not anime{% endif %}",
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "not anime"
+
+
+def _series_audio_replacer() -> TokenReplacer:
+    # `_series_replacer` builds a payload with no MediaInfo, so audio tokens
+    # would fall through to guessit. The example payload carries a real
+    # MediaInfo object whose first audio track is MLP FBA without the 16-ch
+    # variant, which is the non-Atmos case.
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{audio_codec}",
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+
+def test_audio_codec_tokens_when_there_is_no_atmos() -> None:
+    replacer = _series_audio_replacer()
+
+    assert replacer._audio_codec(_td()) == "TrueHD"
+    assert replacer._audio_codec_no_atmos(_td()) == "TrueHD"
+    assert replacer._atmos(_td()) == ""

@@ -15,6 +15,7 @@ from jinja2 import meta
 from pymediainfo import MediaInfo, Track
 
 from src.backend.tokens import FileToken, NfoToken, TokenData, Tokens, TokenType
+from src.backend.utils.anime import is_anime_release
 from src.backend.utils.audio_channels import ParseAudioChannels
 from src.backend.utils.audio_codecs import AudioCodecs
 from src.backend.utils.guessit_helpers import get_guessit_title
@@ -57,6 +58,11 @@ class TokenReplacer:
     _PLACEHOLDER_EPISODE_TITLE_RE = re.compile(
         r"^(?:tba|episode\s*\d+)$", re.IGNORECASE
     )
+
+    # matches the Atmos suffix the audio conventions file produces ("DDP Atmos",
+    # "TrueHD Atmos"). Leading whitespace is part of the pattern so stripping
+    # leaves "DDP" rather than "DDP ".
+    _ATMOS_RE = re.compile(r"\s*\bAtmos\b", re.IGNORECASE)
 
     __slots__ = (
         # __init__
@@ -107,6 +113,8 @@ class TokenReplacer:
         # series caches
         "_series_counts",
         "_series_episode_cache",
+        # audio codec cache
+        "_audio_codec_cache",
     )
 
     def __init__(
@@ -250,6 +258,10 @@ class TokenReplacer:
         # series counts and episode lookups have different key/value shapes
         self._series_counts: dict[str, int] = {}
         self._series_episode_cache: dict[int, dict[int, dict[str, Any]]] = {}
+
+        # the conventions file is read from disk per lookup, and three tokens
+        # share the result, so resolve it once per instance
+        self._audio_codec_cache: str | None = None
 
         if not self.flatten and not self.jinja_engine:
             raise AttributeError(
@@ -601,6 +613,12 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.AUDIO_CODEC.token:
             return self._audio_codec(token_data)
 
+        elif token_data.bracket_token == Tokens.AUDIO_CODEC_NO_ATMOS.token:
+            return self._audio_codec_no_atmos(token_data)
+
+        elif token_data.bracket_token == Tokens.ATMOS.token:
+            return self._atmos(token_data)
+
         elif token_data.bracket_token == Tokens.AUDIO_COMMERCIAL_NAME.token:
             return self._audio_commercial_name(token_data)
 
@@ -789,7 +807,13 @@ class TokenReplacer:
         return ""
 
     def _nfo_tokens(self, token_data: TokenData) -> str | Sequence[Any] | None:
-        if token_data.bracket_token == Tokens.CHAPTER_TYPE.token:
+        if token_data.bracket_token == Tokens.MEDIA_TYPE.token:
+            return self._media_type(token_data)
+
+        elif token_data.bracket_token == Tokens.IS_ANIME.token:
+            return self._is_anime(token_data)
+
+        elif token_data.bracket_token == Tokens.CHAPTER_TYPE.token:
             return self._chapter_type(token_data)
 
         elif token_data.bracket_token == Tokens.FORMAT_PROFILE.token:
@@ -1136,20 +1160,42 @@ class TokenReplacer:
 
         return self._optional_user_input(layout, token_data)
 
-    def _audio_codec(self, token_data: TokenData) -> str:
-        audio_codec = self.guess_name.get("audio_codec", "")
-        if self.media_info_obj and self.media_info_obj.audio_tracks:
-            audio_codecs = AudioCodecs()
-            # TODO: remove hard coded json path later?
-            audio_convention_path = Path(
-                RUNTIME_DIR / "config" / "audio_conventions" / "default.json"
-            )
-            audio_codec = audio_codecs.get_codec(
-                self.media_info_obj.audio_tracks[0],
-                audio_convention_path,
-            )
+    def _resolved_audio_codec(self) -> str:
+        """Audio codec for the primary file, computed once per instance (conventions
+        file when MediaInfo is available, guessit otherwise).
+        """
+        if self._audio_codec_cache is None:
+            # guessit can hand back a list here; it already reached output via
+            # f-string interpolation downstream, so coercing early is a no-op
+            codec = str(self.guess_name.get("audio_codec", "") or "")
+            if self.media_info_obj and self.media_info_obj.audio_tracks:
+                audio_codecs = AudioCodecs()
+                # TODO: remove hard coded json path later?
+                audio_convention_path = Path(
+                    RUNTIME_DIR / "config" / "audio_conventions" / "default.json"
+                )
+                codec = audio_codecs.get_codec(
+                    self.media_info_obj.audio_tracks[0],
+                    audio_convention_path,
+                )
+            self._audio_codec_cache = codec
+        return self._audio_codec_cache
 
-        return self._optional_user_input(audio_codec, token_data)
+    def _audio_codec(self, token_data: TokenData) -> str:
+        return self._optional_user_input(self._resolved_audio_codec(), token_data)
+
+    def _audio_codec_no_atmos(self, token_data: TokenData) -> str:
+        # trailing strip covers a conventions file that puts the word first
+        codec = self._ATMOS_RE.sub("", self._resolved_audio_codec()).strip()
+        return self._optional_user_input(codec, token_data)
+
+    def _atmos(self, token_data: TokenData) -> str:
+        # reads the same resolved codec the other two audio tokens use, so the
+        # three can never disagree. The empty case still routes through
+        # _optional_user_input because that call also normalises token_string
+        # (stripping any :opt= wrapper or |filter suffix) for _format_token_string.
+        atmos = "Atmos" if self._ATMOS_RE.search(self._resolved_audio_codec()) else ""
+        return self._optional_user_input(atmos, token_data)
 
     def _audio_commercial_name(self, token_data: TokenData) -> str:
         commercial_name = ""
@@ -2751,6 +2797,23 @@ class TokenReplacer:
             tvdb_counter=self._count_tvdb_episodes,
             token_data=token_data,
         )
+
+    def _media_type(self, token_data: TokenData) -> str:
+        # `media_input_obj` rather than `media_search_obj`: both receive the
+        # value in the same statement when the user confirms a match, but this
+        # one is a required constructor argument while `media_search_obj` falls
+        # back to an empty payload. It is also what `is_series_mode` reads.
+        media_type = self.media_input_obj.media_type
+        if not media_type:
+            return ""
+        return self._optional_user_input(str(media_type), token_data)
+
+    def _is_anime(self, token_data: TokenData) -> str:
+        # A word rather than a bool: Jinja treats any non-empty string as true,
+        # so returning "False" here would make {% if is_anime %} always fire.
+        if not is_anime_release(self.media_input_obj, self.media_search_obj):
+            return ""
+        return self._optional_user_input("Anime", token_data)
 
     def _program_info(self, token_data: TokenData) -> str:
         return self._optional_user_input(f"{program_name} v{__version__}", token_data)
