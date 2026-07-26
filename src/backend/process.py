@@ -513,6 +513,10 @@ class ProcessBackEnd:
                     tracker=tracker,
                     timeout=self.config.settings.general.timeout,
                     cache=tracker_health_cache,
+                    # `_upload_tracker_with_retry` already retries this call, so
+                    # a nested budget here would multiply the wait before the
+                    # user can intervene.
+                    attempts=1,
                 )
                 result = upload_request()
                 if not result:
@@ -906,11 +910,13 @@ class ProcessBackEnd:
 
             # upload
             if tracker_info.upload_enabled and pre_upload_processing is not False:
-                queued_text_update("<br /><span>Checking tracker availability</span>")
                 execute_upload = None
                 skipped_upload = False
                 try:
-                    queued_text_update("<br /><span>Uploading release</span>")
+                    queued_text_update(
+                        "<br /><span>Checking tracker availability and uploading "
+                        "release</span>"
+                    )
                     execute_upload, skipped_upload = self._upload_tracker_with_retry(
                         tracker=cur_tracker,
                         torrent_path=torrent_path,

@@ -2,7 +2,9 @@ from unittest.mock import ANY, MagicMock, patch
 
 import niquests
 import pytest
+from tenacity.wait import wait_none
 
+import src.backend.trackers.health as health_module
 from src.backend.trackers.health import (
     HEALTH_CHECK_TIMEOUT_SECONDS,
     ensure_tracker_health,
@@ -72,3 +74,41 @@ def test_health_check_blocks_request_failures(
 
 def test_health_check_has_a_root_url_for_every_tracker() -> None:
     assert set(TRACKER_ROOT_URLS) == set(TrackerSelection)
+
+
+def test_attempts_is_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The caller owns the retry budget so nested loops cannot multiply it."""
+    calls = 0
+
+    def _fail(url: str, timeout: int) -> tuple[int, str | None]:
+        nonlocal calls
+        calls += 1
+        raise niquests.RequestException("unreachable")
+
+    monkeypatch.setattr(health_module, "_probe_tracker_once", _fail)
+    cache: dict[TrackerSelection, bool] = {}
+
+    with pytest.raises(TrackerError):
+        ensure_tracker_health(TrackerSelection.AITHER, 5, cache, attempts=1)
+
+    assert calls == 1
+    assert cache[TrackerSelection.AITHER] is False
+
+
+def test_default_attempts_still_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def _fail(url: str, timeout: int) -> tuple[int, str | None]:
+        nonlocal calls
+        calls += 1
+        raise niquests.RequestException("unreachable")
+
+    # Matches the existing pattern in tests/test_backend/test_upload_retry.py:46
+    # so the retry runs without real backoff sleeps.
+    monkeypatch.setattr(health_module, "_probe_tracker_once", _fail)
+    monkeypatch.setattr(health_module, "wait_exponential", lambda **_kwargs: wait_none())
+
+    with pytest.raises(TrackerError):
+        ensure_tracker_health(TrackerSelection.AITHER, 5, {})
+
+    assert calls == 3
