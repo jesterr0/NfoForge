@@ -102,3 +102,40 @@ def test_connect_timeout_on_upload_is_still_retried_automatically(
 
     assert error.server_accepted is False
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
+def test_unannotated_error_is_not_retried_automatically() -> None:
+    """With every tracker annotated, an unknown error must not be guessed at."""
+    assert ProcessBackEnd._is_automatic_upload_retryable(TrackerError("boom")) is False
+
+
+def test_error_text_no_longer_drives_retry_decisions() -> None:
+    """Tracker HTML containing 'timeout' must not flip a permanent failure."""
+    error = TrackerError(
+        "There was an error uploading to TorrentLeech: 403 "
+        "(Forbidden - <html><body>gateway timeout advice</body></html>)",
+        retryable=False,
+    )
+
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
+
+
+def test_status_code_still_drives_retry_when_retryable_is_unset() -> None:
+    assert (
+        ProcessBackEnd._is_automatic_upload_retryable(
+            TrackerError("server error", status_code=503)
+        )
+        is True
+    )
+    assert (
+        ProcessBackEnd._is_automatic_upload_retryable(
+            TrackerError("forbidden", status_code=403)
+        )
+        is False
+    )
+
+
+def test_server_accepted_overrides_retryable() -> None:
+    error = TrackerError("timed out", retryable=True, server_accepted=True)
+
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is False

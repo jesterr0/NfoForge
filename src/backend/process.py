@@ -5,7 +5,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
-import niquests
 from PySide6.QtCore import SignalInstance
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_exponential
@@ -465,7 +464,11 @@ class ProcessBackEnd:
 
     @staticmethod
     def _is_automatic_upload_retryable(error: BaseException) -> bool:
-        """Return whether retrying the upload request is safe enough to automate."""
+        """Return whether retrying the upload request is safe enough to automate.
+
+        Trackers annotate their own failures; an un-annotated error is treated
+        as unsafe rather than guessed at from its message text.
+        """
         if getattr(error, "server_accepted", False):
             # The POST may already have succeeded. Retrying the whole upload can
             # create a duplicate; only an explicit user decision may continue.
@@ -479,37 +482,7 @@ class ProcessBackEnd:
         if isinstance(status_code, int):
             return status_code == 408 or status_code == 429 or status_code >= 500
 
-        if isinstance(error, niquests.exceptions.RequestException):
-            return True
-        if isinstance(error.__cause__, niquests.exceptions.RequestException):
-            return True
-        if isinstance(error.__context__, niquests.exceptions.RequestException):
-            return True
-
-        message = str(error).lower()
-        return any(
-            marker in message
-            for marker in (
-                "timed out",
-                "timeout",
-                "connection reset",
-                "connection aborted",
-                "temporarily unavailable",
-                "service unavailable",
-                "http 408",
-                "http 429",
-                "http 500",
-                "http 502",
-                "http 503",
-                "http 504",
-                "status code: 408",
-                "status code: 429",
-                "status code: 500",
-                "status code: 502",
-                "status code: 503",
-                "status code: 504",
-            )
-        )
+        return False
 
     def _upload_tracker_with_retry(
         self,

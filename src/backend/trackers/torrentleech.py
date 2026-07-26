@@ -9,6 +9,7 @@ from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -97,11 +98,24 @@ class TLUploader:
                     f"{request.status_code} ({request.reason} - {request.text})"
                 )
                 LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
-                raise TrackerError(upload_error_msg)
+                status_code = request.status_code
+                raise TrackerError(
+                    upload_error_msg,
+                    retryable=(
+                        isinstance(status_code, int)
+                        and (status_code == 429 or status_code >= 500)
+                    ),
+                    status_code=status_code if isinstance(status_code, int) else None,
+                )
         except niquests.exceptions.RequestException as e:
             request_error_msg = f"There was an error uploading (niquests): {e}"
             LOG.error(LOG.LOG_SOURCE.BE, request_error_msg)
-            raise TrackerError(request_error_msg)
+            retryable, server_accepted = classify_upload_post_error(e)
+            raise TrackerError(
+                request_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from e
 
     def _get_files(self, nfo: str, torrent_file: Path) -> MultiPartFilesAltType:
         with open(torrent_file, "rb") as t_file:

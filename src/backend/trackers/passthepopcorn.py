@@ -16,6 +16,7 @@ from pymediainfo import MediaInfo
 from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.passthepopcorn import (
@@ -347,9 +348,19 @@ class PTPUploader:
                         )
                     }
                 )
-            upload = response.post(
-                url=url, headers=TRACKER_HEADERS, data=data, files=files
-            )
+            try:
+                upload = response.post(
+                    url=url, headers=TRACKER_HEADERS, data=data, files=files
+                )
+            except niquests.exceptions.RequestException as error:
+                upload_error_msg = f"Upload to PTP failed: {error}"
+                LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
+                retryable, server_accepted = classify_upload_post_error(error)
+                raise TrackerError(
+                    upload_error_msg,
+                    retryable=retryable,
+                    server_accepted=server_accepted,
+                ) from error
 
             # if the response contains our announce URL, then we are on the upload page and the upload wasn't successful.
             if upload.text and upload.text.find(self.announce_url) != -1:
