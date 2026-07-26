@@ -1155,7 +1155,9 @@ class TokenReplacer:
         return self._optional_user_input(layout, token_data)
 
     def _resolved_audio_codec(self) -> str:
-        """Codec name from the conventions file, computed once per instance."""
+        """Audio codec for the primary file, computed once per instance (conventions
+        file when MediaInfo is available, guessit otherwise).
+        """
         if self._audio_codec_cache is None:
             # guessit can hand back a list here; it already reached output via
             # f-string interpolation downstream, so coercing early is a no-op
@@ -1183,10 +1185,11 @@ class TokenReplacer:
 
     def _atmos(self, token_data: TokenData) -> str:
         # reads the same resolved codec the other two audio tokens use, so the
-        # three can never disagree
-        if not self._ATMOS_RE.search(self._resolved_audio_codec()):
-            return ""
-        return self._optional_user_input("Atmos", token_data)
+        # three can never disagree. The empty case still routes through
+        # _optional_user_input because that call also normalises token_string
+        # (stripping any :opt= wrapper or |filter suffix) for _format_token_string.
+        atmos = "Atmos" if self._ATMOS_RE.search(self._resolved_audio_codec()) else ""
+        return self._optional_user_input(atmos, token_data)
 
     def _audio_commercial_name(self, token_data: TokenData) -> str:
         commercial_name = ""

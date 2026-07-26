@@ -153,3 +153,20 @@ def test_audio_codec_no_atmos_plus_atmos_reconstructs_audio_codec() -> None:
     rebuilt = f"{replacer._audio_codec_no_atmos(_td())} {replacer._atmos(_td())}"
 
     assert rebuilt.strip() == replacer._audio_codec(_td())
+
+
+def test_audio_codec_tokens_resolve_through_the_token_string() -> None:
+    # The direct-resolver tests above would still pass if the registry entry
+    # or the dispatch branch were deleted; this one goes through get_output()
+    # so it fails if the tokens stop being reachable.
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{audio_codec_no_atmos}.{atmos}",
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    ).get_output()
+
+    assert output == "TrueHD.Atmos.mkv"

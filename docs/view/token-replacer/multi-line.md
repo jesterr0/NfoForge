@@ -167,7 +167,7 @@ Absolute episode        : {{ episode_number_absolute }}
 
 **Audio codec and Atmos:**
 
-`{{ audio_codec_no_atmos }}` is the codec with the Atmos tag removed, and `{{ atmos }}` is the tag on its own. Together they rebuild `{{ audio_codec }}`.
+`{{ audio_codec_no_atmos }}` is the codec with the Atmos tag removed, and `{{ atmos }}` is the tag on its own. Together they rebuild `{{ audio_codec }}`, with the tag always rendered as `Atmos`.
 
 ```jinja
 Audio                   : {{ audio_codec_no_atmos }} {{ audio_channel_s }}{% if atmos %} + {{ atmos }}{% endif %}
