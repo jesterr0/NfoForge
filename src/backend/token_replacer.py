@@ -982,6 +982,12 @@ class TokenReplacer:
                 formatted_file_name = re.sub(r"\.{2,}", ".", formatted_file_name)
                 formatted_file_name = re.sub(r":\.", ".", formatted_file_name)
                 formatted_file_name = re.sub(r"\.-\.|\.-|-\.", "-", formatted_file_name)
+                # a token that renders empty at either end leaves a dangling
+                # separator. The collapse above runs before the suffix is
+                # appended, so it cannot see the doubled dot a trailing one
+                # would create ("Name..mkv"), and a leading one would produce a
+                # name starting with "." -- a hidden file on Unix.
+                formatted_file_name = formatted_file_name.strip(".-")
                 return formatted_file_name + self.media_input.suffix
             # if title mode
             else:
