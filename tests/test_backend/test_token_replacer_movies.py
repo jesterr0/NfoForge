@@ -1,5 +1,6 @@
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenData
+from src.backend.utils.audio_codecs import AudioCodecs
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
@@ -113,3 +114,24 @@ def test_is_anime_token_renders_for_an_anime_film() -> None:
     ).get_output()
 
     assert output == "Anime"
+
+
+def test_audio_codec_reads_the_conventions_file_once_per_instance(monkeypatch) -> None:
+    # Three tokens now share this value. Without the cache each one re-reads
+    # and re-parses the conventions JSON on every occurrence in a template.
+    calls: list[object] = []
+    original = AudioCodecs.get_codec
+
+    def counting_get_codec(self, mi_obj, json_path):
+        calls.append(json_path)
+        return original(self, mi_obj, json_path)
+
+    monkeypatch.setattr(AudioCodecs, "get_codec", counting_get_codec)
+
+    replacer = _movie_replacer()
+    first = replacer._audio_codec(_td())
+    second = replacer._audio_codec(_td())
+
+    assert first == "TrueHD Atmos"
+    assert second == "TrueHD Atmos"
+    assert len(calls) == 1

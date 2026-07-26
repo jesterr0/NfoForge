@@ -108,6 +108,8 @@ class TokenReplacer:
         # series caches
         "_series_counts",
         "_series_episode_cache",
+        # audio codec cache
+        "_audio_codec_cache",
     )
 
     def __init__(
@@ -251,6 +253,10 @@ class TokenReplacer:
         # series counts and episode lookups have different key/value shapes
         self._series_counts: dict[str, int] = {}
         self._series_episode_cache: dict[int, dict[int, dict[str, Any]]] = {}
+
+        # the conventions file is read from disk per lookup, and three tokens
+        # share the result, so resolve it once per instance
+        self._audio_codec_cache: str | None = None
 
         if not self.flatten and not self.jinja_engine:
             raise AttributeError(
@@ -1137,20 +1143,27 @@ class TokenReplacer:
 
         return self._optional_user_input(layout, token_data)
 
-    def _audio_codec(self, token_data: TokenData) -> str:
-        audio_codec = self.guess_name.get("audio_codec", "")
-        if self.media_info_obj and self.media_info_obj.audio_tracks:
-            audio_codecs = AudioCodecs()
-            # TODO: remove hard coded json path later?
-            audio_convention_path = Path(
-                RUNTIME_DIR / "config" / "audio_conventions" / "default.json"
-            )
-            audio_codec = audio_codecs.get_codec(
-                self.media_info_obj.audio_tracks[0],
-                audio_convention_path,
-            )
+    def _resolved_audio_codec(self) -> str:
+        """Codec name from the conventions file, computed once per instance."""
+        if self._audio_codec_cache is None:
+            # guessit can hand back a list here; it already reached output via
+            # f-string interpolation downstream, so coercing early is a no-op
+            codec = str(self.guess_name.get("audio_codec", "") or "")
+            if self.media_info_obj and self.media_info_obj.audio_tracks:
+                audio_codecs = AudioCodecs()
+                # TODO: remove hard coded json path later?
+                audio_convention_path = Path(
+                    RUNTIME_DIR / "config" / "audio_conventions" / "default.json"
+                )
+                codec = audio_codecs.get_codec(
+                    self.media_info_obj.audio_tracks[0],
+                    audio_convention_path,
+                )
+            self._audio_codec_cache = codec
+        return self._audio_codec_cache
 
-        return self._optional_user_input(audio_codec, token_data)
+    def _audio_codec(self, token_data: TokenData) -> str:
+        return self._optional_user_input(self._resolved_audio_codec(), token_data)
 
     def _audio_commercial_name(self, token_data: TokenData) -> str:
         commercial_name = ""
