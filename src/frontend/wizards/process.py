@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from src.backend.process import ProcessBackEnd
 from src.backend.upload_retry import (
     UploadFailure,
+    UploadFailurePhase,
     UploadRetryAction,
 )
 from src.backend.utils.file_utilities import open_explorer
@@ -457,7 +458,13 @@ class ProcessPage(BaseWizardPage):
             )
             if failure.torrent_path:
                 details += f"\n\nOutput: {failure.torrent_path.parent}"
-            if failure.server_accepted:
+            if failure.phase is UploadFailurePhase.DOWNLOAD:
+                details += (
+                    "\n\nThe upload succeeded. Only downloading the tracker's "
+                    "copy of the torrent failed, so the local torrent file was "
+                    "kept. Re-uploading would create a duplicate."
+                )
+            elif failure.server_accepted:
                 details += (
                     "\n\nThe tracker may already have accepted this upload. "
                     "Retrying could create a duplicate."
@@ -469,16 +476,34 @@ class ProcessPage(BaseWizardPage):
                 )
             dialog.setInformativeText(details)
 
-            retry_button = dialog.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
-            skip_button = dialog.addButton(
-                "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
-            )
-            dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
-            dialog.setDefaultButton(retry_button)
+            if failure.phase is UploadFailurePhase.DOWNLOAD:
+                # The upload itself succeeded; only fetching the tracker's copy
+                # of the torrent failed. Re-uploading would duplicate it.
+                retry_button = None
+                skip_button = dialog.addButton(
+                    "Keep upload, use local torrent", QMessageBox.ButtonRole.AcceptRole
+                )
+                dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+                dialog.setDefaultButton(skip_button)
+            else:
+                retry_label = (
+                    "Re-upload (may duplicate)" if failure.server_accepted else "Retry"
+                )
+                retry_button = dialog.addButton(
+                    retry_label, QMessageBox.ButtonRole.AcceptRole
+                )
+                skip_button = dialog.addButton(
+                    "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
+                )
+                dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+                # Never default to the action that can create a duplicate.
+                dialog.setDefaultButton(
+                    skip_button if failure.server_accepted else retry_button
+                )
             dialog.exec()
 
             clicked = dialog.clickedButton()
-            if clicked is retry_button:
+            if retry_button is not None and clicked is retry_button:
                 action = UploadRetryAction.RETRY
             elif clicked is skip_button:
                 action = UploadRetryAction.SKIP

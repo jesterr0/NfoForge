@@ -74,6 +74,12 @@ def _failure(**overrides: object) -> UploadFailure:
     return UploadFailure(**kwargs)
 
 
+@pytest.fixture(autouse=True)
+def _reset_fake_message_box() -> None:
+    _FakeMessageBox.click_label = None
+    _FakeMessageBox.last = None
+
+
 @pytest.fixture
 def responses():
     """Record UploadRetryAction values emitted on the global response signal."""
@@ -101,3 +107,38 @@ def test_worker_released_when_dialog_raises(responses) -> None:
         ProcessPage._on_upload_retry_signal(QWidget(), _failure())
 
     assert responses == [UploadRetryAction.CANCEL]
+
+
+def test_default_button_is_not_retry_when_server_accepted(responses) -> None:
+    """The dialog must not steer a reflexive Enter press into a duplicate."""
+    _FakeMessageBox.click_label = "Skip tracker"
+    with patch.object(page_module, "QMessageBox", _FakeMessageBox):
+        ProcessPage._on_upload_retry_signal(QWidget(), _failure(server_accepted=True))
+
+    default = _FakeMessageBox.last.default_button
+    assert default is not None
+    assert "Retry" not in default.label
+
+
+def test_download_phase_offers_no_reupload(responses) -> None:
+    """The upload already succeeded, so re-POSTing is a guaranteed duplicate."""
+    _FakeMessageBox.click_label = "Keep upload, use local torrent"
+    with patch.object(page_module, "QMessageBox", _FakeMessageBox):
+        ProcessPage._on_upload_retry_signal(
+            QWidget(), _failure(phase=UploadFailurePhase.DOWNLOAD, server_accepted=True)
+        )
+
+    labels = [button.label for button in _FakeMessageBox.last.buttons]
+    assert not any("upload" in label.lower() and "keep" not in label.lower()
+                   for label in labels), labels
+    assert "Retry" not in labels
+    assert responses == [UploadRetryAction.SKIP]
+    assert "upload succeeded" in _FakeMessageBox.last.informative_text.lower()
+
+
+def test_retry_is_relabelled_when_the_tracker_may_have_the_torrent(responses) -> None:
+    _FakeMessageBox.click_label = "Re-upload (may duplicate)"
+    with patch.object(page_module, "QMessageBox", _FakeMessageBox):
+        ProcessPage._on_upload_retry_signal(QWidget(), _failure(server_accepted=True))
+
+    assert responses == [UploadRetryAction.RETRY]
