@@ -135,3 +135,21 @@ def test_audio_codec_reads_the_conventions_file_once_per_instance(monkeypatch) -
     assert first == "TrueHD Atmos"
     assert second == "TrueHD Atmos"
     assert len(calls) == 1
+
+
+def test_audio_codec_tokens_split_atmos_out() -> None:
+    replacer = _movie_replacer()
+
+    assert replacer._audio_codec(_td()) == "TrueHD Atmos"
+    assert replacer._audio_codec_no_atmos(_td()) == "TrueHD"
+    assert replacer._atmos(_td()) == "Atmos"
+
+
+def test_audio_codec_no_atmos_plus_atmos_reconstructs_audio_codec() -> None:
+    # The property the whole design rests on: both new tokens read the same
+    # resolved codec string, so they can never contradict {audio_codec}.
+    replacer = _movie_replacer()
+
+    rebuilt = f"{replacer._audio_codec_no_atmos(_td())} {replacer._atmos(_td())}"
+
+    assert rebuilt.strip() == replacer._audio_codec(_td())

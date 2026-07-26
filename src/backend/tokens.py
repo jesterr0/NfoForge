@@ -68,6 +68,10 @@ class Tokens:
         "{audio_channel_s_layout}", "Audio channel layout (L R C LFE Ls Rs Lb Rb)"
     )
     AUDIO_CODEC = FileToken("{audio_codec}", "Audio codec")
+    AUDIO_CODEC_NO_ATMOS = FileToken(
+        "{audio_codec_no_atmos}", "Audio codec with Atmos removed (TrueHD)"
+    )
+    ATMOS = FileToken("{atmos}", "Returns 'Atmos' if Atmos was detected")
     AUDIO_COMMERCIAL_NAME = FileToken(
         "{audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
     )

@@ -944,3 +944,27 @@ def test_is_anime_token_is_falsy_in_a_conditional_when_not_anime() -> None:
     ).get_output()
 
     assert output == "not anime"
+
+
+def _series_audio_replacer() -> TokenReplacer:
+    # `_series_replacer` builds a payload with no MediaInfo, so audio tokens
+    # would fall through to guessit. The example payload carries a real
+    # MediaInfo object whose first audio track is MLP FBA without the 16-ch
+    # variant, which is the non-Atmos case.
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{audio_codec}",
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+
+def test_audio_codec_tokens_when_there_is_no_atmos() -> None:
+    replacer = _series_audio_replacer()
+
+    assert replacer._audio_codec(_td()) == "TrueHD"
+    assert replacer._audio_codec_no_atmos(_td()) == "TrueHD"
+    assert replacer._atmos(_td()) == ""

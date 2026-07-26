@@ -59,6 +59,11 @@ class TokenReplacer:
         r"^(?:tba|episode\s*\d+)$", re.IGNORECASE
     )
 
+    # matches the Atmos suffix the audio conventions file produces ("DDP Atmos",
+    # "TrueHD Atmos"). Leading whitespace is part of the pattern so stripping
+    # leaves "DDP" rather than "DDP ".
+    _ATMOS_RE = re.compile(r"\s*\bAtmos\b", re.IGNORECASE)
+
     __slots__ = (
         # __init__
         "media_input_obj",
@@ -607,6 +612,12 @@ class TokenReplacer:
 
         elif token_data.bracket_token == Tokens.AUDIO_CODEC.token:
             return self._audio_codec(token_data)
+
+        elif token_data.bracket_token == Tokens.AUDIO_CODEC_NO_ATMOS.token:
+            return self._audio_codec_no_atmos(token_data)
+
+        elif token_data.bracket_token == Tokens.ATMOS.token:
+            return self._atmos(token_data)
 
         elif token_data.bracket_token == Tokens.AUDIO_COMMERCIAL_NAME.token:
             return self._audio_commercial_name(token_data)
@@ -1164,6 +1175,18 @@ class TokenReplacer:
 
     def _audio_codec(self, token_data: TokenData) -> str:
         return self._optional_user_input(self._resolved_audio_codec(), token_data)
+
+    def _audio_codec_no_atmos(self, token_data: TokenData) -> str:
+        # trailing strip covers a conventions file that puts the word first
+        codec = self._ATMOS_RE.sub("", self._resolved_audio_codec()).strip()
+        return self._optional_user_input(codec, token_data)
+
+    def _atmos(self, token_data: TokenData) -> str:
+        # reads the same resolved codec the other two audio tokens use, so the
+        # three can never disagree
+        if not self._ATMOS_RE.search(self._resolved_audio_codec()):
+            return ""
+        return self._optional_user_input("Atmos", token_data)
 
     def _audio_commercial_name(self, token_data: TokenData) -> str:
         commercial_name = ""
