@@ -6,6 +6,7 @@ from src.backend.utils.example_parsed_movie_data import (
 )
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
+from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_search import MediaSearchPayload
 
 
@@ -72,3 +73,28 @@ def test_title_tokens_use_first_guessit_title_when_list_shaped(
     )
 
     assert replacer._title_exact(_td()) == "Primary Title"
+
+
+def test_media_type_token_renders_movie() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ media_type }}",
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "Movie"
+
+
+def test_media_type_token_drives_the_movie_branch_of_a_conditional() -> None:
+    # The shape the docs tell users to write. Asserting on the rendered branch
+    # rather than on the bare value means a change to what {media_type}
+    # returns breaks a test that looks like a real template.
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "movie"

@@ -867,3 +867,25 @@ def test_get_mi_synopsis_handles_no_video_track() -> None:
     out = replacer.get_mi_synopsis(fake_mi_no_video)
 
     assert isinstance(out, str)
+
+
+def test_media_type_token_renders_series() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ media_type }}",
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "Series"
+
+
+def test_media_type_token_drives_the_series_branch_of_a_conditional() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == "series"

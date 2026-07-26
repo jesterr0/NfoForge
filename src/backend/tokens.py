@@ -211,6 +211,7 @@ class Tokens:
     )
 
     # NFO Tokens
+    MEDIA_TYPE = NfoToken("{media_type}", "Media type (Movie/Series)")
     CHAPTER_TYPE = NfoToken(
         "{chapter_type}", "Chapter type (Named / Numbered (1 - 10) / Tagged)"
     )

@@ -789,7 +789,10 @@ class TokenReplacer:
         return ""
 
     def _nfo_tokens(self, token_data: TokenData) -> str | Sequence[Any] | None:
-        if token_data.bracket_token == Tokens.CHAPTER_TYPE.token:
+        if token_data.bracket_token == Tokens.MEDIA_TYPE.token:
+            return self._media_type(token_data)
+
+        elif token_data.bracket_token == Tokens.CHAPTER_TYPE.token:
             return self._chapter_type(token_data)
 
         elif token_data.bracket_token == Tokens.FORMAT_PROFILE.token:
@@ -2745,6 +2748,16 @@ class TokenReplacer:
             tvdb_counter=self._count_tvdb_episodes,
             token_data=token_data,
         )
+
+    def _media_type(self, token_data: TokenData) -> str:
+        # `media_input_obj` rather than `media_search_obj`: both receive the
+        # value in the same statement when the user confirms a match, but this
+        # one is a required constructor argument while `media_search_obj` falls
+        # back to an empty payload. It is also what `is_series_mode` reads.
+        media_type = self.media_input_obj.media_type
+        if not media_type:
+            return ""
+        return self._optional_user_input(str(media_type), token_data)
 
     def _program_info(self, token_data: TokenData) -> str:
         return self._optional_user_input(f"{program_name} v{__version__}", token_data)
