@@ -12,10 +12,12 @@
 | `{{ file_size }}` | File size (7.89 GiB) |
 | `{{ file_size_bytes }}` | File size in bytes (8469985859) |
 | `{{ format_profile }}` | Format Profile (Main@L4) |
+| `{{ is_anime }}` | Returns 'Anime' if the release is anime |
 | `{{ media_file }}` | Media filename with extension |
 | `{{ media_file_no_ext }}` | Media filename without extension |
 | `{{ media_info }}` | Mediainfo output with filepath cleansed |
 | `{{ media_info_short }}` | Shortened Mediainfo output with filepath cleansed |
+| `{{ media_type }}` | Media type (Movie/Series) |
 | `{{ program_info }}` | NfoForge vx.x.x |
 | `{{ proper }}` | Returns 'PROPER' if proper was detected |
 | `{{ proper_n }}` | Proper and proper number if exists (PROPER2) |
