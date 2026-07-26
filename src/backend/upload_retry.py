@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
 
+import niquests
+
 from src.enums.tracker_selection import TrackerSelection
 
 
@@ -34,3 +36,30 @@ class UploadFailure:
     retryable: bool
     server_accepted: bool = False
     torrent_path: Path | None = None
+
+
+def classify_upload_post_error(error: BaseException) -> tuple[bool | None, bool]:
+    """Return ``(retryable, server_accepted)`` for an error raised by an upload POST.
+
+    An upload POST cannot be re-sent blindly: if the request body already
+    reached the tracker, retrying creates a duplicate torrent. Classify by
+    whether the failure provably happened before the body was transmitted.
+
+    A ``retryable`` of ``None`` means "unknown"; callers treat that as not
+    safe to retry automatically.
+    """
+    # ConnectTimeout subclasses ConnectionError, so it must be tested first.
+    if isinstance(error, niquests.exceptions.ConnectTimeout):
+        return True, False
+    if isinstance(error, niquests.exceptions.ReadTimeout):
+        # The body was fully sent and the tracker was still processing it.
+        return True, True
+    if isinstance(error, niquests.exceptions.InvalidJSONError):
+        # A response arrived but was not JSON (proxy or CDN error page). The
+        # tracker may still have recorded the upload. Covers JSONDecodeError.
+        return True, True
+    if isinstance(error, niquests.exceptions.ConnectionError):
+        # Refused, DNS failure, or a reset mid-send: the tracker never received
+        # a complete multipart body, so it cannot have processed the upload.
+        return True, False
+    return None, True
