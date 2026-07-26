@@ -210,7 +210,6 @@ class ProcessWorker(BaseWorker):
     def upload_retry_and_wait_cb(self, failure: UploadFailure) -> UploadRetryAction:
         """Ask the frontend what to do with a failed tracker upload."""
         response: UploadRetryAction | None = None
-        self.upload_retry_signal.emit(failure)
         loop = QEventLoop()
 
         @Slot(object)
@@ -219,9 +218,15 @@ class ProcessWorker(BaseWorker):
             response = action
             loop.quit()
 
+        # Connect before emitting so the response can never arrive first, and
+        # always disconnect so a raise inside the loop cannot leak a connection
+        # onto the global signal singleton.
         GSigs().upload_retry_response.connect(on_response)
-        loop.exec_()
-        GSigs().upload_retry_response.disconnect(on_response)
+        try:
+            self.upload_retry_signal.emit(failure)
+            loop.exec_()
+        finally:
+            GSigs().upload_retry_response.disconnect(on_response)
 
         return response or UploadRetryAction.CANCEL
 
@@ -437,47 +442,58 @@ class ProcessPage(BaseWizardPage):
     @Slot(object)
     def _on_upload_retry_signal(self, failure: UploadFailure) -> None:
         """Present a retry/skip/cancel choice while the worker waits."""
-        dialog = QMessageBox(self)
-        dialog.setIcon(QMessageBox.Icon.Warning)
-        dialog.setWindowTitle(f"Upload failed: {failure.tracker}")
-        dialog.setText(
-            f"{failure.tracker} failed during {failure.phase.name.lower().replace('_', ' ')}."
-        )
-        details = (
-            f"Attempts: {failure.attempt} "
-            f"({failure.automatic_attempts} automatic attempts)\n\n"
-            f"{failure.message}"
-        )
-        if failure.torrent_path:
-            details += f"\n\nOutput: {failure.torrent_path.parent}"
-        if failure.server_accepted:
-            details += (
-                "\n\nThe tracker may already have accepted this upload. "
-                "Retrying could create a duplicate."
+        action = UploadRetryAction.CANCEL
+        try:
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Icon.Warning)
+            dialog.setWindowTitle(f"Upload failed: {failure.tracker}")
+            dialog.setText(
+                f"{failure.tracker} failed during {failure.phase.name.lower().replace('_', ' ')}."
             )
-        elif not failure.retryable:
-            details += (
-                "\n\nThis does not look like a temporary failure; verify the "
-                "tracker settings before retrying."
+            details = (
+                f"Attempts: {failure.attempt} "
+                f"({failure.automatic_attempts} automatic attempts)\n\n"
+                f"{failure.message}"
             )
-        dialog.setInformativeText(details)
+            if failure.torrent_path:
+                details += f"\n\nOutput: {failure.torrent_path.parent}"
+            if failure.server_accepted:
+                details += (
+                    "\n\nThe tracker may already have accepted this upload. "
+                    "Retrying could create a duplicate."
+                )
+            elif not failure.retryable:
+                details += (
+                    "\n\nThis does not look like a temporary failure; verify the "
+                    "tracker settings before retrying."
+                )
+            dialog.setInformativeText(details)
 
-        retry_button = dialog.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
-        skip_button = dialog.addButton(
-            "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
-        )
-        dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
-        dialog.setDefaultButton(retry_button)
-        dialog.exec()
+            retry_button = dialog.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
+            skip_button = dialog.addButton(
+                "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
+            )
+            dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+            dialog.setDefaultButton(retry_button)
+            dialog.exec()
 
-        clicked = dialog.clickedButton()
-        if clicked is retry_button:
-            action = UploadRetryAction.RETRY
-        elif clicked is skip_button:
-            action = UploadRetryAction.SKIP
-        else:
-            action = UploadRetryAction.CANCEL
-        GSigs().upload_retry_response.emit(action)
+            clicked = dialog.clickedButton()
+            if clicked is retry_button:
+                action = UploadRetryAction.RETRY
+            elif clicked is skip_button:
+                action = UploadRetryAction.SKIP
+        except Exception as e:
+            # Presenting the dialog failed (e.g. the page was torn down while
+            # the prompt was up). Fall back to CANCEL below instead of leaving
+            # the exception unhandled.
+            LOG.error(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to present upload retry prompt: {e}\n{traceback.format_exc()}",
+            )
+        finally:
+            # The worker thread is blocked on this response. Releasing it from a
+            # finally keeps a dialog failure from hanging the whole run.
+            GSigs().upload_retry_response.emit(action)
 
     def _job_ended(self) -> None:
         self.dupe_worker = None
