@@ -995,6 +995,34 @@ class ProcessBackEnd:
                         caught_error=caught_error,
                         upload_retry_cb=upload_retry_cb,
                     )
+
+                    if execute_upload:
+                        queued_text_update(
+                            "<br /><span>Successfully uploaded release</span>"
+                        )
+                        # handle injection
+                        if self._inject_with_user_retry(
+                            tracker=cur_tracker,
+                            tracker_name=tracker_name,
+                            torrent_path=torrent_path,
+                            file_input=media_input,
+                            queued_text_update=queued_text_update,
+                            queued_status_update=queued_status_update,
+                            caught_error=caught_error,
+                            upload_retry_cb=upload_retry_cb,
+                        ):
+                            queued_status_update(tracker_name, "✅ Complete")
+                    else:
+                        if skipped_upload:
+                            queued_text_update(
+                                "<br /><span>Skipped upload after user decision</span>"
+                            )
+                        else:
+                            queued_text_update(
+                                '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
+                                "check logs for information</span>"
+                            )
+                            queued_status_update(tracker_name, "❌ Failed")
                 except ProcessCancelled:
                     for remaining_tracker in list(process_dict)[idx:]:
                         queued_status_update(remaining_tracker, "⏹ Cancelled")
@@ -1007,34 +1035,6 @@ class ProcessBackEnd:
                     )
                     caught_error.emit(f"Upload Error: {traceback.format_exc()}")
                     queued_status_update(tracker_name, "❌ Failed")
-
-                if execute_upload:
-                    queued_text_update(
-                        "<br /><span>Successfully uploaded release</span>"
-                    )
-                    # handle injection
-                    if self._inject_with_user_retry(
-                        tracker=cur_tracker,
-                        tracker_name=tracker_name,
-                        torrent_path=torrent_path,
-                        file_input=media_input,
-                        queued_text_update=queued_text_update,
-                        queued_status_update=queued_status_update,
-                        caught_error=caught_error,
-                        upload_retry_cb=upload_retry_cb,
-                    ):
-                        queued_status_update(tracker_name, "✅ Complete")
-                else:
-                    if skipped_upload:
-                        queued_text_update(
-                            "<br /><span>Skipped upload after user decision</span>"
-                        )
-                    else:
-                        queued_text_update(
-                            '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
-                            "check logs for information</span>"
-                        )
-                        queued_status_update(tracker_name, "❌ Failed")
             elif not tracker_info.upload_enabled and pre_upload_processing is None:
                 queued_text_update(
                     "<br /><span>Skipping upload & injection, upload is disabled</span>"
