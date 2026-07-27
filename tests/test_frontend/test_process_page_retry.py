@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -142,3 +143,18 @@ def test_retry_is_relabelled_when_the_tracker_may_have_the_torrent(responses) ->
         ProcessPage._on_upload_retry_signal(QWidget(), _failure(server_accepted=True))
 
     assert responses == [UploadRetryAction.RETRY]
+
+
+def test_cancel_hides_the_process_button() -> None:
+    """Otherwise pressing Process again re-uploads the trackers that finished."""
+    fired: list[bool] = []
+    handler = lambda: fired.append(True)  # noqa: E731
+    GSigs().wizard_process_btn_set_hidden.connect(handler)
+    stub = SimpleNamespace(_job_ended=MagicMock(), _on_text_update=MagicMock())
+    try:
+        ProcessPage._on_cancelled(stub)
+    finally:
+        GSigs().wizard_process_btn_set_hidden.disconnect(handler)
+
+    assert fired == [True]
+    stub._job_ended.assert_called_once_with()

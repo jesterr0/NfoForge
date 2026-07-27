@@ -431,8 +431,13 @@ class ProcessPage(BaseWizardPage):
     def _on_cancelled(self) -> None:
         self._job_ended()
         self._on_text_update(
-            "<br /><span style='font-weight: bold;'>Remaining processing cancelled.</span>"
+            "<br /><span style='font-weight: bold;'>Remaining processing cancelled. "
+            "Trackers that already completed were not rolled back; restart the "
+            "wizard to upload the remaining ones.</span>"
         )
+        # Without this the process button restarts from the first tracker and
+        # re-uploads the ones that already succeeded.
+        GSigs().wizard_process_btn_set_hidden.emit()
 
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
