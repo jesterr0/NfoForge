@@ -587,6 +587,67 @@ class ProcessBackEnd:
                 queued_status_update(str(tracker), "⏭ Skipped")
                 return None, True
 
+    def _inject_with_user_retry(
+        self,
+        *,
+        tracker: TrackerSelection,
+        tracker_name: str,
+        torrent_path: Path,
+        file_input: Path,
+        queued_text_update: Callable[[str], None],
+        queued_status_update: Callable[[str, str], None],
+        caught_error: SignalInstance,
+        upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
+    ) -> bool:
+        """Inject a torrent, letting the user retry on failure.
+
+        The torrent is already on the tracker at this point, so retrying an
+        injection cannot create a duplicate upload.
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                self._handle_injection(
+                    queued_text_update=queued_text_update,
+                    tracker_name=tracker_name,
+                    torrent_path=torrent_path,
+                    file_input=file_input,
+                )
+                return True
+            except Exception as error:
+                caught_error.emit(f"Injection Error: {traceback.format_exc()}")
+                if upload_retry_cb is None:
+                    queued_status_update(
+                        tracker_name, f"❌ Failed to inject torrent ({error})"
+                    )
+                    return False
+
+                failure = UploadFailure(
+                    tracker=tracker,
+                    phase=UploadFailurePhase.INJECTION,
+                    message=str(error),
+                    attempt=attempt,
+                    automatic_attempts=0,
+                    retryable=True,
+                    server_accepted=False,
+                    torrent_path=torrent_path,
+                )
+                queued_status_update(tracker_name, "⚠️ Injection failed - awaiting action")
+                action = upload_retry_cb(failure)
+                if action is UploadRetryAction.RETRY:
+                    queued_status_update(
+                        tracker_name, f"↻ Retrying injection (attempt {attempt + 1})"
+                    )
+                    continue
+                if action is UploadRetryAction.CANCEL:
+                    queued_status_update(tracker_name, "⏹ Cancelled")
+                    raise ProcessCancelled from error
+                queued_status_update(
+                    tracker_name, f"❌ Failed to inject torrent ({error})"
+                )
+                return False
+
     def process_trackers(
         self,
         process_dict: dict[str, Any],
@@ -952,19 +1013,17 @@ class ProcessBackEnd:
                         "<br /><span>Successfully uploaded release</span>"
                     )
                     # handle injection
-                    try:
-                        self._handle_injection(
-                            queued_text_update=queued_text_update,
-                            tracker_name=tracker_name,
-                            torrent_path=torrent_path,
-                            file_input=media_input,
-                        )
+                    if self._inject_with_user_retry(
+                        tracker=cur_tracker,
+                        tracker_name=tracker_name,
+                        torrent_path=torrent_path,
+                        file_input=media_input,
+                        queued_text_update=queued_text_update,
+                        queued_status_update=queued_status_update,
+                        caught_error=caught_error,
+                        upload_retry_cb=upload_retry_cb,
+                    ):
                         queued_status_update(tracker_name, "✅ Complete")
-                    except Exception as e:
-                        queued_status_update(
-                            tracker_name, f"❌ Failed to inject torrent ({e})"
-                        )
-                        caught_error.emit(f"Injection Error: {traceback.format_exc()}")
                 else:
                     if skipped_upload:
                         queued_text_update(

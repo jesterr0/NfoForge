@@ -15,7 +15,7 @@ from src.backend.upload_retry import (
 )
 from src.config.config import ConfigManager
 from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ProcessCancelled, TrackerError
+from src.exceptions import ProcessCancelled, TrackerClientError, TrackerError
 
 
 def _backend() -> ProcessBackEnd:
@@ -174,3 +174,49 @@ def test_server_accepted_failure_prompts_on_the_first_attempt(
     assert upload.call_count == 1
     failure = callback.call_args.args[0]
     assert failure.server_accepted is True
+
+
+def test_injection_retry_prompts_and_succeeds(tmp_path: Path) -> None:
+    """Injection failures are transient and carry no duplicate risk."""
+    backend = _backend()
+    inject = MagicMock(side_effect=[TrackerClientError("client offline"), None])
+    backend._handle_injection = inject  # type: ignore[method-assign]
+    callback = MagicMock(return_value=UploadRetryAction.RETRY)
+
+    injected = backend._inject_with_user_retry(
+        tracker=TrackerSelection.AITHER,
+        tracker_name="Aither",
+        torrent_path=tmp_path / "release.torrent",
+        file_input=tmp_path / "release.mkv",
+        queued_text_update=MagicMock(),
+        queued_status_update=MagicMock(),
+        caught_error=cast(SignalInstance, MagicMock()),
+        upload_retry_cb=callback,
+    )
+
+    assert injected is True
+    assert inject.call_count == 2
+    failure = callback.call_args.args[0]
+    assert failure.phase is UploadFailurePhase.INJECTION
+    assert failure.server_accepted is False
+
+
+def test_injection_failure_without_callback_is_reported_once(tmp_path: Path) -> None:
+    backend = _backend()
+    backend._handle_injection = MagicMock(  # type: ignore[method-assign]
+        side_effect=TrackerClientError("client offline")
+    )
+    status_update = MagicMock()
+
+    injected = backend._inject_with_user_retry(
+        tracker=TrackerSelection.AITHER,
+        tracker_name="Aither",
+        torrent_path=tmp_path / "release.torrent",
+        file_input=tmp_path / "release.mkv",
+        queued_text_update=MagicMock(),
+        queued_status_update=status_update,
+        caught_error=cast(SignalInstance, MagicMock()),
+        upload_retry_cb=None,
+    )
+
+    assert injected is False

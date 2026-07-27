@@ -464,6 +464,11 @@ class ProcessPage(BaseWizardPage):
                     "copy of the torrent failed, so the local torrent file was "
                     "kept. Re-uploading would create a duplicate."
                 )
+            elif failure.phase is UploadFailurePhase.INJECTION:
+                details += (
+                    "\n\nThe upload succeeded. Only adding the torrent to your "
+                    "client failed, so retrying is safe."
+                )
             elif failure.server_accepted:
                 details += (
                     "\n\nThe tracker may already have accepted this upload. "
