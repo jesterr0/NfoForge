@@ -46,8 +46,8 @@ migration fails.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Mapping
+import re
 from typing import Any
 
 import tomlkit

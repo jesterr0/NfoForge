@@ -1,8 +1,8 @@
 from pathlib import Path
 
-import pytest
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QWidget
+import pytest
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths

@@ -3,12 +3,12 @@ import base64
 import re
 from typing import Any, cast
 
-import niquests
-import tvdb_v4_official
 from guessit import guessit
 from imdbinfo import get_movie as imdb_get_movie
 from imdbinfo.models import MovieDetail
+import niquests
 from rapidfuzz import fuzz
+import tvdb_v4_official
 from unidecode import unidecode
 
 from src.backend.utils.guessit_helpers import get_guessit_title

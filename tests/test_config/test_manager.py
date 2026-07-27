@@ -1,6 +1,6 @@
+from collections.abc import Mapping, MutableMapping
 import dataclasses
 import enum
-from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 from typing import Any, cast
 

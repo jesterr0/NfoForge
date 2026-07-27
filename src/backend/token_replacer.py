@@ -1,10 +1,9 @@
-import re
 from ast import literal_eval
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
+import re
 from typing import Any, cast
 
-import unidecode
 from auto_qpf import ChapterGenerator
 from auto_qpf.enums import ChapterType
 from babelfish.language import Language as BabelLanguage
@@ -13,6 +12,7 @@ from iso639 import Lang
 from iso639.exceptions import InvalidLanguageValue
 from jinja2 import meta
 from pymediainfo import MediaInfo, Track
+import unidecode
 
 from src.backend.tokens import FileToken, NfoToken, TokenData, Tokens, TokenType
 from src.backend.utils.anime import is_anime_release

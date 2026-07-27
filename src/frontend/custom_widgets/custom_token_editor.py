@@ -1,5 +1,5 @@
-import re
 from collections.abc import Sequence
+import re
 
 from PySide6.QtCore import (
     QAbstractItemModel,

@@ -1,7 +1,7 @@
-import shutil
 from collections.abc import Callable, Sequence
 from multiprocessing import Manager, Pool, cpu_count
 from pathlib import Path
+import shutil
 from typing import Any
 
 from PIL import Image

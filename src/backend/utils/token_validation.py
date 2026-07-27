@@ -11,8 +11,8 @@ QApplication or a loaded profile.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable
+import re
 
 from jinja2 import Environment, meta, nodes
 from jinja2.exceptions import TemplateSyntaxError

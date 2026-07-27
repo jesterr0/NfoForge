@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import pytest
 from PySide6.QtWidgets import QWidget
+import pytest
 
 from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.config.config import ConfigManager

@@ -2,11 +2,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
-import pytest
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import QMessageBox, QWidget
+import pytest
 
-import src.frontend.wizards.process as page_module
 from src.backend.upload_retry import (
     UploadFailure,
     UploadFailurePhase,
@@ -14,6 +13,7 @@ from src.backend.upload_retry import (
 )
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.global_signals import GSigs
+import src.frontend.wizards.process as page_module
 from src.frontend.wizards.process import ProcessPage, ProcessWorker
 
 

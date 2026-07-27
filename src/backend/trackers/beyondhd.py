@@ -1,11 +1,11 @@
-import re
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import Any
 
 import niquests
-import regex
 from niquests.typing import MultiPartFilesAltType
+import regex
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error

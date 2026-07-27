@@ -1,5 +1,5 @@
-import re
 from pathlib import Path
+import re
 
 from PySide6.QtCore import QSize, Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent, QImage, QKeySequence, QShortcut

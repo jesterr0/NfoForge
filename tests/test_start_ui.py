@@ -14,9 +14,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import start_ui
 from src.config.paths import ConfigPaths
 from src.exceptions import ConfigError, ConfigSchemaError
+import start_ui
 
 
 def _bare_nfoforge(config_file: str | None) -> start_ui.NfoForge:

@@ -1,19 +1,18 @@
-import pickle
-import re
 from collections.abc import Sequence
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
+import pickle
+import re
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from bs4 import BeautifulSoup, Tag as bs4Tag
 import guessit
 import niquests
-import pyotp
-from bs4 import BeautifulSoup
-from bs4 import Tag as bs4Tag
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
+import pyotp
 from unidecode import unidecode
 
 from src.backend.trackers.utils import TRACKER_HEADERS

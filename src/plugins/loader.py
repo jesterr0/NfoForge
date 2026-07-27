@@ -1,9 +1,9 @@
-import importlib
-import sys
-import traceback
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+import importlib
 from pathlib import Path
+import sys
+import traceback
 from types import ModuleType
 from typing import Any
 

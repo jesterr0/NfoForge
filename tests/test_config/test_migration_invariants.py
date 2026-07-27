@@ -6,9 +6,9 @@ existing user profile into an "unsupported schema" error at startup, with no
 recovery path other than archive+regenerate.
 """
 
-import re
 from collections.abc import Mapping
 from pathlib import Path
+import re
 from typing import Any
 
 import pytest

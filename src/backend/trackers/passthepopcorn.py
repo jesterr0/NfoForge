@@ -1,17 +1,17 @@
 import asyncio
+from pathlib import Path
 import pickle
 import re
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-import niquests
-import pyotp
-import regex
 from guessit import guessit
 from imdbinfo.models import MovieDetail
+import niquests
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
+import pyotp
+import regex
 
 from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
 from src.backend.image_host_uploading.img_box import ImageBoxUploader

@@ -1,8 +1,8 @@
 from datetime import date, datetime
 from pathlib import Path
 
-import pytest
 from PySide6.QtGui import QColor
+import pytest
 
 from src.backend.process import ProcessBackEnd
 from src.backend.token_replacer import TokenReplacer

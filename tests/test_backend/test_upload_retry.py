@@ -3,8 +3,8 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
-import pytest
 from PySide6.QtCore import SignalInstance
+import pytest
 from tenacity.wait import wait_none
 
 import src.backend.process as process_module

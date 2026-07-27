@@ -1,9 +1,9 @@
 import errno
+from pathlib import Path
 import ssl
+from typing import Any
 import xmlrpc
 import xmlrpc.client
-from pathlib import Path
-from typing import Any
 
 import bencode
 from torf import Torrent

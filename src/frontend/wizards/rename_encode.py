@@ -1,7 +1,7 @@
-import re
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
+import re
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QEventLoop, QSize, Qt, QTimer, Signal, Slot

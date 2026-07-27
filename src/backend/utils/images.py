@@ -1,6 +1,6 @@
+from pathlib import Path
 import re
 import shutil
-from pathlib import Path
 
 from pymediainfo import MediaInfo
 

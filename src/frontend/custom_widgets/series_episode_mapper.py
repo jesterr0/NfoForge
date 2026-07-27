@@ -1,7 +1,7 @@
-import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+import re
 from typing import Any
 
 from guessit import guessit

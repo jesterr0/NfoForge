@@ -1,5 +1,5 @@
-import sys
 from collections.abc import Sequence
+import sys
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QCloseEvent, QCursor, QShowEvent

@@ -18,8 +18,8 @@ startup tests do.
 
 from pathlib import Path
 
-import pytest
 from PySide6.QtCore import QtMsgType
+import pytest
 
 import start_ui
 

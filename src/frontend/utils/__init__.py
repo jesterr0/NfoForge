@@ -1,9 +1,9 @@
-import weakref
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from queue import Queue
 from typing import Any, Self
+import weakref
 
 from PySide6.QtCore import QSize, Qt, QTimer, Slot
 from PySide6.QtGui import QCursor, QIcon

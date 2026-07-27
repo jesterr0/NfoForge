@@ -1,8 +1,8 @@
 from pathlib import Path
 from unittest.mock import Mock
 
-import pytest
 from pymediainfo import MediaInfo
+import pytest
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenData

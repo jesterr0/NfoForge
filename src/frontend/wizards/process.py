@@ -1,9 +1,9 @@
 import asyncio
-import traceback
 from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
+import traceback
 from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QEventLoop, QObject, QThread, QTimer, Signal, Slot

@@ -1,5 +1,5 @@
-import platform
 from collections.abc import Mapping
+import platform
 
 import flatbencode as bencode
 from niquests.structures import CaseInsensitiveDict

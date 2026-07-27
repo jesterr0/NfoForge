@@ -1,5 +1,4 @@
-from enum import Enum
-from enum import auto as auto_enum
+from enum import Enum, auto as auto_enum
 
 from typing_extensions import override
 

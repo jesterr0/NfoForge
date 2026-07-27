@@ -1,8 +1,8 @@
 import asyncio
-import shutil
-import traceback
 from collections.abc import Callable, Sequence
 from pathlib import Path
+import shutil
+import traceback
 from typing import Any, cast
 
 from PySide6.QtCore import SignalInstance

@@ -1,6 +1,6 @@
-import re
 from os import PathLike
 from pathlib import Path
+import re
 
 from pymediainfo import MediaInfo, Track
 

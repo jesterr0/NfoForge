@@ -1,5 +1,5 @@
-import math
 from dataclasses import dataclass
+import math
 
 from src.packages.custom_types import AdvancedResize, CropValues
 

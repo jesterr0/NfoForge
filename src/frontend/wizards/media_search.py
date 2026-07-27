@@ -1,11 +1,11 @@
 import asyncio
-import traceback
-import webbrowser
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
+import traceback
 from typing import Any
 from urllib import parse as url_parse
+import webbrowser
 
 from guessit import guessit
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, Signal, Slot

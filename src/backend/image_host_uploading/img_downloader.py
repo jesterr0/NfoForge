@@ -1,7 +1,7 @@
 import asyncio
-import shutil
 from collections.abc import Callable, Sequence
 from pathlib import Path
+import shutil
 
 import aiohttp
 

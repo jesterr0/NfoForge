@@ -1,5 +1,5 @@
-import weakref
 from collections.abc import Sequence
+import weakref
 
 from PySide6.QtCore import QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QCursor, Qt

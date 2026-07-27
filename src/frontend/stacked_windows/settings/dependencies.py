@@ -1,5 +1,5 @@
-import platform
 from pathlib import Path
+import platform
 from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QSize, Qt, Slot

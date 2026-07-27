@@ -1,5 +1,5 @@
-import traceback
 from collections.abc import Callable
+import traceback
 from typing import Any
 
 from PySide6.QtCore import QObject, QThread, Signal

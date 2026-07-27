@@ -1,6 +1,6 @@
 import os
-import tempfile
 from pathlib import Path
+import tempfile
 
 
 def atomic_write_text(path: Path, text: str) -> None:

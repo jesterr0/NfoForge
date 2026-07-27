@@ -1,5 +1,5 @@
-import shutil
 from pathlib import Path
+import shutil
 from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Slot

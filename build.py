@@ -1,10 +1,10 @@
 import os
+from pathlib import Path
 import platform
 import re
 import shutil
-import sys
-from pathlib import Path
 from subprocess import run
+import sys
 
 from stdlib_list import stdlib_list
 
@@ -30,7 +30,7 @@ def get_std_lib() -> list:
 
 def modify_spec_file(spec_file_path: Path, hiddenimports: list):
     # open the spec file and read the contents
-    with open(spec_file_path, "r") as spec_file:
+    with open(spec_file_path) as spec_file:
         spec_content = spec_file.read()
 
     # find the hiddenimports list in the spec file
@@ -47,7 +47,7 @@ def modify_spec_file(spec_file_path: Path, hiddenimports: list):
 
 def modify_spec_file_for_dual_exe(spec_file_path: Path):
     """Modify the PyInstaller spec file to create two executables from a single bundle."""
-    with open(spec_file_path, "r") as spec_file:
+    with open(spec_file_path) as spec_file:
         spec_content = spec_file.read()
 
     # regex pattern to match multi-line EXE definitions

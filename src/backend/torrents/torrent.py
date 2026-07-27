@@ -1,10 +1,10 @@
+from collections.abc import Callable
 import math
+from pathlib import Path
 import platform
 import re
 import shutil
 import subprocess
-from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from torf import Torrent

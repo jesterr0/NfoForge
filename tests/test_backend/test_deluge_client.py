@@ -2,9 +2,9 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
 from deluge_web_client import TorrentOptions
 from deluge_web_client.schema import Response
+import pytest
 
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.exceptions import TrackerClientError

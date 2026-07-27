@@ -1,14 +1,14 @@
-import os
-import re
 from datetime import datetime
 from enum import Enum
+import os
 from pathlib import Path
+import re
 from tempfile import mkstemp
 from typing import Any, TypeAlias
 
 import niquests
-import regex
 from pymediainfo import MediaInfo
+import regex
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_exponential
 

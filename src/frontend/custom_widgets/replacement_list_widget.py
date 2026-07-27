@@ -1,5 +1,5 @@
-import re
 from collections.abc import Sequence
+import re
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QColor, QDragMoveEvent, QHideEvent, QPalette, QShowEvent

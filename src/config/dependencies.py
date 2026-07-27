@@ -1,6 +1,6 @@
-import shutil
 from os import PathLike
 from pathlib import Path
+import shutil
 from typing import TYPE_CHECKING
 
 from src.backend.utils.get_os_executable_ext import get_executable_string_by_os

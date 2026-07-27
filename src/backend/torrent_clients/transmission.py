@@ -5,8 +5,6 @@ from transmission_rpc import (
     TransmissionConnectError,
     TransmissionError,
     TransmissionTimeoutError,
-)
-from transmission_rpc import (
     from_url as TransmissionClientFromUrl,
 )
 

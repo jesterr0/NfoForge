@@ -1,9 +1,9 @@
-import platform
-import re
-import subprocess
 from collections import Counter
 from os import PathLike
 from pathlib import Path
+import platform
+import re
+import subprocess
 
 
 class CropDetect:

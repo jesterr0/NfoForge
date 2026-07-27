@@ -1,5 +1,5 @@
-import traceback
 from pathlib import Path
+import traceback
 
 from PySide6.QtCore import QObject, QThread, Signal, SignalInstance, Slot
 from PySide6.QtGui import QPixmap, QShowEvent, Qt

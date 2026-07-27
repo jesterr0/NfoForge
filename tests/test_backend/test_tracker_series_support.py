@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock, patch
 
-import pytest
 from pymediainfo import MediaInfo
+import pytest
 
 from src.backend.process import ProcessBackEnd
 from src.backend.trackers.aither import AitherUploader

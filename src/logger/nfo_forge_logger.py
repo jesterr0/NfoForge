@@ -1,10 +1,10 @@
+from datetime import datetime
 import json
 import logging
-import sys
-from datetime import datetime
 from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import sys
 from typing import Any, TextIO
 
 import shortuuid

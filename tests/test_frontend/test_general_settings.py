@@ -1,9 +1,9 @@
 from pathlib import Path
 
-import pytest
-import tomlkit
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMessageBox, QWidget
+import pytest
+import tomlkit
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths

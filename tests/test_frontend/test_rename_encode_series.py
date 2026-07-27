@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import pytest
 from PySide6.QtTest import QTest
+import pytest
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths

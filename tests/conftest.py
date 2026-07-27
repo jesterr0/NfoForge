@@ -14,9 +14,9 @@ import os
 # offscreen for CI/headless runs.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import pytest
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
+import pytest
 
 
 @pytest.fixture(scope="session", autouse=True)
