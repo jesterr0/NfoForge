@@ -43,8 +43,13 @@ def test_classify_upload_post_error(
 
 def test_connect_timeout_is_checked_before_connection_error() -> None:
     """ConnectTimeout subclasses ConnectionError; ordering must not misclassify it."""
-    assert issubclass(niquests.exceptions.ConnectTimeout, niquests.exceptions.ConnectionError)
-    assert classify_upload_post_error(niquests.exceptions.ConnectTimeout("x")) == (True, False)
+    assert issubclass(
+        niquests.exceptions.ConnectTimeout, niquests.exceptions.ConnectionError
+    )
+    assert classify_upload_post_error(niquests.exceptions.ConnectTimeout("x")) == (
+        True,
+        False,
+    )
 
 
 def test_bare_connection_error_is_not_retried_automatically() -> None:

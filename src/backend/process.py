@@ -667,7 +667,9 @@ class ProcessBackEnd:
                     server_accepted=False,
                     torrent_path=torrent_path,
                 )
-                queued_status_update(tracker_name, "⚠️ Injection failed - awaiting action")
+                queued_status_update(
+                    tracker_name, "⚠️ Injection failed - awaiting action"
+                )
                 action = upload_retry_cb(failure)
                 if action is UploadRetryAction.RETRY:
                     queued_status_update(

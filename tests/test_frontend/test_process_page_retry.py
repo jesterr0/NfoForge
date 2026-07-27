@@ -131,8 +131,9 @@ def test_download_phase_offers_no_reupload(responses) -> None:
         )
 
     labels = [button.label for button in _FakeMessageBox.last.buttons]
-    assert not any("upload" in label.lower() and "keep" not in label.lower()
-                   for label in labels), labels
+    assert not any(
+        "upload" in label.lower() and "keep" not in label.lower() for label in labels
+    ), labels
     assert "Retry" not in labels
     assert responses == [UploadRetryAction.SKIP]
     assert "upload succeeded" in _FakeMessageBox.last.informative_text.lower()

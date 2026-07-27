@@ -106,7 +106,9 @@ def test_default_attempts_still_retries(monkeypatch: pytest.MonkeyPatch) -> None
     # Matches the existing pattern in tests/test_backend/test_upload_retry.py:46
     # so the retry runs without real backoff sleeps.
     monkeypatch.setattr(health_module, "_probe_tracker_once", _fail)
-    monkeypatch.setattr(health_module, "wait_exponential", lambda **_kwargs: wait_none())
+    monkeypatch.setattr(
+        health_module, "wait_exponential", lambda **_kwargs: wait_none()
+    )
 
     with pytest.raises(TrackerError):
         ensure_tracker_health(TrackerSelection.AITHER, 5, {})

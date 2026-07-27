@@ -231,9 +231,7 @@ def test_server_accepted_failure_prompts_on_the_first_attempt(
     """A possibly-accepted upload must reach the user without a silent re-POST."""
     monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
     upload = MagicMock(
-        side_effect=TrackerError(
-            "read timed out", retryable=True, server_accepted=True
-        )
+        side_effect=TrackerError("read timed out", retryable=True, server_accepted=True)
     )
     callback = MagicMock(return_value=UploadRetryAction.SKIP)
     kwargs = _kwargs(tmp_path)
@@ -376,7 +374,9 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
     `disconnect_from_clients()`.
     """
     monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
-    monkeypatch.setattr(process_module, "generate_torrent", lambda **_kwargs: MagicMock())
+    monkeypatch.setattr(
+        process_module, "generate_torrent", lambda **_kwargs: MagicMock()
+    )
     monkeypatch.setattr(
         process_module,
         "write_torrent",
