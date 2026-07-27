@@ -53,6 +53,7 @@ dev = [
     "setuptools",
     "debugpy",
     "types-psutil",
+    "poethepoet>=0.48.0",
 ]
 build = ["pyinstaller-hooks-contrib>=2025.1", "pyinstaller>=6.9.0"]
 docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
@@ -63,8 +64,12 @@ line-length = 88
 [tool.ruff.lint]
 # `select` replaces ruff's defaults rather than extending them, so "F"
 # (pyflakes) has to be listed explicitly or unused imports, redefinitions,
-# undefined names, and unused locals go unlinted.
+# undefined names, and unused locals go un-linted.
 select = ["F", "I", "UP"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -109,3 +114,13 @@ module = [
     "tvdb_v4_official.*",
 ]
 ignore_missing_imports = true
+
+[tool.poe.tasks]
+lint = "ruff check ."
+lint-fix = "ruff check . --fix"
+format-check = "ruff format . --check"
+format-code = "ruff format ."
+format.sequence = [
+    "lint-fix",
+    "format-code",
+]
