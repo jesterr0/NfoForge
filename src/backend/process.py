@@ -103,8 +103,6 @@ from src.payloads.watch_folder import WatchFolder
 
 
 class ProcessBackEnd:
-    AUTOMATIC_UPLOAD_ATTEMPTS = RETRY_ATTEMPTS
-
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
         self.template_selector_be = TemplateSelectorBackEnd()
@@ -542,17 +540,17 @@ class ProcessBackEnd:
                 tracker_health_cache.pop(tracker, None)
                 queued_status_update(
                     str(tracker),
-                    f"↻ Retrying upload ({next_attempt}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})",
+                    f"↻ Retrying upload ({next_attempt}/{RETRY_ATTEMPTS})",
                 )
                 queued_text_update(
                     f"<br /><span>Temporary upload failure for <b>{tracker}</b>; "
-                    f"retrying ({next_attempt}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})</span>"
+                    f"retrying ({next_attempt}/{RETRY_ATTEMPTS})</span>"
                 )
 
             try:
                 retrying = Retrying(
                     retry=retry_if_exception(self._is_automatic_upload_retryable),
-                    stop=stop_after_attempt(self.AUTOMATIC_UPLOAD_ATTEMPTS),
+                    stop=stop_after_attempt(RETRY_ATTEMPTS),
                     wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
                     before_sleep=before_sleep,
                     reraise=True,
@@ -568,7 +566,7 @@ class ProcessBackEnd:
                     phase=self._upload_error_phase(error),
                     message=safe_message,
                     attempt=total_attempts,
-                    automatic_attempts=self.AUTOMATIC_UPLOAD_ATTEMPTS,
+                    automatic_attempts=RETRY_ATTEMPTS,
                     retryable=retryable,
                     server_accepted=bool(getattr(error, "server_accepted", False)),
                     torrent_path=torrent_path,
