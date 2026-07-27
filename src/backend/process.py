@@ -67,6 +67,7 @@ from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
 from src.backend.upload_retry import (
+    RETRY_ATTEMPTS,
     UploadFailure,
     UploadFailurePhase,
     UploadRetryAction,
@@ -102,7 +103,7 @@ from src.payloads.watch_folder import WatchFolder
 
 
 class ProcessBackEnd:
-    AUTOMATIC_UPLOAD_ATTEMPTS = 3
+    AUTOMATIC_UPLOAD_ATTEMPTS = RETRY_ATTEMPTS
 
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
@@ -530,15 +531,18 @@ class ProcessBackEnd:
             def before_sleep(retry_state: object) -> None:
                 # Retrying's concrete state exposes the attempt number, but the
                 # callback is intentionally kept duck-typed for static checks.
-                attempt_number = getattr(retry_state, "attempt_number", total_attempts)
+                # It reports the attempt that just failed, so the attempt about
+                # to start is one higher.
+                failed_attempt = getattr(retry_state, "attempt_number", total_attempts)
+                next_attempt = failed_attempt + 1
                 tracker_health_cache.pop(tracker, None)
                 queued_status_update(
                     str(tracker),
-                    f"↻ Retrying upload ({attempt_number}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})",
+                    f"↻ Retrying upload ({next_attempt}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})",
                 )
                 queued_text_update(
                     f"<br /><span>Temporary upload failure for <b>{tracker}</b>; "
-                    f"retrying ({attempt_number}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})</span>"
+                    f"retrying ({next_attempt}/{self.AUTOMATIC_UPLOAD_ATTEMPTS})</span>"
                 )
 
             try:

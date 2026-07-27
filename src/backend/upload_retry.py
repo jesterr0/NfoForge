@@ -7,6 +7,9 @@ import niquests
 
 from src.enums.tracker_selection import TrackerSelection
 
+RETRY_ATTEMPTS = 3
+"""Default number of attempts for automatic retries of a tracker operation."""
+
 
 class UploadRetryAction(Enum):
     """The action selected after an upload attempt needs user attention."""

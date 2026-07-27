@@ -17,7 +17,7 @@ from src.backend.trackers.utils import (
     looks_like_torrent,
     tracker_string_replace_map,
 )
-from src.backend.upload_retry import classify_upload_post_error
+from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -297,7 +297,7 @@ class Unit3dBaseUploader:
                 and bool(getattr(error, "server_accepted", False))
                 and bool(getattr(error, "retryable", False))
             ),
-            stop=stop_after_attempt(3),
+            stop=stop_after_attempt(RETRY_ATTEMPTS),
             wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
             reraise=True,
         )(lambda: self._download_uploaded_torrent(download_url))

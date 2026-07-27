@@ -10,6 +10,7 @@ from tenacity import (
 )
 
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import RETRY_ATTEMPTS
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import TrackerError
 
@@ -43,7 +44,7 @@ def ensure_tracker_health(
     timeout: int,
     cache: MutableMapping[TrackerSelection, bool],
     *,
-    attempts: int = 3,
+    attempts: int = RETRY_ATTEMPTS,
 ) -> None:
     """Verify a tracker root is reachable once per processing run."""
     cached = cache.get(tracker)

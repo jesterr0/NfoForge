@@ -279,3 +279,18 @@ def test_scrub_secrets_leaves_ordinary_text_alone() -> None:
     text = "Failed to upload to Aither: 503 Service Unavailable"
 
     assert scrub_secrets(text) == text
+
+
+def test_scrub_secrets_preserves_everything_after_the_token() -> None:
+    """An over-matching pattern would hide the actual error, not just the secret."""
+    text = (
+        "Max retries exceeded with url: "
+        "/api/torrents/upload?api_token=SECRETKEY123&foo=bar "
+        "(Caused by ReadTimeoutError)"
+    )
+
+    assert scrub_secrets(text) == (
+        "Max retries exceeded with url: "
+        "/api/torrents/upload?api_token=[redacted]&foo=bar "
+        "(Caused by ReadTimeoutError)"
+    )
