@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 import src.frontend.wizards.process as page_module
@@ -161,21 +161,21 @@ def test_cancel_hides_the_process_button() -> None:
     stub._job_ended.assert_called_once_with()
 
 
-def test_worker_is_released_when_the_prompt_never_runs(monkeypatch) -> None:
+def test_worker_is_released_when_the_prompt_never_runs() -> None:
     """If the receiver is gone the slot never runs, so nothing would ever reply."""
-    monkeypatch.setattr(ProcessWorker, "RETRY_PROMPT_ACK_TIMEOUT_MS", 50)
     # Nothing is connected to upload_retry_signal: this is what a destroyed
     # ProcessPage looks like from the worker's side.
-    stub = SimpleNamespace(upload_retry_signal=MagicMock())
+    stub = SimpleNamespace(
+        upload_retry_signal=MagicMock(), RETRY_PROMPT_ACK_TIMEOUT_MS=50
+    )
 
     action = ProcessWorker.upload_retry_and_wait_cb(stub, _failure())
 
     assert action is UploadRetryAction.CANCEL
 
 
-def test_ack_lets_the_user_take_as_long_as_they_like(monkeypatch) -> None:
+def test_ack_lets_the_user_take_as_long_as_they_like() -> None:
     """Once the GUI acknowledges, the ack watchdog must not fire and cancel."""
-    monkeypatch.setattr(ProcessWorker, "RETRY_PROMPT_ACK_TIMEOUT_MS", 50)
 
     def _emit_ack_then_answer_late(_failure_arg: object) -> None:
         GSigs().upload_retry_ack.emit()
@@ -183,9 +183,84 @@ def test_ack_lets_the_user_take_as_long_as_they_like(monkeypatch) -> None:
             150, lambda: GSigs().upload_retry_response.emit(UploadRetryAction.SKIP)
         )
 
-    stub = SimpleNamespace(upload_retry_signal=SimpleNamespace(emit=_emit_ack_then_answer_late))
+    stub = SimpleNamespace(
+        upload_retry_signal=SimpleNamespace(emit=_emit_ack_then_answer_late),
+        RETRY_PROMPT_ACK_TIMEOUT_MS=50,
+    )
 
     action = ProcessWorker.upload_retry_and_wait_cb(stub, _failure())
 
     # 150ms > the 50ms ack timeout: proves the watchdog was stopped by the ack.
     assert action is UploadRetryAction.SKIP
+
+
+class _RetryWorkerThread(QThread):
+    """Minimal QThread stand-in that runs the real
+    ``ProcessWorker.upload_retry_and_wait_cb`` on its own OS thread, the way
+    ``ProcessWorker`` itself does. A fresh instance is used per run, exactly
+    like a fresh ``ProcessWorker`` per "Process" click in production.
+    """
+
+    upload_retry_signal = Signal(object)
+    finished_with = Signal(object)
+
+    RETRY_PROMPT_ACK_TIMEOUT_MS = 50
+
+    def run(self) -> None:
+        action = ProcessWorker.upload_retry_and_wait_cb(self, _failure())
+        self.finished_with.emit(action)
+
+
+class _MainThreadRetryReceiver(QObject):
+    """Stands in for ``ProcessPage``: one long-lived instance on the main
+    thread answers every worker's retry prompt, like the real page does
+    across repeated "Process" runs."""
+
+    @Slot(object)
+    def on_retry(self, _failure_arg: object) -> None:
+        GSigs().upload_retry_ack.emit()
+        QTimer.singleShot(
+            20, lambda: GSigs().upload_retry_response.emit(UploadRetryAction.SKIP)
+        )
+
+
+def test_second_worker_thread_still_gets_the_users_answer(qapp) -> None:
+    """Regression test for a pre-existing bug the ack watchdog only masks:
+    PySide's queued-connection delivery for a receiver is routed through an
+    internal dispatcher whose thread affinity is fixed by the first
+    connection made in the process. Connecting closures straight to a
+    long-lived global signal pins delivery to whichever worker thread
+    connected first, so a second (or later) ProcessWorker QThread silently
+    lost both the ack and the response and had its answer discarded.
+
+    Runs a real QThread through upload_retry_and_wait_cb twice against one
+    long-lived main-thread receiver and asserts the user's answer survives
+    both times, not just the first.
+    """
+    receiver = _MainThreadRetryReceiver()
+    results: list[UploadRetryAction] = []
+
+    def run_once() -> None:
+        worker = _RetryWorkerThread()
+        worker.upload_retry_signal.connect(receiver.on_retry)
+
+        def _on_finished(action: UploadRetryAction) -> None:
+            results.append(action)
+            qapp.quit()
+
+        worker.finished_with.connect(_on_finished)
+        # Safety net only: every run above should finish in well under
+        # 100ms. This must never fire in a passing run.
+        bail = QTimer()
+        bail.setSingleShot(True)
+        bail.timeout.connect(qapp.quit)
+        bail.start(1000)
+        worker.start()
+        qapp.exec()
+        bail.stop()
+        worker.wait(1000)
+
+    run_once()
+    run_once()
+
+    assert results == [UploadRetryAction.SKIP, UploadRetryAction.SKIP]

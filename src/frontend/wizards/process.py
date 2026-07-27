@@ -102,6 +102,65 @@ class DupeWorker(BaseWorker):
             async_loop.close()
 
 
+class _TokenPromptWaiter(QObject):
+    """Bound-method receiver for ``prompt_tokens_response``.
+
+    PySide routes a queued connection to a plain Python closure through an
+    internal receiver whose thread affinity is pinned by the *first*
+    connection made in the process. On a second (or later) worker QThread
+    that pins the delivery to the wrong thread and the signal is silently
+    dropped. A fresh QObject instance per call carries its own thread
+    affinity, so real bound ``@Slot`` methods on it keep being delivered.
+    """
+
+    def __init__(self, worker: "ProcessWorker", loop: QEventLoop) -> None:
+        super().__init__()
+        self._worker = worker
+        self._loop = loop
+
+    @Slot(object)
+    def on_response(self, response: dict[str, str] | None) -> None:
+        self._worker._prompt_tokens_response = response
+        self._loop.quit()
+
+
+class _OverviewPromptWaiter(QObject):
+    """Bound-method receiver for ``overview_prompt_response``. See
+    ``_TokenPromptWaiter`` for why a closure slot is not used here."""
+
+    def __init__(self, worker: "ProcessWorker", loop: QEventLoop) -> None:
+        super().__init__()
+        self._worker = worker
+        self._loop = loop
+
+    @Slot(object)
+    def on_response(
+        self, response: dict[TrackerSelection, dict[str, str | None]] | None
+    ) -> None:
+        self._worker._overview_prompt = response
+        self._loop.quit()
+
+
+class _UploadRetryWaiter(QObject):
+    """Bound-method receiver for ``upload_retry_ack`` / ``upload_retry_response``.
+    See ``_TokenPromptWaiter`` for why a closure slot is not used here."""
+
+    def __init__(self, watchdog: QTimer, loop: QEventLoop) -> None:
+        super().__init__()
+        self._watchdog = watchdog
+        self._loop = loop
+        self.response: UploadRetryAction | None = None
+
+    @Slot()
+    def on_ack(self) -> None:
+        self._watchdog.stop()
+
+    @Slot(object)
+    def on_response(self, action: UploadRetryAction) -> None:
+        self.response = action
+        self._loop.quit()
+
+
 class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
     progress_signal = Signal(int)
@@ -169,16 +228,12 @@ class ProcessWorker(BaseWorker):
         self.prompt_tokens_signal.emit(tokens)
         # start event loop
         loop = QEventLoop()
-
-        @Slot(object)
-        def on_response(response: dict[str, str] | None) -> None:
-            self._prompt_tokens_response = response
-            loop.quit()
+        waiter = _TokenPromptWaiter(self, loop)
 
         # wait for response
-        GSigs().prompt_tokens_response.connect(on_response)
+        GSigs().prompt_tokens_response.connect(waiter.on_response)
         loop.exec_()
-        GSigs().prompt_tokens_response.disconnect(on_response)
+        GSigs().prompt_tokens_response.disconnect(waiter.on_response)
 
         # return response
         return self._prompt_tokens_response
@@ -194,32 +249,19 @@ class ProcessWorker(BaseWorker):
 
         # start loop
         loop = QEventLoop()
-
-        @Slot(object)
-        def on_response(
-            response: dict[TrackerSelection, dict[str, str | None]] | None,
-        ) -> None:
-            self._overview_prompt = response
-            loop.quit()
+        waiter = _OverviewPromptWaiter(self, loop)
 
         # wait for response
-        GSigs().overview_prompt_response.connect(on_response)
+        GSigs().overview_prompt_response.connect(waiter.on_response)
         loop.exec_()
-        GSigs().overview_prompt_response.disconnect(on_response)
+        GSigs().overview_prompt_response.disconnect(waiter.on_response)
 
         # return response
         return self._overview_prompt
 
     def upload_retry_and_wait_cb(self, failure: UploadFailure) -> UploadRetryAction:
         """Ask the frontend what to do with a failed tracker upload."""
-        response: UploadRetryAction | None = None
         loop = QEventLoop()
-
-        @Slot(object)
-        def on_response(action: UploadRetryAction) -> None:
-            nonlocal response
-            response = action
-            loop.quit()
 
         # The GUI may be gone: if the slot is never invoked nothing would ever
         # reply and this loop would block forever. Bound the wait until the GUI
@@ -228,25 +270,23 @@ class ProcessWorker(BaseWorker):
         watchdog.setSingleShot(True)
         watchdog.timeout.connect(loop.quit)
 
-        @Slot()
-        def on_ack() -> None:
-            watchdog.stop()
+        waiter = _UploadRetryWaiter(watchdog, loop)
 
         # Connect before emitting so the response can never arrive first, and
         # always disconnect so a raise inside the loop cannot leak a connection
         # onto the global signal singleton.
-        GSigs().upload_retry_ack.connect(on_ack)
-        GSigs().upload_retry_response.connect(on_response)
+        GSigs().upload_retry_ack.connect(waiter.on_ack)
+        GSigs().upload_retry_response.connect(waiter.on_response)
         try:
-            watchdog.start(ProcessWorker.RETRY_PROMPT_ACK_TIMEOUT_MS)
+            watchdog.start(self.RETRY_PROMPT_ACK_TIMEOUT_MS)
             self.upload_retry_signal.emit(failure)
             loop.exec_()
         finally:
             watchdog.stop()
-            GSigs().upload_retry_response.disconnect(on_response)
-            GSigs().upload_retry_ack.disconnect(on_ack)
+            GSigs().upload_retry_response.disconnect(waiter.on_response)
+            GSigs().upload_retry_ack.disconnect(waiter.on_ack)
 
-        return response or UploadRetryAction.CANCEL
+        return waiter.response or UploadRetryAction.CANCEL
 
 
 class ProcessPage(BaseWizardPage):
