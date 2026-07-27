@@ -10,6 +10,7 @@ from tenacity.wait import wait_none
 import src.backend.process as process_module
 from src.backend.process import ProcessBackEnd
 from src.backend.upload_retry import (
+    RETRY_ATTEMPTS,
     UploadFailurePhase,
     UploadRetryAction,
 )
@@ -220,9 +221,9 @@ def test_automatic_attempts_are_exhausted_before_prompting(
 
     assert result is None
     assert skipped is True
-    assert upload.call_count == ProcessBackEnd.AUTOMATIC_UPLOAD_ATTEMPTS
+    assert upload.call_count == RETRY_ATTEMPTS
     failure = callback.call_args.args[0]
-    assert failure.attempt == ProcessBackEnd.AUTOMATIC_UPLOAD_ATTEMPTS
+    assert failure.attempt == RETRY_ATTEMPTS
 
 
 def test_server_accepted_failure_prompts_on_the_first_attempt(
