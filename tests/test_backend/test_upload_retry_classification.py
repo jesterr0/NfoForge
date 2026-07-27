@@ -249,3 +249,33 @@ def test_server_accepted_overrides_retryable() -> None:
     error = TrackerError("timed out", retryable=True, server_accepted=True)
 
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
+
+
+from src.backend.upload_retry import scrub_secrets
+
+
+def test_scrub_secrets_redacts_query_string_credentials() -> None:
+    text = (
+        "Max retries exceeded with url: /api/torrents/upload?api_token=SECRETKEY123 "
+        "(Caused by ReadTimeoutError)"
+    )
+
+    scrubbed = scrub_secrets(text)
+
+    assert "SECRETKEY123" not in scrubbed
+    assert "api_token=[redacted]" in scrubbed
+
+
+def test_scrub_secrets_handles_several_parameter_names() -> None:
+    text = "?apikey=AAA&passkey=BBB&api_key=CCC&api_token=DDD"
+
+    scrubbed = scrub_secrets(text)
+
+    for secret in ("AAA", "BBB", "CCC", "DDD"):
+        assert secret not in scrubbed
+
+
+def test_scrub_secrets_leaves_ordinary_text_alone() -> None:
+    text = "Failed to upload to Aither: 503 Service Unavailable"
+
+    assert scrub_secrets(text) == text

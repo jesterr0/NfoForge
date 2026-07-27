@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -63,3 +64,13 @@ def classify_upload_post_error(error: BaseException) -> tuple[bool | None, bool]
         # a complete multipart body, so it cannot have processed the upload.
         return True, False
     return None, True
+
+
+_SECRET_QUERY_PARAM = re.compile(
+    r"(?i)\b(api_token|api_key|apikey|passkey|rsskey|torrent_pass)=[^&\s\"']+"
+)
+
+
+def scrub_secrets(text: str) -> str:
+    """Redact credentials that transport errors copy out of a request URL."""
+    return _SECRET_QUERY_PARAM.sub(r"\1=[redacted]", text)

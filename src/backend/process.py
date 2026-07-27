@@ -70,6 +70,7 @@ from src.backend.upload_retry import (
     UploadFailure,
     UploadFailurePhase,
     UploadRetryAction,
+    scrub_secrets,
 )
 from src.backend.utils.anime import is_anime_release
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
@@ -553,10 +554,11 @@ class ProcessBackEnd:
                 raise
             except Exception as error:
                 retryable = self._is_automatic_upload_retryable(error)
+                safe_message = scrub_secrets(str(error))
                 failure = UploadFailure(
                     tracker=tracker,
                     phase=self._upload_error_phase(error),
-                    message=str(error),
+                    message=safe_message,
                     attempt=total_attempts,
                     automatic_attempts=self.AUTOMATIC_UPLOAD_ATTEMPTS,
                     retryable=retryable,
@@ -566,7 +568,7 @@ class ProcessBackEnd:
                 queued_status_update(str(tracker), "⚠️ Failed - awaiting action")
                 queued_text_update(
                     f'<br /><span style="font-weight: bold; color: red;">'
-                    f"Upload failed for {tracker}: {error}</span>"
+                    f"Upload failed for {tracker}: {safe_message}</span>"
                 )
                 caught_error.emit(f"Upload Error: {traceback.format_exc()}")
 
@@ -626,7 +628,7 @@ class ProcessBackEnd:
                 failure = UploadFailure(
                     tracker=tracker,
                     phase=UploadFailurePhase.INJECTION,
-                    message=str(error),
+                    message=scrub_secrets(str(error)),
                     attempt=attempt,
                     automatic_attempts=0,
                     retryable=True,
