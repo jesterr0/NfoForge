@@ -63,9 +63,16 @@ def classify_upload_post_error(error: BaseException) -> tuple[bool | None, bool]
         # tracker may still have recorded the upload. Covers JSONDecodeError.
         return True, True
     if isinstance(error, niquests.exceptions.ConnectionError):
-        # Refused, DNS failure, or a reset mid-send: the tracker never received
-        # a complete multipart body, so it cannot have processed the upload.
-        return True, False
+        # niquests' HTTPAdapter wraps the *entire* conn.urlopen() call --
+        # which spans sending the request body and reading the response
+        # headers -- in a single `except (ProtocolError, OSError) as err:
+        # raise ConnectionError(err, request=request)`. Refused, DNS
+        # failure, and a reset mid-send all surface as this same bare
+        # ConnectionError, but so does a tracker that accepted a large
+        # multipart upload and then reset while processing it. That is
+        # physically the same failure as ReadTimeout (marked
+        # server_accepted=True above), so this is not provably pre-body.
+        return None, True
     return None, True
 
 
@@ -73,7 +80,15 @@ _SECRET_QUERY_PARAM = re.compile(
     r"(?i)\b(api_token|api_key|apikey|passkey|rsskey|torrent_pass)=[^&\s\"']+"
 )
 
+# Matches the userinfo portion of a URI, e.g. the credentials rTorrent embeds
+# in its host URI (`https://user:password@host/...`). An `xmlrpc.client.
+# ProtocolError` copies that full netloc into its message, so this shape can
+# reach on-screen status text the same way a query-string secret can.
+_URI_USERINFO_PASSWORD = re.compile(r"(?i)(://[^/\s:@]+:)[^@\s]+(@)")
+
 
 def scrub_secrets(text: str) -> str:
     """Redact credentials that transport errors copy out of a request URL."""
-    return _SECRET_QUERY_PARAM.sub(r"\1=[redacted]", text)
+    text = _SECRET_QUERY_PARAM.sub(r"\1=[redacted]", text)
+    text = _URI_USERINFO_PASSWORD.sub(r"\1[redacted]\2", text)
+    return text

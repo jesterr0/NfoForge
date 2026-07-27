@@ -99,16 +99,19 @@ class TLUploader:
                 )
                 LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
                 status_code = request.status_code
+                # 408/429 mean the request was rejected before it could be
+                # processed. A 5xx means TorrentLeech received and answered
+                # the upload -- it may have recorded the torrent before
+                # failing, so that must route to the user instead of an
+                # automatic retry.
+                retryable = isinstance(status_code, int) and (
+                    status_code == 408 or status_code == 429 or status_code >= 500
+                )
+                server_accepted = isinstance(status_code, int) and status_code >= 500
                 raise TrackerError(
                     upload_error_msg,
-                    retryable=(
-                        isinstance(status_code, int)
-                        and (
-                            status_code == 408
-                            or status_code == 429
-                            or status_code >= 500
-                        )
-                    ),
+                    retryable=retryable,
+                    server_accepted=server_accepted,
                     status_code=status_code if isinstance(status_code, int) else None,
                 )
         except niquests.exceptions.RequestException as e:

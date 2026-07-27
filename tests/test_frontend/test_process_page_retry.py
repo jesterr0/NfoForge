@@ -124,7 +124,7 @@ def test_default_button_is_not_retry_when_server_accepted(responses) -> None:
 
 def test_download_phase_offers_no_reupload(responses) -> None:
     """The upload already succeeded, so re-POSTing is a guaranteed duplicate."""
-    _FakeMessageBox.click_label = "Keep upload, use local torrent"
+    _FakeMessageBox.click_label = "Keep upload, continue"
     with patch.object(page_module, "QMessageBox", _FakeMessageBox):
         ProcessPage._on_upload_retry_signal(
             QWidget(), _failure(phase=UploadFailurePhase.DOWNLOAD, server_accepted=True)

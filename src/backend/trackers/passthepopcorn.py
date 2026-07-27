@@ -350,7 +350,11 @@ class PTPUploader:
                 )
             try:
                 upload = response.post(
-                    url=url, headers=TRACKER_HEADERS, data=data, files=files
+                    url=url,
+                    headers=TRACKER_HEADERS,
+                    data=data,
+                    files=files,
+                    timeout=self.timeout,
                 )
             except niquests.exceptions.RequestException as error:
                 upload_error_msg = f"Upload to PTP failed: {error}"

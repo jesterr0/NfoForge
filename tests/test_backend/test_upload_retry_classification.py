@@ -8,7 +8,7 @@ from src.backend.process import ProcessBackEnd
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.huno import HunoUploader
 from src.backend.trackers.torrentleech import TLUploader
-from src.backend.upload_retry import classify_upload_post_error
+from src.backend.upload_retry import classify_upload_post_error, scrub_secrets
 from src.enums.media_type import MediaType
 from src.exceptions import TrackerError
 
@@ -18,7 +18,11 @@ from src.exceptions import TrackerError
     (
         # Nothing was transmitted: safe to re-POST automatically.
         (niquests.exceptions.ConnectTimeout("connect timed out"), (True, False)),
-        (niquests.exceptions.ConnectionError("connection refused"), (True, False)),
+        # A bare ConnectionError is NOT provably pre-body: niquests wraps the
+        # whole send-body-and-read-headers span in one except clause, so a
+        # reset while the tracker was processing an already-received upload
+        # looks identical to a refused connection. Must route to the user.
+        (niquests.exceptions.ConnectionError("connection refused"), (None, True)),
         # The body was fully sent; the tracker may have recorded the upload.
         (niquests.exceptions.ReadTimeout("read timed out"), (True, True)),
         (
@@ -41,6 +45,28 @@ def test_connect_timeout_is_checked_before_connection_error() -> None:
     """ConnectTimeout subclasses ConnectionError; ordering must not misclassify it."""
     assert issubclass(niquests.exceptions.ConnectTimeout, niquests.exceptions.ConnectionError)
     assert classify_upload_post_error(niquests.exceptions.ConnectTimeout("x")) == (True, False)
+
+
+def test_bare_connection_error_is_not_retried_automatically() -> None:
+    """Regression test for treating a bare ConnectionError as pre-body.
+
+    Verified against niquests' HTTPAdapter.send (adapters.py): the whole
+    ``conn.urlopen(..., preload_content=False)`` call -- which spans sending
+    the multipart body and reading the response headers -- is wrapped in a
+    single ``except (ProtocolError, OSError) as err: raise
+    ConnectionError(err, request=request)``. A tracker that accepted a large
+    upload and then reset while processing it is indistinguishable, from
+    this exception alone, from a connection that was refused outright.
+    """
+    retryable, server_accepted = classify_upload_post_error(
+        niquests.exceptions.ConnectionError("connection reset by peer")
+    )
+    assert retryable is None
+    assert server_accepted is True
+    error = TrackerError(
+        "connection reset", retryable=retryable, server_accepted=server_accepted
+    )
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
 
 
 def test_json_decode_error_is_a_request_exception() -> None:
@@ -142,6 +168,30 @@ def test_unit3d_408_response_is_retryable(tmp_path: Path) -> None:
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
 
 
+def test_unit3d_429_response_is_retryable(tmp_path: Path) -> None:
+    """A structured 429 from a UNIT3D tracker must remain automatically retryable."""
+    error = _upload_raising_from_response(
+        {"success": False, "message": "Rate limited", "data": None}, 429, tmp_path
+    )
+
+    assert error.status_code == 429
+    assert error.retryable is True
+    assert error.server_accepted is False
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
+def test_unit3d_5xx_response_is_not_retried_automatically(tmp_path: Path) -> None:
+    """A 5xx means UNIT3D received and answered the upload; it must not
+    auto-retry and must route to the user instead."""
+    error = _upload_raising_from_response(
+        {"success": False, "message": "Internal error", "data": None}, 500, tmp_path
+    )
+
+    assert error.status_code == 500
+    assert error.server_accepted is True
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
+
+
 def test_beyondhd_408_response_is_retryable(tmp_path: Path) -> None:
     """A structured 408 from BeyondHD must agree with the generic status-code rule."""
     uploader = BHDUploader(
@@ -165,6 +215,46 @@ def test_beyondhd_408_response_is_retryable(tmp_path: Path) -> None:
     assert error.status_code == 408
     assert error.retryable is True
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
+def _bhd_upload_raising(status_code: int, tmp_path: Path) -> TrackerError:
+    uploader = BHDUploader(
+        api_key="api-key",
+        torrent_file=tmp_path / "release.torrent",
+        input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+        media_type=MediaType.MOVIE,
+    )
+    mock_response = MagicMock(ok=False, status_code=status_code, reason="error")
+    with (
+        patch.object(BHDUploader, "_build_upload_payload", return_value={}),
+        patch.object(BHDUploader, "_files", return_value={}),
+        patch(
+            "src.backend.trackers.beyondhd.niquests.post", return_value=mock_response
+        ),
+    ):
+        with pytest.raises(TrackerError) as excinfo:
+            uploader.upload(tracker_title="Example.2026.1080p.WEB-DL-GRP")
+    return excinfo.value
+
+
+def test_beyondhd_429_response_is_retryable(tmp_path: Path) -> None:
+    """A structured 429 from BeyondHD must remain automatically retryable."""
+    error = _bhd_upload_raising(429, tmp_path)
+
+    assert error.status_code == 429
+    assert error.retryable is True
+    assert error.server_accepted is False
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
+def test_beyondhd_5xx_response_is_not_retried_automatically(tmp_path: Path) -> None:
+    """A 5xx means BeyondHD received and answered the upload; it must not
+    auto-retry and must route to the user instead."""
+    error = _bhd_upload_raising(502, tmp_path)
+
+    assert error.status_code == 502
+    assert error.server_accepted is True
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
 
 
 def test_torrentleech_408_response_is_retryable(tmp_path: Path) -> None:
@@ -199,6 +289,59 @@ def test_torrentleech_408_response_is_retryable(tmp_path: Path) -> None:
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
 
 
+def _tl_upload_raising(status_code: int, tmp_path: Path) -> TrackerError:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+    uploader = TLUploader(announce_key="key")
+    mock_response = MagicMock(
+        ok=False, status_code=status_code, reason="error", text="body"
+    )
+    with (
+        patch.object(TLUploader, "_get_data", return_value={}),
+        patch("src.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
+        patch(
+            "src.backend.trackers.torrentleech.niquests.post",
+            return_value=mock_response,
+        ),
+    ):
+        with pytest.raises(TrackerError) as excinfo:
+            uploader.upload(
+                nfo="nfo contents",
+                tracker_title=None,
+                torrent_file=torrent_file,
+                mediainfo_obj=MagicMock(),
+                media_type=MediaType.MOVIE,
+                is_pack=False,
+            )
+    return excinfo.value
+
+
+def test_torrentleech_429_response_is_retryable(tmp_path: Path) -> None:
+    """A structured 429 from TorrentLeech must remain automatically retryable."""
+    error = _tl_upload_raising(429, tmp_path)
+
+    assert error.status_code == 429
+    assert error.retryable is True
+    assert error.server_accepted is False
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is True
+
+
+def test_torrentleech_5xx_response_is_not_retried_automatically(tmp_path: Path) -> None:
+    """A 5xx means TorrentLeech received and answered the upload; it must not
+    auto-retry and must route to the user instead.
+
+    Pre-branch, TorrentLeech's message text only matched an old "service
+    unavailable" marker, so 500/502/504 did not auto-retry. This branch's
+    status-code annotation widened that to retry every 5xx automatically;
+    this test locks the safe behaviour back in.
+    """
+    error = _tl_upload_raising(500, tmp_path)
+
+    assert error.status_code == 500
+    assert error.server_accepted is True
+    assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
+
+
 def test_unannotated_error_is_not_retried_automatically() -> None:
     """With every tracker annotated, an unknown error must not be guessed at."""
     assert ProcessBackEnd._is_automatic_upload_retryable(TrackerError("boom")) is False
@@ -221,11 +364,14 @@ def test_error_text_no_longer_drives_retry_decisions() -> None:
 
 
 def test_status_code_still_drives_retry_when_retryable_is_unset() -> None:
+    """A 5xx means the tracker answered the request; it may have recorded
+    the upload before failing, so the status-code fallback must not treat
+    it as automatically retryable."""
     assert (
         ProcessBackEnd._is_automatic_upload_retryable(
             TrackerError("server error", status_code=503)
         )
-        is True
+        is False
     )
     assert (
         ProcessBackEnd._is_automatic_upload_retryable(
@@ -245,13 +391,31 @@ def test_http_408_is_retryable_via_status_code() -> None:
     )
 
 
+def test_http_429_is_retryable_via_status_code() -> None:
+    """A 429 means the request was rejected before processing, so retrying is safe."""
+    assert (
+        ProcessBackEnd._is_automatic_upload_retryable(
+            TrackerError("rate limited", status_code=429)
+        )
+        is True
+    )
+
+
+def test_http_5xx_is_not_retryable_via_status_code() -> None:
+    """A 5xx means the request was received and answered; it must not be
+    guessed as automatically retryable via the status-code fallback."""
+    assert (
+        ProcessBackEnd._is_automatic_upload_retryable(
+            TrackerError("bad gateway", status_code=502)
+        )
+        is False
+    )
+
+
 def test_server_accepted_overrides_retryable() -> None:
     error = TrackerError("timed out", retryable=True, server_accepted=True)
 
     assert ProcessBackEnd._is_automatic_upload_retryable(error) is False
-
-
-from src.backend.upload_retry import scrub_secrets
 
 
 def test_scrub_secrets_redacts_query_string_credentials() -> None:
@@ -294,3 +458,26 @@ def test_scrub_secrets_preserves_everything_after_the_token() -> None:
         "/api/torrents/upload?api_token=[redacted]&foo=bar "
         "(Caused by ReadTimeoutError)"
     )
+
+
+def test_scrub_secrets_redacts_uri_userinfo_password() -> None:
+    """rTorrent embeds credentials as userinfo in its host URI, and an
+    xmlrpc.client.ProtocolError copies the full netloc into its message
+    (verified: ``str(ProtocolError(url, ...))`` includes ``self.url``
+    verbatim). The password must be redacted; the username may stay."""
+    text = (
+        "<ProtocolError for https://myuser:hunter2@tracker.example/rpc: "
+        "500 Internal Server Error>"
+    )
+
+    scrubbed = scrub_secrets(text)
+
+    assert "hunter2" not in scrubbed
+    assert "myuser" in scrubbed
+    assert "https://myuser:[redacted]@tracker.example/rpc" in scrubbed
+
+
+def test_scrub_secrets_leaves_plain_uri_without_credentials_alone() -> None:
+    text = "Failed to reach https://tracker.example/rpc: connection refused"
+
+    assert scrub_secrets(text) == text

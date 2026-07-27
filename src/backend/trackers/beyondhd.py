@@ -211,16 +211,19 @@ class BHDUploader:
                 response_error_msg = f"Failed to upload torrent. Reason: {response.reason}, Status Code: {response.status_code}"
                 LOG.error(LOG.LOG_SOURCE.BE, response_error_msg)
                 status_code = response.status_code
+                # 408/429 mean the request was rejected before it could be
+                # processed. A 5xx means BeyondHD received and answered the
+                # upload -- it may have recorded the torrent before failing,
+                # so that must route to the user instead of an automatic
+                # retry.
+                retryable = isinstance(status_code, int) and (
+                    status_code == 408 or status_code == 429 or status_code >= 500
+                )
+                server_accepted = isinstance(status_code, int) and status_code >= 500
                 raise TrackerError(
                     response_error_msg,
-                    retryable=(
-                        isinstance(status_code, int)
-                        and (
-                            status_code == 408
-                            or status_code == 429
-                            or status_code >= 500
-                        )
-                    ),
+                    retryable=retryable,
+                    server_accepted=server_accepted,
                     status_code=status_code if isinstance(status_code, int) else None,
                 )
 

@@ -86,6 +86,80 @@ def test_permanent_failure_can_be_skipped(
     assert upload.call_count == 1
 
 
+def test_upload_failure_message_has_credentials_scrubbed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Deleting the ``scrub_secrets()`` call must be caught by a test, not
+    just by review: drive the real failure path with a message containing a
+    tracker API token and assert it never reaches the callback."""
+    monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    upload = MagicMock(
+        side_effect=TrackerError(
+            "Failed to upload: /api/torrents/upload?api_token=SECRETKEY123",
+            retryable=False,
+        )
+    )
+    callback = MagicMock(return_value=UploadRetryAction.SKIP)
+    kwargs = _kwargs(tmp_path)
+
+    _backend()._upload_tracker_with_retry(
+        upload_request=upload,
+        upload_retry_cb=callback,
+        **kwargs,
+    )
+
+    callback.assert_called_once()
+    failure = callback.call_args.args[0]
+    assert "SECRETKEY123" not in failure.message
+    assert "api_token=[redacted]" in failure.message
+
+
+def test_download_phase_skip_is_reported_as_kept_not_skipped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A DOWNLOAD-phase failure means the upload already succeeded; only
+    fetching the tracker's copy of the torrent failed. Choosing SKIP there
+    must not be reported the same way as a genuine skip, or a user reading
+    the status afterwards could mistakenly re-upload by hand."""
+    monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    upload = MagicMock(
+        side_effect=TrackerError(
+            "Failed to download torrent from Aither: connection reset",
+            retryable=True,
+            server_accepted=True,
+            phase="download",
+        )
+    )
+    callback = MagicMock(return_value=UploadRetryAction.SKIP)
+    status_update = MagicMock()
+    text_update = MagicMock()
+    kwargs = _kwargs(tmp_path)
+    kwargs["queued_status_update"] = status_update
+    kwargs["queued_text_update"] = text_update
+
+    result, skipped = _backend()._upload_tracker_with_retry(
+        upload_request=upload,
+        upload_retry_cb=callback,
+        **kwargs,
+    )
+
+    assert result is None
+    assert skipped is True
+    failure = callback.call_args.args[0]
+    assert failure.phase is UploadFailurePhase.DOWNLOAD
+
+    final_status_calls = [call.args for call in status_update.call_args_list]
+    assert (str(TrackerSelection.AITHER), "⏭ Skipped") not in final_status_calls
+    assert (
+        str(TrackerSelection.AITHER),
+        "⚠️ Uploaded - tracker torrent not downloaded",
+    ) in final_status_calls
+
+    final_text_calls = "".join(call.args[0] for call in text_update.call_args_list)
+    assert "skipped upload" not in final_text_calls.lower()
+    assert "upload succeeded" in final_text_calls.lower()
+
+
 def test_cancel_decision_stops_processing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -221,6 +295,69 @@ def test_injection_failure_without_callback_is_reported_once(tmp_path: Path) -> 
     )
 
     assert injected is False
+
+
+def test_injection_status_text_scrubs_credentials_without_callback(
+    tmp_path: Path,
+) -> None:
+    """rTorrent embeds credentials as userinfo in its host URI, and
+    RTorrentClient.inject_torrent has no exception handling of its own, so
+    an xmlrpc.client.ProtocolError carrying the full netloc can reach this
+    status line."""
+    backend = _backend()
+    backend._handle_injection = MagicMock(  # type: ignore[method-assign]
+        side_effect=TrackerClientError(
+            "<ProtocolError for https://user:hunter2@host.example/rpc: "
+            "500 Internal Server Error>"
+        )
+    )
+    status_update = MagicMock()
+
+    injected = backend._inject_with_user_retry(
+        tracker=TrackerSelection.AITHER,
+        tracker_name="Aither",
+        torrent_path=tmp_path / "release.torrent",
+        file_input=tmp_path / "release.mkv",
+        queued_text_update=MagicMock(),
+        queued_status_update=status_update,
+        caught_error=cast(SignalInstance, MagicMock()),
+        upload_retry_cb=None,
+    )
+
+    assert injected is False
+    status_text = status_update.call_args.args[1]
+    assert "hunter2" not in status_text
+
+
+def test_injection_status_and_message_scrub_credentials_after_skip(
+    tmp_path: Path,
+) -> None:
+    backend = _backend()
+    backend._handle_injection = MagicMock(  # type: ignore[method-assign]
+        side_effect=TrackerClientError(
+            "<ProtocolError for https://user:hunter2@host.example/rpc: "
+            "500 Internal Server Error>"
+        )
+    )
+    callback = MagicMock(return_value=UploadRetryAction.SKIP)
+    status_update = MagicMock()
+
+    injected = backend._inject_with_user_retry(
+        tracker=TrackerSelection.AITHER,
+        tracker_name="Aither",
+        torrent_path=tmp_path / "release.torrent",
+        file_input=tmp_path / "release.mkv",
+        queued_text_update=MagicMock(),
+        queued_status_update=status_update,
+        caught_error=cast(SignalInstance, MagicMock()),
+        upload_retry_cb=callback,
+    )
+
+    assert injected is False
+    failure = callback.call_args.args[0]
+    assert "hunter2" not in failure.message
+    final_status_text = status_update.call_args.args[1]
+    assert "hunter2" not in final_status_text
 
 
 def test_injection_cancel_marks_remaining_trackers_and_disconnects(

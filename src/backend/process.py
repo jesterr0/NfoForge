@@ -482,7 +482,11 @@ class ProcessBackEnd:
 
         status_code = getattr(error, "status_code", None)
         if isinstance(status_code, int):
-            return status_code == 408 or status_code == 429 or status_code >= 500
+            # 408/429 mean the request was rejected before it could be
+            # processed. A 5xx means the tracker received and answered the
+            # request -- it may have recorded the upload before failing, so
+            # it must not be retried automatically.
+            return status_code == 408 or status_code == 429
 
         return False
 
@@ -590,7 +594,25 @@ class ProcessBackEnd:
                 if action is UploadRetryAction.CANCEL:
                     queued_status_update(str(tracker), "⏹ Cancelled")
                     raise ProcessCancelled from error
-                queued_status_update(str(tracker), "⏭ Skipped")
+                if failure.phase is UploadFailurePhase.DOWNLOAD:
+                    # The upload POST already succeeded; only fetching the
+                    # tracker's copy of the torrent failed, and the user
+                    # chose to keep the release as-is. Report this
+                    # distinctly from a genuine skip so nobody reads this as
+                    # "never uploaded" and re-uploads by hand.
+                    queued_status_update(
+                        str(tracker), "⚠️ Uploaded - tracker torrent not downloaded"
+                    )
+                    queued_text_update(
+                        f"<br /><span>Upload succeeded for <b>{tracker}</b>; kept "
+                        "after the tracker's torrent copy could not be "
+                        "downloaded</span>"
+                    )
+                else:
+                    queued_status_update(str(tracker), "⏭ Skipped")
+                    queued_text_update(
+                        "<br /><span>Skipped upload after user decision</span>"
+                    )
                 return None, True
 
     def _inject_with_user_retry(
@@ -623,16 +645,22 @@ class ProcessBackEnd:
                 return True
             except Exception as error:
                 caught_error.emit(f"Injection Error: {traceback.format_exc()}")
+                # rTorrent embeds credentials as userinfo in its host URI, and
+                # `RTorrentClient.inject_torrent` has no exception handling of
+                # its own, so an `xmlrpc.client.ProtocolError` carrying the
+                # full netloc can reach here; scrub once and reuse everywhere
+                # below instead of interpolating the raw error.
+                safe_message = scrub_secrets(str(error))
                 if upload_retry_cb is None:
                     queued_status_update(
-                        tracker_name, f"❌ Failed to inject torrent ({error})"
+                        tracker_name, f"❌ Failed to inject torrent ({safe_message})"
                     )
                     return False
 
                 failure = UploadFailure(
                     tracker=tracker,
                     phase=UploadFailurePhase.INJECTION,
-                    message=scrub_secrets(str(error)),
+                    message=safe_message,
                     attempt=attempt,
                     automatic_attempts=0,
                     retryable=True,
@@ -650,7 +678,7 @@ class ProcessBackEnd:
                     queued_status_update(tracker_name, "⏹ Cancelled")
                     raise ProcessCancelled from error
                 queued_status_update(
-                    tracker_name, f"❌ Failed to inject torrent ({error})"
+                    tracker_name, f"❌ Failed to inject torrent ({safe_message})"
                 )
                 return False
 
@@ -1019,11 +1047,10 @@ class ProcessBackEnd:
                         ):
                             queued_status_update(tracker_name, "✅ Complete")
                     else:
-                        if skipped_upload:
-                            queued_text_update(
-                                "<br /><span>Skipped upload after user decision</span>"
-                            )
-                        else:
+                        # `_upload_tracker_with_retry` already reported the
+                        # skip (with phase-appropriate status/text) when it
+                        # returned; nothing further to say here.
+                        if not skipped_upload:
                             queued_text_update(
                                 '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
                                 "check logs for information</span>"

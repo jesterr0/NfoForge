@@ -209,16 +209,23 @@ class Unit3dBaseUploader:
                     else:
                         error_msg = f"Message='{message}' Context='{context}'"
                         status_code = getattr(response, "status_code", None)
+                        # 408/429 mean the request was rejected before it
+                        # could be processed. A 5xx means the tracker
+                        # received and answered the upload -- it may have
+                        # recorded the torrent before failing, so that must
+                        # route to the user instead of an automatic retry.
+                        retryable = isinstance(status_code, int) and (
+                            status_code == 408
+                            or status_code == 429
+                            or status_code >= 500
+                        )
+                        server_accepted = (
+                            isinstance(status_code, int) and status_code >= 500
+                        )
                         raise TrackerError(
                             error_msg,
-                            retryable=(
-                                isinstance(status_code, int)
-                                and (
-                                    status_code == 408
-                                    or status_code == 429
-                                    or status_code >= 500
-                                )
-                            ),
+                            retryable=retryable,
+                            server_accepted=server_accepted,
                             status_code=(
                                 status_code if isinstance(status_code, int) else None
                             ),

@@ -232,8 +232,10 @@ class ProcessWorker(BaseWorker):
 
         # wait for response
         GSigs().prompt_tokens_response.connect(waiter.on_response)
-        loop.exec_()
-        GSigs().prompt_tokens_response.disconnect(waiter.on_response)
+        try:
+            loop.exec_()
+        finally:
+            GSigs().prompt_tokens_response.disconnect(waiter.on_response)
 
         # return response
         return self._prompt_tokens_response
@@ -253,8 +255,10 @@ class ProcessWorker(BaseWorker):
 
         # wait for response
         GSigs().overview_prompt_response.connect(waiter.on_response)
-        loop.exec_()
-        GSigs().overview_prompt_response.disconnect(waiter.on_response)
+        try:
+            loop.exec_()
+        finally:
+            GSigs().overview_prompt_response.disconnect(waiter.on_response)
 
         # return response
         return self._overview_prompt
@@ -551,7 +555,7 @@ class ProcessPage(BaseWizardPage):
                 # of the torrent failed. Re-uploading would duplicate it.
                 retry_button = None
                 skip_button = dialog.addButton(
-                    "Keep upload, use local torrent", QMessageBox.ButtonRole.AcceptRole
+                    "Keep upload, continue", QMessageBox.ButtonRole.AcceptRole
                 )
                 dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
                 dialog.setDefaultButton(skip_button)
