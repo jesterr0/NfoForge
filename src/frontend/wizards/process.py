@@ -6,7 +6,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import QEventLoop, QObject, QThread, Signal, Slot
+from PySide6.QtCore import QEventLoop, QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import Qt, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -109,6 +109,8 @@ class ProcessWorker(BaseWorker):
     overview_signal = Signal(object)
     upload_retry_signal = Signal(object)
     job_cancelled = Signal()
+
+    RETRY_PROMPT_ACK_TIMEOUT_MS = 5000
 
     def __init__(
         self,
@@ -219,15 +221,30 @@ class ProcessWorker(BaseWorker):
             response = action
             loop.quit()
 
+        # The GUI may be gone: if the slot is never invoked nothing would ever
+        # reply and this loop would block forever. Bound the wait until the GUI
+        # acknowledges receipt, then let the user take as long as they need.
+        watchdog = QTimer()
+        watchdog.setSingleShot(True)
+        watchdog.timeout.connect(loop.quit)
+
+        @Slot()
+        def on_ack() -> None:
+            watchdog.stop()
+
         # Connect before emitting so the response can never arrive first, and
         # always disconnect so a raise inside the loop cannot leak a connection
         # onto the global signal singleton.
+        GSigs().upload_retry_ack.connect(on_ack)
         GSigs().upload_retry_response.connect(on_response)
         try:
+            watchdog.start(ProcessWorker.RETRY_PROMPT_ACK_TIMEOUT_MS)
             self.upload_retry_signal.emit(failure)
             loop.exec_()
         finally:
+            watchdog.stop()
             GSigs().upload_retry_response.disconnect(on_response)
+            GSigs().upload_retry_ack.disconnect(on_ack)
 
         return response or UploadRetryAction.CANCEL
 
@@ -449,6 +466,9 @@ class ProcessPage(BaseWizardPage):
     def _on_upload_retry_signal(self, failure: UploadFailure) -> None:
         """Present a retry/skip/cancel choice while the worker waits."""
         action = UploadRetryAction.CANCEL
+        # Tell the worker its request was received, so it stops the ack
+        # watchdog and waits indefinitely for the user's actual answer.
+        GSigs().upload_retry_ack.emit()
         try:
             dialog = QMessageBox(self)
             dialog.setIcon(QMessageBox.Icon.Warning)

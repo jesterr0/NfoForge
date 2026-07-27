@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox, QWidget
 
 import src.frontend.wizards.process as page_module
@@ -13,7 +14,7 @@ from src.backend.upload_retry import (
 )
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.global_signals import GSigs
-from src.frontend.wizards.process import ProcessPage
+from src.frontend.wizards.process import ProcessPage, ProcessWorker
 
 
 class _FakeButton:
@@ -158,3 +159,33 @@ def test_cancel_hides_the_process_button() -> None:
 
     assert fired == [True]
     stub._job_ended.assert_called_once_with()
+
+
+def test_worker_is_released_when_the_prompt_never_runs(monkeypatch) -> None:
+    """If the receiver is gone the slot never runs, so nothing would ever reply."""
+    monkeypatch.setattr(ProcessWorker, "RETRY_PROMPT_ACK_TIMEOUT_MS", 50)
+    # Nothing is connected to upload_retry_signal: this is what a destroyed
+    # ProcessPage looks like from the worker's side.
+    stub = SimpleNamespace(upload_retry_signal=MagicMock())
+
+    action = ProcessWorker.upload_retry_and_wait_cb(stub, _failure())
+
+    assert action is UploadRetryAction.CANCEL
+
+
+def test_ack_lets_the_user_take_as_long_as_they_like(monkeypatch) -> None:
+    """Once the GUI acknowledges, the ack watchdog must not fire and cancel."""
+    monkeypatch.setattr(ProcessWorker, "RETRY_PROMPT_ACK_TIMEOUT_MS", 50)
+
+    def _emit_ack_then_answer_late(_failure_arg: object) -> None:
+        GSigs().upload_retry_ack.emit()
+        QTimer.singleShot(
+            150, lambda: GSigs().upload_retry_response.emit(UploadRetryAction.SKIP)
+        )
+
+    stub = SimpleNamespace(upload_retry_signal=SimpleNamespace(emit=_emit_ack_then_answer_late))
+
+    action = ProcessWorker.upload_retry_and_wait_cb(stub, _failure())
+
+    # 150ms > the 50ms ack timeout: proves the watchdog was stopped by the ack.
+    assert action is UploadRetryAction.SKIP
