@@ -9,12 +9,15 @@ from typing import Any, TypeAlias
 import niquests
 import regex
 from pymediainfo import MediaInfo
+from tenacity import Retrying, retry_if_exception, stop_after_attempt
+from tenacity.wait import wait_exponential
 
 from src.backend.trackers.utils import (
     TRACKER_HEADERS,
     looks_like_torrent,
     tracker_string_replace_map,
 )
+from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -199,20 +202,57 @@ class Unit3dBaseUploader:
                     ):
                         if not isinstance(context, str) or not context:
                             raise TrackerError(
-                                "Tracker did not return a torrent download URL"
+                                "Tracker did not return a torrent download URL",
+                                retryable=False,
                             )
                         download_url = context
                     else:
                         error_msg = f"Message='{message}' Context='{context}'"
-                        raise TrackerError(error_msg)
+                        status_code = getattr(response, "status_code", None)
+                        # 408/429 mean the request was rejected before it
+                        # could be processed. A 5xx means the tracker
+                        # received and answered the upload -- it may have
+                        # recorded the torrent before failing, so that must
+                        # route to the user instead of an automatic retry.
+                        retryable = isinstance(status_code, int) and (
+                            status_code == 408
+                            or status_code == 429
+                            or status_code >= 500
+                        )
+                        server_accepted = (
+                            isinstance(status_code, int) and status_code >= 500
+                        )
+                        raise TrackerError(
+                            error_msg,
+                            retryable=retryable,
+                            server_accepted=server_accepted,
+                            status_code=(
+                                status_code if isinstance(status_code, int) else None
+                            ),
+                        )
 
             # The source torrent must be closed before replacing it on Windows.
-            self._download_uploaded_torrent(download_url)
+            self._download_uploaded_torrent_with_retry(download_url)
             return True
-        except (niquests.exceptions.RequestException, TrackerError) as error:
+        except TrackerError as error:
             requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
-            raise TrackerError(requests_exc_error_msg)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=error.retryable,
+                server_accepted=error.server_accepted,
+                phase=error.phase,
+                status_code=error.status_code,
+            ) from error
+        except niquests.exceptions.RequestException as error:
+            requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
 
     def _download_uploaded_torrent(self, download_url: str) -> Path:
         """Stream the tracker-generated torrent to its final path atomically."""
@@ -238,15 +278,36 @@ class Unit3dBaseUploader:
 
             content = temporary_path.read_bytes()
             if not looks_like_torrent(content, response_headers):
-                raise TrackerError("Downloaded file is not a valid torrent")
+                raise TrackerError(
+                    "Downloaded file is not a valid torrent",
+                    retryable=True,
+                    server_accepted=True,
+                    phase="download",
+                )
             temporary_path.replace(destination)
             return destination
         except (niquests.exceptions.RequestException, OSError) as error:
             raise TrackerError(
-                f"Failed to download torrent from {self.tracker_name}: {error}"
+                f"Failed to download torrent from {self.tracker_name}: {error}",
+                retryable=True,
+                server_accepted=True,
+                phase="download",
             ) from error
         finally:
             temporary_path.unlink(missing_ok=True)
+
+    def _download_uploaded_torrent_with_retry(self, download_url: str) -> Path:
+        """Retry artifact download without POSTing the upload again."""
+        return Retrying(
+            retry=retry_if_exception(
+                lambda error: isinstance(error, TrackerError)
+                and bool(getattr(error, "server_accepted", False))
+                and bool(getattr(error, "retryable", False))
+            ),
+            stop=stop_after_attempt(RETRY_ATTEMPTS),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+            reraise=True,
+        )(lambda: self._download_uploaded_torrent(download_url))
 
     def _build_upload_payload(
         self,
@@ -515,7 +576,7 @@ class Unit3dBaseSearch:
                     response_json = response.json()
                     results = self._convert_response(response_json)
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(error_message)
+            raise TrackerError(str(error_message))
 
         results = results if results else []
         LOG.info(

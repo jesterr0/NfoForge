@@ -60,3 +60,40 @@ def test_ptp_new_group_poster_requires_imgbox_url(
         _uploader(tmp_path)._upload_poster_to_imgbox(
             "https://image.tmdb.org/t/p/original/poster.jpg"
         )
+
+
+@patch("src.backend.trackers.passthepopcorn.VideoResolutionAnalyzer")
+def test_ptp_upload_post_has_a_timeout(
+    _resolution_analyzer: MagicMock, tmp_path: Path
+) -> None:
+    """Every other request in this module passes ``self.timeout`` and the
+    session sets no default; a hung upload POST must not be able to block
+    the worker thread forever."""
+    uploader = _uploader(tmp_path)
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"torrent contents")
+
+    fake_response = MagicMock(text="", url=None, status_code=None)
+    fake_session = MagicMock()
+    fake_session.__enter__.return_value = fake_session
+    fake_session.__exit__.return_value = False
+    fake_session.post.return_value = fake_response
+    uploader._session = fake_session
+
+    media_search_payload = MagicMock()
+    # Skip the type-detection duration lookup, which needs a real MediaInfo
+    # object; only the timeout on the POST is under test here.
+    media_search_payload.imdb_data.kind = None
+
+    with pytest.raises(TrackerError, match="is not the expected one"):
+        uploader.upload(
+            auth_token="token",
+            media_search_payload=media_search_payload,
+            torrent_file=torrent_file,
+            input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+            nfo="nfo contents",
+            group_id="12345",
+        )
+
+    fake_session.post.assert_called_once()
+    assert fake_session.post.call_args.kwargs["timeout"] == uploader.timeout

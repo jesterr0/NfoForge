@@ -60,9 +60,28 @@ class ImageUploadError(NfoForgeError):
 class TrackerError(NfoForgeError):
     """Custom exception class for tracker errors"""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool | None = None,
+        server_accepted: bool = False,
+        phase: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.server_accepted = server_accepted
+        self.phase = phase
+        self.status_code = status_code
+
 
 class ProcessError(NfoForgeError):
     """Custom exception class for process errors"""
+
+
+class ProcessCancelled(ProcessError):
+    """The user cancelled the remaining processing work."""
 
 
 class TrackerClientError(NfoForgeError):

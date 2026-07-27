@@ -17,6 +17,7 @@ from pymediainfo import MediaInfo
 from unidecode import unidecode
 
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.audio_formats import AudioFormats
 from src.enums.media_type import MediaType
@@ -341,13 +342,23 @@ class MTVUploader:
             f"\n#### UPLOAD PAYLOAD ####\n{data}\n#### UPLOAD PAYLOAD ####\n",
         )
 
-        upload_page = self._session.post(
-            self.UPLOAD_URL,
-            data=data,
-            files=files,
-            headers=TRACKER_HEADERS,
-            timeout=self.timeout,
-        )
+        try:
+            upload_page = self._session.post(
+                self.UPLOAD_URL,
+                data=data,
+                files=files,
+                headers=TRACKER_HEADERS,
+                timeout=self.timeout,
+            )
+        except niquests.exceptions.RequestException as error:
+            upload_error_msg = f"There was an error uploading to MoreThanTV: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                upload_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
 
         LOG.debug(
             LOG.LOG_SOURCE.BE,

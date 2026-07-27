@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
 
 import pytest
+from tenacity.wait import wait_none
 
 from src.backend.trackers.huno import HunoUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
@@ -101,3 +102,36 @@ def test_unit3d_upload_redownloads_tracker_torrent_before_success(
     download_torrent.assert_called_once_with(
         "https://tracker.example/torrents/download/123.key"
     )
+
+
+def test_unit3d_download_retry_does_not_repeat_upload_post(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "src.backend.trackers.unit3d_base.wait_exponential",
+        lambda **_kwargs: wait_none(),
+    )
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+    uploader = _uploader(torrent_file)
+    download = MagicMock(
+        side_effect=[
+            TrackerError(
+                "temporary artifact download failure",
+                retryable=True,
+                server_accepted=True,
+                phase="download",
+            ),
+            torrent_file,
+        ]
+    )
+
+    with patch.object(Unit3dBaseUploader, "_download_uploaded_torrent", download):
+        assert (
+            uploader._download_uploaded_torrent_with_retry(
+                "https://tracker.example/torrents/download/123.key"
+            )
+            == torrent_file
+        )
+
+    assert download.call_count == 2
