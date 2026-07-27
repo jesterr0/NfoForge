@@ -6,7 +6,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import QEventLoop, QObject, QThread, Signal, Slot
+from PySide6.QtCore import QEventLoop, QObject, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import Qt, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from src.backend.process import ProcessBackEnd
 from src.backend.upload_retry import (
     UploadFailure,
+    UploadFailurePhase,
     UploadRetryAction,
 )
 from src.backend.utils.file_utilities import open_explorer
@@ -101,6 +102,65 @@ class DupeWorker(BaseWorker):
             async_loop.close()
 
 
+class _TokenPromptWaiter(QObject):
+    """Bound-method receiver for ``prompt_tokens_response``.
+
+    PySide routes a queued connection to a plain Python closure through an
+    internal receiver whose thread affinity is pinned by the *first*
+    connection made in the process. On a second (or later) worker QThread
+    that pins the delivery to the wrong thread and the signal is silently
+    dropped. A fresh QObject instance per call carries its own thread
+    affinity, so real bound ``@Slot`` methods on it keep being delivered.
+    """
+
+    def __init__(self, worker: "ProcessWorker", loop: QEventLoop) -> None:
+        super().__init__()
+        self._worker = worker
+        self._loop = loop
+
+    @Slot(object)
+    def on_response(self, response: dict[str, str] | None) -> None:
+        self._worker._prompt_tokens_response = response
+        self._loop.quit()
+
+
+class _OverviewPromptWaiter(QObject):
+    """Bound-method receiver for ``overview_prompt_response``. See
+    ``_TokenPromptWaiter`` for why a closure slot is not used here."""
+
+    def __init__(self, worker: "ProcessWorker", loop: QEventLoop) -> None:
+        super().__init__()
+        self._worker = worker
+        self._loop = loop
+
+    @Slot(object)
+    def on_response(
+        self, response: dict[TrackerSelection, dict[str, str | None]] | None
+    ) -> None:
+        self._worker._overview_prompt = response
+        self._loop.quit()
+
+
+class _UploadRetryWaiter(QObject):
+    """Bound-method receiver for ``upload_retry_ack`` / ``upload_retry_response``.
+    See ``_TokenPromptWaiter`` for why a closure slot is not used here."""
+
+    def __init__(self, watchdog: QTimer, loop: QEventLoop) -> None:
+        super().__init__()
+        self._watchdog = watchdog
+        self._loop = loop
+        self.response: UploadRetryAction | None = None
+
+    @Slot()
+    def on_ack(self) -> None:
+        self._watchdog.stop()
+
+    @Slot(object)
+    def on_response(self, action: UploadRetryAction) -> None:
+        self.response = action
+        self._loop.quit()
+
+
 class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
     progress_signal = Signal(int)
@@ -108,6 +168,8 @@ class ProcessWorker(BaseWorker):
     overview_signal = Signal(object)
     upload_retry_signal = Signal(object)
     job_cancelled = Signal()
+
+    RETRY_PROMPT_ACK_TIMEOUT_MS = 5000
 
     def __init__(
         self,
@@ -166,16 +228,14 @@ class ProcessWorker(BaseWorker):
         self.prompt_tokens_signal.emit(tokens)
         # start event loop
         loop = QEventLoop()
-
-        @Slot(object)
-        def on_response(response: dict[str, str] | None) -> None:
-            self._prompt_tokens_response = response
-            loop.quit()
+        waiter = _TokenPromptWaiter(self, loop)
 
         # wait for response
-        GSigs().prompt_tokens_response.connect(on_response)
-        loop.exec_()
-        GSigs().prompt_tokens_response.disconnect(on_response)
+        GSigs().prompt_tokens_response.connect(waiter.on_response)
+        try:
+            loop.exec_()
+        finally:
+            GSigs().prompt_tokens_response.disconnect(waiter.on_response)
 
         # return response
         return self._prompt_tokens_response
@@ -191,39 +251,46 @@ class ProcessWorker(BaseWorker):
 
         # start loop
         loop = QEventLoop()
-
-        @Slot(object)
-        def on_response(
-            response: dict[TrackerSelection, dict[str, str | None]] | None,
-        ) -> None:
-            self._overview_prompt = response
-            loop.quit()
+        waiter = _OverviewPromptWaiter(self, loop)
 
         # wait for response
-        GSigs().overview_prompt_response.connect(on_response)
-        loop.exec_()
-        GSigs().overview_prompt_response.disconnect(on_response)
+        GSigs().overview_prompt_response.connect(waiter.on_response)
+        try:
+            loop.exec_()
+        finally:
+            GSigs().overview_prompt_response.disconnect(waiter.on_response)
 
         # return response
         return self._overview_prompt
 
     def upload_retry_and_wait_cb(self, failure: UploadFailure) -> UploadRetryAction:
         """Ask the frontend what to do with a failed tracker upload."""
-        response: UploadRetryAction | None = None
-        self.upload_retry_signal.emit(failure)
         loop = QEventLoop()
 
-        @Slot(object)
-        def on_response(action: UploadRetryAction) -> None:
-            nonlocal response
-            response = action
-            loop.quit()
+        # The GUI may be gone: if the slot is never invoked nothing would ever
+        # reply and this loop would block forever. Bound the wait until the GUI
+        # acknowledges receipt, then let the user take as long as they need.
+        watchdog = QTimer()
+        watchdog.setSingleShot(True)
+        watchdog.timeout.connect(loop.quit)
 
-        GSigs().upload_retry_response.connect(on_response)
-        loop.exec_()
-        GSigs().upload_retry_response.disconnect(on_response)
+        waiter = _UploadRetryWaiter(watchdog, loop)
 
-        return response or UploadRetryAction.CANCEL
+        # Connect before emitting so the response can never arrive first, and
+        # always disconnect so a raise inside the loop cannot leak a connection
+        # onto the global signal singleton.
+        GSigs().upload_retry_ack.connect(waiter.on_ack)
+        GSigs().upload_retry_response.connect(waiter.on_response)
+        try:
+            watchdog.start(self.RETRY_PROMPT_ACK_TIMEOUT_MS)
+            self.upload_retry_signal.emit(failure)
+            loop.exec_()
+        finally:
+            watchdog.stop()
+            GSigs().upload_retry_response.disconnect(waiter.on_response)
+            GSigs().upload_retry_ack.disconnect(waiter.on_ack)
+
+        return waiter.response or UploadRetryAction.CANCEL
 
 
 class ProcessPage(BaseWizardPage):
@@ -425,8 +492,13 @@ class ProcessPage(BaseWizardPage):
     def _on_cancelled(self) -> None:
         self._job_ended()
         self._on_text_update(
-            "<br /><span style='font-weight: bold;'>Remaining processing cancelled.</span>"
+            "<br /><span style='font-weight: bold;'>Remaining processing cancelled. "
+            "Trackers that already completed were not rolled back; restart the "
+            "wizard to upload the remaining ones.</span>"
         )
+        # Without this the process button restarts from the first tracker and
+        # re-uploads the ones that already succeeded.
+        GSigs().wizard_process_btn_set_hidden.emit()
 
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
@@ -437,47 +509,90 @@ class ProcessPage(BaseWizardPage):
     @Slot(object)
     def _on_upload_retry_signal(self, failure: UploadFailure) -> None:
         """Present a retry/skip/cancel choice while the worker waits."""
-        dialog = QMessageBox(self)
-        dialog.setIcon(QMessageBox.Icon.Warning)
-        dialog.setWindowTitle(f"Upload failed: {failure.tracker}")
-        dialog.setText(
-            f"{failure.tracker} failed during {failure.phase.name.lower().replace('_', ' ')}."
-        )
-        details = (
-            f"Attempts: {failure.attempt} "
-            f"({failure.automatic_attempts} automatic attempts)\n\n"
-            f"{failure.message}"
-        )
-        if failure.torrent_path:
-            details += f"\n\nOutput: {failure.torrent_path.parent}"
-        if failure.server_accepted:
-            details += (
-                "\n\nThe tracker may already have accepted this upload. "
-                "Retrying could create a duplicate."
+        action = UploadRetryAction.CANCEL
+        # Tell the worker its request was received, so it stops the ack
+        # watchdog and waits indefinitely for the user's actual answer.
+        GSigs().upload_retry_ack.emit()
+        try:
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Icon.Warning)
+            dialog.setWindowTitle(f"Upload failed: {failure.tracker}")
+            dialog.setText(
+                f"{failure.tracker} failed during {failure.phase.name.lower().replace('_', ' ')}."
             )
-        elif not failure.retryable:
-            details += (
-                "\n\nThis does not look like a temporary failure; verify the "
-                "tracker settings before retrying."
+            details = (
+                f"Attempts: {failure.attempt} "
+                f"({failure.automatic_attempts} automatic attempts)\n\n"
+                f"{failure.message}"
             )
-        dialog.setInformativeText(details)
+            if failure.torrent_path:
+                details += f"\n\nOutput: {failure.torrent_path.parent}"
+            if failure.phase is UploadFailurePhase.DOWNLOAD:
+                details += (
+                    "\n\nThe upload succeeded. Only downloading the tracker's "
+                    "copy of the torrent failed, so the local torrent file was "
+                    "kept. Re-uploading would create a duplicate."
+                )
+            elif failure.phase is UploadFailurePhase.INJECTION:
+                details += (
+                    "\n\nThe upload succeeded. Only adding the torrent to your "
+                    "client failed, so retrying is safe."
+                )
+            elif failure.server_accepted:
+                details += (
+                    "\n\nThe tracker may already have accepted this upload. "
+                    "Retrying could create a duplicate."
+                )
+            elif not failure.retryable:
+                details += (
+                    "\n\nThis does not look like a temporary failure; verify the "
+                    "tracker settings before retrying."
+                )
+            dialog.setInformativeText(details)
 
-        retry_button = dialog.addButton("Retry", QMessageBox.ButtonRole.AcceptRole)
-        skip_button = dialog.addButton(
-            "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
-        )
-        dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
-        dialog.setDefaultButton(retry_button)
-        dialog.exec()
+            if failure.phase is UploadFailurePhase.DOWNLOAD:
+                # The upload itself succeeded; only fetching the tracker's copy
+                # of the torrent failed. Re-uploading would duplicate it.
+                retry_button = None
+                skip_button = dialog.addButton(
+                    "Keep upload, continue", QMessageBox.ButtonRole.AcceptRole
+                )
+                dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+                dialog.setDefaultButton(skip_button)
+            else:
+                retry_label = (
+                    "Re-upload (may duplicate)" if failure.server_accepted else "Retry"
+                )
+                retry_button = dialog.addButton(
+                    retry_label, QMessageBox.ButtonRole.AcceptRole
+                )
+                skip_button = dialog.addButton(
+                    "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
+                )
+                dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+                # Never default to the action that can create a duplicate.
+                dialog.setDefaultButton(
+                    skip_button if failure.server_accepted else retry_button
+                )
+            dialog.exec()
 
-        clicked = dialog.clickedButton()
-        if clicked is retry_button:
-            action = UploadRetryAction.RETRY
-        elif clicked is skip_button:
-            action = UploadRetryAction.SKIP
-        else:
-            action = UploadRetryAction.CANCEL
-        GSigs().upload_retry_response.emit(action)
+            clicked = dialog.clickedButton()
+            if retry_button is not None and clicked is retry_button:
+                action = UploadRetryAction.RETRY
+            elif clicked is skip_button:
+                action = UploadRetryAction.SKIP
+        except Exception as e:
+            # Presenting the dialog failed (e.g. the page was torn down while
+            # the prompt was up). Fall back to CANCEL below instead of leaving
+            # the exception unhandled.
+            LOG.error(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to present upload retry prompt: {e}\n{traceback.format_exc()}",
+            )
+        finally:
+            # The worker thread is blocked on this response. Releasing it from a
+            # finally keeps a dialog failure from hanging the whole run.
+            GSigs().upload_retry_response.emit(action)
 
     def _job_ended(self) -> None:
         self.dupe_worker = None

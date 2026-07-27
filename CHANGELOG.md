@@ -46,7 +46,7 @@
 - Series support during flow to handle mapping/renaming
 - Now checks tracker health before attempting to upload
 - Template editor now highlights tokens that will not resolve when the template renders. The highlight color is configurable in Settings > Templates, and the save status tip reports how many were found.
-- Implemented torrent upload retries with user control
+- Implemented torrent upload retries with user control.
 
 ### Changed
 

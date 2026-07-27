@@ -52,6 +52,7 @@ class GlobalSignals(QObject):
     # dict[TrackerSelection, dict[str | None, str]]
     overview_prompt_response = Signal(object)
     upload_retry_response = Signal(object)
+    upload_retry_ack = Signal()  # GUI has received a retry prompt request
     ########### SIGNALS ###########
 
     def __new__(cls) -> Self:

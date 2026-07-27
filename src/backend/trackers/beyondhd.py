@@ -8,6 +8,7 @@ import regex
 from niquests.typing import MultiPartFilesAltType
 
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -209,7 +210,22 @@ class BHDUploader:
             if not response.ok or response.status_code != 200:
                 response_error_msg = f"Failed to upload torrent. Reason: {response.reason}, Status Code: {response.status_code}"
                 LOG.error(LOG.LOG_SOURCE.BE, response_error_msg)
-                raise TrackerError(response_error_msg)
+                status_code = response.status_code
+                # 408/429 mean the request was rejected before it could be
+                # processed. A 5xx means BeyondHD received and answered the
+                # upload -- it may have recorded the torrent before failing,
+                # so that must route to the user instead of an automatic
+                # retry.
+                retryable = isinstance(status_code, int) and (
+                    status_code == 408 or status_code == 429 or status_code >= 500
+                )
+                server_accepted = isinstance(status_code, int) and status_code >= 500
+                raise TrackerError(
+                    response_error_msg,
+                    retryable=retryable,
+                    server_accepted=server_accepted,
+                    status_code=status_code if isinstance(status_code, int) else None,
+                )
 
             response_json = response.json()
             if response_json.get("success"):
@@ -236,7 +252,12 @@ class BHDUploader:
         except niquests.exceptions.RequestException as error:
             requests_exc_error_msg = f"Failed to upload to BeyondHD: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
-            raise TrackerError(requests_exc_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
 
         return None
 

@@ -17,6 +17,7 @@ from src.backend.trackers.utils import (
     looks_like_torrent,
     tracker_string_replace_map,
 )
+from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -208,12 +209,23 @@ class Unit3dBaseUploader:
                     else:
                         error_msg = f"Message='{message}' Context='{context}'"
                         status_code = getattr(response, "status_code", None)
+                        # 408/429 mean the request was rejected before it
+                        # could be processed. A 5xx means the tracker
+                        # received and answered the upload -- it may have
+                        # recorded the torrent before failing, so that must
+                        # route to the user instead of an automatic retry.
+                        retryable = isinstance(status_code, int) and (
+                            status_code == 408
+                            or status_code == 429
+                            or status_code >= 500
+                        )
+                        server_accepted = (
+                            isinstance(status_code, int) and status_code >= 500
+                        )
                         raise TrackerError(
                             error_msg,
-                            retryable=(
-                                isinstance(status_code, int)
-                                and (status_code == 429 or status_code >= 500)
-                            ),
+                            retryable=retryable,
+                            server_accepted=server_accepted,
                             status_code=(
                                 status_code if isinstance(status_code, int) else None
                             ),
@@ -235,7 +247,12 @@ class Unit3dBaseUploader:
         except niquests.exceptions.RequestException as error:
             requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
             LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
-            raise TrackerError(requests_exc_error_msg, retryable=True) from error
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
 
     def _download_uploaded_torrent(self, download_url: str) -> Path:
         """Stream the tracker-generated torrent to its final path atomically."""
@@ -287,7 +304,7 @@ class Unit3dBaseUploader:
                 and bool(getattr(error, "server_accepted", False))
                 and bool(getattr(error, "retryable", False))
             ),
-            stop=stop_after_attempt(3),
+            stop=stop_after_attempt(RETRY_ATTEMPTS),
             wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
             reraise=True,
         )(lambda: self._download_uploaded_torrent(download_url))
