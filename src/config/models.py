@@ -16,7 +16,13 @@ from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.url_type import URLType
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import (
+    DelugeConfig,
+    NetworkTorrentClientConfig,
+    QBittorrentConfig,
+    RTorrentConfig,
+    TransmissionConfig,
+)
 from src.payloads.image_hosts import (
     CheveretoV3Payload,
     CheveretoV4Payload,
@@ -133,15 +139,15 @@ class TrackerSettings:
 
 @dataclass(slots=True)
 class TorrentClientSettings:
-    qbittorrent: TorrentClient
-    deluge: TorrentClient
-    rtorrent: TorrentClient
-    transmission: TorrentClient
+    qbittorrent: QBittorrentConfig
+    deluge: DelugeConfig
+    rtorrent: RTorrentConfig
+    transmission: TransmissionConfig
     watch_folder: WatchFolder
 
     def by_selection(
         self,
-    ) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:
+    ) -> dict[TorrentClientSelection, NetworkTorrentClientConfig | WatchFolder]:
         return {
             TorrentClientSelection.QBITTORRENT: self.qbittorrent,
             TorrentClientSelection.DELUGE: self.deluge,

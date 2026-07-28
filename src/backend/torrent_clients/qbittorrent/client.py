@@ -5,13 +5,13 @@ import qbittorrentapi.exceptions
 from torf import Torrent
 
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import QBittorrentConfig
 
 
 class QBittorrentClient:
-    """QBittorrent Client"""
+    """qBittorrent API adapter."""
 
-    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
+    def __init__(self, config: QBittorrentConfig, timeout: int = 10) -> None:
         self.timeout = timeout
         self.qbit_config = config
 
@@ -26,26 +26,30 @@ class QBittorrentClient:
         try:
             self.client.auth_log_in(requests_args={"timeout": self.timeout})
             return True, "Login successful"
-        except qbittorrentapi.LoginFailed as e:
-            return False, f"Login failed. Check username and password: {e}"
+        except qbittorrentapi.LoginFailed as error:
+            return False, f"Login failed. Check username and password: {error}"
         except qbittorrentapi.exceptions.APIConnectionError:
             return False, (
-                "qBittorrent is not detected. Ensure that it's running and check host and port."
+                "qBittorrent is not detected. Ensure that it's running and "
+                "check host and port."
             )
-        except Exception as e:
-            raise TrackerClientError(f"Unexpected error during login: {e}") from e
+        except Exception as error:
+            raise TrackerClientError(
+                f"Unexpected error during login: {error}"
+            ) from error
 
     def logout(self) -> None:
         try:
             self.client.auth_log_out()
-        except Exception as e:
-            raise TrackerClientError(f"Failed to logout: {e}") from e
+        except Exception as error:
+            raise TrackerClientError(f"Failed to logout: {error}") from error
 
     def test(self) -> tuple[bool, str]:
         if self.login()[0]:
             return (
                 True,
-                "Login successful! If your category is setup correctly injection should work.",
+                "Login successful! If your category is setup correctly "
+                "injection should work.",
             )
         return False, "Failed"
 
@@ -63,32 +67,30 @@ class QBittorrentClient:
                 is_skip_checking=True,
                 category=self._get_category(),
             )
-            if add_torrent == "Ok.":
-                if self._get_super_seeding():
-                    torrent = Torrent.read(torrent_file)
-                    self.client.torrents_set_super_seeding(
-                        enable=True, torrent_hashes=torrent.infohash
-                    )
-                return True, "qBittorrent injection successful"
-            else:
+            if add_torrent != "Ok.":
                 return False, "qBittorrent injection failed"
-        except qbittorrentapi.exceptions.APIError as e:
-            raise TrackerClientError(f"Failed to inject torrent: {e}") from e
-        except Exception as e:
+
+            if self.qbit_config.super_seeding:
+                torrent = Torrent.read(torrent_file)
+                self.client.torrents_set_super_seeding(
+                    enable=True,
+                    torrent_hashes=torrent.infohash,
+                )
+            return True, "qBittorrent injection successful"
+        except qbittorrentapi.exceptions.APIError as error:
+            raise TrackerClientError(f"Failed to inject torrent: {error}") from error
+        except Exception as error:
             raise TrackerClientError(
-                f"Unexpected error during torrent injection: {e}"
-            ) from e
+                f"Unexpected error during torrent injection: {error}"
+            ) from error
 
     def _get_category(self) -> str:
-        category = self.qbit_config.specific_params.get("category")
-        if not category or isinstance(category, bool):
+        category = self.qbit_config.category.strip()
+        if not category:
             raise TrackerClientError(
                 "You must supply your category in the configuration"
             )
         return category
-
-    def _get_super_seeding(self) -> bool:
-        return bool(self.qbit_config.specific_params.get("super_seeding", False))
 
     def _get_port(self) -> int | None:
         port = int(self.qbit_config.port or 0)

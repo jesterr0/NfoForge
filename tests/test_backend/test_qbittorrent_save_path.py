@@ -5,7 +5,9 @@ from typing import cast
 
 import pytest
 
-from src.backend.torrent_clients.save_path import resolve_qbittorrent_save_path
+from src.backend.torrent_clients.qbittorrent.save_path import (
+    resolve_qbittorrent_save_path,
+)
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
@@ -18,7 +20,7 @@ from src.enums.torrent_client import (
     TorrentClientSelection,
 )
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import QBittorrentConfig
 from src.payloads.media_inputs import MediaInputPayload
 
 
@@ -31,14 +33,12 @@ def _config(
         AppConfig,
         SimpleNamespace(
             torrent_clients=SimpleNamespace(
-                qbittorrent=TorrentClient(
+                qbittorrent=QBittorrentConfig(
                     enabled=True,
-                    specific_params={
-                        "category": "Movies",
-                        "super_seeding": False,
-                        "save_path_mode": mode.value,
-                        "save_path_template": template,
-                    },
+                    category="Movies",
+                    super_seeding=False,
+                    save_path_mode=mode,
+                    save_path_template=template,
                 )
             ),
             user_tokens=SimpleNamespace(tokens=user_tokens or {}),

@@ -3,13 +3,13 @@ from pathlib import Path
 from deluge_web_client import DelugeWebClient, TorrentOptions
 
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import DelugeConfig
 
 
 class DelugeClient:
     """Deluge Web Client"""
 
-    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
+    def __init__(self, config: DelugeConfig, timeout: int = 10) -> None:
         self.deluge_config = config
         self.timeout = timeout
 
@@ -70,9 +70,7 @@ class DelugeClient:
             raise TrackerClientError(f"Failed to inject torrent: {error}") from error
 
     def _get_label(self) -> str | None:
-        label = self.deluge_config.specific_params.get("label")
-        return label.strip() or None if isinstance(label, str) else None
+        return self.deluge_config.label.strip() or None
 
     def _get_save_directory(self) -> str | None:
-        path = self.deluge_config.specific_params.get("path")
-        return path.strip() or None if isinstance(path, str) else None
+        return self.deluge_config.path.strip() or None

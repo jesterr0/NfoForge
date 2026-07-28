@@ -8,19 +8,19 @@ import pytest
 
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import DelugeConfig
 
 
-def deluge_config(**kwargs: Any) -> TorrentClient:
-    return TorrentClient(
+def deluge_config(**kwargs: Any) -> DelugeConfig:
+    return DelugeConfig(
         host="https://deluge.example.test",
         password="secret",
         **kwargs,
     )
 
 
-@pytest.mark.parametrize("config", [TorrentClient(), TorrentClient(host="host")])
-def test_deluge_client_requires_host_and_password(config: TorrentClient) -> None:
+@pytest.mark.parametrize("config", [DelugeConfig(), DelugeConfig(host="host")])
+def test_deluge_client_requires_host_and_password(config: DelugeConfig) -> None:
     with pytest.raises(TrackerClientError, match="Host and password"):
         DelugeClient(config)
 
@@ -66,7 +66,7 @@ def test_deluge_client_uploads_with_v2_torrent_options(
         result="info-hash", message="Torrent added successfully"
     )
     client = DelugeClient(
-        deluge_config(specific_params={"path": " /downloads ", "label": " TV "}),
+        deluge_config(path=" /downloads ", label=" TV "),
         timeout=42,
     )
 
@@ -87,7 +87,7 @@ def test_deluge_client_uploads_with_v2_torrent_options(
 
 
 def test_deluge_client_omits_blank_label_and_save_directory() -> None:
-    client = DelugeClient(deluge_config(specific_params={"path": "  ", "label": "  "}))
+    client = DelugeClient(deluge_config(path="  ", label="  "))
 
     assert client._get_save_directory() is None
     assert client._get_label() is None

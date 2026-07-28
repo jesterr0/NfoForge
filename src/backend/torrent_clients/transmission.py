@@ -9,7 +9,7 @@ from transmission_rpc import (
 )
 
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import TransmissionConfig
 
 
 class TransmissionClient:
@@ -19,7 +19,7 @@ class TransmissionClient:
     Note: Automatically logs in.
     """
 
-    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
+    def __init__(self, config: TransmissionConfig, timeout: int = 10) -> None:
         self.config = config
         self.transmission_config = config
         self.timeout = timeout
@@ -86,9 +86,8 @@ class TransmissionClient:
             )
 
     def _get_label(self) -> tuple[str] | None:
-        label = self.transmission_config.specific_params.get("label")
-        return (label.strip(),) if isinstance(label, str) else None
+        label = self.transmission_config.label.strip()
+        return (label,) if label else None
 
     def _get_save_directory(self) -> str | None:
-        path = self.transmission_config.specific_params.get("path")
-        return path.strip() if isinstance(path, str) else None
+        return self.transmission_config.path.strip() or None

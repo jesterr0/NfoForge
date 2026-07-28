@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from PySide6.QtWidgets import QComboBox, QLineEdit, QWidget
+from PySide6.QtWidgets import QWidget
 import pytest
 
 from src.config.config import ConfigManager
@@ -14,12 +14,25 @@ from src.enums.torrent_client import (
 )
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.wizard import WizardPages
-from src.frontend.custom_widgets.client_listbox import ClientEdit
+from src.frontend.custom_widgets.client_listbox import (
+    DelugeClientEdit,
+    QBittorrentClientEdit,
+    RTorrentClientEdit,
+    TransmissionClientEdit,
+    WatchFolderClientEdit,
+)
 from src.frontend.windows.main_window import MainWindow
 from src.frontend.wizards.client_options import ClientOptionsSection
 from src.frontend.wizards.pre_upload import PreUploadPage
 from src.frontend.wizards.wizard import MainWindowWizard
+from src.payloads.clients import (
+    DelugeConfig,
+    QBittorrentConfig,
+    RTorrentConfig,
+    TransmissionConfig,
+)
 from src.payloads.media_inputs import MediaInputPayload
+from src.payloads.watch_folder import WatchFolder
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
@@ -56,7 +69,7 @@ def test_client_options_section_tracks_and_resets_run_override(
     config = ConfigManager("test", _paths(tmp_path))
     qbit = config.settings.torrent_clients.qbittorrent
     qbit.enabled = True
-    qbit.specific_params["save_path_mode"] = QBittorrentSavePathMode.SOURCE.value
+    qbit.save_path_mode = QBittorrentSavePathMode.SOURCE
 
     media_directory = tmp_path / "Cleaner (2025)"
     context = ProcessingContext(
@@ -93,24 +106,57 @@ def test_client_options_section_tracks_and_resets_run_override(
 
 
 def test_qbittorrent_settings_mode_controls_template_field() -> None:
-    editor = ClientEdit()
-    editor.build_widgets_from_dict(
-        {
-            "category": "Movies",
-            "super_seeding": False,
-            "save_path_mode": QBittorrentSavePathMode.CLIENT_DEFAULT.value,
-            "save_path_template": "",
-        }
+    config = QBittorrentConfig(
+        category="Movies",
+        save_path_mode=QBittorrentSavePathMode.CLIENT_DEFAULT,
     )
-    mode = editor.specific_params_map["save_path_mode"]
-    template = editor.specific_params_map["save_path_template"]
-    assert isinstance(mode, QComboBox)
-    assert isinstance(template, QLineEdit)
-    assert template.isEnabled() is False
+    editor = QBittorrentClientEdit(config)
+    assert editor.save_path_template.isEnabled() is False
 
-    mode.setCurrentIndex(mode.findData(QBittorrentSavePathMode.TEMPLATE.value))
+    editor.save_path_mode.setCurrentIndex(
+        editor.save_path_mode.findData(QBittorrentSavePathMode.TEMPLATE.value)
+    )
 
-    assert template.isEnabled() is True
+    assert editor.save_path_template.isEnabled() is True
+
+
+def test_concrete_client_editors_save_typed_settings() -> None:
+    qbit = QBittorrentConfig()
+    qbit_editor = QBittorrentClientEdit(qbit)
+    qbit_editor.category.setText("Movies")
+    qbit_editor.super_seeding.setChecked(True)
+    qbit_editor.save()
+
+    deluge = DelugeConfig()
+    deluge_editor = DelugeClientEdit(deluge)
+    deluge_editor.label.setText("TV")
+    deluge_editor.path.setText("/downloads/tv")
+    deluge_editor.save()
+
+    rtorrent = RTorrentConfig()
+    rtorrent_editor = RTorrentClientEdit(rtorrent)
+    rtorrent_editor.host.setText("https://rtorrent.example")
+    rtorrent_editor.label.setText("Movies")
+    rtorrent_editor.save()
+
+    transmission = TransmissionConfig()
+    transmission_editor = TransmissionClientEdit(transmission)
+    transmission_editor.path.setText("/downloads/movies")
+    transmission_editor.save()
+
+    watch_folder = WatchFolder()
+    watch_editor = WatchFolderClientEdit(watch_folder)
+    watch_editor.path.setText("C:/watch")
+    watch_editor.save()
+
+    assert qbit.category == "Movies"
+    assert qbit.super_seeding is True
+    assert deluge.label == "TV"
+    assert deluge.path == "/downloads/tv"
+    assert rtorrent.host == "https://rtorrent.example"
+    assert rtorrent.label == "Movies"
+    assert transmission.path == "/downloads/movies"
+    assert watch_folder.path == Path("C:/watch")
 
 
 def test_wizard_routes_trackers_through_pre_upload() -> None:

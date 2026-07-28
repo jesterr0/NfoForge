@@ -9,7 +9,7 @@ import bencode
 from torf import Torrent
 
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import RTorrentConfig
 
 
 class Bunch(dict[str, Any]):
@@ -29,7 +29,7 @@ class Bunch(dict[str, Any]):
 
 
 class RTorrentClient:
-    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
+    def __init__(self, config: RTorrentConfig, timeout: int = 10) -> None:
         """
         Example URI: "https://<user>:<password>@www.url.com/plugins/httprpc/action.php"
         """
@@ -83,9 +83,9 @@ class RTorrentClient:
 
     def _build_command(self, torrent_file: Path) -> list[Any]:
         command: list[Any] = [xmlrpc.client.Binary(self._to_bytes(torrent_file))]
-        if label := self.rtorrent_config.specific_params.get("label"):
+        if label := self.rtorrent_config.label.strip():
             command.append(f"d.custom1.set={label}")
-        if path := self.rtorrent_config.specific_params.get("path"):
+        if path := self.rtorrent_config.path.strip():
             command.append(f"d.directory.set={path}")
         return command
 

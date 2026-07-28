@@ -26,19 +26,6 @@ class ConfigManager(TypedTomlOperations):
 
     DEV_MODE: bool = False
 
-    QBIT_SPECIFIC = (
-        "category",
-        "super_seeding",
-        "save_path_mode",
-        "save_path_template",
-    )
-
-    DELUGE_SPECIFIC = ("label", "path")
-
-    RTORRENT_SPECIFIC = ("label", "path")
-
-    TRANSMISSION_SPECIFIC = ("label", "path")
-
     def __init__(
         self,
         config_file: str | None,

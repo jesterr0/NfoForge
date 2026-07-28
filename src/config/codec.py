@@ -4,11 +4,8 @@ from typing import Any, TypeVar
 import tomlkit
 
 from src.config.models import AppConfig
+from src.enums.torrent_client import QBittorrentSavePathMode
 from src.exceptions import ConfigError, ConfigSchemaError
-from src.payloads.clients import (
-    QBittorrentSavePathSettings,
-    QBittorrentSavePathSettingsError,
-)
 
 TomlMutableMapping = TypeVar("TomlMutableMapping", bound=MutableMapping[str, Any])
 
@@ -115,13 +112,15 @@ class TomlConfigCodec:
 
     @staticmethod
     def validate_settings(config: AppConfig) -> None:
-        try:
-            QBittorrentSavePathSettings.from_client(config.torrent_clients.qbittorrent)
-        except QBittorrentSavePathSettingsError as error:
+        qbit = config.torrent_clients.qbittorrent
+        if (
+            qbit.save_path_mode is QBittorrentSavePathMode.TEMPLATE
+            and not qbit.save_path_template.strip()
+        ):
             raise ConfigError(
                 "Invalid configuration value at "
-                f"torrent_client.qbittorrent.specific_params.{error.field}"
-            ) from error
+                "torrent_client.qbittorrent.specific_params.save_path_template"
+            )
 
         checks = {
             "general.ui_scale_factor": config.general.ui_scale_factor > 0,

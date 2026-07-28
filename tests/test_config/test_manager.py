@@ -14,6 +14,12 @@ from src.config.persistence import atomic_write_text
 from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ConfigError, ConfigSchemaError
+from src.payloads.clients import (
+    DelugeConfig,
+    QBittorrentConfig,
+    RTorrentConfig,
+    TransmissionConfig,
+)
 from src.payloads.trackers import MoreThanTVInfo
 
 
@@ -81,6 +87,13 @@ def test_save_preserves_unknown_keys_and_comments(
     document = tomlkit.parse(profile.read_text(encoding="utf-8"))
     document.add(tomlkit.comment("third-party setting"))
     document["third_party"] = {"enabled": True}
+    torrent_clients = cast(MutableMapping[str, Any], document["torrent_client"])
+    qbittorrent = cast(MutableMapping[str, Any], torrent_clients["qbittorrent"])
+    qbittorrent_specific = cast(
+        MutableMapping[str, Any],
+        qbittorrent["specific_params"],
+    )
+    qbittorrent_specific["third_party_option"] = "preserve-me"
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     manager.load_profile("test")
@@ -91,6 +104,20 @@ def test_save_preserves_unknown_keys_and_comments(
     assert "# third-party setting" in saved
     assert "[third_party]" in saved
     assert "timeout = 90" in saved
+    saved_document = tomlkit.parse(saved)
+    saved_clients = cast(
+        MutableMapping[str, Any],
+        saved_document["torrent_client"],
+    )
+    saved_qbittorrent = cast(
+        MutableMapping[str, Any],
+        saved_clients["qbittorrent"],
+    )
+    saved_specific = cast(
+        MutableMapping[str, Any],
+        saved_qbittorrent["specific_params"],
+    )
+    assert saved_specific["third_party_option"] == "preserve-me"
 
 
 def test_manager_preserves_qbittorrent_super_seeding_false(
@@ -103,10 +130,7 @@ def test_manager_preserves_qbittorrent_super_seeding_false(
     paths = _paths(tmp_path)
     manager = ConfigManager("test", paths)
 
-    assert (
-        manager.settings.torrent_clients.qbittorrent.specific_params["super_seeding"]
-        is False
-    )
+    assert manager.settings.torrent_clients.qbittorrent.super_seeding is False
 
     manager.save()
     manager.load_profile("test")
@@ -117,10 +141,22 @@ def test_manager_preserves_qbittorrent_super_seeding_false(
     qbittorrent = cast(MutableMapping[str, Any], torrent_client["qbittorrent"])
     specific_params = cast(MutableMapping[str, Any], qbittorrent["specific_params"])
     assert specific_params["super_seeding"] is False
-    assert (
-        manager.settings.torrent_clients.qbittorrent.specific_params["super_seeding"]
-        is False
+    assert manager.settings.torrent_clients.qbittorrent.super_seeding is False
+
+
+def test_manager_builds_concrete_torrent_client_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
     )
+    clients = ConfigManager("test", _paths(tmp_path)).settings.torrent_clients
+
+    assert isinstance(clients.qbittorrent, QBittorrentConfig)
+    assert isinstance(clients.deluge, DelugeConfig)
+    assert isinstance(clients.rtorrent, RTorrentConfig)
+    assert isinstance(clients.transmission, TransmissionConfig)
 
 
 def test_manager_merges_qbittorrent_save_path_defaults_into_schema3_profile(
@@ -144,15 +180,10 @@ def test_manager_merges_qbittorrent_save_path_defaults_into_schema3_profile(
     manager = ConfigManager("test", paths)
 
     assert (
-        manager.settings.torrent_clients.qbittorrent.specific_params["save_path_mode"]
-        == QBittorrentSavePathMode.CLIENT_DEFAULT.value
+        manager.settings.torrent_clients.qbittorrent.save_path_mode
+        is QBittorrentSavePathMode.CLIENT_DEFAULT
     )
-    assert (
-        manager.settings.torrent_clients.qbittorrent.specific_params[
-            "save_path_template"
-        ]
-        == ""
-    )
+    assert manager.settings.torrent_clients.qbittorrent.save_path_template == ""
 
 
 @pytest.mark.parametrize(

@@ -26,8 +26,10 @@ from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenSelection
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
+from src.backend.torrent_clients.qbittorrent.save_path import (
+    resolve_qbittorrent_save_path,
+)
 from src.backend.torrent_clients.rtorrent import RTorrentClient
-from src.backend.torrent_clients.save_path import resolve_qbittorrent_save_path
 from src.backend.torrent_clients.transmission import TransmissionClient
 from src.backend.torrents import (
     clone_torrent,

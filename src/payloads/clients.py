@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Self
+from typing import TypeAlias
 
 from src.enums.torrent_client import (
     QBittorrentSavePathMode,
@@ -14,44 +14,37 @@ class TorrentClient:
     port: int | None = None
     user: str | None = None
     password: str | None = None
-    specific_params: dict[str, str | bool] = field(default_factory=dict)
 
 
-class QBittorrentSavePathSettingsError(ValueError):
-    """Raised when qBittorrent save-path configuration cannot be parsed."""
+@dataclass(slots=True)
+class QBittorrentConfig(TorrentClient):
+    category: str = ""
+    super_seeding: bool = False
+    save_path_mode: QBittorrentSavePathMode = QBittorrentSavePathMode.CLIENT_DEFAULT
+    save_path_template: str = ""
 
-    def __init__(self, field: str) -> None:
-        self.field = field
-        super().__init__(f"Invalid qBittorrent setting: {field}")
+
+@dataclass(slots=True)
+class DelugeConfig(TorrentClient):
+    label: str = ""
+    path: str = ""
 
 
-@dataclass(frozen=True, slots=True)
-class QBittorrentSavePathSettings:
-    """Typed view over qBittorrent's persisted save-path parameters."""
+@dataclass(slots=True)
+class RTorrentConfig(TorrentClient):
+    label: str = ""
+    path: str = ""
 
-    save_path_mode: QBittorrentSavePathMode
-    save_path_template: str
 
-    @classmethod
-    def from_client(cls, client: TorrentClient) -> Self:
-        raw_mode = client.specific_params.get("save_path_mode")
-        if not isinstance(raw_mode, str):
-            raise QBittorrentSavePathSettingsError("save_path_mode")
-        try:
-            mode = QBittorrentSavePathMode(raw_mode)
-        except ValueError as error:
-            raise QBittorrentSavePathSettingsError("save_path_mode") from error
+@dataclass(slots=True)
+class TransmissionConfig(TorrentClient):
+    label: str = ""
+    path: str = ""
 
-        template = client.specific_params.get("save_path_template")
-        if not isinstance(template, str):
-            raise QBittorrentSavePathSettingsError("save_path_template")
-        if mode is QBittorrentSavePathMode.TEMPLATE and not template.strip():
-            raise QBittorrentSavePathSettingsError("save_path_template")
 
-        return cls(
-            save_path_mode=mode,
-            save_path_template=template,
-        )
+NetworkTorrentClientConfig: TypeAlias = (
+    QBittorrentConfig | DelugeConfig | RTorrentConfig | TransmissionConfig
+)
 
 
 @dataclass(slots=True)

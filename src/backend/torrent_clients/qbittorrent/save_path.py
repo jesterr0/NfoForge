@@ -10,44 +10,17 @@ from src.enums.torrent_client import (
     TorrentClientSelection,
 )
 from src.exceptions import TrackerClientError
-from src.payloads.clients import (
-    QBittorrentSavePathSettings,
-    QBittorrentSavePathSettingsError,
-    TorrentClient,
-)
 from src.payloads.series import build_series_release_info
 
 _UNRESOLVED_TOKEN_PATTERN = re.compile(r"{[^{}]+}")
 _FLAT_TOKEN_PATTERN = re.compile(r"{(?::opt=([^:}]*):)?([^}]+?)(?::opt=([^:}]*):)?}")
 
 
-def qbittorrent_save_path_settings(
-    client: TorrentClient,
-) -> QBittorrentSavePathSettings:
-    """Return validated, typed qBittorrent save-path settings."""
-    try:
-        return QBittorrentSavePathSettings.from_client(client)
-    except QBittorrentSavePathSettingsError as error:
-        raise TrackerClientError(
-            f"Invalid qBittorrent setting: {error.field}"
-        ) from error
-
-
-def qbittorrent_save_path_mode(client: TorrentClient) -> QBittorrentSavePathMode:
-    """Return the configured qBittorrent save-path mode."""
-    return qbittorrent_save_path_settings(client).save_path_mode
-
-
 def resolve_qbittorrent_save_path(
     config: AppConfig,
     context: ProcessingContext,
 ) -> str | None:
-    """Resolve qBittorrent's destination for the current processing run.
-
-    A nonempty run override always wins. Otherwise the configured mode decides
-    whether qBittorrent manages the path, the source parent is used, or a
-    FileToken template is rendered.
-    """
+    """Resolve qBittorrent's destination for the current processing run."""
     run_override = context.torrent_client_options.save_path_overrides.get(
         TorrentClientSelection.QBITTORRENT
     )
@@ -63,18 +36,16 @@ def resolve_configured_qbittorrent_save_path(
 ) -> str | None:
     """Resolve only the persistent qBittorrent save-path configuration."""
     qbit_config = config.torrent_clients.qbittorrent
-    save_path_settings = qbittorrent_save_path_settings(qbit_config)
-    mode = save_path_settings.save_path_mode
-    if mode is QBittorrentSavePathMode.CLIENT_DEFAULT:
+    if qbit_config.save_path_mode is QBittorrentSavePathMode.CLIENT_DEFAULT:
         return None
 
-    if mode is QBittorrentSavePathMode.SOURCE:
+    if qbit_config.save_path_mode is QBittorrentSavePathMode.SOURCE:
         return str(context.media_input.require_input_path().parent)
 
     return _render_save_path_template(
         config,
         context,
-        save_path_settings.save_path_template,
+        qbit_config.save_path_template,
     )
 
 

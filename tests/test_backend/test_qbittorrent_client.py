@@ -2,25 +2,23 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
-from src.payloads.clients import TorrentClient
+from src.enums.torrent_client import QBittorrentSavePathMode
+from src.payloads.clients import QBittorrentConfig
 
 
-def _config() -> TorrentClient:
-    return TorrentClient(
+def _config() -> QBittorrentConfig:
+    return QBittorrentConfig(
         host="http://127.0.0.1",
         port=8080,
         user="user",
         password="password",
-        specific_params={
-            "category": "Movies",
-            "super_seeding": False,
-            "save_path_mode": "Client default",
-            "save_path_template": "",
-        },
+        category="Movies",
+        super_seeding=False,
+        save_path_mode=QBittorrentSavePathMode.CLIENT_DEFAULT,
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.QBitClient")
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_inject_without_save_path_keeps_automatic_management(
     qbit_api: MagicMock,
 ) -> None:
@@ -42,7 +40,7 @@ def test_inject_without_save_path_keeps_automatic_management(
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.QBitClient")
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_inject_with_save_path_uses_manual_management_and_preserves_path(
     qbit_api: MagicMock,
 ) -> None:
@@ -65,7 +63,7 @@ def test_inject_with_save_path_uses_manual_management_and_preserves_path(
     )
 
 
-@patch("src.backend.torrent_clients.qbittorrent.QBitClient")
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
 def test_blank_save_path_keeps_automatic_management(qbit_api: MagicMock) -> None:
     api = qbit_api.return_value
     api.torrents_add.return_value = "Ok."

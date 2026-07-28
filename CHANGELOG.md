@@ -145,6 +145,7 @@
 - Properly detect and pass anime to TorrentLeech
 - Block/stop processing when media search is unavailable due to network issues/no internet
 - Handle where guessit can return two titles causing a runtime error with specific filenames
+- Added typed configurations for qBittorrent, Deluge, rTorrent, and Transmission
 
 ### Fixed
 

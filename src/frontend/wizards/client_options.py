@@ -13,8 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.torrent_clients.save_path import (
-    qbittorrent_save_path_mode,
+from src.backend.torrent_clients.qbittorrent.save_path import (
     resolve_configured_qbittorrent_save_path,
 )
 from src.config.config import ConfigManager
@@ -90,7 +89,7 @@ class ClientOptionsSection(QGroupBox):
         qbit_config = self.config.settings.torrent_clients.qbittorrent
         self._resolution_error = None
         try:
-            self.mode_value.setText(str(qbittorrent_save_path_mode(qbit_config)))
+            self.mode_value.setText(str(qbit_config.save_path_mode))
             self._configured_path = resolve_configured_qbittorrent_save_path(
                 self.config.settings,
                 self.context,

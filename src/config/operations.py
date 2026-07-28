@@ -44,12 +44,18 @@ from src.enums.series import EpisodeFormat
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.theme import NfoForgeTheme
 from src.enums.token_replacer import ColonReplace
+from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
 from src.exceptions import ConfigError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import (
+    DelugeConfig,
+    QBittorrentConfig,
+    RTorrentConfig,
+    TransmissionConfig,
+)
 from src.payloads.image_hosts import (
     CheveretoV3Payload,
     CheveretoV4Payload,
@@ -84,11 +90,6 @@ class TypedTomlOperations:
     _toml_data: MutableMapping[str, Any]
     _config_snapshot: str | None
     _active_profile_path: Path | None
-
-    QBIT_SPECIFIC: tuple[str, ...]
-    DELUGE_SPECIFIC: tuple[str, ...]
-    RTORRENT_SPECIFIC: tuple[str, ...]
-    TRANSMISSION_SPECIFIC: tuple[str, ...]
 
     def save_program(self) -> None:
         """Persist program-level config.
@@ -737,8 +738,21 @@ class TypedTomlOperations:
             qbittorrent_data["password"] = (
                 self.settings.torrent_clients.qbittorrent.password
             )
-            qbittorrent_data["specific_params"] = (
-                self.settings.torrent_clients.qbittorrent.specific_params
+            qbittorrent_specific = cast(
+                MutableMapping[str, Any],
+                qbittorrent_data["specific_params"],
+            )
+            qbittorrent_specific["category"] = (
+                self.settings.torrent_clients.qbittorrent.category
+            )
+            qbittorrent_specific["super_seeding"] = (
+                self.settings.torrent_clients.qbittorrent.super_seeding
+            )
+            qbittorrent_specific["save_path_mode"] = (
+                self.settings.torrent_clients.qbittorrent.save_path_mode.value
+            )
+            qbittorrent_specific["save_path_template"] = (
+                self.settings.torrent_clients.qbittorrent.save_path_template
             )
 
             # deluge
@@ -748,9 +762,12 @@ class TypedTomlOperations:
             deluge_data["port"] = self.settings.torrent_clients.deluge.port
             deluge_data["user"] = self.settings.torrent_clients.deluge.user
             deluge_data["password"] = self.settings.torrent_clients.deluge.password
-            deluge_data["specific_params"] = (
-                self.settings.torrent_clients.deluge.specific_params
+            deluge_specific = cast(
+                MutableMapping[str, Any],
+                deluge_data["specific_params"],
             )
+            deluge_specific["label"] = self.settings.torrent_clients.deluge.label
+            deluge_specific["path"] = self.settings.torrent_clients.deluge.path
 
             # rtorrent
             rtorrent_data = self._ensure_toml_table(torrent_client_data, "rtorrent")
@@ -759,9 +776,12 @@ class TypedTomlOperations:
             rtorrent_data["port"] = self.settings.torrent_clients.rtorrent.port
             rtorrent_data["user"] = self.settings.torrent_clients.rtorrent.user
             rtorrent_data["password"] = self.settings.torrent_clients.rtorrent.password
-            rtorrent_data["specific_params"] = (
-                self.settings.torrent_clients.rtorrent.specific_params
+            rtorrent_specific = cast(
+                MutableMapping[str, Any],
+                rtorrent_data["specific_params"],
             )
+            rtorrent_specific["label"] = self.settings.torrent_clients.rtorrent.label
+            rtorrent_specific["path"] = self.settings.torrent_clients.rtorrent.path
 
             # transmission
             transmission_data = self._ensure_toml_table(
@@ -776,8 +796,15 @@ class TypedTomlOperations:
             transmission_data["password"] = (
                 self.settings.torrent_clients.transmission.password
             )
-            transmission_data["specific_params"] = (
-                self.settings.torrent_clients.transmission.specific_params
+            transmission_specific = cast(
+                MutableMapping[str, Any],
+                transmission_data["specific_params"],
+            )
+            transmission_specific["label"] = (
+                self.settings.torrent_clients.transmission.label
+            )
+            transmission_specific["path"] = (
+                self.settings.torrent_clients.transmission.path
             )
 
             # watch folder
@@ -1529,30 +1556,71 @@ class TypedTomlOperations:
             torrent_client_data = self._toml_mapping(toml_data, "torrent_client")
 
             # qbittorrent
-            qbittorrent = TorrentClient(**torrent_client_data["qbittorrent"])
-            for qbit_specific in self.QBIT_SPECIFIC:
-                if qbit_specific not in qbittorrent.specific_params:
-                    qbittorrent.specific_params[qbit_specific] = ""
-            if qbittorrent.specific_params.get("super_seeding") == "":
-                qbittorrent.specific_params["super_seeding"] = False
+            qbittorrent_data = cast(dict[str, Any], torrent_client_data["qbittorrent"])
+            qbit_specific = cast(dict[str, Any], qbittorrent_data["specific_params"])
+            try:
+                qbit_save_path_mode = QBittorrentSavePathMode(
+                    qbit_specific["save_path_mode"]
+                )
+            except ValueError as error:
+                raise ConfigError(
+                    "Invalid configuration value at "
+                    "torrent_client.qbittorrent.specific_params.save_path_mode"
+                ) from error
+            qbittorrent = QBittorrentConfig(
+                enabled=bool(qbittorrent_data["enabled"]),
+                host=str(qbittorrent_data["host"]),
+                port=int(qbittorrent_data["port"]),
+                user=str(qbittorrent_data["user"]),
+                password=str(qbittorrent_data["password"]),
+                category=str(qbit_specific["category"]),
+                super_seeding=bool(qbit_specific["super_seeding"]),
+                save_path_mode=qbit_save_path_mode,
+                save_path_template=str(qbit_specific["save_path_template"]),
+            )
 
             # deluge
-            deluge = TorrentClient(**torrent_client_data["deluge"])
-            for deluge_specific in self.DELUGE_SPECIFIC:
-                if deluge_specific not in deluge.specific_params:
-                    deluge.specific_params[deluge_specific] = ""
+            deluge_data = cast(dict[str, Any], torrent_client_data["deluge"])
+            deluge_specific = cast(dict[str, Any], deluge_data["specific_params"])
+            deluge = DelugeConfig(
+                enabled=bool(deluge_data["enabled"]),
+                host=str(deluge_data["host"]),
+                port=int(deluge_data["port"]),
+                user=str(deluge_data["user"]),
+                password=str(deluge_data["password"]),
+                label=str(deluge_specific["label"]),
+                path=str(deluge_specific["path"]),
+            )
 
             # rtorrent
-            rtorrent = TorrentClient(**torrent_client_data["rtorrent"])
-            for rtorrent_specific in self.RTORRENT_SPECIFIC:
-                if rtorrent_specific not in rtorrent.specific_params:
-                    rtorrent.specific_params[rtorrent_specific] = ""
+            rtorrent_data = cast(dict[str, Any], torrent_client_data["rtorrent"])
+            rtorrent_specific = cast(dict[str, Any], rtorrent_data["specific_params"])
+            rtorrent = RTorrentConfig(
+                enabled=bool(rtorrent_data["enabled"]),
+                host=str(rtorrent_data["host"]),
+                port=int(rtorrent_data["port"]),
+                user=str(rtorrent_data["user"]),
+                password=str(rtorrent_data["password"]),
+                label=str(rtorrent_specific["label"]),
+                path=str(rtorrent_specific["path"]),
+            )
 
             # transmission
-            transmission = TorrentClient(**torrent_client_data["transmission"])
-            for transmission_specific in self.TRANSMISSION_SPECIFIC:
-                if transmission_specific not in transmission.specific_params:
-                    transmission.specific_params[transmission_specific] = ""
+            transmission_data = cast(
+                dict[str, Any], torrent_client_data["transmission"]
+            )
+            transmission_specific = cast(
+                dict[str, Any], transmission_data["specific_params"]
+            )
+            transmission = TransmissionConfig(
+                enabled=bool(transmission_data["enabled"]),
+                host=str(transmission_data["host"]),
+                port=int(transmission_data["port"]),
+                user=str(transmission_data["user"]),
+                password=str(transmission_data["password"]),
+                label=str(transmission_specific["label"]),
+                path=str(transmission_specific["path"]),
+            )
 
             # watch folder
             watch_folder = WatchFolder(**self._toml_mapping(toml_data, "watch_folder"))
