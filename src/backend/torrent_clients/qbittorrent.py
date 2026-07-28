@@ -49,12 +49,17 @@ class QBittorrentClient:
             )
         return False, "Failed"
 
-    def inject_torrent(self, torrent_file: Path) -> tuple[bool, str]:
+    def inject_torrent(
+        self,
+        torrent_file: Path,
+        save_path: str | None = None,
+    ) -> tuple[bool, str]:
         try:
+            effective_save_path = save_path if save_path and save_path.strip() else None
             add_torrent = self.client.torrents_add(
                 torrent_files=str(torrent_file),
-                save_path=None,
-                use_auto_torrent_management=True,
+                save_path=effective_save_path,
+                use_auto_torrent_management=effective_save_path is None,
                 is_skip_checking=True,
                 category=self._get_category(),
             )

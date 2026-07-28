@@ -47,6 +47,8 @@
 - Now checks tracker health before attempting to upload
 - Template editor now highlights tokens that will not resolve when the template renders. The highlight color is configurable in Settings > Templates, and the save status tip reports how many were found.
 - Implemented torrent upload retries with user control.
+- Add ability to set file save location when adding a torrent to qBittorrent.
+- Added a pre-upload wizard page that combines smaller wizard pages into one.
 
 ### Changed
 

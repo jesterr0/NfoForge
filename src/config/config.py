@@ -26,7 +26,12 @@ class ConfigManager(TypedTomlOperations):
 
     DEV_MODE: bool = False
 
-    QBIT_SPECIFIC = ("category", "super_seeding")
+    QBIT_SPECIFIC = (
+        "category",
+        "super_seeding",
+        "save_path_mode",
+        "save_path_template",
+    )
 
     DELUGE_SPECIFIC = ("label", "path")
 

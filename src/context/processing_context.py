@@ -4,6 +4,7 @@ from pathlib import Path
 from src.enums.tracker_selection import TrackerSelection
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import ImageUploadData
+from src.payloads.clients import TorrentClientRunOptions
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.shared_data import SharedPayload
@@ -17,6 +18,9 @@ class ProcessingContext:
     media_input: MediaInputPayload = field(default_factory=MediaInputPayload)
     media_search: MediaSearchPayload = field(default_factory=MediaSearchPayload)
     shared_data: SharedPayload = field(default_factory=SharedPayload)
+    torrent_client_options: TorrentClientRunOptions = field(
+        default_factory=TorrentClientRunOptions
+    )
 
     # processing outputs
     generated_torrents: dict[str, Path] = field(default_factory=dict)

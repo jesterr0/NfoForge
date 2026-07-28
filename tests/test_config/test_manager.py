@@ -11,6 +11,7 @@ from src.config.codec import TomlConfigCodec
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
+from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.payloads.trackers import MoreThanTVInfo
@@ -120,6 +121,71 @@ def test_manager_preserves_qbittorrent_super_seeding_false(
         manager.settings.torrent_clients.qbittorrent.specific_params["super_seeding"]
         is False
     )
+
+
+def test_manager_merges_qbittorrent_save_path_defaults_into_schema3_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    torrent_client = cast(MutableMapping[str, Any], document["torrent_client"])
+    qbittorrent = cast(MutableMapping[str, Any], torrent_client["qbittorrent"])
+    specific_params = cast(MutableMapping[str, Any], qbittorrent["specific_params"])
+    del specific_params["save_path_mode"]
+    del specific_params["save_path_template"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)
+
+    assert (
+        manager.settings.torrent_clients.qbittorrent.specific_params["save_path_mode"]
+        == QBittorrentSavePathMode.CLIENT_DEFAULT.value
+    )
+    assert (
+        manager.settings.torrent_clients.qbittorrent.specific_params[
+            "save_path_template"
+        ]
+        == ""
+    )
+
+
+@pytest.mark.parametrize(
+    ("mode", "template", "invalid_key"),
+    [
+        ("not-a-mode", "", "save_path_mode"),
+        (QBittorrentSavePathMode.TEMPLATE.value, "", "save_path_template"),
+    ],
+)
+def test_manager_rejects_invalid_qbittorrent_save_path_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    template: str,
+    invalid_key: str,
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    torrent_client = cast(MutableMapping[str, Any], document["torrent_client"])
+    qbittorrent = cast(MutableMapping[str, Any], torrent_client["qbittorrent"])
+    specific_params = cast(MutableMapping[str, Any], qbittorrent["specific_params"])
+    specific_params["save_path_mode"] = mode
+    specific_params["save_path_template"] = template
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    with pytest.raises(ConfigError, match=invalid_key):
+        ConfigManager("test", paths)
 
 
 def test_manager_rejects_empty_qbittorrent_super_seeding(

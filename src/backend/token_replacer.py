@@ -93,6 +93,7 @@ class TokenReplacer:
         "release_notes",
         "dummy_screen_shots",
         "parse_filename_attributes",
+        "preserve_literal_formatting",
         # series exclusive args
         "season_number",
         "season_end",
@@ -146,6 +147,7 @@ class TokenReplacer:
         release_notes: str | None = "",
         dummy_screen_shots: bool = False,
         parse_filename_attributes: bool = False,
+        preserve_literal_formatting: bool = False,
         season_number: int | None = None,
         season_end: int | None = None,
         episode_number: int | None = None,
@@ -192,6 +194,9 @@ class TokenReplacer:
               screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
             parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
               detected from the filename.
+            preserve_literal_formatting: Return flattened title-mode output
+              without normalizing whitespace or punctuation. This is intended
+              for templates whose literal text carries meaning, such as paths.
             season_number (Optional[int]): Season number.
             season_end (Optional[int]): Highest season number in a multi-season pack. When
                 set and different from `season_number`, the {season_number} token renders
@@ -235,6 +240,7 @@ class TokenReplacer:
         self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
         self.parse_filename_attributes = parse_filename_attributes
+        self.preserve_literal_formatting = preserve_literal_formatting
         # series exclusive args
         self.season_number = season_number
         self.season_end = season_end
@@ -976,6 +982,8 @@ class TokenReplacer:
             formatted_title = self._remove_unfilled_tokens(formatted_title)
 
             # apply final formatting
+            if self.preserve_literal_formatting:
+                return formatted_title
             # if filename mode
             if self.file_name_mode:
                 formatted_file_name = re.sub(r"\s{1,}", ".", formatted_title)

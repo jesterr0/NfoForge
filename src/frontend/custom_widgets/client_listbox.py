@@ -6,6 +6,7 @@ from PySide6.QtCore import QPoint, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QFrame,
     QLabel,
@@ -25,7 +26,10 @@ from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
 from src.backend.torrent_clients.transmission import TransmissionClient
 from src.config.config import ConfigManager
-from src.enums.torrent_client import TorrentClientSelection
+from src.enums.torrent_client import (
+    QBittorrentSavePathMode,
+    TorrentClientSelection,
+)
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.utils import build_h_line
 from src.payloads.clients import TorrentClient
@@ -70,7 +74,7 @@ class ClientEditBase(QFrame):
         super().__init__(parent)
 
         self.specific_params_layout = QVBoxLayout()
-        self.specific_params_map: dict[str, QLineEdit | QCheckBox] = {}
+        self.specific_params_map: dict[str, QLineEdit | QCheckBox | QComboBox] = {}
 
         self.test_class: ClientTesterFactory | None = None
         self.client_test_worker: ClientTestWorker | None = None
@@ -79,11 +83,43 @@ class ClientEditBase(QFrame):
     BOOL_PARAM_LABELS = {
         "super_seeding": "Add new torrents in super seeding mode",
     }
+    PARAM_LABELS = {
+        "save_path_mode": "Save location mode",
+        "save_path_template": "Save location template",
+    }
 
     def build_widgets_from_dict(self, data: dict[str, str | bool]) -> None:
         """Builds widgets as needed dynamically"""
         for key, value in data.items():
-            if isinstance(value, bool):
+            if key == "save_path_mode":
+                mode_combo = QComboBox(self)
+                for mode in QBittorrentSavePathMode:
+                    mode_combo.addItem(str(mode), mode.value)
+                try:
+                    saved_mode = QBittorrentSavePathMode(
+                        value
+                        if isinstance(value, str)
+                        else QBittorrentSavePathMode.CLIENT_DEFAULT.value
+                    )
+                except (TypeError, ValueError):
+                    saved_mode = QBittorrentSavePathMode.CLIENT_DEFAULT
+                saved_index = mode_combo.findData(saved_mode.value)
+                if saved_index >= 0:
+                    mode_combo.setCurrentIndex(saved_index)
+                mode_combo.setToolTip(
+                    "Choose whether qBittorrent/category settings, the selected "
+                    "media location, or a token template determines the save path."
+                )
+                mode_combo.currentIndexChanged.connect(
+                    self._sync_save_path_template_state
+                )
+                self.specific_params_map[key] = mode_combo
+                form = self.build_form_layout(
+                    self.PARAM_LABELS[key],
+                    mode_combo,
+                )
+                self.specific_params_layout.addLayout(form)
+            elif isinstance(value, bool):
                 label_text = self.BOOL_PARAM_LABELS.get(
                     key, key.title().replace("_", " ")
                 )
@@ -95,9 +131,33 @@ class ClientEditBase(QFrame):
             else:
                 text_input = QLineEdit(self)
                 text_input.setText(value)
+                if key == "save_path_template":
+                    text_input.setPlaceholderText(
+                        r"\\server\media\{title_exact} {release_year_parentheses}"
+                    )
+                    text_input.setToolTip(
+                        "Full path as seen by qBittorrent. Existing FileTokens "
+                        "and configured FileToken user tokens are supported."
+                    )
                 self.specific_params_map[key] = text_input
-                form = self.build_form_layout(key.title().replace("_", " "), text_input)
+                form = self.build_form_layout(
+                    self.PARAM_LABELS.get(key, key.title().replace("_", " ")),
+                    text_input,
+                )
                 self.specific_params_layout.addLayout(form)
+        self._sync_save_path_template_state()
+
+    @Slot()
+    def _sync_save_path_template_state(self) -> None:
+        mode_widget = self.specific_params_map.get("save_path_mode")
+        template_widget = self.specific_params_map.get("save_path_template")
+        if not isinstance(mode_widget, QComboBox) or not isinstance(
+            template_widget, QLineEdit
+        ):
+            return
+        template_widget.setEnabled(
+            mode_widget.currentData() == QBittorrentSavePathMode.TEMPLATE.value
+        )
 
     @Slot(object)
     def _test_client(self, test_payload: TorrentClient) -> None:
@@ -407,6 +467,10 @@ class ClientListWidget(QWidget):
             for key, val_widget in full_client_widget.specific_params_map.items():
                 if isinstance(val_widget, QCheckBox):
                     client_attributes.specific_params[key] = val_widget.isChecked()
+                elif isinstance(val_widget, QComboBox):
+                    client_attributes.specific_params[key] = str(
+                        val_widget.currentData()
+                    )
                 else:
                     client_attributes.specific_params[key] = val_widget.text().strip()
 
@@ -418,7 +482,14 @@ class ClientListWidget(QWidget):
                 raise TypeError(f"Expected URI client editor for {client}")
             client_attributes.host = uri_client_widget.host.text().strip()
             for key, val_widget in uri_client_widget.specific_params_map.items():
-                client_attributes.specific_params[key] = val_widget.text().strip()
+                if isinstance(val_widget, QCheckBox):
+                    client_attributes.specific_params[key] = val_widget.isChecked()
+                elif isinstance(val_widget, QComboBox):
+                    client_attributes.specific_params[key] = str(
+                        val_widget.currentData()
+                    )
+                else:
+                    client_attributes.specific_params[key] = val_widget.text().strip()
 
         elif client == TorrentClientSelection.WATCH_FOLDER and isinstance(
             client_attributes, WatchFolder

@@ -12,8 +12,7 @@ class WizardPages(Enum):
     RENAME_ENCODE_SERIES_PAGE = auto()
     IMAGES_PAGE = auto()
     TRACKERS_PAGE = auto()
-    RELEASE_NOTES_PAGE = auto()
-    NFO_TEMPLATE_PAGE = auto()
+    PRE_UPLOAD_PAGE = auto()
     PROCESS_PAGE = auto()
 
     @override

@@ -64,19 +64,21 @@ This page gives you a final chance to configure trackers and select which tracke
 
 Select **Next** to continue.
 
-### Release Notes Page
+### Pre-upload Page
 
-![Release Notes](../../images/wizard/release_notes.png){ width=100%, style="max-width: 500px;" }
+The Pre-upload page combines the smaller final review steps so you can check
+template assignments, release notes, and torrent-client options without moving
+through several separate wizard pages.
 
-This page allows you to create, save, or select a custom release note to inject into the NFO. It will replace the token **{{ release_notes }}** if it exists in the template.
+#### NFO Templates
 
-Select **Next** to continue.
-
-### Template Page
+Every selected tracker must have an assigned NFO template. Existing assignments
+are shown directly on the page. Select **Configure Templates** to open the full
+template editor.
 
 ![Templates](../../images/wizard/templates.png){ width=100%, style="max-width: 500px;" }
 
-This page is quite advanced. However, for this example, we will go over basic usage. By default, there won't be any templates; you must create one to continue.
+By default, there won't be any templates; you must create one to continue.
 
 <!--prettier-ignore-start -->
 
@@ -91,7 +93,44 @@ This page is quite advanced. However, for this example, we will go over basic us
 
 <!--prettier-ignore-end -->
 
-Select **Next** to continue.
+Close the editor after saving the template and assigning it to the desired
+trackers. The assignment summary on Pre-upload updates automatically.
+
+#### Release Notes
+
+Enable **Release Notes** to create, save, or select a note to inject into the
+NFO. It replaces the **{{ release_notes }}** token when that token exists in the
+assigned template. Leave the section disabled to omit release notes.
+
+#### qBittorrent
+
+This section appears only when qBittorrent injection is enabled. It shows the
+destination qBittorrent will use for the current release and lets you replace
+it for this processing run.
+
+The persistent qBittorrent setting offers three modes:
+
+- **Client default** leaves the destination to qBittorrent and its category
+  settings.
+- **Source location** uses the selected file or folder's parent directory. For
+  a single file such as
+  `\\plex_server\movies\Cleaner (2025)\Cleaner.2025.mkv`, the resulting save
+  location is `\\plex_server\movies\Cleaner (2025)`.
+- **Template** renders a full path with existing FileTokens, for example
+  `\\plex_server\movies\{title_exact} {release_year_parentheses}`.
+
+An edited value on Pre-upload overrides the configured mode for that run and
+applies to every tracker torrent injected into qBittorrent. Use **Reset to
+Configured Default** to discard the override.
+
+<!-- prettier-ignore -->
+!!! warning
+    The path is interpreted by qBittorrent, not necessarily by the computer
+    running NfoForge. A remote host, container, or Windows service must be able
+    to access the path. When NfoForge supplies a path, qBittorrent automatic
+    torrent management is disabled so category rules do not relocate it.
+
+Select **Next** after the page reports no blocking configuration problems.
 
 ### Process Page
 

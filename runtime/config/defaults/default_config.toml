@@ -388,7 +388,7 @@ host = "http://127.0.0.1"
 port = 0
 user = ""
 password = ""
-specific_params = { "category" = "", "super_seeding" = false }
+specific_params = { "category" = "", "super_seeding" = false, "save_path_mode" = "Client default", "save_path_template" = "" }
 
 [torrent_client.deluge]
 enabled = false

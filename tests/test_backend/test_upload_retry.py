@@ -409,6 +409,9 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
                 dependencies=SimpleNamespace(mkbrr=None),
+                torrent_clients=SimpleNamespace(
+                    qbittorrent=SimpleNamespace(enabled=False)
+                ),
             )
         ),
     )

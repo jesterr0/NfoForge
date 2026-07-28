@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Callable, Sequence
+from html import escape
 from pathlib import Path
 import shutil
 import traceback
@@ -26,6 +27,7 @@ from src.backend.tokens import FileToken, TokenSelection
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
+from src.backend.torrent_clients.save_path import resolve_qbittorrent_save_path
 from src.backend.torrent_clients.transmission import TransmissionClient
 from src.backend.torrents import (
     clone_torrent,
@@ -624,6 +626,7 @@ class ProcessBackEnd:
         queued_status_update: Callable[[str, str], None],
         caught_error: SignalInstance,
         upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
+        qbittorrent_save_path: str | None = None,
     ) -> bool:
         """Inject a torrent, letting the user retry on failure.
 
@@ -639,6 +642,7 @@ class ProcessBackEnd:
                     tracker_name=tracker_name,
                     torrent_path=torrent_path,
                     file_input=file_input,
+                    qbittorrent_save_path=qbittorrent_save_path,
                 )
                 return True
             except Exception as error:
@@ -702,6 +706,13 @@ class ProcessBackEnd:
     ) -> None:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
+
+        qbittorrent_save_path = None
+        if self.config.settings.torrent_clients.qbittorrent.enabled:
+            qbittorrent_save_path = resolve_qbittorrent_save_path(
+                self.config.settings,
+                context,
+            )
 
         # handle image uploading
         images = self.handle_images_for_trackers(
@@ -1044,6 +1055,7 @@ class ProcessBackEnd:
                             queued_status_update=queued_status_update,
                             caught_error=caught_error,
                             upload_retry_cb=upload_retry_cb,
+                            qbittorrent_save_path=qbittorrent_save_path,
                         ):
                             queued_status_update(tracker_name, "✅ Complete")
                     else:
@@ -1954,6 +1966,7 @@ class ProcessBackEnd:
         tracker_name: str,
         torrent_path: Path,
         file_input: Path,
+        qbittorrent_save_path: str | None = None,
     ) -> None:
         for (
             client,
@@ -1965,7 +1978,15 @@ class ProcessBackEnd:
                     f"<br />Injecting torrent [Tracker: {tracker_name} | Client: {client}]",
                 )
                 if client is TorrentClientSelection.QBITTORRENT:
-                    inj_success, inj_msg = self.qbittorrent_inject(torrent_path)
+                    if qbittorrent_save_path:
+                        queued_text_update(
+                            "<br />qBittorrent save location: "
+                            f"{escape(qbittorrent_save_path)}"
+                        )
+                    inj_success, inj_msg = self.qbittorrent_inject(
+                        torrent_path,
+                        qbittorrent_save_path,
+                    )
                 elif client is TorrentClientSelection.DELUGE:
                     inj_success, inj_msg = self.deluge_inject(torrent_path)
                 elif client is TorrentClientSelection.RTORRENT:
@@ -1989,14 +2010,18 @@ class ProcessBackEnd:
                     f"<br />{'Completed' if inj_success else 'Failed'}, status: {inj_msg}",
                 )
 
-    def qbittorrent_inject(self, torrent_path: Path) -> tuple[bool, str]:
+    def qbittorrent_inject(
+        self,
+        torrent_path: Path,
+        save_path: str | None = None,
+    ) -> tuple[bool, str]:
         if not self.qbit_client:
             self.qbit_client = QBittorrentClient(
                 self.config.settings.torrent_clients.qbittorrent,
                 self.config.settings.general.timeout,
             )
             self.qbit_client.login()
-        return self.qbit_client.inject_torrent(torrent_path)
+        return self.qbit_client.inject_torrent(torrent_path, save_path)
 
     def deluge_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.deluge_client:
