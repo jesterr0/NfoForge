@@ -7,6 +7,7 @@ from pymediainfo import MediaInfo
 from src.enums.media_type import MediaType
 from src.enums.series import EpisodeFormat
 from src.packages.custom_types import ComparisonPair
+from src.payloads.media_analysis_cache import MediaAnalysisCache
 
 
 @dataclass(slots=True)
@@ -25,6 +26,15 @@ class MediaInputPayload:
     # series stuff
     series_episode_map: dict[Path, dict[str, Any]] | None = None
     series_episode_format: EpisodeFormat = EpisodeFormat.STANDARD
+
+    # Derived facts are scoped to this payload so every renderer that sees the
+    # same media input naturally shares them without passing a cache around.
+    analysis_cache: MediaAnalysisCache = field(
+        default_factory=MediaAnalysisCache,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def has_basic_data(self) -> bool:
         """Check if essential data is present."""
@@ -132,6 +142,7 @@ class MediaInputPayload:
 
     def reset(self, input_path: Path | None = None) -> None:
         """Reset all fields to initial state."""
+        self.analysis_cache.clear()
         self.input_path = input_path
         self.media_type = None
         self.working_dir = None

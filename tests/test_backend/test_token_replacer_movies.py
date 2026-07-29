@@ -5,6 +5,7 @@ from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -135,6 +136,47 @@ def test_audio_codec_reads_the_conventions_file_once_per_instance(monkeypatch) -
     assert first == "TrueHD Atmos"
     assert second == "TrueHD Atmos"
     assert len(calls) == 1
+
+
+def test_resolution_detection_is_cached_per_scan_mode(monkeypatch) -> None:
+    calls: list[bool] = []
+
+    def counting_get_resolution(self, remove_scan: bool = False) -> str:
+        calls.append(remove_scan)
+        return "1080" if remove_scan else "1080p"
+
+    monkeypatch.setattr(
+        VideoResolutionAnalyzer, "get_resolution", counting_get_resolution
+    )
+
+    replacer = _movie_replacer()
+    assert replacer._detect_resolution(replacer.media_info_obj, True) == "1080"
+    assert replacer._detect_resolution(replacer.media_info_obj, True) == "1080"
+    assert replacer._detect_resolution(replacer.media_info_obj, False) == "1080p"
+    assert replacer._detect_resolution(replacer.media_info_obj, False) == "1080p"
+
+    assert calls == [True, False]
+
+
+def test_resolution_cache_is_shared_across_replacers(monkeypatch) -> None:
+    calls: list[bool] = []
+
+    def counting_get_resolution(self, remove_scan: bool = False) -> str:
+        calls.append(remove_scan)
+        return "1080" if remove_scan else "1080p"
+
+    monkeypatch.setattr(VideoResolutionAnalyzer, "get_resolution", counting_get_resolution)
+
+    # TokenReplacer instances share the cache through their common payload;
+    # callers do not need to thread a cache through every renderer call.
+    EXAMPLE_MEDIA_INPUT_PAYLOAD.analysis_cache.clear()
+    first = _movie_replacer()
+    second = _movie_replacer()
+
+    assert first._detect_resolution(first.media_info_obj, True) == "1080"
+    assert second._detect_resolution(second.media_info_obj, True) == "1080"
+    assert calls == [True]
+    EXAMPLE_MEDIA_INPUT_PAYLOAD.analysis_cache.clear()
 
 
 def test_audio_codec_tokens_split_atmos_out() -> None:

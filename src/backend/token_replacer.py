@@ -2892,11 +2892,20 @@ class TokenReplacer:
         resolution = str(self.guess_name.get("screen_size", ""))
 
         if mi_obj:
+            cached_resolution = self.media_input_obj.analysis_cache.get_resolution(
+                mi_obj, remove_scan
+            )
+            if cached_resolution is not None:
+                return cached_resolution
+
             detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
                 remove_scan
             )
             if detect_resolution:
                 resolution = detect_resolution
+            self.media_input_obj.analysis_cache.set_resolution(
+                mi_obj, remove_scan, resolution
+            )
 
         return resolution
 

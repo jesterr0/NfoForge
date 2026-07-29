@@ -26,6 +26,13 @@ def test_processing_context_binds_payload_globals() -> None:
     assert globals_["nf_media_input_payload"] is context.media_input
 
 
+def test_media_input_payloads_own_isolated_analysis_caches() -> None:
+    first = ProcessingContext()
+    second = ProcessingContext()
+
+    assert first.media_input.analysis_cache is not second.media_input.analysis_cache
+
+
 def test_factory_creates_isolated_engines() -> None:
     first = create_processing_context(_config_payload(), {})
     second = create_processing_context(_config_payload(), {})

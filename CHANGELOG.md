@@ -158,6 +158,8 @@
   - Program will look for a .env file beside executable/start_ui.py that accepts **LOG_LEVEL** \*(mainly used for debugging QT errors in dev)\_
 - All console logs (when program is ran in **debug**) will be output to stdout
 - Defensively handles log files clean up and is best effort (will log if any issues arise when attempting to clean up old runs)
+- Cached some lookups that are repeated during file processing that could spam logs with Resolution information when debugging is enabled.
+  - This should speed up the TokenReplacer ~30% when doing multiple files at a time.
 
 ### Fixed
 

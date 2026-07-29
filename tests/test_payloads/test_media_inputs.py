@@ -1,4 +1,7 @@
 from pathlib import Path
+from typing import cast
+
+from pymediainfo import MediaInfo
 
 from src.enums.media_type import MediaType
 from src.packages.custom_types import ComparisonPair
@@ -139,3 +142,13 @@ def test_apply_rename_mapping_leaves_unrenamed_entries_alone() -> None:
 
     assert payload.file_list == [NEW, untouched]
     assert payload.file_list_mediainfo[untouched] == "mi-extra"
+
+
+def test_reset_clears_cached_media_analysis() -> None:
+    payload = _movie_payload()
+    media_info = cast(MediaInfo, object())
+    payload.analysis_cache.set_resolution(media_info, False, "1080p")
+
+    payload.reset()
+
+    assert payload.analysis_cache.get_resolution(media_info, False) is None
