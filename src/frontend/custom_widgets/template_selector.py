@@ -43,6 +43,7 @@ from src.frontend.global_signals import GSigs
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.sandbox_wizard import SandboxMainWindow
 from src.logger.nfo_forge_logger import LOG
+from src.payloads.series import build_series_release_info
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -590,11 +591,19 @@ class TemplateSelector(QWidget):
 
             nfo = ""
             try:
+                release_info = build_series_release_info(self.context.media_input)
                 token_replacer = TokenReplacer(
                     media_input_obj=self.context.media_input,
                     jinja_engine=self.context.jinja_engine,
                     token_string=self.old_text,
                     media_search_obj=self.context.media_search,
+                    season_number=release_info.season,
+                    season_end=release_info.season_end,
+                    episode_number=(
+                        release_info.episode_start if not release_info.is_pack else None
+                    ),
+                    episode_format=release_info.episode_format,
+                    multi_episode_style=self.config.settings.series.multi_episode_style,
                     releasers_name=self.config.settings.general.releasers_name,
                     dummy_screen_shots=False
                     if self.context.shared_data.url_data

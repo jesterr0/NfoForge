@@ -1,8 +1,13 @@
+from copy import deepcopy
 from pathlib import Path
 import re
 
 import pytest
 
+from src.backend.utils.example_parsed_series_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD,
+    EXAMPLE_SEARCH_PAYLOAD,
+)
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
@@ -192,6 +197,24 @@ def test_warning_color_comes_from_the_caller(
 
     applied = selector.text_edit.highlighter.patterns_colors
     assert applied[-1].color.lower() == "#00ff00"
+
+
+def test_series_preview_fills_the_season_number_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.context = ProcessingContext(
+        media_input=deepcopy(EXAMPLE_MEDIA_INPUT_PAYLOAD),
+        media_search=deepcopy(EXAMPLE_SEARCH_PAYLOAD),
+    )
+    selector.template_combo.addItem("series_preview")
+    selector.template_combo.setCurrentText("series_preview")
+    selector.text_edit.setPlainText("Season={{ season_number }}")
+    selector.preview_btn.setChecked(True)
+
+    selector.preview_template()
+
+    assert selector.text_edit.toPlainText() == "Season=1"
 
 
 def test_status_message_is_unchanged_when_everything_resolves() -> None:
