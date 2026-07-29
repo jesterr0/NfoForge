@@ -3,6 +3,7 @@ import json
 import logging
 from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
+import os
 from pathlib import Path
 import sys
 from typing import Any, TextIO
@@ -57,7 +58,7 @@ class Logger:
 
         # console handler (print to console)
         if self.console_handler is None and self.to_console:
-            self.console_handler = logging.StreamHandler()
+            self.console_handler = logging.StreamHandler(sys.stdout)
             self.console_handler.setFormatter(
                 logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             )
@@ -171,4 +172,8 @@ class Logger:
 _date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _short_uuid = shortuuid.uuid()[:7]
 _log_path = RUNTIME_DIR / "logs" / f"nfoforge_{_date_time_str}_{_short_uuid}.log"
-LOG = Logger(_log_path, to_console=True if "debug" in sys.executable.lower() else False)
+debug_env = str(os.environ.get("LOG_LEVEL", "")).lower()
+LOG = Logger(
+    _log_path,
+    to_console=True if "debug" in (sys.executable.lower(), debug_env) else False,
+)
