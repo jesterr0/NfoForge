@@ -5,6 +5,7 @@ from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
+import re
 import sys
 from typing import Any, TextIO
 
@@ -14,6 +15,11 @@ from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.logging_settings import DebugDataType, LogLevel, LogSource
 from src.exceptions import DebugDumpError
 from src.version import __version__, program_name
+
+_LOG_FILENAME_PATTERN = re.compile(
+    r"^nfoforge_(?P<timestamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_[^.]+\.log$"
+)
+_LOG_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
 
 class Logger:
@@ -97,21 +103,49 @@ class Logger:
         self.logger.setLevel(log_level.value)
 
     def clean_up_logs(self, max_logs: int) -> None:
-        log_files = list(self.log_file.parent.glob("*.log"))
-        total_files = len(log_files)
+        """Remove old per-run logs without touching diagnostic log files.
 
-        # sort log files by extracting the timestamp part of the filename
-        log_files.sort(
-            key=lambda f: datetime.strptime(
-                f.name.split("_")[1] + "_" + f.name.split("_")[2], "%Y-%m-%d_%H-%M-%S"
-            )
-        )
+        Session logs are named ``nfoforge_<timestamp>_<id>.log``.  The crash
+        dump is intentionally stored beside them as ``crash.log`` and must not
+        be included in this retention count.  Invalid or incomplete filenames
+        are ignored rather than preventing startup from completing.
+        """
+        if max_logs < 1:
+            # Keep the active log alive even if an old/hand-edited config has a
+            # zero retention value. The settings UI already requires at least
+            # ten files, but this also protects legacy configurations.
+            return
 
-        if total_files > max_logs:
-            files_to_delete = log_files[: total_files - max_logs]
+        log_files: list[tuple[datetime, Path]] = []
+        for candidate in self.log_file.parent.glob("nfoforge_*.log"):
+            timestamp = self._parse_log_timestamp(candidate)
+            if timestamp is not None:
+                log_files.append((timestamp, candidate))
 
-            for del_file in files_to_delete:
-                del_file.unlink()
+        log_files.sort(key=lambda item: (item[0], item[1].name))
+        files_to_delete = log_files[:-max_logs]
+
+        for _, log_file in files_to_delete:
+            try:
+                log_file.unlink()
+            except OSError as error:
+                # Cleanup is best-effort: another NfoForge instance or an
+                # antivirus scanner may briefly hold a file open on Windows.
+                self.warning(
+                    self.LOG_SOURCE.FE,
+                    f"Could not remove old log file {log_file}: {error}",
+                )
+
+    @staticmethod
+    def _parse_log_timestamp(log_file: Path) -> datetime | None:
+        match = _LOG_FILENAME_PATTERN.fullmatch(log_file.name)
+        if match is None:
+            return None
+
+        try:
+            return datetime.strptime(match.group("timestamp"), _LOG_TIMESTAMP_FORMAT)
+        except ValueError:
+            return None
 
     def dump_debug_data(
         self, file_output: Path, debug_type: DebugDataType, data: str | dict[str, Any]

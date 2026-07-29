@@ -157,6 +157,7 @@
 - Now logs all other QT messages to debug logging
   - Program will look for a .env file beside executable/start_ui.py that accepts **LOG_LEVEL** \*(mainly used for debugging QT errors in dev)\_
 - All console logs (when program is ran in **debug**) will be output to stdout
+- Defensively handles log files clean up and is best effort (will log if any issues arise when attempting to clean up old runs)
 
 ### Fixed
 
