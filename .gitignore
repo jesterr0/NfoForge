@@ -8,6 +8,7 @@ scraps/
 config.toml
 custom-pyinstaller/
 dev_scripts/
+.env
 *.exe
 *.csv
 runtime/apps/
