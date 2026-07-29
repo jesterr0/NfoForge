@@ -154,6 +154,8 @@
   - Attempts to raise above all other windows on launch
   - All buttons now use pointed hand cursor
   - Config selection/button control has been moved to the bottom above the status bar
+- Now logs all other QT messages to debug logging
+  - Program will look for a .env file beside executable/start_ui.py that accepts **LOG_LEVEL** \*(mainly used for debugging QT errors in dev)\_
 
 ### Fixed
 

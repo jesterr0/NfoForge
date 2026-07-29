@@ -1,9 +1,19 @@
 # relevant documentation
 # https://doc.qt.io/qtforpython-6/index.html#
+
+# we're going to load all .env variables for dev purposes before any other module is called
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+from src.backend.utils.working_dir import CURRENT_DIR, IS_FROZEN, RUNTIME_DIR
+
+load_dotenv(CURRENT_DIR / ".env", override=False)
+
+# remaining imports
 from datetime import datetime
 import faulthandler
 from multiprocessing import freeze_support as mp_freeze_support
-from pathlib import Path
 import sys
 import traceback
 
@@ -12,7 +22,6 @@ from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 import tomlkit
 
-from src.backend.utils.working_dir import IS_FROZEN, RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.exceptions import ConfigError, ConfigSchemaError
@@ -40,17 +49,20 @@ class NfoForge:
         self._setup_exception_hooks()
         self._setup_font()
 
+        self.splash_screen_loader: SplashScreenLoader | None = None
+        self.config: ConfigManager | None = None
+        self.main_window: MainWindow | None = None
+
         # show splash screen
         self.splash_screen = SplashScreen()
+        self.splash_screen.exit_app.connect(self.app.quit)
         self.splash_screen.show()
         self.splash_screen.updateMessageBox("Loading...")
 
         # initialize app
-        QTimer.singleShot(500, self._init_app)
-
-        self.splash_screen_loader: SplashScreenLoader | None = None
-        self.config: ConfigManager | None = None
-        self.main_window: MainWindow | None = None
+        self._startup_timer = QTimer(self.app, singleShot=True, interval=250)
+        self._startup_timer.timeout.connect(self._init_app)
+        self._startup_timer.start()
 
         sys.exit(self.app.exec())
 
@@ -295,7 +307,6 @@ class NfoForge:
             self.app.exit()
             return
 
-        self.splash_screen.close()
         self.main_window.show()
 
     def _get_available_configs(self) -> list[str] | None:
@@ -340,6 +351,8 @@ class NfoForge:
                 # survives, and is what a crash report is built from.
                 return
             self._error_message_box("QtError", message)
+        else:
+            LOG.debug(LOG.LOG_SOURCE.FE, f"Qt: {message}")
 
     def _error_message_box(
         self, title: str, message: str, traceback: str | None = None
