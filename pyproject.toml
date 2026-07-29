@@ -46,7 +46,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "basedpyright",
-    "mypy",
     "ruff>=0.9.6",
     "cython>=3.0.12",
     "pytest",
@@ -81,47 +80,13 @@ python_functions = ["test_*"]
 addopts = ["-v", "--tb=short"]
 
 [tool.basedpyright]
-include = ["src", "plugins"]
+include = ["src"]
 typeCheckingMode = "standard"
 
-[tool.mypy]
-python_version = "3.11"
-strict = true
-namespace_packages = true
-explicit_package_bases = true
-files = ["src"]
-follow_imports = "normal"
-ignore_missing_imports = false
-
-[[tool.mypy.overrides]]
-module = [
-    "auto_qpf",
-    "auto_qpf.*",
-    "babelfish",
-    "babelfish.*",
-    "bencode",
-    "deluge_web_client",
-    "deluge_web_client.*",
-    "flatbencode",
-    "guessit",
-    "guessit.*",
-    "imdbinfo",
-    "imdbinfo.*",
-    "oslex2",
-    "pyimgbox",
-    "qtawesome",
-    "regex",
-    "tvdb_v4_official",
-    "tvdb_v4_official.*",
-]
-ignore_missing_imports = true
-
 [tool.poe.tasks]
+typecheck = "basedpyright"
 lint = "ruff check ."
 lint-fix = "ruff check . --fix"
 format-check = "ruff format . --check"
 format-code = "ruff format ."
-format.sequence = [
-    "lint-fix",
-    "format-code",
-]
+format.sequence = ["lint-fix", "format-code"]

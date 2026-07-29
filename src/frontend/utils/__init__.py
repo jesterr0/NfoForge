@@ -171,18 +171,27 @@ def recursively_clear_layout(layout: QLayout) -> None:
     """Recursively clears layouts and deletes widgets as needed"""
     while layout.count():
         item = layout.takeAt(0)
+        if item is None:
+            continue
+
         widget = item.widget()
 
         if widget is not None:
             widget.deleteLater()
-        elif item.layout() is not None:
-            recursively_clear_layout(item.layout())
+            continue
+
+        child_layout = item.layout()
+        if child_layout is not None:
+            recursively_clear_layout(child_layout)
 
 
 def clear_stacked_widget(stacked_widget: QStackedWidget) -> None:
     """Recursively clears QStackedWidgets and deletes widgets as needed"""
     while stacked_widget.count():
         widget = stacked_widget.widget(0)
+        if widget is None:
+            break
+
         stacked_widget.removeWidget(widget)
         widget.deleteLater()
 
