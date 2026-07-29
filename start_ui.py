@@ -307,6 +307,7 @@ class NfoForge:
             self.app.exit()
             return
 
+        self.splash_screen.close()
         self.main_window.show()
 
     def _get_available_configs(self) -> list[str] | None:
