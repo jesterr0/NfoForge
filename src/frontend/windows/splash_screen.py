@@ -1,17 +1,20 @@
 from pathlib import Path
 import traceback
 
-from PySide6.QtCore import QObject, QThread, Signal, SignalInstance, Slot
-from PySide6.QtGui import QPixmap, QShowEvent, Qt
+from PySide6.QtCore import QObject, QSize, QThread, Signal, SignalInstance, Slot
+from PySide6.QtGui import QCursor, QGuiApplication, QPixmap, QShowEvent, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QVBoxLayout,
     QWidget,
 )
+import qtawesome as qta
 
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
@@ -97,7 +100,7 @@ config_push_button_style = """
                 background-color: #fb641a;
                 border: none;
                 border-radius: 3px;
-                padding: 6px 12px;
+                padding: 3px;
                 font-size: 11px;
                 font-weight: 500;
             }
@@ -189,14 +192,15 @@ class SplashScreenLoader(QThread):
 class SplashScreen(QWidget):
     update_message_box = Signal(str)
     config_selected = Signal(str)
+    # parent listens for us to call this to exit the application cleanly
+    exit_app = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.resize(426, 240)
+        self._set_open_screen()
         self.setCursor(Qt.CursorShape.BusyCursor)
-
-        self.update_message_box.connect(self.updateMessageBox)
 
         # config selector widgets (initially hidden)
         self.config_selector_frame: QFrame | None = None
@@ -238,10 +242,21 @@ class SplashScreen(QWidget):
         self.frame_layout.addWidget(self.mini_progress_bar, stretch=1)
 
         self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(0)
         self.main_layout.setContentsMargins(2, 2, 2, 2)
-        self.main_layout.addWidget(
-            self.message_box, stretch=1, alignment=Qt.AlignmentFlag.AlignBottom
+        self.main_layout.addSpacerItem(
+            QSpacerItem(
+                1, 1, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+            )
         )
+        self._create_config_selector_widgets()
+        self.main_layout.addWidget(
+            self.message_box, alignment=Qt.AlignmentFlag.AlignBottom
+        )
+
+        # best effort to ensure window is brought to the front of all other windows
+        self.raise_()
+        self.activateWindow()
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
@@ -302,27 +317,41 @@ class SplashScreen(QWidget):
         self.config_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         self.config_combo.view().setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.config_cont_btn = QPushButton("Continue", self)
+        self.config_cont_btn = QPushButton(self)
+        self.config_cont_btn.setIcon(qta.icon("ph.check-bold", color="#D3D3D3"))
+        self.config_cont_btn.setIconSize(QSize(20, 20))
         self.config_cont_btn.setStyleSheet(config_push_button_style)
+        self.config_cont_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.config_cont_btn.setToolTip("Continue with selected configuration")
         self.config_cont_btn.clicked.connect(self._on_continue_clicked)
 
-        config_lbl = QLabel(
-            '<span style="color: #D3D3D3; font-size: medium;">Config:</span>', self
-        )
+        self.cancel_btn = QPushButton(self)
+        self.cancel_btn.setIcon(qta.icon("ph.x-bold", color="#D3D3D3"))
+        self.cancel_btn.setIconSize(QSize(20, 20))
+        self.cancel_btn.setStyleSheet(config_push_button_style)
+        self.cancel_btn.setToolTip("Close application")
+        self.cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # exits the app when clicked
+        self.cancel_btn.clicked.connect(self.exit_app.emit)
 
         config_layout = QHBoxLayout(self.config_selector_frame)
         config_layout.setContentsMargins(4, 4, 4, 4)
-        config_layout.addWidget(config_lbl)
         config_layout.addWidget(self.config_combo, stretch=1)
         config_layout.addWidget(self.config_cont_btn)
+        config_layout.addWidget(self.cancel_btn)
 
         # add to main layout (insert above message box)
-        self.main_layout.insertWidget(0, self.config_selector_frame)
+        self.main_layout.insertWidget(
+            0,
+            self.config_selector_frame,
+            stretch=1,
+            alignment=Qt.AlignmentFlag.AlignBottom,
+        )
         self.config_selector_frame.hide()
 
     @Slot()
     def _on_continue_clicked(self) -> None:
-        """Handle continue button click"""
+        """Handle continue button click."""
         if self.config_combo and self.config_combo.currentText():
             selected_config = self.config_combo.currentText()
 
@@ -333,3 +362,12 @@ class SplashScreen(QWidget):
             self.setCursor(Qt.CursorShape.BusyCursor)
 
             self.config_selected.emit(selected_config)
+
+    def _set_open_screen(self) -> None:
+        """Open on active display based on mouse location and then primary screen."""
+        active_screen = (
+            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        )
+        self.move(active_screen.availableGeometry().center() - self.rect().center())
+
+        self.update_message_box.connect(self.updateMessageBox)

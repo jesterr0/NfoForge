@@ -146,6 +146,14 @@
 - Block/stop processing when media search is unavailable due to network issues/no internet
 - Handle where guessit can return two titles causing a runtime error with specific filenames
 - Added typed configurations for qBittorrent, Deluge, rTorrent, and Transmission
+- Improved the splash screen
+  - Startup time is a tad quicker
+  - The **Continue** button has been changed to a check icon
+  - Added a **Cancel** button that is an icon of X (to close the application instead of choosing a config if desired)
+  - Now opens up on your active monitor and falls back to the primary monitor
+  - Attempts to raise above all other windows on launch
+  - All buttons now use pointed hand cursor
+  - Config selection/button control has been moved to the bottom above the status bar
 
 ### Fixed
 
