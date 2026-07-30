@@ -125,7 +125,6 @@ class MediaInputPayload:
     working_dir: Path | None = None
     file_list: list[Path] = field(default_factory=list)
     file_list_mediainfo: dict[Path, MediaInfo] = field(default_factory=dict)
-    file_list_rename_map: dict[Path, Path] = field(default_factory=dict)
     comparison_pair: ComparisonPair | None = None
     series_episode_map: dict[Path, dict] | None = None
     series_episode_format: EpisodeFormat = EpisodeFormat.STANDARD
@@ -140,6 +139,9 @@ class MediaInputPayload:
         ...
 
     def require_working_dir(self) -> Path:
+        ...
+
+    def require_existing_media_paths(self, *, include_comparison: bool) -> None:
         ...
 
     def get_first_file(self, raise_error: bool = False) -> Path | None:

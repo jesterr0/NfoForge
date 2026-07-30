@@ -1,5 +1,9 @@
 from pathlib import Path
+from typing import cast
 
+from pymediainfo import MediaInfo
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QDialog
 import pytest
 
 from src.config.config import ConfigManager
@@ -74,3 +78,40 @@ def test_proper_reason_combo_line_edit_gets_its_own_placeholder(
     assert proper_line_edit is not repack_line_edit
     assert proper_line_edit.placeholderText() == page.REASON_STR
     assert repack_line_edit.placeholderText() == page.REASON_STR
+
+
+def test_confirmed_folder_and_file_rename_updates_payload_asynchronously(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_directory = tmp_path / "Old Movie"
+    source_directory.mkdir()
+    source = source_directory / "old.mkv"
+    source.write_text("data")
+    target_directory = tmp_path / "Movie.2020"
+    target = target_directory / "Movie.2020.mkv"
+
+    page = _make_movie_rename_page(tmp_path, monkeypatch, source)
+    page.context.media_input.input_path = source_directory
+    page.context.media_input.file_list_mediainfo = {source: cast(MediaInfo, object())}
+    page.context.media_input.working_dir = tmp_path / "work"
+    page._input_ext = ".mkv"
+    page.output_entry.setText("Movie.2020")
+
+    monkeypatch.setattr(page, "_name_validations", lambda: True)
+    monkeypatch.setattr(page, "_quality_validations", lambda: True)
+    monkeypatch.setattr(
+        "src.frontend.wizards.rename_encode.RenamePreviewDialog.exec",
+        lambda self: QDialog.DialogCode.Accepted,
+    )
+
+    assert page.validatePage() is False
+    for _ in range(80):
+        if not page._rename_operation.is_running:
+            break
+        QTest.qWait(25)
+
+    assert page._advance_after_rename is True
+    assert page.context.media_input.input_path == target_directory
+    assert page.context.media_input.file_list == [target]
+    assert target.is_file()
+    assert not source_directory.exists()

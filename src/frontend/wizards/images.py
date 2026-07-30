@@ -410,6 +410,19 @@ class ImagesPage(BaseWizardPage):
 
     @Slot()
     def _generate_images(self) -> None:
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=True
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Media Files Unavailable",
+                f"Image generation cannot start because its input paths are no "
+                f"longer valid:\n\n{error}",
+            )
+            return
+
         ss_mode = self.config.settings.screenshots.mode
         crop_mode = self.config.settings.screenshots.crop_mode
 
@@ -478,43 +491,63 @@ class ImagesPage(BaseWizardPage):
         if self.queued_worker is not None and self.queued_worker.isRunning():
             return
 
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=True
+            )
+            ss_mode, source_file_mi_obj, media_file_mi_obj, comparison_subs = (
+                self._generate_job_args()
+            )
+            self._set_image_directory()
+
+            subtitle_color = self.config.settings.screenshots.subtitle_color
+            subtitle_outline_color = (
+                self.config.settings.screenshots.subtitle_outline_color
+            )
+            sub_names = self._get_sub_names(comparison_subs)
+            sub_size = determine_sub_size(
+                media_file_mi_obj.video_tracks[0].height,
+                self.config.settings.screenshots.subtitle_height_720,
+                self.config.settings.screenshots.subtitle_height_1080,
+                self.config.settings.screenshots.subtitle_height_2160,
+            )
+            subtitle_alignment = self.config.settings.screenshots.subtitle_alignment
+        except (FileNotFoundError, KeyError, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Image Generation Setup Failed",
+                f"Could not prepare image generation:\n\n{error}",
+            )
+            return
+
         GSigs().main_window_set_disabled.emit(True)
         self.text_box.clear()
         self.thumbnail_listbox.clear()
         self._disable_generate_images_button()
         self._update_loading_state(False)
-
-        ss_mode, source_file_mi_obj, media_file_mi_obj, comparison_subs = (
-            self._generate_job_args()
-        )
         self._update_text_box(f"Starting image generation (Mode: {ss_mode}).")
 
-        self._set_image_directory()
-
-        subtitle_color = self.config.settings.screenshots.subtitle_color
-        subtitle_outline_color = self.config.settings.screenshots.subtitle_outline_color
-        sub_names = self._get_sub_names(comparison_subs)
-        sub_size = determine_sub_size(
-            media_file_mi_obj.video_tracks[0].height,
-            self.config.settings.screenshots.subtitle_height_720,
-            self.config.settings.screenshots.subtitle_height_1080,
-            self.config.settings.screenshots.subtitle_height_2160,
-        )
-        subtitle_alignment = self.config.settings.screenshots.subtitle_alignment
-
-        self._start_queued_worker(
-            ss_mode,
-            media_file_mi_obj,
-            source_file_mi_obj,
-            subtitle_color,
-            subtitle_outline_color,
-            sub_names,
-            sub_size,
-            subtitle_alignment,
-            crop_mode,
-            script_values,
-            re_sync,
-        )
+        try:
+            self._start_queued_worker(
+                ss_mode,
+                media_file_mi_obj,
+                source_file_mi_obj,
+                subtitle_color,
+                subtitle_outline_color,
+                sub_names,
+                sub_size,
+                subtitle_alignment,
+                crop_mode,
+                script_values,
+                re_sync,
+            )
+        except Exception as error:
+            self._complete_loading()
+            QMessageBox.critical(
+                self,
+                "Image Generation Setup Failed",
+                f"Could not start image generation:\n\n{error}",
+            )
 
     def _disable_generate_images_button(self) -> None:
         self.generate_images.setEnabled(False)

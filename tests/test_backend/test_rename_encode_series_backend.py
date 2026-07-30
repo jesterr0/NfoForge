@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
+from src.backend.rename_files import RenameExecutor, RenamePlan
 from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
@@ -153,16 +154,15 @@ def test_folder_rename_end_to_end_via_execute_renames(tmp_path: Path) -> None:
     relocated = RenameEncodeSeriesBackEnd.build_folder_rename_targets(
         input_path=src_dir, rename_map=rename_map, folder_name="Show.S01"
     )
-    mapping, updated_input = RenameEncodeSeriesBackEnd.execute_renames(
-        relocated, input_path=src_dir
-    )
+    result = RenameExecutor.execute(RenamePlan.build(relocated, input_path=src_dir))
 
     new_folder = tmp_path / "Show.S01"
     assert not src_dir.exists()
     assert (new_folder / "Show.S01E01.mkv").exists()
     assert (new_folder / "Show.S01E02.mkv").exists()
-    assert updated_input == new_folder
-    assert mapping == {
+    assert result.success is True
+    assert result.updated_input_path == new_folder
+    assert result.path_mapping == {
         ep1: new_folder / "Show.S01E01.mkv",
         ep2: new_folder / "Show.S01E02.mkv",
     }

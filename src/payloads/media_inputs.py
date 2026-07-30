@@ -19,8 +19,6 @@ class MediaInputPayload:
     working_dir: Path | None = None
     file_list: list[Path] = field(default_factory=list)  # all relevant files found
     file_list_mediainfo: dict[Path, MediaInfo] = field(default_factory=dict)
-    # maps original file input to renamed output
-    file_list_rename_map: dict[Path, Path] = field(default_factory=dict)
     comparison_pair: ComparisonPair | None = None
 
     # series stuff
@@ -86,6 +84,55 @@ class MediaInputPayload:
         if not mi or (mi and not isinstance(mi, MediaInfo)):
             raise RuntimeError(f"Failed to get MediaInfo object for '{fp}'")
         return mi
+
+    def require_existing_media_paths(self, *, include_comparison: bool) -> None:
+        """Require filesystem and MediaInfo paths needed by downstream work."""
+        input_path = self.require_input_path()
+        if not input_path.exists():
+            raise FileNotFoundError(f"Media input no longer exists: {input_path}")
+
+        missing_files = [path for path in self.file_list if not path.is_file()]
+        if missing_files:
+            raise FileNotFoundError(
+                "Media file(s) no longer exist: "
+                + ", ".join(str(path) for path in missing_files)
+            )
+
+        missing_mediainfo = [
+            path for path in self.file_list if path not in self.file_list_mediainfo
+        ]
+        if missing_mediainfo:
+            raise RuntimeError(
+                "MediaInfo is missing for: "
+                + ", ".join(str(path) for path in missing_mediainfo)
+            )
+
+        if not include_comparison or not self.comparison_pair:
+            return
+
+        comparison_paths = (
+            self.comparison_pair.source,
+            self.comparison_pair.media,
+        )
+        missing_comparison = [path for path in comparison_paths if not path.is_file()]
+        if missing_comparison:
+            raise FileNotFoundError(
+                "Comparison file(s) no longer exist: "
+                + ", ".join(str(path) for path in missing_comparison)
+            )
+
+        missing_comparison_mediainfo = [
+            path for path in comparison_paths if path not in self.file_list_mediainfo
+        ]
+        if missing_comparison_mediainfo:
+            raise RuntimeError(
+                "MediaInfo is missing for comparison file(s): "
+                + ", ".join(str(path) for path in missing_comparison_mediainfo)
+            )
+
+        script = self.comparison_pair.script
+        if script and not script.is_file():
+            raise FileNotFoundError(f"Comparison script no longer exists: {script}")
 
     def apply_rename_mapping(
         self,
@@ -153,13 +200,15 @@ class MediaInputPayload:
             self.comparison_pair = self.comparison_pair._replace(
                 source=remap_path(self.comparison_pair.source),
                 media=remap_path(self.comparison_pair.media),
+                script=(
+                    remap_path(self.comparison_pair.script)
+                    if self.comparison_pair.script
+                    else None
+                ),
             )
 
         if updated_input_path:
             self.input_path = updated_input_path
-
-        # renames are complete
-        self.file_list_rename_map.clear()
 
     def reset(self, input_path: Path | None = None) -> None:
         """Reset all fields to initial state."""
@@ -169,7 +218,6 @@ class MediaInputPayload:
         self.working_dir = None
         self.file_list.clear()
         self.file_list_mediainfo.clear()
-        self.file_list_rename_map.clear()
         self.comparison_pair = None
         self.series_episode_map = None
         self.series_episode_format = EpisodeFormat.STANDARD

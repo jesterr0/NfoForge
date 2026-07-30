@@ -99,10 +99,10 @@ class RenamePreviewDialog(QDialog):
         file_renames: dict[Path, Path] = {}
 
         for src, dest in rename_map.items():
-            if src.parent != dest.parent:
+            if str(src.parent.absolute()) != str(dest.parent.absolute()):
                 # folder rename detected
                 folder_renames[src.parent] = dest.parent
-            if src != dest:
+            if src.name != dest.name:
                 # file rename
                 file_renames[src] = dest
 

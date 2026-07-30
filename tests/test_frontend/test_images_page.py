@@ -1,5 +1,7 @@
 from pathlib import Path
+from typing import cast
 
+from pymediainfo import MediaInfo
 import pytest
 
 from src.config.config import ConfigManager
@@ -80,11 +82,17 @@ def _make_images_page(
 
     encode = tmp_path / "Movie.2020.1080p.BluRay.x264-GRP.mkv"
     source = tmp_path / "Movie.2020.1080p.remux.mkv"
+    encode.touch()
+    source.touch()
 
     media_input = MediaInputPayload(
         input_path=encode,
         media_type=MediaType.MOVIE,
         file_list=[encode],
+        file_list_mediainfo={
+            encode: cast(MediaInfo, object()),
+            source: cast(MediaInfo, object()),
+        },
         comparison_pair=(
             ComparisonPair(source=source, media=encode, script=script)
             if comparison

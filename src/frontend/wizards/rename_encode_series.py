@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QEventLoop, QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -27,8 +27,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.backend.rename_encode import RenameEncodeBackEnd
 from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
+from src.backend.rename_files import RenamePlan, RenameResult
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
@@ -46,8 +46,8 @@ from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialo
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import build_h_line
-from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from src.frontend.utils.rename_operation import RenameOperationController
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
 from src.payloads.series import build_series_release_info
@@ -91,10 +91,9 @@ class RenameEncodeSeries(BaseWizardPage):
         self._token_window: QWidget | None = None
         self._overridden_tokens: set[str] = set()
 
-        # rename loop vars
-        self._rename_loop: QEventLoop | None = None
-        self._rename_mapping: dict[Path, Path] | None = None
-        self._updated_input_path: Path | None = None
+        self._rename_operation = RenameOperationController(self)
+        self._rename_operation.completed.connect(self._on_rename_completed)
+        self._advance_after_rename = False
 
         # Create main scroll area for the entire page
         main_scroll = QScrollArea(self)
@@ -351,6 +350,12 @@ class RenameEncodeSeries(BaseWizardPage):
 
     def validatePage(self) -> bool:
         """Validate the page and perform batch episode renaming."""
+        if self._advance_after_rename:
+            self._advance_after_rename = False
+            return self._complete_validation()
+        if self._rename_operation.is_running:
+            return False
+
         media_files = self.context.media_input.file_list
 
         if not media_files:
@@ -385,6 +390,7 @@ class RenameEncodeSeries(BaseWizardPage):
             )
             return False
 
+        rename_map: dict[Path, Path] = {}
         for (
             media_file,
             media_data,
@@ -412,9 +418,7 @@ class RenameEncodeSeries(BaseWizardPage):
                 # Get extension from original file
                 ext = media_file.suffix
                 renamed_output = media_file.parent / f"{renamed_file.stem}{ext}"
-                self.context.media_input.file_list_rename_map[media_file] = (
-                    renamed_output
-                )
+                rename_map[media_file] = renamed_output
 
         # rename the opened folder to a season-pack name, mirroring the movie
         # flow. build_folder_rename_targets only relocates the map when a
@@ -435,115 +439,106 @@ class RenameEncodeSeries(BaseWizardPage):
             )
             if folder_path:
                 folder_name = folder_path.name
-        self.context.media_input.file_list_rename_map = (
-            self.backend.build_folder_rename_targets(
-                input_path=self.context.media_input.input_path,
-                rename_map=self.context.media_input.file_list_rename_map,
-                folder_name=folder_name,
-            )
+        rename_map = self.backend.build_folder_rename_targets(
+            input_path=self.context.media_input.input_path,
+            rename_map=rename_map,
+            folder_name=folder_name,
         )
 
         # Check if there are any effective renames
         effective_renames = {
             src: trg
-            for src, trg in self.context.media_input.file_list_rename_map.items()
-            if src != trg
+            for src, trg in rename_map.items()
+            if str(src.absolute()) != str(trg.absolute())
         }
 
         if not effective_renames:
-            # No renames needed
-            self.context.media_input.file_list_rename_map.clear()
-        else:
-            preview_dialog = RenamePreviewDialog(self)
-            preview_dialog.set_renames(self.context.media_input.file_list_rename_map)
+            return self._complete_validation()
 
-            if preview_dialog.exec() != QDialog.DialogCode.Accepted:
-                return False
+        try:
+            plan = RenamePlan.build(
+                effective_renames,
+                self.context.media_input.input_path,
+            )
+        except ValueError as error:
+            QMessageBox.warning(self, "Invalid Rename", str(error))
+            return False
 
-            # Execute the renames
-            try:
-                GSigs().main_window_set_disabled.emit(True)
-                GSigs().main_window_update_status_tip.emit("Renaming episodes...", 0)
+        preview_dialog = RenamePreviewDialog(self)
+        preview_dialog.set_renames(plan.file_targets)
+        if preview_dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
 
-                # Start an event loop to wait for rename completion
-                self._rename_loop = QEventLoop(self)
+        self._rename_operation.start(plan, "Renaming episodes...")
+        return False
 
-                worker = GeneralWorker(
-                    func=RenameEncodeBackEnd.execute_renames,
-                    parent=self,
-                    file_list_rename_map=self.context.media_input.file_list_rename_map,
-                    input_path=self.context.media_input.input_path,
-                )
-                worker.job_finished.connect(self._on_rename_response)
-                worker.job_failed.connect(self._on_rename_failed)
-                worker.start()
+    @Slot(object)
+    def _on_rename_completed(self, result: object) -> None:
+        if not isinstance(result, RenameResult):
+            QMessageBox.critical(
+                self, "Rename Failed", "The rename operation returned invalid data."
+            )
+            return
 
-                # Wait for response
-                self._rename_loop.exec()
+        current_input = self.context.media_input.input_path
+        if result.path_mapping or result.updated_input_path != current_input:
+            self.context.media_input.apply_rename_mapping(
+                result.path_mapping,
+                result.updated_input_path,
+            )
 
-                # Apply renames to payload
-                if not self._rename_mapping:
-                    return False
+        if not result.success:
+            message = result.message or "The rename operation failed."
+            if result.rollback_complete:
+                QMessageBox.warning(self, "Rename Failed", message)
+            else:
+                QMessageBox.critical(self, "Rename Requires Attention", message)
+            return
 
-                # Re-point file_list, file_list_mediainfo, series_episode_map,
-                # the comparison pair and input_path at the renamed files
-                self.context.media_input.apply_rename_mapping(
-                    self._rename_mapping, self._updated_input_path
-                )
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=True
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Rename Verification Failed",
+                f"The files were renamed, but the updated media paths could not "
+                f"be verified:\n\n{error}",
+            )
+            return
 
-            except Exception as e:
-                QMessageBox.critical(
-                    self,
-                    "Rename Failed",
-                    f"Failed to rename files:\n\n{str(e)}",
-                )
-                return False
+        self._advance_after_rename = True
+        GSigs().wizard_next.emit()
 
-            finally:
-                GSigs().main_window_set_disabled.emit(False)
-                GSigs().main_window_clear_status_tip.emit()
-                self._rename_loop = None
+    def _complete_validation(self) -> bool:
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=True
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.warning(self, "Media Files Unavailable", str(error))
+            return False
 
-        # Update config shared data with detected edition
         edition_combo_text = self.edition_combo.currentText()
         if edition_combo_text:
             self.context.shared_data.dynamic_data["edition_override"] = (
                 edition_combo_text
             )
 
-        # Update config shared data with frame size
         frame_size_text = self.frame_size_combo.currentText()
         if frame_size_text:
             self.context.shared_data.dynamic_data["frame_size_override"] = (
                 frame_size_text
             )
 
-        # Update config shared data with override tokens
         self.context.shared_data.dynamic_data["override_tokens"] = (
             self.backend.override_tokens
         )
-
-        # Update re-release reason tokens
         self._re_release_reason_tokens_update()
-
-        # Close token window
         self._close_token_window()
-
         super().validatePage()
         return True
-
-    @Slot(tuple)
-    def _on_rename_response(
-        self, response: tuple[dict[Path, Path], Path | None]
-    ) -> None:
-        self._rename_mapping, self._updated_input_path = response
-        if not self._rename_loop:
-            raise RuntimeError("There was a critical error, runtime loop is missing")
-        self._rename_loop.quit()
-
-    @Slot(str)
-    def _on_rename_failed(self, failure: str) -> None:
-        QMessageBox.warning(self, "Error", failure)
 
     # All the methods from RenameEncode, adapted for series
     def _pre_load_attribute_combos(self, filename: str) -> None:

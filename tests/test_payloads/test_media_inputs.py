@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import cast
 
 from pymediainfo import MediaInfo
+import pytest
 
 from src.enums.media_type import MediaType
 from src.packages.custom_types import ComparisonPair
@@ -18,7 +19,6 @@ def _movie_payload() -> MediaInputPayload:
         media_type=MediaType.MOVIE,
         file_list=[OLD],
         file_list_mediainfo={OLD: "mi-encode", SOURCE: "mi-source"},  # type: ignore[dict-item]
-        file_list_rename_map={OLD: NEW},
         comparison_pair=ComparisonPair(source=SOURCE, media=OLD, script=None),
     )
 
@@ -30,7 +30,6 @@ def test_apply_rename_mapping_updates_file_list_and_mediainfo() -> None:
 
     assert payload.file_list == [NEW]
     assert payload.file_list_mediainfo == {NEW: "mi-encode", SOURCE: "mi-source"}
-    assert payload.file_list_rename_map == {}
 
 
 def test_apply_rename_mapping_repoints_comparison_pair_media() -> None:
@@ -95,7 +94,6 @@ def test_apply_rename_mapping_updates_series_episode_map_and_pair() -> None:
         media_type=MediaType.SERIES,
         file_list=[old_one, old_two],
         file_list_mediainfo={old_one: "mi-1", old_two: "mi-2", source: "mi-source"},  # type: ignore[dict-item]
-        file_list_rename_map={old_one: new_one, old_two: new_two},
         comparison_pair=ComparisonPair(source=source, media=old_one, script=None),
         series_episode_map={
             old_one: {"season": 1, "episode": 1},
@@ -154,6 +152,7 @@ def test_apply_rename_mapping_repoints_paths_under_renamed_input_folder(
 
     media = old_dir / "Show.S01E01.mkv"
     source = old_dir / "Show.S01E01.remux.mkv"
+    script = old_dir / "compare.vpy"
     payload = MediaInputPayload(
         input_path=old_dir,
         media_type=MediaType.SERIES,
@@ -162,7 +161,7 @@ def test_apply_rename_mapping_repoints_paths_under_renamed_input_folder(
             media: "mi-media",
             source: "mi-source",
         },  # type: ignore[dict-item]
-        comparison_pair=ComparisonPair(source=source, media=media, script=None),
+        comparison_pair=ComparisonPair(source=source, media=media, script=script),
         series_episode_map={media: {"season": 1, "episode": 1}},
     )
 
@@ -182,6 +181,35 @@ def test_apply_rename_mapping_repoints_paths_under_renamed_input_folder(
     assert payload.comparison_pair
     assert payload.comparison_pair.media == new_media
     assert payload.comparison_pair.source == new_dir / source.name
+    assert payload.comparison_pair.script == new_dir / script.name
+
+
+def test_require_existing_media_paths_accepts_complete_payload(
+    tmp_path: Path,
+) -> None:
+    media = tmp_path / "movie.mkv"
+    media.write_text("data")
+    payload = MediaInputPayload(
+        input_path=media,
+        media_type=MediaType.MOVIE,
+        file_list=[media],
+        file_list_mediainfo={media: cast(MediaInfo, object())},
+    )
+
+    payload.require_existing_media_paths(include_comparison=False)
+
+
+def test_require_existing_media_paths_rejects_missing_media(tmp_path: Path) -> None:
+    media = tmp_path / "missing.mkv"
+    payload = MediaInputPayload(
+        input_path=media,
+        media_type=MediaType.MOVIE,
+        file_list=[media],
+        file_list_mediainfo={media: cast(MediaInfo, object())},
+    )
+
+    with pytest.raises(FileNotFoundError, match="Media input no longer exists"):
+        payload.require_existing_media_paths(include_comparison=False)
 
 
 def test_reset_clears_cached_media_analysis() -> None:

@@ -353,6 +353,19 @@ class ProcessPage(BaseWizardPage):
 
     @Slot()
     def process_jobs(self) -> None:
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=False
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Media Files Unavailable",
+                f"Processing cannot start because its input paths are no longer "
+                f"valid:\n\n{error}",
+            )
+            return
+
         # get paths and other things from the media input payload
         detected_input = self.context.media_input.require_input_path()
         LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
