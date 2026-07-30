@@ -82,8 +82,8 @@ class QueuedWorker(QThread):
         source_file: Path | None = None,
         source_file_mi_obj: MediaInfo | None = None,
         parent: QObject | None = None,
-        cache_source_index: bool = False,
         index_cache_root: Path | None = None,
+        protected_media_root: Path | None = None,
     ) -> None:
         """
         Generate images and emit progress signals.
@@ -111,10 +111,10 @@ class QueuedWorker(QThread):
             progress_signal (SignalInstance[str, float]): The signal used to emit progress updates.
             source_file (Optional[Path]): The input file path for the source.
             source_file_mi_obj (Optional[Path]): MediaInfo object of the input file.
-            cache_source_index (bool): Keep the source index out of the selected
-                upload tree when the source is part of it.
             index_cache_root (Optional[Path]): Base directory for FrameForge's
                 private index cache.
+            protected_media_root (Optional[Path]): Upload tree that the private
+                FrameForge encode index must remain outside.
         """
         super().__init__(parent=parent)
         self.backend = backend
@@ -140,8 +140,8 @@ class QueuedWorker(QThread):
         self.progress_signal = progress_signal
         self.source_file = source_file
         self.source_file_mi_obj = source_file_mi_obj
-        self.cache_source_index = cache_source_index
         self.index_cache_root = index_cache_root
+        self.protected_media_root = protected_media_root
 
     def run(self) -> None:
         try:
@@ -233,8 +233,8 @@ class QueuedWorker(QThread):
             self.frame_forge_path,
             self.ffmpeg_path,
             self.progress_signal,
-            cache_source_index=self.cache_source_index,
             index_cache_root=self.index_cache_root,
+            protected_media_root=self.protected_media_root,
         )
         self.job_finished.emit(job)
 
@@ -598,23 +598,10 @@ class ImagesPage(BaseWizardPage):
             )
         self.image_dir = self.context.media_input.working_dir / "images"
 
-    def _source_is_in_input_tree(self) -> bool:
-        """Return whether the comparison source is part of the upload input."""
-        source = self.source_file
-        input_path = self.context.media_input.input_path
-        if not source or not input_path:
-            return False
-
-        try:
-            source_resolved = source.resolve()
-            input_resolved = input_path.resolve()
-            if input_resolved.is_file():
-                return source_resolved == input_resolved
-            return input_resolved.is_dir() and source_resolved.is_relative_to(
-                input_resolved
-            )
-        except OSError:
-            return False
+    def _protected_media_root(self) -> Path:
+        """Return the directory tree that must remain free of encode indexes."""
+        input_path = self.context.media_input.require_input_path()
+        return input_path if input_path.is_dir() else input_path.parent
 
     def _get_sub_names(self, comparison_subs: bool) -> SubNames | None:
         if comparison_subs:
@@ -673,8 +660,8 @@ class ImagesPage(BaseWizardPage):
             image_plugin=self.config.settings.screenshots.image_plugin,
             source_file=self.source_file,
             source_file_mi_obj=source_file_mi_obj,
-            cache_source_index=self._source_is_in_input_tree(),
             index_cache_root=self.config.settings.general.working_dir,
+            protected_media_root=self._protected_media_root(),
         )
         self.queued_worker.job_finished.connect(self._generate_finished)
         self.queued_worker.job_failed.connect(self._generate_failed)

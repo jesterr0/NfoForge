@@ -14,6 +14,23 @@ from src.logger.nfo_forge_logger import LOG
 from src.payloads.trackers import TrackerInfo
 from src.version import __version__, program_name
 
+INDEX_SIDECAR_SUFFIXES = frozenset({".lwi", ".ffindex"})
+INDEX_SIDECAR_GLOBS = ("*.lwi", "*.ffindex", "*.LWI", "*.FFINDEX")
+
+
+def _validate_torrent_contents(torrent: Torrent) -> None:
+    """Ensure private media indexes never become torrent payload files."""
+    index_files = [
+        str(file)
+        for file in torrent.files
+        if Path(str(file)).suffix.casefold() in INDEX_SIDECAR_SUFFIXES
+    ]
+    if index_files:
+        raise ValueError(
+            "Generated torrent contains excluded index sidecar(s): "
+            + ", ".join(index_files)
+        )
+
 
 def generate_torrent(
     tracker_info: TrackerInfo,
@@ -29,8 +46,10 @@ def generate_torrent(
         comment=tracker_info.comments if tracker_info.comments else None,
         piece_size_max=max_piece_size,
         created_by=f"{program_name} v{__version__}",
+        exclude_globs=INDEX_SIDECAR_GLOBS,
     )
     torrent.generate(callback=cb, interval=0)
+    _validate_torrent_contents(torrent)
     return torrent
 
 
@@ -103,6 +122,8 @@ def mkbrr_generate_torrent(
         cmd_line.extend(("--source", tracker_info.source))
     if tracker_info.comments:
         cmd_line.extend(("--comment", tracker_info.comments))
+    for pattern in INDEX_SIDECAR_GLOBS:
+        cmd_line.extend(("--exclude", pattern))
 
     LOG.debug(LOG.LOG_SOURCE.BE, f"mkbrr command: {' '.join(cmd_line)}")
 
@@ -135,7 +156,9 @@ def mkbrr_generate_torrent(
             job.wait()
             return_code = job.returncode
             if result is True and return_code == 0:
-                return Torrent.read(output_path)
+                torrent = Torrent.read(output_path)
+                _validate_torrent_contents(torrent)
+                return torrent
             else:
                 raise MkbrrTorrentError(f"{result} (code: {return_code})")
         except Exception as e:

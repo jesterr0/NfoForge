@@ -961,14 +961,13 @@ class FrameForgeImageGeneration(ImageGeneration):
         ffmpeg_path: Path | None,
         signal: SignalInstance,
         index_cache_root: Path | None = None,
-        cache_source_index: bool = False,
+        protected_media_root: Path | None = None,
     ) -> int:
         index_cache = FrameForgeIndexCache(index_cache_root)
         index_paths = index_cache.prepare(
-            source_input,
             media_input,
             indexer,
-            cache_source=cache_source_index,
+            protected_media_root=protected_media_root,
         )
         generate_args = [
             str(frame_forge_path),
@@ -984,12 +983,10 @@ class FrameForgeImageGeneration(ImageGeneration):
 
         generate_args.extend(["--indexer", str(indexer)])
         generate_args.extend(["--img-lib", str(image_plugin)])
-        if index_paths.source_index:
-            generate_args.extend(["--source-index-path", str(index_paths.source_index)])
         generate_args.extend(
             [
                 "--encode-index-path",
-                str(index_paths.encode_index),
+                str(index_paths.path),
             ]
         )
 
@@ -1114,12 +1111,12 @@ class FrameForgeImageGeneration(ImageGeneration):
         try:
             result = self.run_frame_forge_command(generate_args, signal)
         except Exception:
-            index_cache.discard_uncommitted(index_paths)
+            index_cache.discard_failed(index_paths)
             raise
         if result == 0:
-            index_cache.mark_success(index_paths, source_input, media_input, indexer)
+            index_cache.mark_success(index_paths)
         else:
-            index_cache.discard_uncommitted(index_paths)
+            index_cache.discard_failed(index_paths)
         return result
 
     @staticmethod
@@ -1250,7 +1247,7 @@ class ImagesBackEnd:
         ffmpeg_path: Path | None,
         signal: SignalInstance,
         index_cache_root: Path | None = None,
-        cache_source_index: bool = False,
+        protected_media_root: Path | None = None,
     ) -> int:
         """
         Generate comparison images utilizing FrameForge and emit progress signals.
@@ -1278,8 +1275,8 @@ class ImagesBackEnd:
             ffmpeg_path (Optional[Path]): Path to FFMPEG executable.
             signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
             index_cache_root (Optional[Path]): Injectable base directory for FrameForge indexes.
-            cache_source_index (bool): Keep the source index in the private cache when
-                the source is part of the selected upload tree.
+            protected_media_root (Optional[Path]): Upload tree that the private
+                FrameForge encode index must remain outside.
 
         """
         return FrameForgeImageGeneration().generate_images(
@@ -1305,5 +1302,5 @@ class ImagesBackEnd:
             ffmpeg_path=ffmpeg_path,
             signal=signal,
             index_cache_root=index_cache_root,
-            cache_source_index=cache_source_index,
+            protected_media_root=protected_media_root,
         )
