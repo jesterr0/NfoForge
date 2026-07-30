@@ -40,3 +40,22 @@ def test_execute_renames_renames_parent_directory_and_file(tmp_path: Path) -> No
     assert target_file.exists()
     assert rename_mapping == {src_file: target_file}
     assert updated_input_path == trg_dir
+
+
+def test_execute_renames_records_file_moved_by_parent_only(tmp_path: Path) -> None:
+    """A folder-only move must still update the payload's file paths."""
+    src_dir = tmp_path / "Show Season 1"
+    src_dir.mkdir()
+    src_file = src_dir / "Show.S01E01.mkv"
+    src_file.write_text("data")
+
+    trg_dir = tmp_path / "Show.S01"
+    target_file = trg_dir / src_file.name
+    rename_map = {src_file: target_file}
+
+    rename_mapping, updated_input_path = RenameEncodeBackEnd.execute_renames(
+        rename_map, input_path=src_dir
+    )
+
+    assert rename_mapping == {src_file: target_file}
+    assert updated_input_path == trg_dir

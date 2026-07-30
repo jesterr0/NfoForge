@@ -141,23 +141,32 @@ class RenameEncodeBackEnd:
                     current_path = trg_dir / relative
                     break
 
-            # only rename if target is different and current location exists
-            if current_path != target_path and current_path.exists():
-                actual_target = current_path.rename(target_path)
-                if not actual_target.exists():
-                    raise FileNotFoundError(
-                        f"File rename failed: {actual_target} does not exist"
+            # Rename the file when its name still needs changing. A directory
+            # rename can already have moved it to the requested target path;
+            # that relocation still needs to be reported to the payload.
+            if current_path != target_path:
+                if current_path.exists():
+                    actual_target = current_path.rename(target_path)
+                    if not actual_target.exists():
+                        raise FileNotFoundError(
+                            f"File rename failed: {actual_target} does not exist"
+                        )
+                    LOG.debug(
+                        LOG.LOG_SOURCE.BE,
+                        f"Renamed file: {current_path} -> {actual_target}",
                     )
-                LOG.debug(
-                    LOG.LOG_SOURCE.BE,
-                    f"Renamed file: {current_path} -> {actual_target}",
-                )
+                else:
+                    continue
+            else:
+                actual_target = current_path
 
-                # track this rename for payload updates
+            # Track both file renames and files moved solely with their parent
+            # directory so every payload path can be re-pointed accurately.
+            if actual_target != src_path:
                 rename_mapping[src_path] = actual_target
 
-                # update input_path if it was pointing to this specific file
-                if input_path and input_path == current_path:
-                    input_path = actual_target
+            # update input_path if it was pointing to this specific file
+            if input_path and input_path == current_path:
+                input_path = actual_target
 
         return rename_mapping, input_path

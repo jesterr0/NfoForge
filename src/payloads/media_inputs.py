@@ -97,28 +97,53 @@ class MediaInputPayload:
         Called after the renames have been executed on disk. Every field keyed
         by (or holding) an input path has to move together, otherwise later
         pages look up a path that no longer exists, e.g. the screenshots page
-        resolving `comparison_pair.media` against `file_list_mediainfo`.
+        resolving `comparison_pair.media` against `file_list_mediainfo`. When
+        a parent directory was renamed, paths under that directory are
+        remapped even when their filenames did not change.
 
         Args:
             rename_mapping: Map of old path -> new path for renamed files.
             updated_input_path: New input path, when the rename moved it.
         """
-        if not rename_mapping:
+        if not rename_mapping and not updated_input_path:
             return
 
+        old_input_path = self.input_path
+
+        def remap_path(path: Path) -> Path:
+            """Apply an exact file mapping or an input-directory relocation."""
+            mapped_path = rename_mapping.get(path)
+            if mapped_path is not None:
+                return mapped_path
+
+            if (
+                not old_input_path
+                or not updated_input_path
+                or not updated_input_path.is_dir()
+            ):
+                return path
+
+            if path == old_input_path:
+                return updated_input_path
+
+            try:
+                relative_path = path.relative_to(old_input_path)
+            except ValueError:
+                return path
+            return updated_input_path / relative_path
+
         for i, old_path in enumerate(self.file_list):
-            if old_path in rename_mapping:
-                self.file_list[i] = rename_mapping[old_path]
+            self.file_list[i] = remap_path(old_path)
 
         if self.file_list_mediainfo:
             self.file_list_mediainfo = {
-                rename_mapping.get(old_path, old_path): mi_obj
+                remap_path(old_path): mi_obj
                 for old_path, mi_obj in self.file_list_mediainfo.items()
             }
 
         if self.series_episode_map:
             self.series_episode_map = {
-                rename_mapping.get(old_path, old_path): ep_data
+                remap_path(old_path): ep_data
                 for old_path, ep_data in self.series_episode_map.items()
             }
 
@@ -126,12 +151,8 @@ class MediaInputPayload:
         # sits outside the rename set but still moves when its folder is renamed
         if self.comparison_pair:
             self.comparison_pair = self.comparison_pair._replace(
-                source=rename_mapping.get(
-                    self.comparison_pair.source, self.comparison_pair.source
-                ),
-                media=rename_mapping.get(
-                    self.comparison_pair.media, self.comparison_pair.media
-                ),
+                source=remap_path(self.comparison_pair.source),
+                media=remap_path(self.comparison_pair.media),
             )
 
         if updated_input_path:

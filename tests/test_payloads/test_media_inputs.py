@@ -144,6 +144,46 @@ def test_apply_rename_mapping_leaves_unrenamed_entries_alone() -> None:
     assert payload.file_list_mediainfo[untouched] == "mi-extra"
 
 
+def test_apply_rename_mapping_repoints_paths_under_renamed_input_folder(
+    tmp_path: Path,
+) -> None:
+    old_dir = tmp_path / "Show Season 1"
+    new_dir = tmp_path / "Show.S01"
+    old_dir.mkdir()
+    new_dir.mkdir()
+
+    media = old_dir / "Show.S01E01.mkv"
+    source = old_dir / "Show.S01E01.remux.mkv"
+    payload = MediaInputPayload(
+        input_path=old_dir,
+        media_type=MediaType.SERIES,
+        file_list=[media],
+        file_list_mediainfo={
+            media: "mi-media",
+            source: "mi-source",
+        },  # type: ignore[dict-item]
+        comparison_pair=ComparisonPair(source=source, media=media, script=None),
+        series_episode_map={media: {"season": 1, "episode": 1}},
+    )
+
+    new_media = new_dir / media.name
+    payload.apply_rename_mapping(
+        {media: new_media},
+        updated_input_path=new_dir,
+    )
+
+    assert payload.input_path == new_dir
+    assert payload.file_list == [new_media]
+    assert payload.file_list_mediainfo == {
+        new_media: "mi-media",
+        new_dir / source.name: "mi-source",
+    }
+    assert payload.series_episode_map == {new_media: {"season": 1, "episode": 1}}
+    assert payload.comparison_pair
+    assert payload.comparison_pair.media == new_media
+    assert payload.comparison_pair.source == new_dir / source.name
+
+
 def test_reset_clears_cached_media_analysis() -> None:
     payload = _movie_payload()
     media_info = cast(MediaInfo, object())
