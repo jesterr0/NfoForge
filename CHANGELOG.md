@@ -175,6 +175,7 @@
 - Properly check for hostname before initialization for Deluge
 - Check instance of object before stripping it for save directory/label in Deluge
 - Image subtitle size above 2160p would result in no image subtitle size
+- Issue with FFMPEG drawtext filter on basic comparison images.
 
 ### Removed
 
@@ -182,6 +183,7 @@
 - Movie settings page no longer has controls for clean title token and dynamic range control (this is now handled in Global Management).
 - Advanced Input page _(existing functionality will still exist in the **Input** page)_.
 - General settings source/encode extension filter control has been removed.
+- Unused fonts that was included in the bundled runtime
 
 ## [0.8.14] - 2026-2-21
 

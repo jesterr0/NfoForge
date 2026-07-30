@@ -6,7 +6,6 @@ import re
 import subprocess
 from typing import Any
 
-import oslex2
 from pymediainfo import MediaInfo
 from PySide6.QtCore import SignalInstance
 
@@ -31,6 +30,40 @@ from src.enums.subtitles import SubtitleAlignment
 from src.logger.nfo_forge_logger import LOG
 from src.packages.crop_detect import CropDetect
 from src.packages.custom_types import AdvancedResize, CropValues, SubNames
+
+COMPARISON_FONT_PATH = (
+    RUNTIME_DIR / "fonts" / "Montserrat" / "static" / "Montserrat-Medium.ttf"
+)
+
+
+def _quote_ffmpeg_filter_value(value: str) -> str:
+    """Quote a value for FFmpeg's filter parser, not a command shell."""
+    escaped = value.replace("\\", r"\\")
+    escaped = escaped.replace("'", r"'\''")
+    escaped = escaped.replace(":", r"\:")
+    return f"'{escaped}'"
+
+
+def _build_drawtext_filter(
+    *,
+    text: str,
+    font_size: int,
+    font_color: str,
+    border_color: str,
+    x: str,
+    y: str,
+) -> str:
+    """Escape drawtext filter for FFMPEG."""
+    return (
+        f"drawtext=fontfile="
+        f"{_quote_ffmpeg_filter_value(COMPARISON_FONT_PATH.as_posix())}:"
+        f"text={_quote_ffmpeg_filter_value(text)}:"
+        "expansion=none:"
+        f"fontsize={font_size}:"
+        f"fontcolor={_quote_ffmpeg_filter_value(font_color)}:"
+        f"bordercolor={_quote_ffmpeg_filter_value(border_color)}:"
+        f"borderw=1:x={x}:y={y}"
+    )
 
 
 class ImageGeneration(ABC):
@@ -277,6 +310,7 @@ class ComparisonImageGeneration(ImageGeneration):
         directories = create_directories(output_directory, sync_dir=True)
         img_comparison = directories[0]
         img_sync = directories[2] if len(directories) == 3 else None
+        self._validate_drawtext_support(ffmpeg_path)
 
         enc_output = str(img_comparison / "%02db_encode.png")
         src_output = str(img_comparison / "%02da_source.png")
@@ -402,6 +436,9 @@ class ComparisonImageGeneration(ImageGeneration):
             re_sync_offset_seconds=source_re_sync_offset,
         )
 
+        if generate_encode_images != 0 or generate_source_images != 0:
+            return 1
+
         # generate sync frames similar to FrameForge
         if img_sync:
             self.generate_sync_frames(
@@ -424,10 +461,7 @@ class ComparisonImageGeneration(ImageGeneration):
                 source_re_sync_offset=source_re_sync_offset,
             )
 
-        if generate_encode_images != 0 and generate_source_images != 0:
-            return 1
-        else:
-            return 0
+        return 0
 
     def generate_comp_frames(
         self,
@@ -505,24 +539,17 @@ class ComparisonImageGeneration(ImageGeneration):
             filters.append(f"scale={width}:{height}")
 
         # subtitle
-        if text_overlay and self.check_draw_text(ffmpeg):
-            font_path = (
-                Path(RUNTIME_DIR / "fonts" / "Montserrat-Medium.ttf")
-                .as_posix()
-                .replace(":", r"\:")
+        if text_overlay:
+            filters.append(
+                _build_drawtext_filter(
+                    text=text_overlay,
+                    font_size=sub_size,
+                    font_color=subtitle_color,
+                    border_color=subtitle_outline_color,
+                    x="10",
+                    y="10",
+                )
             )
-            quoted_font_path = oslex2.quote(font_path)
-            quoted_text_overlay = oslex2.quote(text_overlay)
-            quoted_subtitle_color = oslex2.quote(subtitle_color)
-            quoted_subtitle_outline_color = oslex2.quote(subtitle_outline_color)
-
-            subtitle_filter = (
-                f"drawtext=fontfile={quoted_font_path}:"
-                f"text={quoted_text_overlay}:"
-                f"x=10:y=10:fontsize={sub_size}:fontcolor={quoted_subtitle_color}:"
-                f"borderw=1:bordercolor={quoted_subtitle_outline_color}"
-            )
-            filters.append(subtitle_filter)
 
         vf_filter = ",".join(filters) if filters else "copy"
 
@@ -611,11 +638,22 @@ class ComparisonImageGeneration(ImageGeneration):
             [str(ffmpeg_path), "-filters"],
             text=True,
             capture_output=True,
+            timeout=10,
+            creationflags=subprocess.CREATE_NO_WINDOW
+            if platform.system() == "Windows"
+            else 0,
         )
-        if "drawtext" in result.stdout:
-            return True
-        else:
-            return False
+        return result.returncode == 0 and "drawtext" in result.stdout
+
+    def _validate_drawtext_support(self, ffmpeg_path: Path) -> None:
+        if not COMPARISON_FONT_PATH.is_file():
+            raise FileNotFoundError(
+                f"Comparison overlay font is missing: {COMPARISON_FONT_PATH}"
+            )
+        if not self.check_draw_text(ffmpeg_path):
+            raise RuntimeError(
+                "The configured FFmpeg build does not support the drawtext filter"
+            )
 
     def generate_sync_frames(
         self,
@@ -758,26 +796,16 @@ class ComparisonImageGeneration(ImageGeneration):
             filters = []
 
             # add subtitle with frame reference info
-            if self.check_draw_text(ffmpeg_path):
-                font_path = (
-                    Path(RUNTIME_DIR / "fonts" / "Montserrat-Medium.ttf")
-                    .as_posix()
-                    .replace(":", r"\:")
+            filters.append(
+                _build_drawtext_filter(
+                    text=f"Reference Frame {frame_number}",
+                    font_size=sub_size + 5,
+                    font_color=subtitle_color,
+                    border_color=subtitle_outline_color,
+                    x="(w-text_w)/2",
+                    y="h-text_h-10",
                 )
-                quoted_font_path = oslex2.quote(font_path)
-                text = f"Reference Frame {frame_number}"
-                quoted_subtitle_color = oslex2.quote(subtitle_color)
-                quoted_subtitle_outline_color = oslex2.quote(subtitle_outline_color)
-
-                subtitle_filter = (
-                    f"drawtext=fontfile={quoted_font_path}:"
-                    f"text={text}:"
-                    f"fontsize={sub_size + 5}:"
-                    f"fontcolor={quoted_subtitle_color}:"
-                    f"bordercolor={quoted_subtitle_outline_color}:"
-                    f"borderw=1:x=(w-text_w)/2:y=h-text_h-10"
-                )
-                filters.append(subtitle_filter)
+            )
 
             vf_filter = ",".join(filters) if filters else "copy"
 
@@ -801,28 +829,9 @@ class ComparisonImageGeneration(ImageGeneration):
                 "-hide_banner",
             ]
 
-            try:
-                result = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                    if platform.system() == "Windows"
-                    else 0,
-                )
-
-                if result.returncode != 0:
-                    LOG.error(
-                        LOG.LOG_SOURCE.BE,
-                        f"Failed to generate reference frame {frame_number}: {result.stderr}",
-                    )
-
-            except Exception as e:
-                LOG.error(
-                    LOG.LOG_SOURCE.BE,
-                    f"Error generating reference frame {frame_number}: {e}",
-                )
+            self._run_required_frame_command(
+                command, frame_kind="reference", frame_number=frame_number
+            )
 
     def _generate_sync_range_frames(
         self,
@@ -865,26 +874,16 @@ class ComparisonImageGeneration(ImageGeneration):
                 filters.append(f"scale={width}:{height}")
 
             # add subtitle with sync frame info
-            if self.check_draw_text(ffmpeg_path):
-                font_path = (
-                    Path(RUNTIME_DIR / "fonts" / "Montserrat-Medium.ttf")
-                    .as_posix()
-                    .replace(":", r"\:")
+            filters.append(
+                _build_drawtext_filter(
+                    text=f"Sync Frame {frame_number}",
+                    font_size=sub_size + 5,
+                    font_color=subtitle_color,
+                    border_color=subtitle_outline_color,
+                    x="(w-text_w)/2",
+                    y="10",
                 )
-                quoted_font_path = oslex2.quote(font_path)
-                text = f"Sync Frame {frame_number}"
-                quoted_subtitle_color = oslex2.quote(subtitle_color)
-                quoted_subtitle_outline_color = oslex2.quote(subtitle_outline_color)
-
-                subtitle_filter = (
-                    f"drawtext=fontfile={quoted_font_path}:"
-                    f"text={text}:"
-                    f"fontsize={sub_size + 5}:"
-                    f"fontcolor={quoted_subtitle_color}:"
-                    f"bordercolor={quoted_subtitle_outline_color}:"
-                    f"borderw=1:x=(w-text_w)/2:y=10"
-                )
-                filters.append(subtitle_filter)
+            )
 
             vf_filter = ",".join(filters) if filters else "copy"
 
@@ -908,28 +907,44 @@ class ComparisonImageGeneration(ImageGeneration):
                 "-hide_banner",
             ]
 
-            try:
-                result = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                    if platform.system() == "Windows"
-                    else 0,
-                )
+            self._run_required_frame_command(
+                command, frame_kind="sync", frame_number=frame_number
+            )
 
-                if result.returncode != 0:
-                    LOG.error(
-                        LOG.LOG_SOURCE.BE,
-                        f"Failed to generate sync frame {frame_number}: {result.stderr}",
-                    )
+    @staticmethod
+    def _run_required_frame_command(
+        command: list[str],
+        *,
+        frame_kind: str,
+        frame_number: int,
+    ) -> None:
+        """Run one required frame command and fail before creating a broken set."""
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=subprocess.CREATE_NO_WINDOW
+                if platform.system() == "Windows"
+                else 0,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                f"Timed out generating required {frame_kind} frame {frame_number}"
+            ) from error
+        except OSError as error:
+            raise RuntimeError(
+                f"Could not generate required {frame_kind} frame {frame_number}: "
+                f"{error}"
+            ) from error
 
-            except Exception as e:
-                LOG.error(
-                    LOG.LOG_SOURCE.BE,
-                    f"Error generating sync frame {frame_number}: {e}",
-                )
+        if result.returncode != 0:
+            details = result.stderr.strip() or f"FFmpeg exited with {result.returncode}"
+            raise RuntimeError(
+                f"Failed to generate required {frame_kind} frame "
+                f"{frame_number}: {details}"
+            )
 
 
 class FrameForgeImageGeneration(ImageGeneration):
