@@ -160,6 +160,8 @@
 - Defensively handles log files clean up and is best effort (will log if any issues arise when attempting to clean up old runs)
 - Cached some lookups that are repeated during file processing that could spam logs with Resolution information when debugging is enabled.
   - This should speed up the TokenReplacer ~30% when doing multiple files at a time.
+- Now caches the last ten encode indexes when using comparison image generation via FrameForge in the users temp directory (default in appdata if not defined)
+  - No longer generates indexes beside encode file with using FrameForge
 
 ### Fixed
 

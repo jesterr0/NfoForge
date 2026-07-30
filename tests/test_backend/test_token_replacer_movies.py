@@ -165,7 +165,9 @@ def test_resolution_cache_is_shared_across_replacers(monkeypatch) -> None:
         calls.append(remove_scan)
         return "1080" if remove_scan else "1080p"
 
-    monkeypatch.setattr(VideoResolutionAnalyzer, "get_resolution", counting_get_resolution)
+    monkeypatch.setattr(
+        VideoResolutionAnalyzer, "get_resolution", counting_get_resolution
+    )
 
     # TokenReplacer instances share the cache through their common payload;
     # callers do not need to thread a cache through every renderer call.

@@ -10,6 +10,7 @@ import oslex2
 from pymediainfo import MediaInfo
 from PySide6.QtCore import SignalInstance
 
+from src.backend.utils.frameforge_index_cache import FrameForgeIndexCache
 from src.backend.utils.images import (
     compare_res,
     compare_resolutions,
@@ -959,7 +960,16 @@ class FrameForgeImageGeneration(ImageGeneration):
         frame_forge_path: Path,
         ffmpeg_path: Path | None,
         signal: SignalInstance,
+        index_cache_root: Path | None = None,
+        cache_source_index: bool = False,
     ) -> int:
+        index_cache = FrameForgeIndexCache(index_cache_root)
+        index_paths = index_cache.prepare(
+            source_input,
+            media_input,
+            indexer,
+            cache_source=cache_source_index,
+        )
         generate_args = [
             str(frame_forge_path),
             "--source",
@@ -974,6 +984,14 @@ class FrameForgeImageGeneration(ImageGeneration):
 
         generate_args.extend(["--indexer", str(indexer)])
         generate_args.extend(["--img-lib", str(image_plugin)])
+        if index_paths.source_index:
+            generate_args.extend(["--source-index-path", str(index_paths.source_index)])
+        generate_args.extend(
+            [
+                "--encode-index-path",
+                str(index_paths.encode_index),
+            ]
+        )
 
         img_comparison = create_directories(output_directory, sync_dir=True)[0]
         generate_args.extend(["--image-dir", str(img_comparison.parent)])
@@ -1093,7 +1111,16 @@ class FrameForgeImageGeneration(ImageGeneration):
         # log final args
         LOG.debug(LOG.LOG_SOURCE.BE, str(generate_args))
 
-        return self.run_frame_forge_command(generate_args, signal)
+        try:
+            result = self.run_frame_forge_command(generate_args, signal)
+        except Exception:
+            index_cache.discard_uncommitted(index_paths)
+            raise
+        if result == 0:
+            index_cache.mark_success(index_paths, source_input, media_input, indexer)
+        else:
+            index_cache.discard_uncommitted(index_paths)
+        return result
 
     @staticmethod
     def _convert_re_sync(re_sync: int | None) -> tuple[str, str] | None:
@@ -1222,6 +1249,8 @@ class ImagesBackEnd:
         frame_forge_path: Path,
         ffmpeg_path: Path | None,
         signal: SignalInstance,
+        index_cache_root: Path | None = None,
+        cache_source_index: bool = False,
     ) -> int:
         """
         Generate comparison images utilizing FrameForge and emit progress signals.
@@ -1248,6 +1277,9 @@ class ImagesBackEnd:
             frame_forge_path (Path): Path to FrameForge executable.
             ffmpeg_path (Optional[Path]): Path to FFMPEG executable.
             signal (SignalInstance[str, float]): The signal used to emit progress updates on the frontend.
+            index_cache_root (Optional[Path]): Injectable base directory for FrameForge indexes.
+            cache_source_index (bool): Keep the source index in the private cache when
+                the source is part of the selected upload tree.
 
         """
         return FrameForgeImageGeneration().generate_images(
@@ -1272,4 +1304,6 @@ class ImagesBackEnd:
             frame_forge_path=frame_forge_path,
             ffmpeg_path=ffmpeg_path,
             signal=signal,
+            index_cache_root=index_cache_root,
+            cache_source_index=cache_source_index,
         )
