@@ -176,6 +176,7 @@
 - Check instance of object before stripping it for save directory/label in Deluge
 - Image subtitle size above 2160p would result in no image subtitle size
 - Issue with FFMPEG drawtext filter on basic comparison images.
+- Incorrectly showing image generation complete on failed image generation
 
 ### Removed
 
