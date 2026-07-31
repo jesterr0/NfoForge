@@ -22,7 +22,7 @@ from src.config.config import ConfigManager
 from src.config.models import TrackerSettings
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
-from src.frontend.custom_widgets.tracker_listbox import (
+from src.frontend.custom_widgets.tracker_management import (
     AitherTrackerEdit,
     BHDTrackerEdit,
     DarkPeersEdit,

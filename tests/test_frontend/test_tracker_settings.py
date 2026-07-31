@@ -9,7 +9,7 @@ from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.tracker_listbox import (
+from src.frontend.custom_widgets.tracker_management import (
     MTVTrackerEdit,
 )
 from src.frontend.custom_widgets.tracker_settings import (
