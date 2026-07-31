@@ -1256,6 +1256,7 @@ dependencies = [
     { name = "torf" },
     { name = "transmission-rpc" },
     { name = "tvdb-v4-official" },
+    { name = "typing-extensions" },
     { name = "unidecode" },
     { name = "urllib3" },
 ]
@@ -1330,6 +1331,7 @@ requires-dist = [
     { name = "transmission-rpc", specifier = ">=7.0.11" },
     { name = "tvdb-v4-official", specifier = ">=1.1.0" },
     { name = "types-psutil", marker = "extra == 'dev'" },
+    { name = "typing-extensions", specifier = ">=4.12.2" },
     { name = "unidecode", specifier = ">=1.4.0" },
     { name = "urllib3", specifier = ">=2.6.2" },
 ]
