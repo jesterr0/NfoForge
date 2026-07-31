@@ -230,30 +230,36 @@ class CodeEditor(QPlainTextEdit):
         return "#e6e6e6", "#A9A9A9"
 
     def lineNumberAreaPaintEvent(self, event: QPaintEvent) -> None:
-        painter = QPainter(self.line_number_area)
-        painter.fillRect(self.line_number_area.rect(), QColor(self.box_color))
-        block = self.firstVisibleBlock()
-        block_number = block.blockNumber()
-        offset = self.contentOffset()
-        top = self.blockBoundingGeometry(block).translated(offset).top()
+        painter = QPainter()
+        if not painter.begin(self.line_number_area):
+            return
 
-        while block.isValid() and top <= event.rect().bottom():
-            if block.isVisible():
-                number = str(block_number + 1)
-                painter.setPen(QColor(self.font_color))
-                painter.drawText(
-                    QRect(
-                        0,
-                        int(top),
-                        self.line_number_area.width(),
-                        self.fontMetrics().height(),
-                    ),
-                    Qt.AlignmentFlag.AlignRight,
-                    number,
-                )
-            block = block.next()
-            top += self.blockBoundingRect(block).height()
-            block_number += 1
+        try:
+            painter.fillRect(self.line_number_area.rect(), QColor(self.box_color))
+            block = self.firstVisibleBlock()
+            block_number = block.blockNumber()
+            offset = self.contentOffset()
+            top = self.blockBoundingGeometry(block).translated(offset).top()
+
+            while block.isValid() and top <= event.rect().bottom():
+                if block.isVisible():
+                    number = str(block_number + 1)
+                    painter.setPen(QColor(self.font_color))
+                    painter.drawText(
+                        QRect(
+                            0,
+                            int(top),
+                            self.line_number_area.width(),
+                            self.fontMetrics().height(),
+                        ),
+                        Qt.AlignmentFlag.AlignRight,
+                        number,
+                    )
+                block = block.next()
+                top += self.blockBoundingRect(block).height()
+                block_number += 1
+        finally:
+            painter.end()
 
     @Slot(int)
     def update_line_number_area_width(self, _new_block_count: int) -> None:
