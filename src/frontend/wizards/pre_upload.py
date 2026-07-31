@@ -12,9 +12,15 @@ from typing_extensions import override
 
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
-from src.frontend.wizards.pre_upload_widgets.client_options import ClientOptionsSection
-from src.frontend.wizards.pre_upload_widgets.nfo_template import NfoTemplateSection
-from src.frontend.wizards.pre_upload_widgets.release_notes import ReleaseNotesSection
+from src.frontend.custom_widgets.pre_upload_widgets.client_options import (
+    ClientOptionsSection,
+)
+from src.frontend.custom_widgets.pre_upload_widgets.nfo_template import (
+    NfoTemplateSection,
+)
+from src.frontend.custom_widgets.pre_upload_widgets.release_notes import (
+    ReleaseNotesSection,
+)
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
