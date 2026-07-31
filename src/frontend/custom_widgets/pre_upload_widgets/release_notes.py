@@ -17,6 +17,7 @@ class ReleaseNotesSection(QGroupBox):
         super().__init__("Release Notes", parent)
         self.config = config
         self.context = context
+        self.setCheckable(True)
 
         self.setToolTip(
             "When enabled, the selected note fills the {{ release_notes }} token."
@@ -25,7 +26,6 @@ class ReleaseNotesSection(QGroupBox):
         self.dict_widget = DictWidget(pop_out_editor=True, parent=self)
         self.dict_widget.main_layout.setContentsMargins(0, 0, 0, 0)
         self.dict_widget.text_box.setMinimumHeight(130)
-        self.toggled.connect(self.dict_widget.setVisible)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.dict_widget)
