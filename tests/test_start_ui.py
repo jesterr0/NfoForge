@@ -22,7 +22,7 @@ import start_ui
 def _bare_nfoforge(config_file: str | None) -> start_ui.NfoForge:
     app = object.__new__(start_ui.NfoForge)
     app.config_file = config_file
-    app.splash_screen = SimpleNamespace(updateMessageBox=lambda *_a, **_k: None)
+    app.splash_screen = SimpleNamespace(updateMessageBox=lambda *_a, **_k: None)  # type: ignore[reportAttributeAccessIssue]
     return app
 
 
