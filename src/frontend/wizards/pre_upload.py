@@ -12,9 +12,9 @@ from typing_extensions import override
 
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
-from src.frontend.wizards.client_options import ClientOptionsSection
-from src.frontend.wizards.nfo_template import NfoTemplateSection
-from src.frontend.wizards.release_notes import ReleaseNotesSection
+from src.frontend.wizards.pre_upload_widgets.client_options import ClientOptionsSection
+from src.frontend.wizards.pre_upload_widgets.nfo_template import NfoTemplateSection
+from src.frontend.wizards.pre_upload_widgets.release_notes import ReleaseNotesSection
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
 if TYPE_CHECKING:
@@ -34,22 +34,18 @@ class PreUploadPage(BaseWizardPage):
         self.setObjectName("preUploadPage")
         self.setTitle("Pre-upload")
         self.setSubTitle(
-            "Review template assignments, release notes, and torrent-client options."
+            "Various pre-upload options can be set here that don't warrant a full page."
         )
         self.setCommitPage(True)
 
-        explanation = QLabel(
-            "These settings apply to the current release. Persistent template "
-            "and release-note changes are saved when you continue.",
-            self,
-            wordWrap=True,
+        # general error label that can be utilized per child widget
+        self.error_label = QLabel(
+            self, wordWrap=True, textFormat=Qt.TextFormat.PlainText
         )
-
-        self.error_label = QLabel(self, wordWrap=True)
-        self.error_label.setTextFormat(Qt.TextFormat.PlainText)
         self.error_label.setStyleSheet("color: #ff0033; font-weight: bold;")
         self.error_label.hide()
 
+        # add any widgets (ideally should be in a QGroupBox to match)
         self.nfo_templates = NfoTemplateSection(
             config,
             context,
@@ -59,23 +55,24 @@ class PreUploadPage(BaseWizardPage):
         self.release_notes = ReleaseNotesSection(config, context, parent=self)
         self.client_options = ClientOptionsSection(config, context, parent=self)
 
+        # inner layout/widget
         content = QWidget(self)
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(self.nfo_templates)
-        content_layout.addWidget(self.release_notes)
-        content_layout.addWidget(self.client_options)
-        content_layout.addStretch()
+        self.content_layout = QVBoxLayout(content)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.addWidget(self.nfo_templates)
+        self.content_layout.addWidget(self.release_notes)
+        self.content_layout.addWidget(self.client_options)
+        self.content_layout.addStretch()
 
+        # scroll area for inner layout
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setWidget(content)
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(explanation)
-        layout.addWidget(self.error_label)
-        layout.addWidget(self.scroll_area, stretch=1)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.addWidget(self.error_label)
+        self.main_layout.addWidget(self.scroll_area, stretch=1)
 
     @override
     def initializePage(self) -> None:
