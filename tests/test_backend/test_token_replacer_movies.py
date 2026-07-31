@@ -57,6 +57,19 @@ def test_frame_size_normalizes_imax_without_mutating_during_iteration() -> None:
     assert replacer._frame_size(_td()) == "IMAX"
 
 
+def test_frame_size_does_not_normalize_climax_as_imax(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.backend.token_replacer.guessit",
+        lambda *_args, **_kwargs: {"edition": "Climax"},
+    )
+    replacer = _movie_replacer()
+
+    assert replacer._frame_size(_td()) == ""
+    edition = replacer._edition(_td())
+    assert "IMAX" not in edition
+    assert "Climax" in edition
+
+
 def test_title_tokens_use_first_guessit_title_when_list_shaped(
     monkeypatch,
 ) -> None:

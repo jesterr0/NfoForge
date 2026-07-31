@@ -34,6 +34,7 @@ from src.backend.utils.rename_normalizations import (
     FRAME_SIZE_INFO,
     LOCALIZATION_INFO,
     RE_RELEASE_INFO,
+    is_imax,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.config.config import ConfigManager
@@ -544,7 +545,7 @@ class RenameEncode(BaseWizardPage):
                 self, "Error", "Both 'Subbed' and 'Dubbed' should not be used together."
             )
             return False
-        if "imax" in renamed_output_lowered and re.search(
+        if is_imax(renamed_output_lowered) and re.search(
             r"open[\s|\.]*matte", renamed_output_lowered, flags=re.I
         ):
             QMessageBox.warning(

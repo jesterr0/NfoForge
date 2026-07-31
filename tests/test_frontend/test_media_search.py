@@ -2,11 +2,13 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
+import pytest
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
+from src.exceptions import MediaParsingError
 from src.frontend.wizards.media_search import MediaSearch
 from src.payloads.media_inputs import MediaInputPayload
 
@@ -63,6 +65,31 @@ def test_title_guess_uses_first_title_when_guessit_returns_a_list(
     )
 
     assert page._get_title_only(Path("ignored.mkv")) == "Primary 2024"
+
+
+def test_title_guess_uses_guessit_title_without_year(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    monkeypatch.setattr(
+        "src.frontend.wizards.media_search.guessit",
+        lambda *_args, **_kwargs: {"title": "Movie"},
+    )
+
+    assert page._get_title_only(Path("Movie.mkv")) == "Movie"
+
+
+def test_title_guess_raises_when_guessit_has_no_title(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    monkeypatch.setattr(
+        "src.frontend.wizards.media_search.guessit",
+        lambda *_args, **_kwargs: {"year": 2024},
+    )
+
+    with pytest.raises(MediaParsingError):
+        page._get_title_only(Path("1080p.BluRay.mkv"))
 
 
 def test_failed_search_clears_payload_and_preserves_query(

@@ -29,7 +29,7 @@ from src.backend.utils.media_info_utils import (
     calculate_avg_bitrate,
     calculate_avg_video_bit_rate,
 )
-from src.backend.utils.rename_normalizations import EDITION_INFO
+from src.backend.utils.rename_normalizations import EDITION_INFO, is_imax
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
@@ -1058,13 +1058,12 @@ class TokenReplacer:
         # also process any editions from guess_name['edition']
         edition_set = set(collect_editions(self.guess_name, "edition"))
         for item in edition_set:
-            item_lowered = str(item).lower()
-            if "imax" in item_lowered:
+            if is_imax(item):
                 continue
             matched = False
             for rename_normalize in EDITION_INFO:
                 for regex_str in rename_normalize.re_gex:
-                    if re.search(regex_str, item_lowered, flags=re.I):
+                    if re.search(regex_str, str(item), flags=re.I):
                         normalized_edition_set.add(rename_normalize.normalized)
                         matched = True
                         break
@@ -1109,7 +1108,7 @@ class TokenReplacer:
         if edition_set:
             normalized_edition_set: set[object] = set()
             for item in edition_set:
-                if "imax" in str(item).lower():
+                if is_imax(item):
                     normalized_edition_set.add("IMAX")
                     break
             edition_set = normalized_edition_set

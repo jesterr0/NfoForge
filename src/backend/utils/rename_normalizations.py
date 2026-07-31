@@ -1,6 +1,18 @@
 from collections.abc import Sequence
+import re
 
 from src.packages.custom_types import RenameNormalization
+
+IMAX_REGEX = r"(?<![A-Za-z0-9])imax(?![A-Za-z0-9])"
+
+
+def is_imax(value: object) -> bool:
+    """Return whether a value contains IMAX as a standalone release token."""
+    return (
+        isinstance(value, str)
+        and re.search(IMAX_REGEX, value, re.IGNORECASE) is not None
+    )
+
 
 EDITION_INFO: Sequence[RenameNormalization] = (
     RenameNormalization(
@@ -53,7 +65,7 @@ EDITION_INFO: Sequence[RenameNormalization] = (
 )
 
 FRAME_SIZE_INFO = (
-    RenameNormalization("IMAX", (r"imax",)),
+    RenameNormalization("IMAX", (IMAX_REGEX,)),
     RenameNormalization(
         "Open Matte",
         (r"open[\s\.\-_]*matte",),

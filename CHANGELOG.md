@@ -184,6 +184,7 @@
 - Image subtitle size above 2160p would result in no image subtitle size
 - Issue with FFMPEG drawtext filter on basic comparison images.
 - Incorrectly showing image generation complete on failed image generation
+- Could incorrectly parse IMAX from titles such as 'climax'
 
 ### Removed
 
