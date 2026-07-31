@@ -27,21 +27,27 @@ class ImageLabel(QWidget):
             return
 
         # Calculate the scaling factor to fit the image within the widget
-        painter = QPainter(self)
-        width = self.width()
-        height = self.height()
-        imageWidth = self._image.width()
-        imageHeight = self._image.height()
-        r1 = width / imageWidth
-        r2 = height / imageHeight
-        r = min(r1, r2)
-        x = (width - imageWidth * r) / 2
-        y = (height - imageHeight * r) / 2
+        painter = QPainter()
+        if not painter.begin(self):
+            return
 
-        # Transform and draw the image
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.setTransform(QTransform().translate(x, y).scale(r, r))
-        painter.drawImage(QPointF(0, 0), self._image)
+        try:
+            width = self.width()
+            height = self.height()
+            imageWidth = self._image.width()
+            imageHeight = self._image.height()
+            r1 = width / imageWidth
+            r2 = height / imageHeight
+            r = min(r1, r2)
+            x = (width - imageWidth * r) / 2
+            y = (height - imageHeight * r) / 2
+
+            # Transform and draw the image
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.setTransform(QTransform().translate(x, y).scale(r, r))
+            painter.drawImage(QPointF(0, 0), self._image)
+        finally:
+            painter.end()
 
 
 if __name__ == "__main__":
