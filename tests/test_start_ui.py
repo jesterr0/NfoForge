@@ -142,6 +142,27 @@ def test_resolve_config_path_defaults_missing_current_config_key(
     assert app._resolve_config_path() == test_paths.user_configs / "config.toml"
 
 
+def test_last_used_config_is_returned_only_when_profile_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    program_path = tmp_path / "program" / "conf.toml"
+    program_path.parent.mkdir(parents=True, exist_ok=True)
+    program_path.write_text('current_config = "second"\n', encoding="utf-8")
+    test_paths = ConfigPaths(
+        default_config=tmp_path / "default_config.toml",
+        default_program=tmp_path / "default_program_conf.toml",
+        program=program_path,
+        user_configs=tmp_path / "user",
+        tracker_cookies=tmp_path / "cookies",
+    )
+    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+
+    app = _bare_nfoforge(None)
+
+    assert app._get_last_used_config(["first", "second"]) == "second"
+    assert app._get_last_used_config(["first"]) is None
+
+
 def test_schema_error_recovery_uses_incompatible_config_title() -> None:
     """A `ConfigSchemaError` is a genuine schema incompatibility (unlike a
     generic value-error `ConfigError`), so its recovery dialog must keep the

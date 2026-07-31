@@ -137,7 +137,10 @@ class NfoForge:
         # check for multiple configs and show selector if needed
         available_configs = self._get_available_configs()
         if not self.config_file and available_configs and len(available_configs) > 1:
-            self.splash_screen.show_config_selector(available_configs)
+            self.splash_screen.show_config_selector(
+                available_configs,
+                selected_config=self._get_last_used_config(available_configs),
+            )
             self.splash_screen.config_selected.connect(self._on_config_selected)
             return
 
@@ -319,6 +322,26 @@ class NfoForge:
             return sorted([x.stem for x in config_dir.glob("*.toml")])
         except Exception:
             pass
+
+    def _get_last_used_config(self, available_configs: list[str]) -> str | None:
+        """Return the saved profile when it is still available.
+
+        The program configuration is intentionally read directly here because
+        profile selection happens before ``ConfigManager`` can be initialized.
+        A missing, malformed, or stale value simply leaves the first profile
+        selected by the combo box.
+        """
+        try:
+            program_path = ConfigPaths().program
+            if not program_path.exists():
+                return None
+            program_document = tomlkit.parse(program_path.read_text(encoding="utf-8"))
+            current_config = program_document.get("current_config", "config")
+            if isinstance(current_config, str) and current_config in available_configs:
+                return current_config
+        except Exception:
+            pass
+        return None
 
     @Slot(str)
     def _on_config_selected(self, selected_config: str) -> None:

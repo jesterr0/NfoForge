@@ -154,6 +154,8 @@
   - Attempts to raise above all other windows on launch
   - All buttons now use pointed hand cursor
   - Config selection/button control has been moved to the bottom above the status bar
+  - Can now use arrow keys/enter key to accept current config
+  - Will now remember last used config (best effort only, on failures it just defaults to the first config)
 - Now logs all other QT messages to debug logging
   - Program will look for a .env file beside executable/start_ui.py that accepts **LOG_LEVEL** \*(mainly used for debugging QT errors in dev)\_
 - All console logs (when program is ran in **debug**) will be output to stdout

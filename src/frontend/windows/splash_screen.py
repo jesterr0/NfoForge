@@ -1,8 +1,25 @@
 from pathlib import Path
 import traceback
 
-from PySide6.QtCore import QObject, QSize, QThread, Signal, SignalInstance, Slot
-from PySide6.QtGui import QCursor, QGuiApplication, QPixmap, QShowEvent, Qt
+from PySide6.QtCore import (
+    QEvent,
+    QObject,
+    QSize,
+    QThread,
+    Signal,
+    SignalInstance,
+    Slot,
+)
+from PySide6.QtGui import (
+    QCursor,
+    QGuiApplication,
+    QKeyEvent,
+    QKeySequence,
+    QPixmap,
+    QShortcut,
+    QShowEvent,
+    Qt,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -206,6 +223,7 @@ class SplashScreen(QWidget):
         self.config_selector_frame: QFrame | None = None
         self.config_combo: CustomComboBox | None = None
         self.config_cont_btn: QPushButton | None = None
+        self._continue_shortcuts: list[QShortcut] = []
 
         # this must be defined first to fill the background
         pixmap = QPixmap(RUNTIME_DIR / "images" / "nfoforge_splash_screen_4.png")
@@ -266,7 +284,11 @@ class SplashScreen(QWidget):
     def updateMessageBox(self, msg: str) -> None:
         self.message_label.setText(msg)
 
-    def show_config_selector(self, config_names: list[str] | None) -> None:
+    def show_config_selector(
+        self,
+        config_names: list[str] | None,
+        selected_config: str | None = None,
+    ) -> None:
         """Show config selector dropdown with available configs"""
         if not config_names:
             return
@@ -283,10 +305,20 @@ class SplashScreen(QWidget):
         if self.config_combo:
             self.config_combo.clear()
             self.config_combo.addItems(config_names)
+            if selected_config:
+                selected_index = self.config_combo.findText(
+                    selected_config, Qt.MatchFlag.MatchExactly
+                )
+                if selected_index >= 0:
+                    self.config_combo.setCurrentIndex(selected_index)
 
         # show the config selector
         if self.config_selector_frame:
             self.config_selector_frame.show()
+        if self.config_combo:
+            self.config_combo.setFocus(Qt.FocusReason.OtherFocusReason)
+        for shortcut in self._continue_shortcuts:
+            shortcut.setEnabled(True)
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _create_config_selector_widgets(self) -> None:
@@ -316,6 +348,10 @@ class SplashScreen(QWidget):
         )
         self.config_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         self.config_combo.view().setCursor(Qt.CursorShape.PointingHandCursor)
+        self.config_combo.installEventFilter(self)
+        line_edit = self.config_combo.lineEdit()
+        if line_edit is not None:
+            line_edit.installEventFilter(self)
 
         self.config_cont_btn = QPushButton(self)
         self.config_cont_btn.setIcon(qta.icon("ph.check-bold", color="#D3D3D3"))
@@ -324,6 +360,15 @@ class SplashScreen(QWidget):
         self.config_cont_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.config_cont_btn.setToolTip("Continue with selected configuration")
         self.config_cont_btn.clicked.connect(self._on_continue_clicked)
+
+        self._continue_shortcuts = [
+            QShortcut(QKeySequence("Return"), self),
+            QShortcut(QKeySequence("Enter"), self),
+        ]
+        for shortcut in self._continue_shortcuts:
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.setEnabled(False)
+            shortcut.activated.connect(self._on_continue_clicked)
 
         self.cancel_btn = QPushButton(self)
         self.cancel_btn.setIcon(qta.icon("ph.x-bold", color="#D3D3D3"))
@@ -358,10 +403,28 @@ class SplashScreen(QWidget):
             # hide config selector and show loading state
             if self.config_selector_frame:
                 self.config_selector_frame.hide()
+            for shortcut in self._continue_shortcuts:
+                shortcut.setEnabled(False)
             self.mini_progress_bar.show()
             self.setCursor(Qt.CursorShape.BusyCursor)
 
             self.config_selected.emit(selected_config)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Allow Enter to continue while focus is inside the config selector."""
+        combo = self.config_combo
+        line_edit = combo.lineEdit() if combo is not None else None
+        if (
+            combo is not None
+            and (watched is combo or watched is line_edit)
+            and isinstance(event, QKeyEvent)
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+            and combo.currentText()
+        ):
+            self._on_continue_clicked()
+            return True
+        return super().eventFilter(watched, event)
 
     def _set_open_screen(self) -> None:
         """Open on active display based on mouse location and then primary screen."""
