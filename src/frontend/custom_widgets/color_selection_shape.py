@@ -39,34 +39,45 @@ class ColorSelectionShape(QWidget):
 
     def circlePaintEvent(self, event: QPaintEvent) -> None:
         """Draw the circle with the current color."""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        path = QPainterPath()
-        widget_rect = self.rect()
-        size = min(widget_rect.width(), widget_rect.height()) - 2 * self.PADDING
-        circle = QRectF(
-            widget_rect.left() + self.PADDING,
-            widget_rect.top() + self.PADDING,
-            size,
-            size,
-        )
-        path.addEllipse(circle)
-        painter.fillPath(path, self.current_color)
-        painter.end()
+        painter = QPainter()
+        if not painter.begin(self):
+            return
+
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            path = QPainterPath()
+            widget_rect = self.rect()
+            size = min(widget_rect.width(), widget_rect.height()) - 2 * self.PADDING
+            circle = QRectF(
+                widget_rect.left() + self.PADDING,
+                widget_rect.top() + self.PADDING,
+                size,
+                size,
+            )
+            path.addEllipse(circle)
+            painter.fillPath(path, self.current_color)
+        finally:
+            painter.end()
 
     def squaredPaintEvent(self, event: QPaintEvent) -> None:
         """Draw the square with rounded corners and the current color."""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter = QPainter()
+        if not painter.begin(self):
+            return
 
-        rect_size = min(self.width(), self.height()) - 2 * self.PADDING
-        rounded_rect = QRectF(self.PADDING, self.PADDING, rect_size, rect_size)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        corner_radius = rect_size * self.SQUARE_CORNER_VALUE
-        path = QPainterPath()
-        path.addRoundedRect(rounded_rect, corner_radius, corner_radius)
+            rect_size = min(self.width(), self.height()) - 2 * self.PADDING
+            rounded_rect = QRectF(self.PADDING, self.PADDING, rect_size, rect_size)
 
-        painter.fillPath(path, self.current_color)
+            corner_radius = rect_size * self.SQUARE_CORNER_VALUE
+            path = QPainterPath()
+            path.addRoundedRect(rounded_rect, corner_radius, corner_radius)
+
+            painter.fillPath(path, self.current_color)
+        finally:
+            painter.end()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle mouse click to open a color picker."""
