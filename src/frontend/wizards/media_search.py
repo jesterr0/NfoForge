@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.media_search import MediaSearchBackEnd
-from src.backend.utils.filter_title import edition_and_title_extractor as extract_title
 from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.working_dir import RUNTIME_DIR
@@ -543,16 +542,13 @@ class MediaSearch(BaseWizardPage):
     def _get_title_only(self, file_path: Path) -> str:
         guess = guessit(file_path.stem, {"excludes": ["language"]})
         title = get_guessit_title(guess)
+        if not title:
+            raise MediaParsingError(
+                f"Failed to determine title name for input {file_path.name}"
+            )
+
         year = guess.get("year")
-        if title and year:
-            return f"{title} {year}"
-        else:
-            extracted_title = extract_title(file_path.stem).title
-            if not extracted_title:
-                raise MediaParsingError(
-                    f"Failed to determine title name for input {file_path.name}"
-                )
-            return str(extracted_title)
+        return f"{title} {year}" if year else title
 
     def _check_media_api_keys(self) -> bool:
         required_keys = {"TMDB (v3)": self.config.settings.api_keys.tmdb}

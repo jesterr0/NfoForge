@@ -169,6 +169,7 @@
   - You can still set the priority of the tracker upload order by dragging them (priority is greatest from top to bottom)
   - Wizard flow will also use this as well
 - Re-designed UI for client settings, works the same as the new tracker settings UI (minus the re-order)
+- Media search now uses guessit only instead of older deprecated search code
 
 ### Fixed
 
