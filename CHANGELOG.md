@@ -170,6 +170,7 @@
   - Wizard flow will also use this as well
 - Re-designed UI for client settings, works the same as the new tracker settings UI (minus the re-order)
 - Media search now uses guessit only instead of older deprecated search code
+  - Cleanly detect the title from series based off of the input with weights vs just a generic folder or top level file read
 
 ### Fixed
 

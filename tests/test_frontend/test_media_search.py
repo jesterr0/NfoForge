@@ -2,14 +2,16 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
-import pytest
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
-from src.exceptions import MediaParsingError
-from src.frontend.wizards.media_search import MediaSearch
+from src.frontend.wizards.media_search import (
+    MediaSearch,
+    MediaSearchJobResult,
+    _run_media_search_job,
+)
 from src.payloads.media_inputs import MediaInputPayload
 
 
@@ -55,41 +57,87 @@ def test_empty_search_result_does_not_complete_page(tmp_path: Path) -> None:
     assert page.listbox.item(0).text() == "No results, try again..."
 
 
-def test_title_guess_uses_first_title_when_guessit_returns_a_list(
+def test_automatic_search_uses_inferred_title_and_selected_files(
     monkeypatch, tmp_path: Path
 ) -> None:
-    page = _make_page(tmp_path)
+    input_path = tmp_path / "input"
+    selected_file = input_path / "Movie.mkv"
+    selected_file.parent.mkdir()
+    selected_file.write_bytes(b"")
+    calls: list[tuple[Path, tuple[Path, ...]]] = []
+
+    class FakeInferer:
+        def infer(self, path: Path, video_files: tuple[Path, ...]):
+            calls.append((path, video_files))
+            return type("Result", (), {"title": "Inferred Movie", "confidence": 1.0})()
+
+    class FakeBackend:
+        def _parse_tmdb_api(self, media_str: str):
+            return OrderedDict([(media_str, {"title": media_str})])
+
     monkeypatch.setattr(
-        "src.frontend.wizards.media_search.guessit",
-        lambda *_args, **_kwargs: {"title": ["Primary", "Alternative"], "year": 2024},
+        "src.frontend.wizards.media_search.MediaTitleInferer", FakeInferer
     )
 
-    assert page._get_title_only(Path("ignored.mkv")) == "Primary 2024"
+    result = _run_media_search_job(
+        FakeBackend(),
+        None,
+        input_path,
+        (selected_file,),
+    )
+
+    assert result == MediaSearchJobResult(
+        query="Inferred Movie",
+        results=OrderedDict([("Inferred Movie", {"title": "Inferred Movie"})]),
+    )
+    assert calls == [(input_path, (selected_file,))]
 
 
-def test_title_guess_uses_guessit_title_without_year(
+def test_manual_search_bypasses_title_inference(monkeypatch) -> None:
+    class FailingInferer:
+        def __init__(self) -> None:
+            raise AssertionError("manual searches must not infer a title")
+
+    class FakeBackend:
+        def _parse_tmdb_api(self, media_str: str):
+            return OrderedDict([(media_str, {"title": media_str})])
+
+    monkeypatch.setattr(
+        "src.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
+    )
+
+    result = _run_media_search_job(FakeBackend(), "Manual Movie", None, tuple())
+
+    assert result.query == "Manual Movie"
+    assert list(result.results) == ["Manual Movie"]
+    assert result.title_error is None
+
+
+def test_title_inference_failure_returns_manual_search_error(
     monkeypatch, tmp_path: Path
 ) -> None:
-    page = _make_page(tmp_path)
+    class FailingInferer:
+        def infer(self, *_args, **_kwargs):
+            raise ValueError("No usable title evidence")
+
+    class FakeBackend:
+        def _parse_tmdb_api(self, media_str: str):
+            return OrderedDict([(media_str, {"title": media_str})])
+
     monkeypatch.setattr(
-        "src.frontend.wizards.media_search.guessit",
-        lambda *_args, **_kwargs: {"title": "Movie"},
+        "src.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
     )
 
-    assert page._get_title_only(Path("Movie.mkv")) == "Movie"
-
-
-def test_title_guess_raises_when_guessit_has_no_title(
-    monkeypatch, tmp_path: Path
-) -> None:
-    page = _make_page(tmp_path)
-    monkeypatch.setattr(
-        "src.frontend.wizards.media_search.guessit",
-        lambda *_args, **_kwargs: {"year": 2024},
+    result = _run_media_search_job(
+        FakeBackend(),
+        None,
+        tmp_path,
+        tuple(),
     )
 
-    with pytest.raises(MediaParsingError):
-        page._get_title_only(Path("1080p.BluRay.mkv"))
+    assert result.query is None
+    assert not result.results
+    assert result.title_error == "No usable title evidence"
 
 
 def test_failed_search_clears_payload_and_preserves_query(

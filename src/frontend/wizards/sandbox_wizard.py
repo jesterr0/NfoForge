@@ -1,6 +1,3 @@
-from pathlib import Path
-
-from guessit import guessit
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QApplication,
@@ -14,7 +11,6 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from src.backend.utils.guessit_helpers import get_guessit_title
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
@@ -99,17 +95,7 @@ class SandboxMediaSearchPage(QWizardPage):
     def initializePage(self) -> None:
         """Initialize the page when it becomes current"""
         super().initializePage()
-        # auto-populate search based on input file
-        if self.context.media_input.input_path:
-            file_path = self.context.media_input.input_path
-            guess = guessit(Path(file_path).name)
-            guessed_title = get_guessit_title(guess)
-            year = guess.get("year", "")
-            if year:
-                guessed_title = f"{guessed_title} {year}"
-
-            self.media_search.search_entry.setText(guessed_title)
-            self.media_search._search_tmdb_api()
+        self.media_search.initializePage()
 
 
 class SandboxSeriesMapperPage(QWizardPage):

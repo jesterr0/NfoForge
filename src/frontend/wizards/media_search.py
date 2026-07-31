@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 import asyncio
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 import traceback
-from typing import Any
+from typing import Any, Protocol
 from urllib import parse as url_parse
 import webbrowser
 
-from guessit import guessit
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor, QMouseEvent, QPixmap
 from PySide6.QtSvgWidgets import QSvgWidget
@@ -30,45 +32,74 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.media_search import MediaSearchBackEnd
-from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.super_sub import normalize_super_sub
+from src.backend.utils.title_inference import MediaTitleInferer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
-from src.exceptions import MediaFileNotFoundError, MediaParsingError, MediaSearchError
+from src.exceptions import MediaFileNotFoundError, MediaSearchError
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import QWidgetTempStyle
+from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
 
 
-class QueuedWorker(QThread):
-    job_finished = Signal(OrderedDict)
-    job_failed = Signal(str)
+class _MediaSearchBackend(Protocol):
+    def _parse_tmdb_api(self, media_str: str) -> dict[str, dict[str, Any]]: ...
 
-    def __init__(
-        self,
-        backend: MediaSearchBackEnd,
-        query: str,
-        parent: QWidget | None = None,
-    ) -> None:
-        super().__init__(parent=parent)
-        self.backend = backend
-        self.query = query
 
-    def run(self) -> None:
-        try:
-            result = self.backend._parse_tmdb_api(self.query)
-            self.job_finished.emit(OrderedDict(result))
-        except Exception as e:
-            LOG.error(
-                LOG.LOG_SOURCE.BE,
-                f"Media search failed for {self.query!r}: {traceback.format_exc()}",
+@dataclass(frozen=True, slots=True)
+class MediaSearchJobResult:
+    """Combined title-inference and TMDB search result."""
+
+    query: str | None
+    results: OrderedDict[str, Any]
+    title_error: str | None = None
+
+
+def _run_media_search_job(
+    backend: _MediaSearchBackend,
+    query: str | None,
+    input_path: Path | None,
+    selected_files: tuple[Path, ...],
+) -> MediaSearchJobResult:
+    """Infer an automatic query and perform the network search in one worker."""
+
+    if query is None:
+        if input_path is None:
+            return MediaSearchJobResult(
+                query=None,
+                results=OrderedDict(),
+                title_error="Failed to load the selected media path.",
             )
-            self.job_failed.emit(str(e) or "Media search failed.")
+
+        try:
+            inference = MediaTitleInferer().infer(
+                input_path,
+                video_files=selected_files,
+            )
+        except Exception as error:
+            return MediaSearchJobResult(
+                query=None,
+                results=OrderedDict(),
+                title_error=str(error) or "Unable to determine a media title.",
+            )
+
+        query = inference.title
+        LOG.info(
+            LOG.LOG_SOURCE.BE,
+            f"Inferred media search title {query!r} "
+            f"(confidence: {inference.confidence:.1%})",
+        )
+
+    return MediaSearchJobResult(
+        query=query,
+        results=OrderedDict(backend._parse_tmdb_api(query)),
+    )
 
 
 class IDParseWorker(QThread):
@@ -163,7 +194,8 @@ class MediaSearch(BaseWizardPage):
         # listen for settings changes to update language
         GSigs().settings_close.connect(self._update_backend_settings)
 
-        self.queued_worker: QueuedWorker | None = None
+        self.search_worker: GeneralWorker | None = None
+        self._search_generation = 0
         self.loading_complete = False
         self.id_parse_worker: IDParseWorker | None = None
         self.other_ids_parsed = False
@@ -529,26 +561,13 @@ class MediaSearch(BaseWizardPage):
 
         self.search_label.setText(f"Input: {input_path.name}")
         self.search_label.setToolTip(input_path.name)
-        self.search_entry.setText(self._get_title_only(input_path))
-
-        self._search_tmdb_api()
+        self._search_tmdb_api(infer_title=True)
 
         QTimer.singleShot(1, self._after_initialization)
 
     def _after_initialization(self) -> None:
         """Gives time for the UI to draw widgets"""
         GSigs().wizard_next_button_change_txt.emit("Select Title")
-
-    def _get_title_only(self, file_path: Path) -> str:
-        guess = guessit(file_path.stem, {"excludes": ["language"]})
-        title = get_guessit_title(guess)
-        if not title:
-            raise MediaParsingError(
-                f"Failed to determine title name for input {file_path.name}"
-            )
-
-        year = guess.get("year")
-        return f"{title} {year}" if year else title
 
     def _check_media_api_keys(self) -> bool:
         required_keys = {"TMDB (v3)": self.config.settings.api_keys.tmdb}
@@ -598,39 +617,133 @@ class MediaSearch(BaseWizardPage):
                 webbrowser.open(fallback_url)
 
     @Slot()
-    def _search_tmdb_api(self) -> None:
-        # disable the next button
-        self.loading_complete = False
-        self.completeChanged.emit()
+    def _search_tmdb_api(self, infer_title: bool = False) -> None:
+        """Search TMDB, inferring the initial title in the worker when asked."""
 
-        query = self.search_entry.text().strip()
-        if self.queued_worker is not None and self.queued_worker.isRunning():
-            self.queued_worker.terminate()
+        if self.search_worker is not None and self.search_worker.isRunning():
+            return
+
+        query = None if infer_title else self.search_entry.text().strip()
+        input_path = self.context.media_input.input_path if infer_title else None
+        selected_files = (
+            tuple(self.context.media_input.file_list) if infer_title else tuple()
+        )
+
         self.reset_page(all_widgets=False)
 
-        if not query:
+        if not infer_title and not query:
             self.listbox.addItem("Enter a title to search...")
             return
 
+        request_id = self._search_generation
+        status = (
+            "Inferring title and searching TMDB, please wait..."
+            if infer_title
+            else "Searching TMDB, please wait..."
+        )
         self.listbox.addItem("Loading please wait...")
+        GSigs().main_window_set_disabled.emit(True)
+        GSigs().main_window_update_status_tip.emit(status, 0)
 
-        self.queued_worker = QueuedWorker(self.backend, query, parent=self)
-        self.queued_worker.job_finished.connect(self._handle_search_result)
-        self.queued_worker.job_failed.connect(self._failed_search)
-        self.queued_worker.start()
+        worker = GeneralWorker(
+            _run_media_search_job,
+            self,
+            self.backend,
+            query,
+            input_path,
+            selected_files,
+        )
+        self.search_worker = worker
+        worker.finished.connect(
+            lambda worker=worker: self._release_search_worker(worker)
+        )
+        worker.job_finished.connect(
+            lambda result, generation=request_id: self._handle_search_worker_finished(
+                generation, result
+            )
+        )
+        worker.job_failed.connect(
+            lambda error, generation=request_id: self._handle_search_worker_failed(
+                generation, error
+            )
+        )
+        worker.start()
 
-    @Slot(OrderedDict)
-    def _handle_search_result(self, result: OrderedDict[str, Any]) -> None:
+    def _release_search_worker(self, worker: GeneralWorker) -> None:
+        if self.search_worker is worker:
+            self.search_worker = None
+
+    def _handle_search_worker_finished(self, generation: int, result: object) -> None:
+        """Apply a result only if it belongs to the current search request."""
+
+        if generation != self._search_generation:
+            return
+
+        if not isinstance(result, MediaSearchJobResult):
+            self._failed_search("Media search returned an invalid result.")
+            return
+
+        if result.title_error:
+            self._handle_title_inference_failed(result.title_error)
+            return
+
+        self._handle_search_result(result)
+
+    def _handle_search_worker_failed(self, generation: int, error_str: str) -> None:
+        """Handle network/search exceptions from the current worker."""
+
+        if generation != self._search_generation:
+            return
+
+        self._failed_search(error_str)
+
+    @Slot(object)
+    def _handle_search_result(
+        self,
+        result: MediaSearchJobResult | OrderedDict[str, Any],
+    ) -> None:
+        if isinstance(result, MediaSearchJobResult):
+            if result.query is not None:
+                self.search_entry.setText(result.query)
+            result_data = result.results
+        else:
+            result_data = result
+
         self.listbox.clear()
-        if result:
-            self.listbox.addItems(list(result))
+        if result_data:
+            self.listbox.addItems(list(result_data))
             self.listbox.setCurrentRow(0)
             self._select_media()
         else:
             self.listbox.addItem("No results, try again...")
 
-        self.loading_complete = bool(result)
+        self.loading_complete = bool(result_data)
         self.completeChanged.emit()
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
+
+    def _handle_title_inference_failed(self, error_str: str) -> None:
+        """Leave the page usable so the user can enter a title manually."""
+
+        self.loading_complete = False
+        self.other_ids_parsed = False
+        self.backend.media_data.clear()
+        self.context.media_search.reset()
+        self.context.media_input.media_type = None
+        self.listbox.clear()
+        self.listbox.addItem(
+            "Title detection failed. Enter a title above and search manually."
+        )
+        self.listbox.setDisabled(False)
+        self.completeChanged.emit()
+        GSigs().wizard_next_button_reset_txt.emit()
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
+        QMessageBox.warning(
+            self,
+            "Title Detection Failed",
+            f"{error_str}\n\nEnter a title manually to continue.",
+        )
 
     @Slot(str)
     def _failed_search(self, error_str: str) -> None:
@@ -707,6 +820,10 @@ class MediaSearch(BaseWizardPage):
 
     @Slot()
     def reset_page(self, all_widgets: bool = True) -> None:
+        worker_was_running = (
+            self.search_worker is not None and self.search_worker.isRunning()
+        )
+        self._search_generation += 1
         self.listbox.clear()
         self.listbox.setDisabled(False)
         self.imdb_id_entry.clear()
@@ -720,7 +837,8 @@ class MediaSearch(BaseWizardPage):
         self.rating_label.clear()
         self.plot_text.clear()
 
-        self.queued_worker = None
+        if self.search_worker is not None and not self.search_worker.isRunning():
+            self.search_worker = None
         self.loading_complete = False
         self.id_parse_worker = None
         self.other_ids_parsed = False
@@ -732,3 +850,7 @@ class MediaSearch(BaseWizardPage):
 
         if all_widgets:
             self.search_entry.clear()
+
+        if worker_was_running:
+            GSigs().main_window_set_disabled.emit(False)
+            GSigs().main_window_clear_status_tip.emit()
