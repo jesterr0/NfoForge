@@ -371,6 +371,75 @@ def test_auto_match_files_single_episode_has_no_episode_end() -> None:
     assert mapping["episode_end"] is None
 
 
+def test_fuzzy_match_falls_back_to_filename_without_episode_title() -> None:
+    file_path = Path("Show.S01.Some.Episode.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper.media_search_payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title="Show",
+    )
+    mapper.available_episodes = {1: {1: {"name": "Some Episode"}}}
+
+    result = mapper._fuzzy_match_episode_name(
+        file_path.stem,
+        season=1,
+        parsed_data={"season": 1},
+    )
+
+    assert result == (1, 1, 1.0)
+
+
+def test_auto_match_fuzzy_respects_parsed_season_for_duplicate_episode_names() -> None:
+    # Episode names are often repeated across seasons ("Pilot", "Finale",
+    # etc.). When the filename carries a season but no episode number, fuzzy
+    # matching must stay within that season instead of selecting whichever
+    # season happened to be inserted first.
+    file_path = Path("Show.S01.Pilot.2160p.WEB-DL.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper.media_search_payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title="Show",
+    )
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        2: {1: {"name": "Pilot"}},
+        1: {1: {"name": "Pilot"}},
+    }
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 1
+    assert mapping["episode"] == 1
+    assert mapping["assignment_method"] == "fuzzy"
+
+
+def test_fuzzy_match_fills_episode_for_season_only_row() -> None:
+    # The manual fuzzy action must not treat a season-only row as complete.
+    # Entering the season first is useful for constraining ambiguous episode
+    # names and was previously skipped because the action only checked the
+    # season column.
+    file_path = Path("Show.S01.Some.Episode.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper.media_search_payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title="Show",
+    )
+    mapper._populate_files_table()
+    mapper.available_episodes = {1: {1: {"name": "Some Episode"}}}
+
+    season_item = mapper.files_table.item(0, 1)
+    assert season_item is not None
+    season_item.setText("1")
+
+    mapper._fuzzy_match_unassigned()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 1
+    assert mapping["episode"] == 1
+    assert mapping["assignment_method"] == "fuzzy"
+
+
 def test_auto_match_files_exact_matches_season_zero_special() -> None:
     # regression guard: TVDB uses season 0 for specials, and `season == 0`
     # is falsy in Python. Stage 1's exact-match gate used truthiness

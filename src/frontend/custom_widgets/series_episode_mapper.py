@@ -587,44 +587,80 @@ class SeriesEpisodeMapper(QWidget):
         text = re.sub(r"\s+", " ", text.strip())
         return text
 
+    @staticmethod
+    def _coerce_season(value: Any) -> int | None:
+        """Return a parsed season number, including GuessIt's list form."""
+        if isinstance(value, list):
+            value = value[0] if value else None
+        return value if isinstance(value, int) else None
+
     def _fuzzy_match_episode_name(
-        self, filename: str, season: int | None = None
+        self,
+        filename: str,
+        season: int | None = None,
+        parsed_data: EpisodeData | None = None,
     ) -> tuple[int, int, float] | None:
         """Fuzzy match filename against episode names"""
         if not self.enable_fuzzy_checkbox.isChecked():
             return None
 
         threshold = self.fuzzy_threshold_spin.value()
-        filename_clean = self._normalize_text(filename)
 
-        # extract potential episode title from filename
-        # remove show name to isolate episode title
-        show_name_variations = []
+        # GuessIt normally gives us the episode title separately. Prefer that
+        # focused value so release metadata cannot drown out the title, but
+        # retain the filename-derived candidate for names GuessIt cannot parse.
+        episode_title_candidates: list[str] = []
+        if parsed_data:
+            parsed_episode_title = parsed_data.get("episode_title")
+            if isinstance(parsed_episode_title, list):
+                parsed_episode_title = " ".join(
+                    value
+                    for value in parsed_episode_title
+                    if isinstance(value, str) and value.strip()
+                )
+            if isinstance(parsed_episode_title, str) and parsed_episode_title.strip():
+                normalized_episode_title = self._normalize_text(parsed_episode_title)
+                if len(normalized_episode_title) >= 3:
+                    episode_title_candidates.append(normalized_episode_title)
+
+        # Extract a fallback episode title from the complete filename by
+        # removing the selected series title first.
+        filename_clean = self._normalize_text(filename)
+        show_name_variations: list[str] = []
         if (
             self.media_search_payload
             and hasattr(self.media_search_payload, "title")
-            and self.media_search_payload.title
+            and isinstance(self.media_search_payload.title, str)
+            and self.media_search_payload.title.strip()
         ):
             show_title = self.media_search_payload.title.lower()
-            show_name_variations.append(show_title)
+            show_name_variations.append(self._normalize_text(show_title))
             # also try with punctuation removed
             show_title_clean = re.sub(r"[^a-z0-9\s]", " ", show_title)
             show_title_clean = re.sub(r"\s+", " ", show_title_clean.strip())
-            if show_title_clean != show_title:
+            if show_title_clean and show_title_clean not in show_name_variations:
                 show_name_variations.append(show_title_clean)
 
-        episode_title = filename_clean
+        filename_episode_title = filename_clean
         for show_name in show_name_variations:
-            episode_title = episode_title.replace(show_name, "").strip()
+            if show_name:
+                filename_episode_title = filename_episode_title.replace(
+                    show_name, ""
+                ).strip()
 
         # remove common technical terms that don't help with episode matching
-        episode_title = re.sub(
-            r"\b(web|dl|rip|bluray|dvd|hdtv|mkv|mp4|avi)\b", "", episode_title
+        filename_episode_title = re.sub(
+            r"\b(web|dl|rip|bluray|dvd|hdtv|mkv|mp4|avi)\b",
+            "",
+            filename_episode_title,
         )
-        episode_title = re.sub(r"\s+", " ", episode_title.strip())
+        filename_episode_title = re.sub(r"\s+", " ", filename_episode_title.strip())
+        if len(filename_episode_title) >= 3:
+            episode_title_candidates.append(filename_episode_title)
 
-        # if there's no meaningful episode title left (too short), skip fuzzy matching
-        if len(episode_title) < 3:
+        # If neither GuessIt nor the filename produced a meaningful title,
+        # there is nothing useful to compare.
+        if not episode_title_candidates:
             return None
 
         best_match: tuple[int, int, float] | None = None
@@ -650,14 +686,17 @@ class SeriesEpisodeMapper(QWidget):
 
                 episode_name_clean = self._normalize_text(episode_name)
 
-                # try different fuzzy matching approaches
-                scores = [
-                    fuzz.ratio(episode_title, episode_name_clean),
-                    fuzz.partial_ratio(episode_title, episode_name_clean),
-                    fuzz.token_sort_ratio(episode_title, episode_name_clean),
-                ]
-
-                score = max(scores)
+                # Try several fuzzy strategies for every candidate and keep
+                # the strongest result. The GuessIt candidate wins when it is
+                # more precise, while the filename fallback remains available.
+                score = max(
+                    max(
+                        fuzz.ratio(candidate, episode_name_clean),
+                        fuzz.partial_ratio(candidate, episode_name_clean),
+                        fuzz.token_sort_ratio(candidate, episode_name_clean),
+                    )
+                    for candidate in episode_title_candidates
+                )
 
                 if score > best_score and score >= threshold:
                     best_score = score
@@ -725,11 +764,8 @@ class SeriesEpisodeMapper(QWidget):
             parsed_data = filename_item.parsed_data
 
             # stage 1: try regex/guessit parsing (highest confidence)
-            season = parsed_data.get("season")
+            season = self._coerce_season(parsed_data.get("season"))
             episode = parsed_data.get("episode")
-
-            if isinstance(season, list):
-                season = season[0] if season else None
 
             # guessit returns a list of episode numbers for files that span
             # multiple episodes (e.g. "S01E01E02"). keep the lowest as the
@@ -887,7 +923,11 @@ class SeriesEpisodeMapper(QWidget):
                         continue
 
             # stage 2: try fuzzy matching (medium confidence)
-            fuzzy_result = self._fuzzy_match_episode_name(file_path.stem)
+            fuzzy_result = self._fuzzy_match_episode_name(
+                file_path.stem,
+                season=season,
+                parsed_data=parsed_data,
+            )
             if fuzzy_result:
                 season, episode, confidence = fuzzy_result
                 if (
@@ -915,19 +955,40 @@ class SeriesEpisodeMapper(QWidget):
         fuzzy_matched = 0
 
         for row in range(self.files_table.rowCount()):
-            # check if file is already assigned
-            season_item = self.files_table.item(row, 1)
-            if season_item and season_item.text():
-                continue
-
             filename_item = self.files_table.item(row, 0)
             if not isinstance(filename_item, EnhancedFileTableItem):
                 continue
 
+            # A season-only row is intentionally eligible: users commonly
+            # enter the season first to constrain fuzzy matching. Only skip a
+            # row when both editable assignment fields are populated.
+            season_item = self.files_table.item(row, 1)
+            episode_item = self.files_table.item(row, 2)
+            season_text = season_item.text().strip() if season_item else ""
+            episode_text = episode_item.text().strip() if episode_item else ""
+            if season_text and episode_text:
+                continue
+
             file_path = filename_item.file_path
 
+            # Prefer a manually entered season, then GuessIt's parsed season,
+            # so duplicate episode names in different seasons stay scoped to
+            # the user's intended season.
+            season = None
+            if season_text:
+                try:
+                    season = int(season_text)
+                except ValueError:
+                    season = None
+            if season is None:
+                season = self._coerce_season(filename_item.parsed_data.get("season"))
+
             # try fuzzy matching
-            fuzzy_result = self._fuzzy_match_episode_name(file_path.stem)
+            fuzzy_result = self._fuzzy_match_episode_name(
+                file_path.stem,
+                season=season,
+                parsed_data=filename_item.parsed_data,
+            )
             if fuzzy_result:
                 season, episode, confidence = fuzzy_result
                 if (
