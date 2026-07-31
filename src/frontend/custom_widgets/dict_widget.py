@@ -74,6 +74,7 @@ class DictWidget(QWidget):
         self,
         data: dict[str, str] | None = None,
         del_interval: int = 2500,
+        pop_out_editor: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -104,7 +105,7 @@ class DictWidget(QWidget):
         )
         self.del_btn.clicked.connect(self.handle_delete)
 
-        self.text_box = CodeEditor(parent=self)
+        self.text_box = CodeEditor(pop_out_expansion=pop_out_editor, parent=self)
 
         self.top_layout = QHBoxLayout()
         self.top_layout.addWidget(self.combo)
