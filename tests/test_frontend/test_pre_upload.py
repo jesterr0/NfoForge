@@ -21,8 +21,10 @@ from src.frontend.custom_widgets.client_listbox import (
     TransmissionClientEdit,
     WatchFolderClientEdit,
 )
+from src.frontend.custom_widgets.pre_upload_widgets.client_options import (
+    ClientOptionsSection,
+)
 from src.frontend.windows.main_window import MainWindow
-from src.frontend.wizards.client_options import ClientOptionsSection
 from src.frontend.wizards.pre_upload import PreUploadPage
 from src.frontend.wizards.wizard import MainWindowWizard
 from src.payloads.clients import (

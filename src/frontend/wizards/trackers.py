@@ -6,7 +6,7 @@ from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
-from src.frontend.custom_widgets.tracker_listbox import TrackerListWidget
+from src.frontend.custom_widgets.tracker_settings import TrackerSettingsWidget
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 
@@ -27,7 +27,7 @@ class TrackersPage(BaseWizardPage):
         self.config = config
         self.main_window = parent
 
-        self.tracker_selection = TrackerListWidget(self.config, parent=self)
+        self.tracker_selection = TrackerSettingsWidget(self.config, parent=self)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.tracker_selection)
@@ -38,8 +38,7 @@ class TrackersPage(BaseWizardPage):
             if self.context.media_input.media_type is MediaType.SERIES
             else None
         )
-        self.tracker_selection.add_items(
-            self.config.settings.trackers.by_selection(),
+        self.tracker_selection.load_from_config(
             unsupported_trackers=unsupported_trackers,
         )
 
@@ -53,7 +52,8 @@ class TrackersPage(BaseWizardPage):
 
         self.context.shared_data.selected_trackers = trackers
 
-        self.tracker_selection.save_tracker_info()
+        self.tracker_selection.save_editor_settings()
+        self.config.settings.trackers.order = self.tracker_selection.current_order()
 
         self.config.save()
         GSigs().settings_refresh.emit()

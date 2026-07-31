@@ -162,6 +162,10 @@
   - This should speed up the TokenReplacer ~30% when doing multiple files at a time.
 - Now caches the last ten encode indexes when using comparison image generation via FrameForge in the users temp directory (default in appdata if not defined)
   - No longer generates indexes beside encode file with using FrameForge
+- Re-designed UI for tracker settings
+  - Much cleaner split panel view
+  - You can still set the priority of the tracker upload order by dragging them (priority is greatest from top to bottom)
+  - Wizard flow will also use this as well
 
 ### Fixed
 

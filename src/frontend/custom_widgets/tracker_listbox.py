@@ -1,36 +1,31 @@
-from collections.abc import Set as AbstractSet
 from enum import Enum
-from typing import Any
 
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal, Slot
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
     QFrame,
     QLabel,
     QLineEdit,
-    QMenu,
+    QSizePolicy,
     QSpinBox,
-    QTreeWidget,
-    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from src.config.config import ConfigManager
-from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.custom_widgets.url_organizer import URLOrganizer
-from src.frontend.utils import build_h_line
-from src.payloads.trackers import TrackerInfo
 
 
 class TrackerEditBase(QFrame):
+    MAX_CONTROL_WIDTH = 650
+    MAX_LABEL_WIDTH = 280
+
     load_data = Signal()
     save_data = Signal()
 
@@ -58,51 +53,55 @@ class TrackerEditBase(QFrame):
 
         self.screen_shot_settings: URLOrganizer | None = None
 
-        self.settings_layout = QVBoxLayout()
-        self.settings_layout.addLayout(
-            self.build_form_layout(self.upload_enabled_lbl, self.upload_enabled)
+        self.common_layout = self.build_form_layout()
+        self._add_form_row(
+            self.common_layout, self.upload_enabled_lbl, self.upload_enabled
         )
-        self.settings_layout.addLayout(
-            self.build_form_layout(self.announce_url_lbl, self.announce_url)
-        )
-        self.settings_layout.addLayout(
-            self.build_form_layout(self.comments_lbl, self.comments)
-        )
-        self.settings_layout.addLayout(
-            self.build_form_layout(self.source_lbl, self.source)
-        )
-        self.settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
+        self._add_form_row(self.common_layout, self.announce_url_lbl, self.announce_url)
+        self._add_form_row(self.common_layout, self.comments_lbl, self.comments)
+        self._add_form_row(self.common_layout, self.source_lbl, self.source)
+
+        # Tracker-specific controls are added by each editor below. Keep the
+        # groups open and visible; the editor is already inside a scroll area.
+        self.settings_layout = self.build_form_layout()
 
         self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
+        self.main_layout.setSpacing(10)
+        self.main_layout.addWidget(
+            self.build_section_heading("General / Upload Settings")
+        )
+        self.main_layout.addLayout(self.common_layout)
+        self.main_layout.addWidget(self.build_section_heading("Tracker Options"))
         self.main_layout.addLayout(self.settings_layout)
         self.setLayout(self.main_layout)
 
     def add_pair_to_layout(self, label: QLabel, widget: QWidget) -> QFormLayout:
-        layout = self.build_form_layout(label, widget)
-        self.settings_layout.addLayout(layout)
-        return layout
+        self._add_form_row(self.settings_layout, label, widget)
+        return self.settings_layout
 
-    def add_widget_to_layout(self, widget: QWidget, **kwargs: Any) -> None:
-        self.settings_layout.addWidget(widget, **kwargs)
+    def add_widget_to_layout(
+        self, widget: QWidget, alignment: Qt.AlignmentFlag | None = None
+    ) -> None:
+        if isinstance(widget, QLabel):
+            widget.setWordWrap(True)
+            widget.setMaximumWidth(self.MAX_CONTROL_WIDTH)
+            widget.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+            )
+            if alignment is not None:
+                widget.setAlignment(alignment)
+        self.settings_layout.addRow(widget)
 
     def add_screen_shot_settings(self) -> None:
-        """Convenient method to put this under 'specific' tracker settings"""
-        img_url_settings_lbl = QLabel("Image URL Settings", self)
-        font = img_url_settings_lbl.font()
-        font.setWeight(font.Weight.Bold)
-        img_url_settings_lbl.setFont(font)
+        """Add screenshot layout controls under an always-visible heading."""
         self.screen_shot_settings = URLOrganizer(self)
         self.screen_shot_settings.main_layout.setContentsMargins(0, 0, 0, 0)
-
-        ss_settings_widget = QWidget()
-        ss_settings_layout = QVBoxLayout(ss_settings_widget)
-        ss_settings_layout.setContentsMargins(6, 0, 0, 0)
-        ss_settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
-        ss_settings_layout.addWidget(
-            img_url_settings_lbl, alignment=Qt.AlignmentFlag.AlignCenter
+        self.screen_shot_settings.setMaximumWidth(self.MAX_CONTROL_WIDTH)
+        self.main_layout.addWidget(
+            self.build_section_heading("Screenshot / URL Formatting")
         )
-        ss_settings_layout.addWidget(self.screen_shot_settings)
-        self.add_widget_to_layout(ss_settings_widget)
+        self.main_layout.addWidget(self.screen_shot_settings)
 
     def load_settings(self) -> None:
         raise NotImplementedError("Must be implemented this per tracker")
@@ -110,15 +109,42 @@ class TrackerEditBase(QFrame):
     def save_settings(self) -> None:
         raise NotImplementedError("Must be implemented this per tracker")
 
-    @staticmethod
-    def build_form_layout(lbl: QLabel | str, widget: QWidget) -> QFormLayout:
+    @classmethod
+    def build_form_layout(cls) -> QFormLayout:
         layout = QFormLayout()
-        if isinstance(lbl, QLabel):
-            layout.addWidget(lbl)
-        else:
-            layout.addWidget(QLabel(lbl))
-        layout.addWidget(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.setHorizontalSpacing(16)
+        layout.setVerticalSpacing(6)
         return layout
+
+    @classmethod
+    def _add_form_row(
+        cls, layout: QFormLayout, lbl: QLabel | str, widget: QWidget
+    ) -> None:
+        label = lbl if isinstance(lbl, QLabel) else QLabel(lbl)
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        label.setMaximumWidth(cls.MAX_LABEL_WIDTH)
+        label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+        widget.setMaximumWidth(cls.MAX_CONTROL_WIDTH)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addRow(label, widget)
+        layout.setAlignment(widget, Qt.AlignmentFlag.AlignTop)
+
+    @staticmethod
+    def build_section_heading(title: str) -> QLabel:
+        label = QLabel(title)
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        label.setWordWrap(True)
+        label.setContentsMargins(0, 4, 0, 0)
+        return label
 
     @staticmethod
     def load_combo_box(
@@ -158,11 +184,7 @@ class MTVTrackerEdit(TrackerEditBase):
         password_lbl = QLabel("Password", self)
         self.password = MaskedQLineEdit(parent=self, masked=True)
 
-        totp_lbl = QLabel(
-            '<span>TOTP Secret <span style="font-style: italic; font-size: small;">'
-            "(if 2FA is enabled you can add your TOTP secret to avoid prompts during processing)</span></span>",
-            parent=self,
-        )
+        totp_lbl = QLabel("TOTP Secret", self)
         totp_lbl.setToolTip(
             "If 2FA is enabled on your account and no TOTP secret is provided, "
             "you will be prompted to enter your one-time password"
@@ -581,7 +603,6 @@ class RFTrackerEdit(TrackerEditBase):
         self.image_width.setRange(300, 2000)
         self._disable_scrollwheel_spinbox(self.image_width)
 
-        staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
             "All items below are available for staff and internal users", self
         )
@@ -612,7 +633,6 @@ class RFTrackerEdit(TrackerEditBase):
             staff_and_internal_lbl,
             alignment=Qt.AlignmentFlag.AlignCenter,
         )
-        self.add_widget_to_layout(staff_and_internal_h_line)
         self.add_pair_to_layout(featured_lbl, self.featured)
         self.add_pair_to_layout(free_lbl, self.free)
         self.add_pair_to_layout(double_up_lbl, self.double_up)
@@ -706,7 +726,6 @@ class AitherTrackerEdit(TrackerEditBase):
         self.image_width.setRange(300, 2000)
         self._disable_scrollwheel_spinbox(self.image_width)
 
-        staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
             "All items below are available for staff and internal users", self
         )
@@ -737,7 +756,6 @@ class AitherTrackerEdit(TrackerEditBase):
             staff_and_internal_lbl,
             alignment=Qt.AlignmentFlag.AlignCenter,
         )
-        self.add_widget_to_layout(staff_and_internal_h_line)
         self.add_pair_to_layout(featured_lbl, self.featured)
         self.add_pair_to_layout(free_lbl, self.free)
         self.add_pair_to_layout(double_up_lbl, self.double_up)
@@ -903,7 +921,6 @@ class LSTTrackerEdit(TrackerEditBase):
         self.image_width.setRange(300, 2000)
         self._disable_scrollwheel_spinbox(self.image_width)
 
-        staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
             "All items below are available for staff and internal users", self
         )
@@ -934,7 +951,6 @@ class LSTTrackerEdit(TrackerEditBase):
             staff_and_internal_lbl,
             alignment=Qt.AlignmentFlag.AlignCenter,
         )
-        self.add_widget_to_layout(staff_and_internal_h_line)
         self.add_pair_to_layout(featured_lbl, self.featured)
         self.add_pair_to_layout(free_lbl, self.free)
         self.add_pair_to_layout(double_up_lbl, self.double_up)
@@ -1022,7 +1038,6 @@ class DarkPeersEdit(TrackerEditBase):
         self.image_width.setRange(300, 2000)
         self._disable_scrollwheel_spinbox(self.image_width)
 
-        staff_and_internal_h_line = build_h_line((20, 1, 20, 1))
         staff_and_internal_lbl = QLabel(
             "All items below are available for staff and internal users", self
         )
@@ -1039,7 +1054,6 @@ class DarkPeersEdit(TrackerEditBase):
             staff_and_internal_lbl,
             alignment=Qt.AlignmentFlag.AlignCenter,
         )
-        self.add_widget_to_layout(staff_and_internal_h_line)
         self.add_screen_shot_settings()
 
     def load_settings(self) -> None:
@@ -1320,177 +1334,3 @@ class OnlyEncodesEdit(TrackerEditBase):
             self.config.settings.trackers.only_encodes.column_s = col_s
             self.config.settings.trackers.only_encodes.column_space = col_space
             self.config.settings.trackers.only_encodes.row_space = row_space
-
-
-class TrackerListWidget(QWidget):
-    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-
-        self.config = config
-
-        self.tree = QTreeWidget(self)
-        self.tree.setFrameShape(QFrame.Shape.Box)
-        self.tree.setFrameShadow(QFrame.Shadow.Sunken)
-        self.tree.setHeaderHidden(True)
-        self.tree.setVerticalScrollMode(QTreeWidget.ScrollMode.ScrollPerPixel)
-        self.tree.verticalScrollBar().setSingleStep(20)
-        self.tree.setAutoScroll(False)
-        self.tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
-        self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self._open_context_menu)
-        self.tree.itemChanged.connect(self._toggle_tracker)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.tree)
-
-    def add_items(
-        self,
-        items: dict[TrackerSelection, TrackerInfo],
-        unsupported_trackers: AbstractSet[TrackerSelection] | None = None,
-    ) -> None:
-        self.tree.blockSignals(True)
-        self.tree.clear()
-        unsupported_trackers = unsupported_trackers or frozenset()
-
-        for tracker, tracker_info in items.items():
-            parent_item = QTreeWidgetItem(self.tree)
-            parent_item.setText(0, str(tracker))
-            unsupported = tracker in unsupported_trackers
-
-            # add checkbox to the parent item
-            parent_item.setCheckState(
-                0,
-                Qt.CheckState.Checked
-                if tracker_info.enabled and not unsupported
-                else Qt.CheckState.Unchecked,
-            )
-            if unsupported:
-                parent_item.setDisabled(True)
-                parent_item.setToolTip(
-                    0,
-                    f"{tracker} does not support series uploads in NfoForge yet.",
-                )
-
-            self.add_child_widget(parent_item, tracker)
-
-        self.tree.blockSignals(False)
-
-    def add_child_widget(
-        self, parent_item: QTreeWidgetItem, tracker: TrackerSelection
-    ) -> None:
-        tracker_widget: TrackerEditBase | None = None
-        if tracker is TrackerSelection.MORE_THAN_TV:
-            tracker_widget = MTVTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.TORRENT_LEECH:
-            tracker_widget = TLTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.BEYOND_HD:
-            tracker_widget = BHDTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.PASS_THE_POPCORN:
-            tracker_widget = PTPTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.REELFLIX:
-            tracker_widget = RFTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.AITHER:
-            tracker_widget = AitherTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.HUNO:
-            tracker_widget = HunoTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.LST:
-            tracker_widget = LSTTrackerEdit(self.config, self)
-        elif tracker is TrackerSelection.DARK_PEERS:
-            tracker_widget = DarkPeersEdit(self.config, self)
-        elif tracker is TrackerSelection.SHARE_ISLAND:
-            tracker_widget = ShareIslandEdit(self.config, self)
-        elif tracker is TrackerSelection.UPLOAD_CX:
-            tracker_widget = UploadCXEdit(self.config, self)
-        elif tracker is TrackerSelection.ONLY_ENCODES:
-            tracker_widget = OnlyEncodesEdit(self.config, self)
-
-        if tracker_widget:
-            tracker_widget.load_data.emit()
-            child_item = QTreeWidgetItem(parent_item)
-            self.tree.setItemWidget(child_item, 0, tracker_widget)
-
-    def _open_context_menu(self, position: QPoint) -> None:
-        """Opens the right-click context menu for expanding and collapsing all trackers"""
-        menu = QMenu()
-
-        expand_action = QAction("Expand All", self)
-        expand_action.triggered.connect(self.expand_all_items)
-        menu.addAction(expand_action)
-
-        collapse_action = QAction("Collapse All", self)
-        collapse_action.triggered.connect(self.collapse_all_items)
-        menu.addAction(collapse_action)
-
-        # display the context menu at the mouse position
-        menu.exec(self.tree.viewport().mapToGlobal(position))
-
-    def expand_all_items(self) -> None:
-        """Expand all parent items in the QTreeWidget"""
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            if item:
-                item.setExpanded(True)
-
-    def collapse_all_items(self) -> None:
-        """Collapse all parent items in the QTreeWidget"""
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            if item:
-                item.setExpanded(False)
-
-    @Slot(object, int)
-    def _toggle_tracker(self, item: QTreeWidgetItem, column: int) -> None:
-        curr_tracker = TrackerSelection(item.text(column))
-        tracker_attributes: TrackerInfo = self.config.settings.trackers.by_selection()[
-            curr_tracker
-        ]
-        tracker_attributes.enabled = (
-            True if item.checkState(column) == Qt.CheckState.Checked else False
-        )
-
-    def _update_check_no_signals(
-        self, item: QTreeWidgetItem, column: int, check_state: Qt.CheckState
-    ) -> None:
-        """Modify check state with out invoking signals"""
-        self.tree.blockSignals(True)
-        item.setCheckState(column, check_state)
-        self.tree.blockSignals(False)
-
-    def save_tracker_info(self) -> None:
-        for i in range(self.tree.topLevelItemCount()):
-            parent = self.tree.topLevelItem(i)
-            if not parent:
-                return None
-            for j in range(parent.childCount()):
-                child = parent.child(j)
-                tracker_edit = self.tree.itemWidget(child, 0)
-                if tracker_edit and isinstance(tracker_edit, TrackerEditBase):
-                    tracker_edit.save_data.emit()
-
-    def get_selected_trackers(self) -> list[TrackerSelection] | None:
-        selected_items = []
-
-        for i in range(self.tree.topLevelItemCount()):
-            parent_item = self.tree.topLevelItem(i)
-            if not parent_item:
-                return None
-            name = parent_item.text(0)
-            check_state = parent_item.checkState(0)
-            if check_state == Qt.CheckState.Checked:
-                selected_items.append(TrackerSelection(name))
-
-        return selected_items if selected_items else None
-
-    def clear(self) -> None:
-        self.tree.blockSignals(True)
-        self.tree.clear()
-        self.tree.blockSignals(False)
-
-    @staticmethod
-    def _tracker_announce_url_check(tracker: TrackerSelection, url: str) -> str:
-        if tracker in (TrackerSelection.MORE_THAN_TV, TrackerSelection.TORRENT_LEECH):
-            if not url.endswith("/announce"):
-                url = f"{url}/announce"
-        return url
