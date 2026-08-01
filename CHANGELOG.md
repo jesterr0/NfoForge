@@ -262,7 +262,10 @@
 - Issue with FFMPEG drawtext filter on basic comparison images.
 - Incorrectly showing image generation complete on failed image generation
 - Could incorrectly parse IMAX from titles such as 'climax'
-- Prevent tracker credentials from reaching logs, retry dialogs, and process error output.
+- Prevent tracker credentials from reaching logs, retry dialogs, and process error
+  output.
+- Series episode renames now render filename and MediaInfo tokens from each episode
+  instead of reusing the first file in the pack.
 
 ### Removed
 

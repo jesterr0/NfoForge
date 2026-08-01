@@ -22,6 +22,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
     def series_renamer(
         self,
         media_input_obj: MediaInputPayload,
+        media_file: Path,
         token: str,
         colon_replacement: ColonReplace,
         media_search_payload: MediaSearchPayload,
@@ -32,12 +33,14 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         user_tokens: dict[str, str] | None,
         episode_format: EpisodeFormat,
         multi_episode_style: MultiEpisodeStyle,
+        parse_filename_attributes: bool = False,
         season_end: int | None = None,
     ) -> Path | None:
         """Rename series file.
 
         Args:
             media_input_obj: MediaInputPayload with series data
+            media_file: Episode file whose filename and MediaInfo should feed tokens
             token: Token string template for rename
             colon_replacement: Colon replacement strategy
             media_search_payload: Media search data (TVDB, etc.)
@@ -46,6 +49,8 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             user_tokens: User-defined tokens
             episode_format: Episode format (Standard, Daily, Anime)
             multi_episode_style: How multi-episode spans render in {episode_number}
+            parse_filename_attributes: Detect per-file REMUX/HYBRID/REPACK/PROPER
+                attributes when they are not explicitly overridden
             season_end: Highest season number in a multi-season pack, for {season_number}
                 range rendering. None (or equal to season_num) keeps single-season output.
 
@@ -66,11 +71,13 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             video_dynamic_range=video_dynamic_range,
             override_tokens=self.override_tokens,
             user_tokens=user_tokens,
+            parse_filename_attributes=parse_filename_attributes,
             season_number=season_num,
             season_end=season_end,
             episode_number=episode_num,
             episode_format=episode_format,
             multi_episode_style=multi_episode_style,
+            active_file=media_file,
         )
 
         # get rename output

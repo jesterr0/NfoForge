@@ -60,7 +60,7 @@ def _make_series_rename_page(
     media_input = MediaInputPayload(
         input_path=Path("Show Season 1"),
         media_type=MediaType.SERIES,
-        file_list=[file_path],
+        file_list=list(episode_map),
         series_episode_map=episode_map,
         series_episode_format=EpisodeFormat.STANDARD,
     )
@@ -68,6 +68,29 @@ def _make_series_rename_page(
     context = ProcessingContext(media_input=media_input, media_search=media_search)
 
     return RenameEncodeSeries(config=manager, context=context, parent=None)
+
+
+def test_initialize_page_does_not_promote_first_episode_values_to_pack_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first_file = Path("Show.S01E01.REPACK.1080p.BluRay.REMUX-GRP.mkv")
+    second_file = Path("Show.S01E02.720p.WEB-DL-OTHER.mkv")
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=first_file,
+        episode_map={
+            first_file: {"season": 1, "episode": 1},
+            second_file: {"season": 1, "episode": 2},
+        },
+    )
+    page.config.settings.series.standard_episode_token = TEST_TOKEN
+
+    page.initializePage()
+
+    assert "re_release" not in page.backend.override_tokens
+    assert "source" not in page.backend.override_tokens
+    assert "remux" not in page.backend.override_tokens
 
 
 def test_update_generated_name_populates_override_token_table_for_mapped_episode(

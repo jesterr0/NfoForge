@@ -28,6 +28,48 @@ def _td() -> TokenData:
     return TokenData(pre_token="", post_token="")
 
 
+def _media_info(width: int, height: int) -> MediaInfo:
+    return MediaInfo(
+        f"""<Mediainfo><File>
+        <track type="General"><Duration>60000</Duration><File_size>1000</File_size></track>
+        <track type="Video"><Width>{width}</Width><Height>{height}</Height><Scan_type>Progressive</Scan_type><Frame_rate>24.000</Frame_rate><Format>AVC</Format></track>
+        <track type="Audio"><Format>AC-3</Format><Channel_s>2</Channel_s><Language>en</Language></track>
+        </File></Mediainfo>"""
+    )
+
+
+def test_active_file_drives_file_specific_tokens_in_series_pack() -> None:
+    first_file = Path("Show.S01E01.1080p.WEB-DL.DDP5.1.H.264-GRP.mkv")
+    second_file = Path("Show.S01E02.REPACK.720p.WEB-DL.DD2.0.H.264-OTHER.mkv")
+    payload = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[first_file, second_file],
+        file_list_mediainfo={
+            first_file: _media_info(1920, 1080),
+            second_file: _media_info(1280, 720),
+        },
+    )
+
+    def render(active_file: Path) -> str | None:
+        return TokenReplacer(
+            media_input_obj=payload,
+            media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
+            token_string="{resolution}|{release_group}|{re_release}|{original_filename}",
+            colon_replace=ColonReplace.REPLACE_WITH_DASH,
+            flatten=True,
+            file_name_mode=False,
+            token_type=FileToken,
+            unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+            parse_filename_attributes=True,
+            season_number=1,
+            active_file=active_file,
+        ).get_output()
+
+    assert render(first_file) == f"1080p|GRP||{first_file.stem}"
+    assert render(second_file) == f"720p|OTHER|REPACK|{second_file.stem}"
+
+
 def _series_replacer(token: str) -> TokenReplacer:
     file_path = Path("Show.S01E02.mkv")
     return TokenReplacer(

@@ -7,6 +7,8 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_SEARCH_PAYLOAD,
 )
 from src.enums.media_type import MediaType
+from src.enums.multi_episode_style import MultiEpisodeStyle
+from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
@@ -23,6 +25,34 @@ def _minimal_series_payload() -> MediaInputPayload:
 
 def _empty_series_search() -> MediaSearchPayload:
     return MediaSearchPayload(media_type=MediaType.SERIES, tvdb_data={"episodes": []})
+
+
+def test_series_renamer_uses_the_episode_being_rendered() -> None:
+    first_file = Path("Show.S01E01.1080p.WEB-DL-GRP.mkv")
+    second_file = Path("Show.S01E02.REPACK.720p.WEB-DL-OTHER.mkv")
+    payload = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[first_file, second_file],
+    )
+
+    result = RenameEncodeSeriesBackEnd().series_renamer(
+        media_input_obj=payload,
+        media_file=second_file,
+        token="{re_release} {release_group}",
+        colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+        media_search_payload=_empty_series_search(),
+        season_num=1,
+        episode_num=2,
+        title_clean_rules=None,
+        video_dynamic_range=None,
+        user_tokens=None,
+        episode_format=EpisodeFormat.STANDARD,
+        multi_episode_style=MultiEpisodeStyle.RANGE,
+        parse_filename_attributes=True,
+    )
+
+    assert result == Path("REPACK.OTHER.mkv")
 
 
 def test_series_folder_renamer_renders_multi_season_range() -> None:

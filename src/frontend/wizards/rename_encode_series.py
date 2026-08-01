@@ -316,10 +316,9 @@ class RenameEncodeSeries(BaseWizardPage):
             f"Found {episode_count} episode{'s' if episode_count != 1 else ''} to rename"
         )
 
-        # Pre-load attribute combos based on first file
-        if media_files:
-            first_file = Path(media_files[0])
-            self._pre_load_attribute_combos(first_file.stem)
+        # Only infer a pack-wide override when every episode agrees. File-specific
+        # attributes are otherwise resolved from each active file during rendering.
+        self._pre_load_attribute_combos([Path(path).stem for path in media_files])
 
         # Use series token from config
         series_token = get_tvr_episode_token(
@@ -328,17 +327,25 @@ class RenameEncodeSeries(BaseWizardPage):
         )
         self.token_override.setText(series_token)
 
-        # Detect quality from first file if available
-        first_file_path = Path(media_files[0])
+        # As with filename attributes, source quality is a pack-wide override only
+        # when every episode has the same detected value.
         comp_pair = self.context.media_input.comparison_pair
-        get_quality = self.backend.get_quality(
-            media_input=first_file_path,
-            source_input=comp_pair.source if comp_pair else None,
+        detected_qualities = {
+            self.backend.get_quality(
+                media_input=Path(media_file),
+                source_input=comp_pair.source if comp_pair else None,
+            )
+            for media_file in media_files
+        }
+        common_quality = (
+            next(iter(detected_qualities)) if len(detected_qualities) == 1 else None
         )
-        if get_quality:
-            quality_idx = self.quality_combo.findText(str(get_quality))
+        if common_quality:
+            quality_idx = self.quality_combo.findText(str(common_quality))
             if quality_idx > -1:
                 self.quality_combo.setCurrentIndex(quality_idx)
+        else:
+            self.quality_combo.setCurrentIndex(0)
 
         self.release_group_entry.setText(
             release_group_name if release_group_name else ""
@@ -397,6 +404,7 @@ class RenameEncodeSeries(BaseWizardPage):
         ) in self.context.media_input.series_episode_map.items():
             renamed_file = self.backend.series_renamer(
                 media_input_obj=self.context.media_input,
+                media_file=media_file,
                 token=token,
                 colon_replacement=self.config.settings.series.filename_colon_replace,
                 media_search_payload=self.context.media_search,
@@ -407,6 +415,7 @@ class RenameEncodeSeries(BaseWizardPage):
                 episode_num=media_data["episode"],
                 episode_format=self.context.media_input.series_episode_format,
                 multi_episode_style=self.config.settings.series.multi_episode_style,
+                parse_filename_attributes=self.config.settings.series.parse_filename_attributes,
                 # each renamed file belongs to exactly one season, so season_end
                 # matches season_num here (single-season, unchanged rendering);
                 # the multi-season {season_number} range only applies to the
@@ -541,31 +550,39 @@ class RenameEncodeSeries(BaseWizardPage):
         return True
 
     # All the methods from RenameEncode, adapted for series
-    def _pre_load_attribute_combos(self, filename: str) -> None:
-        """Pre-load combo boxes based on filename analysis."""
+    def _pre_load_attribute_combos(self, filenames: Sequence[str]) -> None:
+        """Pre-load only attributes shared by every file in the series pack."""
 
-        def select_combo_by_regex(
+        def detect_normalized_value(
+            norm_list: Sequence[RenameNormalization], filename: str
+        ) -> str:
+            for item in norm_list:
+                if any(re.search(pat, filename, flags=re.I) for pat in item.re_gex):
+                    return item.normalized
+            return ""
+
+        def select_common_value(
             norm_list: Sequence[RenameNormalization], combo: CustomComboBox
         ) -> None:
-            for item in norm_list:
-                for pat in item.re_gex:
-                    if re.search(pat, filename, flags=re.I):
-                        idx = combo.findText(item.normalized)
-                        if idx > -1:
-                            combo.setCurrentIndex(idx)
-                            return
+            detected = {
+                detect_normalized_value(norm_list, filename) for filename in filenames
+            }
+            common_value = next(iter(detected)) if len(detected) == 1 else ""
+            idx = combo.findText(common_value)
+            combo.setCurrentIndex(idx if idx > -1 else 0)
 
-        select_combo_by_regex(EDITION_INFO, self.edition_combo)
-        select_combo_by_regex(FRAME_SIZE_INFO, self.frame_size_combo)
-        select_combo_by_regex(LOCALIZATION_INFO, self.localization_combo)
-        select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
+        select_common_value(EDITION_INFO, self.edition_combo)
+        select_common_value(FRAME_SIZE_INFO, self.frame_size_combo)
+        select_common_value(LOCALIZATION_INFO, self.localization_combo)
+        select_common_value(RE_RELEASE_INFO, self.re_release_combo)
 
     def _auto_check_remux_checkbox(self) -> None:
-        """Auto-check REMUX checkbox if detected in filename."""
-        if self.context.media_input.file_list:
-            first_file = Path(self.context.media_input.file_list[0])
-            if "remux" in first_file.stem.lower():
-                self.remux_checkbox.setChecked(True)
+        """Auto-check REMUX only when every file in the pack is a remux."""
+        media_files = self.context.media_input.file_list
+        self.remux_checkbox.setChecked(
+            bool(media_files)
+            and all("remux" in Path(path).stem.lower() for path in media_files)
+        )
 
     @Slot(bool)
     def _on_override_group_toggled(self, checked: bool) -> None:
@@ -714,6 +731,9 @@ class RenameEncodeSeries(BaseWizardPage):
             else:
                 self.remux_checkbox.setEnabled(True)
                 self._auto_check_remux_checkbox()
+        else:
+            self.remux_checkbox.setEnabled(True)
+            self._auto_check_remux_checkbox()
 
         # Update override
         self._update_override_tokens("source", cur_text, False if cur_text else True)
@@ -766,7 +786,7 @@ class RenameEncodeSeries(BaseWizardPage):
             self.rename_token_control.reset()
             return
 
-        _representative_path, media_data = next(iter(episode_map.items()))
+        representative_path, media_data = next(iter(episode_map.items()))
 
         user_tokens = {
             k: v
@@ -776,6 +796,7 @@ class RenameEncodeSeries(BaseWizardPage):
 
         get_file_name = self.backend.series_renamer(
             media_input_obj=self.context.media_input,
+            media_file=representative_path,
             token=token,
             colon_replacement=self.config.settings.series.filename_colon_replace,
             media_search_payload=self.context.media_search,
@@ -786,6 +807,7 @@ class RenameEncodeSeries(BaseWizardPage):
             episode_num=media_data["episode"],
             episode_format=self.context.media_input.series_episode_format,
             multi_episode_style=self.config.settings.series.multi_episode_style,
+            parse_filename_attributes=self.config.settings.series.parse_filename_attributes,
             season_end=media_data["season"],
         )
 

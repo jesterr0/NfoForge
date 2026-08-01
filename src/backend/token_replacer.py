@@ -67,6 +67,7 @@ class TokenReplacer:
     __slots__ = (
         # __init__
         "media_input_obj",
+        "active_file",
         "token_string",
         "jinja_engine",
         "colon_replace",
@@ -153,6 +154,7 @@ class TokenReplacer:
         episode_number: int | None = None,
         episode_format: EpisodeFormat | None = None,
         multi_episode_style: MultiEpisodeStyle = MultiEpisodeStyle.RANGE,
+        active_file: Path | None = None,
     ):
         """
         Takes a MediaInputPayload and outputs formatted strings based on tokens.
@@ -210,8 +212,11 @@ class TokenReplacer:
                 single-episode files, whose {episode_number} stays the raw start number.
             flat_filters (Optional[dict[str, Callable[..., str]]]): Custom filters for flat mode.
                 Dictionary mapping filter names to callable functions that take (value, *args) and return str.
+            active_file (Optional[Path]): File to use for filename and MediaInfo-derived
+                tokens. When omitted, the payload's comparison media or first file is used.
         """
         self.media_input_obj = media_input_obj
+        self.active_file = active_file
         self.token_string = token_string
         self.jinja_engine = jinja_engine
         self.colon_replace = ColonReplace(colon_replace)
@@ -276,6 +281,9 @@ class TokenReplacer:
 
     def _get_primary_file(self) -> Path:
         """Determine the primary file for token analysis based on context."""
+        if self.active_file is not None:
+            return self.active_file
+
         # if comparison mode, use the media file (not source)
         if self.media_input_obj.comparison_pair:
             return self.media_input_obj.comparison_pair.media
@@ -304,8 +312,7 @@ class TokenReplacer:
         """Get MediaInfo for the primary file."""
         if not self.media_input_obj.file_list_mediainfo:
             return None
-        primary = self._get_primary_file()
-        return self.media_input_obj.file_list_mediainfo.get(primary)
+        return self.media_input_obj.file_list_mediainfo.get(self.primary_file)
 
     def _get_source_mediainfo(self) -> MediaInfo | None:
         """Get MediaInfo for the source file."""
@@ -3129,24 +3136,3 @@ class TokenReplacer:
                 return None
             return val
         return None
-
-
-# Individual File Processing
-# Process a specific file temporarily
-# output = token_replacer.get_output_for_file(Path("S01E01.mkv"))
-
-# Or set a file as the active context
-# token_replacer.set_active_file(Path("S01E01.mkv"))
-# output = token_replacer.get_output()
-
-
-# Batch Processing
-# Process all files with the same template
-# all_outputs = token_replacer.get_output_for_all_files()
-
-# Process files with different templates per file
-# templates = {
-#     Path("S01E01.mkv"): "{title} S{season_number:02d}E{episode_number:02d}",
-#     Path("S01E02.mkv"): "{title} - {episode_title}",
-# }
-# outputs = token_replacer.get_batch_outputs(templates)
