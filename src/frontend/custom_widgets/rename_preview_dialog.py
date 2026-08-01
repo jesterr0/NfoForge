@@ -135,9 +135,17 @@ class RenamePreviewDialog(QDialog):
             cursor.insertText("\n", normal_format)
 
             for old_folder, new_folder in sorted(folder_renames.items()):
-                old_diff, new_diff = self._get_diff_parts(
-                    old_folder.name, new_folder.name
+                old_display = (
+                    str(old_folder)
+                    if old_folder.parent != new_folder.parent
+                    else old_folder.name
                 )
+                new_display = (
+                    str(new_folder)
+                    if old_folder.parent != new_folder.parent
+                    else new_folder.name
+                )
+                old_diff, new_diff = self._get_diff_parts(old_display, new_display)
 
                 # old name (removed)
                 cursor.insertText("  - ", normal_format)
@@ -158,7 +166,17 @@ class RenamePreviewDialog(QDialog):
             cursor.insertText("\n", normal_format)
 
             for old_file, new_file in sorted(file_renames.items()):
-                old_diff, new_diff = self._get_diff_parts(old_file.name, new_file.name)
+                old_display = (
+                    str(old_file)
+                    if old_file.parent != new_file.parent
+                    else old_file.name
+                )
+                new_display = (
+                    str(new_file)
+                    if old_file.parent != new_file.parent
+                    else new_file.name
+                )
+                old_diff, new_diff = self._get_diff_parts(old_display, new_display)
 
                 # old name (removed)
                 cursor.insertText("  - ", normal_format)

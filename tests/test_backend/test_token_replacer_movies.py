@@ -1,3 +1,5 @@
+import pytest
+
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenData
 from src.backend.utils.audio_codecs import AudioCodecs
@@ -17,6 +19,41 @@ def _td() -> TokenData:
     # _optional_user_input interpolates as the literal string "None" around
     # the value; tests asserting exact output need the empty-string variant.
     return TokenData(pre_token="", post_token="")
+
+
+def _filename_replacer(token: str, *, title: str = "Movie Name") -> TokenReplacer:
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string=token,
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.MOVIE,
+            title=title,
+        ),
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+
+def test_filename_tokens_replace_path_separators() -> None:
+    assert _filename_replacer("{title}", title="Face/Off").get_output() == (
+        "Face.Off.mkv"
+    )
+
+
+@pytest.mark.parametrize("title", ["CON", "PRN.txt", "COM1", "LPT9.mkv"])
+def test_filename_tokens_reject_reserved_windows_device_names(title: str) -> None:
+    assert _filename_replacer("{title}", title=title).get_output() is None
+
+
+def test_filename_tokens_reject_empty_and_cap_long_names() -> None:
+    assert _filename_replacer("{usr_empty}", title="ignored").get_output() is None
+    long_output = _filename_replacer("{title}", title="A" * 400).get_output()
+
+    assert long_output is not None
+    assert len(long_output) == 255
+    assert long_output.endswith(".mkv")
 
 
 def _movie_replacer() -> TokenReplacer:

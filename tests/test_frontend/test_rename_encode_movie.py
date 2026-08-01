@@ -6,6 +6,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog
 import pytest
 
+from src.backend.rename_encode import RenameEncodeBackEnd
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
@@ -115,3 +116,21 @@ def test_confirmed_folder_and_file_rename_updates_payload_asynchronously(
     assert page.context.media_input.file_list == [target]
     assert target.is_file()
     assert not source_directory.exists()
+
+
+def test_failed_render_clears_stale_generated_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _make_movie_rename_page(tmp_path, monkeypatch)
+    page._input_ext = ".mkv"
+    page.output_entry.setText("Stale.Name")
+    monkeypatch.setattr(
+        RenameEncodeBackEnd,
+        "media_renamer",
+        lambda self, **kwargs: None,
+    )
+
+    page.update_generated_name()
+
+    assert page.output_entry.text() == ""
+    assert page._input_ext is None

@@ -193,3 +193,24 @@ def test_case_only_rename_uses_an_in_place_temporary_hop(tmp_path: Path) -> None
     assert result.success is True
     assert target.is_file()
     assert result.updated_input_path == target
+
+
+def test_single_file_rename_rejects_destination_outside_source_folder(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "movie.mkv"
+    source.write_text("data")
+    destination_directory = tmp_path / "outside"
+    destination_directory.mkdir()
+    target = destination_directory / "renamed.mkv"
+
+    result = RenameExecutor.execute(
+        RenamePlan(
+            file_targets={source: target}, directory_targets={}, input_path=source
+        )
+    )
+
+    assert result.success is False
+    assert "stay in the source folder" in (result.message or "")
+    assert source.is_file()
+    assert not target.exists()

@@ -190,6 +190,13 @@ class RenameExecutor:
                 raise FileNotFoundError(f"Source file does not exist: {source}")
             cls._validate_same_volume(source, final_target)
 
+            expected_parent = plan.directory_targets.get(source.parent, source.parent)
+            if _path_key(final_target.parent) != _path_key(expected_parent):
+                raise ValueError(
+                    "File renames must stay in the source folder (or its mapped "
+                    f"destination folder): {source} -> {final_target}"
+                )
+
             target_key = _path_key(final_target)
             previous_target = target_keys.get(target_key)
             if previous_target is not None:

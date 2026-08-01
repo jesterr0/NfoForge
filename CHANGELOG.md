@@ -268,6 +268,9 @@
   instead of reusing the first file in the pack.
 - Plugin flat filters now apply consistently to runtime filenames, series folder names,
   tracker titles, and qBittorrent save-path templates as well as Settings previews.
+- Empty or failed generated rename names are rejected before a rename plan is created.
+- Rendered filenames are sanitized for Windows path rules, and cross-folder rename
+  previews now show their full paths.
 
 ### Removed
 

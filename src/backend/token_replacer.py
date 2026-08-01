@@ -47,6 +47,9 @@ from src.payloads.series import format_multi_season_range
 from src.plugins.api import FlatFilter
 from src.version import __version__, program_name, program_url
 
+_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_RESERVED_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL"})
+
 
 class TokenReplacer:
     FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
@@ -1000,13 +1003,9 @@ class TokenReplacer:
                 formatted_file_name = re.sub(r"\.{2,}", ".", formatted_file_name)
                 formatted_file_name = re.sub(r":\.", ".", formatted_file_name)
                 formatted_file_name = re.sub(r"\.-\.|\.-|-\.", "-", formatted_file_name)
-                # a token that renders empty at either end leaves a dangling
-                # separator. The collapse above runs before the suffix is
-                # appended, so it cannot see the doubled dot a trailing one
-                # would create ("Name..mkv"), and a leading one would produce a
-                # name starting with "." -- a hidden file on Unix.
-                formatted_file_name = formatted_file_name.strip(".-")
-                return formatted_file_name + self.media_input.suffix
+                # Sanitize metadata/user-token output before it becomes a path
+                # component; this also rejects empty and reserved device names.
+                return self._sanitize_filename(formatted_file_name)
             # if title mode
             else:
                 formatted_title = re.sub(r"\s{1,}", " ", formatted_title)
@@ -1025,6 +1024,35 @@ class TokenReplacer:
                 return formatted_title
         except (ValueError, KeyError, IndexError):
             return None
+
+    def _sanitize_filename(self, filename: str) -> str | None:
+        """Return a safe single filename component with the input suffix.
+
+        Flat token values can come from metadata, user tokens, or release-group
+        overrides, so they cannot be assumed to have gone through the editable
+        title-clean rules. Replacing reserved characters here keeps them from
+        becoming path separators and makes the final rename target portable to
+        Windows. Returning ``None`` for an empty or reserved device name lets
+        the rename page reject the result before it creates a plan.
+        """
+        suffix = self.media_input.suffix
+        filename = _INVALID_FILENAME_CHARS.sub(".", filename)
+        filename = re.sub(r"\.{2,}", ".", filename)
+        filename = filename.strip(". -")
+        if not filename:
+            return None
+
+        device_stem = filename.split(".", maxsplit=1)[0].upper()
+        if device_stem in _RESERVED_DEVICE_NAMES or re.fullmatch(
+            r"(?:COM|LPT)[1-9]", device_stem
+        ):
+            return None
+
+        max_filename_length = 255 - len(suffix)
+        if max_filename_length <= 0:
+            return None
+        filename = filename[:max_filename_length].rstrip(". ")
+        return f"{filename}{suffix}" if filename else None
 
     def _remove_unfilled_tokens(self, formatted_title: str) -> str:
         if self.unfilled_token_mode == UnfilledTokenRemoval.KEEP:

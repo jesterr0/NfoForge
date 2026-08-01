@@ -341,10 +341,8 @@ class RenameEncode(BaseWizardPage):
         if file_input:
             if not self._name_validations() or not self._quality_validations():
                 return False
-            renamed_output = (
-                file_input.parent
-                / f"{self.output_entry.text().strip()}{self._input_ext}"
-            )
+            output_name = self.output_entry.text().strip()
+            renamed_output = file_input.parent / f"{output_name}{file_input.suffix}"
             rename_map = {file_input: renamed_output}
 
             # if user opened a folder (not a single file), rename the folder to match the movie
@@ -358,9 +356,7 @@ class RenameEncode(BaseWizardPage):
                 new_folder = old_folder.parent / self.output_entry.text().strip()
 
                 # update the renamed_output to be in the new folder
-                renamed_output = (
-                    new_folder / f"{self.output_entry.text().strip()}{self._input_ext}"
-                )
+                renamed_output = new_folder / f"{output_name}{file_input.suffix}"
                 rename_map[file_input] = renamed_output
 
             # determine if there are any effective renames (source != target).
@@ -539,7 +535,31 @@ class RenameEncode(BaseWizardPage):
         self._token_window = None
 
     def _name_validations(self) -> bool:
-        renamed_output_lowered = self.output_entry.text().lower()
+        output_name = self.output_entry.text().strip()
+        if not output_name:
+            QMessageBox.warning(
+                self,
+                "Invalid Rename",
+                "The generated filename is empty. Choose a token template that "
+                "produces a filename before continuing.",
+            )
+            return False
+        if self._input_ext is None:
+            QMessageBox.warning(
+                self,
+                "Invalid Rename",
+                "A valid filename could not be generated from the selected media.",
+            )
+            return False
+        if not self.context.media_input.file_list[0].suffix:
+            QMessageBox.warning(
+                self,
+                "Invalid Rename",
+                "The input media has no file extension to preserve.",
+            )
+            return False
+
+        renamed_output_lowered = output_name.lower()
         if "subbed" in renamed_output_lowered and "dubbed" in renamed_output_lowered:
             QMessageBox.warning(
                 self, "Error", "Both 'Subbed' and 'Dubbed' should not be used together."
@@ -714,6 +734,9 @@ class RenameEncode(BaseWizardPage):
             # update entries
             self._input_ext = get_file_name.suffix
             self.output_entry.setText(str(get_file_name.with_suffix("")))
+        else:
+            self._input_ext = None
+            self.output_entry.clear()
 
     def _reset_re_release_reason_widgets(self) -> None:
         """Hide and reset both repack and proper reason widgets."""
