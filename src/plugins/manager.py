@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -153,10 +153,11 @@ class PluginManager:
         record = self._require_capability(plugin_id, "metadata_transformer")
         transformer = record.definition.metadata_transformer
         assert transformer is not None
+        isolated_payload = deepcopy(request.payload)
         isolated_request = MetadataTransformRequest(
             config=request.config,
-            context=request.context,
-            payload=deepcopy(request.payload),
+            context=replace(request.context, media_search=isolated_payload),
+            payload=isolated_payload,
             timeout=request.timeout,
         )
         try:
@@ -175,8 +176,13 @@ class PluginManager:
                     "metadata transformer must return MediaSearchPayload or None"
                 ),
             )
-        result.validate()
-        return result
+        try:
+            result.validate()
+            return deepcopy(result)
+        except Exception as error:
+            raise PluginExecutionError(
+                plugin_id, "metadata_transformer", error
+            ) from error
 
     def _require_capability(self, plugin_id: str, capability: str) -> PluginRecord:
         record = self.get(plugin_id)

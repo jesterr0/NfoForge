@@ -134,8 +134,8 @@
 - Update niquests.
 - All calls to mediainfo includes legacy stream data now _(to detect DTS core)_.
 - Plugin controls have moved out of **General** and into the dedicated **Plugins**
-  settings tab. Disabling plugin execution now preserves the saved selections and keeps
-  plugin discovery diagnostics visible.
+  settings tab. Disabling external plugins now preserves saved selections while
+  preventing local plugins and entry points from being imported at startup.
 - Main window status label now updates with the current wizard plugin when selected.
 - Crop Widget:
   - Improved script detection logic for AviSynth/VapourSynth scripts for manual crops.
@@ -145,12 +145,18 @@
   - You can now pop out the text editor widget for the text input.
   - Text window is now read only.
 - Plugin Changes:
+  - Plugin API version 2 replaces the live metadata-transformer processing context with
+    an isolated, typed context snapshot.
   - Plugins now export one `PluginDefinition` and use typed request objects for token
     replacement, pre-upload processing, and metadata transformation.
   - Plugin discovery and execution are centralized through `PluginManager`. One invalid
     plugin no longer prevents other plugins or NfoForge from loading.
   - Duplicate plugin IDs and conflicting Jinja/flat-filter contribution names are
     rejected instead of silently overwriting existing behavior.
+  - Local plugin modules are loaded directly from their repository without temporarily
+    modifying Python's global import path.
+  - Metadata transformers receive an immutable context snapshot whose media-search
+    reference is the same isolated payload supplied by the request.
   - Plugin selections are stored using stable manifest or entry-point IDs rather than
     display names. Config schema 4 resets legacy display-name selections so compatible
     plugins can be selected again explicitly.
@@ -271,6 +277,8 @@
 - Empty or failed generated rename names are rejected before a rename plan is created.
 - Rendered filenames are sanitized for Windows path rules, and cross-folder rename
   previews now show their full paths.
+- Metadata transformer payloads are fully validated and copied before commit, preventing
+  invalid or uncopyable results from partially replacing canonical TMDB metadata.
 
 ### Removed
 

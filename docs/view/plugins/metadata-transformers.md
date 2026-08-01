@@ -6,7 +6,9 @@ isolated copy, may change any payload field, and must return that payload for it
 changes to be accepted. Returning `None` keeps the TMDB result unchanged.
 
 A failure or invalid return is non-blocking: NfoForge warns the user, discards the
-isolated copy, and continues with canonical metadata.
+isolated copy, and continues with canonical metadata. Returned payloads are validated
+and copied completely before canonical state changes, so a failed commit cannot apply
+only part of a plugin result.
 
 ## Contract
 
@@ -45,10 +47,16 @@ plugin = PluginDefinition(
 )
 ```
 
-The request also exposes `config` and `context` for integrations that need read-only
-application state. Only the isolated `request.payload` should be mutated. `plugin_data`
-is available for namespaced diagnostic or downstream data that does not belong in a
-canonical field.
+The request also exposes `config` for read-only configuration access and an immutable
+context snapshot. `request.context.media_input` contains `input_path`, `media_type`,
+`working_dir`, and an immutable `files` tuple. `request.context.media_search` is the
+same isolated object as `request.payload`, never NfoForge's canonical payload.
+
+Only `request.payload` should be mutated and returned. `plugin_data` is available for
+namespaced diagnostic or downstream data that does not belong in a canonical field;
+everything stored there must support `copy.deepcopy`. Raw `tmdb_data`, `tvdb_data`, and
+`anilist_data` values must be dictionaries or `None`, and `genres` must remain a list of
+NfoForge TMDB genre enums.
 
 After installing the plugin, enable external plugins and select it under **Settings ->
 Plugins -> Metadata Transformer**. The built-in TMDB selection disables external

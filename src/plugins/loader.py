@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-import importlib
-from importlib import metadata
+from importlib import machinery, metadata, util
 from pathlib import Path
 import sys
 import traceback
@@ -125,11 +124,19 @@ class PluginLoader:
             raise PluginError("Manifest requires a non-empty string module")
         if not isinstance(raw_object, str) or not raw_object.strip():
             raise PluginError("Manifest object must be a non-empty string")
+        module = raw_module.strip()
+        object_name = raw_object.strip()
+        if not module.isidentifier():
+            raise PluginError(
+                "Manifest module must be a top-level Python module or package name"
+            )
+        if not object_name.isidentifier():
+            raise PluginError("Manifest object must be a valid Python identifier")
         return _LocalCandidate(
             plugin_id=raw_id.strip(),
             root=root,
-            module=raw_module.strip(),
-            object_name=raw_object.strip(),
+            module=module,
+            object_name=object_name,
         )
 
     @staticmethod
@@ -146,16 +153,25 @@ class PluginLoader:
                 )
             module = existing
         else:
-            root_text = str(candidate.root)
-            sys.path.insert(0, root_text)
+            spec = machinery.PathFinder.find_spec(
+                candidate.module, [str(candidate.root)]
+            )
+            if spec is None or spec.loader is None or spec.origin is None:
+                raise PluginError(
+                    f"Could not find local plugin module '{candidate.module}'"
+                )
+            if not PluginLoader._is_below(Path(spec.origin), candidate.root):
+                raise PluginError(
+                    f"Plugin module '{candidate.module}' resolved outside its root"
+                )
+
+            module = util.module_from_spec(spec)
+            sys.modules[candidate.module] = module
             try:
-                module = importlib.import_module(candidate.module)
+                spec.loader.exec_module(module)
             except Exception:
                 sys.modules.pop(candidate.module, None)
                 raise
-            finally:
-                if sys.path and sys.path[0] == root_text:
-                    del sys.path[0]
 
         definition: Any = getattr(module, candidate.object_name, None)
         if not isinstance(definition, PluginDefinition):

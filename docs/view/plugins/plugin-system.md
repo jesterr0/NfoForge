@@ -1,8 +1,8 @@
 # Plugin System
 
 NfoForge plugins are trusted Python code loaded into the application process. Install
-only plugins whose source and author you trust. Plugins are loaded once at startup;
-changing one requires restarting NfoForge.
+only plugins whose source and author you trust. Enabled plugins are loaded once at
+startup; changing a plugin or the enabled setting requires restarting NfoForge.
 
 ## Local plugins
 
@@ -19,9 +19,14 @@ object = "plugin" # optional; this is the default
 Directories without this manifest are not considered plugin candidates.
 
 The ID is the permanent configuration identity and must be lowercase. It may contain
-numbers, dots, underscores, and hyphens. The module may be a normal Python package or a
-compiled package with `__init__.pyd`; compiled plugins must target the same Python
+numbers, dots, underscores, and hyphens. `module` must be one top-level Python module or
+package name inside that plugin's repository. It may resolve to a normal Python package
+or a compiled package with `__init__.pyd`; compiled plugins must target the same Python
 version and platform as NfoForge.
+
+NfoForge loads that module directly from the repository without adding the repository to
+Python's global import path. Code inside a plugin package should use relative imports
+for its own modules, such as `from .client import MetadataClient`.
 
 The module exports one typed definition:
 
@@ -38,6 +43,10 @@ plugin = PluginDefinition(
 Plugin code should import its public contracts from `src.plugins.api`. Assigning a
 function with the wrong signature to `PluginDefinition` is reported by BasedPyright
 without requiring NfoForge to inspect annotations at runtime.
+
+The current runtime contract is plugin API version 2. Version 2 replaces the live
+`ProcessingContext` previously exposed to metadata transformers with the isolated
+`MetadataTransformContext` snapshot documented under Metadata Transformers.
 
 ## Installed packages
 
@@ -69,8 +78,9 @@ behavior without erasing the saved selection.
 
 Use **Settings -> Plugins** to enable or disable external plugin execution, choose the
 plugin used for each single-select capability, and inspect loaded, failed, or
-configured-but-unavailable plugins. Disabling plugin execution keeps the selections
-intact and does not hide discovery diagnostics.
+configured-but-unavailable plugins. When plugins are disabled, no local plugin or
+`nfoforge.plugins` entry point is imported during startup. Saved selections remain
+intact, and the status table reports that discovery was skipped.
 
 Metadata transformers and other network work run outside the Qt UI thread. Wizard pages
 are the exception and must interact with Qt only from the UI thread. Plugins should

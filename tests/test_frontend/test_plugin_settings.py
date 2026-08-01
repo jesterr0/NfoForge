@@ -93,6 +93,8 @@ def test_plugin_status_lists_loaded_failed_and_missing_plugins(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     widget, _ = _make_plugin_settings(tmp_path, monkeypatch)
+    widget.enable_plugins.setChecked(True)
+    widget._load_plugin_status()
 
     rows = {
         widget.plugin_status.topLevelItem(index).text(  # type: ignore[reportOptionalMemberAccess]
@@ -104,3 +106,15 @@ def test_plugin_status_lists_loaded_failed_and_missing_plugins(
     assert rows["Example Tokens"] == "Loaded"
     assert rows["broken.plugin"] == "Failed: invalid definition"
     assert rows["missing.metadata"] == "Configured but unavailable"
+
+
+def test_plugin_status_explains_that_disabled_plugins_were_not_loaded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_plugin_settings(tmp_path, monkeypatch)
+
+    assert widget.plugin_status.topLevelItemCount() == 1
+    item = widget.plugin_status.topLevelItem(0)
+    assert item is not None
+    assert item.text(0) == "External plugins disabled"
+    assert item.text(3) == "Not loaded"

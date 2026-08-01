@@ -1,3 +1,5 @@
+from threading import Lock
+
 import pytest
 
 from src.enums.media_type import MediaType
@@ -60,6 +62,38 @@ def test_copy_from_commits_a_complete_transformed_payload() -> None:
     assert payload.genre_names == ("Thriller",)
     assert payload.media_kind is MetadataMediaKind.STAND_UP_COMEDY
     assert payload.plugin_data == {"example": {"matched": True}}
+
+
+def test_copy_from_does_not_partially_commit_when_copying_fails() -> None:
+    payload = _tmdb_payload()
+    payload.title = "Canonical title"
+    payload.plugin_data = {"canonical": True}
+    transformed = _tmdb_payload()
+    transformed.title = "Plugin title"
+    transformed.plugin_data = {"uncopyable": Lock()}
+
+    with pytest.raises(TypeError):
+        payload.copy_from(transformed)
+
+    assert payload.title == "Canonical title"
+    assert payload.plugin_data == {"canonical": True}
+
+
+@pytest.mark.parametrize("field_name", ["tmdb_data", "tvdb_data", "anilist_data"])
+def test_validate_rejects_invalid_metadata_mapping_fields(field_name: str) -> None:
+    payload = _tmdb_payload()
+    setattr(payload, field_name, "raw metadata")
+
+    with pytest.raises(TypeError, match=field_name):
+        payload.validate()
+
+
+def test_validate_rejects_invalid_genre_entries() -> None:
+    payload = _tmdb_payload()
+    payload.genres = ["Drama"]  # type: ignore[list-item]
+
+    with pytest.raises(TypeError, match="genres"):
+        payload.validate()
 
 
 def test_validate_rejects_an_invalid_plugin_field() -> None:

@@ -45,9 +45,10 @@ class PluginsSettings(BaseSettings):
         self.setObjectName("pluginsSettings")
 
         intro = QLabel(
-            "Plugins are discovered at startup. Disabling plugins prevents their "
-            "hooks and template contributions from running, but keeps selections "
-            "and discovery information available.",
+            "External plugins are imported only when enabled at startup. Disabling "
+            "plugins keeps saved selections but prevents plugin code, hooks, and "
+            "template contributions from loading. Restart NfoForge after changing "
+            "this setting.",
             self,
         )
         intro.setWordWrap(True)
@@ -184,6 +185,18 @@ class PluginsSettings(BaseSettings):
 
     def _load_plugin_status(self) -> None:
         self.plugin_status.clear()
+        if not self.enable_plugins.isChecked():
+            item = QTreeWidgetItem(("External plugins disabled", "", "", "Not loaded"))
+            details = (
+                "Plugin modules were not imported. Saved capability selections "
+                "will be available again after plugins are enabled and NfoForge "
+                "is restarted."
+            )
+            for column in range(self.plugin_status.columnCount()):
+                item.setToolTip(column, details)
+            self.plugin_status.addTopLevelItem(item)
+            return
+
         configured = self._configured_capabilities(self.config.settings.plugins)
 
         for record in self.config.plugin_manager.records:

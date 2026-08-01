@@ -77,6 +77,19 @@ class MediaSearchPayload:
             raise TypeError(
                 "MediaSearchPayload.media_kind must be MetadataMediaKind or None"
             )
+        for field_name in ("tmdb_data", "tvdb_data", "anilist_data"):
+            value = getattr(self, field_name)
+            if value is not None and not isinstance(value, dict):
+                raise TypeError(
+                    f"MediaSearchPayload.{field_name} must be a dictionary or None"
+                )
+        if not isinstance(self.genres, list) or not all(
+            isinstance(genre, TMDBGenreIDsMovies | TMDBGenreIDsSeries)
+            for genre in self.genres
+        ):
+            raise TypeError(
+                "MediaSearchPayload.genres must be a list of TMDB genre enums"
+            )
         if not isinstance(self.genre_names, tuple) or not all(
             isinstance(name, str) for name in self.genre_names
         ):
@@ -123,13 +136,15 @@ class MediaSearchPayload:
                     self.mal_id = str(raw_anilist["idMal"])
 
     def copy_from(self, other: "MediaSearchPayload") -> None:
-        """Replace this payload in place so existing Jinja references remain valid."""
+        """Atomically replace this payload while preserving existing references."""
 
         other.validate()
+        copied_values = {
+            payload_field.name: deepcopy(getattr(other, payload_field.name))
+            for payload_field in fields(self)
+        }
         for payload_field in fields(self):
-            setattr(
-                self, payload_field.name, deepcopy(getattr(other, payload_field.name))
-            )
+            setattr(self, payload_field.name, copied_values[payload_field.name])
 
     @staticmethod
     def _first_string(*values: object) -> str | None:

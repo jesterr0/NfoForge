@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 from src.payloads.media_search import MediaSearchPayload
-from src.plugins.api import MetadataMediaKind, MetadataTransformRequest
+from src.plugins.api import (
+    MetadataInputContext,
+    MetadataMediaKind,
+    MetadataTransformContext,
+    MetadataTransformRequest,
+)
 
 
 def _load_example_module(monkeypatch: pytest.MonkeyPatch):
@@ -13,10 +18,19 @@ def _load_example_module(monkeypatch: pytest.MonkeyPatch):
 
 
 def _request(imdb_id: str) -> MetadataTransformRequest:
+    payload = MediaSearchPayload(imdb_id=imdb_id, title="TMDb fallback")
     return MetadataTransformRequest(
         config=None,  # type: ignore[arg-type]
-        context=None,  # type: ignore[arg-type]
-        payload=MediaSearchPayload(imdb_id=imdb_id, title="TMDb fallback"),
+        context=MetadataTransformContext(
+            media_input=MetadataInputContext(
+                input_path=None,
+                media_type=None,
+                working_dir=None,
+                files=(),
+            ),
+            media_search=payload,
+        ),
+        payload=payload,
         timeout=1,
     )
 

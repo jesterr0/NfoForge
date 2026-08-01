@@ -48,7 +48,11 @@ from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-from src.plugins.api import MetadataTransformRequest
+from src.plugins.api import (
+    MetadataInputContext,
+    MetadataTransformContext,
+    MetadataTransformRequest,
+)
 
 
 class _MediaSearchBackend(Protocol):
@@ -168,7 +172,15 @@ class IDParseWorker(QThread):
                         self.metadata_transformer_id,
                         MetadataTransformRequest(
                             config=self.config,
-                            context=self.context,
+                            context=MetadataTransformContext(
+                                media_input=MetadataInputContext(
+                                    input_path=self.context.media_input.input_path,
+                                    media_type=self.context.media_input.media_type,
+                                    working_dir=self.context.media_input.working_dir,
+                                    files=tuple(self.context.media_input.file_list),
+                                ),
+                                media_search=payload,
+                            ),
                             payload=payload,
                             timeout=self.backend.timeout,
                         ),

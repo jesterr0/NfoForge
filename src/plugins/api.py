@@ -9,13 +9,14 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     from src.config.config import ConfigManager
     from src.context.processing_context import ProcessingContext
+    from src.enums.media_type import MediaType
     from src.enums.tracker_selection import TrackerSelection
     from src.frontend.wizards.wizard_base_page import BaseWizardPage
     from src.packages.custom_types import ImageUploadData
     from src.payloads.media_search import MediaSearchPayload
 
 
-PLUGIN_API_VERSION = 1
+PLUGIN_API_VERSION = 2
 
 
 class MetadataMediaKind(Enum):
@@ -76,11 +77,29 @@ class PreUploadProcessor(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class MetadataInputContext:
+    """Immutable media-input facts available to metadata transformers."""
+
+    input_path: Path | None
+    media_type: MediaType | None
+    working_dir: Path | None
+    files: tuple[Path, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataTransformContext:
+    """Isolated processing context exposed to a metadata transformer."""
+
+    media_input: MetadataInputContext
+    media_search: MediaSearchPayload
+
+
+@dataclass(frozen=True, slots=True)
 class MetadataTransformRequest:
-    """A private payload copy that a metadata plugin may update and return."""
+    """An isolated payload and context snapshot supplied to a transformer."""
 
     config: ConfigManager
-    context: ProcessingContext
+    context: MetadataTransformContext
     payload: MediaSearchPayload
     timeout: int
 

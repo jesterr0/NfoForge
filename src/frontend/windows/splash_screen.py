@@ -152,6 +152,10 @@ class SplashScreenLoader(QThread):
             )
 
     def init_plugins(self) -> str | None:
+        if not self.config.settings.general.enable_plugins:
+            self.update_splash_msg.emit("External plugins disabled")
+            return None
+
         plugin_loader = PluginLoader(
             self.config.plugin_manager, self.update_splash_msg.emit
         )
