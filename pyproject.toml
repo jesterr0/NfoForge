@@ -89,3 +89,4 @@ lint-fix = "ruff check . --fix"
 format-check = "ruff format . --check"
 format-code = "ruff format ."
 format.sequence = ["lint-fix", "format-code"]
+format-docs = "npm run format:md"
