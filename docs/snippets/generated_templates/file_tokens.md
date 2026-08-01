@@ -33,9 +33,6 @@
 | `{episode_title_exact}`                        | Title parsed from media databases with no modifications                                            |
 | `{frame_size}`                                 | Frame size (IMAX/Open Matte)                                                                       |
 | `{hybrid}`                                     | HYBRID                                                                                             |
-| `{original_title}`                             | Original title                                                                                     |
-| `{original_title_fallback_title}`              | Original title (fallback to {title})                                                               |
-| `{original_title_fallback_title_clean}`        | Original title (fallback to {title_clean})                                                         |
 | `{imdb_id}`                                    | IMDb ID                                                                                            |
 | `{localization}`                               | Subbed/Dubbed                                                                                      |
 | `{mal_id}`                                     | MAL ID                                                                                             |
@@ -43,6 +40,9 @@
 | `{original_language}`                          | Original language (English)                                                                        |
 | `{original_language_iso_639_1}`                | Original language (EN)                                                                             |
 | `{original_language_iso_639_2}`                | Original language (ENG)                                                                            |
+| `{original_title}`                             | Original title                                                                                     |
+| `{original_title_fallback_title}`              | Original title (fallback to {title})                                                               |
+| `{original_title_fallback_title_clean}`        | Original title (fallback to {title_clean})                                                         |
 | `{re_release}`                                 | Repack/Proper                                                                                      |
 | `{release_date}`                               | Release date (movies - UTC)                                                                        |
 | `{release_group}`                              | Release group                                                                                      |
@@ -67,6 +67,8 @@
 | `{video_dynamic_range_type_inc_sdr}`           | Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR)                             |
 | `{video_dynamic_range_type_inc_sdr_over_1080}` | Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080    |
 | `{video_format}`                               | Video format (AVC/HEVC/MPEG Video)                                                                 |
+| `{video_height}`                               | Video height (1040)                                                                                |
 | `{video_language_full}`                        | Video language (English)                                                                           |
 | `{video_language_iso_639_1}`                   | Video language (EN)                                                                                |
 | `{video_language_iso_639_2}`                   | Video language (ENG)                                                                               |
+| `{video_width}`                                | Video width (1920)                                                                                 |

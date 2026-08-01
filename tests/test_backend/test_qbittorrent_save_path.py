@@ -114,6 +114,19 @@ def test_template_uses_existing_file_tokens_and_preserves_literal_path() -> None
     ) == (rf"D:\Media  Library\Movie Name ({context.media_search.year})")
 
 
+def test_template_accepts_video_dimensions_as_file_tokens() -> None:
+    assert (
+        resolve_qbittorrent_save_path(
+            _config(
+                QBittorrentSavePathMode.TEMPLATE,
+                r"D:\Media\{video_width}x{video_height}",
+            ),
+            _movie_context(),
+        )
+        == r"D:\Media\3840x2160"
+    )
+
+
 def test_template_applies_processing_context_flat_filters() -> None:
     context = _movie_context()
 
