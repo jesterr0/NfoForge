@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from typing import Any
 
 import niquests
@@ -26,7 +27,7 @@ class _Response:
         return self.payload
 
 
-def test_tmdb_uses_embedded_v4_bearer_token(
+def test_tmdb_uses_embedded_v3_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     backend = MediaSearchBackEnd()
@@ -38,13 +39,18 @@ def test_tmdb_uses_embedded_v4_bearer_token(
 
     monkeypatch.setattr(backend.session, "get", get)
 
-    assert backend.params == {"language": "en-US", "include_adult": "false"}
-    assert backend.headers == {
-        "Authorization": f"Bearer {MediaSearchBackEnd._get_tmdb_k()}"
+    api_key = MediaSearchBackEnd._get_tmdb_k()
+    assert backend.params == {
+        "api_key": api_key,
+        "language": "en-US",
+        "include_adult": "false",
     }
-    assert MediaSearchBackEnd._get_tmdb_k().startswith("eyJ")
+    assert hashlib.sha256(api_key.encode()).hexdigest() == (
+        "2b1c33182dfef37134403968440074a72fa6f241853da4c2aafcc8b8f43c023e"
+    )
     assert backend._fetch_tmdb_results("https://example.invalid/search") == []
-    assert request["headers"] == backend.headers
+    assert request["params"] == backend.params
+    assert "headers" not in request
 
 
 def test_tmdb_connection_failure_is_not_reported_as_empty_results(

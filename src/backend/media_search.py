@@ -31,10 +31,10 @@ class MediaSearchBackEnd:
         self.use_base_language_for_images = use_base_language_for_images
         self.timeout = max(1, timeout)
         self.params = {
+            "api_key": self._get_tmdb_k(),
             "language": language,
             "include_adult": "false",
         }
-        self.headers = {"Authorization": f"Bearer {self._get_tmdb_k()}"}
 
     def update_language(self, language: str) -> None:
         self.params["language"] = language
@@ -147,7 +147,7 @@ class MediaSearchBackEnd:
     def _fetch_tmdb_results(self, url: str) -> list[dict[str, Any]]:
         try:
             with self.session.get(
-                url, params=self.params, headers=self.headers, timeout=self.timeout
+                url, params=self.params, timeout=self.timeout
             ) as response:
                 response.raise_for_status()
                 response_json = response.json()
@@ -211,7 +211,7 @@ class MediaSearchBackEnd:
 
         try:
             with self.session.get(
-                url, params=image_params, headers=self.headers, timeout=self.timeout
+                url, params=image_params, timeout=self.timeout
             ) as response:
                 response.raise_for_status()
                 response_json = response.json()
@@ -558,12 +558,7 @@ class MediaSearchBackEnd:
     @staticmethod
     def _get_tmdb_k() -> str:
         # cSpell:disable
-        k = (
-            b"eNoVjk2PgjAURf+RgUJNWCo45DW2hFhk+jZGy1eLzCSiAfrrp7O4i3vOXdx2Y8Mj16YwDCoHoTAs"
-            b"2bUeNnXpIURo+1BIMRbZaeGkdGi541YRH4dSb4XkAc85VRvMMFGDBvZc6kDIKi6ykfJL7Hyf4UeEy"
-            b"juwKuY5UD7hpCY0mKsV7WCF7CnaQ8wv8L+1j+j41Bvsa/9F589OT9cBU9acU0bwm7l7nXzA/q5duQ"
-            b"u6rCTZ53w3fTOm0VeatLIchtdJ0PfrvdxoeyNVT4Jlnf8AqyBQng=="
-        )
+        k = b"eJwzT7MwNTVOsTA0ME4xTjM2NjIzMzIzTjU3sjQ2MUi2TAYAgTIH3A=="
         # cSpell:enable
         return zlib.decompress(base64.b64decode(k)).decode("ascii")
 
