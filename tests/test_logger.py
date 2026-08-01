@@ -1,6 +1,8 @@
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import MagicMock
 
+from src.enums.logging_settings import LogSource
 from src.logger.nfo_forge_logger import Logger
 
 
@@ -46,3 +48,21 @@ def test_parse_log_timestamp_rejects_unrelated_names(tmp_path: Path) -> None:
     assert Logger._parse_log_timestamp(valid) == datetime(2026, 7, 29, 12, 0, 0)
     assert Logger._parse_log_timestamp(invalid) is None
     assert Logger._parse_log_timestamp(malformed) is None
+
+
+def test_logger_redacts_credentials_before_writing(tmp_path: Path, monkeypatch) -> None:
+    logger = Logger(tmp_path / "nfoforge_2026-07-29_12-00-00_current.log")
+    log_call = MagicMock()
+    monkeypatch.setattr(logger, "_initialize_file_handler", lambda: None)
+    monkeypatch.setattr(logger.logger, "log", log_call)
+
+    logger.error(
+        LogSource.BE,
+        "Request failed: /api/upload/APISECRET?api_token=QUERYSECRET",
+    )
+
+    message = log_call.call_args.args[1]
+    assert "APISECRET" not in message
+    assert "QUERYSECRET" not in message
+    assert "/api/upload/[redacted]" in message
+    assert "api_token=[redacted]" in message

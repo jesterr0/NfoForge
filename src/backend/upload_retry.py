@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
-import re
 
 import niquests
 
@@ -74,21 +73,3 @@ def classify_upload_post_error(error: BaseException) -> tuple[bool | None, bool]
         # server_accepted=True above), so this is not provably pre-body.
         return None, True
     return None, True
-
-
-_SECRET_QUERY_PARAM = re.compile(
-    r"(?i)\b(api_token|api_key|apikey|passkey|rsskey|torrent_pass)=[^&\s\"']+"
-)
-
-# Matches the userinfo portion of a URI, e.g. the credentials rTorrent embeds
-# in its host URI (`https://user:password@host/...`). An `xmlrpc.client.
-# ProtocolError` copies that full netloc into its message, so this shape can
-# reach on-screen status text the same way a query-string secret can.
-_URI_USERINFO_PASSWORD = re.compile(r"(?i)(://[^/\s:@]+:)[^@\s]+(@)")
-
-
-def scrub_secrets(text: str) -> str:
-    """Redact credentials that transport errors copy out of a request URL."""
-    text = _SECRET_QUERY_PARAM.sub(r"\1=[redacted]", text)
-    text = _URI_USERINFO_PASSWORD.sub(r"\1[redacted]\2", text)
-    return text

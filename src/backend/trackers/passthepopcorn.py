@@ -32,6 +32,7 @@ from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.plugins.api import MetadataMediaKind
+from src.utils.secret_redaction import scrub_mapping
 
 
 def ptp_uploader(
@@ -317,7 +318,7 @@ class PTPUploader:
             }
             data.update(new_group_data)
 
-        LOG.debug(LOG.LOG_SOURCE.BE, f"PassThePopcorn payload: {data}")
+        LOG.debug(LOG.LOG_SOURCE.BE, f"PassThePopcorn payload: {scrub_mapping(data)}")
 
         # upload the torrent
         with self._session as response:

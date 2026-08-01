@@ -14,6 +14,7 @@ import shortuuid
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.logging_settings import DebugDataType, LogLevel, LogSource
 from src.exceptions import DebugDumpError
+from src.utils.secret_redaction import scrub_secrets
 from src.version import __version__, program_name
 
 _LOG_FILENAME_PATTERN = re.compile(
@@ -74,30 +75,26 @@ class Logger:
         if log_program_info:
             self.info(self.LOG_SOURCE.FE, f"{program_name} v{__version__}")
 
-    def debug(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.DEBUG:
+    def _log(self, level: int, source: LogSource, message: object) -> None:
+        if self.logger.level <= level:
             self._initialize_file_handler()
-            self.logger.debug(f"{source.value}: {str(message).strip()}")
+            safe_message = scrub_secrets(str(message).strip())
+            self.logger.log(level, f"{source.value}: {safe_message}")
 
-    def info(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.INFO:
-            self._initialize_file_handler()
-            self.logger.info(f"{source.value}: {str(message).strip()}")
+    def debug(self, source: LogSource, message: object) -> None:
+        self._log(logging.DEBUG, source, message)
 
-    def warning(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.WARNING:
-            self._initialize_file_handler()
-            self.logger.warning(f"{source.value}: {str(message).strip()}")
+    def info(self, source: LogSource, message: object) -> None:
+        self._log(logging.INFO, source, message)
 
-    def error(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.ERROR:
-            self._initialize_file_handler()
-            self.logger.error(f"{source.value}: {str(message).strip()}")
+    def warning(self, source: LogSource, message: object) -> None:
+        self._log(logging.WARNING, source, message)
 
-    def critical(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.CRITICAL:
-            self._initialize_file_handler()
-            self.logger.critical(f"{source.value}: {str(message).strip()}")
+    def error(self, source: LogSource, message: object) -> None:
+        self._log(logging.ERROR, source, message)
+
+    def critical(self, source: LogSource, message: object) -> None:
+        self._log(logging.CRITICAL, source, message)
 
     def set_log_level(self, log_level: LogLevel) -> None:
         self.logger.setLevel(log_level.value)

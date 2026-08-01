@@ -113,6 +113,9 @@ def test_upload_failure_message_has_credentials_scrubbed(
     failure = callback.call_args.args[0]
     assert "SECRETKEY123" not in failure.message
     assert "api_token=[redacted]" in failure.message
+    caught_error = kwargs["caught_error"]
+    caught_error.emit.assert_called_once()
+    assert "SECRETKEY123" not in caught_error.emit.call_args.args[0]
 
 
 def test_download_phase_skip_is_reported_as_kept_not_skipped(
@@ -311,6 +314,7 @@ def test_injection_status_text_scrubs_credentials_without_callback(
         )
     )
     status_update = MagicMock()
+    caught_error = cast(SignalInstance, MagicMock())
 
     injected = backend._inject_with_user_retry(
         tracker=TrackerSelection.AITHER,
@@ -319,13 +323,15 @@ def test_injection_status_text_scrubs_credentials_without_callback(
         file_input=tmp_path / "release.mkv",
         queued_text_update=MagicMock(),
         queued_status_update=status_update,
-        caught_error=cast(SignalInstance, MagicMock()),
+        caught_error=caught_error,
         upload_retry_cb=None,
     )
 
     assert injected is False
     status_text = status_update.call_args.args[1]
     assert "hunter2" not in status_text
+    caught_error.emit.assert_called_once()
+    assert "hunter2" not in caught_error.emit.call_args.args[0]
 
 
 def test_injection_status_and_message_scrub_credentials_after_skip(

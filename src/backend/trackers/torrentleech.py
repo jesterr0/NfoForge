@@ -17,6 +17,7 @@ from src.enums.trackers.torrentleech import TLCategories
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
+from src.utils.secret_redaction import scrub_mapping
 
 
 def tl_upload(
@@ -78,7 +79,7 @@ class TLUploader:
             data["name"] = self.generate_release_title(tracker_title)
 
         LOG.info(LOG.LOG_SOURCE.BE, "Uploading torrent to TorrentLeech")
-        LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {data}")
+        LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {scrub_mapping(data)}")
 
         try:
             request = niquests.post(

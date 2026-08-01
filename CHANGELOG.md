@@ -262,6 +262,7 @@
 - Issue with FFMPEG drawtext filter on basic comparison images.
 - Incorrectly showing image generation complete on failed image generation
 - Could incorrectly parse IMAX from titles such as 'climax'
+- Prevent tracker credentials from reaching logs, retry dialogs, and process error output.
 
 ### Removed
 

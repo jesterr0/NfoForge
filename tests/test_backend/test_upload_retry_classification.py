@@ -8,9 +8,10 @@ from src.backend.process import ProcessBackEnd
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.huno import HunoUploader
 from src.backend.trackers.torrentleech import TLUploader
-from src.backend.upload_retry import classify_upload_post_error, scrub_secrets
+from src.backend.upload_retry import classify_upload_post_error
 from src.enums.media_type import MediaType
 from src.exceptions import TrackerError
+from src.utils.secret_redaction import scrub_mapping, scrub_secrets
 
 
 @pytest.mark.parametrize(
@@ -480,6 +481,72 @@ def test_scrub_secrets_redacts_uri_userinfo_password() -> None:
     assert "hunter2" not in scrubbed
     assert "myuser" in scrubbed
     assert "https://myuser:[redacted]@tracker.example/rpc" in scrubbed
+
+
+def test_scrub_secrets_redacts_schemeless_uri_userinfo_password() -> None:
+    """xmlrpc ProtocolError can omit the URI scheme from the userinfo."""
+    text = (
+        "<ProtocolError for alice:hunter2@seedbox.example/plugins/httprpc/action.php: "
+        "401 Unauthorized>"
+    )
+
+    scrubbed = scrub_secrets(text)
+
+    assert "hunter2" not in scrubbed
+    assert "alice:[redacted]@seedbox.example" in scrubbed
+
+
+def test_scrub_secrets_redacts_api_path_credentials() -> None:
+    text = (
+        "HTTPError for https://beyond-hd.example/api/upload/BHDSECRET: "
+        "503 Service Unavailable"
+    )
+
+    scrubbed = scrub_secrets(text)
+
+    assert "BHDSECRET" not in scrubbed
+    assert "/api/upload/[redacted]" in scrubbed
+
+
+def test_scrub_secrets_redacts_named_path_credentials() -> None:
+    text = "Failed to download /torrent/rsskey/RSSSECRET: 401 Unauthorized"
+
+    scrubbed = scrub_secrets(text)
+
+    assert "RSSSECRET" not in scrubbed
+    assert "/torrent/rsskey/[redacted]" in scrubbed
+
+
+def test_scrub_secrets_redacts_keyed_tracker_download_path() -> None:
+    text = (
+        "HTTPError for https://tracker.example/torrents/download/123.RSSSECRET: "
+        "401 Unauthorized"
+    )
+
+    scrubbed = scrub_secrets(text)
+
+    assert "RSSSECRET" not in scrubbed
+    assert "/torrents/download/[redacted]" in scrubbed
+
+
+def test_scrub_secrets_redacts_mapping_repr_credentials() -> None:
+    text = '{"announcekey": "ANNOUNCE", "auth": "AUTH", "category": 1}'
+
+    scrubbed = scrub_secrets(text)
+
+    assert "ANNOUNCE" not in scrubbed
+    assert "AUTH" not in scrubbed
+    assert '"announcekey": "[redacted]"' in scrubbed
+    assert '"auth": "[redacted]"' in scrubbed
+
+
+def test_scrub_mapping_does_not_mutate_payload() -> None:
+    payload = {"announcekey": "ANNOUNCE", "category": 1}
+
+    scrubbed = scrub_mapping(payload)
+
+    assert payload["announcekey"] == "ANNOUNCE"
+    assert scrubbed == {"announcekey": "[redacted]", "category": 1}
 
 
 def test_scrub_secrets_leaves_plain_uri_without_credentials_alone() -> None:

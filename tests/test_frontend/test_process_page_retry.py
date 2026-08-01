@@ -99,6 +99,21 @@ def test_retry_prompt_returns_the_clicked_action(responses) -> None:
     assert responses == [UploadRetryAction.SKIP]
 
 
+def test_retry_prompt_redacts_untrusted_failure_message(responses) -> None:
+    _FakeMessageBox.click_label = "Skip tracker"
+    failure = _failure(
+        message="HTTPError for /api/upload/APISECRET?api_token=QUERYSECRET"
+    )
+
+    with patch.object(page_module, "QMessageBox", _FakeMessageBox):
+        ProcessPage._on_upload_retry_signal(QWidget(), failure)
+
+    assert "APISECRET" not in _FakeMessageBox.last.informative_text
+    assert "QUERYSECRET" not in _FakeMessageBox.last.informative_text
+    assert "/api/upload/[redacted]" in _FakeMessageBox.last.informative_text
+    assert "api_token=[redacted]" in _FakeMessageBox.last.informative_text
+
+
 def test_worker_released_when_dialog_raises(responses) -> None:
     """A dialog failure must not leave the worker blocked in loop.exec_()."""
     boom = MagicMock(side_effect=RuntimeError("Internal C++ object already deleted"))

@@ -75,7 +75,6 @@ from src.backend.upload_retry import (
     UploadFailure,
     UploadFailurePhase,
     UploadRetryAction,
-    scrub_secrets,
 )
 from src.backend.utils.anime import is_anime_release
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
@@ -110,6 +109,7 @@ from src.plugins.api import (
     TokenReplaceRequest,
     UploadReporter,
 )
+from src.utils.secret_redaction import scrub_secrets
 
 
 class ProcessBackEnd:
@@ -586,7 +586,9 @@ class ProcessBackEnd:
                     f'<br /><span style="font-weight: bold; color: red;">'
                     f"Upload failed for {tracker}: {safe_message}</span>"
                 )
-                caught_error.emit(f"Upload Error: {traceback.format_exc()}")
+                caught_error.emit(
+                    f"Upload Error: {scrub_secrets(traceback.format_exc())}"
+                )
 
                 if upload_retry_cb is None:
                     return None, False
@@ -654,7 +656,9 @@ class ProcessBackEnd:
                 )
                 return True
             except Exception as error:
-                caught_error.emit(f"Injection Error: {traceback.format_exc()}")
+                caught_error.emit(
+                    f"Injection Error: {scrub_secrets(traceback.format_exc())}"
+                )
                 # rTorrent embeds credentials as userinfo in its host URI, and
                 # `RTorrentClient.inject_torrent` has no exception handling of
                 # its own, so an `xmlrpc.client.ProtocolError` carrying the
@@ -1093,7 +1097,9 @@ class ProcessBackEnd:
                         '<br /><br /><p style="font-weight: bold; color: red;">Failed to upload '
                         f"release, check logs for information ({upload_error})</p>",
                     )
-                    caught_error.emit(f"Upload Error: {traceback.format_exc()}")
+                    caught_error.emit(
+                        f"Upload Error: {scrub_secrets(traceback.format_exc())}"
+                    )
                     queued_status_update(tracker_name, "❌ Failed")
             elif not tracker_info.upload_enabled and pre_upload_decision is None:
                 queued_text_update(

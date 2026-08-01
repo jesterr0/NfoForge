@@ -45,6 +45,7 @@ from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 from src.payloads.image_hosts import ImagePayloadBase
 from src.payloads.tracker_search_result import TrackerSearchResult
+from src.utils.secret_redaction import scrub_secrets
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -516,8 +517,8 @@ class ProcessPage(BaseWizardPage):
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
-        self._on_text_update(f"<br /><p>{e}</p>")
-        LOG.error(LOG.LOG_SOURCE.FE, trace_back)
+        self._on_text_update(f"<br /><p>{scrub_secrets(e)}</p>")
+        LOG.error(LOG.LOG_SOURCE.FE, scrub_secrets(trace_back))
 
     @Slot(object)
     def _on_upload_retry_signal(self, failure: UploadFailure) -> None:
@@ -536,7 +537,7 @@ class ProcessPage(BaseWizardPage):
             details = (
                 f"Attempts: {failure.attempt} "
                 f"({failure.automatic_attempts} automatic attempts)\n\n"
-                f"{failure.message}"
+                f"{scrub_secrets(failure.message)}"
             )
             if failure.torrent_path:
                 details += f"\n\nOutput: {failure.torrent_path.parent}"
@@ -628,8 +629,9 @@ class ProcessPage(BaseWizardPage):
         cursor = self.text_widget.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         if txt:
-            cursor.insertHtml(txt)
-            LOG.info(LOG.LOG_SOURCE.FE, f"Process log: {txt}")
+            safe_txt = scrub_secrets(txt)
+            cursor.insertHtml(safe_txt)
+            LOG.info(LOG.LOG_SOURCE.FE, f"Process log: {safe_txt}")
         if not txt:
             cursor.insertHtml("<br />")
         self.text_widget.setTextCursor(cursor)

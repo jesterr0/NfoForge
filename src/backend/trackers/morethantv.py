@@ -33,6 +33,7 @@ from src.exceptions import TrackerError
 from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
+from src.utils.secret_redaction import scrub_mapping
 
 
 def mtv_uploader(
@@ -338,7 +339,7 @@ class MTVUploader:
 
         LOG.debug(
             LOG.LOG_SOURCE.BE,
-            f"\n#### UPLOAD PAYLOAD ####\n{data}\n#### UPLOAD PAYLOAD ####\n",
+            f"\n#### UPLOAD PAYLOAD ####\n{scrub_mapping(data)}\n#### UPLOAD PAYLOAD ####\n",
         )
 
         try:
