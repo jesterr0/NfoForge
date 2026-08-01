@@ -195,6 +195,120 @@ def test_case_only_rename_uses_an_in_place_temporary_hop(tmp_path: Path) -> None
     assert result.updated_input_path == target
 
 
+def test_execute_resequences_files_with_occupied_targets(tmp_path: Path) -> None:
+    first = tmp_path / "Show.S01E01.mkv"
+    second = tmp_path / "Show.S01E02.mkv"
+    third = tmp_path / "Show.S01E03.mkv"
+    first.write_text("episode one")
+    second.write_text("episode two")
+
+    result = RenameExecutor.execute(
+        RenamePlan.build(
+            {first: second, second: third},
+            input_path=tmp_path,
+        )
+    )
+
+    assert result.success is True
+    assert result.path_mapping == {first: second, second: third}
+    assert not first.exists()
+    assert second.read_text() == "episode one"
+    assert third.read_text() == "episode two"
+
+
+def test_execute_resequences_files_while_renaming_parent_folder(
+    tmp_path: Path,
+) -> None:
+    source_directory = tmp_path / "Show Season 1"
+    source_directory.mkdir()
+    target_directory = tmp_path / "Show.S01"
+    first = source_directory / "Show.S01E01.mkv"
+    second = source_directory / "Show.S01E02.mkv"
+    first.write_text("episode one")
+    second.write_text("episode two")
+    second_target = target_directory / second.name
+    third_target = target_directory / "Show.S01E03.mkv"
+
+    result = RenameExecutor.execute(
+        RenamePlan.build(
+            {first: second_target, second: third_target},
+            input_path=source_directory,
+        )
+    )
+
+    assert result.success is True
+    assert result.path_mapping == {first: second_target, second: third_target}
+    assert result.updated_input_path == target_directory
+    assert not source_directory.exists()
+    assert second_target.read_text() == "episode one"
+    assert third_target.read_text() == "episode two"
+
+
+def test_execute_swaps_files_with_occupied_targets(tmp_path: Path) -> None:
+    first = tmp_path / "Show.S01E01.mkv"
+    second = tmp_path / "Show.S01E02.mkv"
+    first.write_text("episode one")
+    second.write_text("episode two")
+
+    result = RenameExecutor.execute(
+        RenamePlan.build({first: second, second: first}, input_path=tmp_path)
+    )
+
+    assert result.success is True
+    assert result.path_mapping == {first: second, second: first}
+    assert first.read_text() == "episode two"
+    assert second.read_text() == "episode one"
+
+
+def test_execute_rejects_existing_file_outside_plan(tmp_path: Path) -> None:
+    source = tmp_path / "Show.S01E01.mkv"
+    target = tmp_path / "Show.S01E02.mkv"
+    source.write_text("episode one")
+    target.write_text("unrelated file")
+
+    result = RenameExecutor.execute(
+        RenamePlan.build({source: target}, input_path=tmp_path)
+    )
+
+    assert result.success is False
+    assert "Destination already exists" in (result.message or "")
+    assert source.read_text() == "episode one"
+    assert target.read_text() == "unrelated file"
+
+
+def test_colliding_rename_failure_rolls_back_temporary_hops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = tmp_path / "Show.S01E01.mkv"
+    second = tmp_path / "Show.S01E02.mkv"
+    third = tmp_path / "Show.S01E03.mkv"
+    first.write_text("episode one")
+    second.write_text("episode two")
+    original_rename = Path.rename
+
+    def fail_final_temporary_hop(path: Path, target: Path) -> Path:
+        if ".nfoforge-rename-" in path.name and target == third:
+            raise PermissionError(errno.EACCES, "temporarily locked", str(path))
+        return original_rename(path, target)
+
+    monkeypatch.setattr(Path, "rename", fail_final_temporary_hop)
+
+    result = RenameExecutor.execute(
+        RenamePlan.build(
+            {first: second, second: third},
+            input_path=tmp_path,
+        )
+    )
+
+    assert result.success is False
+    assert result.rollback_complete is True
+    assert result.path_mapping == {}
+    assert first.read_text() == "episode one"
+    assert second.read_text() == "episode two"
+    assert not third.exists()
+    assert not list(tmp_path.glob("*.nfoforge-rename-*.tmp"))
+
+
 def test_single_file_rename_rejects_destination_outside_source_folder(
     tmp_path: Path,
 ) -> None:

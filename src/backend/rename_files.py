@@ -98,19 +98,30 @@ class RenameExecutor:
         journal: list[_RenameOperation] = []
 
         try:
+            # A re-sequenced pack can target names currently occupied by other
+            # files in the same plan (for example E01 -> E02, E02 -> E03).
+            # Vacate only those blocking source paths first; every temporary
+            # hop is journaled so the normal rollback path remains atomic.
+            for source in cls._blocking_sources(plan):
+                temporary = cls._temporary_path(source)
+                cls._rename_with_journal(
+                    source,
+                    temporary,
+                    is_directory=False,
+                    journal=journal,
+                )
+                current_paths[source] = temporary
+
             # Rename filenames while their original parent still exists. The
             # parent directory is renamed last so a folder failure can be
             # rolled back without losing track of any large media files.
             for source, final_target in plan.file_targets.items():
-                target = (
-                    source.parent / final_target.name
-                    if source.parent in plan.directory_targets
-                    else final_target
-                )
-                if not _paths_differ(source, target):
+                current_source = current_paths[source]
+                target = cls._intermediate_file_target(plan, source, final_target)
+                if not _paths_differ(current_source, target):
                     continue
                 cls._rename_with_journal(
-                    source,
+                    current_source,
                     target,
                     is_directory=False,
                     journal=journal,
@@ -184,6 +195,14 @@ class RenameExecutor:
     def _preflight(cls, plan: RenamePlan) -> None:
         target_keys: dict[str, Path] = {}
         intermediate_keys: dict[str, Path] = {}
+        moving_source_keys = {
+            _path_key(source)
+            for source, final_target in plan.file_targets.items()
+            if _paths_differ(
+                source,
+                cls._intermediate_file_target(plan, source, final_target),
+            )
+        }
 
         for source, final_target in plan.file_targets.items():
             if not source.is_file():
@@ -206,11 +225,7 @@ class RenameExecutor:
                 )
             target_keys[target_key] = final_target
 
-            target = (
-                source.parent / final_target.name
-                if source.parent in plan.directory_targets
-                else final_target
-            )
+            target = cls._intermediate_file_target(plan, source, final_target)
             intermediate_key = _path_key(target)
             previous_intermediate = intermediate_keys.get(intermediate_key)
             if previous_intermediate is not None:
@@ -224,7 +239,8 @@ class RenameExecutor:
                 raise FileNotFoundError(
                     f"Destination parent folder does not exist: {target.parent}"
                 )
-            cls._reject_existing_target(source, target)
+            if intermediate_key not in moving_source_keys:
+                cls._reject_existing_target(source, target)
 
         directory_target_keys: dict[str, Path] = {}
         for source_directory, target_directory in plan.directory_targets.items():
@@ -248,6 +264,30 @@ class RenameExecutor:
                 )
             directory_target_keys[target_key] = target_directory
             cls._reject_existing_target(source_directory, target_directory)
+
+    @staticmethod
+    def _intermediate_file_target(
+        plan: RenamePlan,
+        source: Path,
+        final_target: Path,
+    ) -> Path:
+        if source.parent in plan.directory_targets:
+            return source.parent / final_target.name
+        return final_target
+
+    @classmethod
+    def _blocking_sources(cls, plan: RenamePlan) -> list[Path]:
+        """Return source files that must be vacated before final renames."""
+        blocking_keys: set[str] = set()
+        for source, final_target in plan.file_targets.items():
+            target = cls._intermediate_file_target(plan, source, final_target)
+            target_key = _path_key(target)
+            if target_key != _path_key(source):
+                blocking_keys.add(target_key)
+
+        return [
+            source for source in plan.file_targets if _path_key(source) in blocking_keys
+        ]
 
     @staticmethod
     def _validate_same_volume(source: Path, target: Path) -> None:
@@ -357,14 +397,23 @@ class RenameExecutor:
         journal: list[_RenameOperation],
         current_paths: dict[Path, Path],
     ) -> None:
-        """Synchronize tracked paths when a multi-hop case rename fails."""
+        """Rebuild tracked paths from completed filesystem operations."""
+        replayed_paths = {source: source for source in current_paths}
         for operation in journal:
             if operation.is_directory:
-                cls._remap_directory(current_paths, operation.source, operation.target)
+                cls._remap_directory(
+                    replayed_paths,
+                    operation.source,
+                    operation.target,
+                )
                 continue
-            for original, current in current_paths.items():
+            for original, current in replayed_paths.items():
                 if not _paths_differ(current, operation.source):
-                    current_paths[original] = operation.target
+                    replayed_paths[original] = operation.target
+                    break
+
+        current_paths.clear()
+        current_paths.update(replayed_paths)
 
     @staticmethod
     def _remap_directory(
