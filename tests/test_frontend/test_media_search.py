@@ -338,3 +338,46 @@ def test_payload_update_commits_transformed_metadata(
         "https://provider.example/poster.jpg"
     )
     assert page.context.media_search.genre_names == ("Provider Genre",)
+
+
+def test_user_entered_mal_id_survives_metadata_transformer_commit(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    item_name = "1) Anime Series (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Series",
+            "title": "Anime Series",
+            "year": "2024",
+            "original_title": "Anime Series",
+            "genre_ids": [],
+            "raw_data": {"id": 123, "name": "Anime Series"},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("123")
+    transformed = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        tmdb_id="123",
+        title="Provider Anime Title",
+    )
+    monkeypatch.setattr(page, "_ask_user_for_id", lambda _source: 4242)
+
+    page._update_payload_data(
+        {
+            "ani_list_data": {"success": True, "result": None},
+            "metadata_transformation": {"success": True, "result": transformed},
+        }
+    )
+
+    assert page.context.media_search.title == "Provider Anime Title"
+    assert page.context.media_search.anilist_data == {
+        "id": "4242",
+        "idMal": "4242",
+    }
+    assert page.context.media_search.anilist_id == "4242"
+    assert page.context.media_search.mal_id == "4242"
+    assert page.mal_id_entry.text() == "4242"

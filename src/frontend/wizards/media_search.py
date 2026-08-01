@@ -578,6 +578,8 @@ class MediaSearch(BaseWizardPage):
         if not item_data:
             raise MediaSearchError("Failed to parse TMDB")
 
+        prompted_anilist_data: dict[str, Any] | None = None
+
         # update both payloads with the correct MediaType
         self.context.media_input.media_type = self.context.media_search.media_type = (
             MediaType.strict_search_type(str(item_data.get("media_type") or ""))
@@ -652,11 +654,11 @@ class MediaSearch(BaseWizardPage):
                         "id": str(mal_value),
                         "idMal": str(mal_value),
                     }
-                self.context.media_search.anilist_data = ani_list_data_result
-                self.context.media_search.anilist_id = ani_list_data_result.get("id")
-                self.context.media_search.mal_id = ani_list_data_result.get("idMal")
-                if self.context.media_search.mal_id:
-                    self.mal_id_entry.setText(str(self.context.media_search.mal_id))
+                    prompted_anilist_data = ani_list_data_result
+                if isinstance(ani_list_data_result, dict):
+                    self._apply_anilist_data(ani_list_data_result)
+                    if self.context.media_search.mal_id:
+                        self.mal_id_entry.setText(self.context.media_search.mal_id)
         else:
             # title selection handled by backend, no additional processing needed
             LOG.info(
@@ -674,6 +676,13 @@ class MediaSearch(BaseWizardPage):
                 transformed_payload = transformed_result.get("result")
                 if isinstance(transformed_payload, type(self.context.media_search)):
                     self.context.media_search.copy_from(transformed_payload)
+
+                    # The transformer ran on a worker snapshot created before
+                    # the GUI could prompt for a missing MAL ID. Explicit user
+                    # input therefore takes precedence over that stale copy.
+                    if prompted_anilist_data is not None:
+                        self._apply_anilist_data(prompted_anilist_data)
+
                     transformed = self.context.media_search
                     if transformed.media_type is not None:
                         self.context.media_input.media_type = transformed.media_type
@@ -681,6 +690,15 @@ class MediaSearch(BaseWizardPage):
                     self.tmdb_id_entry.setText(transformed.tmdb_id or "")
                     self.tvdb_id_entry.setText(transformed.tvdb_id or "")
                     self.mal_id_entry.setText(transformed.mal_id or "")
+
+    def _apply_anilist_data(self, anilist_data: dict[str, Any]) -> None:
+        self.context.media_search.anilist_data = anilist_data
+        anilist_id = anilist_data.get("id")
+        mal_id = anilist_data.get("idMal")
+        self.context.media_search.anilist_id = (
+            str(anilist_id) if anilist_id is not None else None
+        )
+        self.context.media_search.mal_id = str(mal_id) if mal_id is not None else None
 
     def _ask_user_for_id(self, id_source: str) -> int:
         value = 0
