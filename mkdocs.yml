@@ -17,7 +17,8 @@ nav:
       - Prompt Tokens: view/token-replacer/prompt-tokens.md
       - Advanced: view/token-replacer/advanced.md
   - Plugins:
-      - Metadata Providers: view/plugins/metadata-provider.md
+      - Plugin System: view/plugins/plugin-system.md
+      - Metadata Transformers: view/plugins/metadata-transformers.md
 
 not_in_nav: |
   file_tokens.md

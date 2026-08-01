@@ -41,7 +41,7 @@ class MainWindowWizard(QWizard):
         self.main_window = parent
         self.context = create_processing_context(
             self.config.settings,
-            self.config.plugin_registry.plugins,
+            self.config.plugin_manager,
         )
 
         self._PAGES = self._generate_new_pages()
@@ -136,7 +136,7 @@ class MainWindowWizard(QWizard):
     def reset_wizard(self) -> None:
         self.context = create_processing_context(
             self.config.settings,
-            self.config.plugin_registry.plugins,
+            self.config.plugin_manager,
         )
         self.currentIdChanged.disconnect()
         self._remove_all_pages()
@@ -162,7 +162,7 @@ class MainWindowWizard(QWizard):
         elif (
             self.config.settings.general.enable_plugins
             and self.config.settings.plugins.wizard_page
-            and self.config.plugin_registry.plugins
+            and self.config.plugin_manager.get(self.config.settings.plugins.wizard_page)
         ):
             self.setStartId(WizardPages.PLUGIN_INPUT_PAGE.value)
             GSigs().main_window_update_status_bar_label.emit(
@@ -193,15 +193,15 @@ class MainWindowWizard(QWizard):
         if (
             self.config.settings.general.enable_plugins
             and self.config.settings.plugins.wizard_page
-            and self.config.plugin_registry.plugins
+            and self.config.plugin_manager.get(self.config.settings.plugins.wizard_page)
         ):
             try:
-                plugin_obj = self.config.plugin_registry.plugins[
+                record = self.config.plugin_manager.get(
                     self.config.settings.plugins.wizard_page
-                ]
-                if plugin_obj.wizard:
+                )
+                if record and record.definition.wizard_page:
                     # insert the plugin wizard page into the correct spot
-                    plugin_wizard = plugin_obj.wizard(
+                    plugin_wizard = record.definition.wizard_page(
                         self.config, self.context, self.main_window
                     )
                     self._PAGES.pop(WizardPages.PLUGIN_INPUT_PAGE.value - 1)

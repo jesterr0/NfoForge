@@ -319,7 +319,9 @@ class MoviesManagementSettings(BaseSettings):
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
             parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
-            flat_filters=self.config.plugin_registry.flat_filters,
+            flat_filters=self.config.plugin_manager.flat_filters(
+                enabled=self.config.settings.general.enable_plugins
+            ),
         )
         example_txt = qline.text()
         output = format_str.get_output()

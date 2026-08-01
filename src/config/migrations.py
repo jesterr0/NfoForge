@@ -17,6 +17,8 @@ The versions so far:
   with title-cleaning rules and dynamic-range settings split out into a new
   ``[global_management]`` section.
 - 2 -> 3: PTPIMG support removed, dropping ``[image_hosts.ptpimg]``.
+- 3 -> 4: plugin selections changed from display names to stable plugin IDs;
+  selections are reset and the metadata slot is renamed.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -60,6 +62,7 @@ from src.config.paths import ConfigPaths
 SCHEMA_1_VERSION = 1
 SCHEMA_2_VERSION = 2
 SCHEMA_3_VERSION = 3
+SCHEMA_4_VERSION = 4
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -398,12 +401,33 @@ def migrate_v2_to_v3(
     return new_doc, []
 
 
+def migrate_v3_to_v4(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Reset legacy display-name plugin selections for the typed plugin API."""
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_4_VERSION}
+    for key, value in old_doc.items():
+        if key not in ("schema_version", "plugins"):
+            new_doc[key] = value
+    new_doc["plugins"] = {
+        "wizard_page": "",
+        "token_replacer": "",
+        "pre_upload": "",
+        "metadata_transformer": "",
+    }
+    return new_doc, []
+
+
 # Keyed by the schema version each migration accepts; each produces the next
 # version up. Add an entry here for every `SCHEMA_VERSION` bump -- see the
 # bump policy in this module's docstring.
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
+    SCHEMA_3_VERSION: migrate_v3_to_v4,
 }
 
 

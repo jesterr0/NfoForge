@@ -29,7 +29,7 @@ about_txt = f"""\
 <h3>Key Features</h3>
 <ul>
     <li>Token system for advanced media file renaming.</li>
-    <li>TMDB title metadata with optional external metadata-provider plugins.</li>
+    <li>TMDB title metadata with optional external metadata-transformer plugins.</li>
     <li>Flexible Jinja-based template system for .NFO file generation.</li>
     <li>Screenshot generation and upload, including comparisons.</li>
     <li>Output file organization, saving .torrent and .NFO files to disk.</li>

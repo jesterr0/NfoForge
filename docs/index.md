@@ -12,7 +12,7 @@ Movies are supported, and series support is now available for standard TV episod
 
 - Token system for advanced media file renaming.
 - TMDB title metadata, with TVDB and AniList/MAL enrichment where applicable.
-- Optional external metadata-provider plugins with automatic TMDB fallback.
+- Optional external metadata-transformer plugins with automatic TMDB fallback.
 - Flexible Jinja-based template system for NFO file generation.
 - Screenshot generation and upload, including comparisons.
 - Output file organization, saving .torrent and NFO files to disk.

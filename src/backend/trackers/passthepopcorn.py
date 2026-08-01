@@ -31,7 +31,7 @@ from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
-from src.plugins.metadata_provider import MetadataMediaKind
+from src.plugins.api import MetadataMediaKind
 
 
 def ptp_uploader(

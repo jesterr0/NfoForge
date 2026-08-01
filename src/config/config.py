@@ -12,8 +12,8 @@ from src.config.models import AppConfig, ProgramConfig
 from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
-from src.config.registry import PluginRegistry
 from src.exceptions import ConfigError, ConfigSchemaError
+from src.plugins.manager import PluginManager
 
 # TODO: add cryptography
 
@@ -42,7 +42,7 @@ class ConfigManager(TypedTomlOperations):
         # load various directories as needed
         self.paths.tracker_cookies.mkdir(exist_ok=True, parents=True)
 
-        self.plugin_registry = PluginRegistry()
+        self.plugin_manager = PluginManager()
 
         # load program config
         self.program = ProgramConfig()

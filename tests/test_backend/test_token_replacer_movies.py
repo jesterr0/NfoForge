@@ -10,7 +10,6 @@ from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_search import MediaSearchPayload
-from src.plugins.metadata_provider import MetadataProviderResult
 
 
 def _td() -> TokenData:
@@ -99,9 +98,8 @@ def test_original_title_token_prefers_provider_original_title() -> None:
             "original_title": "TMDb original title",
         },
     )
-    media_search.merge_metadata(
-        MetadataProviderResult(original_title="Provider original title")
-    )
+    media_search.populate_from_tmdb()
+    media_search.original_title = "Provider original title"
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
         token_string="{original_title}",

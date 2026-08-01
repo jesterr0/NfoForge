@@ -5,6 +5,7 @@ from src.enums import CaseInsensitiveEnum
 
 class SettingsTabs(CaseInsensitiveEnum):
     GENERAL_SETTINGS = auto()
+    PLUGINS_SETTINGS = auto()
     MOVIES_SETTINGS = auto()
     SERIES_SETTINGS = auto()
     GLOBAL_SETTINGS = auto()

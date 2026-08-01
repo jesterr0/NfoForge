@@ -9,7 +9,7 @@
 - New custom widget - ComparisonFileMatcher. This will be used to select a matching **source** file for movies/series. # TODO: remove this if we're not going to use it?
 - Tokens:
   - **FileTokens**:
-    - `{original_title}` - Original title from the selected metadata provider or TMDB.
+    - `{original_title}` - Original title from the transformed metadata payload or TMDB.
     - `{original_title_fallback_title}` - Original title with a fallback to {title}.
     - `{original_title_fallback_title_clean}` - Original title with a fallback to {title_clean}.
     - `{original_language}` - Original language (English).
@@ -49,8 +49,14 @@
 - Implemented torrent upload retries with user control.
 - Add ability to set file save location when adding a torrent to qBittorrent.
 - Added a pre-upload wizard page that combines smaller wizard pages into one.
-- Added optional external metadata-provider plugins with typed results and TMDB fallback.
-  - Populated provider fields are centrally merged into the canonical media-search payload, so titles, years, plots, posters, genre names, and media kind are available consistently throughout the remaining workflow.
+- Added a versioned, typed plugin API with stable plugin IDs, local
+  `nfoforge-plugin.toml` manifests, and installed-package entry-point support.
+- Added optional metadata-transformer plugins. Transformers receive an isolated
+  copy of the completed media-search payload; valid results are applied
+  atomically and failures fall back to the canonical TMDB metadata.
+- Added a dedicated **Plugins** settings tab for enabling plugin execution,
+  selecting each single-provider capability, and inspecting loaded, failed, or
+  configured-but-unavailable plugins.
 
 ### Changed
 
@@ -98,9 +104,9 @@
   - IMDb, TMDB, and TVDB IDs can be entered manually and are validated before lookup.
 - Update niquests.
 - All calls to mediainfo includes legacy stream data now _(to detect DTS core)_.
-- General Settings Tab:
-  - **Profile** selection drop down has been replaced by a checkbox **Enable External Plugins**.
-  - Checkbox's are no longer stacked vertically and are inline with the text.
+- Plugin controls have moved out of **General** and into the dedicated
+  **Plugins** settings tab. Disabling plugin execution now preserves the saved
+  selections and keeps plugin discovery diagnostics visible.
 - Main window status label now updates with the current wizard plugin when selected.
 - Crop Widget:
   - Improved script detection logic for AviSynth/VapourSynth scripts for manual crops.
@@ -110,13 +116,19 @@
   - You can now pop out the text editor widget for the text input.
   - Text window is now read only.
 - Plugin Changes:
-  - `pre_upload` plugin is no longer passed kwargs `media_file, mi_obj, source_path`. These can be gathered from the context object easily.
-    - You now can access these payloads via the passed `context`.
+  - Plugins now export one `PluginDefinition` and use typed request objects for
+    token replacement, pre-upload processing, and metadata transformation.
+  - Plugin discovery and execution are centralized through `PluginManager`.
+    One invalid plugin no longer prevents other plugins or NfoForge from loading.
+  - Duplicate plugin IDs and conflicting Jinja/flat-filter contribution names
+    are rejected instead of silently overwriting existing behavior.
+  - Plugin selections are stored using stable manifest or entry-point IDs rather
+    than display names. Config schema 4 resets legacy display-name selections so
+    compatible plugins can be selected again explicitly.
   - Run state has moved off of `ConfigManager` and on to the `ProcessingContext` that plugins are passed. `config.shared_data` and `config.media_input_payload` no longer exist - use `context.shared_data`, `context.media_input`, `context.media_search` and `context.jinja_engine` instead.
   - `MediaInputPayload` no longer describes a single encode. `encode_file_mi_obj` has been replaced by `file_list`, `file_list_mediainfo` _(keyed by path)_ and `comparison_pair`, so a plugin can reach every file in a series pack rather than only one.
     - Input paths are **not** stable for the length of a run. The rename page renames the media and re-points `file_list`, `file_list_mediainfo`, `series_episode_map` and `comparison_pair` at the new paths. A plugin holding its own data keyed by an input path has to re-key it when that happens, or keep what it needs directly rather than looking it up again later.
-  - `token_replacer` plugins are now called from the template preview as well as during processing. Previously the preview called them without a `context`, which every plugin needing one rejected, and the resulting error was discarded - so plugin tokens were always left raw in the preview with no indication why.
-    - The preview now passes `context` and `dummy_screen_shots=True`. A plugin that fills image tokens should render a placeholder while that flag is set, as nothing has been uploaded at that point in the workflow.
+  - `token_replacer` plugins are now called from the template preview as well as during processing using `TokenReplaceRequest`; its `preview` flag identifies preview rendering where screenshots have not yet been uploaded.
     - The preview only calls the plugin when the selected template belongs to exactly one tracker, which matches how processing calls it. A template shared by several trackers (or assigned to none) has its plugin tokens left as they are.
     - A plugin error during preview is now reported instead of discarded. **This affects existing plugins**: one that has always failed in the preview will begin surfacing that failure, where before it failed silently.
 - Improved the visuals of tracker format override widget.
@@ -135,7 +147,8 @@
   - oslex2
   - urllib3
   - guessit
-- On wizard plugin load failures we now provide a detailed error message and disable plugins for the remainder of launched instance
+- Plugin load failures are collected into one startup warning and retained for
+  inspection in Settings without disabling successfully loaded plugins.
 - Checks for incompatible schema of configs on selection and allows the user to generate a new config if one is detected backing up the old
 - New template button is now a drop down menu that allows the user to select a series vs. movies template for a basic default template designed for that media type
 - Added early tracker UX guard
@@ -197,7 +210,10 @@
 - Advanced Input page _(existing functionality will still exist in the **Input** page)_.
 - General settings source/encode extension filter control has been removed.
 - Unused fonts that was included in the bundled runtime
-- Removed direct IMDb scraping and the **cinemagoer/imdbinfo** dependencies. TMDB now supplies fallback metadata when no external provider is configured.
+- Removed direct IMDb scraping and the **cinemagoer/imdbinfo** dependencies. TMDB now supplies fallback metadata when no external transformer is configured.
+- Removed the legacy `PluginPayload`, plugin registry, and metadata-provider
+  contracts. Local plugins now require a manifest and the typed
+  `PluginDefinition` API.
 
 ## [0.8.14] - 2026-2-21
 

@@ -104,6 +104,12 @@ from src.payloads.series import SeriesReleaseInfo, build_series_release_info
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
+from src.plugins.api import (
+    PreUploadDecision,
+    PreUploadRequest,
+    TokenReplaceRequest,
+    UploadReporter,
+)
 
 
 class ProcessBackEnd:
@@ -862,26 +868,26 @@ class ProcessBackEnd:
             if self.config.settings.general.enable_plugins:
                 token_replacer_plugin = self.config.settings.plugins.token_replacer
                 if token_replacer_plugin:
-                    nfo_plugin = self.config.plugin_registry.plugins[
-                        token_replacer_plugin
-                    ].token_replacer
-                    if nfo_plugin and callable(nfo_plugin):
+                    record = self.config.plugin_manager.get(token_replacer_plugin)
+                    if record and record.definition.token_replacer is not None:
                         LOG.info(
                             LOG.LOG_SOURCE.BE,
                             f"Running token replacer plugin for tracker: {tracker_name}",
                         )
-                        replace_tokens = nfo_plugin(
-                            config=self.config,
-                            context=context,
-                            input_str=nfo,
-                            tracker_s=(cur_tracker,),
-                            tracker_images=tracker_images
-                            if cur_tracker in images
-                            else None,
-                            format_images_to_str=formatted_screens,
-                            formatted_screens=formatted_screens,
+                        nfo = self.config.plugin_manager.replace_tokens(
+                            token_replacer_plugin,
+                            TokenReplaceRequest(
+                                config=self.config,
+                                context=context,
+                                text=nfo,
+                                trackers=(cur_tracker,),
+                                tracker_images=(
+                                    tracker_images if cur_tracker in images else None
+                                ),
+                                formatted_screens=formatted_screens,
+                                preview=False,
+                            ),
                         )
-                        nfo = replace_tokens if replace_tokens else nfo
 
             tracker_release_data[cur_tracker] = {"title": tracker_title, "nfo": nfo}
 
@@ -998,26 +1004,33 @@ class ProcessBackEnd:
                     log_out.write(nfo)
 
             # pre upload plugin
-            pre_upload_processing = None
+            pre_upload_decision: PreUploadDecision | None = None
             if self.config.settings.general.enable_plugins:
                 pre_upload_plugin = self.config.settings.plugins.pre_upload
                 if pre_upload_plugin:
-                    get_pre_upload_plugin = self.config.plugin_registry.plugins[
-                        pre_upload_plugin
-                    ].pre_upload
-                    if get_pre_upload_plugin and callable(get_pre_upload_plugin):
-                        pre_upload_processing = get_pre_upload_plugin(
-                            config=self.config,
-                            context=context,
-                            tracker=cur_tracker,
-                            torrent_file=torrent_path,
-                            upload_text_cb=queued_text_update,
-                            upload_text_replace_last_line_cb=queued_text_update_replace_last_line,
-                            progress_cb=self.progress_bar_cb,
+                    record = self.config.plugin_manager.get(pre_upload_plugin)
+                    if record and record.definition.pre_upload is not None:
+                        pre_upload_decision = self.config.plugin_manager.run_pre_upload(
+                            pre_upload_plugin,
+                            PreUploadRequest(
+                                config=self.config,
+                                context=context,
+                                tracker=cur_tracker,
+                                torrent_file=torrent_path,
+                                reporter=UploadReporter(
+                                    append_text=queued_text_update,
+                                    replace_last_line=queued_text_update_replace_last_line,
+                                    set_progress=self.progress_bar_cb
+                                    or (lambda _value: None),
+                                ),
+                            ),
                         )
 
             # upload
-            if tracker_info.upload_enabled and pre_upload_processing is not False:
+            if (
+                tracker_info.upload_enabled
+                and pre_upload_decision is not PreUploadDecision.SKIP
+            ):
                 execute_upload = None
                 skipped_upload = False
                 try:
@@ -1082,12 +1095,15 @@ class ProcessBackEnd:
                     )
                     caught_error.emit(f"Upload Error: {traceback.format_exc()}")
                     queued_status_update(tracker_name, "❌ Failed")
-            elif not tracker_info.upload_enabled and pre_upload_processing is None:
+            elif not tracker_info.upload_enabled and pre_upload_decision is None:
                 queued_text_update(
                     "<br /><span>Skipping upload & injection, upload is disabled</span>"
                 )
                 queued_status_update(tracker_name, "✅ Complete")
-            elif tracker_info.upload_enabled and pre_upload_processing is False:
+            elif (
+                tracker_info.upload_enabled
+                and pre_upload_decision is PreUploadDecision.SKIP
+            ):
                 queued_text_update(
                     "<br /><span>Skipping upload & injection, upload is disabled via plugin</span>"
                 )

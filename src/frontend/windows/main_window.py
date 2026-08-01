@@ -46,11 +46,11 @@ class MainWindow(QMainWindow):
         self.resize(650, 550)
         self.config = config
         self.restore_window_settings()
-        self.status_profile_label = QLabel(
+        wizard_record = self.config.plugin_manager.get(
             self.config.settings.plugins.wizard_page
-            if self.config.settings.plugins.wizard_page
-            else "",
-            self,
+        )
+        self.status_profile_label = QLabel(
+            wizard_record.definition.display_name if wizard_record else "", self
         )
         self.status_bar.addPermanentWidget(self.status_profile_label)
         self._check_suffix()

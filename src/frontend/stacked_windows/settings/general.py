@@ -95,70 +95,6 @@ class GeneralSettings(BaseSettings):
         )
         self.theme_combo.activated.connect(self._change_theme)
 
-        self.enable_plugins = QCheckBox("Enable External Plugins", self)
-        self.enable_plugins.clicked.connect(self._enable_plugins)
-
-        plugin_wizard_page_lbl = QLabel("Choose Wizard Input Page", self)
-        plugin_wizard_page_lbl.setToolTip(
-            "Choose which wizard input page plugin will be used"
-        )
-        self.plugin_wizard_page_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        plugin_wizard_page_layout = create_form_layout(
-            plugin_wizard_page_lbl, self.plugin_wizard_page_combo, (12, 0, 0, 0)
-        )
-
-        plugin_wizard_token_replacer_lbl = QLabel("Choose Token Replacer", self)
-        plugin_wizard_token_replacer_lbl.setToolTip(
-            "Choose which Token Replacer plugin will be used"
-        )
-        self.plugin_token_replacer_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        plugin_token_replacer_layout = create_form_layout(
-            plugin_wizard_token_replacer_lbl,
-            self.plugin_token_replacer_combo,
-            (12, 0, 0, 0),
-        )
-
-        plugin_pre_upload_lbl = QLabel("Pre Upload Processing", self)
-        plugin_pre_upload_lbl.setToolTip(
-            "Choose which pre upload processing plugin will be used"
-        )
-        self.plugin_pre_upload_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        pre_upload_processing_layout = create_form_layout(
-            plugin_pre_upload_lbl,
-            self.plugin_pre_upload_combo,
-            (12, 0, 0, 0),
-        )
-
-        plugin_metadata_provider_lbl = QLabel("Metadata Provider", self)
-        plugin_metadata_provider_lbl.setToolTip(
-            "Choose an optional external metadata provider. TMDb remains the fallback."
-        )
-        self.plugin_metadata_provider_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        metadata_provider_layout = create_form_layout(
-            plugin_metadata_provider_lbl,
-            self.plugin_metadata_provider_combo,
-            (12, 0, 0, 0),
-        )
-
-        self._plugin_widgets = (
-            plugin_wizard_page_lbl,
-            self.plugin_wizard_page_combo,
-            plugin_wizard_token_replacer_lbl,
-            self.plugin_token_replacer_combo,
-            plugin_pre_upload_lbl,
-            self.plugin_pre_upload_combo,
-            plugin_metadata_provider_lbl,
-            self.plugin_metadata_provider_combo,
-        )
-
         releasers_name_lbl = QLabel("Releasers Name")
         releasers_name_lbl.setToolTip("Sets the releaser's name. As displayed in NFOs")
         self.releasers_name_entry = QLineEdit(self)
@@ -285,11 +221,6 @@ class GeneralSettings(BaseSettings):
             create_form_layout(scale_factor_lbl, self.ui_scale_factor_spinbox)
         )
         self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
-        self.add_layout(create_form_layout(self.enable_plugins))
-        self.add_layout(plugin_wizard_page_layout)
-        self.add_layout(plugin_token_replacer_layout)
-        self.add_layout(pre_upload_processing_layout)
-        self.add_layout(metadata_provider_layout)
         self.add_layout(
             create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
@@ -322,8 +253,6 @@ class GeneralSettings(BaseSettings):
         self.ui_scale_factor_spinbox.setValue(int(payload.ui_scale_factor * 100))
         self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.theme)
         self._change_theme()
-        self.enable_plugins.setChecked(payload.enable_plugins)
-        self._enable_plugins()
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
         self._load_tmdb_language_combo(payload.tmdb_language)
@@ -517,16 +446,6 @@ class GeneralSettings(BaseSettings):
         self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
 
     @Slot()
-    def _enable_plugins(self) -> None:
-        if self.enable_plugins.isChecked():
-            for widget in self._plugin_widgets:
-                widget.show()
-                self._load_plugin_combos()
-        else:
-            for widget in self._plugin_widgets:
-                widget.hide()
-
-    @Slot()
     def _handle_working_dir_click(self) -> None:
         wd = QFileDialog.getExistingDirectory(
             parent=self,
@@ -572,82 +491,6 @@ class GeneralSettings(BaseSettings):
     def _swap_dep_tab(self) -> None:
         GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
-    def _load_plugin_combos(self) -> None:
-        if self.plugin_wizard_page_combo.count() == 0:
-            if self.config.plugin_registry.plugins:
-                for plugin in self.config.plugin_registry.plugins.values():
-                    plugin_name = plugin.name
-
-                    if plugin.wizard:
-                        self.plugin_wizard_page_combo.addItem(plugin_name, plugin_name)
-
-                    if plugin.token_replacer is not None:
-                        if plugin.token_replacer is False:
-                            self.plugin_token_replacer_combo.addItem(plugin_name, None)
-                        else:
-                            self.plugin_token_replacer_combo.addItem(
-                                plugin_name, plugin_name
-                            )
-
-                    if plugin.pre_upload is not None:
-                        if plugin.pre_upload is False:
-                            self.plugin_pre_upload_combo.addItem(plugin_name, None)
-                        else:
-                            self.plugin_pre_upload_combo.addItem(
-                                plugin_name, plugin_name
-                            )
-
-                    if plugin.metadata_provider is not None:
-                        if plugin.metadata_provider is False:
-                            self.plugin_metadata_provider_combo.addItem(
-                                plugin_name, None
-                            )
-                        else:
-                            self.plugin_metadata_provider_combo.addItem(
-                                plugin_name, plugin_name
-                            )
-
-        self._apply_plugin_combos_settings()
-
-    def _apply_plugin_combos_settings(self) -> None:
-        wizard_plugin = None
-        if self.config.settings.plugins.wizard_page:
-            wizard_plugin = self.plugin_wizard_page_combo.findText(
-                self.config.settings.plugins.wizard_page
-            )
-        self.plugin_wizard_page_combo.setCurrentIndex(
-            wizard_plugin if wizard_plugin and wizard_plugin > 0 else 0
-        )
-
-        url_plugin = None
-        if self.config.settings.plugins.token_replacer:
-            url_plugin = self.plugin_token_replacer_combo.findText(
-                self.config.settings.plugins.token_replacer
-            )
-        self.plugin_token_replacer_combo.setCurrentIndex(
-            url_plugin if url_plugin and url_plugin > 0 else 0
-        )
-
-        pre_upload_plugin = None
-        if self.config.settings.plugins.pre_upload:
-            pre_upload_plugin = self.plugin_pre_upload_combo.findText(
-                self.config.settings.plugins.pre_upload
-            )
-        self.plugin_pre_upload_combo.setCurrentIndex(
-            pre_upload_plugin if pre_upload_plugin and pre_upload_plugin > 0 else 0
-        )
-
-        metadata_provider_plugin = None
-        if self.config.settings.plugins.metadata_provider:
-            metadata_provider_plugin = self.plugin_metadata_provider_combo.findText(
-                self.config.settings.plugins.metadata_provider
-            )
-        self.plugin_metadata_provider_combo.setCurrentIndex(
-            metadata_provider_plugin
-            if metadata_provider_plugin and metadata_provider_plugin > 0
-            else 0
-        )
-
     @Slot()
     def _save_settings(self) -> None:
         self.config.program.current_config = self.selected_config.currentText()
@@ -658,25 +501,6 @@ class GeneralSettings(BaseSettings):
         self.config.settings.general.theme = NfoForgeTheme(
             self.theme_combo.currentData()
         )
-        self.config.settings.general.enable_plugins = self.enable_plugins.isChecked()
-        if self.enable_plugins.isChecked():
-            self.config.settings.plugins.wizard_page = (
-                self.plugin_wizard_page_combo.currentData()
-            )
-            self.config.settings.plugins.token_replacer = (
-                self.plugin_token_replacer_combo.currentData()
-            )
-            self.config.settings.plugins.pre_upload = (
-                self.plugin_pre_upload_combo.currentData()
-            )
-            self.config.settings.plugins.metadata_provider = (
-                self.plugin_metadata_provider_combo.currentData()
-            )
-        else:
-            self.config.settings.plugins.wizard_page = ""
-            self.config.settings.plugins.token_replacer = ""
-            self.config.settings.plugins.pre_upload = ""
-            self.config.settings.plugins.metadata_provider = ""
         self.config.settings.general.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
@@ -703,12 +527,6 @@ class GeneralSettings(BaseSettings):
             int(self.config.defaults.general.ui_scale_factor * 100)
         )
         self.theme_combo.setCurrentIndex(self.config.defaults.general.theme.value - 1)
-        self.enable_plugins.setChecked(False)
-        self._enable_plugins()
-        self.plugin_wizard_page_combo.clear()
-        self.plugin_token_replacer_combo.clear()
-        self.plugin_pre_upload_combo.clear()
-        self.plugin_metadata_provider_combo.clear()
         self.releasers_name_entry.clear()
         # set TMDB language to default
         for i in range(self.tmdb_language_combo.count()):

@@ -13,8 +13,11 @@ from src.frontend.wizards.media_search import (
     _run_media_search_job,
 )
 from src.payloads.media_inputs import MediaInputPayload
-from src.plugins.metadata_provider import MetadataProviderResult
-from src.plugins.plugin_payload import PluginPayload
+from src.payloads.media_search import MediaSearchPayload
+from src.plugins.api import (
+    MetadataTransformRequest,
+    PluginDefinition,
+)
 
 
 def _config_paths(tmp_path: Path) -> ConfigPaths:
@@ -162,7 +165,7 @@ def test_failed_search_clears_payload_and_preserves_query(
     assert page.listbox.item(0).text().startswith("Search unavailable:")
 
 
-def test_provider_failure_warns_and_continues_with_tmdb(
+def test_transformer_failure_warns_and_continues_with_tmdb(
     monkeypatch, tmp_path: Path
 ) -> None:
     page = _make_page(tmp_path)
@@ -176,7 +179,7 @@ def test_provider_failure_warns_and_continues_with_tmdb(
 
     should_continue = page._handle_metadata_failures(
         {
-            "provider_metadata": {
+            "metadata_transformation": {
                 "success": False,
                 "error": "Provider offline",
             }
@@ -186,7 +189,7 @@ def test_provider_failure_warns_and_continues_with_tmdb(
     assert should_continue is True
     assert warnings == [
         (
-            "Metadata Provider Unavailable",
+            "Metadata Transformer Unavailable",
             "Provider offline\n\nTMDb metadata will be used instead.",
         )
     ]
@@ -220,24 +223,32 @@ def test_series_tvdb_failure_uses_retry_or_manual_choice(
     )
 
 
-def test_selected_metadata_provider_is_only_used_when_plugins_are_enabled(
+def test_selected_metadata_transformer_is_only_used_when_plugins_are_enabled(
     tmp_path: Path,
 ) -> None:
     page = _make_page(tmp_path)
 
-    def provider(**_kwargs: object) -> MetadataProviderResult | None:
+    def transformer(
+        _request: MetadataTransformRequest,
+    ) -> MediaSearchPayload | None:
         return None
 
-    page.config.plugin_registry.plugins["Provider"] = PluginPayload(
-        name="Provider", metadata_provider=provider
+    page.config.plugin_manager.register(
+        "provider",
+        PluginDefinition(
+            display_name="Provider",
+            version="1.0.0",
+            metadata_transformer=transformer,
+        ),
+        "test",
     )
-    page.config.settings.plugins.metadata_provider = "Provider"
+    page.config.settings.plugins.metadata_transformer = "provider"
 
     page.config.settings.general.enable_plugins = False
-    assert page._get_metadata_provider() is None
+    assert page._get_metadata_transformer_id() is None
 
     page.config.settings.general.enable_plugins = True
-    assert page._get_metadata_provider() is provider
+    assert page._get_metadata_transformer_id() == "provider"
 
 
 def test_id_validation_accepts_supported_manual_id_shapes(tmp_path: Path) -> None:
@@ -252,7 +263,7 @@ def test_id_validation_accepts_supported_manual_id_shapes(tmp_path: Path) -> Non
     assert page._has_invalid_id_formats() is True
 
 
-def test_payload_update_stores_resolved_ids_and_provider_metadata(
+def test_payload_update_commits_transformed_metadata(
     tmp_path: Path,
 ) -> None:
     page = _make_page(tmp_path)
@@ -271,34 +282,40 @@ def test_payload_update_stores_resolved_ids_and_provider_metadata(
     page.listbox.addItem(item_name)
     page.listbox.setCurrentRow(0)
     page.tmdb_id_entry.setText("123")
-    provider_result = MetadataProviderResult(
+    complete_tmdb = {
+        "id": 123,
+        "title": "TMDb title",
+        "original_title": "TMDb original",
+        "release_date": "2024-01-01",
+        "overview": "Complete metadata",
+        "poster_path": "/tmdb-poster.jpg",
+        "genres": [{"id": 1, "name": "TMDb Genre"}],
+    }
+    transformed = MediaSearchPayload(
+        media_type=MediaType.MOVIE,
+        imdb_id="tt1234567",
+        tmdb_id="123",
+        tvdb_id="456",
+        tmdb_data=complete_tmdb,
+        title="Provider Localized",
         original_title="Provider Original",
-        localized_title="Provider Localized",
         year=2025,
         plot="Provider plot",
         poster_url="https://provider.example/poster.jpg",
-        genres=("Provider Genre",),
+        genre_names=("Provider Genre",),
     )
 
     page._update_payload_data(
         {
             "tmdb_complete_data": {
                 "success": True,
-                "result": {
-                    "id": 123,
-                    "title": "TMDb title",
-                    "original_title": "TMDb original",
-                    "release_date": "2024-01-01",
-                    "overview": "Complete metadata",
-                    "poster_path": "/tmdb-poster.jpg",
-                    "genres": [{"id": 1, "name": "TMDb Genre"}],
-                },
+                "result": complete_tmdb,
             },
             "resolved_ids": {
                 "success": True,
                 "result": {"imdb_id": "tt1234567", "tvdb_id": 456},
             },
-            "provider_metadata": {"success": True, "result": provider_result},
+            "metadata_transformation": {"success": True, "result": transformed},
         }
     )
 
@@ -313,7 +330,6 @@ def test_payload_update_stores_resolved_ids_and_provider_metadata(
     }
     assert page.context.media_search.imdb_id == "tt1234567"
     assert page.context.media_search.tvdb_id == "456"
-    assert page.context.media_search.provider_metadata is provider_result
     assert page.context.media_search.title == "Provider Localized"
     assert page.context.media_search.original_title == "Provider Original"
     assert page.context.media_search.year == 2025

@@ -44,6 +44,7 @@ from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.sandbox_wizard import SandboxMainWindow
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.series import build_series_release_info
+from src.plugins.api import TokenReplaceRequest
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -657,10 +658,8 @@ class TemplateSelector(QWidget):
         token_replacer_plugin = self.config.settings.plugins.token_replacer
         if not token_replacer_plugin:
             return nfo
-        plugin = self.config.plugin_registry.plugins[
-            token_replacer_plugin
-        ].token_replacer
-        if not plugin or not callable(plugin):
+        record = self.config.plugin_manager.get(token_replacer_plugin)
+        if record is None or record.definition.token_replacer is None:
             return nfo
 
         selected_template = self.template_combo.currentText()
@@ -676,15 +675,17 @@ class TemplateSelector(QWidget):
             return nfo
 
         try:
-            replace_tokens = plugin(
-                config=self.config,
-                context=self.context,
-                input_str=nfo,
-                tracker_s=tracker_s,
-                tracker_images=None,
-                # nothing is uploaded until the process page, so a plugin's image
-                # tokens stand in for now
-                dummy_screen_shots=True,
+            return self.config.plugin_manager.replace_tokens(
+                token_replacer_plugin,
+                TokenReplaceRequest(
+                    config=self.config,
+                    context=self.context,
+                    text=nfo,
+                    trackers=tracker_s,
+                    tracker_images=None,
+                    formatted_screens=None,
+                    preview=True,
+                ),
             )
         except Exception as plugin_error:
             # reported rather than swallowed: leaving the tokens raw without a word
@@ -700,7 +701,7 @@ class TemplateSelector(QWidget):
                 f"preview, so they are left as they are.\n\n{plugin_error}",
             )
             return nfo
-        return replace_tokens if replace_tokens else nfo
+        return nfo
 
     @Slot()
     def maximize_template(self) -> None:

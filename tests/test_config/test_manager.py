@@ -1081,7 +1081,7 @@ def test_warning_syntax_color_is_written_on_save(
     assert template_settings["warning_syntax_color"] == "#123ABC"
 
 
-def test_metadata_provider_backfills_when_a_profile_lacks_it(
+def test_metadata_transformer_backfills_when_a_profile_lacks_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
@@ -1093,15 +1093,15 @@ def test_metadata_provider_backfills_when_a_profile_lacks_it(
     profile = paths.user_configs / "test.toml"
     document = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], document["plugins"])
-    del plugin_settings["metadata_provider"]
+    del plugin_settings["metadata_transformer"]
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     manager.load_profile("test")
 
-    assert manager.settings.plugins.metadata_provider is None
+    assert manager.settings.plugins.metadata_transformer is None
 
 
-def test_metadata_provider_is_written_on_save(
+def test_metadata_transformer_is_written_on_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
@@ -1111,10 +1111,10 @@ def test_metadata_provider_is_written_on_save(
     paths = _paths(tmp_path)
     manager = ConfigManager("test", paths)
 
-    manager.settings.plugins.metadata_provider = "Example Provider"
+    manager.settings.plugins.metadata_transformer = "example.provider"
     manager.save()
 
     profile = paths.user_configs / "test.toml"
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
-    assert plugin_settings["metadata_provider"] == "Example Provider"
+    assert plugin_settings["metadata_transformer"] == "example.provider"

@@ -1760,4 +1760,4 @@ EXAMPLE_SEARCH_PAYLOAD = MediaSearchPayload(
     year=2013,
     original_title=None,
 )
-EXAMPLE_SEARCH_PAYLOAD.merge_metadata()
+EXAMPLE_SEARCH_PAYLOAD.populate_from_tmdb()

@@ -8,7 +8,7 @@ from src.enums.media_type import MediaType
 from src.exceptions import TrackerError
 from src.packages.custom_types import ImageUploadData
 from src.payloads.media_search import MediaSearchPayload
-from src.plugins.metadata_provider import MetadataMediaKind, MetadataProviderResult
+from src.plugins.api import MetadataMediaKind
 
 
 def _uploader(cookie_dir: Path, mediainfo_obj: MagicMock | None = None) -> PTPUploader:
@@ -86,7 +86,6 @@ def test_ptp_upload_post_has_a_timeout(
     media_search_payload = MagicMock()
     # Skip the type-detection duration lookup, which needs a real MediaInfo
     # object; only the timeout on the POST is under test here.
-    media_search_payload.provider_metadata = None
     media_search_payload.media_type = MediaType.MOVIE
 
     with pytest.raises(TrackerError, match="is not the expected one"):
@@ -116,9 +115,7 @@ def test_ptp_type_prefers_provider_kind(
     kind: MetadataMediaKind, expected: str, tmp_path: Path
 ) -> None:
     payload = MediaSearchPayload(media_type=MediaType.MOVIE)
-    payload.merge_metadata(
-        MetadataProviderResult(media_kind=kind),
-    )
+    payload.media_kind = kind
 
     assert _uploader(tmp_path)._get_type(payload) == expected
 
@@ -130,9 +127,7 @@ def test_ptp_type_uses_runtime_when_provider_has_no_specific_kind(
     mediainfo_obj.general_tracks = [MagicMock(duration=44 * 60_000)]
     uploader = _uploader(tmp_path, mediainfo_obj)
     payload = MediaSearchPayload(media_type=MediaType.MOVIE)
-    payload.merge_metadata(
-        MetadataProviderResult(media_kind=MetadataMediaKind.MOVIE),
-    )
+    payload.media_kind = MetadataMediaKind.MOVIE
 
     assert uploader._get_type(payload) == "Short Film"
 

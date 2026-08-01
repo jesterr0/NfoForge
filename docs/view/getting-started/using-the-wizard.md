@@ -25,8 +25,8 @@ The page will immediately parse the file (or attempt to, if the name is somewhat
 
 NfoForge uses TMDB as its primary metadata source, then enriches series and
 anime results with TVDB and AniList where applicable. If an optional metadata
-provider plugin is selected in **Settings -> General**, its populated fields
-override the corresponding TMDB values; a provider failure only produces a
+transformer plugin is selected in **Settings -> Plugins**, its returned payload
+updates the corresponding TMDB values; a transformer failure only produces a
 warning and processing continues with TMDB.
 
 IMDb, TMDB, and TVDB IDs can be entered manually. A TMDB lookup is still

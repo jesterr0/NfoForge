@@ -27,6 +27,7 @@ from src.frontend.stacked_windows.settings.global_management import (
 from src.frontend.stacked_windows.settings.movies_management import (
     MoviesManagementSettings,
 )
+from src.frontend.stacked_windows.settings.plugins import PluginsSettings
 from src.frontend.stacked_windows.settings.screenshots import ScreenShotSettings
 from src.frontend.stacked_windows.settings.security import SecuritySettings
 from src.frontend.stacked_windows.settings.series_management import (
@@ -56,6 +57,9 @@ class Settings(QWidget):
         self._save_approved_counter = 0
 
         self.general_settings_content = GeneralSettings(
+            self.config, self.main_window, self
+        )
+        self.plugins_settings_content = PluginsSettings(
             self.config, self.main_window, self
         )
         self.movies_settings_content = MoviesManagementSettings(
@@ -92,6 +96,7 @@ class Settings(QWidget):
 
         self.settings_map: dict[SettingsTabs, BaseSettings] = {
             SettingsTabs.GENERAL_SETTINGS: self.general_settings_content,
+            SettingsTabs.PLUGINS_SETTINGS: self.plugins_settings_content,
             SettingsTabs.MOVIES_SETTINGS: self.movies_settings_content,
             SettingsTabs.SERIES_SETTINGS: self.series_settings_content,
             SettingsTabs.GLOBAL_SETTINGS: self.global_settings_content,
@@ -113,6 +118,7 @@ class Settings(QWidget):
         self.tab_widget = QTabWidget()
         self.tab_widget.currentChanged.connect(GSigs().settings_tab_changed.emit)
         self.tab_widget.addTab(self.general_settings_content, "General")
+        self.tab_widget.addTab(self.plugins_settings_content, "Plugins")
         self.tab_widget.addTab(self.movies_settings_content, "Movies Management")
         self.tab_widget.addTab(self.series_settings_content, "Series Management")
         self.tab_widget.addTab(self.global_settings_content, "Global Management")
@@ -178,6 +184,7 @@ class Settings(QWidget):
     def _apply_settings(self) -> None:
         self._save_approved_counter = 0
         self.general_settings_content.update_saved_settings.emit()
+        self.plugins_settings_content.update_saved_settings.emit()
         self.movies_settings_content.update_saved_settings.emit()
         self.series_settings_content.update_saved_settings.emit()
         self.global_settings_content.update_saved_settings.emit()
@@ -205,6 +212,7 @@ class Settings(QWidget):
     def _reload_settings(self) -> None:
         self._save_approved_counter = 0
         self.general_settings_content.load_saved_settings.emit()
+        self.plugins_settings_content.load_saved_settings.emit()
         self.movies_settings_content.load_saved_settings.emit()
         self.series_settings_content.load_saved_settings.emit()
         self.global_settings_content.load_saved_settings.emit()

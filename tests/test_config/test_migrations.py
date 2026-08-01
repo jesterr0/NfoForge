@@ -2,9 +2,25 @@ from pathlib import Path
 
 import tomlkit
 
-from src.config.migrations import migrate_unversioned_to_v2
+from src.config.migrations import migrate_unversioned_to_v2, migrate_v3_to_v4
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_v3_to_v4_resets_display_name_plugin_selections() -> None:
+    old = _load_fixture("schema3_config.toml")
+
+    new, unmapped = migrate_v3_to_v4(old, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 4
+    assert new["general"]["enable_plugins"] is True
+    assert new["plugins"] == {
+        "wizard_page": "",
+        "token_replacer": "",
+        "pre_upload": "",
+        "metadata_transformer": "",
+    }
 
 
 def _load_fixture(name: str) -> tomlkit.TOMLDocument:

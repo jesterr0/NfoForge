@@ -231,7 +231,7 @@ class TemplatesSettings(BaseSettings):
         # temporary context for template preview in settings
         self.temp_preview_context = create_processing_context(
             self.config.settings,
-            self.config.plugin_registry.plugins,
+            self.config.plugin_manager,
         )
 
         self.template_selector = TemplateSelector(

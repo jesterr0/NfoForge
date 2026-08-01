@@ -1,4 +1,4 @@
-schema_version = 3
+schema_version = 4
 
 [general]
 ui_suffix = ""
@@ -555,7 +555,7 @@ urls_manual = 0
 wizard_page = ""
 token_replacer = ""
 pre_upload = ""
-metadata_provider = ""
+metadata_transformer = ""
 
 [template_settings]
 block_syntax_color = "#A4036F"

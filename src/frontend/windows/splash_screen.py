@@ -36,9 +36,7 @@ import qtawesome as qta
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.wizards.media_input import MediaInput
 from src.plugins.loader import PluginLoader
-from src.plugins.plugin_payload import PluginPayload
 from src.version import __version__
 
 message_box_frame_style = """\
@@ -154,62 +152,40 @@ class SplashScreenLoader(QThread):
             )
 
     def init_plugins(self) -> str | None:
-        # built in plugins
-        self._update_built_in_plugins()
+        plugin_loader = PluginLoader(
+            self.config.plugin_manager, self.update_splash_msg.emit
+        )
+        report = plugin_loader.load_plugins()
 
-        # load user plugins
-        plugin_loader = PluginLoader(self.update_splash_msg)
-        loaded_plugins = plugin_loader.load_plugins()
-        self.config.plugin_registry.plugins.update(loaded_plugins)
-        self._update_flat_filters_with_plugins()
-
-        # check if we have missing keys and remove them from the running config
-        plugin_names = self.config.plugin_registry.plugins.keys()
-        if self.config.settings.plugins.wizard_page not in plugin_names:
-            self.config.settings.plugins.wizard_page = None
-        if self.config.settings.plugins.token_replacer not in plugin_names:
-            self.config.settings.plugins.token_replacer = None
-        if self.config.settings.plugins.pre_upload not in plugin_names:
-            self.config.settings.plugins.pre_upload = None
-        if self.config.settings.plugins.metadata_provider not in plugin_names:
-            self.config.settings.plugins.metadata_provider = None
-        self.config.save()
-
-        if plugin_loader.failures:
-            failures = "\n".join(f"- {failure}" for failure in plugin_loader.failures)
-            return (
+        unavailable = sorted(
+            plugin_id
+            for plugin_id in (
+                self.config.settings.plugins.wizard_page,
+                self.config.settings.plugins.token_replacer,
+                self.config.settings.plugins.pre_upload,
+                self.config.settings.plugins.metadata_transformer,
+            )
+            if plugin_id and plugin_id not in self.config.plugin_manager.plugin_ids
+        )
+        warnings: list[str] = []
+        if report.failures:
+            failures = "\n".join(f"- {failure}" for failure in report.failures)
+            warnings.append(
                 "The following plugins could not be loaded and were skipped:\n\n"
-                f"{failures}\n\n"
+                f"{failures}"
+            )
+        if unavailable:
+            warnings.append(
+                "Configured plugins are currently unavailable; built-in behavior "
+                "will be used without changing your saved selection:\n\n"
+                + "\n".join(f"- {plugin_id}" for plugin_id in unavailable)
+            )
+        if warnings:
+            return (
+                "\n\n".join(warnings) + "\n\n"
                 "See the application log for full error details."
             )
         return None
-
-    def _update_built_in_plugins(self) -> None:
-        built_in_plugins = {
-            "Input (built in, external plugin slot disabled)": PluginPayload(
-                name="Input (built in, external plugin slot disabled)",
-                wizard=MediaInput,
-            ),
-            "Default Token Replacer (built in, external plugin slot disabled)": PluginPayload(
-                name="Token Replacer (built in, external plugin slot disabled)",
-                token_replacer=False,
-            ),
-            "Default Pre Upload (built in, external plugin slot disabled)": PluginPayload(
-                name="Default Pre Upload (built in, external plugin slot disabled)",
-                pre_upload=False,
-            ),
-            "TMDb Metadata (built in, external plugin slot disabled)": PluginPayload(
-                name="TMDb Metadata (built in, external plugin slot disabled)",
-                metadata_provider=False,
-            ),
-        }
-        self.config.plugin_registry.plugins.update(built_in_plugins)
-
-    def _update_flat_filters_with_plugins(self) -> None:
-        for plugin in self.config.plugin_registry.plugins.values():
-            flat_filters = getattr(plugin, "flat_filters", None)
-            if flat_filters:
-                self.config.plugin_registry.flat_filters.update(flat_filters)
 
 
 class SplashScreen(QWidget):

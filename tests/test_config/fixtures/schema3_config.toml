@@ -1,0 +1,11 @@
+schema_version = 3
+
+[general]
+enable_plugins = true
+
+[plugins]
+wizard_page = "Legacy Wizard Name"
+token_replacer = "Legacy Token Name"
+pre_upload = "Legacy Pre Upload Name"
+metadata_provider = "Legacy Metadata Name"
+

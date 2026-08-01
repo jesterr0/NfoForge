@@ -1,6 +1,5 @@
 import asyncio
 import base64
-from collections.abc import Callable, Mapping
 import re
 from typing import Any, cast
 
@@ -15,9 +14,8 @@ from src.backend.utils.super_sub import normalize_super_sub
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
-from src.exceptions import MediaSearchError, MediaSearchUnavailableError, PluginError
+from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.logger.nfo_forge_logger import LOG
-from src.plugins.metadata_provider import MetadataProviderResult
 
 
 class MediaSearchBackEnd:
@@ -268,8 +266,6 @@ class MediaSearchBackEnd:
         tmdb_genres: list[TMDBGenreIDsMovies],
         tmdb_id: str = "",
         tvdb_id: str = "",
-        metadata_provider: (Callable[..., MetadataProviderResult | None] | None) = None,
-        metadata_provider_kwargs: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         # fetch complete TMDB data if we have TMDB ID
         tmdb_complete_data: dict[str, Any] | None = None
@@ -294,20 +290,6 @@ class MediaSearchBackEnd:
         if media_type is MediaType.SERIES and (imdb_id or resolved_tvdb_id):
             tasks["tvdb_data"] = asyncio.create_task(
                 self.parse_tvdb_data(imdb_id, resolved_tvdb_id)
-            )
-
-        if metadata_provider is not None and imdb_id:
-            provider_kwargs = dict(metadata_provider_kwargs or {})
-            provider_kwargs.update(
-                {
-                    "imdb_id": imdb_id,
-                    "tmdb_data": tmdb_complete_data or {},
-                    "media_type": media_type,
-                    "timeout": self.timeout,
-                }
-            )
-            tasks["provider_metadata"] = asyncio.create_task(
-                self._parse_provider_metadata(metadata_provider, provider_kwargs)
             )
 
         # parse anime if needed
@@ -352,21 +334,6 @@ class MediaSearchBackEnd:
             except Exception as e:
                 results[key] = {"success": False, "error": str(e)}
         return results
-
-    async def _parse_provider_metadata(
-        self,
-        provider: Callable[..., MetadataProviderResult | None],
-        provider_kwargs: dict[str, object],
-    ) -> MetadataProviderResult | None:
-        result = await asyncio.wait_for(
-            asyncio.to_thread(provider, **provider_kwargs),
-            timeout=self.timeout,
-        )
-        if result is not None and not isinstance(result, MetadataProviderResult):
-            raise PluginError(
-                "Metadata provider must return MetadataProviderResult or None"
-            )
-        return result
 
     async def parse_tvdb_data(
         self, imdb_id: str | None, tvdb_id: int | None

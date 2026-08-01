@@ -16,7 +16,7 @@ from src.frontend.custom_widgets.template_selector import (
     TemplateSelector,
     saved_status_message,
 )
-from src.plugins.plugin_payload import PluginPayload
+from src.plugins.api import PluginDefinition, TokenReplaceRequest
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
@@ -52,7 +52,7 @@ def _make_selector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TemplateS
         config=manager,
         context=ProcessingContext(),
         sandbox=False,
-        main_window=None,
+        main_window=None,  # type: ignore[reportArgumentType]
         parent=None,
     )
 
@@ -244,8 +244,14 @@ def _selector_with_plugin(
     selector = _make_selector(tmp_path, monkeypatch)
     selector.config.settings.general.enable_plugins = True
     selector.config.settings.plugins.token_replacer = "fake_plugin"
-    selector.config.plugin_registry.plugins["fake_plugin"] = PluginPayload(
-        name="fake_plugin", token_replacer=plugin
+    selector.config.plugin_manager.register(
+        "fake_plugin",
+        PluginDefinition(
+            display_name="Fake Plugin",
+            version="1.0.0",
+            token_replacer=plugin,  # type: ignore[reportArgumentType]
+        ),
+        "test",
     )
     for tracker in list(selector.config.settings.trackers.by_selection())[:assign_to]:
         selector.config.settings.trackers.by_selection()[
@@ -263,17 +269,18 @@ def test_preview_passes_the_context_and_the_dummy_flag_to_the_plugin(
     # rejected, leaving its tokens raw
     seen: dict = {}
 
-    def fake_plugin(**kwargs):
-        seen.update(kwargs)
+    def fake_plugin(request: TokenReplaceRequest) -> str:
+        seen["request"] = request
         return "filled"
 
     selector = _selector_with_plugin(tmp_path, monkeypatch, fake_plugin)
 
     assert selector._apply_token_replacer_plugin("{plugin_token}") == "filled"
-    assert seen["context"] is selector.context
-    assert seen["dummy_screen_shots"] is True
-    assert seen["tracker_images"] is None
-    assert len(seen["tracker_s"]) == 1
+    request = seen["request"]
+    assert request.context is selector.context
+    assert request.preview is True
+    assert request.tracker_images is None
+    assert len(request.trackers) == 1
 
 
 def test_preview_skips_the_plugin_when_the_template_is_not_unique_to_one_tracker(
@@ -283,8 +290,8 @@ def test_preview_skips_the_plugin_when_the_template_is_not_unique_to_one_tracker
     # is no format to render as, so the tokens are left rather than guessed at
     calls = []
 
-    def fake_plugin(**kwargs):
-        calls.append(kwargs)
+    def fake_plugin(request: TokenReplaceRequest) -> str:
+        calls.append(request)
         return "filled"
 
     selector = _selector_with_plugin(tmp_path, monkeypatch, fake_plugin, assign_to=2)
@@ -300,7 +307,7 @@ def test_preview_reports_a_plugin_failure_instead_of_discarding_it(
     # identical to a broken template
     warnings = []
 
-    def fake_plugin(**kwargs):
+    def fake_plugin(_request: TokenReplaceRequest) -> str:
         raise ValueError("no images for Aither")
 
     monkeypatch.setattr(

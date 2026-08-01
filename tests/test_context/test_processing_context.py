@@ -3,6 +3,8 @@ from typing import Any
 
 from src.context.factory import create_processing_context
 from src.context.processing_context import ProcessingContext
+from src.plugins.api import PluginDefinition
+from src.plugins.manager import PluginManager
 
 
 def _config_payload(**overrides) -> Any:
@@ -13,7 +15,10 @@ def _config_payload(**overrides) -> Any:
         "keep_trailing_newline": True,
     }
     template_values.update(overrides)
-    return SimpleNamespace(templates=SimpleNamespace(**template_values))
+    return SimpleNamespace(
+        templates=SimpleNamespace(**template_values),
+        general=SimpleNamespace(enable_plugins=True),
+    )
 
 
 def test_processing_context_binds_payload_globals() -> None:
@@ -34,8 +39,8 @@ def test_media_input_payloads_own_isolated_analysis_caches() -> None:
 
 
 def test_factory_creates_isolated_engines() -> None:
-    first = create_processing_context(_config_payload(), {})
-    second = create_processing_context(_config_payload(), {})
+    first = create_processing_context(_config_payload(), PluginManager())
+    second = create_processing_context(_config_payload(), PluginManager())
 
     first.jinja_engine.add_global("runtime_value", "first", True)
 
@@ -54,14 +59,21 @@ def test_factory_applies_settings_and_plugins() -> None:
     def plugin_function() -> str:
         return "plugin"
 
-    plugin: Any = SimpleNamespace(
-        jinja2_filters={"plugin_filter": plugin_filter},
-        jinja2_functions={"plugin_function": plugin_function},
+    manager = PluginManager()
+    manager.register(
+        "example",
+        PluginDefinition(
+            display_name="Example",
+            version="1.0.0",
+            jinja2_filters={"plugin_filter": plugin_filter},
+            jinja2_functions={"plugin_function": plugin_function},
+        ),
+        "test",
     )
 
     context = create_processing_context(
         _config_payload(),
-        {"example": plugin},
+        manager,
     )
     environment = context.jinja_engine.environment
 
@@ -71,3 +83,22 @@ def test_factory_applies_settings_and_plugins() -> None:
     assert environment.keep_trailing_newline is True
     assert environment.filters["plugin_filter"] is plugin_filter
     assert environment.globals["plugin_function"] is plugin_function
+
+
+def test_factory_does_not_apply_contributions_when_plugins_are_disabled() -> None:
+    manager = PluginManager()
+    manager.register(
+        "example",
+        PluginDefinition(
+            display_name="Example",
+            version="1.0.0",
+            jinja2_filters={"external_filter": lambda value: value},
+        ),
+        "test",
+    )
+    config = _config_payload()
+    config.general.enable_plugins = False
+
+    context = create_processing_context(config, manager)
+
+    assert "external_filter" not in context.jinja_engine.environment.filters

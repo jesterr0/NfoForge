@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -47,7 +48,7 @@ from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-from src.plugins.metadata_provider import MetadataProviderResult
+from src.plugins.api import MetadataTransformRequest
 
 
 class _MediaSearchBackend(Protocol):
@@ -119,9 +120,9 @@ class IDParseWorker(QThread):
         tmdb_genres: list[TMDBGenreIDsMovies],
         tmdb_id: str = "",
         tvdb_id: str = "",
-        metadata_provider: (Callable[..., MetadataProviderResult | None] | None) = None,
-        provider_config: ConfigManager | None = None,
-        provider_context: ProcessingContext | None = None,
+        metadata_transformer_id: str | None = None,
+        config: ConfigManager | None = None,
+        context: ProcessingContext | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent=parent)
@@ -134,9 +135,9 @@ class IDParseWorker(QThread):
         self.tmdb_genres = tmdb_genres
         self.tmdb_id = tmdb_id
         self.tvdb_id = tvdb_id
-        self.metadata_provider = metadata_provider
-        self.provider_config = provider_config
-        self.provider_context = provider_context
+        self.metadata_transformer_id = metadata_transformer_id
+        self.config = config
+        self.context = context
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
@@ -152,13 +153,35 @@ class IDParseWorker(QThread):
                     self.tmdb_genres,
                     self.tmdb_id,
                     self.tvdb_id,
-                    self.metadata_provider,
-                    {
-                        "config": self.provider_config,
-                        "context": self.provider_context,
-                    },
                 )
             )
+            if (
+                self.metadata_transformer_id
+                and self.config is not None
+                and self.context is not None
+            ):
+                payload = deepcopy(self.context.media_search)
+                payload.apply_lookup_results(parse_other_ids)
+                payload.populate_from_tmdb()
+                try:
+                    transformed = self.config.plugin_manager.transform_metadata(
+                        self.metadata_transformer_id,
+                        MetadataTransformRequest(
+                            config=self.config,
+                            context=self.context,
+                            payload=payload,
+                            timeout=self.backend.timeout,
+                        ),
+                    )
+                    parse_other_ids["metadata_transformation"] = {
+                        "success": True,
+                        "result": transformed,
+                    }
+                except Exception as error:
+                    parse_other_ids["metadata_transformation"] = {
+                        "success": False,
+                        "error": str(error),
+                    }
             self.job_finished.emit(parse_other_ids)
         except Exception as e:
             LOG.error(
@@ -405,21 +428,18 @@ class MediaSearch(BaseWizardPage):
     @Slot(str)
     def _mark_metadata_dirty(self, _text: str) -> None:
         self.other_ids_parsed = False
-        self.context.media_search.provider_metadata = None
         self.context.media_search.tvdb_data = None
 
-    def _get_metadata_provider(
-        self,
-    ) -> Callable[..., MetadataProviderResult | None] | None:
+    def _get_metadata_transformer_id(self) -> str | None:
         if not self.config.settings.general.enable_plugins:
             return None
-        provider_name = self.config.settings.plugins.metadata_provider
-        if not provider_name:
+        plugin_id = self.config.settings.plugins.metadata_transformer
+        if not plugin_id:
             return None
-        plugin = self.config.plugin_registry.plugins.get(provider_name)
-        if plugin is None or not callable(plugin.metadata_provider):
+        record = self.config.plugin_manager.get(plugin_id)
+        if record is None or record.definition.metadata_transformer is None:
             return None
-        return plugin.metadata_provider
+        return plugin_id
 
     def _search_other_ids(self) -> None:
         GSigs().main_window_set_disabled.emit(True)
@@ -430,6 +450,9 @@ class MediaSearch(BaseWizardPage):
         current_item = current_item_widget.text()
         item_data = self.backend.media_data.get(current_item)
         if item_data:
+            # Establish the canonical base payload before the worker receives an
+            # isolated copy for optional plugin transformation.
+            self._update_payload_data()
             media_type = item_data.get("media_type")
             title = item_data.get("title")
             year = item_data.get("year")
@@ -457,9 +480,9 @@ class MediaSearch(BaseWizardPage):
                 ),
                 tmdb_id=self.tmdb_id_entry.text().strip(),
                 tvdb_id=self.tvdb_id_entry.text().strip(),
-                metadata_provider=self._get_metadata_provider(),
-                provider_config=self.config,
-                provider_context=self.context,
+                metadata_transformer_id=self._get_metadata_transformer_id(),
+                config=self.config,
+                context=self.context,
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
@@ -497,13 +520,16 @@ class MediaSearch(BaseWizardPage):
         if not media_data:
             return True
 
-        provider_error = self._result_error(media_data.get("provider_metadata"))
+        transformer_error = self._result_error(
+            media_data.get("metadata_transformation")
+        )
         tvdb_error = self._result_error(media_data.get("tvdb_data"))
 
-        if provider_error:
+        if transformer_error:
             LOG.warning(
                 LOG.LOG_SOURCE.FE,
-                f"Metadata provider failed; using TMDb fallback: {provider_error}",
+                "Metadata transformer failed; using TMDb fallback: "
+                f"{transformer_error}",
             )
 
         if self.context.media_search.media_type is MediaType.SERIES and tvdb_error:
@@ -512,18 +538,18 @@ class MediaSearch(BaseWizardPage):
                 "Retry after checking or editing the IDs, or continue to map "
                 "episodes manually."
             )
-            if provider_error:
+            if transformer_error:
                 details += (
-                    "\n\nThe external metadata provider also failed; TMDb "
-                    f"fallback data will be used:\n{provider_error}"
+                    "\n\nThe external metadata transformer also failed; TMDb "
+                    f"fallback data will be used:\n{transformer_error}"
                 )
             return self._ask_to_continue_without_tvdb(details)
 
-        if provider_error:
+        if transformer_error:
             QMessageBox.warning(
                 self,
-                "Metadata Provider Unavailable",
-                f"{provider_error}\n\nTMDb metadata will be used instead.",
+                "Metadata Transformer Unavailable",
+                f"{transformer_error}\n\nTMDb metadata will be used instead.",
             )
         return True
 
@@ -561,7 +587,6 @@ class MediaSearch(BaseWizardPage):
         self.context.media_search.tmdb_id = self.tmdb_id_entry.text().strip() or None
         self.context.media_search.tvdb_id = self.tvdb_id_entry.text().strip() or None
         self.context.media_search.tmdb_data = item_data.get("raw_data")
-        self.context.media_search.provider_metadata = None
         self.context.media_search.tvdb_data = None
 
         # title selection handled by backend with smart regional preferences
@@ -585,7 +610,6 @@ class MediaSearch(BaseWizardPage):
             genres = item_data.get("genre_ids")
         self.context.media_search.genres = genres if genres else []
 
-        provider_result: MetadataProviderResult | None = None
         if media_data:
             # handle complete TMDB data first
             tmdb_complete_data = media_data.get("tmdb_complete_data")
@@ -607,14 +631,8 @@ class MediaSearch(BaseWizardPage):
                         self.context.media_search.tvdb_id = str(resolved_tvdb_id)
                         self.tvdb_id_entry.setText(str(resolved_tvdb_id))
 
-            provider_metadata = media_data.get("provider_metadata")
             tvdb_data = media_data.get("tvdb_data")
             ani_list_data = media_data.get("ani_list_data")
-
-            if provider_metadata and provider_metadata.get("success") is True:
-                raw_provider_result = provider_metadata.get("result")
-                if isinstance(raw_provider_result, MetadataProviderResult):
-                    provider_result = raw_provider_result
 
             # tvdb data
             if tvdb_data and tvdb_data.get("success") is True:
@@ -647,7 +665,23 @@ class MediaSearch(BaseWizardPage):
                 f"Using TMDB title selected by backend: '{self.context.media_search.title}'",
             )
 
-        self.context.media_search.merge_metadata(provider_result)
+        self.context.media_search.populate_from_tmdb()
+        if media_data:
+            transformed_result = media_data.get("metadata_transformation")
+            if (
+                isinstance(transformed_result, dict)
+                and transformed_result.get("success") is True
+            ):
+                transformed_payload = transformed_result.get("result")
+                if isinstance(transformed_payload, type(self.context.media_search)):
+                    self.context.media_search.copy_from(transformed_payload)
+                    transformed = self.context.media_search
+                    if transformed.media_type is not None:
+                        self.context.media_input.media_type = transformed.media_type
+                    self.imdb_id_entry.setText(transformed.imdb_id or "")
+                    self.tmdb_id_entry.setText(transformed.tmdb_id or "")
+                    self.tvdb_id_entry.setText(transformed.tvdb_id or "")
+                    self.mal_id_entry.setText(transformed.mal_id or "")
 
     def _ask_user_for_id(self, id_source: str) -> int:
         value = 0
