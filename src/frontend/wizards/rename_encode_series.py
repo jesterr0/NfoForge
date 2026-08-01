@@ -87,7 +87,7 @@ class RenameEncodeSeries(BaseWizardPage):
 
         self.config = config
         self.context = context
-        self.backend = RenameEncodeSeriesBackEnd()
+        self.backend = RenameEncodeSeriesBackEnd(context.flat_filters)
         self._token_window: QWidget | None = None
         self._overridden_tokens: set[str] = set()
 

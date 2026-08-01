@@ -266,6 +266,8 @@
   output.
 - Series episode renames now render filename and MediaInfo tokens from each episode
   instead of reusing the first file in the pack.
+- Plugin flat filters now apply consistently to runtime filenames, series folder names,
+  tracker titles, and qBittorrent save-path templates as well as Settings previews.
 
 ### Removed
 

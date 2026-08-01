@@ -11,6 +11,7 @@ from jinja2 import Environment
 from src.exceptions import PluginError, PluginExecutionError
 from src.plugins.api import (
     PLUGIN_API_VERSION,
+    FlatFilter,
     MetadataTransformRequest,
     PluginDefinition,
     PluginRecord,
@@ -42,7 +43,7 @@ class PluginManager:
         self._records: dict[str, PluginRecord] = {}
         self._jinja2_filters: dict[str, Any] = {}
         self._jinja2_functions: dict[str, Any] = {}
-        self._flat_filters: dict[str, Any] = {}
+        self._flat_filters: dict[str, FlatFilter] = {}
         self._load_issues: list[PluginLoadIssue] = []
         self._reserved_jinja2_filters = frozenset(jinja_environment.filters)
         self._reserved_jinja2_functions = frozenset(jinja_environment.globals) | {
@@ -105,7 +106,7 @@ class PluginManager:
     def jinja2_functions(self, *, enabled: bool) -> dict[str, Any]:
         return dict(self._jinja2_functions) if enabled else {}
 
-    def flat_filters(self, *, enabled: bool) -> dict[str, Any]:
+    def flat_filters(self, *, enabled: bool) -> dict[str, FlatFilter]:
         return dict(self._flat_filters) if enabled else {}
 
     def replace_tokens(self, plugin_id: str, request: TokenReplaceRequest) -> str:

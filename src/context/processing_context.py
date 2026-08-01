@@ -8,6 +8,7 @@ from src.payloads.clients import TorrentClientRunOptions
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.shared_data import SharedPayload
+from src.plugins.api import FlatFilter
 
 
 @dataclass(slots=True)
@@ -29,6 +30,7 @@ class ProcessingContext:
     )
 
     jinja_engine: Jinja2TemplateEngine = field(default_factory=Jinja2TemplateEngine)
+    flat_filters: dict[str, FlatFilter] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)

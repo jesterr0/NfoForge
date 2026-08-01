@@ -59,6 +59,9 @@ def test_factory_applies_settings_and_plugins() -> None:
     def plugin_function() -> str:
         return "plugin"
 
+    def flat_plugin_filter(value: str, *_args: Any) -> str:
+        return value.upper()
+
     manager = PluginManager()
     manager.register(
         "example",
@@ -67,6 +70,7 @@ def test_factory_applies_settings_and_plugins() -> None:
             version="1.0.0",
             jinja2_filters={"plugin_filter": plugin_filter},
             jinja2_functions={"plugin_function": plugin_function},
+            flat_filters={"flat_plugin_filter": flat_plugin_filter},
         ),
         "test",
     )
@@ -83,6 +87,7 @@ def test_factory_applies_settings_and_plugins() -> None:
     assert environment.keep_trailing_newline is True
     assert environment.filters["plugin_filter"] is plugin_filter
     assert environment.globals["plugin_function"] is plugin_function
+    assert context.flat_filters["flat_plugin_filter"] is flat_plugin_filter
 
 
 def test_factory_does_not_apply_contributions_when_plugins_are_disabled() -> None:
@@ -93,6 +98,7 @@ def test_factory_does_not_apply_contributions_when_plugins_are_disabled() -> Non
             display_name="Example",
             version="1.0.0",
             jinja2_filters={"external_filter": lambda value: value},
+            flat_filters={"external_flat_filter": lambda value: value},  # type: ignore[reportArgumentType]
         ),
         "test",
     )
@@ -102,3 +108,4 @@ def test_factory_does_not_apply_contributions_when_plugins_are_disabled() -> Non
     context = create_processing_context(config, manager)
 
     assert "external_filter" not in context.jinja_engine.environment.filters
+    assert context.flat_filters == {}

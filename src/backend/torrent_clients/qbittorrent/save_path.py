@@ -98,6 +98,7 @@ def _render_save_path_template(
         episode_format=release_info.episode_format,
         multi_episode_style=config.series.multi_episode_style,
         preserve_literal_formatting=True,
+        flat_filters=context.flat_filters,
     )
     output = renderer.get_output()
     if not output or not output.strip():

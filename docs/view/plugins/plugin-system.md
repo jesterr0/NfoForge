@@ -58,6 +58,10 @@ Wizard pages, token replacers, pre-upload processors, and metadata transformers 
 single-select capabilities. Jinja filters/functions and flat token filters from every
 valid plugin are combined while external plugins are enabled.
 
+Jinja filters apply to NFO templates using Jinja syntax. Flat token filters apply to the
+`{token|filter}` syntax used by filename templates, tracker-title templates, and
+qBittorrent save-path templates; the same filters are used by their Settings previews.
+
 Loading failures are collected and shown together; one broken plugin does not stop
 startup. Duplicate IDs and template/filter names are rejected instead of silently
 overwriting another plugin. A configured but unavailable plugin falls back to built-in

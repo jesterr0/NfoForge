@@ -14,10 +14,7 @@ from src.payloads.media_search import MediaSearchPayload
 class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
     """Backend for series rename operations. Inherits from RenameEncodeBackEnd to utilize common functionality."""
 
-    __slots__ = ("token_replacer", "override_tokens")
-
-    def __init__(self) -> None:
-        super().__init__()
+    __slots__ = ()
 
     def series_renamer(
         self,
@@ -78,6 +75,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             episode_format=episode_format,
             multi_episode_style=multi_episode_style,
             active_file=media_file,
+            flat_filters=self.flat_filters,
         )
 
         # get rename output
@@ -129,6 +127,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             user_tokens=user_tokens,
             season_number=season_num,
             season_end=season_end,
+            flat_filters=self.flat_filters,
         )
 
         data = self.token_replacer.get_output()

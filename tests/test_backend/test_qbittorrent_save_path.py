@@ -114,6 +114,26 @@ def test_template_uses_existing_file_tokens_and_preserves_literal_path() -> None
     ) == (rf"D:\Media  Library\Movie Name ({context.media_search.year})")
 
 
+def test_template_applies_processing_context_flat_filters() -> None:
+    context = _movie_context()
+
+    def folder_name(value: str, *_args: object) -> str:
+        return value.replace(" ", "_")
+
+    context.flat_filters["folder_name"] = folder_name
+
+    assert (
+        resolve_qbittorrent_save_path(
+            _config(
+                QBittorrentSavePathMode.TEMPLATE,
+                r"D:\Media\{title_exact|folder_name}",
+            ),
+            context,
+        )
+        == r"D:\Media\Movie_Name"
+    )
+
+
 def test_file_token_user_tokens_are_supported_in_templates() -> None:
     context = _movie_context()
     config = _config(

@@ -25,4 +25,7 @@ def create_processing_context(
     ).items():
         engine.add_global(name, func, False)
 
-    return ProcessingContext(jinja_engine=engine)
+    return ProcessingContext(
+        jinja_engine=engine,
+        flat_filters=plugin_manager.flat_filters(enabled=config.general.enable_plugins),
+    )

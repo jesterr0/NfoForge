@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 
 from guessit import guessit
@@ -9,14 +10,16 @@ from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.plugins.api import FlatFilter
 
 
 class RenameEncodeBackEnd:
-    __slots__ = ("token_replacer", "override_tokens")
+    __slots__ = ("token_replacer", "override_tokens", "flat_filters")
 
-    def __init__(self) -> None:
+    def __init__(self, flat_filters: Mapping[str, FlatFilter] | None = None) -> None:
         self.token_replacer: TokenReplacer | None = None
         self.override_tokens: dict[str, str] = {}
+        self.flat_filters = flat_filters or {}
 
     def media_renamer(
         self,
@@ -41,6 +44,7 @@ class RenameEncodeBackEnd:
             video_dynamic_range=video_dynamic_range,
             override_tokens=self.override_tokens,
             user_tokens=user_tokens,
+            flat_filters=self.flat_filters,
         )
         data = self.token_replacer.get_output()
         if data:

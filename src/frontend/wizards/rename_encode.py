@@ -83,7 +83,7 @@ class RenameEncode(BaseWizardPage):
 
         self.config = config
         self.context = context
-        self.backend = RenameEncodeBackEnd()
+        self.backend = RenameEncodeBackEnd(context.flat_filters)
         self._input_ext: str | None = None
         self._token_window: QWidget | None = None
         self._overridden_tokens: set[str] = set()

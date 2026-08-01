@@ -4,13 +4,20 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QWidget
 import pytest
 
+from src.backend.rename_encode import RenameEncodeBackEnd
+from src.backend.utils.example_parsed_movie_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD,
+    EXAMPLE_SEARCH_PAYLOAD,
+)
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
+from src.context.factory import create_processing_context
 from src.enums.token_replacer import ColonReplace
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.movies_management import (
     MoviesManagementSettings,
 )
+from src.plugins.api import PluginDefinition
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
@@ -76,6 +83,48 @@ def test_reelflix_offered_but_ptp_excluded_from_movie_overrides(
     assert TrackerSelection.REELFLIX in combo_trackers
     assert TrackerSelection.PASS_THE_POPCORN not in override_trackers
     assert TrackerSelection.PASS_THE_POPCORN not in combo_trackers
+
+
+def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    def append_marker(value: str, *_args: object) -> str:
+        return f"{value}Plugin"
+
+    manager.plugin_manager.register(
+        "test.flat-filter",
+        PluginDefinition(
+            display_name="Flat filter test",
+            version="1.0.0",
+            flat_filters={"append_marker": append_marker},
+        ),
+        "test",
+    )
+    manager.settings.general.enable_plugins = True
+    token = "{title_clean|append_marker}"
+
+    preview = widget._update_example(
+        token,
+        manager.settings.movie.filename_colon_replace,
+        True,
+        widget.format_file_name_token_example,
+    )
+    context = create_processing_context(manager.settings, manager.plugin_manager)
+    runtime = RenameEncodeBackEnd(context.flat_filters).media_renamer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        mvr_token=token,
+        mvr_colon_replacement=manager.settings.movie.filename_colon_replace,
+        media_search_payload=EXAMPLE_SEARCH_PAYLOAD,
+        title_clean_rules=manager.settings.global_management.title_clean_rules,
+        video_dynamic_range=manager.settings.global_management.video_dynamic_range,
+        user_tokens=None,
+    )
+
+    assert runtime is not None
+    assert str(runtime) == preview
+    assert "Plugin" in preview
 
 
 def test_filename_and_title_examples_use_their_own_colon_replace_setting(

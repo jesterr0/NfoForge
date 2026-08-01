@@ -44,6 +44,7 @@ from src.packages.custom_types import ImageUploadData
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.series import format_multi_season_range
+from src.plugins.api import FlatFilter
 from src.version import __version__, program_name, program_url
 
 
@@ -127,7 +128,7 @@ class TokenReplacer:
         colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH,
         media_search_obj: MediaSearchPayload | None = None,
         flatten: bool | None = False,
-        flat_filters: dict[str, Callable[..., str]] | None = None,
+        flat_filters: Mapping[str, FlatFilter] | None = None,
         file_name_mode: bool = True,
         token_type: Iterable[TokenType] | type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
@@ -210,7 +211,7 @@ class TokenReplacer:
             multi_episode_style (MultiEpisodeStyle): How the {episode_number} token renders a
                 multi-episode file's span (e.g. RANGE -> "01-03", SCENE -> "01-E03"). Ignored for
                 single-episode files, whose {episode_number} stays the raw start number.
-            flat_filters (Optional[dict[str, Callable[..., str]]]): Custom filters for flat mode.
+            flat_filters (Optional[Mapping[str, FlatFilter]]): Custom filters for flat mode.
                 Dictionary mapping filter names to callable functions that take (value, *args) and return str.
             active_file (Optional[Path]): File to use for filename and MediaInfo-derived
                 tokens. When omitted, the payload's comparison media or first file is used.
