@@ -58,7 +58,6 @@ Movies are supported, and series support is now available for standard TV episod
 
 ## Requirements
 
-- TMDB Api [key (v3)](https://www.themoviedb.org/settings/api)
 - FFMPEG and/or [FrameForge **1.4.0+**](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
 ## Support

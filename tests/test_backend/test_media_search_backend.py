@@ -26,10 +26,31 @@ class _Response:
         return self.payload
 
 
+def test_tmdb_uses_embedded_v4_bearer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = MediaSearchBackEnd()
+    request: dict[str, Any] = {}
+
+    def get(*_args: object, **kwargs: object) -> _Response:
+        request.update(kwargs)
+        return _Response({"results": []})
+
+    monkeypatch.setattr(backend.session, "get", get)
+
+    assert backend.params == {"language": "en-US", "include_adult": "false"}
+    assert backend.headers == {
+        "Authorization": f"Bearer {MediaSearchBackEnd._get_tmdb_k()}"
+    }
+    assert MediaSearchBackEnd._get_tmdb_k().startswith("eyJ")
+    assert backend._fetch_tmdb_results("https://example.invalid/search") == []
+    assert request["headers"] == backend.headers
+
+
 def test_tmdb_connection_failure_is_not_reported_as_empty_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    backend = MediaSearchBackEnd(api_key="key", timeout=7)
+    backend = MediaSearchBackEnd(timeout=7)
 
     def fail(*_args: object, **_kwargs: object) -> _Response:
         raise niquests.exceptions.ConnectionError("offline")
@@ -41,7 +62,7 @@ def test_tmdb_connection_failure_is_not_reported_as_empty_results(
 
 
 def test_guessit_list_title_uses_first_title(monkeypatch: pytest.MonkeyPatch) -> None:
-    backend = MediaSearchBackEnd(api_key="key")
+    backend = MediaSearchBackEnd()
     monkeypatch.setattr(
         "src.backend.media_search.guessit",
         lambda *_args, **_kwargs: {"title": ["Primary", "Alternative"], "year": "2024"},
@@ -51,14 +72,14 @@ def test_guessit_list_title_uses_first_title(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_tmdb_empty_successful_search_disables_results() -> None:
-    backend = MediaSearchBackEnd(api_key="key")
+    backend = MediaSearchBackEnd()
     backend.session.get = lambda *_args, **_kwargs: _Response({"results": []})  # type: ignore[method-assign]
 
     assert backend._parse_tmdb_api("missing title") == {}
 
 
 def test_tmdb_invalid_response_is_reported() -> None:
-    backend = MediaSearchBackEnd(api_key="key")
+    backend = MediaSearchBackEnd()
     backend.session.get = lambda *_args, **_kwargs: _Response([])  # type: ignore[method-assign]
 
     with pytest.raises(MediaSearchError, match="invalid search response"):
@@ -66,7 +87,7 @@ def test_tmdb_invalid_response_is_reported() -> None:
 
 
 def test_series_tvdb_failure_is_returned_for_the_ui() -> None:
-    backend = MediaSearchBackEnd(api_key="key")
+    backend = MediaSearchBackEnd()
     backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
         lambda *_args, **_kwargs: {
             "external_ids": {"tvdb_id": 123},
@@ -94,7 +115,7 @@ def test_series_tvdb_failure_is_returned_for_the_ui() -> None:
 
 
 def test_manual_tvdb_id_takes_precedence_over_tmdb_external_id() -> None:
-    backend = MediaSearchBackEnd(api_key="key")
+    backend = MediaSearchBackEnd()
     backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
         lambda *_args, **_kwargs: {"external_ids": {"tvdb_id": 222}}
     )

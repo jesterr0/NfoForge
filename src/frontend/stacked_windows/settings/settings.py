@@ -29,7 +29,6 @@ from src.frontend.stacked_windows.settings.movies_management import (
 )
 from src.frontend.stacked_windows.settings.plugins import PluginsSettings
 from src.frontend.stacked_windows.settings.screenshots import ScreenShotSettings
-from src.frontend.stacked_windows.settings.security import SecuritySettings
 from src.frontend.stacked_windows.settings.series_management import (
     SeriesManagementSettings,
 )
@@ -77,9 +76,6 @@ class Settings(QWidget):
         self.user_token_settings_content = UserTokenSettings(
             self.config, self.main_window, self
         )
-        self.security_settings_content = SecuritySettings(
-            self.config, self.main_window, self
-        )
         self.clients_settings_content = ClientsSettings(
             self.config, self.main_window, self
         )
@@ -102,7 +98,6 @@ class Settings(QWidget):
             SettingsTabs.GLOBAL_SETTINGS: self.global_settings_content,
             SettingsTabs.TEMPLATES_SETTINGS: self.template_settings_content,
             SettingsTabs.USER_TOKENS_SETTINGS: self.user_token_settings_content,
-            SettingsTabs.SECURITY_SETTINGS: self.security_settings_content,
             SettingsTabs.CLIENTS_SETTINGS: self.clients_settings_content,
             SettingsTabs.TRACKERS_SETTINGS: self.trackers_settings_content,
             SettingsTabs.SCREENSHOTS_SETTINGS: self.screenshots_settings_content,
@@ -124,7 +119,6 @@ class Settings(QWidget):
         self.tab_widget.addTab(self.global_settings_content, "Global Management")
         self.tab_widget.addTab(self.template_settings_content, "Templates")
         self.tab_widget.addTab(self.user_token_settings_content, "User Tokens")
-        self.tab_widget.addTab(self.security_settings_content, "Security")
         self.tab_widget.addTab(self.clients_settings_content, "Clients")
         self.tab_widget.addTab(self.trackers_settings_content, "Trackers")
         self.tab_widget.addTab(self.screenshots_settings_content, "Screenshots")
@@ -190,7 +184,6 @@ class Settings(QWidget):
         self.global_settings_content.update_saved_settings.emit()
         self.template_settings_content.update_saved_settings.emit()
         self.user_token_settings_content.update_saved_settings.emit()
-        self.security_settings_content.update_saved_settings.emit()
         self.clients_settings_content.update_saved_settings.emit()
         self.trackers_settings_content.update_saved_settings.emit()
         self.screenshots_settings_content.update_saved_settings.emit()
@@ -218,7 +211,6 @@ class Settings(QWidget):
         self.global_settings_content.load_saved_settings.emit()
         self.template_settings_content.load_saved_settings.emit()
         self.user_token_settings_content.load_saved_settings.emit()
-        self.security_settings_content.load_saved_settings.emit()
         self.clients_settings_content.load_saved_settings.emit()
         self.trackers_settings_content.load_saved_settings.emit()
         self.screenshots_settings_content.load_saved_settings.emit()

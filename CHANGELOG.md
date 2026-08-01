@@ -54,6 +54,8 @@
 - Added optional metadata-transformer plugins. Transformers receive an isolated
   copy of the completed media-search payload; valid results are applied
   atomically and failures fall back to the canonical TMDB metadata.
+- TMDB metadata search now uses the bundled API v4 read token and no longer
+  requires users to configure or store a TMDB credential.
 - Added a dedicated **Plugins** settings tab for enabling plugin execution,
   selecting each single-provider capability, and inspecting loaded, failed, or
   configured-but-unavailable plugins.

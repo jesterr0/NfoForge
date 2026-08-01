@@ -2,6 +2,7 @@ import asyncio
 import base64
 import re
 from typing import Any, cast
+import zlib
 
 from guessit import guessit
 import niquests
@@ -21,7 +22,6 @@ from src.logger.nfo_forge_logger import LOG
 class MediaSearchBackEnd:
     def __init__(
         self,
-        api_key: str | None = None,
         language: str = "en-US",
         use_base_language_for_images: bool = True,
         timeout: int = 60,
@@ -31,13 +31,10 @@ class MediaSearchBackEnd:
         self.use_base_language_for_images = use_base_language_for_images
         self.timeout = max(1, timeout)
         self.params = {
-            "api_key": api_key,
             "language": language,
             "include_adult": "false",
         }
-
-    def update_api_key(self, api_key: str) -> None:
-        self.params["api_key"] = api_key
+        self.headers = {"Authorization": f"Bearer {self._get_tmdb_k()}"}
 
     def update_language(self, language: str) -> None:
         self.params["language"] = language
@@ -150,7 +147,7 @@ class MediaSearchBackEnd:
     def _fetch_tmdb_results(self, url: str) -> list[dict[str, Any]]:
         try:
             with self.session.get(
-                url, params=self.params, timeout=self.timeout
+                url, params=self.params, headers=self.headers, timeout=self.timeout
             ) as response:
                 response.raise_for_status()
                 response_json = response.json()
@@ -214,7 +211,7 @@ class MediaSearchBackEnd:
 
         try:
             with self.session.get(
-                url, params=image_params, timeout=self.timeout
+                url, params=image_params, headers=self.headers, timeout=self.timeout
             ) as response:
                 response.raise_for_status()
                 response_json = response.json()
@@ -548,23 +545,6 @@ class MediaSearchBackEnd:
 
         return None
 
-    @staticmethod
-    def _get_tvdb_k() -> str:
-        k = (
-            b"MDEwMDExMTAwMTAxMDEwMDAxMDExMDAxMDAxMTAwMDAwMTAwMTEwMTAwMTEwMDEwMDE"
-            b"wMTEwMDEwMDExMDEwMTAxMDAxMTAxMDEwMTAxMDAwMTAwMDEwMTAxMTEwMTAwMDEwMTEwMTA"
-            b"wMTAwMDExMTAxMDAwMTAxMDAxMTAxMDEwMTAwMTEwMTAxMDAwMDExMDAxMTAwMDAwMDExMDA"
-            b"wMDAxMDExMDEwMDEwMTAxMDAwMTEwMDExMTAwMTEwMTAxMDEwMDExMDAwMTAxMDExMTAxMDA"
-            b"xMDAxMDAxMTAxMDEwMTAwMTEwMTAxMDEwMTAwMDEwMDAwMDEwMTExMDEwMDAxMDAxMTEwMDEw"
-            b"MTAxMDAwMTEwMTAxMTAwMTEwMTAxMDEwMTEwMTAwMTEwMTAxMDAxMDAxMTAxMDExMTAxMTEwM"
-            b"TAwMTExMDAxMTAxMDEwMDExMDEwMDAwMTEwMTEwMDAxMDAxMTEwMDEwMTAxMDAwMTAwMTAxMDAxMTAxMDEx"
-        )
-        binary_bytes = base64.b64decode(k)
-        b64_bytes = bytes(
-            int(binary_bytes[i : i + 8], 2) for i in range(0, len(binary_bytes), 8)
-        )
-        return base64.b64decode(b64_bytes).decode()
-
     async def parse_ani_list(
         self, tmdb_title: str, tmdb_year: int
     ) -> dict[str, Any] | None:
@@ -574,6 +554,37 @@ class MediaSearchBackEnd:
             # {'id': 21519, 'idMal': 32281, 'title': {'romaji': 'Kimi no Na wa.', 'english': 'Your Name.', 'native': '君の名は。'}, 'seasonYear': 2016, 'episodes': 1}
             return best_match
         return None
+
+    @staticmethod
+    def _get_tmdb_k() -> str:
+        # cSpell:disable
+        k = (
+            b"eNoVjk2PgjAURf+RgUJNWCo45DW2hFhk+jZGy1eLzCSiAfrrp7O4i3vOXdx2Y8Mj16YwDCoHoTAs"
+            b"2bUeNnXpIURo+1BIMRbZaeGkdGi541YRH4dSb4XkAc85VRvMMFGDBvZc6kDIKi6ykfJL7Hyf4UeEy"
+            b"juwKuY5UD7hpCY0mKsV7WCF7CnaQ8wv8L+1j+j41Bvsa/9F589OT9cBU9acU0bwm7l7nXzA/q5duQ"
+            b"u6rCTZ53w3fTOm0VeatLIchtdJ0PfrvdxoeyNVT4Jlnf8AqyBQng=="
+        )
+        # cSpell:enable
+        return zlib.decompress(base64.b64decode(k)).decode("ascii")
+
+    @staticmethod
+    def _get_tvdb_k() -> str:
+        # cSpell:disable
+        k = (
+            b"MDEwMDExMTAwMTAxMDEwMDAxMDExMDAxMDAxMTAwMDAwMTAwMTEwMTAwMTEwMDEwMDE"
+            b"wMTEwMDEwMDExMDEwMTAxMDAxMTAxMDEwMTAxMDAwMTAwMDEwMTAxMTEwMTAwMDEwMTEwMTA"
+            b"wMTAwMDExMTAxMDAwMTAxMDAxMTAxMDEwMTAwMTEwMTAxMDAwMDExMDAxMTAwMDAwMDExMDA"
+            b"wMDAxMDExMDEwMDEwMTAxMDAwMTEwMDExMTAwMTEwMTAxMDEwMDExMDAwMTAxMDExMTAxMDA"
+            b"xMDAxMDAxMTAxMDEwMTAwMTEwMTAxMDEwMTAwMDEwMDAwMDEwMTExMDEwMDAxMDAxMTEwMDEw"
+            b"MTAxMDAwMTEwMTAxMTAwMTEwMTAxMDEwMTEwMTAwMTEwMTAxMDAxMDAxMTAxMDExMTAxMTEwM"
+            b"TAwMTExMDAxMTAxMDEwMDExMDEwMDAwMTEwMTEwMDAxMDAxMTEwMDEwMTAxMDAwMTAwMTAxMDAxMTAxMDEx"
+        )
+        # cSpell:enable
+        binary_bytes = base64.b64decode(k)
+        b64_bytes = bytes(
+            int(binary_bytes[i : i + 8], 2) for i in range(0, len(binary_bytes), 8)
+        )
+        return base64.b64decode(b64_bytes).decode()
 
 
 class MatchAnilistTitle:

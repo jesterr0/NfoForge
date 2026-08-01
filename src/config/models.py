@@ -99,11 +99,6 @@ class DependencySettings:
 
 
 @dataclass(slots=True)
-class ApiKeySettings:
-    tmdb: str
-
-
-@dataclass(slots=True)
 class TrackerSettings:
     order: list[TrackerSelection]
     last_used_image_host: dict[TrackerSelection, ImageHost | ImageSource]
@@ -386,7 +381,6 @@ class WidgetSettings:
 class AppConfig:
     general: GeneralSettings
     dependencies: DependencySettings
-    api_keys: ApiKeySettings
     trackers: TrackerSettings
     torrent_clients: TorrentClientSettings
     movie: MovieSettings

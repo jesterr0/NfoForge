@@ -225,7 +225,6 @@ class MediaSearch(BaseWizardPage):
 
         self.config = config
         self.backend = MediaSearchBackEnd(
-            api_key=self.config.settings.api_keys.tmdb,
             language=self.config.settings.general.tmdb_language,
             timeout=self.config.settings.general.timeout,
         )
@@ -700,20 +699,12 @@ class MediaSearch(BaseWizardPage):
         """Update MediaSearchBackEnd when settings change"""
         new_language = self.config.settings.general.tmdb_language
         self.backend.update_language(new_language)
-        self.backend.update_api_key(self.config.settings.api_keys.tmdb)
 
     def isComplete(self) -> bool:
         """Overrides isComplete method to control the next button"""
         return self.loading_complete
 
     def initializePage(self) -> None:
-        if not self._check_media_api_keys():
-            wizard = getattr(self.main_window, "wizard", None)
-            reset_wizard = getattr(wizard, "reset_wizard", None)
-            if callable(reset_wizard):
-                QTimer.singleShot(1, reset_wizard)
-            return
-
         input_path = self.context.media_input.input_path
         if not input_path:
             raise MediaFileNotFoundError("Failed to load input path")
@@ -727,30 +718,6 @@ class MediaSearch(BaseWizardPage):
     def _after_initialization(self) -> None:
         """Gives time for the UI to draw widgets"""
         GSigs().wizard_next_button_change_txt.emit("Select Title")
-
-    def _check_media_api_keys(self) -> bool:
-        required_keys = {"TMDB (v3)": self.config.settings.api_keys.tmdb}
-
-        for service, key in required_keys.items():
-            if not key or not key.strip():
-                text, ok = QInputDialog.getText(
-                    self,
-                    f"{service} Api Key",
-                    f"Requires {service} Api Key, please input this now",
-                )
-                if ok and text:
-                    text = text.strip()
-                    self.config.settings.api_keys.tmdb = text
-                    self.config.save()
-                    self.backend.update_api_key(text)
-                else:
-                    QMessageBox.critical(
-                        self,
-                        f"{service} Api Key",
-                        f"You must input a {service} to continue",
-                    )
-                    return False
-        return True
 
     def _get_current_item_data(self) -> dict[str, Any] | None:
         current_item_widget = self.listbox.currentItem()
@@ -1004,8 +971,6 @@ class MediaSearch(BaseWizardPage):
         self.backend.media_data.clear()
         self.context.media_search.reset()
         self.context.media_input.media_type = None
-
-        self.backend.update_api_key(self.config.settings.api_keys.tmdb)
 
         if all_widgets:
             self.search_entry.clear()

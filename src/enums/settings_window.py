@@ -11,7 +11,6 @@ class SettingsTabs(CaseInsensitiveEnum):
     GLOBAL_SETTINGS = auto()
     TEMPLATES_SETTINGS = auto()
     USER_TOKENS_SETTINGS = auto()
-    SECURITY_SETTINGS = auto()
     CLIENTS_SETTINGS = auto()
     TRACKERS_SETTINGS = auto()
     SCREENSHOTS_SETTINGS = auto()

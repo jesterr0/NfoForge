@@ -9,11 +9,13 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_v3_to_v4_resets_display_name_plugin_selections() -> None:
     old = _load_fixture("schema3_config.toml")
+    old["api_keys"] = {"tmdb_api_key": "retired"}
 
     new, unmapped = migrate_v3_to_v4(old, None)
 
     assert not unmapped
     assert new["schema_version"] == 4
+    assert "api_keys" not in new
     assert new["general"]["enable_plugins"] is True
     assert new["plugins"] == {
         "wizard_page": "",
@@ -56,8 +58,8 @@ def test_migration_preserves_untouched_sections() -> None:
     # migration copies the tomlkit object forward by reference (as it does
     # here), even if that shared object were later mutated in place. Only a
     # pre-migration snapshot can actually catch an accidental mutation.
-    before_api_keys = tomlkit.dumps(old["api_keys"])
-    before_mtv = tomlkit.dumps(old["tracker"]["more_than_tv"])
+    before_api_keys = tomlkit.dumps(old["api_keys"])  # type: ignore[reportArgumentType]
+    before_mtv = tomlkit.dumps(old["tracker"]["more_than_tv"])  # type: ignore[reportArgumentType]
 
     new, _ = migrate_unversioned_to_v2(old)
 
@@ -101,7 +103,7 @@ def test_migration_renames_tokens_in_tracker_title_overrides() -> None:
     # non-token keys in a rewritten tracker section are untouched
     assert (
         new["tracker"]["aither"]["mvr_title_replace_map"]
-        == old["tracker"]["aither"]["mvr_title_replace_map"]
+        == old["tracker"]["aither"]["mvr_title_replace_map"]  # type: ignore[reportArgumentType]
     )
     assert new["tracker"]["aither"]["source"] == "Aither"
 

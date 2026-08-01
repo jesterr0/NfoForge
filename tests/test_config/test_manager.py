@@ -120,6 +120,26 @@ def test_save_preserves_unknown_keys_and_comments(
     assert saved_specific["third_party_option"] == "preserve-me"
 
 
+def test_save_removes_retired_tmdb_api_keys_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    document["api_keys"] = {"tmdb_api_key": "retired"}
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")
+
+    saved_document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    assert "api_keys" not in saved_document
+
+
 def test_manager_preserves_qbittorrent_super_seeding_false(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
