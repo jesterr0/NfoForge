@@ -33,9 +33,9 @@
 | `{episode_title_exact}` | Title parsed from media databases with no modifications |
 | `{frame_size}` | Frame size (IMAX/Open Matte) |
 | `{hybrid}` | HYBRID |
-| `{imdb_aka}` | IMDb AKA title |
-| `{imdb_aka_fallback_title}` | IMDb AKA title (if not available fallback to {title}) |
-| `{imdb_aka_fallback_title_clean}` | IMDb AKA title (if not available fallback to {title_clean}) |
+| `{original_title}` | Original title |
+| `{original_title_fallback_title}` | Original title (fallback to {title}) |
+| `{original_title_fallback_title_clean}` | Original title (fallback to {title_clean}) |
 | `{imdb_id}` | IMDb ID |
 | `{localization}` | Subbed/Dubbed |
 | `{mal_id}` | MAL ID |

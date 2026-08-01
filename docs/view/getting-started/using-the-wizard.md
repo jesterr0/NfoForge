@@ -23,7 +23,16 @@ Once you've opened the path, you can simply select **Next**.
 
 The page will immediately parse the file (or attempt to, if the name is somewhat structured) and return some results. If you find no results, refine the search below and try again. Once you have found the appropriate title, simply select it in the top window and press **Select Title** to continue to the next page.
 
-This will parse TMDB, IMDb, TVDb, and Anilist to return metadata for the selected title.
+NfoForge uses TMDB as its primary metadata source, then enriches series and
+anime results with TVDB and AniList where applicable. If an optional metadata
+provider plugin is selected in **Settings -> General**, its populated fields
+override the corresponding TMDB values; a provider failure only produces a
+warning and processing continues with TMDB.
+
+IMDb, TMDB, and TVDB IDs can be entered manually. A TMDB lookup is still
+required because it supplies the base metadata. If TVDB is unavailable for a
+series, the wizard lets you retry or continue with the IDs and TMDB metadata
+you supplied.
 
 ### Rename Page
 

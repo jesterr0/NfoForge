@@ -5,6 +5,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import traceback
 from typing import Any, Protocol
 from urllib import parse as url_parse
@@ -46,6 +47,7 @@ from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
+from src.plugins.metadata_provider import MetadataProviderResult
 
 
 class _MediaSearchBackend(Protocol):
@@ -116,6 +118,10 @@ class IDParseWorker(QThread):
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
         tmdb_id: str = "",
+        tvdb_id: str = "",
+        metadata_provider: (Callable[..., MetadataProviderResult | None] | None) = None,
+        provider_config: ConfigManager | None = None,
+        provider_context: ProcessingContext | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent=parent)
@@ -127,6 +133,10 @@ class IDParseWorker(QThread):
         self.original_language = original_language
         self.tmdb_genres = tmdb_genres
         self.tmdb_id = tmdb_id
+        self.tvdb_id = tvdb_id
+        self.metadata_provider = metadata_provider
+        self.provider_config = provider_config
+        self.provider_context = provider_context
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
@@ -141,6 +151,12 @@ class IDParseWorker(QThread):
                     self.original_language,
                     self.tmdb_genres,
                     self.tmdb_id,
+                    self.tvdb_id,
+                    self.metadata_provider,
+                    {
+                        "config": self.provider_config,
+                        "context": self.provider_context,
+                    },
                 )
             )
             self.job_finished.emit(parse_other_ids)
@@ -226,6 +242,7 @@ class MediaSearch(BaseWizardPage):
         imdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.imdb_id_entry = QLineEdit()
         self.imdb_id_entry.setPlaceholderText("Automatic")
+        self.imdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
         tmdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tmdb.png").resolve()))
         tmdb_image = tmdb_image.scaled(
@@ -238,6 +255,7 @@ class MediaSearch(BaseWizardPage):
         tmdb_label.setPixmap(tmdb_image)
         tmdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.tmdb_id_entry = QLineEdit()
+        self.tmdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
         tvdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tvdb.png").resolve()))
         tvdb_image = tvdb_image.scaled(
@@ -251,6 +269,7 @@ class MediaSearch(BaseWizardPage):
         tvdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.tvdb_id_entry = QLineEdit()
         self.tvdb_id_entry.setPlaceholderText("Automatic")
+        self.tvdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
         mal_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "mal.png").resolve()))
         mal_image = mal_image.scaled(
@@ -345,24 +364,17 @@ class MediaSearch(BaseWizardPage):
             return False
 
         invalid_entries = self._check_invalid_entries((self.tmdb_id_entry,))
-        if invalid_entries:
+        if invalid_entries or self._has_invalid_id_formats():
             return False
-        else:
-            if not self.other_ids_parsed:
-                self.listbox.setDisabled(True)
-                self._search_other_ids()
-                return False
-            elif (
-                self.context.media_search.media_type is MediaType.SERIES
-                and self.other_ids_parsed
-            ):
-                if self._check_invalid_entries((self.tvdb_id_entry,)):
-                    GSigs().wizard_next_button_reset_txt.emit()
-                    return False
 
-            GSigs().wizard_next_button_reset_txt.emit()
-            super().validatePage()
-            return True
+        if not self.other_ids_parsed:
+            self.listbox.setDisabled(True)
+            self._search_other_ids()
+            return False
+
+        GSigs().wizard_next_button_reset_txt.emit()
+        super().validatePage()
+        return True
 
     def _check_invalid_entries(self, entires: tuple[QLineEdit, ...]) -> bool:
         invalid_entries = False
@@ -371,16 +383,43 @@ class MediaSearch(BaseWizardPage):
                 invalid_entries = True
                 entry.setPlaceholderText("Requires ID")
                 QWidgetTempStyle().set_temp_style(widget=entry).start()
-            else:
-                # add id manually to payload if the user provides it
-                if entry is self.tvdb_id_entry:
-                    tvdb_id_entry_text = self.tvdb_id_entry.text().strip()
-                    if (
-                        tvdb_id_entry_text
-                        and tvdb_id_entry_text != self.tvdb_id_entry.placeholderText()
-                    ):
-                        self.context.media_search.tvdb_id = tvdb_id_entry_text
         return invalid_entries
+
+    def _has_invalid_id_formats(self) -> bool:
+        invalid_entries: list[QLineEdit] = []
+        imdb_id = self.imdb_id_entry.text().strip()
+        tmdb_id = self.tmdb_id_entry.text().strip()
+        tvdb_id = self.tvdb_id_entry.text().strip()
+
+        if imdb_id and re.fullmatch(r"tt\d+", imdb_id, re.IGNORECASE) is None:
+            invalid_entries.append(self.imdb_id_entry)
+        if tmdb_id and not tmdb_id.isdigit():
+            invalid_entries.append(self.tmdb_id_entry)
+        if tvdb_id and not tvdb_id.isdigit():
+            invalid_entries.append(self.tvdb_id_entry)
+
+        for entry in invalid_entries:
+            QWidgetTempStyle().set_temp_style(widget=entry).start()
+        return bool(invalid_entries)
+
+    @Slot(str)
+    def _mark_metadata_dirty(self, _text: str) -> None:
+        self.other_ids_parsed = False
+        self.context.media_search.provider_metadata = None
+        self.context.media_search.tvdb_data = None
+
+    def _get_metadata_provider(
+        self,
+    ) -> Callable[..., MetadataProviderResult | None] | None:
+        if not self.config.settings.general.enable_plugins:
+            return None
+        provider_name = self.config.settings.plugins.metadata_provider
+        if not provider_name:
+            return None
+        plugin = self.config.plugin_registry.plugins.get(provider_name)
+        if plugin is None or not callable(plugin.metadata_provider):
+            return None
+        return plugin.metadata_provider
 
     def _search_other_ids(self) -> None:
         GSigs().main_window_set_disabled.emit(True)
@@ -416,7 +455,11 @@ class MediaSearch(BaseWizardPage):
                     if isinstance(genre_ids, list)
                     else []
                 ),
-                tmdb_id=str(item_data.get("tmdb_id") or ""),
+                tmdb_id=self.tmdb_id_entry.text().strip(),
+                tvdb_id=self.tvdb_id_entry.text().strip(),
+                metadata_provider=self._get_metadata_provider(),
+                provider_config=self.config,
+                provider_context=self.context,
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
@@ -425,11 +468,19 @@ class MediaSearch(BaseWizardPage):
                 "Parsing metadata, please wait...", 0
             )
             self.id_parse_worker.start()
+            return
+
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
 
     @Slot(object)
     def _detected_id_data(self, media_data: dict[str, Any] | None) -> None:
         try:
             self._update_payload_data(media_data)
+            if not self._handle_metadata_failures(media_data):
+                self.other_ids_parsed = False
+                self.listbox.setDisabled(False)
+                return
             self.other_ids_parsed = True
             # if finished has a cb, utilize that instead of emit (for sandbox)
             if self._on_finished_cb:
@@ -442,6 +493,60 @@ class MediaSearch(BaseWizardPage):
             GSigs().main_window_set_disabled.emit(False)
             GSigs().main_window_clear_status_tip.emit()
 
+    def _handle_metadata_failures(self, media_data: dict[str, Any] | None) -> bool:
+        if not media_data:
+            return True
+
+        provider_error = self._result_error(media_data.get("provider_metadata"))
+        tvdb_error = self._result_error(media_data.get("tvdb_data"))
+
+        if provider_error:
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Metadata provider failed; using TMDb fallback: {provider_error}",
+            )
+
+        if self.context.media_search.media_type is MediaType.SERIES and tvdb_error:
+            details = (
+                f"TVDB metadata could not be loaded:\n{tvdb_error}\n\n"
+                "Retry after checking or editing the IDs, or continue to map "
+                "episodes manually."
+            )
+            if provider_error:
+                details += (
+                    "\n\nThe external metadata provider also failed; TMDb "
+                    f"fallback data will be used:\n{provider_error}"
+                )
+            return self._ask_to_continue_without_tvdb(details)
+
+        if provider_error:
+            QMessageBox.warning(
+                self,
+                "Metadata Provider Unavailable",
+                f"{provider_error}\n\nTMDb metadata will be used instead.",
+            )
+        return True
+
+    @staticmethod
+    def _result_error(result: object) -> str | None:
+        if not isinstance(result, dict) or result.get("success") is not False:
+            return None
+        error = result.get("error")
+        return str(error) if error else "Unknown metadata error"
+
+    def _ask_to_continue_without_tvdb(self, details: str) -> bool:
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Icon.Warning)
+        message_box.setWindowTitle("TVDB Metadata Unavailable")
+        message_box.setText(details)
+        retry_button = message_box.addButton("Retry", QMessageBox.ButtonRole.RejectRole)
+        continue_button = message_box.addButton(
+            "Continue Manually", QMessageBox.ButtonRole.AcceptRole
+        )
+        message_box.setDefaultButton(retry_button)
+        message_box.exec()
+        return message_box.clickedButton() is continue_button
+
     def _update_payload_data(self, media_data: dict[str, Any] | None = None) -> None:
         current_item = self.listbox.currentItem().text()
         item_data = self.backend.media_data.get(current_item)
@@ -452,13 +557,23 @@ class MediaSearch(BaseWizardPage):
         self.context.media_input.media_type = self.context.media_search.media_type = (
             MediaType.strict_search_type(str(item_data.get("media_type") or ""))
         )
-        self.context.media_search.imdb_id = self.imdb_id_entry.text()
-        self.context.media_search.tmdb_id = self.tmdb_id_entry.text()
+        self.context.media_search.imdb_id = self.imdb_id_entry.text().strip() or None
+        self.context.media_search.tmdb_id = self.tmdb_id_entry.text().strip() or None
+        self.context.media_search.tvdb_id = self.tvdb_id_entry.text().strip() or None
         self.context.media_search.tmdb_data = item_data.get("raw_data")
+        self.context.media_search.provider_metadata = None
+        self.context.media_search.tvdb_data = None
 
         # title selection handled by backend with smart regional preferences
         self.context.media_search.title = item_data.get("title")
-        self.context.media_search.year = item_data.get("year")
+        year_value = item_data.get("year")
+        self.context.media_search.year = (
+            int(year_value)
+            if isinstance(year_value, int | str)
+            and not isinstance(year_value, bool)
+            and str(year_value).isdigit()
+            else None
+        )
         original_title = item_data.get("original_title")
         self.context.media_search.original_title = (
             normalize_super_sub(original_title) if original_title else None
@@ -470,6 +585,7 @@ class MediaSearch(BaseWizardPage):
             genres = item_data.get("genre_ids")
         self.context.media_search.genres = genres if genres else []
 
+        provider_result: MetadataProviderResult | None = None
         if media_data:
             # handle complete TMDB data first
             tmdb_complete_data = media_data.get("tmdb_complete_data")
@@ -478,30 +594,37 @@ class MediaSearch(BaseWizardPage):
                 # use complete TMDB data as the primary tmdb_data
                 self.context.media_search.tmdb_data = complete_tmdb_result
 
-                # extract and update IMDb ID from complete data if not already set
-                if complete_tmdb_result and not self.context.media_search.imdb_id:
-                    external_ids = complete_tmdb_result.get("external_ids", {})
-                    extracted_imdb_id = external_ids.get("imdb_id", "")
-                    if extracted_imdb_id:
-                        self.context.media_search.imdb_id = extracted_imdb_id
-                        self.imdb_id_entry.setText(extracted_imdb_id)
+            resolved_ids = media_data.get("resolved_ids")
+            if resolved_ids and resolved_ids.get("success") is True:
+                resolved_result = resolved_ids.get("result")
+                if isinstance(resolved_result, dict):
+                    resolved_imdb_id = resolved_result.get("imdb_id")
+                    resolved_tvdb_id = resolved_result.get("tvdb_id")
+                    if resolved_imdb_id:
+                        self.context.media_search.imdb_id = str(resolved_imdb_id)
+                        self.imdb_id_entry.setText(str(resolved_imdb_id))
+                    if resolved_tvdb_id:
+                        self.context.media_search.tvdb_id = str(resolved_tvdb_id)
+                        self.tvdb_id_entry.setText(str(resolved_tvdb_id))
 
-            imdb_data = media_data.get("imdb_data")
+            provider_metadata = media_data.get("provider_metadata")
             tvdb_data = media_data.get("tvdb_data")
             ani_list_data = media_data.get("ani_list_data")
 
-            # imdb data
-            if imdb_data and imdb_data.get("success") is True:
-                imdb_data_result = imdb_data.get("result")
-                self.context.media_search.imdb_data = imdb_data_result
+            if provider_metadata and provider_metadata.get("success") is True:
+                raw_provider_result = provider_metadata.get("result")
+                if isinstance(raw_provider_result, MetadataProviderResult):
+                    provider_result = raw_provider_result
 
             # tvdb data
             if tvdb_data and tvdb_data.get("success") is True:
                 tvdb_data_result = tvdb_data.get("result")
-                self.context.media_search.tvdb_data = tvdb_data_result
-                self.context.media_search.tvdb_id = str(tvdb_data_result.get("id"))
-                if self.context.media_search.tvdb_id:
-                    self.tvdb_id_entry.setText(self.context.media_search.tvdb_id)
+                if isinstance(tvdb_data_result, dict):
+                    self.context.media_search.tvdb_data = tvdb_data_result
+                    tvdb_result_id = tvdb_data_result.get("id")
+                    if tvdb_result_id:
+                        self.context.media_search.tvdb_id = str(tvdb_result_id)
+                        self.tvdb_id_entry.setText(str(tvdb_result_id))
 
             # anilist data
             if ani_list_data and ani_list_data.get("success") is True:
@@ -523,6 +646,8 @@ class MediaSearch(BaseWizardPage):
                 LOG.LOG_SOURCE.FE,
                 f"Using TMDB title selected by backend: '{self.context.media_search.title}'",
             )
+
+        self.context.media_search.merge_metadata(provider_result)
 
     def _ask_user_for_id(self, id_source: str) -> int:
         value = 0

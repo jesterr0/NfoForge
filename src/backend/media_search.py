@@ -1,11 +1,10 @@
 import asyncio
 import base64
+from collections.abc import Callable, Mapping
 import re
 from typing import Any, cast
 
 from guessit import guessit
-from imdbinfo import get_movie as imdb_get_movie
-from imdbinfo.models import MovieDetail
 import niquests
 from rapidfuzz import fuzz
 import tvdb_v4_official
@@ -16,8 +15,9 @@ from src.backend.utils.super_sub import normalize_super_sub
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
-from src.exceptions import MediaSearchError, MediaSearchUnavailableError
+from src.exceptions import MediaSearchError, MediaSearchUnavailableError, PluginError
 from src.logger.nfo_forge_logger import LOG
+from src.plugins.metadata_provider import MetadataProviderResult
 
 
 class MediaSearchBackEnd:
@@ -267,40 +267,47 @@ class MediaSearchBackEnd:
         original_language: str,
         tmdb_genres: list[TMDBGenreIDsMovies],
         tmdb_id: str = "",
+        tvdb_id: str = "",
+        metadata_provider: (Callable[..., MetadataProviderResult | None] | None) = None,
+        metadata_provider_kwargs: Mapping[str, object] | None = None,
     ) -> dict[str, Any]:
         # fetch complete TMDB data if we have TMDB ID
         tmdb_complete_data: dict[str, Any] | None = None
-        tvdb_id: int | None = None
+        resolved_tvdb_id = int(tvdb_id) if tvdb_id.isdigit() else None
         if tmdb_id:
             tmdb_complete_data = self.fetch_complete_tmdb_data_for_selection(
                 tmdb_id, media_type
             )
-            # extract IMDb ID from complete data if not already provided
-            if not imdb_id and tmdb_complete_data:
+            if tmdb_complete_data:
                 external_ids = tmdb_complete_data.get("external_ids", {})
                 if isinstance(external_ids, dict):
                     remote_imdb_id = external_ids.get("imdb_id")
                     remote_tvdb_id = external_ids.get("tvdb_id")
-                    if isinstance(remote_imdb_id, str):
+                    if not imdb_id and isinstance(remote_imdb_id, str):
                         imdb_id = remote_imdb_id
-                    if isinstance(remote_tvdb_id, int):
-                        tvdb_id = remote_tvdb_id
+                    if isinstance(remote_tvdb_id, int) and resolved_tvdb_id is None:
+                        resolved_tvdb_id = remote_tvdb_id
 
         tasks: dict[str, asyncio.Task[Any]] = {}
 
-        if media_type is MediaType.SERIES and not (imdb_id or tvdb_id):
-            raise MediaSearchError(
-                "TVDB metadata could not be located for this series selection."
+        # only add tvdb task if we're in a series and we have imdb or tvdb id
+        if media_type is MediaType.SERIES and (imdb_id or resolved_tvdb_id):
+            tasks["tvdb_data"] = asyncio.create_task(
+                self.parse_tvdb_data(imdb_id, resolved_tvdb_id)
             )
 
-        # only add tasks if we have valid IMDb ID
-        if imdb_id:
-            tasks["imdb_data"] = asyncio.create_task(self.parse_imdb_data(imdb_id))
-
-        # only add tvdb task if we're in a series and we have imdb or tvdb id
-        if media_type is MediaType.SERIES and (imdb_id or tvdb_id):
-            tasks["tvdb_data"] = asyncio.create_task(
-                self.parse_tvdb_data(imdb_id, tvdb_id)
+        if metadata_provider is not None and imdb_id:
+            provider_kwargs = dict(metadata_provider_kwargs or {})
+            provider_kwargs.update(
+                {
+                    "imdb_id": imdb_id,
+                    "tmdb_data": tmdb_complete_data or {},
+                    "media_type": media_type,
+                    "timeout": self.timeout,
+                }
+            )
+            tasks["provider_metadata"] = asyncio.create_task(
+                self._parse_provider_metadata(metadata_provider, provider_kwargs)
             )
 
         # parse anime if needed
@@ -311,6 +318,14 @@ class MediaSearchBackEnd:
 
         results: dict[str, dict[str, Any]] = {}
 
+        results["resolved_ids"] = {
+            "success": True,
+            "result": {
+                "imdb_id": imdb_id or None,
+                "tvdb_id": resolved_tvdb_id,
+            },
+        }
+
         # add complete TMDB data to results
         if tmdb_complete_data:
             results["tmdb_complete_data"] = {
@@ -318,23 +333,40 @@ class MediaSearchBackEnd:
                 "result": tmdb_complete_data,
             }
 
+        if media_type is MediaType.SERIES and not (imdb_id or resolved_tvdb_id):
+            results["tvdb_data"] = {
+                "success": False,
+                "error": "A TVDB ID could not be located for this series.",
+            }
+
         for key, task in tasks.items():
             try:
                 result = await task
                 if key == "tvdb_data" and not isinstance(result, dict):
-                    raise MediaSearchError(
-                        "TVDB metadata could not be loaded for this series selection."
-                    )
+                    results[key] = {
+                        "success": False,
+                        "error": "TVDB returned no metadata for this series.",
+                    }
+                    continue
                 results[key] = {"success": True, "result": result}
             except Exception as e:
-                if key == "tvdb_data":
-                    if isinstance(e, MediaSearchError):
-                        raise
-                    raise MediaSearchUnavailableError(
-                        "TVDB metadata is unavailable. Check your internet connection and try again."
-                    ) from e
                 results[key] = {"success": False, "error": str(e)}
         return results
+
+    async def _parse_provider_metadata(
+        self,
+        provider: Callable[..., MetadataProviderResult | None],
+        provider_kwargs: dict[str, object],
+    ) -> MetadataProviderResult | None:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(provider, **provider_kwargs),
+            timeout=self.timeout,
+        )
+        if result is not None and not isinstance(result, MetadataProviderResult):
+            raise PluginError(
+                "Metadata provider must return MetadataProviderResult or None"
+            )
+        return result
 
     async def parse_tvdb_data(
         self, imdb_id: str | None, tvdb_id: int | None
@@ -565,17 +597,6 @@ class MediaSearchBackEnd:
             int(binary_bytes[i : i + 8], 2) for i in range(0, len(binary_bytes), 8)
         )
         return base64.b64decode(b64_bytes).decode()
-
-    async def parse_imdb_data(self, imdb_id: str | None) -> MovieDetail | None:
-        if not imdb_id:
-            return None
-        get_movie = await asyncio.wait_for(
-            asyncio.to_thread(imdb_get_movie, imdb_id, "en"),
-            timeout=self.timeout,
-        )
-        if get_movie:
-            return get_movie
-        return None
 
     async def parse_ani_list(
         self, tmdb_title: str, tmdb_year: int

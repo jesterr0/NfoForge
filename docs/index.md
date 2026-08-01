@@ -11,7 +11,8 @@ Movies are supported, and series support is now available for standard TV episod
 ## Key Features
 
 - Token system for advanced media file renaming.
-- Integration with TMDB, IMDb, TVDB, and MAL for title parsing.
+- TMDB title metadata, with TVDB and AniList/MAL enrichment where applicable.
+- Optional external metadata-provider plugins with automatic TMDB fallback.
 - Flexible Jinja-based template system for NFO file generation.
 - Screenshot generation and upload, including comparisons.
 - Output file organization, saving .torrent and NFO files to disk.
@@ -67,10 +68,10 @@ If you have questions, need support, or want a new feature, please open an issue
 ## Attribution
 
 ![TMDB](images/misc/tmdb_med.png){ width=100%, style="max-width: 64px;" }  
-Metadata provided by [TVDB](https://www.thetvdb.com/). Please consider adding missing information or [subscribing](https://thetvdb.com/subscribe).
+Metadata provided by [TMDB](https://www.themoviedb.org/).
 
 ![TVDB](images/misc/tvdb.png){ width=100%, style="max-width: 64px; background-color: #ffffff47; border-radius: 5px; padding: 3px;" }  
-Metadata provided by [TMDB](https://www.themoviedb.org/).
+Metadata provided by [TVDB](https://www.thetvdb.com/). Please consider adding missing information or [subscribing](https://thetvdb.com/subscribe).
 
 ## Donations
 

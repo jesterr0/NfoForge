@@ -171,6 +171,8 @@ class SplashScreenLoader(QThread):
             self.config.settings.plugins.token_replacer = None
         if self.config.settings.plugins.pre_upload not in plugin_names:
             self.config.settings.plugins.pre_upload = None
+        if self.config.settings.plugins.metadata_provider not in plugin_names:
+            self.config.settings.plugins.metadata_provider = None
         self.config.save()
 
         if plugin_loader.failures:
@@ -195,6 +197,10 @@ class SplashScreenLoader(QThread):
             "Default Pre Upload (built in, external plugin slot disabled)": PluginPayload(
                 name="Default Pre Upload (built in, external plugin slot disabled)",
                 pre_upload=False,
+            ),
+            "TMDb Metadata (built in, external plugin slot disabled)": PluginPayload(
+                name="TMDb Metadata (built in, external plugin slot disabled)",
+                metadata_provider=False,
             ),
         }
         self.config.plugin_registry.plugins.update(built_in_plugins)

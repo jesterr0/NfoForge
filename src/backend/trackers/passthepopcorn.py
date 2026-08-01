@@ -6,7 +6,6 @@ from tempfile import TemporaryDirectory
 from typing import Any
 
 from guessit import guessit
-from imdbinfo.models import MovieDetail
 import niquests
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
@@ -18,6 +17,7 @@ from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.passthepopcorn import (
     PTPCodec,
@@ -31,6 +31,7 @@ from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
+from src.plugins.metadata_provider import MetadataMediaKind
 
 
 def ptp_uploader(
@@ -264,17 +265,13 @@ class PTPUploader:
         nfo: str,
         group_id: str | None = None,
     ) -> bool | None:
-        if not media_search_payload.imdb_data:
-            raise TrackerError("Missing IMDb data")
         if not media_search_payload.tmdb_data:
             raise TrackerError("Missing TMDB data")
         data = {
             "submit": "true",
             "remaster_year": "",
-            "remaster_title": self._remaster_title(
-                media_search_payload.imdb_data, input_path
-            ),
-            "type": self._get_type(media_search_payload.imdb_data),
+            "remaster_title": self._remaster_title(input_path),
+            "type": self._get_type(media_search_payload),
             "codec": "Other",  # sending the codec as Other to fill with other_codec
             "other_codec": self._get_codec(input_path),
             "resolution": self._resolution(),
@@ -295,40 +292,27 @@ class PTPUploader:
             data["groupid"] = group_id
         else:
             url = self.UPLOAD_URL
-            get_poster = media_search_payload.imdb_data.cover_url
-            if not get_poster:
-                get_poster = (
-                    f"https://image.tmdb.org/t/p/original{media_search_payload.tmdb_data.get('poster_path')}"
-                    if media_search_payload.tmdb_data.get("poster_path")
-                    else None
-                )
+            get_poster = media_search_payload.poster_url
             if not get_poster or not isinstance(get_poster, str):
                 raise TrackerError(
                     "Couldn't automatically detect a poster for PassThePopcorn"
                 )
             image_box_url = self._upload_poster_to_imgbox(get_poster)
 
-            tags = ""
-            get_tags = media_search_payload.imdb_data.genres
-            if get_tags:
-                tags = ", ".join(str(x).lower() for x in get_tags)
-            if not get_tags:
+            tags = ", ".join(
+                genre.lower() for genre in media_search_payload.genre_names
+            )
+            if not tags:
                 tags = ", ".join(
                     str(x.name).lower() for x in media_search_payload.genres
                 )
 
             new_group_data = {
-                "title": media_search_payload.imdb_data.title_localized
-                if media_search_payload.imdb_data.title_localized
-                else media_search_payload.tmdb_data.get("title", ""),
-                "year": media_search_payload.imdb_data.year
-                if media_search_payload.imdb_data.year
-                else media_search_payload.tmdb_data.get("year", ""),
+                "title": media_search_payload.title or "",
+                "year": media_search_payload.year or "",
                 "image": image_box_url,
                 "tags": tags,
-                "album_desc": media_search_payload.imdb_data.plot
-                if media_search_payload.imdb_data.plot
-                else media_search_payload.tmdb_data.get("overview", ""),
+                "album_desc": media_search_payload.plot or "",
                 # "trailer": "", # TODO: detect eventually?
             }
             data.update(new_group_data)
@@ -431,26 +415,9 @@ class PTPUploader:
 
         raise TrackerError("Cannot detect image URLs")
 
-    def _remaster_title(self, imdb_data: MovieDetail, input_path: Path) -> str:
+    def _remaster_title(self, input_path: Path) -> str:
         remaster_title = set()
         title_lowered = input_path.stem.lower()
-
-        # collections
-        # Masters of Cinema, The Criterion Collection, Warner Archive Collection
-        # TODO: add support for distributors when https://github.com/tveronesi/imdbinfo/issues/52 is in.
-        # STRIP THE ABOVE OUT WHEN WE STRIP OUT IMDB VIA THIS TOOL
-        # TODO: the above is no longer valid as IMDb is making efforts to avoid allowing scraping we will need
-        # another solution in the future...
-        # try:
-        #     distributors = {str(x).upper() for x in imdb_data["distributors"]}
-        #     if {"WARNER ARCHIVE", "WARNER ARCHIVE COLLECTION", "WAC"} & distributors:
-        #         remaster_title.add("Warner Archive Collection")
-        #     elif {"CRITERION", "CRITERION COLLECTION", "CC"} & distributors:
-        #         remaster_title.add("The Criterion Collection")
-        #     elif {"MASTERS OF CINEMA", "MOC"} & distributors:
-        #         remaster_title.add("Masters of Cinema")
-        # except Exception as e:
-        #     LOG.debug(LOG.LOG_SOURCE.BE, f"Failed to get distributor data: {e}")
 
         # editions
         def collect_editions(source: dict[str, Any], key: str) -> list[Any]:
@@ -549,24 +516,26 @@ class PTPUploader:
             output = " / ".join(sorted(remaster_title))
         return output
 
-    def _get_type(self, imdb_data: MovieDetail) -> str:
-        ptp_type = PTPType.FEATURE_FILM
-        imdb_type = imdb_data.kind.lower() if imdb_data.kind else None
-        if imdb_type:
-            if imdb_type in ("movie", "tv movie"):
-                duration = int(self.mediainfo_obj.general_tracks[0].duration) // 60000
-                if duration >= 45 or duration == 0:
-                    ptp_type = PTPType.FEATURE_FILM
-                else:
-                    ptp_type = PTPType.SHORT_FILM
-            elif imdb_type == "short":
-                ptp_type = PTPType.SHORT_FILM
-            elif imdb_type == "tv mini series":
-                ptp_type = PTPType.MINI_SERIES
-            elif imdb_type == "comedy":
-                ptp_type = PTPType.STAND_UP_COMEDY
-            elif imdb_type == "concert":
-                ptp_type = PTPType.LIVE_PERFORMANCE
+    def _get_type(self, media_search_payload: MediaSearchPayload) -> str:
+        media_kind = media_search_payload.media_kind
+        provider_type_map = {
+            MetadataMediaKind.SHORT: PTPType.SHORT_FILM,
+            MetadataMediaKind.MINI_SERIES: PTPType.MINI_SERIES,
+            MetadataMediaKind.STAND_UP_COMEDY: PTPType.STAND_UP_COMEDY,
+            MetadataMediaKind.LIVE_PERFORMANCE: PTPType.LIVE_PERFORMANCE,
+        }
+        if media_kind in provider_type_map:
+            return str(provider_type_map[media_kind].value)
+
+        if media_search_payload.media_type is MediaType.SERIES:
+            return str(PTPType.MINI_SERIES.value)
+
+        duration = 0
+        try:
+            duration = int(self.mediainfo_obj.general_tracks[0].duration) // 60000
+        except (AttributeError, IndexError, TypeError, ValueError):
+            pass
+        ptp_type = PTPType.SHORT_FILM if 0 < duration < 45 else PTPType.FEATURE_FILM
         return str(ptp_type.value)
 
     def _get_codec(self, input_path: Path) -> str:

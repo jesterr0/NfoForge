@@ -84,7 +84,7 @@ This token gives the user access to the **MediaSearchPayload** dataclass.
 class MediaSearchPayload:
     media_type: MediaType | None = None
     imdb_id: str | None = None
-    imdb_data: MovieDetail | None = None
+    provider_metadata: MetadataProviderResult | None = None
     tmdb_id: str | None = None
     tmdb_data: dict | None = None
     tvdb_id: str | None = None
@@ -96,10 +96,20 @@ class MediaSearchPayload:
     year: int | None = None
     original_title: str | None = None
     genres: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries] = field(default_factory=list)
+    plot: str | None = None
+    poster_url: str | None = None
+    genre_names: tuple[str, ...] = ()
+    media_kind: MetadataMediaKind | None = None
+
+    def merge_metadata(
+        self, provider_metadata: MetadataProviderResult | None = None
+    ) -> None:
+        ...
 
     def reset(self) -> None:
+        self.media_type = None
         self.imdb_id = None
-        self.imdb_data = None
+        self.provider_metadata = None
         self.tmdb_id = None
         self.tmdb_data = None
         self.tvdb_id = None
@@ -111,6 +121,10 @@ class MediaSearchPayload:
         self.year = None
         self.original_title = None
         self.genres.clear()
+        self.plot = None
+        self.poster_url = None
+        self.genre_names = ()
+        self.media_kind = None
 ```
 
 ###### {{ nf_media_input_payload }}

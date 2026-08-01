@@ -29,7 +29,7 @@ about_txt = f"""\
 <h3>Key Features</h3>
 <ul>
     <li>Token system for advanced media file renaming.</li>
-    <li>Integration with TMDB and IMDb for title parsing.</li>
+    <li>TMDB title metadata with optional external metadata-provider plugins.</li>
     <li>Flexible Jinja-based template system for .NFO file generation.</li>
     <li>Screenshot generation and upload, including comparisons.</li>
     <li>Output file organization, saving .torrent and .NFO files to disk.</li>
@@ -45,7 +45,6 @@ about_txt = f"""\
 <ul>
     <li>aiohttp</li>
     <li>beautifulsoup4</li>
-    <li>cinemagoer</li>
     <li>deluge-web-client</li>
     <li>Guessit</li>
     <li>iso639-lang</li>

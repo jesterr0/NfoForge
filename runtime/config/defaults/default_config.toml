@@ -555,6 +555,7 @@ urls_manual = 0
 wizard_page = ""
 token_replacer = ""
 pre_upload = ""
+metadata_provider = ""
 
 [template_settings]
 block_syntax_color = "#A4036F"

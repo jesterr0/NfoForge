@@ -9,9 +9,9 @@
 - New custom widget - ComparisonFileMatcher. This will be used to select a matching **source** file for movies/series. # TODO: remove this if we're not going to use it?
 - Tokens:
   - **FileTokens**:
-    - `{imdb_aka}` - IMDb AKA filename.
-    - `{imdb_aka_fallback_title}` - IMDb AKA filename with a fallback to {title}.
-    - `{imdb_aka_fallback_title_clean}` - IMDb AKA filename with a fallback to {title_clean}.
+    - `{original_title}` - Original title from the selected metadata provider or TMDB.
+    - `{original_title_fallback_title}` - Original title with a fallback to {title}.
+    - `{original_title_fallback_title_clean}` - Original title with a fallback to {title_clean}.
     - `{original_language}` - Original language (English).
     - `{original_language_iso_639_1}` - Original language (EN).
     - `{original_language_iso_639_2}`- Original language (ENG).
@@ -49,6 +49,8 @@
 - Implemented torrent upload retries with user control.
 - Add ability to set file save location when adding a torrent to qBittorrent.
 - Added a pre-upload wizard page that combines smaller wizard pages into one.
+- Added optional external metadata-provider plugins with typed results and TMDB fallback.
+  - Populated provider fields are centrally merged into the canonical media-search payload, so titles, years, plots, posters, genre names, and media kind are available consistently throughout the remaining workflow.
 
 ### Changed
 
@@ -92,7 +94,8 @@
   - Small optimization for un-needed calls to the API.
   - Added some logging for TVDB API related errors.
   - Now simply just says **Parsing metadata, please wait...** instead of **Parsing IMDB/TVDb...** since this is now dynamic based on media type.
-- Removed **cinemagoer** dependency and replaced it with **imdbinfo**.
+  - TVDB failures can now be retried or bypassed for manual series mapping.
+  - IMDb, TMDB, and TVDB IDs can be entered manually and are validated before lookup.
 - Update niquests.
 - All calls to mediainfo includes legacy stream data now _(to detect DTS core)_.
 - General Settings Tab:
@@ -120,7 +123,6 @@
 - File rename no longer happens during processing stage.
 - Updated dependencies:
   - tomlkit
-  - imdbinfo
   - pillow
   - platformdirs
   - pyside6
@@ -195,6 +197,7 @@
 - Advanced Input page _(existing functionality will still exist in the **Input** page)_.
 - General settings source/encode extension filter control has been removed.
 - Unused fonts that was included in the bundled runtime
+- Removed direct IMDb scraping and the **cinemagoer/imdbinfo** dependencies. TMDB now supplies fallback metadata when no external provider is configured.
 
 ## [0.8.14] - 2026-2-21
 
