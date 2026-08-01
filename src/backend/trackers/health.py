@@ -73,12 +73,16 @@ def ensure_tracker_health(
             phase="health_check",
         ) from error
 
-    if status_code >= 400:
+    # The probe is intentionally unauthenticated.  Client errors (including
+    # Cloudflare's 403 and rate limiting) prove that the host answered and
+    # should not prevent the authenticated upload from proceeding.  Only a
+    # server-side failure indicates that the tracker itself is unavailable.
+    if status_code >= 500:
         cache[tracker] = False
         detail = f" ({reason})" if reason else ""
         raise TrackerError(
             f"{tracker} is unavailable (HTTP {status_code}{detail})",
-            retryable=status_code == 429 or status_code >= 500,
+            retryable=True,
             phase="health_check",
             status_code=status_code,
         )

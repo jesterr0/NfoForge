@@ -572,9 +572,13 @@ class Unit3dBaseSearch:
                 params=params,
                 timeout=self.timeout,
             ) as response:
-                if response.ok and response.status_code == 200:
-                    response_json = response.json()
-                    results = self._convert_response(response_json)
+                if response.status_code != 200:
+                    raise TrackerError(
+                        f"Error searching {self.tracker_name}: "
+                        f"HTTP {response.status_code} ({response.reason})"
+                    )
+                response_json = response.json()
+                results = self._convert_response(response_json)
         except niquests.exceptions.RequestException as error_message:
             raise TrackerError(str(error_message))
 

@@ -1,6 +1,5 @@
 from datetime import datetime
 from pathlib import Path
-import pickle
 import re
 from typing import Any
 
@@ -8,6 +7,7 @@ import niquests
 from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
+from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
@@ -226,7 +226,7 @@ class TLSearch:
     ) -> None:
         self.username = username
         self.password = password
-        self.cookie_path = cookie_dir / "tl_cookie.pkl"
+        self.cookie_path = cookie_dir / "tl_cookie.json"
         self.alt_2_fa_token = alt_2_fa_token
         self.timeout = timeout
 
@@ -386,7 +386,7 @@ class TLSearch:
     def _validate_session(self) -> bool | None:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
-            with self._session.get(self.LOGIN_URL) as response:
+            with self._session.get(self.LOGIN_URL, timeout=self.timeout) as response:
                 if response.text and "loggedin" in response.text:
                     return True
         except niquests.RequestException:
@@ -394,15 +394,11 @@ class TLSearch:
         return False
 
     def _save_cookies(self) -> None:
-        with open(self.cookie_path, "wb") as file:
-            pickle.dump(self._session.cookies, file)
+        save_cookies(self._session.cookies, self.cookie_path)
         LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech cookies saved: {self.cookie_path}")
 
     def _load_cookies(self) -> bool:
-        if self.cookie_path.exists():
-            with open(self.cookie_path, "rb") as file:
-                cookies = pickle.load(file)
-                self._session.cookies = cookies
+        if load_cookies(self._session.cookies, self.cookie_path):
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"TorrentLeech cookies loaded from {self.cookie_path}",

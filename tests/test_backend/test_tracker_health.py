@@ -34,7 +34,7 @@ def test_health_check_accepts_reachable_tracker_and_caches_result(
     get.return_value.__exit__.assert_called_once()
 
 
-@pytest.mark.parametrize("status_code", [400, 403, 500, 503])
+@pytest.mark.parametrize("status_code", [500, 503])
 @patch("src.backend.trackers.health.niquests.get")
 def test_health_check_blocks_http_failures_and_caches_failure(
     get: MagicMock, status_code: int
@@ -50,6 +50,20 @@ def test_health_check_blocks_http_failures_and_caches_failure(
 
     assert cache == {TrackerSelection.TORRENT_LEECH: False}
     get.assert_called_once()
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403, 404, 405, 429])
+@patch("src.backend.trackers.health.niquests.get")
+def test_health_check_accepts_reachable_client_responses(
+    get: MagicMock, status_code: int
+) -> None:
+    response = MagicMock(status_code=status_code, reason="Client response")
+    get.return_value.__enter__.return_value = response
+    cache: dict[TrackerSelection, bool] = {}
+
+    ensure_tracker_health(TrackerSelection.TORRENT_LEECH, timeout=60, cache=cache)
+
+    assert cache == {TrackerSelection.TORRENT_LEECH: True}
 
 
 @patch("src.backend.trackers.health.niquests.get")

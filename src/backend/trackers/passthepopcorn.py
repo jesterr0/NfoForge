@@ -1,8 +1,8 @@
 import asyncio
 from pathlib import Path
-import pickle
 import re
 from tempfile import TemporaryDirectory
+import time
 from typing import Any
 
 from guessit import guessit
@@ -14,6 +14,7 @@ import regex
 
 from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
+from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
@@ -32,7 +33,7 @@ from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.plugins.api import MetadataMediaKind
-from src.utils.secret_redaction import scrub_mapping
+from src.utils.secret_redaction import scrub_secrets
 
 
 def ptp_uploader(
@@ -82,6 +83,9 @@ def ptp_uploader(
 
 
 class PTPUploader:
+    _MAX_2FA_ATTEMPTS = 3
+    _2FA_BACKOFF_SECONDS = 0.5
+
     __slots__ = (
         "username",
         "password",
@@ -251,7 +255,7 @@ class PTPUploader:
         self.password = password
         self.mediainfo_obj = mediainfo_obj
         self.announce_url = announce_url
-        self.cookie_path = cookie_dir / "ptp_cookie.pkl"
+        self.cookie_path = cookie_dir / "ptp_cookie.json"
         self.totp = totp
         self.timeout = timeout
 
@@ -318,8 +322,6 @@ class PTPUploader:
             }
             data.update(new_group_data)
 
-        LOG.debug(LOG.LOG_SOURCE.BE, f"PassThePopcorn payload: {scrub_mapping(data)}")
-
         # upload the torrent
         with self._session as response:
             files: MultiPartFilesAltType = {}
@@ -351,16 +353,20 @@ class PTPUploader:
                     server_accepted=server_accepted,
                 ) from error
 
+            extracted_error = self._extract_upload_error(upload.text)
+            LOG.debug(
+                LOG.LOG_SOURCE.BE,
+                "PassThePopcorn upload response: "
+                f"status={upload.status_code}, "
+                f"url={scrub_secrets(str(upload.url))}, "
+                f"error={extracted_error or 'none'}",
+            )
+
             # if the response contains our announce URL, then we are on the upload page and the upload wasn't successful.
             if upload.text and upload.text.find(self.announce_url) != -1:
-                error_message = ""
-                match = re.search(
-                    r"""<div class="alert alert--error.*?>(.+?)</div>""", upload.text
-                )
-                if match:
-                    error_message = f" {match.group(1)} "
                 raise TrackerError(
-                    f"Upload to PTP failed:{error_message}({upload.status_code})"
+                    f"Upload to PTP failed: {extracted_error or 'unknown error'} "
+                    f"({upload.status_code})"
                 )
 
             # URL format in case of successful upload: https://passthepopcorn.me/torrents.php?id=9329&torrentid=91868
@@ -378,6 +384,21 @@ class PTPUploader:
                 )
             else:
                 return True
+
+    @staticmethod
+    def _extract_upload_error(body: str | None) -> str | None:
+        if not body:
+            return None
+        match = re.search(
+            r"""<div class="alert alert--error.*?>(.+?)</div>""",
+            body,
+            flags=re.DOTALL,
+        )
+        if not match:
+            return None
+        error_text = re.sub(r"<[^>]+>", " ", match.group(1))
+        error_text = re.sub(r"\s+", " ", error_text).strip()
+        return scrub_secrets(error_text)[:500] or None
 
     def _upload_poster_to_imgbox(self, image_url: str) -> str:
         """Download a new-group poster and host it on ImageBox for PTP."""
@@ -681,7 +702,10 @@ class PTPUploader:
         }
         try:
             with self._session.post(
-                self.LOGIN_URL, data=data, headers=TRACKER_HEADERS
+                self.LOGIN_URL,
+                data=data,
+                headers=TRACKER_HEADERS,
+                timeout=self.timeout,
             ) as response:
                 if response.ok and response.status_code == 200:
                     token = None
@@ -694,21 +718,40 @@ class PTPUploader:
                             raise TrackerError(
                                 "Missing TOTP and you have TFA enabled, cannot continue"
                             )
-                        # loop until we get a valid token or user cancels
-                        while not token:
-                            tofa_response = self._handle_2fa(data, self.totp)
-                            response_json = tofa_response.json()
+                        tried_totp = False
+                        for attempt in range(self._MAX_2FA_ATTEMPTS):
+                            tofa_response, tried_totp = self._handle_2fa(
+                                data, self.totp, tried_totp
+                            )
+                            response_json: dict[str, Any] = {}
+                            if tofa_response.status_code == 200:
+                                try:
+                                    parsed_response = tofa_response.json()
+                                except (TypeError, ValueError):
+                                    parsed_response = None
+                                if isinstance(parsed_response, dict):
+                                    response_json = parsed_response
                             token = response_json.get("AntiCsrfToken")
-                            if not token:
-                                LOG.error(
-                                    LOG.LOG_SOURCE.BE,
-                                    "2FA failed: Invalid code or token not received. Retrying...",
-                                )
+                            if token:
+                                break
+                            LOG.error(
+                                LOG.LOG_SOURCE.BE,
+                                "2FA failed: Invalid code or token not received.",
+                            )
+                            if attempt < self._MAX_2FA_ATTEMPTS - 1:
+                                time.sleep(self._2FA_BACKOFF_SECONDS * (2**attempt))
+                        if not token:
+                            raise TrackerError(
+                                "PassThePopcorn 2FA failed after "
+                                f"{self._MAX_2FA_ATTEMPTS} attempts"
+                            )
                     if token:
                         self._save_cookies()
                         return str(token)
         except niquests.RequestException as e:
             raise TrackerError(f"Server error: {e}")
+        except TrackerError:
+            raise
         except Exception as unhandled_exception:
             raise TrackerError(f"Unhandled exception: {unhandled_exception}")
         return None
@@ -716,7 +759,7 @@ class PTPUploader:
     def _validate_session(self) -> str | None:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
-            with self._session.get(self.UPLOAD_URL) as response:
+            with self._session.get(self.UPLOAD_URL, timeout=self.timeout) as response:
                 if (
                     response.text
                     and response.text.find("""<a href="login.php?act=recover">""") != -1
@@ -746,17 +789,13 @@ class PTPUploader:
         return None
 
     def _save_cookies(self) -> None:
-        with open(self.cookie_path, "wb") as file:
-            pickle.dump(self._session.cookies, file)
+        save_cookies(self._session.cookies, self.cookie_path)
         LOG.debug(
             LOG.LOG_SOURCE.BE, f"PassThePopcorn cookies saved: {self.cookie_path}"
         )
 
     def _load_cookies(self) -> bool:
-        if self.cookie_path.exists():
-            with open(self.cookie_path, "rb") as file:
-                cookies = pickle.load(file)
-                self._session.cookies = cookies
+        if load_cookies(self._session.cookies, self.cookie_path):
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"PassThePopcorn cookies loaded from {self.cookie_path}",
@@ -765,36 +804,36 @@ class PTPUploader:
         LOG.debug(LOG.LOG_SOURCE.BE, "PassThePopcorn cookies not found")
         return False
 
-    def _handle_2fa(self, data: dict[str, str], totp: str) -> niquests.Response:
-        tried_totp = False
-        while True:
-            if not tried_totp and totp:
-                data["TfaCode"] = pyotp.TOTP(totp).now()
-                tried_totp = True
-            else:
-                got_code, code = ask_thread_safe_prompt(
-                    "2FA", "Enter your 2FA code for PassThePopcorn:"
-                )
-                if not got_code or not code:
-                    raise TrackerError("2FA cancelled or no code entered")
-                data["TfaCode"] = code
-            data["TfaType"] = "normal"
-            headers = {
-                "User-Agent": TRACKER_HEADERS["User-Agent"],
-                "Content-Type": "application/x-www-form-urlencoded",
-            }
-            response = self._session.post(
-                self.LOGIN_URL,
-                data=data,
-                headers=headers,
+    def _handle_2fa(
+        self, data: dict[str, str], totp: str, tried_totp: bool
+    ) -> tuple[niquests.Response, bool]:
+        if not tried_totp and totp:
+            data["TfaCode"] = pyotp.TOTP(totp).now()
+            tried_totp = True
+        else:
+            got_code, code = ask_thread_safe_prompt(
+                "2FA", "Enter your 2FA code for PassThePopcorn:"
             )
-            if response.status_code == 200:
-                return response
-            else:
-                LOG.error(
-                    LOG.LOG_SOURCE.BE,
-                    f"2FA failed: {response.reason} ({response.status_code})",
-                )
+            if not got_code or not code:
+                raise TrackerError("2FA cancelled or no code entered")
+            data["TfaCode"] = code
+        data["TfaType"] = "normal"
+        headers = {
+            "User-Agent": TRACKER_HEADERS["User-Agent"],
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        response = self._session.post(
+            self.LOGIN_URL,
+            data=data,
+            headers=headers,
+            timeout=self.timeout,
+        )
+        if response.status_code != 200:
+            LOG.error(
+                LOG.LOG_SOURCE.BE,
+                f"2FA failed: {response.reason} ({response.status_code})",
+            )
+        return response, tried_totp
 
 
 class PTPSearch:
@@ -842,37 +881,41 @@ class PTPSearch:
             response = niquests.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
-            if response.ok and response.status_code == 200:
-                response_json = response.json()
-                movies = response_json.get("Movies", [])
-                if not isinstance(movies, list):
-                    return results
-                for torrent in movies:
-                    for movie_file in torrent.get("Torrents", []):
-                        for item in movie_file.get("FileList", []):
-                            path_name = item.get("Path", "")
-                            if path_name == file_name:
-                                group_id = torrent.get("GroupId")
-                                movie_id = movie_file.get("Id")
-                                link = (
-                                    f"{self.URL}?id={group_id}&torrentid={movie_id}"
-                                    if group_id and movie_id
-                                    else None
-                                )
-                                result = TrackerSearchResult(
-                                    name=path_name,
-                                    url=link,
-                                    release_size=item.get("Size"),
-                                    created_at=torrent.get("LastUploadTime"),
-                                    seeders=torrent.get("TotalSeeders"),
-                                    leechers=torrent.get("TotalLeechers"),
-                                    grabs=torrent.get("TotalSnatched"),
-                                    files=len(movie_file.get("FileList", [])),
-                                    imdb_id=f"tt{torrent.get('ImdbId')}"
-                                    if torrent.get("ImdbId")
-                                    else None,
-                                )
-                                results.append(result)
+            if response.status_code != 200:
+                raise TrackerError(
+                    "Error searching PassThePopcorn: "
+                    f"HTTP {response.status_code} ({response.reason})"
+                )
+            response_json = response.json()
+            movies = response_json.get("Movies", [])
+            if not isinstance(movies, list):
+                return results
+            for torrent in movies:
+                for movie_file in torrent.get("Torrents", []):
+                    for item in movie_file.get("FileList", []):
+                        path_name = item.get("Path", "")
+                        if path_name == file_name:
+                            group_id = torrent.get("GroupId")
+                            movie_id = movie_file.get("Id")
+                            link = (
+                                f"{self.URL}?id={group_id}&torrentid={movie_id}"
+                                if group_id and movie_id
+                                else None
+                            )
+                            result = TrackerSearchResult(
+                                name=path_name,
+                                url=link,
+                                release_size=item.get("Size"),
+                                created_at=torrent.get("LastUploadTime"),
+                                seeders=torrent.get("TotalSeeders"),
+                                leechers=torrent.get("TotalLeechers"),
+                                grabs=torrent.get("TotalSnatched"),
+                                files=len(movie_file.get("FileList", [])),
+                                imdb_id=f"tt{torrent.get('ImdbId')}"
+                                if torrent.get("ImdbId")
+                                else None,
+                            )
+                            results.append(result)
 
             return results
         except niquests.exceptions.RequestException as error_message:

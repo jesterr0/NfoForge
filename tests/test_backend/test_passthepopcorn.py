@@ -102,6 +102,78 @@ def test_ptp_upload_post_has_a_timeout(
     assert fake_session.post.call_args.kwargs["timeout"] == uploader.timeout
 
 
+def test_ptp_2fa_uses_interactive_prompt_after_automatic_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uploader = _uploader(tmp_path)
+    first_response = MagicMock(status_code=200, reason="OK")
+    second_response = MagicMock(status_code=200, reason="OK")
+    fake_session = MagicMock()
+    fake_session.post.side_effect = [first_response, second_response]
+    uploader._session = fake_session
+
+    totp = MagicMock()
+    totp.now.return_value = "123456"
+    monkeypatch.setattr(
+        "src.backend.trackers.passthepopcorn.pyotp.TOTP", lambda _secret: totp
+    )
+    monkeypatch.setattr(
+        "src.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
+        lambda *_args: (True, "654321"),
+    )
+
+    data = {"username": "user", "password": "password"}
+    response, tried_totp = uploader._handle_2fa(data, "secret", False)
+    assert response is first_response
+    assert tried_totp
+    assert data["TfaCode"] == "123456"
+
+    response, tried_totp = uploader._handle_2fa(data, "secret", tried_totp)
+    assert response is second_response
+    assert tried_totp
+    assert data["TfaCode"] == "654321"
+    assert fake_session.post.call_args.kwargs["timeout"] == uploader.timeout
+
+
+def test_ptp_2fa_attempts_are_bounded_and_backed_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    uploader = _uploader(tmp_path)
+    uploader.totp = "secret"
+    initial_response = MagicMock(
+        ok=True,
+        status_code=200,
+        json=lambda: {"Result": "TfaRequired"},
+    )
+    failed_responses = [
+        MagicMock(status_code=200, json=lambda: {})
+        for _ in range(uploader._MAX_2FA_ATTEMPTS)
+    ]
+    initial_context = MagicMock()
+    initial_context.__enter__.return_value = initial_response
+    initial_context.__exit__.return_value = False
+    fake_session = MagicMock()
+    fake_session.post.side_effect = [initial_context, *failed_responses]
+    uploader._session = fake_session
+
+    monkeypatch.setattr(
+        "src.backend.trackers.passthepopcorn.pyotp.TOTP",
+        lambda _secret: MagicMock(now=lambda: "123456"),
+    )
+    monkeypatch.setattr(
+        "src.backend.trackers.passthepopcorn.ask_thread_safe_prompt",
+        lambda *_args: (True, "654321"),
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr("src.backend.trackers.passthepopcorn.time.sleep", sleeps.append)
+
+    with pytest.raises(TrackerError, match="2FA failed after 3 attempts"):
+        uploader.login()
+
+    assert fake_session.post.call_count == 1 + uploader._MAX_2FA_ATTEMPTS
+    assert sleeps == [0.5, 1.0]
+
+
 @pytest.mark.parametrize(
     ("kind", "expected"),
     [

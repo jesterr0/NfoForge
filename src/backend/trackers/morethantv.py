@@ -2,7 +2,6 @@ from collections.abc import Sequence
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
-import pickle
 import re
 from typing import Any
 from xml.etree import ElementTree as ET
@@ -15,6 +14,7 @@ from pymediainfo import MediaInfo
 import pyotp
 from unidecode import unidecode
 
+from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
@@ -33,7 +33,7 @@ from src.exceptions import TrackerError
 from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
-from src.utils.secret_redaction import scrub_mapping
+from src.utils.secret_redaction import scrub_secrets
 
 
 def mtv_uploader(
@@ -96,7 +96,7 @@ class MTVUploader:
     ) -> None:
         self.torrent_input = torrent_input
         self.mediainfo_obj = mediainfo_obj
-        self.cookie_path = cookie_dir / "mtv_cookie.pkl"
+        self.cookie_path = cookie_dir / "mtv_cookie.json"
         self.timeout = timeout
 
         self._session = niquests.Session()
@@ -247,21 +247,17 @@ class MTVUploader:
     def _validate_session(self) -> str | None:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
-            with self._session.get(self.UPLOAD_URL) as response:
+            with self._session.get(self.UPLOAD_URL, timeout=self.timeout) as response:
                 return self.get_auth_key(response.text)
         except niquests.RequestException:
             return None
 
     def _save_cookies(self) -> None:
-        with open(self.cookie_path, "wb") as file:
-            pickle.dump(self._session.cookies, file)
+        save_cookies(self._session.cookies, self.cookie_path)
         LOG.debug(LOG.LOG_SOURCE.BE, f"MoreThanTV cookies saved: {self.cookie_path}")
 
     def _load_cookies(self) -> bool:
-        if self.cookie_path.exists():
-            with open(self.cookie_path, "rb") as file:
-                cookies = pickle.load(file)
-                self._session.cookies = cookies
+        if load_cookies(self._session.cookies, self.cookie_path):
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"MoreThanTV cookies loaded from {self.cookie_path}",
@@ -337,11 +333,6 @@ class MTVUploader:
         # auto_fill = self._auto_fill(auth_token)
         # TODO: do some checks to see if things was auto filled correctly?
 
-        LOG.debug(
-            LOG.LOG_SOURCE.BE,
-            f"\n#### UPLOAD PAYLOAD ####\n{scrub_mapping(data)}\n#### UPLOAD PAYLOAD ####\n",
-        )
-
         try:
             upload_page = self._session.post(
                 self.UPLOAD_URL,
@@ -360,9 +351,13 @@ class MTVUploader:
                 server_accepted=server_accepted,
             ) from error
 
+        failure_str = self._extract_upload_error(upload_page.text)
         LOG.debug(
             LOG.LOG_SOURCE.BE,
-            f"\n#### DEBUG HTML OUTPUT ####\n{upload_page.text}\n#### DEBUG HTML OUTPUT ####\n",
+            "MoreThanTV upload response: "
+            f"status={upload_page.status_code}, "
+            f"url={scrub_secrets(str(upload_page.url))}, "
+            f"error={failure_str or 'none'}",
         )
 
         # dupe detected
@@ -388,24 +383,28 @@ class MTVUploader:
         # error :(
         else:
             # try to get error
-            failure_str = None
-            get_failure = (
-                re.search(
-                    r'(?s)<div id="messagebar.*?".+?<pre>(.+?)</pre>|<div id="messagebar.*?>.(.+?)</div>',
-                    upload_page.text,
-                    flags=re.MULTILINE,
-                )
-                if upload_page.text
-                else None
-            )
-            if get_failure:
-                failure_str = next(
-                    (group for group in get_failure.groups() if group is not None), None
-                )
-
             failed_error_msg = f"Failed to upload torrent: {failure_str if failure_str else upload_page.reason} ({upload_page.status_code})"
             LOG.error(LOG.LOG_SOURCE.BE, failed_error_msg)
             raise TrackerError(failed_error_msg)
+
+    @staticmethod
+    def _extract_upload_error(body: str | None) -> str | None:
+        if not body:
+            return None
+        get_failure = re.search(
+            r'(?s)<div id="messagebar.*?".+?<pre>(.+?)</pre>|<div id="messagebar.*?>.(.+?)</div>',
+            body,
+            flags=re.MULTILINE,
+        )
+        if not get_failure:
+            return None
+        failure = next(
+            (group for group in get_failure.groups() if group is not None), None
+        )
+        if not failure:
+            return None
+        failure_text = BeautifulSoup(failure, features="lxml").get_text(" ", strip=True)
+        return scrub_secrets(failure_text)[:500] or None
 
     @staticmethod
     def generate_release_title(release_title: str) -> str:
