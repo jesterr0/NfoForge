@@ -16,7 +16,8 @@ The versions so far:
 - 1 -> 2: series/TV support; ``[movie_rename]`` became ``[movie_management]``,
   with title-cleaning rules and dynamic-range settings split out into a new
   ``[global_management]`` section.
-- 2 -> 3: PTPIMG support removed, dropping ``[image_hosts.ptpimg]``.
+- 2 -> 3: PTPIMG support removed, dropping its image-host table and any
+  stale last-used selections.
 - 3 -> 4: plugin selections changed from display names to stable plugin IDs;
   selections are reset and the metadata slot is renamed.
 
@@ -50,7 +51,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 import re
-from typing import Any
+from typing import Any, cast
 
 import tomlkit
 
@@ -359,9 +360,10 @@ def migrate_v2_to_v3(
 ) -> tuple[dict[str, Any], list[str]]:
     """Migrate a schema 2 config document to schema 3.
 
-    Schema 3 removed PTPIMG support, so ``[image_hosts.ptpimg]`` is dropped.
-    Nothing else changed: every other section is copied forward by reference,
-    and no section can fail to map, so ``unmapped`` is always empty.
+    Schema 3 removed PTPIMG support, so ``[image_hosts.ptpimg]`` and any
+    ``last_used_img_host`` entries pointing at it are dropped. Nothing else
+    changed: every other section is copied forward by reference, and no
+    section can fail to map, so ``unmapped`` is always empty.
 
     Dropping the section is housekeeping rather than a requirement --
     ``validate_types`` ignores keys the packaged default no longer declares,
@@ -397,6 +399,24 @@ def migrate_v2_to_v3(
             for name, section in image_hosts.items()
             if name != _REMOVED_V3_IMAGE_HOST
         }
+
+    tracker_section = new_doc.get("tracker")
+    if isinstance(tracker_section, Mapping):
+        tracker_settings = tracker_section.get("settings")
+        if isinstance(tracker_settings, Mapping):
+            tracker_settings_mapping = cast(Mapping[str, Any], tracker_settings)
+            last_used_hosts = tracker_settings_mapping.get("last_used_img_host")
+            if isinstance(last_used_hosts, Mapping):
+                cleaned_last_used_hosts: dict[str, Any] = {}
+                for tracker, image_host in last_used_hosts.items():
+                    if str(image_host).casefold() != _REMOVED_V3_IMAGE_HOST:
+                        cleaned_last_used_hosts[str(tracker)] = image_host
+
+                new_tracker_settings = dict(tracker_settings_mapping)
+                new_tracker_settings["last_used_img_host"] = cleaned_last_used_hosts
+                new_tracker = dict(cast(Mapping[str, Any], tracker_section))
+                new_tracker["settings"] = new_tracker_settings
+                new_doc["tracker"] = new_tracker
 
     return new_doc, []
 

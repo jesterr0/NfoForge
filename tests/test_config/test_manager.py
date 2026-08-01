@@ -977,11 +977,39 @@ def test_load_profile_migrates_schema2_to_current(
     # user settings survive the hop
     assert manager.settings.general.releasers_name == "SchemaTwoUser"
     assert manager.settings.movie.release_group == "SchemaTwoGroup"
+    assert manager.settings.trackers.last_used_image_host == {}
     # the removed image host is dropped, taking its stale API key with it
     image_hosts = cast(MutableMapping[str, Any], reloaded["image_hosts"])
     assert "ptpimg" not in image_hosts
+    tracker_settings = cast(MutableMapping[str, Any], reloaded["tracker"])["settings"]
+    assert tracker_settings["last_used_img_host"] == {}
     assert "dead-ptpimg-key" not in profile.read_text(encoding="utf-8")
     assert not (profile.parent / "old_configs").exists()
+
+
+def test_load_profile_ignores_unknown_last_used_image_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A future/removed tracker or image host must not invalidate a profile."""
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    tracker = cast(MutableMapping[str, Any], document["tracker"])
+    tracker_settings = cast(MutableMapping[str, Any], tracker["settings"])
+    last_used_hosts = tomlkit.inline_table()
+    last_used_hosts["MoreThanTV"] = "FutureHost"
+    last_used_hosts["FutureTracker"] = "ImageBox"
+    tracker_settings["last_used_img_host"] = last_used_hosts
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")
+
+    assert manager.settings.trackers.last_used_image_host == {}
 
 
 def test_migration_validation_failure_preserves_original(

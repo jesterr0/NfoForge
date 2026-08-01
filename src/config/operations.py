@@ -1152,15 +1152,23 @@ class TypedTomlOperations:
             ]
             tracker_order.extend(e for e in TrackerSelection if e not in tracker_order)
             last_used_img_host: dict[TrackerSelection, ImageHost | ImageSource] = {}
-            for tracker, image_dest in tracker_settings["last_used_img_host"].items():
+            for tracker, image_dest in tracker_settings.get(
+                "last_used_img_host", {}
+            ).items():
                 try:
-                    last_used_img_host[TrackerSelection(tracker)] = ImageHost(
-                        image_dest
-                    )
-                except ValueError:
-                    last_used_img_host[TrackerSelection(tracker)] = ImageSource(
-                        image_dest
-                    )
+                    tracker_selection = TrackerSelection(tracker)
+                except (TypeError, ValueError):
+                    continue
+
+                try:
+                    last_used_img_host[tracker_selection] = ImageHost(image_dest)
+                except (TypeError, ValueError):
+                    try:
+                        last_used_img_host[tracker_selection] = ImageSource(image_dest)
+                    except (TypeError, ValueError):
+                        # A removed or future image destination must not make
+                        # an otherwise valid profile un-loadable.
+                        continue
 
             # tracker data
             mtv_tracker_data = tracker_data["more_than_tv"]

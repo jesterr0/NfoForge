@@ -26,7 +26,7 @@ tmdb_api_key = ""
 
 [tracker.settings]
 tracker_order = []
-last_used_img_host = {}
+last_used_img_host = { MoreThanTV = "PTPIMG" }
 
 [tracker.more_than_tv]
 upload_enabled = true
@@ -524,6 +524,11 @@ api_key = ""
 [image_hosts.image_box]
 enabled = false
 base_url = "https://imgbox.com/"
+
+[image_hosts.ptpimg]
+enabled = false
+base_url = "https://ptpimg.me/"
+api_key = "dead-ptpimg-key"
 
 [urls]
 alt = ""

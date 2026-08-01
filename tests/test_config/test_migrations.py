@@ -2,7 +2,11 @@ from pathlib import Path
 
 import tomlkit
 
-from src.config.migrations import migrate_unversioned_to_v2, migrate_v3_to_v4
+from src.config.migrations import (
+    migrate_unversioned_to_v2,
+    migrate_v2_to_v3,
+    migrate_v3_to_v4,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -49,6 +53,19 @@ def test_migration_moves_and_renames_movie_sections() -> None:
     assert new["series_management"]["tvr_enabled"] is True
 
     assert not unmapped
+
+
+def test_v2_to_v3_removes_retired_ptpimg_selections() -> None:
+    old = _load_fixture("schema2_config.toml")
+    old["tracker"]["settings"]["last_used_img_host"]["Aither"] = "ImageBox"
+
+    new, unmapped = migrate_v2_to_v3(old)
+
+    assert not unmapped
+    image_hosts = new["image_hosts"]
+    assert "ptpimg" not in image_hosts
+    tracker_settings = new["tracker"]["settings"]
+    assert tracker_settings["last_used_img_host"] == {"Aither": "ImageBox"}
 
 
 def test_migration_preserves_untouched_sections() -> None:
