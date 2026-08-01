@@ -56,4 +56,7 @@ def metadata_provider(
     merges the result into its canonical media-search payload.
     """
 
+    # you'd use the args above to determine what you need to lookup on your own API
+    # to update NFOForge's internal payload for the rest of the program
+
     return EXAMPLE_METADATA.get(imdb_id.strip().lower())
