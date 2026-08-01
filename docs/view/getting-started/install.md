@@ -4,7 +4,8 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 
 ## Run From Release
 
-1. Download the latest [release](https://github.com/jesterr0/NfoForge/releases) for your operating system.
+1. Download the latest [release](https://github.com/jesterr0/NfoForge/releases) for your
+   operating system.
 2. Extract the contents of the release.
 3. Execute **NfoForge**.
 

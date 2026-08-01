@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "prettier": "^3.9.6"
+  },
+  "scripts": {
+    "format:md": "prettier --write \"docs/**/*.md\" CHANGELOG.md"
+  }
+}
