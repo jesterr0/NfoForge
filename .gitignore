@@ -32,3 +32,4 @@ plugins/**/__pycache__/*
 docs/_build
 Makefile
 make.bat
+node_modules
