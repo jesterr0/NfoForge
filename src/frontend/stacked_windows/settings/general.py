@@ -135,6 +135,19 @@ class GeneralSettings(BaseSettings):
             (12, 0, 0, 0),
         )
 
+        plugin_metadata_provider_lbl = QLabel("Metadata Provider", self)
+        plugin_metadata_provider_lbl.setToolTip(
+            "Choose an optional external metadata provider. TMDb remains the fallback."
+        )
+        self.plugin_metadata_provider_combo = CustomComboBox(
+            completer=True, disable_mouse_wheel=True, parent=self
+        )
+        metadata_provider_layout = create_form_layout(
+            plugin_metadata_provider_lbl,
+            self.plugin_metadata_provider_combo,
+            (12, 0, 0, 0),
+        )
+
         self._plugin_widgets = (
             plugin_wizard_page_lbl,
             self.plugin_wizard_page_combo,
@@ -142,6 +155,8 @@ class GeneralSettings(BaseSettings):
             self.plugin_token_replacer_combo,
             plugin_pre_upload_lbl,
             self.plugin_pre_upload_combo,
+            plugin_metadata_provider_lbl,
+            self.plugin_metadata_provider_combo,
         )
 
         releasers_name_lbl = QLabel("Releasers Name")
@@ -274,6 +289,7 @@ class GeneralSettings(BaseSettings):
         self.add_layout(plugin_wizard_page_layout)
         self.add_layout(plugin_token_replacer_layout)
         self.add_layout(pre_upload_processing_layout)
+        self.add_layout(metadata_provider_layout)
         self.add_layout(
             create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
@@ -581,6 +597,16 @@ class GeneralSettings(BaseSettings):
                                 plugin_name, plugin_name
                             )
 
+                    if plugin.metadata_provider is not None:
+                        if plugin.metadata_provider is False:
+                            self.plugin_metadata_provider_combo.addItem(
+                                plugin_name, None
+                            )
+                        else:
+                            self.plugin_metadata_provider_combo.addItem(
+                                plugin_name, plugin_name
+                            )
+
         self._apply_plugin_combos_settings()
 
     def _apply_plugin_combos_settings(self) -> None:
@@ -611,6 +637,17 @@ class GeneralSettings(BaseSettings):
             pre_upload_plugin if pre_upload_plugin and pre_upload_plugin > 0 else 0
         )
 
+        metadata_provider_plugin = None
+        if self.config.settings.plugins.metadata_provider:
+            metadata_provider_plugin = self.plugin_metadata_provider_combo.findText(
+                self.config.settings.plugins.metadata_provider
+            )
+        self.plugin_metadata_provider_combo.setCurrentIndex(
+            metadata_provider_plugin
+            if metadata_provider_plugin and metadata_provider_plugin > 0
+            else 0
+        )
+
     @Slot()
     def _save_settings(self) -> None:
         self.config.program.current_config = self.selected_config.currentText()
@@ -632,10 +669,14 @@ class GeneralSettings(BaseSettings):
             self.config.settings.plugins.pre_upload = (
                 self.plugin_pre_upload_combo.currentData()
             )
+            self.config.settings.plugins.metadata_provider = (
+                self.plugin_metadata_provider_combo.currentData()
+            )
         else:
             self.config.settings.plugins.wizard_page = ""
             self.config.settings.plugins.token_replacer = ""
             self.config.settings.plugins.pre_upload = ""
+            self.config.settings.plugins.metadata_provider = ""
         self.config.settings.general.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
@@ -666,6 +707,8 @@ class GeneralSettings(BaseSettings):
         self._enable_plugins()
         self.plugin_wizard_page_combo.clear()
         self.plugin_token_replacer_combo.clear()
+        self.plugin_pre_upload_combo.clear()
+        self.plugin_metadata_provider_combo.clear()
         self.releasers_name_entry.clear()
         # set TMDB language to default
         for i in range(self.tmdb_language_combo.count()):

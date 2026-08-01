@@ -10,6 +10,7 @@ from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.payloads.media_search import MediaSearchPayload
+from src.plugins.metadata_provider import MetadataProviderResult
 
 
 def _td() -> TokenData:
@@ -88,6 +89,66 @@ def test_title_tokens_use_first_guessit_title_when_list_shaped(
     )
 
     assert replacer._title_exact(_td()) == "Primary Title"
+
+
+def test_original_title_token_prefers_provider_original_title() -> None:
+    media_search = MediaSearchPayload(
+        media_type=MediaType.MOVIE,
+        tmdb_data={
+            "title": "TMDb title",
+            "original_title": "TMDb original title",
+        },
+    )
+    media_search.merge_metadata(
+        MetadataProviderResult(original_title="Provider original title")
+    )
+    replacer = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{original_title}",
+        media_search_obj=media_search,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+    assert replacer._original_title(_td()) == "Provider original title"
+
+
+def test_original_title_token_falls_back_to_tmdb_original_title() -> None:
+    replacer = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{original_title}",
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.MOVIE,
+            title="Selected title",
+            original_title="TMDb original title",
+        ),
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+    assert replacer._original_title(_td()) == "TMDb original title"
+
+
+def test_original_title_without_original_only_uses_explicit_fallback() -> None:
+    replacer = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{original_title}",
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.MOVIE,
+            title="Selected Title",
+        ),
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+    assert replacer._original_title(_td()) == ""
+    assert replacer._original_title(_td(), fallback=True) == "Selected Title"
 
 
 def test_media_type_token_renders_movie() -> None:

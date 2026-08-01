@@ -1026,6 +1026,11 @@ class TypedTomlOperations:
                 if self.settings.plugins.pre_upload
                 else ""
             )
+            plugins_settings["metadata_provider"] = (
+                self.settings.plugins.metadata_provider
+                if self.settings.plugins.metadata_provider
+                else ""
+            )
 
             # template settings
             template_settings = self._toml_table(self._toml_data, "template_settings")
@@ -1860,6 +1865,8 @@ class TypedTomlOperations:
                     wizard_page=str(plugins_settings["wizard_page"]) or None,
                     token_replacer=str(plugins_settings["token_replacer"]) or None,
                     pre_upload=str(plugins_settings["pre_upload"]) or None,
+                    metadata_provider=str(plugins_settings["metadata_provider"])
+                    or None,
                 ),
                 templates=TemplateSettings(
                     block_syntax_color=str(template_settings["block_syntax_color"]),

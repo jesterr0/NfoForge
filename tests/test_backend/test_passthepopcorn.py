@@ -4,15 +4,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.backend.trackers.passthepopcorn import PTPUploader
+from src.enums.media_type import MediaType
 from src.exceptions import TrackerError
 from src.packages.custom_types import ImageUploadData
+from src.payloads.media_search import MediaSearchPayload
+from src.plugins.metadata_provider import MetadataMediaKind, MetadataProviderResult
 
 
-def _uploader(cookie_dir: Path) -> PTPUploader:
+def _uploader(cookie_dir: Path, mediainfo_obj: MagicMock | None = None) -> PTPUploader:
     return PTPUploader(
         username="user",
         password="password",
-        mediainfo_obj=MagicMock(),
+        mediainfo_obj=mediainfo_obj or MagicMock(),
         announce_url="https://tracker.example/announce",
         cookie_dir=cookie_dir,
     )
@@ -83,7 +86,8 @@ def test_ptp_upload_post_has_a_timeout(
     media_search_payload = MagicMock()
     # Skip the type-detection duration lookup, which needs a real MediaInfo
     # object; only the timeout on the POST is under test here.
-    media_search_payload.imdb_data.kind = None
+    media_search_payload.provider_metadata = None
+    media_search_payload.media_type = MediaType.MOVIE
 
     with pytest.raises(TrackerError, match="is not the expected one"):
         uploader.upload(
@@ -97,3 +101,48 @@ def test_ptp_upload_post_has_a_timeout(
 
     fake_session.post.assert_called_once()
     assert fake_session.post.call_args.kwargs["timeout"] == uploader.timeout
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [
+        (MetadataMediaKind.SHORT, "Short Film"),
+        (MetadataMediaKind.MINI_SERIES, "Miniseries"),
+        (MetadataMediaKind.STAND_UP_COMEDY, "Stand-up Comedy"),
+        (MetadataMediaKind.LIVE_PERFORMANCE, "Live Performance"),
+    ],
+)
+def test_ptp_type_prefers_provider_kind(
+    kind: MetadataMediaKind, expected: str, tmp_path: Path
+) -> None:
+    payload = MediaSearchPayload(media_type=MediaType.MOVIE)
+    payload.merge_metadata(
+        MetadataProviderResult(media_kind=kind),
+    )
+
+    assert _uploader(tmp_path)._get_type(payload) == expected
+
+
+def test_ptp_type_uses_runtime_when_provider_has_no_specific_kind(
+    tmp_path: Path,
+) -> None:
+    mediainfo_obj = MagicMock()
+    mediainfo_obj.general_tracks = [MagicMock(duration=44 * 60_000)]
+    uploader = _uploader(tmp_path, mediainfo_obj)
+    payload = MediaSearchPayload(media_type=MediaType.MOVIE)
+    payload.merge_metadata(
+        MetadataProviderResult(media_kind=MetadataMediaKind.MOVIE),
+    )
+
+    assert uploader._get_type(payload) == "Short Film"
+
+    mediainfo_obj.general_tracks = [MagicMock(duration=45 * 60_000)]
+    assert uploader._get_type(payload) == "Feature Film"
+
+
+def test_ptp_type_uses_miniseries_for_series_without_provider_kind(
+    tmp_path: Path,
+) -> None:
+    payload = MediaSearchPayload(media_type=MediaType.SERIES)
+
+    assert _uploader(tmp_path)._get_type(payload) == "Miniseries"

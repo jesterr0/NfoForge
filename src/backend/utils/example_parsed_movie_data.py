@@ -2472,3 +2472,4 @@ EXAMPLE_SEARCH_PAYLOAD = MediaSearchPayload(
     year=current_year,
     original_title=None,
 )
+EXAMPLE_SEARCH_PAYLOAD.merge_metadata()

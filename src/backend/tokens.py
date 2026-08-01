@@ -157,14 +157,14 @@ class Tokens:
         "Title parsed from media databases with no modifications",
     )
     IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
-    IMDB_AKA = FileToken("{imdb_aka}", "IMDb AKA title")
-    IMDB_AKA_FALLBACK_TITLE = FileToken(
-        "{imdb_aka_fallback_title}",
-        "IMDb AKA title (if not available fallback to {title})",
+    ORIGINAL_TITLE = FileToken("{original_title}", "Original title")
+    ORIGINAL_TITLE_FALLBACK_TITLE = FileToken(
+        "{original_title_fallback_title}",
+        "Original title (fallback to {title})",
     )
-    IMDB_AKA_FALLBACK_TITLE_CLEAN = FileToken(
-        "{imdb_aka_fallback_title_clean}",
-        "IMDb AKA title (if not available fallback to {title_clean})",
+    ORIGINAL_TITLE_FALLBACK_TITLE_CLEAN = FileToken(
+        "{original_title_fallback_title_clean}",
+        "Original title (fallback to {title_clean})",
     )
     TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
     TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")

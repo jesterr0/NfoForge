@@ -1,7 +1,13 @@
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
+from src.config.config import ConfigManager
+from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.exceptions import PluginError
 from src.plugins.loader import PluginLoader
+from src.plugins.metadata_provider import MetadataProviderResult
 from src.plugins.plugin_payload import PluginPayload
 
 
@@ -49,3 +55,49 @@ def test_load_plugins_records_unexpected_errors(tmp_path: Path, monkeypatch) -> 
 
     assert loader.load_plugins() == {}
     assert str(loader.failures[0]) == "plugin_broken_import: missing dependency"
+
+
+def test_metadata_provider_contract_is_accepted() -> None:
+    def metadata_provider(
+        *,
+        config: ConfigManager,
+        context: ProcessingContext,
+        imdb_id: str,
+        tmdb_data: Mapping[str, Any],
+        media_type: MediaType,
+        timeout: int,
+        **kwargs: object,
+    ) -> MetadataProviderResult | None:
+        del config, context, imdb_id, tmdb_data, media_type, timeout, kwargs
+        return None
+
+    loader = PluginLoader(None)  # type: ignore[arg-type]
+
+    loader._check_plugin(
+        PluginPayload(name="Metadata provider", metadata_provider=metadata_provider)
+    )
+
+
+def test_metadata_provider_contract_requires_forward_compatible_kwargs() -> None:
+    def metadata_provider(
+        *,
+        config: ConfigManager,
+        context: ProcessingContext,
+        imdb_id: str,
+        tmdb_data: Mapping[str, Any],
+        media_type: MediaType,
+        timeout: int,
+    ) -> MetadataProviderResult | None:
+        del config, context, imdb_id, tmdb_data, media_type, timeout
+        return None
+
+    loader = PluginLoader(None)  # type: ignore[arg-type]
+
+    try:
+        loader._check_plugin(
+            PluginPayload(name="Metadata provider", metadata_provider=metadata_provider)
+        )
+    except PluginError as error:
+        assert "must accept '**kwargs'" in str(error)
+    else:
+        raise AssertionError("Expected an incompatible provider to be rejected")

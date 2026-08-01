@@ -744,12 +744,10 @@ def test_flat_token_with_episode_title_clean_only_does_not_return_none() -> None
     assert output == "Selected Order Title"
 
 
-def test_flat_token_with_imdb_aka_fallback_title_clean_only_does_not_return_none() -> (
-    None
-):
-    # token string uses {imdb_aka_fallback_title_clean} alone; same substring
+def test_flat_original_title_clean_fallback_only_does_not_return_none() -> None:
+    # token string uses {original_title_fallback_title_clean} alone; same substring
     # collision as above must not raise a KeyError and return None
-    output = _series_replacer("{imdb_aka_fallback_title_clean}").get_output()
+    output = _series_replacer("{original_title_fallback_title_clean}").get_output()
 
     assert output is not None
 

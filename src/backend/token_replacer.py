@@ -726,14 +726,16 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.IMDB_ID.token:
             return self._imdb_id(token_data)
 
-        elif token_data.bracket_token == Tokens.IMDB_AKA.token:
-            return self._imdb_aka(token_data)
+        elif token_data.bracket_token == Tokens.ORIGINAL_TITLE.token:
+            return self._original_title(token_data)
 
-        elif token_data.bracket_token == Tokens.IMDB_AKA_FALLBACK_TITLE.token:
-            return self._imdb_aka(token_data, True)
+        elif token_data.bracket_token == Tokens.ORIGINAL_TITLE_FALLBACK_TITLE.token:
+            return self._original_title(token_data, True)
 
-        elif token_data.bracket_token == Tokens.IMDB_AKA_FALLBACK_TITLE_CLEAN.token:
-            return self._imdb_aka(token_data, True, True)
+        elif (
+            token_data.bracket_token == Tokens.ORIGINAL_TITLE_FALLBACK_TITLE_CLEAN.token
+        ):
+            return self._original_title(token_data, True, True)
 
         elif token_data.bracket_token == Tokens.TMDB_ID.token:
             return self._tmdb_id(token_data)
@@ -972,10 +974,10 @@ class TokenReplacer:
                         "{episode_title_clean}",
                         filled_tokens.get("episode_title_clean", ""),
                     )
-                if "{imdb_aka_fallback_title_clean}" in formatted_title:
+                if "{original_title_fallback_title_clean}" in formatted_title:
                     formatted_title = formatted_title.replace(
-                        "{imdb_aka_fallback_title_clean}",
-                        filled_tokens.get("imdb_aka_fallback_title_clean", ""),
+                        "{original_title_fallback_title_clean}",
+                        filled_tokens.get("original_title_fallback_title_clean", ""),
                     )
 
             # remove unfilled tokens if needed
@@ -1743,31 +1745,28 @@ class TokenReplacer:
         imdb_id = self.media_search_obj.imdb_id if self.media_search_obj.imdb_id else ""
         return self._optional_user_input(imdb_id, token_data)
 
-    def _imdb_aka(
+    def _original_title(
         self,
         token_data: TokenData,
         fallback: bool = False,
         cleaned_fallback: bool = False,
     ) -> str:
-        # attempt to get AKA from IMDb data
-        if self.media_search_obj.imdb_data and self.media_search_obj.imdb_data.title:
-            aka = self.media_search_obj.imdb_data.title
-            return self._optional_user_input(aka, token_data)
+        if self.media_search_obj.original_title:
+            original_title = self.media_search_obj.original_title
+            return self._optional_user_input(original_title, token_data)
 
-        # if no fall back return nothing
+        # The base token has no selected-title fallback.
         if not fallback:
             return ""
 
-        # fallback to tmdb title if we can
-        aka = ""
-        if self.media_search_obj.title:
-            if not cleaned_fallback:
-                aka = self._title_formatting_standard(self.media_search_obj.title)
-            else:
-                aka = self._title_formatting_cleaned(
-                    self.media_search_obj.title, self.title_clean_rules
-                )
-        return self._optional_user_input(aka, token_data)
+        original_title = self.media_search_obj.title or ""
+        if original_title and cleaned_fallback:
+            original_title = self._title_formatting_cleaned(
+                original_title, self.title_clean_rules
+            )
+        elif original_title:
+            original_title = self._title_formatting_standard(original_title)
+        return self._optional_user_input(original_title, token_data)
 
     def _tmdb_id(self, token_data: TokenData) -> str:
         tmdb_id = self.media_search_obj.tmdb_id if self.media_search_obj.tmdb_id else ""

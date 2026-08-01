@@ -1,17 +1,19 @@
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 import importlib
+import inspect
 from pathlib import Path
 import sys
 import traceback
 from types import ModuleType
-from typing import Any
+from typing import Any, get_type_hints
 
 from PySide6.QtCore import SignalInstance
 
 from src.backend.utils.working_dir import CURRENT_DIR
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import PluginError
 from src.logger.nfo_forge_logger import LOG
@@ -142,6 +144,14 @@ class PluginLoader:
                     "upload_text_replace_last_line_cb": Callable[[str], None],
                     "progress_cb": Callable[[float], None],
                 },
+                "metadata_provider": {
+                    "config": ConfigManager,
+                    "context": ProcessingContext,
+                    "imdb_id": str,
+                    "tmdb_data": Mapping[str, Any],
+                    "media_type": MediaType,
+                    "timeout": int,
+                },
             },
         )
 
@@ -170,15 +180,28 @@ class PluginLoader:
                 f"'PluginPayload.{plugin_name}' should be a callable function"
             )
 
-        # check that the function accepts **kwargs
-        func_code = getattr(plugin_payload_var, "__code__", None)
-        if not func_code or "kwargs" not in func_code.co_varnames:
+        try:
+            signature = inspect.signature(plugin_payload_var)
+        except (TypeError, ValueError) as error:
+            raise PluginError(
+                f"Could not inspect callable for '{plugin_name}'"
+            ) from error
+
+        if not any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.parameters.values()
+        ):
             raise PluginError(
                 f"'{plugin_name}' must accept '**kwargs' to be compatible with the loader."
             )
 
         # validate expected kwargs
-        annotations = getattr(plugin_payload_var, "__annotations__", {})
+        try:
+            annotations = get_type_hints(plugin_payload_var)
+        except (NameError, TypeError) as error:
+            raise PluginError(
+                f"Could not resolve type annotations for '{plugin_name}': {error}"
+            ) from error
         for key, expected_type in expected_kwargs.items():
             actual_type = annotations.get(key)
             if actual_type and actual_type != expected_type:

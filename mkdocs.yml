@@ -16,6 +16,8 @@ nav:
       - Multi-Line Strings: view/token-replacer/multi-line.md
       - Prompt Tokens: view/token-replacer/prompt-tokens.md
       - Advanced: view/token-replacer/advanced.md
+  - Plugins:
+      - Metadata Providers: view/plugins/metadata-provider.md
 
 not_in_nav: |
   file_tokens.md
