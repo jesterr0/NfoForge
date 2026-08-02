@@ -40,6 +40,28 @@ def _bare_nfoforge_with_config() -> start_ui.NfoForge:
     return app
 
 
+def _stub_dialog_class(migrate_requested: bool, suppress_future_prompts: bool) -> type:
+    """A `TemplateMigrationDialog` stand-in with fixed post-`exec()` results.
+
+    Used by tests that only care what `_maybe_prompt_template_migration` does
+    with the two flags it reads off the dialog -- not with any real Qt
+    widget or user interaction.
+    """
+
+    class _StubDialog:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.migrate_requested = migrate_requested
+            self.suppress_future_prompts = suppress_future_prompts
+
+        def exec(self) -> None:
+            return None
+
+        def deleteLater(self) -> None:
+            return None
+
+    return _StubDialog
+
+
 def test_plain_config_error_routes_to_generic_recovery_handler(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -285,3 +307,103 @@ def test_a_scanner_failure_never_blocks_startup(
 
     # Must not raise: a convenience prompt cannot prevent the app launching.
     app._maybe_prompt_template_migration()
+
+
+def test_declining_the_prompt_does_not_migrate_templates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The consent gate itself: a decline must never touch the user's files.
+
+    None of the other startup tests assert this -- they cover suppressed,
+    empty-reports, and scanner-exception, but not the accept/decline branch
+    that actually guards the destructive call.
+    """
+    reports_stub = [object()]
+    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: reports_stub)
+    monkeypatch.setattr(
+        start_ui,
+        "TemplateMigrationDialog",
+        _stub_dialog_class(migrate_requested=False, suppress_future_prompts=False),
+    )
+
+    migrate_calls: list[object] = []
+    monkeypatch.setattr(
+        start_ui,
+        "migrate_templates",
+        lambda reports: migrate_calls.append(reports) or [],
+    )
+
+    app = _bare_nfoforge_with_config()
+    app.config.program.suppress_template_token_prompt = False
+    app._maybe_prompt_template_migration()
+
+    assert migrate_calls == []
+
+
+def test_accepting_the_prompt_migrates_templates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The consent gate itself: an accept must actually run the migration."""
+    reports_stub = [object()]
+    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: reports_stub)
+    monkeypatch.setattr(
+        start_ui,
+        "TemplateMigrationDialog",
+        _stub_dialog_class(migrate_requested=True, suppress_future_prompts=False),
+    )
+
+    migrate_calls: list[object] = []
+
+    def record_migrate(reports: object) -> list[object]:
+        migrate_calls.append(reports)
+        return []
+
+    monkeypatch.setattr(start_ui, "migrate_templates", record_migrate)
+    # A successful migration shows a modal QMessageBox; stub it out so the
+    # test doesn't block waiting for a click.
+    monkeypatch.setattr(start_ui.QMessageBox, "information", lambda *a, **k: None)
+
+    app = _bare_nfoforge_with_config()
+    app.config.program.suppress_template_token_prompt = False
+    app._maybe_prompt_template_migration()
+
+    assert migrate_calls == [reports_stub]
+
+
+def test_a_suppression_save_failure_does_not_block_migration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failure persisting "don't ask again" must not swallow the migration
+    the user just asked for, and must not escape as an exception -- it is
+    logged instead. Guards against re-introducing the ordering bug where
+    `save_program()` ran (and could raise) before `migrate_templates`.
+    """
+    reports_stub = [object()]
+    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: reports_stub)
+    monkeypatch.setattr(
+        start_ui,
+        "TemplateMigrationDialog",
+        _stub_dialog_class(migrate_requested=True, suppress_future_prompts=True),
+    )
+
+    migrate_calls: list[object] = []
+
+    def record_migrate(reports: object) -> list[object]:
+        migrate_calls.append(reports)
+        return []
+
+    monkeypatch.setattr(start_ui, "migrate_templates", record_migrate)
+    monkeypatch.setattr(start_ui.QMessageBox, "information", lambda *a, **k: None)
+
+    app = _bare_nfoforge_with_config()
+    app.config.program.suppress_template_token_prompt = False
+
+    def explode_save() -> None:
+        raise ConfigError("disk full")
+
+    app.config.save_program = explode_save
+
+    # Must not raise, and the migration must still have run.
+    app._maybe_prompt_template_migration()
+
+    assert migrate_calls == [reports_stub]

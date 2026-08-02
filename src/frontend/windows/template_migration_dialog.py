@@ -1,5 +1,7 @@
 """Ask the user before rewriting their own NFO template files."""
 
+import traceback
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -16,6 +18,7 @@ from src.backend.utils.template_token_migration import (
     build_diff,
     rewrite_template_text,
 )
+from src.logger.nfo_forge_logger import LOG
 
 
 class TemplateMigrationDialog(QDialog):
@@ -43,8 +46,8 @@ class TemplateMigrationDialog(QDialog):
         layout.addWidget(
             QLabel(
                 f"{len(reports)} of your templates reference tokens that were "
-                "renamed in this version. Until they are updated, those fields "
-                "render as blank in generated NFOs.",
+                "renamed or removed in this version. Until they are updated, "
+                "those fields render as blank in generated NFOs.",
                 wordWrap=True,
                 parent=self,
             )
@@ -57,7 +60,11 @@ class TemplateMigrationDialog(QDialog):
 
         layout.addWidget(
             QLabel(
-                "A timestamped backup of each file is kept alongside it.",
+                "Templates with renamed tokens are rewritten, with a "
+                "timestamped backup kept alongside the original. Templates "
+                "that only reference removed tokens have no automatic "
+                "replacement and are left untouched for you to edit by hand.",
+                wordWrap=True,
                 parent=self,
             )
         )
@@ -69,6 +76,18 @@ class TemplateMigrationDialog(QDialog):
         self.update_button = QPushButton("Update", parent=self)
         self.not_now_button = QPushButton("Not now", parent=self)
         self.diff_button = QPushButton("Show diff", parent=self)
+
+        # "Not now" -- not "Update" -- is the keyboard-Enter default. The
+        # dialog opens with focus in the read-only summary box, which does
+        # not itself consume Return, so Qt's dialog-level auto-default
+        # promotion would otherwise hand a reflexive Enter (the natural
+        # reaction to an unexpected dialog while still reading it) to
+        # whichever button was added first -- the destructive one. The
+        # non-destructive action must own the keyboard default.
+        self.update_button.setAutoDefault(False)
+        self.diff_button.setAutoDefault(False)
+        self.not_now_button.setDefault(True)
+
         button_box.addButton(self.update_button, QDialogButtonBox.ButtonRole.AcceptRole)
         button_box.addButton(
             self.not_now_button, QDialogButtonBox.ButtonRole.RejectRole
@@ -96,27 +115,56 @@ class TemplateMigrationDialog(QDialog):
 
     def _on_update(self) -> None:
         self.migrate_requested = True
-        self.suppress_future_prompts = self.suppress_checkbox.isChecked()
         self.accept()
 
     def _on_not_now(self) -> None:
         self.migrate_requested = False
-        self.suppress_future_prompts = self.suppress_checkbox.isChecked()
         self.reject()
 
+    def done(self, result: int) -> None:
+        """Capture "Don't ask me again" no matter how the dialog closes.
+
+        `_on_update`/`_on_not_now` only run for the Update/Not now buttons.
+        Esc and the window's close button both call `QDialog.reject()`
+        directly, bypassing those handlers, so the checkbox is read once
+        here -- the one path every way of closing the dialog goes through --
+        instead of duplicating the read in each handler.
+        """
+        self.suppress_future_prompts = self.suppress_checkbox.isChecked()
+        super().done(result)
+
     def _on_show_diff(self) -> None:
-        """Swap the summary for a unified diff of every affected file."""
-        diffs: list[str] = []
-        for report in self._reports:
-            try:
-                with report.path.open(encoding="utf-8", newline="") as template_file:
-                    original = template_file.read()
-            except (OSError, UnicodeDecodeError):
-                continue
-            diff = build_diff(report.path, original, rewrite_template_text(original))
-            if diff:
-                diffs.append(diff)
-        self.summary_view.setPlainText(
-            "\n".join(diffs) if diffs else "No textual changes to show."
-        )
-        self.diff_button.setEnabled(False)
+        """Swap the summary for a unified diff of every affected file.
+
+        This slot runs inside the nested event loop `QDialog.exec()` starts,
+        so an exception here would not reach a `try`/`except` wrapped around
+        `exec()` in the caller -- it never crosses back into that Python
+        frame the normal way. Caught and logged locally instead, falling
+        back to the plain summary, so a bad diff can degrade the dialog
+        without taking startup down with it.
+        """
+        try:
+            diffs: list[str] = []
+            for report in self._reports:
+                try:
+                    with report.path.open(
+                        encoding="utf-8", newline=""
+                    ) as template_file:
+                        original = template_file.read()
+                except (OSError, UnicodeDecodeError):
+                    continue
+                diff = build_diff(
+                    report.path, original, rewrite_template_text(original)
+                )
+                if diff:
+                    diffs.append(diff)
+            self.summary_view.setPlainText(
+                "\n".join(diffs) if diffs else "No textual changes to show."
+            )
+            self.diff_button.setEnabled(False)
+        except Exception:
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to build template migration diff: {traceback.format_exc()}",
+            )
+            self.summary_view.setPlainText(self.summary_text())

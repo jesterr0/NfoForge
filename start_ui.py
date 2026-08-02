@@ -357,24 +357,42 @@ class NfoForge:
 
             dialog = TemplateMigrationDialog(reports, parent=self.splash_screen)
             dialog.exec()
+            migrate_requested = dialog.migrate_requested
+            suppress_future_prompts = dialog.suppress_future_prompts
+            dialog.deleteLater()
 
-            if dialog.suppress_future_prompts:
-                self.config.program.suppress_template_token_prompt = True
-                self.config.save_program()
-
-            if not dialog.migrate_requested:
-                return
-
-            migrated = migrate_templates(reports)
-            skipped = len(reports) - len(migrated)
-            message = f"Updated {len(migrated)} template(s)."
-            if skipped:
-                message += (
-                    f"\n\n{skipped} template(s) were left unchanged; they either "
-                    "could not be written or only reference tokens that have no "
-                    "replacement."
+            # The migration the user just asked for runs first, and its
+            # success does not depend on the suppression write below: a
+            # failure persisting "don't ask again" must never look like a
+            # failure to update the templates themselves.
+            if migrate_requested:
+                migrated = migrate_templates(reports)
+                skipped = len(reports) - len(migrated)
+                message = f"Updated {len(migrated)} template(s)."
+                if skipped:
+                    message += (
+                        f"\n\n{skipped} template(s) were left unchanged; they "
+                        "either could not be written or only reference tokens "
+                        "that have no replacement."
+                    )
+                QMessageBox.information(
+                    self.splash_screen, "Templates Updated", message
                 )
-            QMessageBox.information(self.splash_screen, "Templates Updated", message)
+
+            if suppress_future_prompts:
+                self.config.program.suppress_template_token_prompt = True
+                try:
+                    self.config.save_program()
+                except ConfigError:
+                    # Best-effort only: the migration above (if requested)
+                    # has already happened, so losing this write just means
+                    # the user is asked again next launch -- not silently
+                    # left without the migration they consented to.
+                    LOG.warning(
+                        LOG.LOG_SOURCE.FE,
+                        "Failed to persist template-token prompt suppression: "
+                        f"{traceback.format_exc()}",
+                    )
         except Exception:
             LOG.warning(
                 LOG.LOG_SOURCE.FE,
