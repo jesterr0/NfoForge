@@ -165,4 +165,4 @@ def mkbrr_generate_torrent(
             LOG.error(LOG.LOG_SOURCE.BE, f"Error while running mkbrr command ({e}).")
             raise MkbrrTorrentError(
                 f"Failed to generate torrent: Unhandled exception {e}"
-            )
+            ) from e
