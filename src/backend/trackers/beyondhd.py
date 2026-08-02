@@ -503,7 +503,7 @@ class BHDSearch:
             LOG.info(LOG.LOG_SOURCE.BE, f"Total results found: {len(results)}")
             LOG.debug(LOG.LOG_SOURCE.BE, f"Total results found: {results}")
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(str(error_message))
+            raise TrackerError(str(error_message)) from error_message
 
         return results
 
@@ -540,7 +540,7 @@ class BHDSearch:
                 else:
                     raise TrackerError(response_json["status_message"])
         except Exception as error:
-            raise TrackerError(str(error))
+            raise TrackerError(str(error)) from error
 
     @staticmethod
     def _handle_date(timestamp: str | None) -> datetime | None:
