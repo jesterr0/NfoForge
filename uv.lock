@@ -1208,7 +1208,6 @@ dependencies = [
     { name = "tomlkit" },
     { name = "torf" },
     { name = "transmission-rpc" },
-    { name = "tvdb-v4-official" },
     { name = "typing-extensions" },
     { name = "unidecode" },
     { name = "urllib3" },
@@ -1281,7 +1280,6 @@ requires-dist = [
     { name = "tomlkit", specifier = ">=0.13.3" },
     { name = "torf", specifier = ">=4.3.0" },
     { name = "transmission-rpc", specifier = ">=7.0.11" },
-    { name = "tvdb-v4-official", specifier = ">=1.1.0" },
     { name = "types-psutil", marker = "extra == 'dev'" },
     { name = "typing-extensions", specifier = ">=4.12.2" },
     { name = "unidecode", specifier = ">=1.4.0" },
@@ -2380,15 +2378,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/68/b8/dc4debf525c3bb8a676f4fd0ab8534845e3b067c78a81ad05ac39014d849/transmission_rpc-7.0.11.tar.gz", hash = "sha256:5872322e60b42e368bc9c4724773aea4593113cb19bd2da589f0ffcdabe57963", size = 113744, upload-time = "2024-08-20T22:41:07.485Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/9f/4c/6319bcb1026e3f78c9cbcc9c24de77a76f09954e67ffc5ebfc29f7ce4b90/transmission_rpc-7.0.11-py3-none-any.whl", hash = "sha256:94fd008b54640dd9fff14d7ae26848f901e9d130a70950b8930f9b395988914f", size = 28231, upload-time = "2024-08-20T22:41:05.777Z" },
-]
-
-[[package]]
-name = "tvdb-v4-official"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8d/63/1ee5d021451205daa455d975ebb795af739f31ca637862c5ee6ae2e1b56f/tvdb_v4_official-1.1.0.tar.gz", hash = "sha256:c315979f71f4b5e76a92202822c31c3ad7e695237d0901afbeec4e09dbb2218d", size = 4325, upload-time = "2022-09-22T19:11:51.285Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/d2/3f3e03fe96c23701fa24890dcd393034f4d37fb1e4649f573b1a6f3cf994/tvdb_v4_official-1.1.0-py3-none-any.whl", hash = "sha256:1d66f87f7d3d36feb4923b37aefd5a048dd208096bc640d1898acb1956fc0ba1", size = 3801, upload-time = "2022-09-22T19:11:49.819Z" },
 ]
 
 [[package]]

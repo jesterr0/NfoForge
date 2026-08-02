@@ -7,6 +7,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
+from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.frontend.wizards.media_search import (
     MediaSearch,
     MediaSearchJobResult,
@@ -165,6 +166,48 @@ def test_failed_search_clears_payload_and_preserves_query(
     assert page.listbox.item(0).text().startswith("Search unavailable:")
 
 
+def test_manual_id_lookup_failure_keeps_current_selection(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    page.loading_complete = True
+    page.other_ids_parsed = True
+    item_name = "1) Movie (2024)"
+    page.backend.media_data = {item_name: {"title": "Movie"}}
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.context.media_search.title = "Movie"
+    warnings: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, title, message: warnings.append((title, message)),
+    )
+
+    page._handle_id_parse_failed(MediaSearchError("TMDB metadata lookup failed"))
+
+    assert page.loading_complete is True
+    assert page.other_ids_parsed is False
+    assert page.backend.media_data == {item_name: {"title": "Movie"}}
+    assert page.context.media_search.title == "Movie"
+    assert page.listbox.item(0).text() == item_name
+    assert warnings[0][0] == "Metadata Lookup Failed"
+    assert "current search selection was kept" in warnings[0][1]
+
+
+def test_unavailable_manual_id_lookup_keeps_destructive_network_path(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    page.context.media_search.title = "Movie"
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_args, **_kwargs: None)
+
+    page._handle_id_parse_failed(MediaSearchUnavailableError("TVDB offline"))
+
+    assert page.loading_complete is False
+    assert page.context.media_search.title is None
+
+
 def test_transformer_failure_warns_and_continues_with_tmdb(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -260,6 +303,10 @@ def test_id_validation_accepts_supported_manual_id_shapes(tmp_path: Path) -> Non
     assert page._has_invalid_id_formats() is False
 
     page.imdb_id_entry.setText("1234567")
+    assert page._has_invalid_id_formats() is True
+
+    page.imdb_id_entry.setText("tt1234567")
+    page.tmdb_id_entry.setText("²")
     assert page._has_invalid_id_formats() is True
 
 

@@ -6,6 +6,7 @@ import niquests
 import pytest
 
 from src.backend.media_search import MediaSearchBackEnd
+from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_type import MediaType
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 
@@ -90,6 +91,116 @@ def test_tmdb_invalid_response_is_reported() -> None:
 
     with pytest.raises(MediaSearchError, match="invalid search response"):
         backend._fetch_tmdb_results("https://example.invalid/search")
+
+
+def test_tmdb_search_query_is_sent_as_a_parameter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = MediaSearchBackEnd()
+    request: dict[str, Any] = {}
+
+    monkeypatch.setattr(
+        backend,
+        "_guessit",
+        lambda _value: ("Fast & Furious #9", "2024"),
+    )
+
+    def get(url: str, **kwargs: object) -> _Response:
+        request["url"] = url
+        request.update(kwargs)
+        return _Response({"results": []})
+
+    monkeypatch.setattr(backend.session, "get", get)
+
+    backend._parse_tmdb_api("ignored")
+
+    assert request["url"] == "https://api.themoviedb.org/3/search/multi"
+    params = request["params"]
+    assert isinstance(params, dict)
+    assert params["query"] == "Fast & Furious #9"
+    assert params["year"] == "2024"
+
+
+@pytest.mark.parametrize("media_id", ["../../person/1234", "123&api_key=x", "²"])
+def test_tmdb_metadata_rejects_non_decimal_ids(
+    media_id: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend = MediaSearchBackEnd()
+    monkeypatch.setattr(
+        backend.session,
+        "get",
+        lambda *_args, **_kwargs: pytest.fail("invalid IDs must not reach TMDB"),
+    )
+
+    with pytest.raises(MediaSearchError, match="decimal number"):
+        backend.fetch_complete_tmdb_data_for_selection(media_id, MediaType.MOVIE)
+
+
+def test_tmdb_metadata_rejects_a_mismatched_response_id() -> None:
+    backend = MediaSearchBackEnd()
+    backend.session.get = lambda *_args, **_kwargs: _Response(  # type: ignore[method-assign]
+        {"id": 999, "title": "Wrong movie"}
+    )
+
+    with pytest.raises(MediaSearchError, match="different ID"):
+        backend.fetch_complete_tmdb_data_for_selection("123", MediaType.MOVIE)
+
+
+def test_tvdb_decimal_validation_does_not_convert_superscript_digits() -> None:
+    backend = MediaSearchBackEnd()
+
+    result = asyncio.run(
+        backend.parse_other_ids(
+            media_type=MediaType.SERIES,
+            imdb_id="",
+            tmdb_title="Show",
+            tmdb_year=2024,
+            original_language="en",
+            tmdb_genres=[],
+            tvdb_id="²",
+        )
+    )
+
+    assert result["resolved_ids"]["result"]["tvdb_id"] is None
+
+
+class _FakeTVDBSession:
+    def __init__(self) -> None:
+        self.post_calls: list[dict[str, Any]] = []
+        self.get_calls: list[dict[str, Any]] = []
+
+    def post(self, url: str, **kwargs: Any) -> _Response:
+        self.post_calls.append({"url": url, **kwargs})
+        return _Response({"data": {"token": "tvdb-token"}})
+
+    def get(self, url: str, **kwargs: Any) -> _Response:
+        self.get_calls.append({"url": url, **kwargs})
+        if url.endswith("/search/remoteid/tt123%26x"):
+            return _Response({"data": [{"series": {"id": 321}}]})
+        return _Response({"data": {"id": 321, "episodes": []}})
+
+    def close(self) -> None:
+        return None
+
+
+def test_tvdb_sync_and_async_clients_use_timeouts_and_reuse_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_session = _FakeTVDBSession()
+    monkeypatch.setattr(
+        "src.backend.utils.tvdb_client.niquests.Session", lambda: fake_session
+    )
+    client = TVDBClient("api-key", timeout=7)
+
+    assert client.search_by_remote_id("tt123&x")[0]["series"]["id"] == 321
+    async_client = AsyncTVDBClient(client)
+    assert asyncio.run(async_client.get_series_extended(321))["id"] == 321
+
+    assert len(fake_session.post_calls) == 1
+    assert fake_session.post_calls[0]["timeout"] == 7
+    assert len(fake_session.get_calls) == 2
+    assert all(call["timeout"] == 7 for call in fake_session.get_calls)
+    assert fake_session.get_calls[0]["url"].endswith("/search/remoteid/tt123%26x")
 
 
 def test_series_tvdb_failure_is_returned_for_the_ui() -> None:

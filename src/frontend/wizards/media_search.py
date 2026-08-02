@@ -41,7 +41,11 @@ from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies
-from src.exceptions import MediaFileNotFoundError, MediaSearchError
+from src.exceptions import (
+    MediaFileNotFoundError,
+    MediaSearchError,
+    MediaSearchUnavailableError,
+)
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.general_worker import GeneralWorker
@@ -111,7 +115,7 @@ def _run_media_search_job(
 
 class IDParseWorker(QThread):
     job_finished = Signal(object)
-    job_failed = Signal(str)
+    job_failed = Signal(object)
 
     def __init__(
         self,
@@ -200,7 +204,7 @@ class IDParseWorker(QThread):
                 LOG.LOG_SOURCE.BE,
                 f"Media metadata lookup failed: {traceback.format_exc()}",
             )
-            self.job_failed.emit(str(e) or "Media metadata lookup failed.")
+            self.job_failed.emit(e)
         finally:
             async_loop.close()
 
@@ -427,9 +431,9 @@ class MediaSearch(BaseWizardPage):
 
         if imdb_id and re.fullmatch(r"tt\d+", imdb_id, re.IGNORECASE) is None:
             invalid_entries.append(self.imdb_id_entry)
-        if tmdb_id and not tmdb_id.isdigit():
+        if tmdb_id and not tmdb_id.isdecimal():
             invalid_entries.append(self.tmdb_id_entry)
-        if tvdb_id and not tvdb_id.isdigit():
+        if tvdb_id and not tvdb_id.isdecimal():
             invalid_entries.append(self.tvdb_id_entry)
 
         for entry in invalid_entries:
@@ -497,7 +501,7 @@ class MediaSearch(BaseWizardPage):
                 parent=self,
             )
             self.id_parse_worker.job_finished.connect(self._detected_id_data)
-            self.id_parse_worker.job_failed.connect(self._failed_search)
+            self.id_parse_worker.job_failed.connect(self._handle_id_parse_failed)
             GSigs().main_window_update_status_tip.emit(
                 "Parsing metadata, please wait...", 0
             )
@@ -521,11 +525,37 @@ class MediaSearch(BaseWizardPage):
                 self._on_finished_cb()
             else:
                 GSigs().wizard_next.emit()
+        except MediaSearchError as error:
+            self._handle_id_lookup_failed(str(error))
         except Exception as error:
             self._failed_search(str(error))
         finally:
             GSigs().main_window_set_disabled.emit(False)
             GSigs().main_window_clear_status_tip.emit()
+
+    @Slot(object)
+    def _handle_id_parse_failed(self, error: object) -> None:
+        error_message = str(error) or "Media metadata lookup failed."
+        if isinstance(error, MediaSearchUnavailableError):
+            self._failed_search(error_message)
+        elif isinstance(error, MediaSearchError):
+            self._handle_id_lookup_failed(error_message)
+        else:
+            self._failed_search(error_message)
+
+    def _handle_id_lookup_failed(self, error_message: str) -> None:
+        """Keep the selected search result when a manually supplied ID fails."""
+
+        self.other_ids_parsed = False
+        self.listbox.setDisabled(False)
+        self.completeChanged.emit()
+        GSigs().main_window_set_disabled.emit(False)
+        GSigs().main_window_clear_status_tip.emit()
+        QMessageBox.warning(
+            self,
+            "Metadata Lookup Failed",
+            f"{error_message}\n\nCheck the ID and try again. Your current search selection was kept.",
+        )
 
     def _handle_metadata_failures(self, media_data: dict[str, Any] | None) -> bool:
         if not media_data:
@@ -609,7 +639,7 @@ class MediaSearch(BaseWizardPage):
             int(year_value)
             if isinstance(year_value, int | str)
             and not isinstance(year_value, bool)
-            and str(year_value).isdigit()
+            and str(year_value).isdecimal()
             else None
         )
         original_title = item_data.get("original_title")

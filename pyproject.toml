@@ -33,7 +33,6 @@ dependencies = [
     "stdlib-list>=0.12.0",
     "jinja2>=3.1.6",
     "beautifulsoup4>=4.13.4",
-    "tvdb-v4-official>=1.1.0",
     "rapidfuzz>=3.14.3",
     "qtawesome>=1.4.0",
     "urllib3>=2.6.2",

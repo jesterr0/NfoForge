@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from collections.abc import Mapping
 import re
 from typing import Any, cast
 import zlib
@@ -7,11 +8,11 @@ import zlib
 from guessit import guessit
 import niquests
 from rapidfuzz import fuzz
-import tvdb_v4_official
 from unidecode import unidecode
 
 from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.super_sub import normalize_super_sub
+from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
@@ -28,6 +29,7 @@ class MediaSearchBackEnd:
     ) -> None:
         self.media_data: dict[str, dict[str, Any]] = {}
         self.session = niquests.Session()
+        self._tvdb_client: AsyncTVDBClient | None = None
         self.use_base_language_for_images = use_base_language_for_images
         self.timeout = max(1, timeout)
         self.params = {
@@ -43,6 +45,8 @@ class MediaSearchBackEnd:
         """Properly close the session when done"""
         if hasattr(self, "session") and self.session:
             self.session.close()
+        if hasattr(self, "_tvdb_client") and self._tvdb_client:
+            self._tvdb_client.close()
 
     def __del__(self) -> None:
         """Cleanup when object is destroyed"""
@@ -55,13 +59,18 @@ class MediaSearchBackEnd:
         # request is in flight or if that request fails.
         self.media_data.clear()
 
-        multi_url = (
-            f"https://api.themoviedb.org/3/search/multi?page=1&query={media_title}"
-        )
+        search_params: dict[str, Any] = {
+            **self.params,
+            "page": 1,
+            "query": media_title,
+        }
         if media_year:
-            multi_url += f"&year={media_year}"
+            search_params["year"] = media_year
 
-        multi_results = self._fetch_tmdb_results(multi_url)
+        multi_results = self._fetch_tmdb_results(
+            "https://api.themoviedb.org/3/search/multi",
+            params=search_params,
+        )
 
         media_dict: dict[str, dict[str, Any]] = {}
         base_num = 0
@@ -144,10 +153,16 @@ class MediaSearchBackEnd:
         self.media_data = media_dict
         return self.media_data
 
-    def _fetch_tmdb_results(self, url: str) -> list[dict[str, Any]]:
+    def _fetch_tmdb_results(
+        self,
+        url: str,
+        params: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         try:
             with self.session.get(
-                url, params=self.params, timeout=self.timeout
+                url,
+                params=params if params is not None else self.params,
+                timeout=self.timeout,
             ) as response:
                 response.raise_for_status()
                 response_json = response.json()
@@ -195,10 +210,8 @@ class MediaSearchBackEnd:
         Example URL: https://api.themoviedb.org/3/movie/603?append_to_response=alternative_titles,images,external_ids&language=en
         """
         endpoint = "movie" if media_type is MediaType.MOVIE else "tv"
-        url = (
-            f"https://api.themoviedb.org/3/{endpoint}/{media_id}?"
-            "append_to_response=alternative_titles,images,external_ids"
-        )
+        validated_media_id = self._validate_tmdb_id(media_id)
+        url = f"https://api.themoviedb.org/3/{endpoint}/{validated_media_id}"
 
         # create modified params with base language for better image results
         image_params = self.params.copy()
@@ -208,6 +221,7 @@ class MediaSearchBackEnd:
             # extract base language (e.g., 'en' from 'en-US')
             base_language = current_language.split("-")[0]
             image_params["language"] = base_language
+        image_params["append_to_response"] = "alternative_titles,images,external_ids"
 
         try:
             with self.session.get(
@@ -223,6 +237,22 @@ class MediaSearchBackEnd:
                 if not response_data:
                     raise MediaSearchError(
                         "TMDB returned no metadata for the selection."
+                    )
+                returned_id = response_data.get("id")
+                try:
+                    returned_numeric_id = (
+                        int(str(returned_id))
+                        if isinstance(returned_id, str | int)
+                        and not isinstance(returned_id, bool)
+                        else None
+                    )
+                except ValueError:
+                    returned_numeric_id = None
+                if returned_numeric_id is None or returned_numeric_id != int(
+                    validated_media_id
+                ):
+                    raise MediaSearchError(
+                        "TMDB returned metadata for a different ID than requested."
                     )
                 return response_data
         except (
@@ -266,7 +296,7 @@ class MediaSearchBackEnd:
     ) -> dict[str, Any]:
         # fetch complete TMDB data if we have TMDB ID
         tmdb_complete_data: dict[str, Any] | None = None
-        resolved_tvdb_id = int(tvdb_id) if tvdb_id.isdigit() else None
+        resolved_tvdb_id = int(tvdb_id) if tvdb_id.isdecimal() else None
         if tmdb_id:
             tmdb_complete_data = self.fetch_complete_tmdb_data_for_selection(
                 tmdb_id, media_type
@@ -335,17 +365,11 @@ class MediaSearchBackEnd:
     async def parse_tvdb_data(
         self, imdb_id: str | None, tvdb_id: int | None
     ) -> dict[str, Any] | None:
-        tvdb_parse = await asyncio.wait_for(
-            asyncio.to_thread(tvdb_v4_official.TVDB, self._get_tvdb_k()),
-            timeout=self.timeout,
-        )
+        tvdb_parse = self._get_tvdb_client()
 
         # if we have imdb_id but failed to detect tvdb_id we'll use tvdb api to find the id
         if not tvdb_id and imdb_id:
-            find_tvdb_id = await asyncio.wait_for(
-                asyncio.to_thread(tvdb_parse.search_by_remote_id, imdb_id),
-                timeout=self.timeout,
-            )
+            find_tvdb_id = await tvdb_parse.search_by_remote_id(imdb_id)
             if find_tvdb_id and isinstance(find_tvdb_id, list):
                 first_result = find_tvdb_id[0]
                 if isinstance(first_result, dict):
@@ -366,15 +390,7 @@ class MediaSearchBackEnd:
         # now we can extensively parse the data from the API
         if tvdb_id:
             # get the main series data (it will have a default type)
-            raw_series_data = await asyncio.wait_for(
-                asyncio.to_thread(
-                    tvdb_parse.get_series_extended,
-                    tvdb_id,
-                    meta="episodes",
-                    short=True,
-                ),
-                timeout=self.timeout,
-            )
+            raw_series_data = await tvdb_parse.get_series_extended(tvdb_id)
 
             if not isinstance(raw_series_data, dict):
                 return None
@@ -431,13 +447,9 @@ class MediaSearchBackEnd:
                     if season_type.api_param == "official":
                         return default_episodes
 
-                    episodes_response = await asyncio.wait_for(
-                        asyncio.to_thread(
-                            tvdb_parse.get_series_episodes,
-                            tvdb_id,
-                            season_type=season_type.api_param,
-                        ),
-                        timeout=self.timeout,
+                    episodes_response = await tvdb_parse.get_series_episodes(
+                        tvdb_id,
+                        season_type=season_type.api_param,
                     )
 
                     if isinstance(episodes_response, dict):
@@ -544,6 +556,25 @@ class MediaSearchBackEnd:
             return series_data
 
         return None
+
+    def _get_tvdb_client(self) -> AsyncTVDBClient:
+        if self._tvdb_client is None:
+            self._tvdb_client = AsyncTVDBClient(
+                TVDBClient(self._get_tvdb_k(), self.timeout)
+            )
+        return self._tvdb_client
+
+    @staticmethod
+    def _validate_tmdb_id(media_id: str | int) -> str:
+        if isinstance(media_id, bool):
+            raise MediaSearchError("TMDB ID must be a decimal number.")
+        value = str(media_id).strip()
+        if not value or not value.isdecimal():
+            raise MediaSearchError("TMDB ID must be a decimal number.")
+        try:
+            return str(int(value))
+        except ValueError as error:
+            raise MediaSearchError("TMDB ID is too large to be valid.") from error
 
     async def parse_ani_list(
         self, tmdb_title: str, tmdb_year: int
