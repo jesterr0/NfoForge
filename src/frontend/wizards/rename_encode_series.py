@@ -303,7 +303,6 @@ class RenameEncodeSeries(BaseWizardPage):
 
     def initializePage(self) -> None:
         """Initialize the page with series data and load episode batch."""
-        self.context.media_input.has_basic_data()
         media_files = self.context.media_input.file_list
         release_group_name = self.config.settings.series.release_group
 
