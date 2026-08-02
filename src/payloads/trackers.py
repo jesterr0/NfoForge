@@ -69,7 +69,7 @@ class TorrentLeechInfo(TrackerInfo):
     alt_2_fa_token: str | None = None
 
     # override url type
-    url_type = URLType.HTML
+    url_type: URLType = URLType.HTML
 
 
 @dataclass(slots=True)
