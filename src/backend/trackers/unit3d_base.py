@@ -580,7 +580,7 @@ class Unit3dBaseSearch:
                 response_json = response.json()
                 results = self._convert_response(response_json)
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(str(error_message))
+            raise TrackerError(str(error_message)) from error_message
 
         results = results if results else []
         LOG.info(
