@@ -23,7 +23,7 @@ class Bunch(dict[str, Any]):
         try:
             return self[name]
         except KeyError:
-            raise AttributeError(f"'Bunch' object has no attribute '{name}'")
+            raise AttributeError(f"'Bunch' object has no attribute '{name}'") from None
 
     def __setattr__(self, name: str, value: Any) -> None:
         self[name] = value
@@ -83,7 +83,7 @@ class RTorrentClient:
                 else:
                     # Certificate verification is an explicit opt-out for
                     # self-signed/private deployments, never the default.
-                    context = ssl._create_unverified_context()
+                    context = ssl._create_unverified_context()  # noqa: S323 - explicit user opt-out for private certificates
             except (OSError, ssl.SSLError) as error:
                 raise TrackerClientError(
                     f"Invalid rTorrent TLS configuration: {scrub_secrets(str(error))}"
@@ -213,7 +213,7 @@ class RTorrentClient:
                         f"File size mismatch for {filepath}: is {file_stat.st_size}, expected {file_info['length']}",
                     )
             except FileNotFoundError:
-                raise FileNotFoundError(f"File not found: {filepath}")
+                raise FileNotFoundError(f"File not found: {filepath}") from None
 
             resume["files"].append(
                 {
