@@ -101,7 +101,7 @@ class ConfigManager(TypedTomlOperations):
                 self._program_snapshot = serialized
 
         except Exception as e:
-            raise ConfigError(f"Error saving program conf file: {str(e)}")
+            raise ConfigError(f"Error saving program conf file: {str(e)}") from e
 
     def load_profile(self, config_file: str | None = None) -> None:
         """Loads config file, if missing automatically creates one from the example template."""
