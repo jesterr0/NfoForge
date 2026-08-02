@@ -84,7 +84,7 @@ class CropDetect:
         # track the largest common crop
         largest_common_crop = None
 
-        for crop, freq in most_common_crops:
+        for crop, _freq in most_common_crops:
             # if no largest crop has been selected yet or if the current crop is larger
             if largest_common_crop is None:
                 largest_common_crop = crop
