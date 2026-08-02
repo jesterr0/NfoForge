@@ -261,3 +261,84 @@ def test_rewrite_still_finds_a_token_after_a_block_with_a_bounded_broken_literal
     renamed, _ = scan_template_text(text)
     assert renamed == {"movie_title": "title"}
     assert rewrite_template_text(text) == "{{ foo('bar) }} {{ title }}"
+
+
+def test_migrate_template_file_rewrites_and_backs_up(tmp_path: Path) -> None:
+    from src.backend.utils.template_token_migration import migrate_template_file
+
+    template = tmp_path / "movie.txt"
+    template.write_text("Title: {{ movie_title }}", encoding="utf-8")
+
+    backup = migrate_template_file(template)
+
+    assert template.read_text(encoding="utf-8") == "Title: {{ title }}"
+    assert backup.read_text(encoding="utf-8") == "Title: {{ movie_title }}"
+    assert backup.parent == template.parent
+    assert backup.name.startswith("movie.txt.")
+    assert backup.name.endswith(".bak")
+
+
+def test_migrate_template_file_never_clobbers_an_existing_backup(
+    tmp_path: Path,
+) -> None:
+    from src.backend.utils.template_token_migration import migrate_template_file
+
+    template = tmp_path / "movie.txt"
+    template.write_text("{{ movie_title }}", encoding="utf-8")
+    first = migrate_template_file(template)
+
+    template.write_text("{{ movie_clean_title }}", encoding="utf-8")
+    second = migrate_template_file(template)
+
+    assert first != second
+    assert first.read_text(encoding="utf-8") == "{{ movie_title }}"
+    assert second.read_text(encoding="utf-8") == "{{ movie_clean_title }}"
+
+
+def test_migrate_templates_reports_each_pair(tmp_path: Path) -> None:
+    from src.backend.utils.template_token_migration import (
+        migrate_templates,
+        scan_template_dir,
+    )
+
+    (tmp_path / "a.txt").write_text("{{ movie_title }}", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("{{ mi_audio_codec }}", encoding="utf-8")
+
+    results = migrate_templates(scan_template_dir(tmp_path))
+
+    assert len(results) == 2
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "{{ title }}"
+    assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "{{ audio_codec }}"
+
+
+def test_migrate_templates_continues_after_one_file_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from src.backend.utils import template_token_migration
+
+    (tmp_path / "a.txt").write_text("{{ movie_title }}", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("{{ movie_title }}", encoding="utf-8")
+    reports = template_token_migration.scan_template_dir(tmp_path)
+
+    real_migrate = template_token_migration.migrate_template_file
+
+    def fail_on_a(path: Path) -> Path:
+        if path.name == "a.txt":
+            raise OSError("permission denied")
+        return real_migrate(path)
+
+    monkeypatch.setattr(template_token_migration, "migrate_template_file", fail_on_a)
+    results = template_token_migration.migrate_templates(reports)
+
+    # b still migrated; a reported as failed rather than aborting the batch.
+    assert len(results) == 1
+    assert results[0][0].name == "b.txt"
+
+
+def test_build_diff_shows_changed_lines(tmp_path: Path) -> None:
+    from src.backend.utils.template_token_migration import build_diff
+
+    diff = build_diff(Path("movie.txt"), "{{ movie_title }}", "{{ title }}")
+
+    assert "-{{ movie_title }}" in diff
+    assert "+{{ title }}" in diff

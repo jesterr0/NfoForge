@@ -13,6 +13,8 @@ headlessly.
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import datetime
+import difflib
 from pathlib import Path
 import re
 
@@ -242,3 +244,67 @@ def scan_template_dir(template_dir: Path) -> list[TemplateTokenReport]:
         if report.has_findings:
             reports.append(report)
     return reports
+
+
+def _next_backup_path(path: Path) -> Path:
+    """A timestamped sibling backup that never overwrites an earlier one.
+
+    Mirrors the archive strategy used when replacing a corrupt profile: a
+    timestamp for readability plus a counter so two runs in the same second
+    stay distinct.
+    """
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    candidate = path.with_name(f"{path.name}.{stamp}.bak")
+    counter = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.name}.{stamp}_{counter}.bak")
+        counter += 1
+    return candidate
+
+
+def build_diff(path: Path, original: str, migrated: str) -> str:
+    """Unified diff of one template, for the confirmation dialog."""
+    return "".join(
+        difflib.unified_diff(
+            original.splitlines(keepends=True),
+            migrated.splitlines(keepends=True),
+            fromfile=f"{path.name} (current)",
+            tofile=f"{path.name} (after migration)",
+            n=1,
+        )
+    )
+
+
+def migrate_template_file(path: Path) -> Path:
+    """Rewrite one template in place, returning the backup path.
+
+    The backup is written first so a failure part-way through never leaves the
+    user without their original.
+    """
+    original = path.read_text(encoding="utf-8")
+    backup_path = _next_backup_path(path)
+    backup_path.write_text(original, encoding="utf-8")
+    path.write_text(rewrite_template_text(original), encoding="utf-8")
+    return backup_path
+
+
+def migrate_templates(
+    reports: list[TemplateTokenReport],
+) -> list[tuple[Path, Path]]:
+    """Migrate every reported template, skipping any that cannot be written.
+
+    One unwritable file must not abort the batch: partial progress is better
+    than none, and the caller reports which files were left alone.
+    """
+    migrated: list[tuple[Path, Path]] = []
+    for report in reports:
+        if not report.renamed:
+            # Nothing to rewrite -- the file only references removed tokens,
+            # which have no target and are reported to the user instead.
+            continue
+        try:
+            backup_path = migrate_template_file(report.path)
+        except OSError:
+            continue
+        migrated.append((report.path, backup_path))
+    return migrated
