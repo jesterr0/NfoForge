@@ -34,21 +34,23 @@ class TransmissionClient:
         except TransmissionAuthError as credential_error:
             raise TrackerClientError(
                 f"Username and/or password is incorrect: {credential_error}"
-            )
+            ) from credential_error
         except TransmissionTimeoutError as timeout_error:
             raise TrackerClientError(
                 f"Timed out while trying to connect to Transmission: {timeout_error}"
-            )
+            ) from timeout_error
         except TransmissionConnectError as daemon_error:
-            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
+            raise TrackerClientError(
+                f"Transmission daemon error: {daemon_error}"
+            ) from daemon_error
         except TransmissionError as communication_error:
             raise TrackerClientError(
                 f"Failed to communicate with Transmission: {communication_error}"
-            )
+            ) from communication_error
         except Exception as e:
             raise TrackerClientError(
                 f"Unexpected Error initializing Transmission client: {e}"
-            )
+            ) from e
 
     def test(self) -> tuple[bool, str]:
         if self.client.session_stats():
@@ -73,17 +75,19 @@ class TransmissionClient:
         except TransmissionTimeoutError as timeout_error:
             raise TrackerClientError(
                 f"Timed out while trying to connect to Transmission: {timeout_error}"
-            )
+            ) from timeout_error
         except TransmissionConnectError as daemon_error:
-            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
+            raise TrackerClientError(
+                f"Transmission daemon error: {daemon_error}"
+            ) from daemon_error
         except TransmissionError as communication_error:
             raise TrackerClientError(
                 f"Failed to communicate with Transmission: {communication_error}"
-            )
+            ) from communication_error
         except Exception as e:
             raise TrackerClientError(
                 f"Unexpected Error initializing Transmission client: {e}"
-            )
+            ) from e
 
     def _get_label(self) -> tuple[str] | None:
         label = self.transmission_config.label.strip()
