@@ -15,33 +15,6 @@ EXAMPLE_FOLDER_NAME = Path(
 EXAMPLE_FILE_NAME_1 = Path(
     "Series.Name.S03E01.Episode.Name.1.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
 )
-EXAMPLE_FILE_NAME_2 = Path(
-    "Series.Name.S03E01.Episode.Name.2.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_3 = Path(
-    "Series.Name.S03E01.Episode.Name.3.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_4 = Path(
-    "Series.Name.S03E01.Episode.Name.4.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_5 = Path(
-    "Series.Name.S03E01.Episode.Name.5.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_6 = Path(
-    "Series.Name.S03E01.Episode.Name.6.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_7 = Path(
-    "Series.Name.S03E01.Episode.Name.7.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_8 = Path(
-    "Series.Name.S03E01.Episode.Name.8.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_9 = Path(
-    "Series.Name.S03E01.Episode.Name.9.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
-EXAMPLE_FILE_NAME_10 = Path(
-    "Series.Name.S03E01.Episode.Name.10.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
-)
 
 # fmt: off
 # cSpell:disable

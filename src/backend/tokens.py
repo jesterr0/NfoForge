@@ -296,7 +296,7 @@ class Tokens:
         "Synopsis of all episodes metadata + mediainfo",
     )
     TOTAL_SEASONS = NfoToken("{total_seasons}", "Total seasons in series")
-    TOTAL_EPISODES = NfoToken("{total_episodes}", "Total episodes in season/series")
+    TOTAL_EPISODES = NfoToken("{total_episodes}", "Total episodes in the series")
 
     # nfo forge specific tokens
     PROGRAM_INFO = NfoToken("{program_info}", "NfoForge vx.x.x")

@@ -1340,9 +1340,9 @@ class ProcessBackEnd:
             optimized_files = image_optimizer.process_jobs(
                 files_to_upload, img_opt_output_dir
             )
-        except:
+        except Exception:
             # clean up extra images if failed
-            shutil.rmtree(img_opt_output_dir)
+            shutil.rmtree(img_opt_output_dir, ignore_errors=True)
             raise
         return optimized_files
 
@@ -2050,7 +2050,9 @@ class ProcessBackEnd:
                 self.config.settings.torrent_clients.qbittorrent,
                 self.config.settings.general.timeout,
             )
-            self.qbit_client.login()
+            login_success, login_message = self.qbit_client.login()
+            if not login_success:
+                return False, login_message
         return self.qbit_client.inject_torrent(torrent_path, save_path)
 
     def deluge_inject(self, torrent_path: Path) -> tuple[bool, str]:
@@ -2107,7 +2109,3 @@ class ProcessBackEnd:
                 client.logout()
             client = None
         self.watch_folder_counter = 0
-
-    @staticmethod
-    def rename_file(f_in: Path, f_out: Path) -> Path:
-        return f_in.rename(f_out)
