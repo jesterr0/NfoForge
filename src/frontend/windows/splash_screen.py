@@ -146,6 +146,10 @@ class SplashScreenLoader(QThread):
         try:
             warning = self.init_plugins()
             self.success.emit(warning or "")
+        except SystemExit as error:
+            self.error_message.emit(
+                f"Plugin exited during startup: {error}\n{traceback.format_exc()}"
+            )
         except Exception as error:
             self.error_message.emit(
                 f"Unhandled error: {error}\n{traceback.format_exc()}"
