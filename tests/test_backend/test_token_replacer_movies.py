@@ -368,3 +368,52 @@ def test_unknown_flat_filter_is_logged(caplog: pytest.LogCaptureFixture) -> None
         replacer.get_output()
 
     assert any("no_such_filter" in record.message for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "filter_expr", ["zfill(abc)", "zfill(-5)", "zfill()", "zfill( 5 )"]
+)
+def test_malformed_zfill_argument_is_logged_and_left_unchanged(
+    filter_expr: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The zfill regex (r"zfill\((\d+)\)") requires an all-digit argument, so
+    # `re.match` returns None for every one of these -- the `if m:` body,
+    # including the log call inside its own `except ValueError`, never runs.
+    # Only the sibling `else` branch (added for this argument-unparseable
+    # case) can log anything for a genuinely malformed zfill argument.
+    with caplog.at_level("WARNING"):
+        output = _filename_replacer(f"{{title|{filter_expr}}}", title="7").get_output()
+
+    assert output == "7.mkv"
+    assert any(filter_expr in record.message for record in caplog.records)
+
+
+def test_well_formed_zfill_argument_applies_and_logs_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Guard against over-correcting: a valid width must still zero-pad and
+    # must not trip the new "malformed" branch.
+    with caplog.at_level("WARNING"):
+        output = _filename_replacer("{title|zfill(3)}", title="7").get_output()
+
+    assert output == "007.mkv"
+    assert not any("zfill" in record.message for record in caplog.records)
+
+
+def test_flat_filter_that_raises_is_logged_and_value_passes_through(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def _boom(value: str) -> str:
+        raise ValueError("boom")
+
+    replacer = _filename_replacer("{title|boom}", title="Example")
+    replacer.flat_filters = {"boom": _boom}
+
+    with caplog.at_level("WARNING"):
+        output = replacer.get_output()
+
+    assert output == "Example.mkv"
+    assert any(
+        "boom" in record.message and "unfiltered" in record.message
+        for record in caplog.records
+    )

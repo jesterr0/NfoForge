@@ -548,8 +548,13 @@ class TokenReplacer:
                     except ValueError:
                         LOG.warning(
                             LOG.LOG_SOURCE.BE,
-                            f"Ignoring malformed zfill filter argument: {f}",
+                            f"Ignoring zfill filter with an unusable width: {f}",
                         )
+                else:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE,
+                        f"Ignoring malformed zfill filter argument: {f}",
+                    )
             elif f_lowered.startswith("replace(") and f_lowered.endswith(")"):
                 m = re.match(r"replace\((['\"])(.*?)\1,\s*?(['\"])(.*?)\3\)", f)
                 if m:
