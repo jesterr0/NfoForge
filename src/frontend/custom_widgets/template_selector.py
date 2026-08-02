@@ -701,7 +701,6 @@ class TemplateSelector(QWidget):
                 f"preview, so they are left as they are.\n\n{plugin_error}",
             )
             return nfo
-        return nfo
 
     @Slot()
     def maximize_template(self) -> None:
