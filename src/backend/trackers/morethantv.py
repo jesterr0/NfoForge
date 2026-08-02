@@ -662,7 +662,7 @@ class MTVUploader:
 
     @staticmethod
     def find_release_group_tags(input_path: Path) -> set[str]:
-        # TODO: add different logic for movies vs series
+        """Return the release-group tag shared by movie and series uploads."""
         release_group_set: set[str] = set()
         release_group = guessit.guessit(input_path).get("release_group", "")
         if release_group:
@@ -749,9 +749,11 @@ class MTVSearch:
                     f"Failed to reach server ({response.reason} - {response.status_code})"
                 )
         except niquests.RequestException as e:
-            raise TrackerError(f"Failed to reach server: {e}")
+            raise TrackerError(f"Failed to reach server: {e}") from e
         except Exception as unhandled_error:
-            raise TrackerError(f"Failed to parse XML: {unhandled_error}")
+            raise TrackerError(
+                f"Failed to parse XML: {unhandled_error}"
+            ) from unhandled_error
 
     def handle_xml(self, xml_str: str | None) -> list[TrackerSearchResult]:
         results: list[TrackerSearchResult] = []
