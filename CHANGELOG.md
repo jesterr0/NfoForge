@@ -8,8 +8,6 @@
   settings change (title clean rules and video dynamic range).
 - Added new settings tab **Global Management**. This tab will hold global rename
   settings for both Series/Movies.
-- New custom widget - ComparisonFileMatcher. This will be used to select a matching
-  **source** file for movies/series. # TODO: remove this if we're not going to use it?
 - Tokens:
   - **FileTokens**:
     - `{original_title}` - Original title from the transformed metadata payload or TMDB.
@@ -195,7 +193,9 @@
   - niquests **with speedups enabled**
   - regex
   - rapidfuzz
-  - oslex2
+  - lxml
+  - certifi
+  - setuptools
   - urllib3
   - guessit
 - Plugin load failures are collected into one startup warning and retained for
@@ -206,7 +206,8 @@
   vs. movies template for a basic default template designed for that media type
 - Added early tracker UX guard
   - Series workflows disable known unsupported trackers: PTP and ReelFliX.
-- Add mypy for static type checking for most of the codebase
+- Added BasedPyright static type checking for the application and tracked plugin
+  examples
 - Now supports latest deluge-web-client (=>2.x.x)
 - Remove support for PTPIMG
 - Optimized UNIT3D torrent re-download with regression testing
