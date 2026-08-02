@@ -1,4 +1,6 @@
+import os
 from pathlib import Path
+import tempfile
 from types import SimpleNamespace
 
 import pytest
@@ -51,7 +53,6 @@ def test_populated_index_is_reused_without_manifest(tmp_path: Path) -> None:
 
     assert cache.mark_success(first)
 
-    encode.write_bytes(b"changed encode")
     second = cache.prepare(encode, Indexer.LSMASH, release_dir)
 
     assert second.path == first.path
@@ -126,13 +127,17 @@ def test_unsafe_custom_cache_root_falls_back_outside_media_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, encode, release_dir = _media_pair(tmp_path)
-    system_temp = tmp_path / "system_temp"
-    monkeypatch.setattr(cache_module.tempfile, "gettempdir", lambda: str(system_temp))
+    fallback_base = tmp_path / "per_user_data_dir"
+    monkeypatch.setattr(
+        cache_module.ConfigPaths,
+        "default_working_dir",
+        staticmethod(lambda ensure_exists=False: fallback_base),
+    )
     cache = FrameForgeIndexCache(release_dir / "nfoforge_work")
 
     prepared = cache.prepare(encode, Indexer.LSMASH, release_dir)
 
-    assert prepared.path.is_relative_to(system_temp / "nfoforge" / "frameforge_indexes")
+    assert prepared.path.is_relative_to(fallback_base / "frameforge_indexes")
     assert not prepared.path.is_relative_to(release_dir)
 
 
@@ -188,3 +193,67 @@ def test_frameforge_command_uses_existing_private_encode_index(
     assert encode_index.is_relative_to(tmp_path / "work" / "frameforge_indexes")
     assert not list(release_dir.glob("*.lwi"))
     assert not list(release_dir.glob("*.ffindex"))
+
+
+def test_a_rewritten_encode_is_not_served_a_stale_index(tmp_path: Path) -> None:
+    _, encode, release_dir = _media_pair(tmp_path)
+    cache = FrameForgeIndexCache(tmp_path / "work")
+    first = cache.prepare(encode, Indexer.LSMASH, release_dir)
+    first.path.write_bytes(b"encode index")
+    assert cache.mark_success(first)
+
+    # Rewrite the encode and force its mtime unambiguously newer than the
+    # index. Setting it explicitly rather than relying on wall-clock ordering
+    # keeps this off filesystems with coarse timestamp resolution.
+    encode.write_bytes(b"changed encode")
+    index_mtime = first.path.stat().st_mtime_ns
+    newer = index_mtime + 1_000_000_000
+    os.utime(encode, ns=(newer, newer))
+
+    second = cache.prepare(encode, Indexer.LSMASH, release_dir)
+
+    assert second.existed_before is False
+
+
+def test_an_untouched_encode_still_reuses_its_index(tmp_path: Path) -> None:
+    # The staleness check must not defeat caching in the normal case.
+    _, encode, release_dir = _media_pair(tmp_path)
+    cache = FrameForgeIndexCache(tmp_path / "work")
+    first = cache.prepare(encode, Indexer.LSMASH, release_dir)
+    first.path.write_bytes(b"encode index")
+    assert cache.mark_success(first)
+
+    second = cache.prepare(encode, Indexer.LSMASH, release_dir)
+
+    assert second.existed_before is True
+    assert second.path.read_bytes() == b"encode index"
+
+
+def test_prune_refuses_to_delete_through_a_symlink(tmp_path: Path) -> None:
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (victim / "precious.txt").write_bytes(b"do not delete")
+
+    cache_root = tmp_path / "work" / "frameforge_indexes"
+    cache_root.mkdir(parents=True)
+    link = cache_root / "legacy-looking-entry"
+    try:
+        link.symlink_to(victim, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlink creation not permitted on this platform")
+
+    FrameForgeIndexCache(tmp_path / "work").prune(cache_root)
+
+    assert (victim / "precious.txt").exists()
+
+
+def test_fallback_cache_root_is_not_in_shared_temp(tmp_path: Path) -> None:
+    # The configured root sits inside the media tree, so the fallback fires.
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    cache = FrameForgeIndexCache(media_root / "work")
+
+    fallback = cache._safe_cache_root(media_root)
+
+    assert tempfile.gettempdir() not in str(fallback)
+    assert not fallback.is_relative_to(media_root)
