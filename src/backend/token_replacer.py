@@ -1215,7 +1215,7 @@ class TokenReplacer:
             codec = str(self.guess_name.get("audio_codec", "") or "")
             if self.media_info_obj and self.media_info_obj.audio_tracks:
                 audio_codecs = AudioCodecs()
-                # TODO: remove hard coded json path later?
+                # The bundled conventions file is a runtime asset in both source and frozen builds.
                 audio_convention_path = Path(
                     RUNTIME_DIR / "config" / "audio_conventions" / "default.json"
                 )
