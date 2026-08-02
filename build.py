@@ -125,16 +125,20 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     project_root = Path(__file__).parent
     os.chdir(project_root)
 
-    # build fresh docs
-    run_doc_stuff(project_root)
-
-    # ensure we're in a virtual env, if we are, install dependencies using Poetry
+    # ensure we're in a virtual env, if we are, install build and documentation extras
     if sys.prefix == sys.base_prefix:
         raise Exception("You must activate your virtual environment first")
     else:
-        check_packages = run(["uv", "sync", "--inexact"], check=True, text=True)
+        check_packages = run(
+            ["uv", "sync", "--locked", "--extra", "build", "--extra", "docs"],
+            check=True,
+            text=True,
+        )
         if check_packages.returncode != 0:
             raise Exception("Failed to sync packages with UV")
+
+    # build fresh docs after the documentation extra is available
+    run_doc_stuff(project_root)
 
     # pyinstaller build folder
     pyinstaller_folder = project_root / folder_name
