@@ -1,9 +1,11 @@
 from collections.abc import MutableMapping
 from datetime import datetime
 from pathlib import Path
+import shutil
 from typing import Any
 
 import tomlkit
+from tomlkit.exceptions import ParseError
 
 from src.config.codec import TomlConfigCodec
 from src.config.dependencies import FindDependencies
@@ -13,9 +15,8 @@ from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
 from src.exceptions import ConfigError, ConfigSchemaError
+from src.logger.nfo_forge_logger import LOG
 from src.plugins.manager import PluginManager
-
-# TODO: add cryptography
 
 
 class ConfigManager(TypedTomlOperations):
@@ -23,8 +24,6 @@ class ConfigManager(TypedTomlOperations):
     Parse config file and create a payload object to be used throughout
     the program as needed as well as store other payloads that might need shared
     """
-
-    DEV_MODE: bool = False
 
     def __init__(
         self,
@@ -39,6 +38,7 @@ class ConfigManager(TypedTomlOperations):
         self._program_conf_toml_data: MutableMapping[str, Any]
         self._toml_data: MutableMapping[str, Any]
         self._default_document: MutableMapping[str, Any]
+        self._migration_error: str | None = None
         # load various directories as needed
         self.paths.tracker_cookies.mkdir(exist_ok=True, parents=True)
 
@@ -64,14 +64,16 @@ class ConfigManager(TypedTomlOperations):
         Loads program config, this will be small and only control very
         unique settings that doesn't belong in the main config.
         """
-        default_text = self.paths.default_program.read_text(encoding="utf-8")
+        _, default_document = self._read_toml(
+            self.paths.default_program, "default program configuration"
+        )
         if self.paths.program.exists():
-            loaded = tomlkit.parse(self.paths.program.read_text(encoding="utf-8"))
+            _, loaded = self._read_toml(self.paths.program, "program configuration")
             self._program_conf_toml_data = self.codec.merge_defaults(
-                loaded, tomlkit.parse(default_text)
+                loaded, default_document
             )
         else:
-            self._program_conf_toml_data = tomlkit.parse(default_text)
+            self._program_conf_toml_data = default_document
         if config_file:
             self._program_conf_toml_data["current_config"] = config_file
         self.decode_program()
@@ -115,8 +117,9 @@ class ConfigManager(TypedTomlOperations):
             )
 
         # read default toml file
-        default_toml = self.paths.default_config.read_text()
-        self._default_document = tomlkit.parse(default_toml)
+        default_toml, self._default_document = self._read_toml(
+            self.paths.default_config, "default configuration"
+        )
         self.codec.validate_schema(self._default_document)
         self.codec.validate_types(self._default_document, self._default_document)
 
@@ -125,8 +128,9 @@ class ConfigManager(TypedTomlOperations):
             self.decode(self._default_document, build_defaults=True)
 
         if config_path.exists():
-            loaded_text = config_path.read_text(encoding="utf-8")
-            loaded_document = tomlkit.parse(loaded_text)
+            loaded_text, loaded_document = self._read_toml(
+                config_path, "user configuration"
+            )
 
             try:
                 loaded_version: int | None = document_version(loaded_document)
@@ -141,16 +145,27 @@ class ConfigManager(TypedTomlOperations):
                 loaded_version is not None
                 and loaded_version < self.codec.SCHEMA_VERSION
             ):
+                self._migration_error = None
                 migrated_document = self._try_migrate_profile(
                     loaded_document, default_toml
                 )
                 if migrated_document is not None:
+                    self.archive_profile(config_path)
                     loaded_text = self.codec.dumps(migrated_document)
                     atomic_write_text(config_path, loaded_text)
                     # re-parse so downstream merge/validate/decode operate on
                     # a real TOML document, consistent with the normal
                     # (non-migration) load path
                     loaded_document = tomlkit.parse(loaded_text)
+                else:
+                    reason = self._migration_error or (
+                        "the document could not be mapped to the current schema"
+                    )
+                    raise ConfigSchemaError(
+                        f"Could not migrate configuration schema_version "
+                        f"{loaded_version}: {reason}",
+                        config_path=config_path,
+                    )
 
             self._config_snapshot = loaded_text
             try:
@@ -254,15 +269,32 @@ class ConfigManager(TypedTomlOperations):
             migrated_document, unmapped = migrate_document(
                 loaded_document, self._default_document
             )
-        except Exception:
+        except Exception as error:
+            self._migration_error = f"{type(error).__name__}: {error}"
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Configuration migration failed: {self._migration_error}",
+            )
             return None
         if unmapped:
+            self._migration_error = "unmapped sections: " + ", ".join(
+                sorted(set(unmapped))
+            )
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Configuration migration failed: {self._migration_error}",
+            )
             return None
 
         try:
             trial_document = tomlkit.parse(self.codec.dumps(migrated_document))
             self._validate_document(trial_document, default_toml, dry_run=True)
-        except Exception:
+        except Exception as error:
+            self._migration_error = f"{type(error).__name__}: {error}"
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Configuration migration validation failed: {self._migration_error}",
+            )
             return None
 
         return migrated_document
@@ -272,6 +304,45 @@ class ConfigManager(TypedTomlOperations):
         self.program.current_config = save_path.stem
         self.save(save_path)
         self.save_program()
+
+    @staticmethod
+    def _read_toml(
+        path: Path, description: str
+    ) -> tuple[str, MutableMapping[str, Any]]:
+        """Read and parse a UTF-8 TOML document with a user-facing error."""
+        try:
+            text = path.read_text(encoding="utf-8")
+            return text, tomlkit.parse(text)
+        except (OSError, UnicodeError, ParseError) as error:
+            raise ConfigError(
+                f"Error reading {description} '{path}': {error}"
+            ) from error
+
+    @staticmethod
+    def _backup_path(config_path: Path) -> Path:
+        backup_dir = config_path.parent / "old_configs"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"{config_path.stem}_{timestamp}{config_path.suffix}"
+        counter = 1
+        while backup_path.exists():
+            backup_path = backup_dir / (
+                f"{config_path.stem}_{timestamp}_{counter}{config_path.suffix}"
+            )
+            counter += 1
+        return backup_path
+
+    @classmethod
+    def archive_profile(cls, config_path: Path) -> Path:
+        """Copy a profile into ``old_configs`` before a lossy rewrite."""
+        if not config_path.exists():
+            raise ConfigError(f"Cannot archive missing config file: {config_path}")
+        backup_path = cls._backup_path(config_path)
+        try:
+            shutil.copy2(config_path, backup_path)
+        except OSError as error:
+            raise ConfigError(f"Could not archive config file: {error}") from error
+        return backup_path
 
     @classmethod
     def replace_profile_with_default(
@@ -288,17 +359,7 @@ class ConfigManager(TypedTomlOperations):
             )
             return config_path
 
-        backup_dir = config_path.parent / "old_configs"
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = backup_dir / f"{config_path.stem}_{timestamp}{config_path.suffix}"
-        counter = 1
-        while backup_path.exists():
-            backup_path = backup_dir / (
-                f"{config_path.stem}_{timestamp}_{counter}{config_path.suffix}"
-            )
-            counter += 1
-
+        backup_path = cls._backup_path(config_path)
         config_path.replace(backup_path)
         atomic_write_text(
             config_path,
