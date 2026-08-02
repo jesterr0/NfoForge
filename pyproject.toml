@@ -11,17 +11,17 @@ dependencies = [
     "tomlkit>=0.13.3",
     "guessit>=4.2.1",
     "autoqpf>=0.2.4",
-    "lxml>=5.3.1",
+    "lxml>=5.3.2",
     "iso639-lang>=2.6.3",
     "unidecode>=1.4.0",
     "shortuuid>=1.0.13",
     "torf>=4.3.0",
-    "pillow>=12.0.0",
+    "pillow>=12.3.0",
     "platformdirs>=4.11.0",
     "pyside6==6.11.1",
     "psutil>=7.2.0",
     "pyimgbox>=1.0.7",
-    "aiohttp>=3.13.2",
+    "aiohttp>=3.13.3",
     "semver>=3.0.4",
     "pyotp>=2.9.0",
     "qbittorrent-api>=2025.11.1",
@@ -35,7 +35,7 @@ dependencies = [
     "beautifulsoup4>=4.13.4",
     "rapidfuzz>=3.14.3",
     "qtawesome>=1.4.0",
-    "urllib3>=2.6.2",
+    "urllib3>=2.7.0",
     "tenacity>=9.1.4",
     "python-dotenv>=1.2.2",
     "typing-extensions>=4.12.2",
@@ -48,7 +48,7 @@ dev = [
     "cython>=3.0.12",
     "pytest",
     "pytest-cov",
-    "setuptools",
+    "setuptools>=78.1.1",
     "debugpy",
     "types-psutil",
     "poethepoet>=0.48.0",
@@ -58,6 +58,9 @@ docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [tool.ruff]
 line-length = 88
+
+[tool.uv]
+constraint-dependencies = ["requests>=2.32.4"]
 
 [tool.ruff.lint]
 # `select` replaces ruff's defaults rather than extending them, so "F"
