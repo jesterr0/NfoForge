@@ -749,11 +749,13 @@ class PTPUploader:
                         self._save_cookies()
                         return str(token)
         except niquests.RequestException as e:
-            raise TrackerError(f"Server error: {e}")
+            raise TrackerError(f"Server error: {e}") from e
         except TrackerError:
             raise
         except Exception as unhandled_exception:
-            raise TrackerError(f"Unhandled exception: {unhandled_exception}")
+            raise TrackerError(
+                f"Unhandled exception: {unhandled_exception}"
+            ) from unhandled_exception
         return None
 
     def _validate_session(self) -> str | None:
@@ -919,7 +921,7 @@ class PTPSearch:
 
             return results
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(str(error_message))
+            raise TrackerError(str(error_message)) from error_message
 
     def get_group_id(self, imdb_id: str) -> str | None:
         params = {
@@ -941,5 +943,5 @@ class PTPSearch:
                     group_id = response_json.get("GroupId")
                     return str(group_id) if group_id is not None else None
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(str(error_message))
+            raise TrackerError(str(error_message)) from error_message
         return None
