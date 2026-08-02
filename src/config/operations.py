@@ -781,6 +781,12 @@ class TypedTomlOperations:
             )
             rtorrent_specific["label"] = self.settings.torrent_clients.rtorrent.label
             rtorrent_specific["path"] = self.settings.torrent_clients.rtorrent.path
+            rtorrent_specific["verify_tls"] = (
+                self.settings.torrent_clients.rtorrent.verify_tls
+            )
+            rtorrent_specific["ca_bundle"] = (
+                self.settings.torrent_clients.rtorrent.ca_bundle
+            )
 
             # transmission
             transmission_data = self._ensure_toml_table(
@@ -1612,6 +1618,8 @@ class TypedTomlOperations:
                 password=str(rtorrent_data["password"]),
                 label=str(rtorrent_specific["label"]),
                 path=str(rtorrent_specific["path"]),
+                verify_tls=bool(rtorrent_specific.get("verify_tls", True)),
+                ca_bundle=str(rtorrent_specific.get("ca_bundle", "")),
             )
 
             # transmission

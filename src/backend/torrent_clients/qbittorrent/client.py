@@ -4,7 +4,11 @@ from qbittorrentapi import Client as QBitClient
 import qbittorrentapi.exceptions
 from torf import Torrent
 
+from src.backend.torrent_clients.qbittorrent.save_path import (
+    get_qbittorrent_save_path_warning,
+)
 from src.exceptions import TrackerClientError
+from src.logger.nfo_forge_logger import LOG
 from src.payloads.clients import QBittorrentConfig
 
 
@@ -15,8 +19,12 @@ class QBittorrentClient:
         self.timeout = timeout
         self.qbit_config = config
 
+        host = (self.qbit_config.host or "").strip()
+        if not host:
+            raise TrackerClientError("Hostname must be defined")
+
         self.client = QBitClient(
-            host=str(self.qbit_config.host),
+            host=host,
             port=self._get_port(),
             username=str(self.qbit_config.user),
             password=str(self.qbit_config.password),
@@ -60,11 +68,17 @@ class QBittorrentClient:
     ) -> tuple[bool, str]:
         try:
             effective_save_path = save_path if save_path and save_path.strip() else None
+            path_warning = get_qbittorrent_save_path_warning(
+                self.qbit_config.host,
+                effective_save_path,
+            )
+            if path_warning:
+                LOG.warning(LOG.LOG_SOURCE.BE, path_warning)
             add_torrent = self.client.torrents_add(
                 torrent_files=str(torrent_file),
                 save_path=effective_save_path,
                 use_auto_torrent_management=effective_save_path is None,
-                is_skip_checking=True,
+                is_skip_checking=effective_save_path is None,
                 category=self._get_category(),
             )
             if add_torrent != "Ok.":

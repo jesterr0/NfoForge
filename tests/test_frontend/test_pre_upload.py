@@ -107,6 +107,32 @@ def test_client_options_section_tracks_and_resets_run_override(
     assert section.destination_entry.text() == str(media_directory)
 
 
+def test_client_options_warns_for_remote_windows_save_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    config = ConfigManager("test", _paths(tmp_path))
+    qbit = config.settings.torrent_clients.qbittorrent
+    qbit.enabled = True
+    qbit.host = "https://seedbox.example"
+    qbit.save_path_mode = QBittorrentSavePathMode.SOURCE
+
+    context = ProcessingContext(
+        media_input=MediaInputPayload(
+            input_path=Path(r"C:\Media\Movie.mkv"),
+            working_dir=tmp_path,
+        )
+    )
+    section = ClientOptionsSection(config, context)
+    section.load()
+
+    assert "remote" in section.status_label.text()
+
+
 def test_qbittorrent_settings_mode_controls_template_field() -> None:
     config = QBittorrentConfig(
         category="Movies",
@@ -139,6 +165,8 @@ def test_concrete_client_editors_save_typed_settings() -> None:
     rtorrent_editor = RTorrentClientEdit(rtorrent)
     rtorrent_editor.host.setText("https://rtorrent.example")
     rtorrent_editor.label.setText("Movies")
+    rtorrent_editor.verify_tls.setChecked(False)
+    rtorrent_editor.ca_bundle.setText("/etc/ssl/private/rtorrent-ca.pem")
     rtorrent_editor.save()
 
     transmission = TransmissionConfig()
@@ -157,6 +185,8 @@ def test_concrete_client_editors_save_typed_settings() -> None:
     assert deluge.path == "/downloads/tv"
     assert rtorrent.host == "https://rtorrent.example"
     assert rtorrent.label == "Movies"
+    assert rtorrent.verify_tls is False
+    assert rtorrent.ca_bundle == "/etc/ssl/private/rtorrent-ca.pem"
     assert transmission.path == "/downloads/movies"
     assert watch_folder.path == Path("C:/watch")
 

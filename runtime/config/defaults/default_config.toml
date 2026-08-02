@@ -401,7 +401,7 @@ host = "https://<user>:<password>@www.url.com/plugins/httprpc/action.php"
 port = 0
 user = ""
 password = ""
-specific_params = { "label" = "", "path" = "" }
+specific_params = { "label" = "", "path" = "", "verify_tls" = true, "ca_bundle" = "" }
 
 [torrent_client.transmission]
 enabled = false

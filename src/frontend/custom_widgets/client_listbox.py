@@ -340,8 +340,24 @@ class RTorrentClientEdit(LabelPathUriClientEditBase):
     ) -> None:
         super().__init__(parent)
         self.config = config
+        self.verify_tls = QCheckBox(self)
+        self.verify_tls.setToolTip(
+            "Reject invalid rTorrent TLS certificates (recommended)"
+        )
+        self.verify_tls.toggled.connect(self._sync_tls_controls)
+        self.ca_bundle = QLineEdit(self)
+        self.ca_bundle.setPlaceholderText("Use the system certificate store")
+        self.ca_bundle.setToolTip(
+            "Optional CA bundle path for a private/self-signed rTorrent certificate"
+        )
         self.test_button.clicked.connect(self._test)
-        self.build_layout()
+        settings_layout = self.build_form_layout()
+        self.add_uri_field(settings_layout)
+        self.add_form_row(settings_layout, "Label", self.label)
+        self.add_form_row(settings_layout, "Path", self.path)
+        self.add_form_row(settings_layout, "Verify TLS", self.verify_tls)
+        self.add_form_row(settings_layout, "CA bundle", self.ca_bundle)
+        self.finish_layout(settings_layout, self.test_button)
         self.load()
 
     def load(self) -> None:
@@ -349,12 +365,21 @@ class RTorrentClientEdit(LabelPathUriClientEditBase):
         self.host.setText(config.host or "")
         self.label.setText(config.label)
         self.path.setText(config.path)
+        self.verify_tls.setChecked(config.verify_tls)
+        self.ca_bundle.setText(config.ca_bundle)
+        self._sync_tls_controls()
 
     def save(self) -> None:
         config = cast(RTorrentConfig, self.config)
         config.host = self.host.text().strip()
         config.label = self.label.text().strip()
         config.path = self.path.text().strip()
+        config.verify_tls = self.verify_tls.isChecked()
+        config.ca_bundle = self.ca_bundle.text().strip()
+
+    @Slot()
+    def _sync_tls_controls(self) -> None:
+        self.ca_bundle.setEnabled(self.verify_tls.isChecked())
 
     @Slot()
     def _test(self) -> None:
@@ -363,6 +388,8 @@ class RTorrentClientEdit(LabelPathUriClientEditBase):
             host=self.host.text().strip(),
             label=self.label.text().strip(),
             path=self.path.text().strip(),
+            verify_tls=self.verify_tls.isChecked(),
+            ca_bundle=self.ca_bundle.text().strip(),
         )
         self._start_test(lambda: RTorrentClient(payload))
 

@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.torrent_clients.qbittorrent.save_path import (
+    get_qbittorrent_save_path_warning,
     resolve_configured_qbittorrent_save_path,
 )
 from src.config.config import ConfigManager
@@ -171,6 +172,14 @@ class ClientOptionsSection(QGroupBox):
         override_path = self.context.torrent_client_options.save_path_overrides.get(
             TorrentClientSelection.QBITTORRENT
         )
+        effective_path = override_path or self._configured_path
+        path_warning = get_qbittorrent_save_path_warning(
+            self.config.settings.torrent_clients.qbittorrent.host,
+            effective_path,
+        )
+        if path_warning:
+            self.status_label.setText(path_warning)
+            return
         if override_path:
             self.status_label.setText(
                 "Using a one-run override. qBittorrent automatic torrent "

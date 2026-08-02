@@ -34,6 +34,8 @@ class DelugeConfig(TorrentClient):
 class RTorrentConfig(TorrentClient):
     label: str = ""
     path: str = ""
+    verify_tls: bool = True
+    ca_bundle: str = ""
 
 
 @dataclass(slots=True)

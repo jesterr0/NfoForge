@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlsplit
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection
@@ -14,6 +15,36 @@ from src.payloads.series import build_series_release_info
 
 _UNRESOLVED_TOKEN_PATTERN = re.compile(r"{[^{}]+}")
 _FLAT_TOKEN_PATTERN = re.compile(r"{(?::opt=([^:}]*):)?([^}]+?)(?::opt=([^:}]*):)?}")
+_WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def get_qbittorrent_save_path_warning(
+    host: str | None,
+    save_path: str | None,
+) -> str | None:
+    """Return a warning for a local Windows path sent to a remote qBittorrent.
+
+    qBittorrent interprets ``save_path`` on the machine running qBittorrent,
+    not on the NfoForge host.  A drive-letter path is therefore almost always
+    a configuration mistake when the API host is not local.
+    """
+
+    if not save_path or not _WINDOWS_DRIVE_PATH.match(save_path.strip()):
+        return None
+
+    host_value = (host or "").strip()
+    parsed = urlsplit(host_value if "://" in host_value else f"//{host_value}")
+    hostname = (parsed.hostname or "").casefold()
+    if hostname in _LOOPBACK_HOSTS:
+        return None
+
+    return (
+        "The qBittorrent save location is a local Windows drive path, but the "
+        "qBittorrent host is remote. qBittorrent may interpret this as a "
+        "different path; configure the destination using the remote host's "
+        "path mapping."
+    )
 
 
 def resolve_qbittorrent_save_path(

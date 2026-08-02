@@ -1,7 +1,8 @@
 import errno
 from pathlib import Path
 import ssl
-from typing import Any
+from typing import Any, TypeAlias
+from urllib.parse import urlsplit
 import xmlrpc
 import xmlrpc.client
 
@@ -10,6 +11,9 @@ from torf import Torrent
 
 from src.exceptions import TrackerClientError
 from src.payloads.clients import RTorrentConfig
+from src.utils.secret_redaction import scrub_secrets
+
+_HostType: TypeAlias = str | tuple[str, dict[str, str]]
 
 
 class Bunch(dict[str, Any]):
@@ -28,6 +32,32 @@ class Bunch(dict[str, Any]):
         return f"Bunch({', '.join(f'{k}={v!r}' for k, v in sorted(self.items()))})"
 
 
+class _TimeoutTransport(xmlrpc.client.Transport):
+    """HTTP XML-RPC transport that applies a socket timeout to each request."""
+
+    def __init__(self, timeout: int) -> None:
+        super().__init__()
+        self.timeout = timeout
+
+    def make_connection(self, host: _HostType) -> Any:
+        connection = super().make_connection(host)
+        connection.timeout = self.timeout
+        return connection
+
+
+class _TimeoutSafeTransport(xmlrpc.client.SafeTransport):
+    """HTTPS XML-RPC transport with both TLS policy and socket timeout."""
+
+    def __init__(self, timeout: int, context: ssl.SSLContext) -> None:
+        super().__init__(context=context)
+        self.timeout = timeout
+
+    def make_connection(self, host: _HostType) -> Any:
+        connection = super().make_connection(host)
+        connection.timeout = self.timeout
+        return connection
+
+
 class RTorrentClient:
     def __init__(self, config: RTorrentConfig, timeout: int = 10) -> None:
         """
@@ -39,13 +69,32 @@ class RTorrentClient:
         if not self.rtorrent_config.host:
             raise TrackerClientError("Invalid host name")
 
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
+        host = self.rtorrent_config.host.strip()
+        if not host:
+            raise TrackerClientError("Invalid host name")
+
+        scheme = urlsplit(host).scheme.casefold()
+        transport: xmlrpc.client.Transport | xmlrpc.client.SafeTransport
+        if scheme == "https":
+            try:
+                if self.rtorrent_config.verify_tls:
+                    ca_bundle = self.rtorrent_config.ca_bundle.strip()
+                    context = ssl.create_default_context(cafile=ca_bundle or None)
+                else:
+                    # Certificate verification is an explicit opt-out for
+                    # self-signed/private deployments, never the default.
+                    context = ssl._create_unverified_context()
+            except (OSError, ssl.SSLError) as error:
+                raise TrackerClientError(
+                    f"Invalid rTorrent TLS configuration: {scrub_secrets(str(error))}"
+                ) from error
+            transport = _TimeoutSafeTransport(self.timeout, context)
+        else:
+            transport = _TimeoutTransport(self.timeout)
 
         self.client = xmlrpc.client.Server(
-            str(self.rtorrent_config.host),
-            context=context,
+            host,
+            transport=transport,
         )
 
     def test(self) -> tuple[bool, str]:
@@ -58,28 +107,44 @@ class RTorrentClient:
             else:
                 return False, "Failed"
         except Exception as e:
-            return False, f"Failed, {e}"
+            return False, f"Failed, {scrub_secrets(str(e))}"
 
     def inject_torrent(
         self, torrent_file: Path, file_path: Path, del_r_torrent: bool = False
     ) -> tuple[bool, str]:
-        torrent_instance = self._get_torrent_obj(torrent_file)
+        try:
+            torrent_instance = self._get_torrent_obj(torrent_file)
 
-        # Fast resume
-        torrent_file = self._fast_resume(torrent_file, file_path)
+            # Fast resume
+            torrent_file = self._fast_resume(torrent_file, file_path)
 
-        # Inject torrent
-        self.client.load.raw_start_verbose("", *self._build_command(torrent_file))
+            # Inject torrent
+            self.client.load.raw_start_verbose("", *self._build_command(torrent_file))
 
-        # Confirm injection
-        if self.confirm_injection(torrent_instance.infohash):
-            if del_r_torrent:
-                torrent_file.unlink()
-            return True, "Injected torrent to client"
-        return False, "Failed to detect injection in the client"
+            # Confirm injection
+            if self.confirm_injection(torrent_instance.infohash):
+                if del_r_torrent:
+                    torrent_file.unlink()
+                return True, "Injected torrent to client"
+            return False, "Failed to detect injection in the client"
+        except TrackerClientError:
+            raise
+        except Exception as error:
+            raise TrackerClientError(
+                f"Failed to inject torrent into rTorrent: {scrub_secrets(str(error))}"
+            ) from error
 
     def confirm_injection(self, info_hash: str) -> bool:
-        return bool(self.client.d.name(info_hash))
+        try:
+            return bool(self.client.d.name(info_hash))
+        except xmlrpc.client.Fault:
+            # A missing hash is a normal negative confirmation, not a client
+            # crash.  The caller reports the injection as unsuccessful.
+            return False
+        except Exception as error:
+            raise TrackerClientError(
+                f"Failed to confirm rTorrent injection: {scrub_secrets(str(error))}"
+            ) from error
 
     def _build_command(self, torrent_file: Path) -> list[Any]:
         command: list[Any] = [xmlrpc.client.Binary(self._to_bytes(torrent_file))]
