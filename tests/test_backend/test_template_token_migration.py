@@ -91,3 +91,76 @@ def test_scan_template_dir_returns_empty_for_missing_dir(tmp_path: Path) -> None
 
 def test_rename_map_and_removed_set_are_disjoint() -> None:
     assert not set(TEMPLATE_TOKEN_RENAMES) & REMOVED_TEMPLATE_TOKENS
+
+
+def test_scan_and_rewrite_ignore_comments_entirely() -> None:
+    # `{# ... #}` never renders; a token name inside one must be neither
+    # reported nor rewritten.
+    text = "{# TODO: remove movie_title usage #}"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_scan_and_rewrite_ignore_raw_blocks_entirely() -> None:
+    # `{% raw %}...{% endraw %}` suppresses Jinja interpretation, so its
+    # contents must be neither reported nor rewritten.
+    text = "{% raw %}{{ movie_title }}{% endraw %}"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_unclosed_raw_block_is_treated_as_running_to_the_end() -> None:
+    text = "before {% raw %}{{ movie_title }}"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_stray_endraw_with_no_matching_open_does_not_suppress_scanning() -> None:
+    # No preceding `{% raw %}` means this is not a raw region at all; the
+    # scanner must not crash and must keep scanning normally.
+    text = "{{ movie_title }} {% endraw %}"
+    renamed, _ = scan_template_text(text)
+    assert renamed == {"movie_title": "title"}
+    assert rewrite_template_text(text) == "{{ title }} {% endraw %}"
+
+
+def test_rewrite_leaves_quoted_string_literal_arguments_untouched() -> None:
+    # The string literal passed to `default(...)` is a value, not a token
+    # reference; only the bare identifier form of the same word is renamed.
+    text = "{{ movie_title | default('movie_title') }}"
+    assert rewrite_template_text(text) == "{{ title | default('movie_title') }}"
+
+
+def test_scan_does_not_report_a_token_name_that_only_appears_quoted() -> None:
+    text = "{{ foo | default('mi_casa') }}"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_rewrite_still_finds_a_stale_token_outside_a_raw_block_in_the_same_file() -> (
+    None
+):
+    text = "{{ movie_title }} {% raw %}{{ movie_title }}{% endraw %}"
+    renamed, _ = scan_template_text(text)
+    assert renamed == {"movie_title": "title"}
+    assert rewrite_template_text(text) == (
+        "{{ title }} {% raw %}{{ movie_title }}{% endraw %}"
+    )
+
+
+def test_scan_template_dir_ignores_a_stale_token_referenced_only_in_a_comment(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "commented.txt").write_text(
+        "{# movie_title is no longer used #}", encoding="utf-8"
+    )
+    assert scan_template_dir(tmp_path) == []
+
+
+def test_scan_template_dir_ignores_a_stale_token_referenced_only_inside_raw(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "raw-only.txt").write_text(
+        "{% raw %}{{ movie_title }}{% endraw %}", encoding="utf-8"
+    )
+    assert scan_template_dir(tmp_path) == []
