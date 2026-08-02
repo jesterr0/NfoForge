@@ -72,6 +72,7 @@ class DynamicRangeSettingsData(TypedDict):
 class ProgramConfig:
     current_config: str | None = None
     main_window_position: str | None = None
+    suppress_template_token_prompt: bool = False
 
 
 @dataclass(slots=True)

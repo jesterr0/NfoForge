@@ -83,6 +83,9 @@ class ConfigManager(TypedTomlOperations):
         data = self._program_conf_toml_data
         self.program.current_config = data.get("current_config", "config")
         self.program.main_window_position = data.get("main_window_position")
+        self.program.suppress_template_token_prompt = bool(
+            data.get("suppress_template_token_prompt", False)
+        )
 
     def save_program(self) -> None:
         """Converts config payload object to TOML and writes to a file"""
@@ -95,6 +98,9 @@ class ConfigManager(TypedTomlOperations):
                 self.program.main_window_position
                 if self.program.main_window_position
                 else ""
+            )
+            self._program_conf_toml_data["suppress_template_token_prompt"] = (
+                self.program.suppress_template_token_prompt
             )
 
             serialized = self.codec.dumps(self._program_conf_toml_data)

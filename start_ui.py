@@ -26,12 +26,17 @@ from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 import tomlkit
 
+from src.backend.utils.template_token_migration import (
+    migrate_templates,
+    scan_template_dir,
+)
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.main_window import MainWindow
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
+from src.frontend.windows.template_migration_dialog import TemplateMigrationDialog
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -316,6 +321,8 @@ class NfoForge:
                 self.splash_screen, "Plugin Load Warning", plugin_warning
             )
 
+        self._maybe_prompt_template_migration()
+
         self.splash_screen.update_message_box.emit("Loading main window")
         if not self.config:
             raise AttributeError("Failed to load config")
@@ -331,6 +338,48 @@ class NfoForge:
 
         self.splash_screen.close()
         self.main_window.show()
+
+    def _maybe_prompt_template_migration(self) -> None:
+        """Offer to update templates that reference renamed tokens.
+
+        Runs after the config migration has already completed and committed,
+        so declining here -- or a write failure below -- can never leave the
+        profile half-migrated. Any unexpected failure is swallowed: a
+        convenience prompt must never block startup.
+        """
+        if not self.config or self.config.program.suppress_template_token_prompt:
+            return
+
+        try:
+            reports = scan_template_dir(RUNTIME_DIR / "templates")
+            if not reports:
+                return
+
+            dialog = TemplateMigrationDialog(reports, parent=self.splash_screen)
+            dialog.exec()
+
+            if dialog.suppress_future_prompts:
+                self.config.program.suppress_template_token_prompt = True
+                self.config.save_program()
+
+            if not dialog.migrate_requested:
+                return
+
+            migrated = migrate_templates(reports)
+            skipped = len(reports) - len(migrated)
+            message = f"Updated {len(migrated)} template(s)."
+            if skipped:
+                message += (
+                    f"\n\n{skipped} template(s) were left unchanged; they either "
+                    "could not be written or only reference tokens that have no "
+                    "replacement."
+                )
+            QMessageBox.information(self.splash_screen, "Templates Updated", message)
+        except Exception:
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Template token migration prompt failed: {traceback.format_exc()}",
+            )
 
     def _get_available_configs(self) -> list[str] | None:
         """Get list of available config file names (without .toml extension)"""

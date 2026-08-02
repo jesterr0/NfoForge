@@ -26,6 +26,20 @@ def _bare_nfoforge(config_file: str | None) -> start_ui.NfoForge:
     return app
 
 
+def _bare_nfoforge_with_config() -> start_ui.NfoForge:
+    """`_bare_nfoforge` plus a stub `config`, for `_maybe_prompt_template_migration`
+    tests -- that method only touches `self.config.program.
+    suppress_template_token_prompt` and `self.config.save_program()`, so a
+    `SimpleNamespace` stub is enough without standing up a real `ConfigManager`.
+    """
+    app = _bare_nfoforge(None)
+    app.config = SimpleNamespace(  # type: ignore[reportAttributeAccessIssue]
+        program=SimpleNamespace(suppress_template_token_prompt=False),
+        save_program=lambda: None,
+    )
+    return app
+
+
 def test_plain_config_error_routes_to_generic_recovery_handler(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -218,3 +232,56 @@ def test_config_schema_error_still_prefers_schema_specific_handler(
 
     assert len(schema_calls) == 1
     assert generic_calls == []
+
+
+def test_template_prompt_is_skipped_when_suppressed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called = False
+
+    def record_scan(_: Path) -> list[object]:
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(start_ui, "scan_template_dir", record_scan)
+
+    app = _bare_nfoforge_with_config()
+    app.config.program.suppress_template_token_prompt = True
+    app._maybe_prompt_template_migration()
+
+    assert called is False
+
+
+def test_template_prompt_is_skipped_when_no_template_is_stale(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(start_ui, "scan_template_dir", lambda _: [])
+    shown = False
+
+    def record_dialog(*args: object, **kwargs: object) -> None:
+        nonlocal shown
+        shown = True
+
+    monkeypatch.setattr(start_ui, "TemplateMigrationDialog", record_dialog)
+
+    app = _bare_nfoforge_with_config()
+    app.config.program.suppress_template_token_prompt = False
+    app._maybe_prompt_template_migration()
+
+    assert shown is False
+
+
+def test_a_scanner_failure_never_blocks_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def explode(_: Path) -> list[object]:
+        raise OSError("disk gone")
+
+    monkeypatch.setattr(start_ui, "scan_template_dir", explode)
+
+    app = _bare_nfoforge_with_config()
+    app.config.program.suppress_template_token_prompt = False
+
+    # Must not raise: a convenience prompt cannot prevent the app launching.
+    app._maybe_prompt_template_migration()
