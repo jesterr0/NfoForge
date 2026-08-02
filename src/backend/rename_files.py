@@ -249,11 +249,12 @@ class RenameExecutor:
                 raise FileNotFoundError(
                     f"Destination parent folder does not exist: {target.parent}"
                 )
-            if len(target.name) > _MAX_NAME_LENGTH:
+            name_length = len(target.name.encode("utf-8"))
+            if name_length > _MAX_NAME_LENGTH:
                 raise OSError(
                     errno.ENAMETOOLONG,
-                    f"Destination filename is too long ({len(target.name)} "
-                    f"characters, limit {_MAX_NAME_LENGTH}): {target.name}",
+                    f"Destination filename is too long ({name_length} "
+                    f"bytes, limit {_MAX_NAME_LENGTH}): {target.name}",
                 )
             if intermediate_key not in moving_source_keys:
                 cls._reject_existing_target(source, target)
