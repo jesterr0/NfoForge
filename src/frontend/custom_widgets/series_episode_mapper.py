@@ -1618,7 +1618,7 @@ class SeriesEpisodeMapper(QWidget):
         Values may include an ``episode_end`` key (``int | None``) marking the
         last episode number for a file that spans multiple episodes.
         """
-        return self.file_episode_mappings
+        return self.file_episode_mappings.copy()
 
     def is_valid(self) -> bool:
         """Check that every file is mapped and no two files target overlapping episodes.
@@ -1690,7 +1690,9 @@ class SeriesEpisodeMapper(QWidget):
 
     def _default_release_format_for_current_order(self) -> EpisodeFormat:
         type_id = self.episode_order_combo.currentData()
-        type_data = self.episodes_by_type.get(type_id, {}) if type_id else {}
+        type_data = (
+            self.episodes_by_type.get(type_id, {}) if type_id is not None else {}
+        )
         order_type = str(type_data.get("type", "")).lower()
         order_name = str(type_data.get("type_name", "")).lower()
 
