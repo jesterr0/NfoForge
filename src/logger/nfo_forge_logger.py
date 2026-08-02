@@ -155,7 +155,7 @@ class Logger:
             if debug_type == self.DUMP_TYPE.TEXT and isinstance(data, str):
                 self._dump_debug_data_str(file_output, data)
         except Exception as e:
-            raise DebugDumpError(f"Error dumping debug data: {str(e)}")
+            raise DebugDumpError(f"Error dumping debug data: {str(e)}") from e
 
     def _generate_dump_file_path(
         self, file_output: Path, debug_type: DebugDataType

@@ -1099,7 +1099,7 @@ class TypedTomlOperations:
                 self._active_profile_path = save_path
 
         except Exception as e:
-            raise ConfigError(f"Error saving config file: {str(e)}")
+            raise ConfigError(f"Error saving config file: {str(e)}") from e
 
     def decode(
         self,
@@ -1923,7 +1923,7 @@ class TypedTomlOperations:
                 self.settings = config_payload
 
         except Exception as e:
-            raise ConfigError(f"Error parsing config file: {str(e)}")
+            raise ConfigError(f"Error parsing config file: {str(e)}") from e
 
     @staticmethod
     def resolve_dependency(path_attr: Path | None) -> str:
