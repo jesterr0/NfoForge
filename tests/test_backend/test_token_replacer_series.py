@@ -313,6 +313,26 @@ def test_episode_title_tokens_none_name_stays_empty_no_crash() -> None:
     assert replacer._episode_title_exact(_td()) == ""
 
 
+def test_episode_title_exact_strips_filesystem_hostile_characters() -> None:
+    replacer = _series_replacer_with_episode_name("Who Are You: Part 1/2")
+
+    output = replacer._episode_title_exact(_td())
+
+    assert ":" not in output
+    assert "/" not in output
+    # Separators become a space, matching `_title_formatting_standard`, so
+    # "Part 1/2" reads as "Part 1 2" rather than running together as "Part 12".
+    assert output == "Who Are You Part 1 2"
+
+
+def test_episode_title_exact_preserves_non_ascii() -> None:
+    # `_title_formatting_standard` also unidecodes; the exact variant must not,
+    # or it stops being exact.
+    replacer = _series_replacer_with_episode_name("Kimi no Na wa。")
+
+    assert "。" in replacer._episode_title_exact(_td())
+
+
 @pytest.mark.parametrize("placeholder_name", ["TBA", "Episode 12"])
 def test_episode_metadata_omits_tvdb_placeholder_name(placeholder_name: str) -> None:
     # {episode_metadata} must not leak a TVDB placeholder episode name into

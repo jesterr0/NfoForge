@@ -50,6 +50,12 @@ from src.version import __version__, program_name, program_url
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL"})
 
+# Characters that cannot appear in a Windows path component. Shared by the
+# standard title formatter and the exact-episode-title token so the two
+# cannot drift apart.
+_TITLE_UNSAFE_CHARS = re.compile(r'[:\\/<>\?*"|]')
+_REPEATED_WHITESPACE = re.compile(r"\s{2,}")
+
 
 class TokenReplacer:
     FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
@@ -2157,6 +2163,13 @@ class TokenReplacer:
             title = episode_data.get("name", "")
         if self._is_placeholder_episode_title(title):
             title = ""
+        if title:
+            # Strip only what cannot appear in a path component. Deliberately
+            # no `unidecode` here, unlike `_title_formatting_standard` --
+            # this token's whole contract is that it is the exact title.
+            title = _REPEATED_WHITESPACE.sub(
+                " ", _TITLE_UNSAFE_CHARS.sub(" ", title)
+            ).strip()
         return self._optional_user_input(title, token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:
@@ -3120,8 +3133,8 @@ class TokenReplacer:
         if not title:
             return ""
         title = unidecode.unidecode(title)
-        title = re.sub(r'[:\\/<>\?*"|]', " ", title)
-        title = re.sub(r"\s{2,}", " ", title)
+        title = _TITLE_UNSAFE_CHARS.sub(" ", title)
+        title = _REPEATED_WHITESPACE.sub(" ", title)
         return title
 
     @staticmethod
