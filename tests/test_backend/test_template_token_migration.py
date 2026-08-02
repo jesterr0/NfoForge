@@ -164,3 +164,61 @@ def test_scan_template_dir_ignores_a_stale_token_referenced_only_inside_raw(
         "{% raw %}{{ movie_title }}{% endraw %}", encoding="utf-8"
     )
     assert scan_template_dir(tmp_path) == []
+
+
+def test_scan_and_rewrite_ignore_a_comment_containing_block_looking_text() -> None:
+    # The `{{ ... }}` inside the comment must never be treated as a real
+    # block just because it looks like one.
+    text = "{# example usage: {{ movie_title }} #}"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_scan_does_not_false_positive_a_removed_token_mentioned_in_a_comment() -> None:
+    text = "{# old: {{ movie_full_title }} was removed #}"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_rewrite_treats_raw_marker_text_inside_a_string_literal_as_a_literal() -> None:
+    # A string literal containing raw-marker-looking text must not be
+    # mistaken for an actual `{% raw %}` tag, and tokens on either side of it
+    # must still be found and rewritten.
+    text = '{{ movie_title }} {{ "{% raw %}" }} {{ movie_clean_title }}'
+    renamed, _ = scan_template_text(text)
+    assert renamed == {"movie_title": "title", "movie_clean_title": "title_clean"}
+    assert rewrite_template_text(text) == (
+        '{{ title }} {{ "{% raw %}" }} {{ title_clean }}'
+    )
+
+
+def test_rewrite_still_finds_a_token_after_a_comment_mentioning_raw() -> None:
+    text = "{# use {% raw %} to escape #} {{ movie_title }}"
+    renamed, _ = scan_template_text(text)
+    assert renamed == {"movie_title": "title"}
+    assert rewrite_template_text(text) == ("{# use {% raw %} to escape #} {{ title }}")
+
+
+def test_rewrite_does_not_strip_mi_prefix_from_an_unterminated_string_literal() -> None:
+    text = "{{ default('mi_casa) }}"
+    assert rewrite_template_text(text) == text
+
+
+def test_rewrite_finds_token_after_a_stray_endraw_with_no_matching_open() -> None:
+    text = "{% endraw %} {{ movie_title }}"
+    assert rewrite_template_text(text) == "{% endraw %} {{ title }}"
+
+
+def test_scan_finds_only_the_real_token_among_a_comment_and_a_raw_block() -> None:
+    text = (
+        "{# note: movie_title was renamed #} "
+        "{% raw %}{{ movie_clean_title }}{% endraw %} "
+        "{{ movie_title }}"
+    )
+    renamed, _ = scan_template_text(text)
+    assert renamed == {"movie_title": "title"}
+    assert rewrite_template_text(text) == (
+        "{# note: movie_title was renamed #} "
+        "{% raw %}{{ movie_clean_title }}{% endraw %} "
+        "{{ title }}"
+    )

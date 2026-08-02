@@ -34,28 +34,30 @@ REMOVED_TEMPLATE_TOKENS = frozenset({"movie_full_title"})
 
 TEMPLATE_TOKEN_RENAMES = dict(_EXPLICIT_RENAMES)
 
-# Jinja expression `{{ ... }}` and statement `{% ... %}` blocks. Comments
-# (`{# ... #}`) are deliberately excluded from this pattern rather than
-# special-cased later: a token name mentioned in a comment does not affect
-# rendering, so it must be neither reported nor rewritten. Restricting to
-# these spans also keeps prose that happens to contain a token name untouched.
-_JINJA_BLOCK = re.compile(r"\{\{.*?\}\}|\{%.*?%\}", re.DOTALL)
+# The three ways a `{` sequence opens something meaningful. Which of these
+# comes first, textually, decides how it is handled -- see
+# `_iter_template_parts`. Comments and raw blocks never nest and are never
+# themselves scanned, so a `{{`/`{%`/`{#` that only exists inside one of them
+# is never independently discovered: by the time the outer pass would reach
+# that position, it has already jumped past the whole comment/raw span.
+_MARKER = re.compile(r"\{#|\{%|\{\{")
 
 # `{% raw %}...{% endraw %}` suppresses Jinja interpretation of everything
-# between the tags, so its contents must be neither reported nor rewritten.
-# An unclosed `{% raw %}` is treated as running to the end of the template:
-# Jinja itself would raise at render time, but this scanner must never crash
-# on it, and nothing after an unclosed tag would be interpreted either way.
+# between the tags. An unclosed `{% raw %}` is treated as running to the end
+# of the template: Jinja itself would raise at render time, but this scanner
+# must never crash on it, and nothing after an unclosed tag would be
+# interpreted either way.
 _RAW_OPEN = re.compile(r"\{%-?\s*raw\s*-?%\}")
 _RAW_CLOSE = re.compile(r"\{%-?\s*endraw\s*-?%\}")
 
-# A quoted string literal (single or double, with backslash escapes) or a bare
-# identifier, as one alternation so a string literal's contents are never
-# mistaken for an identifier reference -- `default('movie_title')` must keep
-# its argument untouched even while the bare identifier `movie_title`
-# elsewhere in the same block is renamed.
-_STRING_LITERAL = r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\""
-_BLOCK_TOKEN = re.compile(rf"{_STRING_LITERAL}|\b[A-Za-z_][A-Za-z0-9_]*\b")
+# A complete, closed quoted string literal (single or double, with backslash
+# escapes), and a bare identifier. Matched one token at a time while walking
+# a block body -- see `_block_body_parts` -- rather than as a blind
+# full-block regex, so a delimiter- or identifier-looking sequence inside a
+# literal is consumed as part of that literal and never independently
+# inspected.
+_STRING_LITERAL = re.compile(r"'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"")
+_IDENTIFIER = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*\b")
 
 _TEMPLATE_SUFFIX = ".txt"
 
@@ -72,42 +74,98 @@ def _rename_for(identifier: str) -> str | None:
     return None
 
 
-def _is_string_literal(token: str) -> bool:
-    """True if a `_BLOCK_TOKEN` match is a quoted string, not an identifier."""
-    return bool(token) and token[0] in ("'", '"')
+def _block_body_parts(
+    text: str, pos: int, closer: str
+) -> tuple[list[tuple[bool, str]], int]:
+    """Split one block's body, from `pos` up to and including `closer`.
 
+    Returns `(is_identifier, value)` parts -- `is_identifier` is True only
+    for a bare identifier -- plus the index just past the closing delimiter.
 
-def _raw_block_spans(text: str) -> list[tuple[int, int]]:
-    """Character ranges covered by `{% raw %}...{% endraw %}`, tags included."""
-    spans: list[tuple[int, int]] = []
-    pos = 0
-    while True:
-        open_match = _RAW_OPEN.search(text, pos)
-        if open_match is None:
-            break
-        close_match = _RAW_CLOSE.search(text, open_match.end())
-        end = close_match.end() if close_match is not None else len(text)
-        spans.append((open_match.start(), end))
-        pos = end
-    return spans
-
-
-def _is_within(position: int, spans: list[tuple[int, int]]) -> bool:
-    return any(start <= position < end for start, end in spans)
-
-
-def _scoped_blocks(
-    text: str, raw_spans: list[tuple[int, int]]
-) -> Iterator[re.Match[str]]:
-    """Yield the `_JINJA_BLOCK` matches in `text` that are not inside a raw span.
-
-    The single place that decides which blocks are in scope for token
-    detection, so `scan_template_text` and `rewrite_template_text` can never
-    disagree about it.
+    A quoted string literal is consumed whole as a single non-identifier
+    part, so a delimiter- or token-looking sequence inside one (an
+    `{{ "{% raw %}" }}` literal, say) is never mistaken for part of the
+    surrounding structure. An unterminated literal cannot be parsed, so it
+    consumes up to (and including) the next occurrence of `closer` -- the
+    most this block could possibly still be -- or to the end of the text if
+    even that is missing, rather than guessing at where the broken literal
+    "should" have ended.
     """
-    for block in _JINJA_BLOCK.finditer(text):
-        if not _is_within(block.start(), raw_spans):
-            yield block
+    parts: list[tuple[bool, str]] = []
+    length = len(text)
+    while pos < length:
+        if text.startswith(closer, pos):
+            parts.append((False, closer))
+            return parts, pos + len(closer)
+        char = text[pos]
+        if char in ("'", '"'):
+            literal = _STRING_LITERAL.match(text, pos)
+            if literal is None:
+                close_index = text.find(closer, pos)
+                end = close_index + len(closer) if close_index != -1 else length
+                parts.append((False, text[pos:end]))
+                return parts, end
+            parts.append((False, literal.group(0)))
+            pos = literal.end()
+            continue
+        identifier = _IDENTIFIER.match(text, pos)
+        if identifier is not None:
+            parts.append((True, identifier.group(0)))
+            pos = identifier.end()
+            continue
+        parts.append((False, char))
+        pos += 1
+    return parts, length
+
+
+def _iter_template_parts(text: str) -> Iterator[tuple[bool, str]]:
+    """Single left-to-right pass over `text`.
+
+    The sole place that decides what counts as a comment, a raw region, or a
+    rewritable identifier, so `scan_template_text` and `rewrite_template_text`
+    -- which differ only in what they do with an identifier part -- can never
+    disagree about what is in scope. Yields `(is_identifier, value)` pairs
+    whose values, concatenated in order, reconstruct `text` exactly.
+
+    At each position, whichever of `{#`, `{%`, or `{{` occurs earliest in the
+    remaining text is handled first. That single rule is what keeps a `{{`
+    inside a comment from being mistaken for a real block (the comment is
+    consumed in one step, before its contents are ever re-examined) and a
+    `{% raw %}` inside a string literal from being mistaken for a raw tag
+    (the enclosing block consumes that literal whole before continuing).
+    """
+    pos = 0
+    length = len(text)
+    while pos < length:
+        marker = _MARKER.search(text, pos)
+        if marker is None:
+            yield False, text[pos:]
+            return
+
+        if marker.start() > pos:
+            yield False, text[pos : marker.start()]
+
+        marker_text = marker.group(0)
+
+        if marker_text == "{#":
+            close = text.find("#}", marker.end())
+            end = close + 2 if close != -1 else length
+            yield False, text[marker.start() : end]
+            pos = end
+            continue
+
+        raw_open = _RAW_OPEN.match(text, marker.start())
+        if raw_open is not None:
+            close_match = _RAW_CLOSE.search(text, raw_open.end())
+            end = close_match.end() if close_match is not None else length
+            yield False, text[marker.start() : end]
+            pos = end
+            continue
+
+        closer = "}}" if marker_text == "{{" else "%}"
+        yield False, marker_text
+        parts, pos = _block_body_parts(text, marker.end(), closer)
+        yield from parts
 
 
 @dataclass(slots=True)
@@ -128,40 +186,29 @@ def scan_template_text(text: str) -> tuple[dict[str, str], set[str]]:
     renamed: dict[str, str] = {}
     removed: set[str] = set()
 
-    raw_spans = _raw_block_spans(text)
-    for block in _scoped_blocks(text, raw_spans):
-        for match in _BLOCK_TOKEN.finditer(block.group(0)):
-            token = match.group(0)
-            if _is_string_literal(token):
-                continue
-            if token in REMOVED_TEMPLATE_TOKENS:
-                removed.add(token)
-                continue
-            new_name = _rename_for(token)
-            if new_name is not None:
-                renamed[token] = new_name
+    for is_identifier, value in _iter_template_parts(text):
+        if not is_identifier:
+            continue
+        if value in REMOVED_TEMPLATE_TOKENS:
+            removed.add(value)
+            continue
+        new_name = _rename_for(value)
+        if new_name is not None:
+            renamed[value] = new_name
 
     return renamed, removed
 
 
 def rewrite_template_text(text: str) -> str:
     """Rewrite renameable tokens in place, leaving everything else untouched."""
-    raw_spans = _raw_block_spans(text)
-
-    def rewrite_block(block_match: re.Match[str]) -> str:
-        if _is_within(block_match.start(), raw_spans):
-            return block_match.group(0)
-
-        def rewrite_token(token_match: re.Match[str]) -> str:
-            token = token_match.group(0)
-            if _is_string_literal(token):
-                return token
-            new_name = _rename_for(token)
-            return new_name if new_name is not None else token
-
-        return _BLOCK_TOKEN.sub(rewrite_token, block_match.group(0))
-
-    return _JINJA_BLOCK.sub(rewrite_block, text)
+    pieces: list[str] = []
+    for is_identifier, value in _iter_template_parts(text):
+        if not is_identifier:
+            pieces.append(value)
+            continue
+        new_name = _rename_for(value)
+        pieces.append(new_name if new_name is not None else value)
+    return "".join(pieces)
 
 
 def scan_template_dir(template_dir: Path) -> list[TemplateTokenReport]:
