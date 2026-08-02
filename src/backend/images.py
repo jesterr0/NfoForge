@@ -329,7 +329,7 @@ class ComparisonImageGeneration(ImageGeneration):
         if crop_values and crop_mode != Cropping.DISABLED:
             user_crop_msg = (
                 "Applying user defined crops "
-                f"({', '.join(f'{field}={value}' for field, value in zip(crop_values._fields, crop_values))})."
+                f"({', '.join(f'{field}={value}' for field, value in zip(crop_values._fields, crop_values, strict=False))})."
             )
             LOG.info(LOG.LOG_SOURCE.BE, user_crop_msg)
             signal.emit(user_crop_msg, 0)
