@@ -6,7 +6,6 @@ from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QFont,
-    QFontDatabase,
     QKeyEvent,
     QKeySequence,
     QPainter,
@@ -33,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.frontend.utils import set_top_parent_geometry
+from src.frontend.utils.fonts import monospace_font
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 
 HighlightKeywords = NamedTuple(
@@ -184,10 +184,7 @@ class CodeEditor(QPlainTextEdit):
             self.installEventFilter(self)
 
     def set_monospace_font(self) -> None:
-        if "Fira Mono" in QFontDatabase().families():
-            self.setFont(QFont("Fira Mono"))
-        else:
-            self.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.setFont(monospace_font())
 
     def highlight_keywords(self, patterns_colors: list[HighlightKeywords]) -> None:
         self.highlighter.set_patterns(patterns_colors)
