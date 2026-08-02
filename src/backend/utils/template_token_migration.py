@@ -87,10 +87,18 @@ def _block_body_parts(
     `{{ "{% raw %}" }}` literal, say) is never mistaken for part of the
     surrounding structure. An unterminated literal cannot be parsed, so it
     consumes up to (and including) the next occurrence of `closer` -- the
-    most this block could possibly still be -- or to the end of the text if
-    even that is missing, rather than guessing at where the broken literal
-    "should" have ended.
+    most this block could possibly still be -- provided that occurrence
+    exists; if it doesn't, the block itself never closes either.
+
+    A block (or a literal inside one) that never finds `closer` anywhere in
+    the rest of the text fails closed, the same way an unclosed comment or
+    raw region does: every part collected so far is discarded and replaced
+    with a single non-identifier part spanning from `pos` to the end of the
+    text. Failing open here -- yielding whatever identifiers happened to be
+    found before the text ran out -- would mean a single missing `}` starts
+    rewriting words throughout the rest of the document.
     """
+    body_start = pos
     parts: list[tuple[bool, str]] = []
     length = len(text)
     while pos < length:
@@ -102,7 +110,9 @@ def _block_body_parts(
             literal = _STRING_LITERAL.match(text, pos)
             if literal is None:
                 close_index = text.find(closer, pos)
-                end = close_index + len(closer) if close_index != -1 else length
+                if close_index == -1:
+                    return [(False, text[body_start:length])], length
+                end = close_index + len(closer)
                 parts.append((False, text[pos:end]))
                 return parts, end
             parts.append((False, literal.group(0)))
@@ -115,7 +125,7 @@ def _block_body_parts(
             continue
         parts.append((False, char))
         pos += 1
-    return parts, length
+    return [(False, text[body_start:length])], length
 
 
 def _iter_template_parts(text: str) -> Iterator[tuple[bool, str]]:

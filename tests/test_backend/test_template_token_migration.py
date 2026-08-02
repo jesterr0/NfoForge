@@ -222,3 +222,42 @@ def test_scan_finds_only_the_real_token_among_a_comment_and_a_raw_block() -> Non
         "{% raw %}{{ movie_clean_title }}{% endraw %} "
         "{{ title }}"
     )
+
+
+def test_rewrite_leaves_prose_untouched_after_an_unclosed_expression_block() -> None:
+    # The missing second `}` means this block never closes; nothing after it
+    # -- including the word `movie_title` sitting in plain prose -- can be
+    # told apart from ordinary text, so none of it may be touched.
+    text = "{{ movie_title }\nSome prose mentioning movie_title and mi_audio_codec.\n"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_rewrite_leaves_a_comment_untouched_after_an_unclosed_expression_block() -> (
+    None
+):
+    text = "{{ foo\n{# note: movie_title was renamed #}\n"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_rewrite_leaves_prose_untouched_after_an_unclosed_statement_block() -> None:
+    text = "{% if movie_title\nplain prose movie_title here\n"
+    assert scan_template_text(text) == ({}, set())
+    assert rewrite_template_text(text) == text
+
+
+def test_rewrite_still_finds_a_token_after_a_block_with_a_bounded_broken_literal() -> (
+    None
+):
+    # The first block's own string literal is unterminated, but its own `}}`
+    # closer is still found later in the text, so the block ends there and
+    # scanning resumes normally afterward. This must not degrade to the
+    # rejected "swallow everything to end of text" design -- unlike the
+    # committed `default('mi_casa) }}` regression test, this block is *not*
+    # the last thing in the input, so it is the only test that actually
+    # distinguishes the two designs.
+    text = "{{ foo('bar) }} {{ movie_title }}"
+    renamed, _ = scan_template_text(text)
+    assert renamed == {"movie_title": "title"}
+    assert rewrite_template_text(text) == "{{ foo('bar) }} {{ title }}"
