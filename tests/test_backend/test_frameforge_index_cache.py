@@ -55,9 +55,6 @@ def test_populated_index_is_reused_without_manifest(tmp_path: Path) -> None:
 
     second = cache.prepare(encode, Indexer.LSMASH, release_dir)
 
-    assert second.path == first.path
-    assert second.existed_before
-    assert second.path.read_bytes() == b"encode index"
     assert not list(second.cache_root.glob("manifest.json"))
 
 
@@ -213,6 +210,26 @@ def test_a_rewritten_encode_is_not_served_a_stale_index(tmp_path: Path) -> None:
     second = cache.prepare(encode, Indexer.LSMASH, release_dir)
 
     assert second.existed_before is False
+
+
+def test_a_stale_index_is_reset_to_an_empty_placeholder(tmp_path: Path) -> None:
+    # existed_before alone doesn't prove FrameForge won't still be handed
+    # the previous encode's index bytes -- assert on the file itself.
+    _, encode, release_dir = _media_pair(tmp_path)
+    cache = FrameForgeIndexCache(tmp_path / "work")
+    first = cache.prepare(encode, Indexer.LSMASH, release_dir)
+    first.path.write_bytes(b"encode index")
+    assert cache.mark_success(first)
+
+    encode.write_bytes(b"changed encode")
+    index_mtime = first.path.stat().st_mtime_ns
+    newer = index_mtime + 1_000_000_000
+    os.utime(encode, ns=(newer, newer))
+
+    second = cache.prepare(encode, Indexer.LSMASH, release_dir)
+
+    assert second.path == first.path
+    assert second.path.stat().st_size == 0
 
 
 def test_an_untouched_encode_still_reuses_its_index(tmp_path: Path) -> None:

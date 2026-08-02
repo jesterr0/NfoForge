@@ -66,8 +66,12 @@ class FrameForgeIndexCache:
             raise OSError(f"FrameForge index path is not a file: {index_path}")
 
         existed_before = self._is_reusable(index_path, encode)
-        if not index_path.exists():
-            index_path.touch()
+        if not existed_before:
+            # Covers both the brand-new-entry case and a detected-stale
+            # entry: reset to the empty placeholder that tells FrameForge
+            # "no index, build one." Leaving a stale file's bytes in place
+            # would hand FrameForge the previous encode's index unchanged.
+            index_path.write_bytes(b"")
 
         self.prune(cache_root, active_index=index_path)
         LOG.debug(
