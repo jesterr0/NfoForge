@@ -16,6 +16,16 @@ RENAME_ATTEMPTS = 3
 _RETRYABLE_WINERRORS = {5, 32, 33}
 _RETRYABLE_ERRNOS = {errno.EACCES, errno.EBUSY}
 
+# Per-component limit on every filesystem this app targets. Total path length
+# is deliberately not validated here: Windows 10+ with long paths enabled
+# accepts well past the classic 260, so a fixed ceiling would refuse renames
+# that would actually succeed.
+_MAX_NAME_LENGTH = 255
+
+# ERROR_PATH_NOT_FOUND (3) and ERROR_FILENAME_EXCED_RANGE (206) are both what
+# Windows returns for an over-long destination path.
+_PATH_TOO_LONG_WINERRORS = frozenset({3, 206})
+
 
 @dataclass(frozen=True, slots=True)
 class RenamePlan:
@@ -159,7 +169,7 @@ class RenameExecutor:
                 path_mapping=mapping,
                 updated_input_path=updated_input_path,
             )
-        except OSError as error:
+        except Exception as error:
             LOG.error(
                 LOG.LOG_SOURCE.BE,
                 f"Rename operation failed:\n{traceback.format_exc()}",
@@ -238,6 +248,12 @@ class RenameExecutor:
             if not target.parent.is_dir():
                 raise FileNotFoundError(
                     f"Destination parent folder does not exist: {target.parent}"
+                )
+            if len(target.name) > _MAX_NAME_LENGTH:
+                raise OSError(
+                    errno.ENAMETOOLONG,
+                    f"Destination filename is too long ({len(target.name)} "
+                    f"characters, limit {_MAX_NAME_LENGTH}): {target.name}",
                 )
             if intermediate_key not in moving_source_keys:
                 cls._reject_existing_target(source, target)
@@ -473,6 +489,20 @@ class RenameExecutor:
                 "and verify that your account has modify/delete permission on the "
                 "drive or network share."
             )
+        # WinError 3 genuinely means "path not found" in other situations, so
+        # this branch will occasionally attribute a missing parent directory
+        # to path length instead. `_preflight` already rejects a missing
+        # parent with its own message before any rename runs, so by the time
+        # this branch is reachable the length explanation is the likely one.
+        if isinstance(error, OSError) and (
+            error.errno == errno.ENAMETOOLONG
+            or getattr(error, "winerror", None) in _PATH_TOO_LONG_WINERRORS
+        ):
+            return (
+                f"{error}\n\nThe destination path is too long for this system. "
+                "Shorten the filename template, or move the media closer to the "
+                "drive root."
+            )
         if isinstance(error, FileNotFoundError):
             return (
                 f"{error}\n\nThe input may have been moved or renamed outside "
@@ -494,4 +524,13 @@ def _paths_differ(source: Path, target: Path) -> bool:
 
 
 def _is_case_only_change(source: Path, target: Path) -> bool:
-    return _paths_differ(source, target) and _path_key(source) == _path_key(target)
+    """True when only letter case differs.
+
+    `os.path.normcase` is identity on POSIX, so it cannot answer this on a
+    case-insensitive macOS volume. Compare casefolded text directly instead.
+    """
+    source_text = _absolute_text(source)
+    target_text = _absolute_text(target)
+    return (
+        source_text != target_text and source_text.casefold() == target_text.casefold()
+    )
