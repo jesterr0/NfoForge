@@ -400,7 +400,8 @@ def test_manager_rejects_old_schema_before_value_validation(
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     with pytest.raises(
-        ConfigError, match="Unsupported configuration schema_version: 1"
+        ConfigSchemaError,
+        match="Could not migrate configuration schema_version 1",
     ):
         ConfigManager("test", paths)
 
@@ -481,11 +482,45 @@ def test_load_profile_rejects_unversioned_config_without_mutating(
     original = '[general]\nui_suffix = ""\n'
     profile.write_text(original, encoding="utf-8")
 
-    with pytest.raises(ConfigError, match="Missing configuration schema_version"):
+    with pytest.raises(
+        ConfigSchemaError,
+        match="Could not migrate configuration schema_version 1",
+    ):
         ConfigManager("test", paths)
 
     # failed migration must not write a partial result to disk
     assert profile.read_text(encoding="utf-8") == original
+
+
+def test_manager_wraps_malformed_profile_toml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    profile.write_text("[broken", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Error reading user configuration"):
+        ConfigManager("test", paths)
+
+
+def test_manager_wraps_malformed_program_toml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    paths.program.parent.mkdir(parents=True)
+    paths.program.write_text("[broken", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="Error reading program configuration"):
+        ConfigManager("test", paths)
 
 
 def test_load_profile_leaves_current_config_unchanged_on_schema_error(
@@ -933,26 +968,26 @@ def _write_fixture_profile(paths: ConfigPaths, fixture: str) -> tuple[Path, str]
     return profile, text
 
 
-def test_load_profile_migrates_schema1_in_place(
+def test_load_profile_migrates_schema1_and_archives_original(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A schema-1 profile must be carried all the way to the current schema
-    version by the migration chain, not just to the next version up."""
+    """A schema-1 profile migrates fully and keeps an exact rollback copy."""
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
-    profile, _ = _write_fixture_profile(paths, "schema1_config.toml")
+    profile, original_text = _write_fixture_profile(paths, "schema1_config.toml")
 
     manager = ConfigManager("test", paths)  # should migrate, not raise
 
     reloaded = tomlkit.parse(profile.read_text(encoding="utf-8"))
     assert reloaded["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
-    assert reloaded["movie_management"]["mvr_release_group"] == "CustomReleaseGroup"
+    assert reloaded["movie_management"]["mvr_release_group"] == "CustomReleaseGroup"  # type: ignore[reportIndexIssue]
     assert "movie_rename" not in reloaded
-    # migrated in place; the archive/backup path must not have been taken
-    assert not (profile.parent / "old_configs").exists()
+    backups = list((profile.parent / "old_configs").glob("test_*.toml"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == original_text
     assert manager.settings.movie.release_group == "CustomReleaseGroup"
     assert manager.settings.trackers.more_than_tv.username == "custom_mtv_user"
 
@@ -960,15 +995,13 @@ def test_load_profile_migrates_schema1_in_place(
 def test_load_profile_migrates_schema2_to_current(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The reported regression: a schema-2 profile (every user who ran a
-    build between the two bumps) must migrate rather than being rejected as
-    unsupported and offered an archive+regenerate."""
+    """A schema-2 profile migrates while retaining its original contents."""
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
     )
     paths = _paths(tmp_path)
-    profile, _ = _write_fixture_profile(paths, "schema2_config.toml")
+    profile, original_text = _write_fixture_profile(paths, "schema2_config.toml")
 
     manager = ConfigManager("test", paths)  # should migrate, not raise
 
@@ -984,7 +1017,9 @@ def test_load_profile_migrates_schema2_to_current(
     tracker_settings = cast(MutableMapping[str, Any], reloaded["tracker"])["settings"]
     assert tracker_settings["last_used_img_host"] == {}
     assert "dead-ptpimg-key" not in profile.read_text(encoding="utf-8")
-    assert not (profile.parent / "old_configs").exists()
+    backups = list((profile.parent / "old_configs").glob("test_*.toml"))
+    assert len(backups) == 1
+    assert backups[0].read_text(encoding="utf-8") == original_text
 
 
 def test_load_profile_ignores_unknown_last_used_image_hosts(
@@ -1045,7 +1080,7 @@ def test_migration_validation_failure_preserves_original(
 
     monkeypatch.setattr(ConfigManager, "decode", fake_decode)
 
-    with pytest.raises(ConfigError, match="Missing configuration schema_version"):
+    with pytest.raises(ConfigError, match="forced migration validation failure"):
         ConfigManager("test", paths)
 
     # the original schema-1 file must be left completely untouched -- no
@@ -1099,7 +1134,7 @@ def test_warning_syntax_color_backfills_when_a_profile_lacks_it(
     manager = ConfigManager("test", paths)
     profile = paths.user_configs / "test.toml"
     document = tomlkit.parse(profile.read_text(encoding="utf-8"))
-    del document["template_settings"]["warning_syntax_color"]
+    del document["template_settings"]["warning_syntax_color"]  # type: ignore[reportIndexIssue]
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     manager.load_profile("test")

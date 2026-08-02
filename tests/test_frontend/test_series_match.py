@@ -84,9 +84,20 @@ def test_manual_episode_edit_preserves_a_multi_episode_range() -> None:
     }
 
     mapper.files_table.blockSignals(True)
-    mapper.files_table.item(0, 1).setText("1")
-    mapper.files_table.item(0, 2).setText("1")
+    mapper.files_table.item(0, 1).setText("1")  # type: ignore[OptionalMemberAccess]
+    mapper.files_table.item(0, 2).setText("1")  # type: ignore[OptionalMemberAccess]
     mapper.files_table.blockSignals(False)
-    mapper._on_table_item_changed(mapper.files_table.item(0, 2))
+    mapper._on_table_item_changed(mapper.files_table.item(0, 2))  # type: ignore[reportArgumentType]
 
     assert mapper.file_episode_mappings[file_path]["episode_end"] == 2
+
+
+def test_get_episode_map_returns_a_copy() -> None:
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper.file_episode_mappings[file_path] = {"season": 1, "episode": 1}
+
+    returned = mapper.get_episode_map()
+    returned.clear()
+
+    assert file_path in mapper.file_episode_mappings

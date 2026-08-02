@@ -97,6 +97,40 @@ def test_directory_without_manifest_is_not_a_plugin_candidate(
     assert report.failures == ()
 
 
+def test_plugin_directory_collision_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(PluginManager(), plugin_dir=plugin_dir).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert "plugins" in report.failures[0].source
+
+
+def test_plugin_system_exit_is_reported_and_does_not_escape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _write_plugin(
+        plugin_dir,
+        "exiting",
+        "test.exiting",
+        "nfoforge_test_exiting",
+        "raise SystemExit('plugin stopped startup')\n",
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(PluginManager(), plugin_dir=plugin_dir).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert "plugin stopped startup" in report.failures[0].reason
+
+
 def test_local_plugin_import_does_not_expose_its_root_on_sys_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -274,6 +308,21 @@ def test_manager_rejects_built_in_filter_name_collisions() -> None:
                 jinja2_filters={"upper": lambda value: value},
             ),
             "one",
+        )
+
+
+def test_manager_rejects_case_insensitive_flat_filter_collision() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="duplicates flat filter"):
+        manager.register(
+            "one",
+            PluginDefinition(
+                display_name="One",
+                version="1.0.0",
+                flat_filters={"Upper": lambda value: value},  # type: ignore[reportArgumentType]
+            ),
+            "test",
         )
 
 

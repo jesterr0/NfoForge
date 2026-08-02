@@ -428,3 +428,40 @@ def test_user_entered_mal_id_survives_metadata_transformer_commit(
     assert page.context.media_search.anilist_id == "4242"
     assert page.context.media_search.mal_id == "4242"
     assert page.mal_id_entry.text() == "4242"
+
+
+def test_cancelled_mal_prompt_does_not_store_a_fake_zero_id(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    item_name = "1) Anime Series (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Series",
+            "title": "Anime Series",
+            "year": "2024",
+            "original_title": "Anime Series",
+            "genre_ids": [],
+            "raw_data": {"id": 123, "name": "Anime Series"},
+        }
+    }
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("123")
+    monkeypatch.setattr(page, "_ask_user_for_id", lambda _source: None)
+
+    page._update_payload_data({"ani_list_data": {"success": True, "result": None}})
+
+    assert page.context.media_search.anilist_data is None
+    assert page.context.media_search.anilist_id is None
+    assert page.context.media_search.mal_id is None
+    assert page.mal_id_entry.text() == ""
+
+
+def test_reset_page_restores_tmdb_placeholder(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    page.tmdb_id_entry.setPlaceholderText("Requires ID")
+
+    page.reset_page()
+
+    assert page.tmdb_id_entry.placeholderText() == "Automatic"
