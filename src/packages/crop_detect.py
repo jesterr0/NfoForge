@@ -1,9 +1,10 @@
 from collections import Counter
 from os import PathLike
 from pathlib import Path
-import platform
 import re
 import subprocess
+
+from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
 
 
 class CropDetect:
@@ -49,9 +50,7 @@ class CropDetect:
             command,
             stderr=subprocess.PIPE,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
-            if platform.system() == "Windows"
-            else 0,
+            creationflags=get_subprocess_creation_flags(),
         )
         output = result.stderr
 

@@ -11,6 +11,7 @@ from src.backend.images import (
     ComparisonImageGeneration,
     _build_drawtext_filter,
 )
+from src.backend.utils import subprocess_flags
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.cropping import Cropping
 
@@ -115,7 +116,7 @@ def test_required_frame_failure_is_actionable_and_fail_fast(
         calls += 1
         return subprocess.CompletedProcess([], 1, "", "invalid filter")
 
-    monkeypatch.setattr(images_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(subprocess_flags.platform, "system", lambda: "Windows")
     monkeypatch.setattr(images_module.subprocess, "run", failed_run)
 
     with pytest.raises(

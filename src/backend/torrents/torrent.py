@@ -1,7 +1,6 @@
 from collections.abc import Callable
 import math
 from pathlib import Path
-import platform
 import re
 import shutil
 import subprocess
@@ -9,6 +8,7 @@ from typing import Any
 
 from torf import Torrent
 
+from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
 from src.exceptions import MkbrrTorrentError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.trackers import TrackerInfo
@@ -133,9 +133,7 @@ def mkbrr_generate_torrent(
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-        if platform.system() == "Windows"
-        else 0,
+        creationflags=get_subprocess_creation_flags(new_process_group=True),
     ) as job:
         try:
             result = None

@@ -1,3 +1,4 @@
+from pathlib import PureWindowsPath
 import re
 from urllib.parse import urlsplit
 
@@ -71,7 +72,11 @@ def resolve_configured_qbittorrent_save_path(
         return None
 
     if qbit_config.save_path_mode is QBittorrentSavePathMode.SOURCE:
-        return str(context.media_input.require_input_path().parent)
+        input_path = context.media_input.require_input_path()
+        path_text = str(input_path)
+        if _WINDOWS_DRIVE_PATH.match(path_text) or path_text.startswith((r"\\", "//")):
+            return str(PureWindowsPath(path_text).parent)
+        return str(input_path.parent)
 
     return _render_save_path_template(
         config,

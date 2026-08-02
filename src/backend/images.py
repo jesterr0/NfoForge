@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-import platform
 import random
 import re
 import subprocess
@@ -22,6 +21,7 @@ from src.backend.utils.images import (
     get_total_frames,
     vapoursynth_to_ffmpeg_crop,
 )
+from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
@@ -85,10 +85,7 @@ class ImageGeneration(ABC):
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                creationflags=subprocess.CREATE_NO_WINDOW
-                | subprocess.CREATE_NEW_PROCESS_GROUP
-                if platform.system() == "Windows"
-                else 0,
+                creationflags=get_subprocess_creation_flags(new_process_group=True),
             ) as job:
                 stdout_lines = []
 
@@ -128,10 +125,7 @@ class ImageGeneration(ABC):
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW
-            | subprocess.CREATE_NEW_PROCESS_GROUP
-            if platform.system() == "Windows"
-            else 0,
+            creationflags=get_subprocess_creation_flags(new_process_group=True),
             bufsize=1,
             text=True,
         ) as job:
@@ -258,9 +252,7 @@ class BasicImageGeneration(ImageGeneration):
                     capture_output=True,
                     text=True,
                     timeout=30,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                    if platform.system() == "Windows"
-                    else 0,
+                    creationflags=get_subprocess_creation_flags(),
                 )
 
                 if result.returncode == 0:
@@ -607,9 +599,7 @@ class ComparisonImageGeneration(ImageGeneration):
                     capture_output=True,
                     text=True,
                     timeout=30,
-                    creationflags=subprocess.CREATE_NO_WINDOW
-                    if platform.system() == "Windows"
-                    else 0,
+                    creationflags=get_subprocess_creation_flags(),
                 )
 
                 if result.returncode == 0:
@@ -639,9 +629,7 @@ class ComparisonImageGeneration(ImageGeneration):
             text=True,
             capture_output=True,
             timeout=10,
-            creationflags=subprocess.CREATE_NO_WINDOW
-            if platform.system() == "Windows"
-            else 0,
+            creationflags=get_subprocess_creation_flags(),
         )
         return result.returncode == 0 and "drawtext" in result.stdout
 
@@ -925,9 +913,7 @@ class ComparisonImageGeneration(ImageGeneration):
                 capture_output=True,
                 text=True,
                 timeout=30,
-                creationflags=subprocess.CREATE_NO_WINDOW
-                if platform.system() == "Windows"
-                else 0,
+                creationflags=get_subprocess_creation_flags(),
             )
         except subprocess.TimeoutExpired as error:
             raise RuntimeError(
