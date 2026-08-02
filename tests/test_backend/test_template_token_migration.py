@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from src.backend.utils.template_token_migration import (
@@ -342,3 +343,91 @@ def test_build_diff_shows_changed_lines(tmp_path: Path) -> None:
 
     assert "-{{ movie_title }}" in diff
     assert "+{{ title }}" in diff
+
+
+def test_migrate_template_file_preserves_lf_line_endings(tmp_path: Path) -> None:
+    # Universal-newline decoding on read, or newline translation on write,
+    # would silently turn these into the platform's own line separator.
+    # Asserted on bytes so that hazard can't hide behind text-mode decoding.
+    from src.backend.utils.template_token_migration import migrate_template_file
+
+    template = tmp_path / "movie.txt"
+    template.write_bytes(b"Title: {{ movie_title }}\nYear: {{ year }}\n")
+
+    migrate_template_file(template)
+
+    assert template.read_bytes() == b"Title: {{ title }}\nYear: {{ year }}\n"
+
+
+def test_migrate_template_file_preserves_crlf_line_endings(tmp_path: Path) -> None:
+    from src.backend.utils.template_token_migration import migrate_template_file
+
+    template = tmp_path / "movie.txt"
+    template.write_bytes(b"Title: {{ movie_title }}\r\nYear: {{ year }}\r\n")
+
+    migrate_template_file(template)
+
+    assert template.read_bytes() == b"Title: {{ title }}\r\nYear: {{ year }}\r\n"
+
+
+def test_migrate_template_file_backup_is_byte_identical_to_original(
+    tmp_path: Path,
+) -> None:
+    # Deliberately the opposite of this platform's own line separator, so a
+    # backup step that copies through text mode (and so normalizes endings)
+    # is caught regardless of which platform the suite runs on.
+    from src.backend.utils.template_token_migration import migrate_template_file
+
+    non_native_newline = b"\n" if os.linesep != "\n" else b"\r\n"
+    original_bytes = (
+        b"Title: {{ movie_title }}"
+        + non_native_newline
+        + b"Year: {{ year }}"
+        + non_native_newline
+    )
+    template = tmp_path / "movie.txt"
+    template.write_bytes(original_bytes)
+
+    backup = migrate_template_file(template)
+
+    assert backup.read_bytes() == original_bytes
+
+
+def test_migrate_templates_skips_a_file_that_fails_to_decode(tmp_path: Path) -> None:
+    from src.backend.utils.template_token_migration import (
+        TemplateTokenReport,
+        migrate_templates,
+    )
+
+    undecodable = tmp_path / "bad.txt"
+    undecodable.write_bytes(b"\xff\xfe{{ movie_title }}")
+    good = tmp_path / "good.txt"
+    good.write_text("{{ movie_title }}", encoding="utf-8")
+
+    reports = [
+        TemplateTokenReport(path=undecodable, renamed={"movie_title": "title"}),
+        TemplateTokenReport(path=good, renamed={"movie_title": "title"}),
+    ]
+
+    results = migrate_templates(reports)
+
+    # good.txt still migrated; bad.txt reported as failed rather than
+    # aborting the batch.
+    assert len(results) == 1
+    assert results[0][0].name == "good.txt"
+
+
+def test_migrate_templates_skips_a_report_with_only_removed_tokens(
+    tmp_path: Path,
+) -> None:
+    from src.backend.utils.template_token_migration import (
+        TemplateTokenReport,
+        migrate_templates,
+    )
+
+    template = tmp_path / "movie.txt"
+    template.write_text("{{ movie_full_title }}", encoding="utf-8")
+    report = TemplateTokenReport(path=template, removed={"movie_full_title"})
+
+    assert migrate_templates([report]) == []
+    assert template.read_text(encoding="utf-8") == "{{ movie_full_title }}"

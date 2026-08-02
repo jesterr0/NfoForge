@@ -17,6 +17,9 @@ from datetime import datetime
 import difflib
 from pathlib import Path
 import re
+import shutil
+
+from src.config.persistence import atomic_write_text
 
 # Mirrors `_TOKEN_RENAME_MAP` and `_MI_PREFIX_RE` in `src/config/migrations.py`,
 # expressed as bare identifiers because Jinja references names, not `{token}`
@@ -279,12 +282,17 @@ def migrate_template_file(path: Path) -> Path:
     """Rewrite one template in place, returning the backup path.
 
     The backup is written first so a failure part-way through never leaves the
-    user without their original.
+    user without their original. Read with an empty ``newline`` argument so
+    line endings are preserved verbatim rather than normalized by
+    universal-newline decoding; the backup is a byte-exact copy via
+    ``shutil.copy2``, and the rewrite is written atomically so a crash
+    mid-write cannot truncate the user's file.
     """
-    original = path.read_text(encoding="utf-8")
+    with path.open(encoding="utf-8", newline="") as template_file:
+        original = template_file.read()
     backup_path = _next_backup_path(path)
-    backup_path.write_text(original, encoding="utf-8")
-    path.write_text(rewrite_template_text(original), encoding="utf-8")
+    shutil.copy2(path, backup_path)
+    atomic_write_text(path, rewrite_template_text(original))
     return backup_path
 
 
@@ -304,7 +312,7 @@ def migrate_templates(
             continue
         try:
             backup_path = migrate_template_file(report.path)
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             continue
         migrated.append((report.path, backup_path))
     return migrated
