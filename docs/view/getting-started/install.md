@@ -24,10 +24,10 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
     uv python install 3.12
     ```
 
-3. Create a virtual environment and install dependencies.
+3. Create a virtual environment and install the locked runtime dependencies.
 
     ```sh
-    uv pip install -r pyproject.toml
+    uv sync --locked
     ```
 
 4. Start the application.

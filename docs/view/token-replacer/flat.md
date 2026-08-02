@@ -58,7 +58,8 @@ of customization.
 Movie Name (2025) Directors Cut REPACK UHD BluRay 2160p TrueHD Atmos 7.1 DV HDR HEVC
 ```
 
-You can see this in action in real time inside **NfoForge** under **Settings → Movie**.
+You can see this in action in real time inside **NfoForge** under **Settings -> Movies
+Management**.
 
 ![Token Example](../../images/tokens/token-example.png){ width=100%, style="max-width:
 500px;" }

@@ -46,7 +46,7 @@ lets you retry or continue with the IDs and TMDB metadata you supplied.
 
 <!-- prettier-ignore -->
 !!! info
-    As long as you have **Rename Movie** ticked in **Settings -> Movie** you will see this page. It is enabled by default.
+    As long as you have **Rename Movies/Series** ticked in **Settings -> Movies/Series Management** you will see this page. It is enabled by default.
 
 You'll notice that the **TokenReplacer** has already used a combination of the filename,
 metadata, and MediaInfo to give you a clean/proper output:
@@ -60,7 +60,7 @@ selections, but those will be covered later in the guide. For now, you can simpl
 
 <!-- prettier-ignore -->
 !!! info
-    As long as you have **Enable Screenshots** ticked in **Settings 🠮 Screenshots** you will see this page. It is enabled by default.
+    As long as you have **Enable Screenshots** ticked in **Settings -> Screenshots** you will see this page. It is enabled by default.
 
 1. Allows you to open images (.png/.jpeg) that have already been generated.
 2. Allows you to paste in any type of URLs.
@@ -179,7 +179,7 @@ Upload)** to continue.
 ![Overview](../../images/wizard/overview-and-edit.png){ width=100%, style="max-width:
 500px;" }
 
-- If enabled _(Settings 🠮 General 🠮 Prompt for Overview)_ this window will appear.
+- If enabled _(Settings -> General -> Prompt for Overview)_ this window will appear.
 - You can edit the final formatted NFO.
 - You can also edit the tracker title _(if available)_.
 
