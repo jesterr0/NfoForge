@@ -237,6 +237,7 @@ class SeriesEpisodeMapper(QWidget):
         self.episodes_by_type: dict[Any, EpisodeData] = {}
         self.file_episode_mappings: dict[Path, EpisodeMapping] = {}
         self.episode_items: list[EpisodeListItem] = []
+        self._guessit_cache: dict[Path, EpisodeData] = {}
         self._release_format_manually_selected = False
         self._loading_release_format_combo = False
 
@@ -511,22 +512,25 @@ class SeriesEpisodeMapper(QWidget):
         if not self.episodes_by_type:
             return
 
-        self.episode_order_combo.clear()
+        self.episode_order_combo.blockSignals(True)
+        try:
+            self.episode_order_combo.clear()
 
-        for type_id, type_data in self.episodes_by_type.items():
-            type_name = type_data.get("type_name", f"Type {type_id}")
-            episode_count = len(type_data.get("episodes", []))
-            display_name = f"{type_name} ({episode_count} episodes)"
+            for type_id, type_data in self.episodes_by_type.items():
+                type_name = type_data.get("type_name", f"Type {type_id}")
+                episode_count = len(type_data.get("episodes", []))
+                display_name = f"{type_name} ({episode_count} episodes)"
 
-            # store the type ID in the combo item data for easy lookup
-            self.episode_order_combo.addItem(display_name, type_id)
+                # store the type ID in the combo item data for easy lookup
+                self.episode_order_combo.addItem(display_name, type_id)
 
-        # set the first item as default selection
-        if self.episode_order_combo.count() > 0:
-            self.episode_order_combo.setCurrentIndex(0)
-            self._sync_release_format_to_order()
-            # explicitly trigger episodes loading since setCurrentIndex might not emit signal
-            self._load_episodes_with_ordering()
+            # set the first item as default selection without running the
+            # ordering/matching pipeline once for every combo mutation.
+            if self.episode_order_combo.count() > 0:
+                self.episode_order_combo.setCurrentIndex(0)
+                self._sync_release_format_to_order()
+        finally:
+            self.episode_order_combo.blockSignals(False)
 
     def _populate_files_table(self) -> None:
         """Populate the files table with file data"""
@@ -536,11 +540,18 @@ class SeriesEpisodeMapper(QWidget):
         self.files_table.setRowCount(len(self.media_input_payload.file_list))
 
         for row, file_path in enumerate(self.media_input_payload.file_list):
-            # parse file with guessit
-            try:
-                parsed_data: EpisodeData = dict(guessit(str(file_path)))
-            except Exception:
-                parsed_data = {}
+            # Parse each filename at most once for this mapper.  Loading the
+            # same page again should not repeat the relatively expensive
+            # GuessIt work on the GUI thread.
+            parsed_data = self._guessit_cache.get(file_path)
+            if parsed_data is None:
+                try:
+                    parsed_data = dict(guessit(str(file_path)))
+                except Exception:
+                    parsed_data = {}
+                self._guessit_cache[file_path] = parsed_data
+            else:
+                parsed_data = dict(parsed_data)
 
             # create filename item (read only)
             filename_item = EnhancedFileTableItem(file_path.name, file_path)
@@ -1449,8 +1460,19 @@ class SeriesEpisodeMapper(QWidget):
             method = "manual"
 
             # store the mapping
+            existing_mapping = self.file_episode_mappings.get(file_path)
             self._store_mapping(
-                file_path, season, episode, episode_data, confidence, method
+                file_path,
+                season,
+                episode,
+                episode_data,
+                confidence,
+                method,
+                episode_end=(
+                    existing_mapping.get("episode_end")
+                    if existing_mapping is not None
+                    else None
+                ),
             )
 
             # update confidence and method columns

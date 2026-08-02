@@ -64,3 +64,29 @@ def test_incomplete_mapping_message_for_duplicate_targets_with_tvdb_data() -> No
 
     assert "TVDB returned no episode data" not in message
     assert "properly mapped" in message
+
+
+def test_manual_episode_edit_preserves_a_multi_episode_range() -> None:
+    file_path = Path("Show.S01E01E02.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {
+            1: {"seasonNumber": 1, "number": 1, "name": "Part One"},
+            2: {"seasonNumber": 1, "number": 2, "name": "Part Two"},
+        }
+    }
+    mapper.file_episode_mappings[file_path] = {
+        "season": 1,
+        "episode": 1,
+        "episode_end": 2,
+        "episode_data": mapper.available_episodes[1][1],
+    }
+
+    mapper.files_table.blockSignals(True)
+    mapper.files_table.item(0, 1).setText("1")
+    mapper.files_table.item(0, 2).setText("1")
+    mapper.files_table.blockSignals(False)
+    mapper._on_table_item_changed(mapper.files_table.item(0, 2))
+
+    assert mapper.file_episode_mappings[file_path]["episode_end"] == 2

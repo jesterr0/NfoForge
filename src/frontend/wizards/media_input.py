@@ -58,6 +58,8 @@ class MediaInput(BaseWizardPage):
         self.backend = MediaInputBackEnd(self.progress_signal)
         self.worker: GeneralWorker | None = None
         self._loading_completed = False
+        self._files_being_processed: tuple[Path, ...] = ()
+        self._progress_connected = False
 
         self.media_input_entry: QLineEdit = DNDLineEdit(
             parent=self, readOnly=True, placeholderText=self.MEDIA_PLACEHOLDER_TXT
@@ -287,6 +289,8 @@ class MediaInput(BaseWizardPage):
             if comparison_pair.media not in files_to_process:
                 files_to_process.append(comparison_pair.media)
 
+        self._files_being_processed = tuple(files_to_process)
+
         self.worker = GeneralWorker(
             func=self.backend.get_media_info_files, files=files_to_process, parent=self
         )
@@ -296,20 +300,36 @@ class MediaInput(BaseWizardPage):
         GSigs().main_window_update_status_tip.emit(
             f"Parsing MediaInfo for {len(files_to_process)} files", 0
         )
-        self.progress_signal.connect(self._handle_progress)
+        if not self._progress_connected:
+            self.progress_signal.connect(self._handle_progress)
+            self._progress_connected = True
         self.worker.start()
 
     @Slot(object)
     def _worker_finished(self, files_mi_data: dict[Path, MediaInfo]) -> None:
+        expected_files = set(self._files_being_processed)
+        missing_files = sorted(expected_files - set(files_mi_data), key=str)
+        if missing_files:
+            missing_display = "\n".join(f"- {path}" for path in missing_files)
+            self._handle_worker_failure(
+                "MediaInfo could not be read for the following file(s):\n"
+                f"{missing_display}"
+            )
+            return
+
         if not files_mi_data:
-            raise AttributeError("Failed to detect MediaInfo")
+            self._handle_worker_failure(
+                "Failed to detect MediaInfo for the selected files."
+            )
+            return
 
         # store all MediaInfo data (main files + comparison files if any)
         self.context.media_input.file_list_mediainfo.update(files_mi_data)
         self._loading_completed = True
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
-        self.progress_signal.disconnect(self._handle_progress)
+        self._disconnect_progress_signal()
+        self._files_being_processed = ()
         # if finished has a cb, utilize that instead of emit (for sandbox)
         if self._on_finished_cb:
             self._on_finished_cb()
@@ -318,10 +338,27 @@ class MediaInput(BaseWizardPage):
 
     @Slot(str)
     def _worker_failed(self, msg: str) -> None:
-        QMessageBox.critical(self, "Error", msg)
+        self._handle_worker_failure(msg)
+
+    def _handle_worker_failure(self, message: str) -> None:
+        """Restore the page after a MediaInfo worker failure."""
+
         self._loading_completed = False
+        self._files_being_processed = ()
+        self._disconnect_progress_signal()
         GSigs().main_window_set_disabled.emit(False)
-        self.progress_signal.disconnect(self._handle_progress)
+        GSigs().main_window_clear_status_tip.emit()
+        QMessageBox.critical(self, "MediaInfo Error", message)
+
+    def _disconnect_progress_signal(self) -> None:
+        if not self._progress_connected:
+            return
+        try:
+            self.progress_signal.disconnect(self._handle_progress)
+        except (RuntimeError, TypeError):
+            # The signal may already have been disconnected during teardown.
+            pass
+        self._progress_connected = False
 
     @Slot()
     def open_media_input_dialog(self) -> None:

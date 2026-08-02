@@ -1,6 +1,6 @@
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import QEventLoop, Qt, Slot
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
-    QApplication,
     QDialog,
     QMainWindow,
     QMessageBox,
@@ -247,6 +247,7 @@ class SandboxMainWindow(QMainWindow):
         )
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setWindowTitle("Sandbox Input")
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
 
         set_top_parent_geometry(self)
 
@@ -265,6 +266,7 @@ class SandboxMainWindow(QMainWindow):
 
         # store result for exec()
         self._result = QDialog.DialogCode.Rejected
+        self._event_loop: QEventLoop | None = None
 
         # create a widget to be the main widget to embed the wizard into
         central_widget = QWidget()
@@ -284,6 +286,12 @@ class SandboxMainWindow(QMainWindow):
         self._result = QDialog.DialogCode.Rejected
         self.close()
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """Finish the local modal loop when the window is closed."""
+        if self._event_loop is not None:
+            self._event_loop.quit()
+        super().closeEvent(event)
+
     @Slot(bool)
     def _toggle_state(self, state: bool) -> None:
         """Disable/enable the window (mirrors MainWindow._toggle_state)"""
@@ -302,7 +310,7 @@ class SandboxMainWindow(QMainWindow):
     def exec(self) -> int:
         """Show the window modally and return the result"""
         self.show()
-        # process events until the window is closed
-        while self.isVisible():
-            QApplication.processEvents()
+        self._event_loop = QEventLoop(self)
+        self._event_loop.exec()
+        self._event_loop = None
         return self._result

@@ -8,7 +8,11 @@ from dotenv import load_dotenv
 
 from src.backend.utils.working_dir import CURRENT_DIR, IS_FROZEN, RUNTIME_DIR
 
-load_dotenv(CURRENT_DIR / ".env", override=False)
+# The portable/frozen build must not trust an arbitrary `.env` placed beside
+# the executable.  Development installs may still use the convenience file,
+# but only startup code should opt into it.
+if not IS_FROZEN:
+    load_dotenv(CURRENT_DIR / ".env", override=False)
 
 # remaining imports
 from datetime import datetime
@@ -42,16 +46,19 @@ class NfoForge:
 
         self.config_file, self.arg_parse_msg = arg_parse
 
+        # Exception/Qt hooks can run while any of the startup widgets are
+        # being constructed, so initialize every optional dependency first.
+        self.splash_screen_loader: SplashScreenLoader | None = None
+        self.config: ConfigManager | None = None
+        self.main_window: MainWindow | None = None
+        self.splash_screen: SplashScreen | None = None
+
         # check if there is any messages from arg parser
         if not self._arg_parse_msg():
             return
 
         self._setup_exception_hooks()
         self._setup_font()
-
-        self.splash_screen_loader: SplashScreenLoader | None = None
-        self.config: ConfigManager | None = None
-        self.main_window: MainWindow | None = None
 
         # show splash screen
         self.splash_screen = SplashScreen()
@@ -134,6 +141,9 @@ class NfoForge:
         self.app.setFont(font)
 
     def _init_app(self) -> None:
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
         # check for multiple configs and show selector if needed
         available_configs = self._get_available_configs()
         if not self.config_file and available_configs and len(available_configs) > 1:
@@ -147,6 +157,9 @@ class NfoForge:
         self._continue_init()
 
     def _continue_init(self) -> None:
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
         # setup config
         self.splash_screen.updateMessageBox("Initializing config")
         try:
@@ -246,6 +259,9 @@ class NfoForge:
     def _offer_archive_and_regenerate(
         self, config_path: Path, error_text: str, issue_description: str, title: str
     ) -> None:
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
         response = QMessageBox.question(
             self.splash_screen,
             title,
@@ -292,6 +308,9 @@ class NfoForge:
 
     @Slot(str)
     def _load_main_window(self, plugin_warning: str) -> None:
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
         if plugin_warning:
             QMessageBox.warning(
                 self.splash_screen, "Plugin Load Warning", plugin_warning
@@ -386,15 +405,15 @@ class NfoForge:
             if self.splash_screen and self.splash_screen.isVisible()
             else self.main_window
         )
-        if detect_parent:
-            if traceback:
-                traceback = f"\n{traceback}"
-            err_msg_box = ScrollableErrorDialog(
-                f"{message}{traceback if traceback else ''}",
-                title=title,
-                parent=detect_parent,
-            )
-            err_msg_box.exec()
+        if traceback:
+            traceback = f"\n{traceback}"
+        err_msg_box = ScrollableErrorDialog(
+            f"{message}{traceback if traceback else ''}",
+            title=title,
+            parent=detect_parent,
+        )
+        err_msg_box.exec()
+        if detect_parent is self.splash_screen and self.splash_screen is not None:
             if self.splash_screen.isVisible():
                 self.app.quit()
 

@@ -206,5 +206,5 @@ _log_path = RUNTIME_DIR / "logs" / f"nfoforge_{_date_time_str}_{_short_uuid}.log
 debug_env = str(os.environ.get("LOG_LEVEL", "")).lower()
 LOG = Logger(
     _log_path,
-    to_console=True if "debug" in (sys.executable.lower(), debug_env) else False,
+    to_console="debug" in sys.executable.lower() or debug_env == "debug",
 )
