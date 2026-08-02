@@ -7,6 +7,7 @@ from PySide6.QtGui import QIcon, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import QFileIconProvider, QFrame, QHeaderView, QTreeView, QWidget
 
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.logger.nfo_forge_logger import LOG
 
 
 class FileSystemTreeView(QTreeView):
@@ -102,8 +103,11 @@ class FileSystemTreeView(QTreeView):
                             directories.append(item_path)
                         else:
                             files.append(item_path)
-            except (OSError, PermissionError):
-                print("falling back!")
+            except (OSError, PermissionError) as error:
+                LOG.debug(
+                    LOG.LOG_SOURCE.FE,
+                    f"Falling back to pathlib while reading '{path}': {error}",
+                )
                 # fallback to pathlib if scandir fails
                 for item_path in sorted(
                     path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
