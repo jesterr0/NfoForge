@@ -306,14 +306,17 @@ class MediaInput(BaseWizardPage):
         self.worker.start()
 
     @Slot(object)
-    def _worker_finished(self, files_mi_data: dict[Path, MediaInfo]) -> None:
-        expected_files = set(self._files_being_processed)
-        missing_files = sorted(expected_files - set(files_mi_data), key=str)
-        if missing_files:
-            missing_display = "\n".join(f"- {path}" for path in missing_files)
+    def _worker_finished(
+        self, result: tuple[dict[Path, MediaInfo], dict[Path, str]]
+    ) -> None:
+        files_mi_data, failures = result
+        if failures:
+            failure_display = "\n".join(
+                f"- {path}: {reason}" for path, reason in sorted(failures.items())
+            )
             self._handle_worker_failure(
                 "MediaInfo could not be read for the following file(s):\n"
-                f"{missing_display}"
+                f"{failure_display}"
             )
             return
 
