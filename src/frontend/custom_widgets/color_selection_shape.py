@@ -19,13 +19,15 @@ class ColorSelectionShape(QWidget):
         self,
         width: int = 20,
         height: int = 20,
-        initial_color: QColor = QColor("white"),
+        initial_color: QColor | None = None,
         enable_alpha: bool = False,
         circle: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.current_color = initial_color
+        self.current_color = (
+            initial_color if initial_color is not None else QColor("white")
+        )
         self.setFixedSize(QSize(width, height))
         self.enable_alpha = enable_alpha
         self.circle = circle
