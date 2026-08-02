@@ -294,7 +294,6 @@ class RenameEncode(BaseWizardPage):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def initializePage(self) -> None:
-        self.context.media_input.has_basic_data()
         # this is a movie so there's only ever 1 to rename, grab it with index 0
         media_file = self.context.media_input.file_list[0]
         release_group_name = self.config.settings.movie.release_group
