@@ -692,11 +692,12 @@ class MediaSearch(BaseWizardPage):
                 ani_list_data_result = ani_list_data.get("result")
                 if not ani_list_data_result:
                     mal_value = self._ask_user_for_id("MAL")
-                    ani_list_data_result = {
-                        "id": str(mal_value),
-                        "idMal": str(mal_value),
-                    }
-                    prompted_anilist_data = ani_list_data_result
+                    if mal_value is not None:
+                        ani_list_data_result = {
+                            "id": str(mal_value),
+                            "idMal": str(mal_value),
+                        }
+                        prompted_anilist_data = ani_list_data_result
                 if isinstance(ani_list_data_result, dict):
                     self._apply_anilist_data(ani_list_data_result)
                     if self.context.media_search.mal_id:
@@ -742,17 +743,16 @@ class MediaSearch(BaseWizardPage):
         )
         self.context.media_search.mal_id = str(mal_id) if mal_id is not None else None
 
-    def _ask_user_for_id(self, id_source: str) -> int:
-        value = 0
+    def _ask_user_for_id(self, id_source: str) -> int | None:
         ask_user_id, ask_user_ok = QInputDialog.getInt(
             self,
             f"{id_source} ID",
             f"Could not detect {id_source} ID, please enter this now.\n(If no "
-            "value is provided a default value of 0 will be added)",
+            "value is provided, the lookup will be skipped)",
         )
         if ask_user_ok and ask_user_id:
-            value = ask_user_id
-        return value
+            return ask_user_id
+        return None
 
     @Slot()
     def _update_backend_settings(self) -> None:
@@ -1015,6 +1015,7 @@ class MediaSearch(BaseWizardPage):
         self.imdb_id_entry.clear()
         self.imdb_id_entry.setPlaceholderText("Automatic")
         self.tmdb_id_entry.clear()
+        self.tmdb_id_entry.setPlaceholderText("Automatic")
         self.tvdb_id_entry.clear()
         self.tvdb_id_entry.setPlaceholderText("Automatic")
         self.mal_id_entry.clear()
