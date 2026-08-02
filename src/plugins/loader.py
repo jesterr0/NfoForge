@@ -60,7 +60,11 @@ class PluginLoader:
     def load_plugins(self) -> PluginLoadReport:
         self.failures.clear()
         self.manager.clear_load_issues()
-        self.plugin_dir.mkdir(exist_ok=True, parents=True)
+        try:
+            self.plugin_dir.mkdir(exist_ok=True, parents=True)
+        except OSError as error:
+            self._record_failure(str(self.plugin_dir), error)
+            return PluginLoadReport(self.manager.records, tuple(self.failures))
 
         for root in sorted(
             (item for item in self.plugin_dir.iterdir() if item.is_dir()),
@@ -75,6 +79,10 @@ class PluginLoader:
                 definition = self._load_local_definition(candidate)
                 self.manager.register(
                     candidate.plugin_id, definition, str(candidate.root)
+                )
+            except SystemExit as error:
+                self._record_failure(
+                    str(root), PluginError(f"Plugin exited during import: {error}")
                 )
             except Exception as error:
                 self._record_failure(str(root), error)
@@ -91,6 +99,11 @@ class PluginLoader:
                     entry_point.name,
                     definition,
                     f"entry point {entry_point.value}",
+                )
+            except SystemExit as error:
+                self._record_failure(
+                    f"entry point {entry_point.name}",
+                    PluginError(f"Plugin exited during import: {error}"),
                 )
             except Exception as error:
                 self._record_failure(f"entry point {entry_point.name}", error)
