@@ -218,7 +218,7 @@ class ProcessBackEnd:
             TrackerSelection,
             tuple[TrackerSelection, bool, list[TrackerSearchResult] | str],
         ] = {}
-        for tracker_sel, item in zip(processing_queue, async_results):
+        for tracker_sel, item in zip(processing_queue, async_results, strict=False):
             if isinstance(item, tuple) and len(item) == 3:
                 dupes[TrackerSelection(tracker_sel)] = item
             elif isinstance(item, Exception):
@@ -1046,7 +1046,12 @@ class ProcessBackEnd:
                         tracker=cur_tracker,
                         torrent_path=torrent_path,
                         tracker_health_cache=tracker_health_cache,
-                        upload_request=lambda: self.upload(
+                        upload_request=lambda cur_tracker=cur_tracker,
+                        torrent_path=torrent_path,
+                        nfo=nfo,
+                        cur_tracker_title=cur_tracker_title,
+                        context=context,
+                        release_info=release_info: self.upload(
                             tracker=cur_tracker,
                             torrent_file=torrent_path,
                             nfo=nfo,
