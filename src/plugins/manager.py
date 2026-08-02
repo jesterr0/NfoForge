@@ -52,7 +52,16 @@ class PluginManager:
             "nf_media_input_payload",
         }
         self._reserved_flat_filters = frozenset(
-            {"upper", "lower", "title", "swapcase", "capitalize", "zfill", "replace"}
+            name.casefold()
+            for name in (
+                "upper",
+                "lower",
+                "title",
+                "swapcase",
+                "capitalize",
+                "zfill",
+                "replace",
+            )
         )
 
     @property
@@ -269,7 +278,13 @@ class PluginManager:
             ),
         )
         for label, incoming, existing in groups:
-            duplicates = sorted(set(incoming) & set(existing))
+            if label == "flat filter":
+                existing_normalized = {name.casefold() for name in existing}
+                duplicates = sorted(
+                    name for name in incoming if name.casefold() in existing_normalized
+                )
+            else:
+                duplicates = sorted(set(incoming) & set(existing))
             if duplicates:
                 raise PluginError(
                     f"Plugin '{plugin_id}' duplicates {label} name(s): "
