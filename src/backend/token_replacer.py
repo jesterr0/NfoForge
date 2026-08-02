@@ -39,6 +39,7 @@ from src.enums.rename import QualitySelection
 from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
+from src.logger.nfo_forge_logger import LOG
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import ImageUploadData
 from src.payloads.media_inputs import MediaInputPayload
@@ -545,7 +546,10 @@ class TokenReplacer:
                     try:
                         value = value.zfill(int(m.group(1)))
                     except ValueError:
-                        pass
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE,
+                            f"Ignoring malformed zfill filter argument: {f}",
+                        )
             elif f_lowered.startswith("replace(") and f_lowered.endswith(")"):
                 m = re.match(r"replace\((['\"])(.*?)\1,\s*?(['\"])(.*?)\3\)", f)
                 if m:
@@ -598,11 +602,21 @@ class TokenReplacer:
                 if args:
                     return self.flat_filters[filter_name](value, *args)
                 return self.flat_filters[filter_name](value)
-            except Exception:
+            except Exception as error:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Flat filter '{filter_name}' failed, using the unfiltered "
+                    f"value: {error}",
+                )
                 # return original value if filter fails
                 return value
 
         # unknown filter: return unchanged (graceful degradation)
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Unknown flat filter '{filter_name}'; the value is emitted "
+            "unfiltered. Check the filter name and that its plugin is enabled.",
+        )
         return value
 
     def _media_tokens(self, token_data: TokenData) -> str:
@@ -1028,7 +1042,12 @@ class TokenReplacer:
                                 rf"{replace}", rf"{replace_with}", formatted_title
                             )
                 return formatted_title
-        except (ValueError, KeyError, IndexError):
+        except (ValueError, KeyError, IndexError) as error:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Failed to format token string '{self.token_string}': "
+                f"{type(error).__name__}: {error}",
+            )
             return None
 
     def _sanitize_filename(self, filename: str) -> str | None:

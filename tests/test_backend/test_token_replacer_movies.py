@@ -348,3 +348,23 @@ def test_empty_token_at_either_end_leaves_no_stray_separator() -> None:
     assert _movie_filename("{title_exact}") == "Movie.Name.mkv"
     assert _movie_filename("{title_exact}.{video_3d}") == "Movie.Name.mkv"
     assert _movie_filename("{video_3d}.{title_exact}") == "Movie.Name.mkv"
+
+
+def test_unknown_flat_filter_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    # A typo'd filter name (e.g. "zfil" instead of "zfill") previously fell
+    # through _apply_extensible_filter's "unknown filter" branch silently,
+    # emitting the value unfiltered with no way to find out why.
+    replacer = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{title|no_such_filter}",
+        media_search_obj=MediaSearchPayload(title="Example"),
+        flat_filters={"real_filter": str.upper},
+        # filters (flat_filters, |zfill, |replace, etc.) only apply in flat
+        # mode -- see token_replacer.py's "if self.flatten and
+        # token_data.filters" guard just before _apply_custom_filters runs.
+        flatten=True,
+    )
+    with caplog.at_level("WARNING"):
+        replacer.get_output()
+
+    assert any("no_such_filter" in record.message for record in caplog.records)

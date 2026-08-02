@@ -1,8 +1,10 @@
 from pathlib import Path
 
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QDialog, QMessageBox
 import pytest
 
+from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
@@ -187,3 +189,98 @@ def test_series_rename_token_control_reset_restores_signals(
     page.rename_token_control.reset()
 
     assert table.signalsBlocked() is False
+
+
+def test_all_episode_renames_failing_shows_warning_and_aborts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard: when every episode's token render fails, rename_map
+    stayed empty and validatePage fell through to the "no effective renames"
+    branch, which can advance the wizard with nothing renamed and no message.
+    Every render failing must now abort validation and tell the user which
+    files could not be renamed."""
+    file_path = Path("Show.S01E01.mkv")
+    page = _make_series_rename_page(tmp_path, monkeypatch, file_path=file_path)
+
+    monkeypatch.setattr(page, "_name_validations", lambda: True)
+    monkeypatch.setattr(page, "_quality_validations", lambda: True)
+    monkeypatch.setattr(
+        RenameEncodeSeriesBackEnd, "series_renamer", lambda self, **kwargs: None
+    )
+    # With the fix, an empty rename_map aborts before this is ever called;
+    # mocked here so a pre-fix run fails on the missing warning rather than on
+    # an unrelated crash further down (real media info was never supplied).
+    monkeypatch.setattr(
+        RenameEncodeSeriesBackEnd,
+        "series_folder_renamer",
+        lambda self, **kwargs: None,
+    )
+
+    messages: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, title, message: messages.append((title, message)),
+    )
+
+    assert page.validatePage() is False
+
+    assert messages
+    title, message = messages[-1]
+    assert title == "Rename Failed"
+    assert file_path.name in message
+
+
+def test_partial_episode_rename_failure_warns_but_does_not_abort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A single failed episode token render must not be treated as if every
+    file failed: the loop should warn about (and skip) only the file(s) that
+    actually failed, and validation should still proceed for the rest."""
+    good_file = Path("Show.S01E01.mkv")
+    bad_file = Path("Show.S01E02.mkv")
+    episode_map = {
+        good_file: {"season": 1, "episode": 1},
+        bad_file: {"season": 1, "episode": 2},
+    }
+    page = _make_series_rename_page(
+        tmp_path, monkeypatch, file_path=good_file, episode_map=episode_map
+    )
+
+    monkeypatch.setattr(page, "_name_validations", lambda: True)
+    monkeypatch.setattr(page, "_quality_validations", lambda: True)
+
+    def _series_renamer(self, *, media_file: Path, **kwargs: object) -> Path | None:
+        return None if media_file == bad_file else Path("Show S01E01 Renamed")
+
+    monkeypatch.setattr(RenameEncodeSeriesBackEnd, "series_renamer", _series_renamer)
+    monkeypatch.setattr(
+        RenameEncodeSeriesBackEnd,
+        "series_folder_renamer",
+        lambda self, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
+        lambda self: QDialog.DialogCode.Rejected,
+    )
+
+    messages: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, title, message: messages.append((title, message)),
+    )
+
+    # Rejecting the preview dialog returns False before any rename runs; this
+    # keeps the assertion focused on the loop's own skip-reporting rather than
+    # on the filesystem rename machinery.
+    assert page.validatePage() is False
+
+    titles = [title for title, _ in messages]
+    assert "Rename Failed" not in titles
+    assert "Some Files Skipped" in titles
+    skipped_message = next(
+        message for title, message in messages if title == "Some Files Skipped"
+    )
+    assert bad_file.name in skipped_message
+    assert good_file.name not in skipped_message
