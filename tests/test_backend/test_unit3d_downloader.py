@@ -83,9 +83,19 @@ def test_unit3d_download_rejects_unsupported_scheme(
     torrent_file = tmp_path / "release.torrent"
     torrent_file.write_bytes(b"original torrent")
 
-    with pytest.raises(TrackerError, match="unsupported scheme"):
+    with pytest.raises(TrackerError, match="unsupported scheme") as exc_info:
         _uploader(torrent_file)._download_uploaded_torrent(download_url)
 
+    # The tracker already accepted the upload by the time this method runs
+    # (`upload()` only calls it after a successful response), so this must
+    # be flagged the same way as the two sibling raises in this method:
+    # server_accepted so the whole upload is never silently re-POSTed, and
+    # phase="download" so the UI hides the "re-upload" button entirely
+    # instead of inviting a duplicate. Not automatically retried: the same
+    # malformed URL would fail identically on every attempt.
+    assert exc_info.value.retryable is False
+    assert exc_info.value.server_accepted is True
+    assert exc_info.value.phase == "download"
     get.assert_not_called()
     assert torrent_file.read_bytes() == b"original torrent"
     assert not list(tmp_path.glob("*.part"))
@@ -98,11 +108,15 @@ def test_unit3d_download_rejects_mismatched_host(
     torrent_file = tmp_path / "release.torrent"
     torrent_file.write_bytes(b"original torrent")
 
-    with pytest.raises(TrackerError, match="unexpected host"):
+    with pytest.raises(TrackerError, match="unexpected host") as exc_info:
         _uploader(torrent_file)._download_uploaded_torrent(
             "https://evil.example/torrents/download/123.key"
         )
 
+    # Same reasoning as test_unit3d_download_rejects_unsupported_scheme.
+    assert exc_info.value.retryable is False
+    assert exc_info.value.server_accepted is True
+    assert exc_info.value.phase == "download"
     get.assert_not_called()
     assert torrent_file.read_bytes() == b"original torrent"
     assert not list(tmp_path.glob("*.part"))

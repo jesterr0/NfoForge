@@ -257,12 +257,20 @@ class Unit3dBaseUploader:
 
     def _download_uploaded_torrent(self, download_url: str) -> Path:
         """Stream the tracker-generated torrent to its final path atomically."""
+        # By the time this method runs, the tracker has already accepted the
+        # upload (`upload()` only calls it after a successful response), so
+        # every error raised here must carry `server_accepted=True,
+        # phase="download"` -- exactly like the two sibling raises below --
+        # or the UI's duplicate-upload safeguard never engages and a retry
+        # re-POSTs the whole upload to a tracker that already has it.
         parsed_download_url = urlparse(download_url)
         if parsed_download_url.scheme not in ("https", "http"):
             raise TrackerError(
                 f"{self.tracker_name} returned a download URL with an "
                 "unsupported scheme",
                 retryable=False,
+                server_accepted=True,
+                phase="download",
             )
         # `upload_url` is derived from the same `base_url` the tracker was
         # configured with, so its host is what a legitimate download URL
@@ -274,6 +282,8 @@ class Unit3dBaseUploader:
                 f"unexpected host ({parsed_download_url.hostname!r}, "
                 f"expected {expected_host!r})",
                 retryable=False,
+                server_accepted=True,
+                phase="download",
             )
 
         destination = self.torrent_file
