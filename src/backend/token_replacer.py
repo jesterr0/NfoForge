@@ -1212,7 +1212,14 @@ class TokenReplacer:
         return self._optional_user_input(bitrate, token_data)
 
     def _audio_channel_s(self, token_data: TokenData, convert_to_layout: bool) -> str:
-        # TODO: might need to handle multiple audio tracks instead of just 0
+        # Only audio_tracks[0] is read here, matching every other single-value
+        # audio token in this class (bitrate, layout, codec, sample rate,
+        # etc.): there's no single channel count that could represent
+        # multiple tracks with differing layouts, so the first/primary track
+        # is treated as canonical. Tokens that need to reflect every track
+        # (dual/multi audio detection, combined language lists) iterate
+        # `audio_tracks` instead -- see `_audio_language_dual` and
+        # `_audio_language_multi` below.
         audio_channel_s = self.guess_name.get("audio_channels", "")
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_audio_channels = self.media_info_obj.audio_tracks[0].channel_s

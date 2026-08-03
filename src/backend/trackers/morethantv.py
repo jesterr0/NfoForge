@@ -331,7 +331,11 @@ class MTVUploader:
             files["file_input"] = (torrent_file.name, f.read())
 
         # auto_fill = self._auto_fill(auth_token)
-        # TODO: do some checks to see if things was auto filled correctly?
+        # Auto-fill is not currently performed: the call above is disabled,
+        # and this class (and its base) defines no `_auto_fill` method for it
+        # to invoke. Every field in `data` above is set explicitly from
+        # arguments and analyzer output, so there is no auto-filled value
+        # here that needs verifying.
 
         try:
             upload_page = self._session.post(

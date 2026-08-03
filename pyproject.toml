@@ -83,6 +83,8 @@ addopts = ["-v", "--tb=short"]
 [tool.basedpyright]
 include = [
     "src",
+    "start_ui.py",
+    "build.py",
     "plugins/jinja2_plugin_example",
     "plugins/metadata_plugin_example",
 ]
