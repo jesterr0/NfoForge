@@ -748,7 +748,10 @@ class MediaSearch(BaseWizardPage):
         A complete TMDB record carries `genres` as objects with an `id`; a
         search result carries `genre_ids` as already-resolved genre enums.
         Prefer the former since it reflects a manually entered TMDB ID, and
-        only fall back to the row when the record has no usable genres.
+        only fall back to the row when the record has no usable `genres` key
+        at all. TMDB legitimately returns `genres: []` for some titles, and
+        that empty-but-present list must be accepted as-is rather than
+        treated as "missing" and backfilled from an unrelated search row.
         """
         enum_class: type[TMDBGenreIDsMovies] | type[TMDBGenreIDsSeries] = (
             TMDBGenreIDsSeries
@@ -767,8 +770,7 @@ class MediaSearch(BaseWizardPage):
                         resolved.append(enum_class(entry["id"]))
                     except ValueError:
                         resolved.append(enum_class.UNDEFINED)
-                if resolved:
-                    return resolved
+                return resolved
 
         if item_data:
             genre_ids = item_data.get("genre_ids")

@@ -8,6 +8,7 @@ import pytest
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_type import MediaType
+from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 
 
@@ -259,3 +260,77 @@ def test_manual_tvdb_id_takes_precedence_over_tmdb_external_id() -> None:
 
     assert received == [("tt1234567", 111)]
     assert result["resolved_ids"]["result"]["tvdb_id"] == 111
+
+
+def test_manual_tmdb_id_creates_anilist_task_from_the_fetched_record() -> None:
+    # `tmdb_genres`/`original_language` describe the previously selected
+    # search row, not the record a manually entered TMDB ID resolves to.
+    # Both are stale here (no Animation genre, English language) to prove
+    # the fetched record -- not the row -- decides the AniList lookup. This
+    # is the user-visible behaviour the fix restores: an anime reached by
+    # manual TMDB ID must not silently skip the AniList/MAL lookup.
+    backend = MediaSearchBackEnd()
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {
+            "genres": [{"id": 16, "name": "Animation"}],
+            "original_language": "ja",
+        }
+    )
+    anilist_calls: list[tuple[str, int]] = []
+
+    async def fake_parse_ani_list(tmdb_title: str, tmdb_year: int) -> dict[str, Any]:
+        anilist_calls.append((tmdb_title, tmdb_year))
+        return {"id": "999"}
+
+    backend.parse_ani_list = fake_parse_ani_list  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        backend.parse_other_ids(
+            media_type=MediaType.MOVIE,
+            imdb_id="",
+            tmdb_title="Anime Movie",
+            tmdb_year=2024,
+            original_language="en",
+            tmdb_genres=[TMDBGenreIDsMovies.ACTION],
+            tmdb_id="123",
+        )
+    )
+
+    assert anilist_calls == [("Anime Movie", 2024)]
+    assert result["ani_list_data"] == {"success": True, "result": {"id": "999"}}
+
+
+def test_stale_anime_looking_row_does_not_trigger_anilist_when_fetched_record_disagrees() -> (
+    None
+):
+    # Inverse of the case above: a stale row that looks like anime must not
+    # win over a fetched record that says otherwise.
+    backend = MediaSearchBackEnd()
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {
+            "genres": [{"id": 18, "name": "Drama"}],
+            "original_language": "en",
+        }
+    )
+    anilist_calls: list[tuple[str, int]] = []
+
+    async def fake_parse_ani_list(tmdb_title: str, tmdb_year: int) -> dict[str, Any]:
+        anilist_calls.append((tmdb_title, tmdb_year))
+        return {"id": "999"}
+
+    backend.parse_ani_list = fake_parse_ani_list  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        backend.parse_other_ids(
+            media_type=MediaType.MOVIE,
+            imdb_id="",
+            tmdb_title="Drama Movie",
+            tmdb_year=2024,
+            original_language="ja",
+            tmdb_genres=[TMDBGenreIDsMovies.ANIMATION],
+            tmdb_id="123",
+        )
+    )
+
+    assert anilist_calls == []
+    assert "ani_list_data" not in result

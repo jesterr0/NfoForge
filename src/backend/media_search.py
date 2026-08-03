@@ -319,8 +319,27 @@ class MediaSearchBackEnd:
                 self.parse_tvdb_data(imdb_id, resolved_tvdb_id)
             )
 
+        # `tmdb_genres` and `original_language` describe the search row that was
+        # selected, which is not the record a manually entered TMDB ID resolves
+        # to. Prefer the fetched record whenever we have one, or an anime found
+        # by manual ID silently skips the AniList lookup.
+        animation_id = TMDBGenreIDsMovies.ANIMATION.value
+        genre_ids = {getattr(genre, "value", genre) for genre in tmdb_genres}
+        anime_language = original_language
+        if tmdb_complete_data:
+            raw_genres = tmdb_complete_data.get("genres")
+            if isinstance(raw_genres, list):
+                genre_ids = {
+                    entry["id"]
+                    for entry in raw_genres
+                    if isinstance(entry, dict) and isinstance(entry.get("id"), int)
+                }
+            fetched_language = tmdb_complete_data.get("original_language")
+            if isinstance(fetched_language, str) and fetched_language:
+                anime_language = fetched_language
+
         # parse anime if needed
-        if TMDBGenreIDsMovies.ANIMATION in tmdb_genres and original_language == "ja":
+        if animation_id in genre_ids and anime_language == "ja":
             tasks["ani_list_data"] = asyncio.create_task(
                 self.parse_ani_list(tmdb_title, tmdb_year)
             )

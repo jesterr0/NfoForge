@@ -424,6 +424,42 @@ def test_manual_tmdb_id_refreshes_genres_to_match_genre_names(tmp_path: Path) ->
     assert page.context.media_search.genre_names == ("Animation",)
 
 
+def test_manual_tmdb_id_with_no_genres_does_not_fall_back_to_the_stale_row(
+    tmp_path: Path,
+) -> None:
+    # TMDB legitimately returns `genres: []` for some titles. A present-but-
+    # empty list must be accepted as-is, not treated as "missing" and
+    # backfilled with the previous, unrelated search row's genres.
+    page = _make_page(tmp_path)
+    item_name = "1) Some Movie (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Movie",
+            "title": "Some Movie",
+            "year": "2024",
+            "original_title": "Some Movie",
+            "genre_ids": [TMDBGenreIDsMovies.ACTION],
+            "raw_data": {"id": 123, "genre_ids": [28]},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("123")
+    complete_tmdb = {
+        "id": 123,
+        "title": "Some Movie",
+        "genres": [],
+    }
+
+    page._update_payload_data(
+        {"tmdb_complete_data": {"success": True, "result": complete_tmdb}}
+    )
+
+    assert page.context.media_search.genres == []
+    assert page.context.media_search.genre_names == ()
+
+
 def test_user_entered_mal_id_survives_metadata_transformer_commit(
     monkeypatch, tmp_path: Path
 ) -> None:
