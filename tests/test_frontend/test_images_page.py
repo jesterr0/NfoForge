@@ -10,7 +10,8 @@ from src.context.processing_context import ProcessingContext
 from src.enums.cropping import Cropping
 from src.enums.media_type import MediaType
 from src.enums.screen_shot_mode import ScreenShotMode
-from src.frontend.wizards.images import ImagesPage
+from src.frontend.windows.image_viewer import ImageViewer
+from src.frontend.wizards.images import ImagesPage, QueuedWorker
 from src.packages.custom_types import ComparisonPair
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
@@ -122,6 +123,125 @@ def _make_images_page(
     monkeypatch.setattr("src.frontend.wizards.images.CropWidgetDialog", _DialogSpy)
 
     return page, generated
+
+
+class _FakeVideoTrack:
+    height = 1080
+
+
+class _FakeMediaInfo:
+    video_tracks = [_FakeVideoTrack()]
+
+
+def _images_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ImagesPage:
+    """Build a real ImagesPage ready to drive `_generate_finished` and the real
+    (unstubbed) `_execute_image_generation` -> `_start_queued_worker` path,
+    without touching real media or shelling out to ffmpeg.
+
+    Unlike `_make_images_page`, this does not stub out `_execute_image_generation`
+    itself, since the worker-parenting test needs the real construction path.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+
+    manager = ConfigManager("test", _paths(tmp_path))
+    manager.settings.screenshots.mode = ScreenShotMode.BASIC_SS_GEN
+    manager.settings.dependencies.ffmpeg = tmp_path / "ffmpeg"
+
+    media_file = tmp_path / "Movie.2020.1080p.BluRay.x264-GRP.mkv"
+    media_file.touch()
+
+    media_input = MediaInputPayload(
+        input_path=media_file,
+        media_type=MediaType.MOVIE,
+        working_dir=tmp_path / "workdir",
+        file_list=[media_file],
+        file_list_mediainfo={media_file: cast(MediaInfo, _FakeMediaInfo())},
+        comparison_pair=None,
+    )
+    context = ProcessingContext(
+        media_input=media_input,
+        media_search=MediaSearchPayload(media_type=MediaType.MOVIE, title="Movie"),
+    )
+
+    page = ImagesPage(config=manager, context=context, parent=None)  # type: ignore[arg-type]
+
+    # `_generate_finished` builds a real ImageViewer from `image_dir`, which
+    # requires at least one file matching `img_comparison/*.png` to exist.
+    image_dir = tmp_path / "images"
+    (image_dir / "img_comparison").mkdir(parents=True)
+    (image_dir / "img_comparison" / "0.png").touch()
+    (image_dir / "img_selected").mkdir()
+    page.image_dir = image_dir
+
+    return page
+
+
+def test_regenerating_deletes_the_previous_image_viewer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second generation must not leave the first viewer alive.
+
+    The re-sync loop can run this many times, so an undeleted viewer per run
+    is unbounded growth.
+    """
+    page = _images_page(tmp_path, monkeypatch)
+    deleted: list[object] = []
+    original = ImageViewer.deleteLater
+    monkeypatch.setattr(
+        ImageViewer,
+        "deleteLater",
+        lambda self: (deleted.append(self), original(self))[1],
+    )
+
+    page._generate_finished(0)
+    first = page.image_viewer
+    page._generate_finished(0)
+
+    assert first is not None
+    assert first in deleted
+    assert page.image_viewer is not first
+
+
+def test_exit_viewer_routes_to_load_images(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Proves the connection still works after replacing the lambda with a
+    bound slot.
+
+    `ImageViewer.exit_viewer` is declared as `Signal(list)` (it carries the
+    selected images, not an index), so the emitted value below is a list of
+    Paths, not an int.
+    """
+    page = _images_page(tmp_path, monkeypatch)
+    calls: list[tuple[list[Path], bool]] = []
+    monkeypatch.setattr(
+        page, "_load_images", lambda images, reload: calls.append((images, reload))
+    )
+
+    page._generate_finished(0)
+    assert page.image_viewer is not None
+    selected = [tmp_path / "selected_0.png", tmp_path / "selected_1.png"]
+    page.image_viewer.exit_viewer.emit(selected)
+
+    assert calls == [(selected, True)]
+
+
+def test_screenshot_worker_is_parented_to_the_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a parent, only a Python attribute keeps the C++ QThread alive."""
+    page = _images_page(tmp_path, monkeypatch)
+    # `_execute_image_generation` runs for real up through worker construction;
+    # only the thread's actual (ffmpeg-shelling) execution is stubbed out.
+    monkeypatch.setattr(QueuedWorker, "start", lambda self: None)
+
+    page._execute_image_generation()
+
+    assert page.queued_worker is not None
+    assert page.queued_worker.parent() is page
 
 
 def test_manual_crop_with_script_applies_values_without_prompting(

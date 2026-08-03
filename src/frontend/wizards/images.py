@@ -662,6 +662,7 @@ class ImagesPage(BaseWizardPage):
             source_file_mi_obj=source_file_mi_obj,
             index_cache_root=self.config.settings.general.working_dir,
             protected_media_root=self._protected_media_root(),
+            parent=self,
         )
         self.queued_worker.job_finished.connect(self._generate_finished)
         self.queued_worker.job_failed.connect(self._generate_failed)
@@ -673,6 +674,8 @@ class ImagesPage(BaseWizardPage):
             ss_mode = self._determine_ss_mode()
             if not self.image_dir:
                 raise RuntimeError("Failed to determine image_dir")
+            if self.image_viewer is not None:
+                self.image_viewer.deleteLater()
             self.image_viewer = ImageViewer(
                 image_base_dir=self.image_dir,
                 comparison_mode=ss_mode,
@@ -682,7 +685,7 @@ class ImagesPage(BaseWizardPage):
             )
             self.image_viewer.show()
             GSigs().main_window_set_disabled.emit(False)
-            self.image_viewer.exit_viewer.connect(lambda i: self._load_images(i, True))
+            self.image_viewer.exit_viewer.connect(self._on_exit_viewer)
             self.image_viewer.re_sync_images.connect(self._re_sync)
         else:
             QMessageBox.warning(
@@ -691,6 +694,12 @@ class ImagesPage(BaseWizardPage):
                 f"Failed to generate images, check logs for more information ({code})",
             )
             self._complete_loading()
+
+    @Slot(list)
+    def _on_exit_viewer(self, images: list[Path]) -> None:
+        # A bound method so Qt can disconnect it by receiver lifetime; a
+        # lambda cannot be auto-disconnected and kept the viewer alive.
+        self._load_images(images, True)
 
     @Slot(str)
     def _generate_failed(self, e: str) -> None:
