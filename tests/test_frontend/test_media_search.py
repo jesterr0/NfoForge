@@ -7,6 +7,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
+from src.enums.tmdb_genres import TMDBGenreIDsMovies
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.frontend.wizards.media_search import (
     MediaSearch,
@@ -385,6 +386,42 @@ def test_payload_update_commits_transformed_metadata(
         "https://provider.example/poster.jpg"
     )
     assert page.context.media_search.genre_names == ("Provider Genre",)
+
+
+def test_manual_tmdb_id_refreshes_genres_to_match_genre_names(tmp_path: Path) -> None:
+    # A manually entered TMDB ID fetches a complete record whose `genres` can
+    # differ from the search row's `genre_ids` (here: the row is Action, the
+    # fetched record is Animation). `genres` must track the record
+    # `populate_from_tmdb` uses to build `genre_names`, not the stale row --
+    # downstream anime/genre-aware logic reads `genres` directly.
+    page = _make_page(tmp_path)
+    item_name = "1) Anime Movie (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Movie",
+            "title": "Anime Movie",
+            "year": "2024",
+            "original_title": "Anime Movie",
+            "genre_ids": [TMDBGenreIDsMovies.ACTION],
+            "raw_data": {"id": 123, "genre_ids": [28]},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("123")
+    complete_tmdb = {
+        "id": 123,
+        "title": "Anime Movie",
+        "genres": [{"id": 16, "name": "Animation"}],
+    }
+
+    page._update_payload_data(
+        {"tmdb_complete_data": {"success": True, "result": complete_tmdb}}
+    )
+
+    assert page.context.media_search.genres == [TMDBGenreIDsMovies.ANIMATION]
+    assert page.context.media_search.genre_names == ("Animation",)
 
 
 def test_user_entered_mal_id_survives_metadata_transformer_commit(
