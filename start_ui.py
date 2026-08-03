@@ -235,7 +235,12 @@ class NfoForge:
         independently resolved from the config the app was asked to load.
         """
         config_path = self._resolve_config_path()
-        if config_path is None and self.program_config_malformed:
+        # Checked ahead of (rather than alongside) `config_path`: a malformed
+        # program config always resolves `config_path` to `None` in the same
+        # call that sets this flag (see `_resolve_config_path`), so the flag
+        # alone is the authoritative signal -- a known profile name must not
+        # let this be missed.
+        if self.program_config_malformed:
             self._offer_program_config_reset(str(error))
             return
         if not config_path:
@@ -257,7 +262,18 @@ class NfoForge:
         try:
             paths = ConfigPaths()
             config_file = self.config_file
-            if not config_file and paths.program.exists():
+            # `ConfigManager.load_program` parses `paths.program` on every
+            # init regardless of whether a profile name was already
+            # supplied (e.g. via `-c/--config`, or via the multi-profile
+            # splash selector, which only globs `user_configs` and never
+            # touches the program config) -- so detection here must not be
+            # gated behind "no config file was given" either, or a
+            # malformed program config with a known profile name silently
+            # resolves to that profile's (fine) path instead, routing to
+            # the profile archive+regenerate dialog and discarding a good
+            # profile on every launch while never touching the file that
+            # is actually broken.
+            if paths.program.exists():
                 try:
                     program_doc = tomlkit.parse(
                         paths.program.read_text(encoding="utf-8")
@@ -268,10 +284,13 @@ class NfoForge:
                     # not be reported as an unrecoverable profile error.
                     self.program_config_malformed = True
                     return None
-                # mirrors `ConfigManager.decode_program`, which defaults a
-                # missing `current_config` key to "config" -- keep both
-                # resolutions of an absent key in agreement.
-                config_file = program_doc.get("current_config", "config")
+                if not config_file:
+                    # mirrors `ConfigManager.decode_program`, which defaults
+                    # a missing `current_config` key to "config" -- keep
+                    # both resolutions of an absent key in agreement. Only
+                    # fills in a profile name that wasn't already known;
+                    # an explicitly supplied one always wins.
+                    config_file = program_doc.get("current_config", "config")
             if not config_file:
                 return None
             return paths.user_configs / f"{config_file}.toml"
@@ -287,6 +306,15 @@ class NfoForge:
         """
         if self.splash_screen is None:
             raise RuntimeError("Splash screen is not initialized")
+
+        # Reset up front rather than only on the success path: this handler
+        # only ever runs because the flag was true, so its job of routing
+        # here is already done, and the invariant ("true" means the next
+        # `_resolve_config_path` call hasn't run yet) shouldn't depend on
+        # `_error_on_splash`/`QApplication.quit()` on the decline/failure
+        # branches below actually terminating startup rather than merely
+        # requesting it.
+        self.program_config_malformed = False
 
         paths = ConfigPaths()
         response = QMessageBox.question(
@@ -325,7 +353,6 @@ class NfoForge:
         # `paths.program.exists()` is false, so this cannot loop back into
         # the same malformed-parse failure: the offending file is gone
         # before the retry ever reads it again.
-        self.program_config_malformed = False
         self._continue_init()
 
     def _offer_archive_and_regenerate(

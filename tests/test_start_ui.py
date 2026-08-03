@@ -258,6 +258,91 @@ def test_handle_config_error_routes_malformed_program_config_to_its_own_recovery
     assert fatal_calls == []
 
 
+def test_resolve_config_path_detects_malformed_program_config_even_with_a_known_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ConfigManager.load_program` parses `program/conf.toml` on every
+    init regardless of whether a profile name was already supplied (e.g.
+    via `-c/--config`, or via the multi-profile splash selector, which
+    only globs `user_configs` and never touches the program config).
+    Detection must therefore not be gated behind "no config file was
+    given": a malformed program config must be caught even when
+    `config_file` is already known, not silently skipped in favor of
+    resolving that (fine) profile's path.
+    """
+    program_path = tmp_path / "program" / "conf.toml"
+    program_path.parent.mkdir(parents=True, exist_ok=True)
+    program_path.write_text('current_config = "unterminated', encoding="utf-8")
+    test_paths = ConfigPaths(
+        default_config=tmp_path / "default_config.toml",
+        default_program=tmp_path / "default_program_conf.toml",
+        program=program_path,
+        user_configs=tmp_path / "user",
+        tracker_cookies=tmp_path / "cookies",
+    )
+    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+
+    app = _bare_nfoforge("test")
+    result = app._resolve_config_path()
+
+    assert result is None
+    assert app.program_config_malformed is True
+
+
+def test_malformed_program_config_takes_priority_over_a_known_profile_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression test for a data-loss loop: with a profile name already
+    known (as if selected via the splash selector, or passed with
+    `-c/--config`) and the program config also malformed, `_handle_config_error`
+    must still route to the program-config recovery dialog -- never to the
+    profile archive+regenerate dialog, which would discard a perfectly
+    good profile on every launch while never touching the file that is
+    actually broken (the program config, which `_offer_archive_and_regenerate`
+    doesn't even look at).
+    """
+    program_path = tmp_path / "program" / "conf.toml"
+    program_path.parent.mkdir(parents=True, exist_ok=True)
+    program_path.write_text('current_config = "unterminated', encoding="utf-8")
+    test_paths = ConfigPaths(
+        default_config=tmp_path / "default_config.toml",
+        default_program=tmp_path / "default_program_conf.toml",
+        program=program_path,
+        user_configs=tmp_path / "user",
+        tracker_cookies=tmp_path / "cookies",
+    )
+    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    monkeypatch.setattr(
+        start_ui,
+        "ConfigManager",
+        lambda config_file: (_ for _ in ()).throw(ConfigError("boom")),
+    )
+
+    program_reset_calls = []
+    monkeypatch.setattr(
+        start_ui.NfoForge,
+        "_offer_program_config_reset",
+        lambda self, error_text: program_reset_calls.append(error_text),
+    )
+    archive_calls = []
+    monkeypatch.setattr(
+        start_ui.NfoForge,
+        "_offer_archive_and_regenerate",
+        lambda self, *a: archive_calls.append(a),
+    )
+
+    # A profile name is already known, yet the program config is still
+    # malformed -- the realistic case is the multi-profile splash selector,
+    # which resolves and sets `config_file` without ever reading the
+    # program config.
+    app = _bare_nfoforge("test")
+    app._continue_init()
+
+    assert program_reset_calls == ["boom"]
+    # The critical assertion: a known-good profile must not be archived.
+    assert archive_calls == []
+
+
 def test_last_used_config_is_returned_only_when_profile_exists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
