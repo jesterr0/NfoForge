@@ -115,7 +115,8 @@ def test_local_qbittorrent_allows_windows_drive_path() -> None:
 
 
 def test_remote_qbittorrent_warns_for_unc_path() -> None:
-    """UNC roots share the same drift risk as drive letters, so they warn too."""
+    """A UNC root still gets a reachability reminder, distinct from the
+    "likely mistake" wording used for a host-specific drive letter."""
     warning = get_qbittorrent_save_path_warning(
         "https://seedbox.example",
         r"\\nas\movies",

@@ -38,11 +38,14 @@ def get_qbittorrent_save_path_warning(
     host: str | None,
     save_path: str | None,
 ) -> str | None:
-    """Return a warning for a local Windows path sent to a remote qBittorrent.
+    """Return a warning for a Windows-style path that may not resolve as intended.
 
     qBittorrent interprets ``save_path`` on the machine running qBittorrent,
-    not on the NfoForge host.  A drive-letter path is therefore almost always
-    a configuration mistake when the API host is not local.
+    not on the NfoForge host. A drive-letter path is host-specific and is
+    therefore almost always a configuration mistake when the API host is not
+    local. A UNC path is different: it can resolve identically from any
+    Windows host on the network, so it is flagged only as a "confirm this is
+    reachable from qBittorrent's host" reminder, not as a likely mistake.
     """
 
     if not save_path or not _is_windows_destination(save_path):
@@ -54,11 +57,18 @@ def get_qbittorrent_save_path_warning(
     if hostname in _LOOPBACK_HOSTS:
         return None
 
+    if _WINDOWS_DRIVE_PATH.match(save_path.strip()):
+        return (
+            "The qBittorrent save location is a local Windows drive path, but the "
+            "qBittorrent host is remote. qBittorrent may interpret this as a "
+            "different path; configure the destination using the remote host's "
+            "path mapping."
+        )
     return (
-        "The qBittorrent save location is a local Windows drive path, but the "
-        "qBittorrent host is remote. qBittorrent may interpret this as a "
-        "different path; configure the destination using the remote host's "
-        "path mapping."
+        "The qBittorrent save location is a Windows UNC path. qBittorrent "
+        "resolves this from its own host, so confirm the share is reachable "
+        "from wherever qBittorrent is actually running, not just from this "
+        "computer."
     )
 
 
@@ -116,15 +126,27 @@ def _colon_replace_for_destination(
 
 
 def _split_windows_anchor(template: str) -> tuple[str, str]:
-    """Split a Windows-style template into its literal anchor and the rest.
+    """Split a Windows-style template into its literal root and the rest.
 
-    The anchor (a drive letter such as ``D:\\`` or a UNC ``\\\\server\\share\\``
-    root) is structural, not user-supplied text, and its own colon must
-    survive colon replacement untouched. Only the remainder -- where tokens
-    are substituted -- should have ``colon_replace`` applied to it.
+    The root (a drive letter such as ``D:\\`` or a UNC ``\\\\server\\share\\``
+    prefix) is structural, not user-supplied text: its own colon must survive
+    colon replacement untouched, and its own separators must survive exactly
+    as written (a POSIX-style ``//server/share`` root must not come back with
+    backslashes). Only the remainder -- where tokens are substituted -- should
+    have ``colon_replace`` applied to it.
+
+    ``PureWindowsPath.anchor`` is used only to measure how many leading
+    characters belong to the root; its own value is never reused, since it
+    normalizes separators to backslash and, for a bare UNC root with no
+    trailing separator (e.g. ``\\\\nas\\movies``), reports one character more
+    than the template actually has. Slicing the original string by that
+    length -- tolerant of running past the end -- keeps every original
+    character (including a trailing separator that was never there) intact
+    and yields an empty remainder rather than an out-of-range error for a
+    root-only template.
     """
-    anchor = PureWindowsPath(template).anchor
-    return anchor, template[len(anchor) :]
+    anchor_length = len(PureWindowsPath(template).anchor)
+    return template[:anchor_length], template[anchor_length:]
 
 
 def _render_save_path_template(
@@ -132,6 +154,13 @@ def _render_save_path_template(
     context: ProcessingContext,
     template: str,
 ) -> str:
+    # Strip once, up front, and use this value everywhere below.
+    # `_is_windows_destination` and `_split_windows_anchor` must never be
+    # asked to agree on two different strings -- a leading/trailing-space
+    # template would otherwise be classified as Windows by one and not the
+    # other, leaving colon replacement applied to an un-split (and thus
+    # un-protected) drive/UNC root.
+    template = template.strip()
     release_info = build_series_release_info(context.media_input)
     user_tokens = {
         key: value
@@ -154,6 +183,16 @@ def _render_save_path_template(
 
     if _is_windows_destination(template):
         anchor, template_body = _split_windows_anchor(template)
+        if not template_body.strip():
+            # Root-only template (e.g. `\\nas\movies` or `D:\`) -- nothing to
+            # render, and `_split_windows_anchor` may even report an anchor
+            # longer than the template itself (a bare UNC root with no
+            # trailing separator). There are no tokens to fill and no colon
+            # replacement to apply to a structural root, so resolve directly
+            # to the literal root rather than handing an empty string to
+            # `TokenReplacer`, which would otherwise reject it as "resolved
+            # to an empty path".
+            return anchor
         colon_replace = _colon_replace_for_destination(config, context)
     else:
         anchor, template_body = "", template
@@ -185,8 +224,9 @@ def _render_save_path_template(
         preserve_literal_formatting=True,
         flat_filters=context.flat_filters,
     )
-    output = renderer.get_output()
-    if not output or not output.strip():
+    output = renderer.get_output() or ""
+    full_output = anchor + output
+    if not full_output.strip():
         raise TrackerClientError(
             "The qBittorrent save location template resolved to an empty path"
         )
@@ -197,4 +237,4 @@ def _render_save_path_template(
             "Unknown or unsupported token(s) in qBittorrent save location "
             f"template: {', '.join(unresolved)}"
         )
-    return anchor + output.strip()
+    return full_output.strip()
