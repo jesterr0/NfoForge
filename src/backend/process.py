@@ -19,7 +19,10 @@ from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
 from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.image_host_uploading.img_downloader import ImageDownloader
-from src.backend.image_host_uploading.img_uploader import ImageUploader
+from src.backend.image_host_uploading.img_uploader import (
+    ImageUploader,
+    assert_all_images_uploaded,
+)
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
@@ -1278,7 +1281,9 @@ class ProcessBackEnd:
                 # map the uploaded image hosts to the appropriate trackers
                 for tracker, img_host in tracker_to_host_map.items():
                     if img_host in upload_results:
-                        url_data[tracker] = upload_results[img_host]
+                        tracker_results = upload_results[img_host]
+                        assert_all_images_uploaded(str(tracker), tracker_results)
+                        url_data[tracker] = tracker_results
                     else:
                         LOG.debug(
                             LOG.LOG_SOURCE.BE,
@@ -1291,10 +1296,12 @@ class ProcessBackEnd:
             url_host_count = 0
             for tracker, img_host in tracker_to_host_map.items():
                 if img_host is ImageSource.URLS:
-                    url_data[tracker] = {
+                    tracker_url_data = {
                         i: img_data
                         for i, img_data in enumerate(context.shared_data.url_data)
                     }
+                    assert_all_images_uploaded(str(tracker), tracker_url_data)
+                    url_data[tracker] = tracker_url_data
                     url_host_count += 1
 
             queued_text_update(
