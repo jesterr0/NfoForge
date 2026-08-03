@@ -1,13 +1,15 @@
+from collections.abc import Iterator
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, Qt
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QMessageBox, QTreeWidget, QTreeWidgetItem
 import pytest
 
 from src.enums.media_type import MediaType
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.frontend.wizards.series_match import _incomplete_mapping_message
 from src.payloads.media_inputs import MediaInputPayload
+from src.payloads.media_search import MediaSearchPayload
 
 
 def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
@@ -26,15 +28,53 @@ def _mapper_without_tvdb_data() -> SeriesEpisodeMapper:
 
 
 def _mapper_with_tvdb_data() -> SeriesEpisodeMapper:
-    """A mapper with files and TVDB episode data loaded, ready to match."""
-    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv"), Path("Show.S01E02.mkv")])
-    mapper.available_episodes = {
-        1: {
-            1: {"seasonNumber": 1, "number": 1, "name": "Pilot"},
-            2: {"seasonNumber": 1, "number": 2, "name": "Second Episode"},
-        }
-    }
+    """A mapper with files and TVDB episode data loaded, ready to match.
+
+    Goes through the real ``_load_episode_data()`` path (driven by a
+    ``media_search_payload.tvdb_data`` shape, rather than poking
+    ``available_episodes`` directly) so ``episode_items`` and
+    ``episodes_tree`` are populated exactly as they would be in the app --
+    tests that need the tree to actually contain rows (e.g. to exercise its
+    paint sites) rely on this.
+    """
+    mapper = _make_mapper_with_files(
+        [Path("Show.S01E01.mkv"), Path("Show.S01E02.mkv"), Path("Show.Bonus.mkv")]
+    )
+    mapper.media_search_payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title="Show",
+        tvdb_data={
+            "episodes_by_type": {
+                0: {
+                    "type_name": "Aired Order",
+                    "type": "official",
+                    "episodes": [
+                        {"seasonNumber": 1, "number": 1, "name": "Pilot"},
+                        {"seasonNumber": 1, "number": 2, "name": "Second Episode"},
+                        {"seasonNumber": 1, "number": 3, "name": "Third Episode"},
+                    ],
+                }
+            }
+        },
+    )
+    mapper._load_episode_data()
     return mapper
+
+
+def _iter_tree_items(item: QTreeWidgetItem) -> Iterator[QTreeWidgetItem]:
+    """Yield ``item`` and every descendant, depth-first."""
+    yield item
+    for child_index in range(item.childCount()):
+        yield from _iter_tree_items(item.child(child_index))  # type: ignore[reportArgumentType]
+
+
+def _all_tree_items(tree: QTreeWidget) -> list[QTreeWidgetItem]:
+    items: list[QTreeWidgetItem] = []
+    for top_index in range(tree.topLevelItemCount()):
+        top_item = tree.topLevelItem(top_index)
+        if top_item is not None:
+            items.extend(_iter_tree_items(top_item))
+    return items
 
 
 def test_incomplete_mapping_message_when_tvdb_has_no_episodes() -> None:
@@ -136,7 +176,7 @@ def test_re_match_all_reports_when_there_is_no_episode_data(
         lambda _parent, title, text: shown.append((title, text)),
     )
 
-    mapper._auto_match_files()
+    mapper._on_re_match_all_clicked()
 
     assert len(shown) == 1
     assert "TVDB" in shown[0][1]
@@ -150,7 +190,42 @@ def test_re_match_all_stays_silent_when_episode_data_exists(
     shown: list[object] = []
     monkeypatch.setattr(QMessageBox, "information", lambda *a: shown.append(a))
 
-    mapper._auto_match_files()
+    mapper._on_re_match_all_clicked()
+
+    assert shown == []
+
+
+def test_load_data_stays_silent_when_there_is_no_episode_data(
+    qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard.
+
+    ``load_data()`` runs on every page visit (``SeriesMatch.initializePage``),
+    not just on a button click. A series with no TVDB episode data is an
+    anticipated case that already gets a calm inline warning
+    (``NO_TVDB_EPISODE_DATA_MESSAGE`` on ``episodes_stats_label``); it must
+    not also pop a blocking modal on every Back/Next revisit.
+    """
+    mapper = _mapper_without_tvdb_data()
+    media_search_payload = MediaSearchPayload(media_type=MediaType.SERIES, title="Show")
+    shown: list[object] = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: shown.append(a))
+
+    assert mapper.media_input_payload is not None
+    mapper.load_data(mapper.media_input_payload, media_search_payload)
+
+    assert shown == []
+
+
+def test_episode_order_changed_stays_silent_when_there_is_no_episode_data(
+    qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard: changing TVDB order must not pop a modal either."""
+    mapper = _mapper_without_tvdb_data()
+    shown: list[object] = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: shown.append(a))
+
+    mapper._on_episode_order_changed("")
 
     assert shown == []
 
@@ -159,7 +234,10 @@ def test_every_coloured_cell_also_sets_a_foreground(qapp: QCoreApplication) -> N
     """A background without a foreground is unreadable on the dark theme.
 
     Asserts the invariant across the real widget rather than per call site,
-    so a future site added without a foreground fails this too.
+    so a future site added without a foreground fails this too. Covers both
+    the files table and the episodes tree, and drives auto-match plus both
+    manual-edit branches (matched and unverified) so more than one paint
+    site is actually exercised, not just the confidence column.
 
     ``_populate_files_table`` alone never paints a cell -- coloring happens
     in ``_auto_match_files`` (and other assignment paths), so both are
@@ -170,8 +248,35 @@ def test_every_coloured_cell_also_sets_a_foreground(qapp: QCoreApplication) -> N
     mapper._populate_files_table()
     mapper._auto_match_files()
 
+    # Row 2 ("Show.Bonus.mkv") has no parseable season/episode, so auto-match
+    # leaves it unassigned. Manually enter a season/episode that DOES exist
+    # in available_episodes -- this exercises the "manual edit matched TVDB"
+    # paint site (distinct from the auto-match confidence colours above).
     table = mapper.files_table
-    coloured_cells = 0
+    row_2_season = table.item(2, 1)
+    row_2_episode = table.item(2, 2)
+    assert row_2_season is not None
+    assert row_2_episode is not None
+    table.blockSignals(True)
+    row_2_season.setText("1")
+    row_2_episode.setText("3")
+    table.blockSignals(False)
+    mapper._on_table_item_changed(row_2_episode)
+
+    # Row 0 was auto-matched; overwrite it with a season/episode that does
+    # NOT exist in available_episodes to exercise the "manual edit
+    # unverified" (amber) paint site.
+    row_0_season = table.item(0, 1)
+    row_0_episode = table.item(0, 2)
+    assert row_0_season is not None
+    assert row_0_episode is not None
+    table.blockSignals(True)
+    row_0_season.setText("9")
+    row_0_episode.setText("9")
+    table.blockSignals(False)
+    mapper._on_table_item_changed(row_0_episode)
+
+    coloured_in_table = 0
     for row in range(table.rowCount()):
         for column in range(table.columnCount()):
             item = table.item(row, column)
@@ -182,11 +287,31 @@ def test_every_coloured_cell_also_sets_a_foreground(qapp: QCoreApplication) -> N
                 continue
             if background.color().alpha() == 0:
                 continue
-            coloured_cells += 1
+            coloured_in_table += 1
             assert item.foreground().style() != Qt.BrushStyle.NoBrush, (
-                f"cell ({row}, {column}) sets a background with no foreground"
+                f"files_table cell ({row}, {column}) sets a background with no foreground"
             )
 
-    assert coloured_cells > 0, (
-        "no cell was coloured -- this test would otherwise pass vacuously"
+    coloured_in_tree = 0
+    tree = mapper.episodes_tree
+    for tree_item in _all_tree_items(tree):
+        for column in range(tree.columnCount()):
+            background = tree_item.background(column)
+            if background.style() == Qt.BrushStyle.NoBrush:
+                continue
+            if background.color().alpha() == 0:
+                continue
+            coloured_in_tree += 1
+            assert tree_item.foreground(column).style() != Qt.BrushStyle.NoBrush, (
+                f"episodes_tree cell (item={tree_item.text(0)!r}, column={column}) "
+                "sets a background with no foreground"
+            )
+
+    assert coloured_in_table > 0, (
+        "no files_table cell was coloured -- this test would otherwise pass "
+        "vacuously for that surface"
+    )
+    assert coloured_in_tree > 0, (
+        "no episodes_tree cell was coloured -- this test would otherwise "
+        "pass vacuously for that surface"
     )

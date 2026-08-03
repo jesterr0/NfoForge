@@ -245,6 +245,11 @@ class SeriesEpisodeMapper(QWidget):
             item.setBackground(column, colour)
             item.setForeground(column, cls._CELL_FOREGROUND)
         else:
+            # a QTableWidgetItem represents a single cell, so `column` has no
+            # meaning here; a non-default value would be silently dropped.
+            assert column == 0, (
+                "column is meaningless for a QTableWidgetItem, which represents a single cell"
+            )
             item.setBackground(colour)
             item.setForeground(cls._CELL_FOREGROUND)
 
@@ -257,6 +262,9 @@ class SeriesEpisodeMapper(QWidget):
             item.setBackground(column, QBrush())
             item.setForeground(column, QBrush())
         else:
+            assert column == 0, (
+                "column is meaningless for a QTableWidgetItem, which represents a single cell"
+            )
             item.setBackground(QBrush())
             item.setForeground(QBrush())
 
@@ -316,7 +324,7 @@ class SeriesEpisodeMapper(QWidget):
         self.auto_match_btn.setToolTip(
             "Re-run automatic matching with current settings"
         )
-        self.auto_match_btn.clicked.connect(self._auto_match_files)
+        self.auto_match_btn.clicked.connect(self._on_re_match_all_clicked)
 
         self.fuzzy_match_btn = QToolButton(self)
         self.fuzzy_match_btn.setText("Fuzzy Match")
@@ -791,12 +799,6 @@ class SeriesEpisodeMapper(QWidget):
     def _auto_match_files(self) -> None:
         """Enhanced auto-matching with fuzzy fallback"""
         if not self.available_episodes:
-            QMessageBox.information(
-                self,
-                "No Episode Data",
-                "There is no TVDB episode data loaded, so files cannot be "
-                "re-matched. Set a TVDB ID on the previous page and try again.",
-            )
             return
 
         matched_count = 0
@@ -1004,6 +1006,29 @@ class SeriesEpisodeMapper(QWidget):
         self._update_all_stats()
         self._refresh_episodes_display()
         self.mapping_changed.emit()
+
+    @Slot()
+    def _on_re_match_all_clicked(self) -> None:
+        """Button handler for "Re-match All".
+
+        The empty-episode-data message lives here rather than in
+        ``_auto_match_files`` because that method also runs on page load
+        (``load_data``), on release-order changes
+        (``_on_episode_order_changed``), and on ``load_media_input_data`` --
+        all paths where an empty episode list is already reported inline via
+        ``NO_TVDB_EPISODE_DATA_MESSAGE`` on ``episodes_stats_label``. Showing
+        a blocking modal there turned a silent no-op into a nag on every page
+        visit.
+        """
+        if not self.available_episodes:
+            QMessageBox.information(
+                self,
+                "No Episode Data",
+                "There is no TVDB episode data loaded, so files cannot be "
+                "re-matched. Set a TVDB ID on the previous page and try again.",
+            )
+            return
+        self._auto_match_files()
 
     def _fuzzy_match_unassigned(self) -> None:
         """Run fuzzy matching specifically on unassigned files"""
