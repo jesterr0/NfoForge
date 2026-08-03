@@ -243,6 +243,7 @@ class MediaSearch(BaseWizardPage):
         self.backend = MediaSearchBackEnd(
             language=self.config.settings.general.tmdb_language,
             timeout=self.config.settings.general.timeout,
+            api_key=self.config.settings.api_keys.tmdb_api_key,
         )
 
         # listen for settings changes to update language
@@ -804,6 +805,7 @@ class MediaSearch(BaseWizardPage):
         """Update MediaSearchBackEnd when settings change"""
         new_language = self.config.settings.general.tmdb_language
         self.backend.update_language(new_language)
+        self.backend.update_api_key(self.config.settings.api_keys.tmdb_api_key)
 
     def isComplete(self) -> bool:
         """Overrides isComplete method to control the next button"""

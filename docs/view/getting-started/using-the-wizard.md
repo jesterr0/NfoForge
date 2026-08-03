@@ -36,6 +36,12 @@ plugin is selected in **Settings -> Plugins**, its returned payload updates the
 corresponding TMDB values; a transformer failure only produces a warning and processing
 continues with TMDB.
 
+NfoForge ships with a bundled TMDB API key, so search works out of the box with no setup
+required. If you'd rather use your own account, add a personal key at **Settings ->
+General -> TMDB API Key**; leave it blank to keep using the bundled key. You can
+generate a free key from your
+[TMDB account settings](https://www.themoviedb.org/settings/api).
+
 IMDb, TMDB, and TVDB IDs can be entered manually. A TMDB lookup is still required
 because it supplies the base metadata. If TVDB is unavailable for a series, the wizard
 lets you retry or continue with the IDs and TMDB metadata you supplied.

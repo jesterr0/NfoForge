@@ -26,6 +26,7 @@ class MediaSearchBackEnd:
         language: str = "en-US",
         use_base_language_for_images: bool = True,
         timeout: int = 60,
+        api_key: str = "",
     ) -> None:
         self.media_data: dict[str, dict[str, Any]] = {}
         self.session = niquests.Session()
@@ -33,13 +34,17 @@ class MediaSearchBackEnd:
         self.use_base_language_for_images = use_base_language_for_images
         self.timeout = max(1, timeout)
         self.params = {
-            "api_key": self._get_tmdb_k(),
+            "api_key": api_key.strip() or self._get_tmdb_k(),
             "language": language,
             "include_adult": "false",
         }
 
     def update_language(self, language: str) -> None:
         self.params["language"] = language
+
+    def update_api_key(self, api_key: str) -> None:
+        """Swap the key when settings change, mirroring `update_language`."""
+        self.params["api_key"] = api_key.strip() or self._get_tmdb_k()
 
     def close_session(self) -> None:
         """Properly close the session when done"""
@@ -607,6 +612,10 @@ class MediaSearchBackEnd:
 
     @staticmethod
     def _get_tmdb_k() -> str:
+        """A bundled key so search works out of the box, encoded to keep
+        automated credential scrapers from harvesting it off the public
+        repository. Add your own key in settings if preferred.
+        """
         # cSpell:disable
         k = b"eJwzT7MwNTVOsTA0ME4xTjM2NjIzMzIzTjU3sjQ2MUi2TAYAgTIH3A=="
         # cSpell:enable

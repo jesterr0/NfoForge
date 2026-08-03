@@ -13,13 +13,15 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_v3_to_v4_resets_display_name_plugin_selections() -> None:
     old = _load_fixture("schema3_config.toml")
-    old["api_keys"] = {"tmdb_api_key": "retired"}
+    old["api_keys"] = {"tmdb_api_key": "user-supplied"}
 
     new, unmapped = migrate_v3_to_v4(old, None)
 
     assert not unmapped
     assert new["schema_version"] == 4
-    assert "api_keys" not in new
+    # a user-supplied TMDB key override is unrelated to the plugin-ID
+    # rename this hop performs, and must be carried forward, not dropped
+    assert new["api_keys"] == {"tmdb_api_key": "user-supplied"}
     assert new["general"]["enable_plugins"] is True
     assert new["plugins"] == {
         "wizard_page": "",
@@ -27,6 +29,15 @@ def test_v3_to_v4_resets_display_name_plugin_selections() -> None:
         "pre_upload": "",
         "metadata_transformer": "",
     }
+
+
+def test_migrating_v3_preserves_a_user_supplied_api_key() -> None:
+    document = tomlkit.parse('schema_version = 3\n[api_keys]\ntmdb_api_key = "kept"\n')
+
+    migrated, unmapped = migrate_v3_to_v4(document, None)
+
+    assert not unmapped
+    assert migrated["api_keys"]["tmdb_api_key"] == "kept"
 
 
 def _load_fixture(name: str) -> tomlkit.TOMLDocument:

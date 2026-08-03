@@ -123,9 +123,14 @@ def test_save_preserves_unknown_keys_and_comments(
     assert saved_specific["third_party_option"] == "preserve-me"
 
 
-def test_save_removes_retired_tmdb_api_keys_table(
+def test_save_preserves_a_user_supplied_tmdb_api_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A user-supplied override in `[api_keys]` must survive a load + save,
+    not be stripped. Restores the override this table provides -- an earlier
+    revision removed it in favor of the bundled key alone and popped the
+    table on every save.
+    """
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
@@ -134,13 +139,15 @@ def test_save_removes_retired_tmdb_api_keys_table(
     manager = ConfigManager("test", paths)
     profile = paths.user_configs / "test.toml"
     document = tomlkit.parse(profile.read_text(encoding="utf-8"))
-    document["api_keys"] = {"tmdb_api_key": "retired"}
+    document["api_keys"] = {"tmdb_api_key": "user-supplied"}
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     manager.load_profile("test")
 
+    assert manager.settings.api_keys.tmdb_api_key == "user-supplied"
     saved_document = tomlkit.parse(profile.read_text(encoding="utf-8"))
-    assert "api_keys" not in saved_document
+    saved_api_keys = cast(MutableMapping[str, Any], saved_document["api_keys"])
+    assert saved_api_keys["tmdb_api_key"] == "user-supplied"
 
 
 def test_manager_preserves_qbittorrent_super_seeding_false(
@@ -1251,6 +1258,46 @@ def test_metadata_transformer_backfills_when_a_profile_lacks_it(
     manager.load_profile("test")
 
     assert manager.settings.plugins.metadata_transformer is None
+
+
+def test_api_key_is_absent_from_an_upgraded_profile_without_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Profiles already migrated to v4 had `api_keys` stripped (the old
+    `save()` popped it and the old `migrate_v3_to_v4` dropped it). Loading
+    one must default the key, not raise, on startup.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    del document["api_keys"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")  # must not raise
+
+    assert manager.settings.api_keys.tmdb_api_key == ""
+
+
+def test_api_key_round_trips_through_save_and_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.api_keys.tmdb_api_key = "abc123"
+    manager.save()
+    manager.load_profile("test")
+
+    assert manager.settings.api_keys.tmdb_api_key == "abc123"
 
 
 def test_metadata_transformer_is_written_on_save(

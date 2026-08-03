@@ -76,6 +76,13 @@ class ProgramConfig:
 
 
 @dataclass(slots=True)
+class ApiKeysSettings:
+    """Optional user-supplied API keys that override the bundled defaults."""
+
+    tmdb_api_key: str = ""
+
+
+@dataclass(slots=True)
 class GeneralSettings:
     ui_suffix: str
     ui_scale_factor: float
@@ -381,6 +388,7 @@ class WidgetSettings:
 @dataclass(slots=True)
 class AppConfig:
     general: GeneralSettings
+    api_keys: ApiKeysSettings
     dependencies: DependencySettings
     trackers: TrackerSettings
     torrent_clients: TorrentClientSettings

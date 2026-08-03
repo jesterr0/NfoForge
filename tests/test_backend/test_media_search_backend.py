@@ -55,6 +55,29 @@ def test_tmdb_uses_embedded_v3_api_key(
     assert "headers" not in request
 
 
+def test_a_user_supplied_key_replaces_the_bundled_one() -> None:
+    backend = MediaSearchBackEnd(api_key="user-key")
+    assert backend.params["api_key"] == "user-key"
+
+
+def test_a_blank_key_falls_back_to_the_bundled_one() -> None:
+    for blank in ("", "   "):
+        backend = MediaSearchBackEnd(api_key=blank)
+        assert backend.params["api_key"] == MediaSearchBackEnd._get_tmdb_k()
+
+
+def test_update_api_key_falls_back_when_cleared() -> None:
+    backend = MediaSearchBackEnd(api_key="user-key")
+    backend.update_api_key("")
+    assert backend.params["api_key"] == MediaSearchBackEnd._get_tmdb_k()
+
+
+def test_update_api_key_swaps_in_a_new_key() -> None:
+    backend = MediaSearchBackEnd()
+    backend.update_api_key("new-key")
+    assert backend.params["api_key"] == "new-key"
+
+
 def test_tmdb_connection_failure_is_not_reported_as_empty_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

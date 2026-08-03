@@ -20,6 +20,9 @@ ffprobe = ""
 frame_forge = ""
 mkbrr = ""
 
+[api_keys]
+tmdb_api_key = ""
+
 [tracker.settings]
 tracker_order = []
 last_used_img_host = {}

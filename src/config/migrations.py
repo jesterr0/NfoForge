@@ -425,12 +425,16 @@ def migrate_v3_to_v4(
     old_doc: Mapping[str, Any],
     default_document: Mapping[str, Any] | None,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Reset legacy display-name plugin selections for the typed plugin API."""
+    """Reset legacy display-name plugin selections for the typed plugin API.
+
+    ``api_keys`` (a user-supplied TMDB key override) is carried forward
+    unchanged -- it is unrelated to the plugin-ID rename this hop performs.
+    """
 
     del default_document
     new_doc: dict[str, Any] = {"schema_version": SCHEMA_4_VERSION}
     for key, value in old_doc.items():
-        if key not in ("schema_version", "plugins", "api_keys"):
+        if key not in ("schema_version", "plugins"):
             new_doc[key] = value
     new_doc["plugins"] = {
         "wizard_page": "",

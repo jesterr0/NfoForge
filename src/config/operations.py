@@ -8,6 +8,7 @@ from tomlkit.items import AbstractTable
 from src.backend.tokens import TokenSelection
 from src.config.codec import TomlConfigCodec
 from src.config.models import (
+    ApiKeysSettings,
     AppConfig,
     DependencySettings,
     DynamicRangeSettings,
@@ -127,10 +128,6 @@ class TypedTomlOperations:
         """Converts config payload object to TOML and writes to a file"""
         try:
             self.codec.validate_settings(self.settings)
-            # TMDB credentials are bundled with the application now.  Remove
-            # the retired profile table when an older/current profile still
-            # contains it so credentials are not carried forward on save.
-            self._toml_data.pop("api_keys", None)
             # update program conf
             self.save_program()
 
@@ -168,6 +165,10 @@ class TypedTomlOperations:
             dependencies_data["mkbrr"] = self.resolve_dependency(
                 self.settings.dependencies.mkbrr
             )
+
+            # api keys
+            api_keys_data = self._ensure_toml_table(self._toml_data, "api_keys")
+            api_keys_data["tmdb_api_key"] = self.settings.api_keys.tmdb_api_key
 
             # trackers
             tracker_data = self._toml_table(self._toml_data, "tracker")
@@ -1707,6 +1708,11 @@ class TypedTomlOperations:
                     working_dir=Path(general_data["working_dir"])
                     if general_data["working_dir"]
                     else self.paths.default_working_dir(ensure_exists=True),
+                ),
+                api_keys=ApiKeysSettings(
+                    tmdb_api_key=str(
+                        toml_data.get("api_keys", {}).get("tmdb_api_key", "")
+                    )
                 ),
                 dependencies=DependencySettings(
                     ffmpeg=ffmpeg,
