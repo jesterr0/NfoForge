@@ -23,6 +23,7 @@ def _bare_nfoforge(config_file: str | None) -> start_ui.NfoForge:
     app = object.__new__(start_ui.NfoForge)
     app.config_file = config_file
     app.splash_screen = SimpleNamespace(updateMessageBox=lambda *_a, **_k: None)  # type: ignore[reportAttributeAccessIssue]
+    app.program_config_malformed = False
     return app
 
 
@@ -176,6 +177,85 @@ def test_resolve_config_path_defaults_missing_current_config_key(
     app = _bare_nfoforge(None)
 
     assert app._resolve_config_path() == test_paths.user_configs / "config.toml"
+
+
+def test_malformed_program_config_offers_recovery_not_a_fatal_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A syntactically broken `program/conf.toml` is its own small,
+    recoverable problem -- it holds only the active profile name and the
+    window position -- and must be distinguishable from "no config named"
+    (both currently collapse to `_resolve_config_path` returning `None`) so
+    `_handle_config_error` can offer to regenerate it instead of falling
+    through to the fatal quit path.
+    """
+    program_path = tmp_path / "program" / "conf.toml"
+    program_path.parent.mkdir(parents=True, exist_ok=True)
+    program_path.write_text('current_config = "unterminated', encoding="utf-8")
+    test_paths = ConfigPaths(
+        default_config=tmp_path / "default_config.toml",
+        default_program=tmp_path / "default_program_conf.toml",
+        program=program_path,
+        user_configs=tmp_path / "user",
+        tracker_cookies=tmp_path / "cookies",
+    )
+    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+
+    app = _bare_nfoforge(None)
+    result = app._resolve_config_path()
+
+    # A malformed program config is distinguishable from "no config named".
+    assert result is None
+    assert app.program_config_malformed is True
+
+
+def test_handle_config_error_routes_malformed_program_config_to_its_own_recovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_handle_config_error` must offer the program-config-specific
+    recovery (regenerate, not archive-and-reset-settings) when the reason
+    `_resolve_config_path` returned `None` is a malformed program config --
+    not the fatal `_error_on_splash` quit path, and not the profile
+    archive+regenerate path (which would show the wrong, more alarming
+    "settings will reset" wording for a file that holds none).
+    """
+    program_path = tmp_path / "program" / "conf.toml"
+    program_path.parent.mkdir(parents=True, exist_ok=True)
+    program_path.write_text('current_config = "unterminated', encoding="utf-8")
+    test_paths = ConfigPaths(
+        default_config=tmp_path / "default_config.toml",
+        default_program=tmp_path / "default_program_conf.toml",
+        program=program_path,
+        user_configs=tmp_path / "user",
+        tracker_cookies=tmp_path / "cookies",
+    )
+    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+
+    program_reset_calls = []
+    monkeypatch.setattr(
+        start_ui.NfoForge,
+        "_offer_program_config_reset",
+        lambda self, error_text: program_reset_calls.append(error_text),
+    )
+    archive_calls = []
+    monkeypatch.setattr(
+        start_ui.NfoForge,
+        "_offer_archive_and_regenerate",
+        lambda self, *a: archive_calls.append(a),
+    )
+    fatal_calls = []
+    monkeypatch.setattr(
+        start_ui.NfoForge,
+        "_error_on_splash",
+        lambda self, error: fatal_calls.append(error),
+    )
+
+    app = _bare_nfoforge(None)
+    app._handle_config_error(ConfigError("boom"))
+
+    assert program_reset_calls == ["boom"]
+    assert archive_calls == []
+    assert fatal_calls == []
 
 
 def test_last_used_config_is_returned_only_when_profile_exists(

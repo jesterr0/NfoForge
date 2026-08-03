@@ -57,6 +57,11 @@ class NfoForge:
         self.config: ConfigManager | None = None
         self.main_window: MainWindow | None = None
         self.splash_screen: SplashScreen | None = None
+        # Set only by `_resolve_config_path` when `program/conf.toml` itself
+        # fails to parse, so `_handle_config_error` can distinguish that
+        # recoverable, single-file problem from "no config named" -- both of
+        # which otherwise collapse to `_resolve_config_path` returning None.
+        self.program_config_malformed = False
 
         # check if there is any messages from arg parser
         if not self._arg_parse_msg():
@@ -230,6 +235,9 @@ class NfoForge:
         independently resolved from the config the app was asked to load.
         """
         config_path = self._resolve_config_path()
+        if config_path is None and self.program_config_malformed:
+            self._offer_program_config_reset(str(error))
+            return
         if not config_path:
             self._error_on_splash(str(error))
             return
@@ -250,7 +258,16 @@ class NfoForge:
             paths = ConfigPaths()
             config_file = self.config_file
             if not config_file and paths.program.exists():
-                program_doc = tomlkit.parse(paths.program.read_text(encoding="utf-8"))
+                try:
+                    program_doc = tomlkit.parse(
+                        paths.program.read_text(encoding="utf-8")
+                    )
+                except Exception:
+                    # The program config itself is unparseable. That is its
+                    # own recoverable problem -- one small file -- and must
+                    # not be reported as an unrecoverable profile error.
+                    self.program_config_malformed = True
+                    return None
                 # mirrors `ConfigManager.decode_program`, which defaults a
                 # missing `current_config` key to "config" -- keep both
                 # resolutions of an absent key in agreement.
@@ -260,6 +277,56 @@ class NfoForge:
             return paths.user_configs / f"{config_file}.toml"
         except Exception:
             return None
+
+    def _offer_program_config_reset(self, error_text: str) -> None:
+        """`program/conf.toml` is unparseable. Unlike a profile reset -- which
+        loses every setting the user has entered -- this file stores only
+        which profile is active and the window position, so regenerating it
+        is safe and the recovery dialog says so instead of reusing the more
+        alarming "settings will reset" wording used for a profile.
+        """
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
+        paths = ConfigPaths()
+        response = QMessageBox.question(
+            self.splash_screen,
+            "Invalid Program Config",
+            (
+                f"{error_text}\n\n"
+                "NfoForge's program configuration file could not be read. It "
+                "stores only which profile is active and the window "
+                "position, so it can be safely recreated -- your profiles "
+                "and settings are not affected.\n\n"
+                f"File:\n{paths.program}\n\n"
+                "Recreate it and continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if response != QMessageBox.StandardButton.Yes:
+            QApplication.quit()
+            return
+
+        try:
+            if paths.program.exists():
+                backup = paths.program.with_name(
+                    f"{paths.program.name}.{datetime.now():%Y-%m-%d_%H-%M-%S}.bak"
+                )
+                paths.program.replace(backup)
+        except OSError as reset_error:
+            self._error_on_splash(
+                f"Could not archive the program config: {reset_error}"
+            )
+            return
+
+        # `_continue_init` -> `ConfigManager.__init__` -> `load_program`
+        # recreates `program/conf.toml` from the bundled default the moment
+        # `paths.program.exists()` is false, so this cannot loop back into
+        # the same malformed-parse failure: the offending file is gone
+        # before the retry ever reads it again.
+        self.program_config_malformed = False
+        self._continue_init()
 
     def _offer_archive_and_regenerate(
         self, config_path: Path, error_text: str, issue_description: str, title: str
