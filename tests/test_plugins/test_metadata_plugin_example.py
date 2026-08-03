@@ -1,5 +1,4 @@
 import importlib
-from pathlib import Path
 
 import pytest
 
@@ -10,10 +9,11 @@ from src.plugins.api import (
     MetadataTransformContext,
     MetadataTransformRequest,
 )
+from tests.repo_paths import METADATA_PLUGIN_EXAMPLE_DIR
 
 
 def _load_example_module(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.syspath_prepend(str(Path("plugins/metadata_plugin_example")))
+    monkeypatch.syspath_prepend(str(METADATA_PLUGIN_EXAMPLE_DIR))
     return importlib.import_module("plugin_metadata.example")
 
 

@@ -24,12 +24,13 @@ from src.payloads.clients import (
     TransmissionConfig,
 )
 from src.payloads.trackers import MoreThanTVInfo, TrackerInfo
+from tests.repo_paths import CONFIG_FIXTURE_DIR, DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_TOML
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(
@@ -313,9 +314,7 @@ def test_unchanged_settings_do_not_write(
 
 
 def test_codec_reports_dotted_path_for_invalid_type() -> None:
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     invalid = tomlkit.parse(tomlkit.dumps(defaults))
     general = cast(MutableMapping[str, Any], invalid["general"])
     general["timeout"] = "sixty"
@@ -328,9 +327,7 @@ def test_int_accepted_where_float_expected() -> None:
     """A hand-edited or plugin-written config with an int value where the
     default is a float (e.g. `ui_scale_factor = 1` vs. the default `1.0`)
     is current-schema and salvageable -- it must not be rejected."""
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     doc = tomlkit.parse(tomlkit.dumps(defaults))
     general = cast(MutableMapping[str, Any], doc["general"])
     assert isinstance(general["ui_scale_factor"].unwrap(), float)
@@ -342,9 +339,7 @@ def test_int_accepted_where_float_expected() -> None:
 def test_bool_still_rejected_where_float_expected() -> None:
     """`bool` is a subclass of `int` in Python and must still be rejected
     where a float is expected, even though a plain `int` is now tolerated."""
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     invalid = tomlkit.parse(tomlkit.dumps(defaults))
     general = cast(MutableMapping[str, Any], invalid["general"])
     general["ui_scale_factor"] = True
@@ -952,9 +947,7 @@ def test_all_tracker_scalar_fields_round_trip(
 
 
 def test_default_season_folder_token_is_scene_style() -> None:
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     series = cast(MutableMapping[str, Any], defaults["series_management"])
     token = str(series["tvr_season_folder_token"])
 
@@ -1039,7 +1032,7 @@ def _write_fixture_profile(paths: ConfigPaths, fixture: str) -> tuple[Path, str]
     byte-for-byte untouched."""
     profile = paths.user_configs / "test.toml"
     profile.parent.mkdir(parents=True, exist_ok=True)
-    text = Path(f"tests/test_config/fixtures/{fixture}").read_text(encoding="utf-8")
+    text = (CONFIG_FIXTURE_DIR / fixture).read_text(encoding="utf-8")
     profile.write_text(text, encoding="utf-8")
     return profile, text
 

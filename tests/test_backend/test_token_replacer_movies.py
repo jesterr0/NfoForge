@@ -280,14 +280,12 @@ def test_resolution_cache_is_shared_across_replacers(monkeypatch) -> None:
 
     # TokenReplacer instances share the cache through their common payload;
     # callers do not need to thread a cache through every renderer call.
-    EXAMPLE_MEDIA_INPUT_PAYLOAD.analysis_cache.clear()
     first = _movie_replacer()
     second = _movie_replacer()
 
     assert first._detect_resolution(first.media_info_obj, True) == "1080"
     assert second._detect_resolution(second.media_info_obj, True) == "1080"
     assert calls == [True]
-    EXAMPLE_MEDIA_INPUT_PAYLOAD.analysis_cache.clear()
 
 
 def test_audio_codec_tokens_split_atmos_out() -> None:

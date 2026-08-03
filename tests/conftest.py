@@ -18,6 +18,13 @@ from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 import pytest
 
+from src.backend.utils.example_parsed_movie_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD as MOVIE_EXAMPLE_PAYLOAD,
+)
+from src.backend.utils.example_parsed_series_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD as SERIES_EXAMPLE_PAYLOAD,
+)
+
 
 @pytest.fixture(scope="session", autouse=True)
 def qapp() -> QApplication | QCoreApplication:
@@ -26,3 +33,15 @@ def qapp() -> QApplication | QCoreApplication:
     if app is None:
         app = QApplication([])
     return app
+
+
+@pytest.fixture(autouse=True)
+def _clear_example_payload_analysis_caches() -> None:
+    """Reset the shared example payloads' derived-value caches.
+
+    Both example payloads are module-level singletons in production code,
+    imported by several test files. Their ``analysis_cache`` would otherwise
+    carry values from one test into the next.
+    """
+    MOVIE_EXAMPLE_PAYLOAD.analysis_cache.clear()
+    SERIES_EXAMPLE_PAYLOAD.analysis_cache.clear()

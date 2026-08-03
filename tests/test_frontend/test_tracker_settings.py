@@ -17,12 +17,13 @@ from src.frontend.custom_widgets.tracker_settings import (
     TrackerSettingsWidget,
 )
 from src.frontend.stacked_windows.settings.trackers import TrackersSettings
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(

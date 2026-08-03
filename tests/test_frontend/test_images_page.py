@@ -16,6 +16,7 @@ from src.packages.custom_types import ComparisonPair
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.script import ScriptValues
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 VPY_WITH_CROP = (
     "clip = core.lsmas.LWLibavSource(source)\n"
@@ -27,7 +28,7 @@ VPY_WITHOUT_CROP = "clip = core.lsmas.LWLibavSource(source)\n"
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(

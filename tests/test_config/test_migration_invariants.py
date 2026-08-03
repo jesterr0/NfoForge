@@ -22,6 +22,7 @@ from src.config.migrations import (
     document_version,
     migrate_document,
 )
+from tests.repo_paths import DEFAULT_CONFIG_TOML
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -137,7 +138,6 @@ def test_every_version_fixture_migrates_to_the_current_schema(fixture: Path) -> 
 def test_packaged_default_declares_the_current_schema_version() -> None:
     """`default_config.toml` and `codec.SCHEMA_VERSION` are edited by hand in
     two separate files; nothing else ties them together."""
-    default_config = Path("runtime/config/defaults/default_config.toml")
-    document = tomlkit.parse(default_config.read_text(encoding="utf-8"))
+    document = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
 
     assert document["schema_version"] == TomlConfigCodec.SCHEMA_VERSION

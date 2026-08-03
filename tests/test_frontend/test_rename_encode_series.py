@@ -13,6 +13,7 @@ from src.enums.series import EpisodeFormat
 from src.frontend.wizards.rename_encode_series import RenameEncodeSeries
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 # a token template that exercises the same "{token|filter}" shape used by the
 # real default series tokens (tvr_standard_episode_token pipes season_number
@@ -23,7 +24,7 @@ TEST_TOKEN = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)}"
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(
