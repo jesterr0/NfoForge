@@ -6,6 +6,8 @@ from typing import cast
 import pytest
 
 from src.backend.torrent_clients.qbittorrent.save_path import (
+    _colon_replace_for_destination,
+    _is_windows_destination,
     resolve_qbittorrent_save_path,
 )
 from src.backend.utils.example_parsed_movie_data import (
@@ -14,7 +16,9 @@ from src.backend.utils.example_parsed_movie_data import (
 )
 from src.config.models import AppConfig
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
+from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import (
     QBittorrentSavePathMode,
     TorrentClientSelection,
@@ -28,6 +32,8 @@ def _config(
     mode: QBittorrentSavePathMode,
     template: str = "",
     user_tokens: dict[str, tuple[str, object]] | None = None,
+    movie_colon_replace: ColonReplace = ColonReplace.KEEP,
+    series_colon_replace: ColonReplace = ColonReplace.KEEP,
 ) -> AppConfig:
     return cast(
         AppConfig,
@@ -47,8 +53,10 @@ def _config(
                 title_clean_rules=[],
                 video_dynamic_range=None,
             ),
+            movie=SimpleNamespace(filename_colon_replace=movie_colon_replace),
             series=SimpleNamespace(
                 multi_episode_style=MultiEpisodeStyle.RANGE,
+                filename_colon_replace=series_colon_replace,
             ),
         ),
     )
@@ -200,3 +208,96 @@ def test_run_override_wins_over_invalid_configured_template() -> None:
         )
         == "/remote/media/Movie Name"
     )
+
+
+def test_windows_destination_replaces_colons_in_save_path() -> None:
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            r"D:\Media\Movies\{title_exact}",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path is not None
+    assert ":" not in Path(path).name
+
+
+def test_windows_destination_preserves_drive_letter_colon() -> None:
+    """Colon replacement must not corrupt the drive letter's own `:`."""
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            r"D:\Media\Movies\{title_exact}",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path is not None
+    assert path.startswith("D:\\")
+
+
+def test_linux_destination_keeps_colons_in_save_path() -> None:
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            "/media/movies/{title_exact}",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path is not None
+    assert "Mission: Impossible" in path
+
+
+@pytest.mark.parametrize(
+    ("root", "expected"),
+    [
+        ("D:\\Media", True),
+        ("d:/media", True),
+        ("/media/movies", False),
+        ("", False),
+        ("relative/path", False),
+    ],
+)
+def test_windows_destination_detection(root: str, expected: bool) -> None:
+    assert _is_windows_destination(root) is expected
+
+
+def test_colon_replace_for_destination_uses_movie_setting_for_movies() -> None:
+    context = _movie_context()
+    config = _config(
+        QBittorrentSavePathMode.TEMPLATE,
+        movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        series_colon_replace=ColonReplace.DELETE,
+    )
+
+    assert (
+        _colon_replace_for_destination(config, context)
+        is ColonReplace.REPLACE_WITH_DASH
+    )
+
+
+def test_colon_replace_for_destination_uses_series_setting_for_series() -> None:
+    context = ProcessingContext(
+        media_input=MediaInputPayload(media_type=MediaType.SERIES),
+    )
+    config = _config(
+        QBittorrentSavePathMode.TEMPLATE,
+        movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        series_colon_replace=ColonReplace.DELETE,
+    )
+
+    assert _colon_replace_for_destination(config, context) is ColonReplace.DELETE

@@ -6,6 +6,7 @@ from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection
 from src.config.models import AppConfig
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.torrent_client import (
     QBittorrentSavePathMode,
@@ -20,6 +21,19 @@ _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
+def _is_windows_destination(path_text: str) -> bool:
+    """True when a save-path root points at a Windows filesystem.
+
+    Drive-letter and UNC roots both mean the destination cannot contain `:`
+    in a path component, so a title like `Mission: Impossible` must have its
+    colon replaced rather than kept.
+    """
+    stripped = path_text.strip()
+    return bool(_WINDOWS_DRIVE_PATH.match(stripped)) or stripped.startswith(
+        (r"\\", "//")
+    )
+
+
 def get_qbittorrent_save_path_warning(
     host: str | None,
     save_path: str | None,
@@ -31,7 +45,7 @@ def get_qbittorrent_save_path_warning(
     a configuration mistake when the API host is not local.
     """
 
-    if not save_path or not _WINDOWS_DRIVE_PATH.match(save_path.strip()):
+    if not save_path or not _is_windows_destination(save_path):
         return None
 
     host_value = (host or "").strip()
@@ -74,7 +88,7 @@ def resolve_configured_qbittorrent_save_path(
     if qbit_config.save_path_mode is QBittorrentSavePathMode.SOURCE:
         input_path = context.media_input.require_input_path()
         path_text = str(input_path)
-        if _WINDOWS_DRIVE_PATH.match(path_text) or path_text.startswith((r"\\", "//")):
+        if _is_windows_destination(path_text):
             return str(PureWindowsPath(path_text).parent)
         return str(input_path.parent)
 
@@ -83,6 +97,34 @@ def resolve_configured_qbittorrent_save_path(
         context,
         qbit_config.save_path_template,
     )
+
+
+def _colon_replace_for_destination(
+    config: AppConfig,
+    context: ProcessingContext,
+) -> ColonReplace:
+    """Pick the configured colon-replacement rule for the current media type.
+
+    Movies and series each carry their own ``filename_colon_replace``
+    setting, so the save-path renderer defers to whichever one matches the
+    media currently being processed.
+    """
+    media_type = context.media_input.require_media_type()
+    if media_type is MediaType.SERIES:
+        return config.series.filename_colon_replace
+    return config.movie.filename_colon_replace
+
+
+def _split_windows_anchor(template: str) -> tuple[str, str]:
+    """Split a Windows-style template into its literal anchor and the rest.
+
+    The anchor (a drive letter such as ``D:\\`` or a UNC ``\\\\server\\share\\``
+    root) is structural, not user-supplied text, and its own colon must
+    survive colon replacement untouched. Only the remainder -- where tokens
+    are substituted -- should have ``colon_replace`` applied to it.
+    """
+    anchor = PureWindowsPath(template).anchor
+    return anchor, template[len(anchor) :]
 
 
 def _render_save_path_template(
@@ -110,10 +152,17 @@ def _render_save_path_template(
             f"template: {', '.join(unsupported_tokens)}"
         )
 
+    if _is_windows_destination(template):
+        anchor, template_body = _split_windows_anchor(template)
+        colon_replace = _colon_replace_for_destination(config, context)
+    else:
+        anchor, template_body = "", template
+        colon_replace = ColonReplace.KEEP
+
     renderer = TokenReplacer(
         media_input_obj=context.media_input,
-        token_string=template,
-        colon_replace=ColonReplace.KEEP,
+        token_string=template_body,
+        colon_replace=colon_replace,
         media_search_obj=context.media_search,
         flatten=True,
         file_name_mode=False,
@@ -148,4 +197,4 @@ def _render_save_path_template(
             "Unknown or unsupported token(s) in qBittorrent save location "
             f"template: {', '.join(unresolved)}"
         )
-    return output.strip()
+    return anchor + output.strip()

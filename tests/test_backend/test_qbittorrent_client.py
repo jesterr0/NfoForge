@@ -43,6 +43,7 @@ def test_inject_without_save_path_keeps_automatic_management(
         use_auto_torrent_management=True,
         is_skip_checking=True,
         category="Movies",
+        requests_args={"timeout": client.timeout},
     )
 
 
@@ -66,6 +67,7 @@ def test_inject_with_save_path_uses_manual_management_and_preserves_path(
         use_auto_torrent_management=False,
         is_skip_checking=False,
         category="Movies",
+        requests_args={"timeout": client.timeout},
     )
 
 
@@ -107,6 +109,26 @@ def test_local_qbittorrent_allows_windows_drive_path() -> None:
         get_qbittorrent_save_path_warning(
             "http://127.0.0.1:8080",
             r"C:\Media\Movies",
+        )
+        is None
+    )
+
+
+def test_remote_qbittorrent_warns_for_unc_path() -> None:
+    """UNC roots share the same drift risk as drive letters, so they warn too."""
+    warning = get_qbittorrent_save_path_warning(
+        "https://seedbox.example",
+        r"\\nas\movies",
+    )
+
+    assert warning is not None
+
+
+def test_local_qbittorrent_allows_unc_path() -> None:
+    assert (
+        get_qbittorrent_save_path_warning(
+            "http://127.0.0.1:8080",
+            r"\\nas\movies",
         )
         is None
     )
