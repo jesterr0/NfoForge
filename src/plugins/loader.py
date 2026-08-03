@@ -58,6 +58,22 @@ class PluginLoader:
         self.failures: list[PluginLoadFailure] = []
 
     def load_plugins(self) -> PluginLoadReport:
+        """Discover, validate, and register every available plugin.
+
+        Local plugin directories are scanned first, sorted by casefolded
+        directory name, followed by installed `nfoforge.plugins` entry points,
+        sorted by name. Registration is first-come-first-served: `PluginManager
+        .register` rejects a second registration under an already-used plugin
+        ID, so on an ID collision the plugin registered first wins and the
+        later one fails with a duplicate-ID error, recorded as a load failure
+        rather than applied silently. Because local directories are scanned
+        before entry points, a local plugin always wins a collision against an
+        installed package sharing its ID. This precedence is deliberate, not
+        incidental: local plugins are the recommended installation method (see
+        `docs/view/plugins/plugin-system.md`), so an installed package must not
+        be able to silently shadow one.
+        """
+
         self.failures.clear()
         self.manager.clear_load_issues()
         try:

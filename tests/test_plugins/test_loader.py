@@ -243,6 +243,48 @@ def test_installed_entry_point_uses_its_name_as_the_plugin_id(
     assert manager.get("installed.example") is not None
 
 
+def test_a_local_plugin_wins_an_id_collision_with_an_entry_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _write_plugin(
+        plugin_dir,
+        "local",
+        "collide.example",
+        "nfoforge_test_collision_local",
+        "from src.plugins.api import PluginDefinition\n"
+        "def collision_value(): return 'local'\n"
+        "plugin = PluginDefinition(display_name='Local', version='1.0.0', "
+        "jinja2_functions={'collision_value': collision_value})\n",
+    )
+
+    entry_point_definition = PluginDefinition(
+        display_name="Installed",
+        version="1.0.0",
+        jinja2_functions={"collision_value": lambda: "installed"},
+    )
+
+    class EntryPoint:
+        name = "collide.example"
+        value = "installed_plugin:plugin"
+
+        @staticmethod
+        def load() -> PluginDefinition:
+            return entry_point_definition
+
+    monkeypatch.setattr(
+        PluginLoader, "_entry_points", staticmethod(lambda: (EntryPoint(),))
+    )
+    manager = PluginManager()
+
+    report = PluginLoader(manager, plugin_dir=plugin_dir).load_plugins()
+
+    assert [record.plugin_id for record in report.loaded] == ["collide.example"]
+    assert manager.jinja2_functions(enabled=True)["collision_value"]() == "local"
+    assert len(report.failures) == 1
+    assert "Duplicate plugin id" in report.failures[0].reason
+
+
 def test_manager_rejects_duplicate_ids() -> None:
     manager = PluginManager()
     definition = PluginDefinition(

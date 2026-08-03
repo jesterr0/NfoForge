@@ -1,7 +1,7 @@
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader
 
 
 class Jinja2TemplateEngine:
@@ -62,20 +62,3 @@ class Jinja2TemplateEngine:
         """
         template = self.environment.get_template(template_name)
         return str(template.render(context))
-
-    def render_custom_template(
-        self,
-        template_str: str,
-        context: Mapping[str, Any],
-        **custom_options: Any,
-    ) -> str:
-        """
-        Render a one-off custom template with specific settings.
-
-        :param template_str: Template string to render.
-        :param context: Context dictionary to render the template.
-        :param custom_options: Jinja2 template options (e.g., trim_blocks, lstrip_blocks).
-        :return: Rendered template as a string.
-        """
-        custom_template = Template(template_str, **custom_options)
-        return str(custom_template.render(context))

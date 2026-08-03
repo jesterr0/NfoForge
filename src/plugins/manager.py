@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment
@@ -12,6 +13,7 @@ from src.exceptions import PluginError, PluginExecutionError
 from src.plugins.api import (
     PLUGIN_API_VERSION,
     FlatFilter,
+    MetadataTransformer,
     MetadataTransformRequest,
     PluginDefinition,
     PluginRecord,
@@ -33,6 +35,18 @@ class PluginLoadIssue:
 
     source: str
     reason: str
+
+
+@dataclass(slots=True)
+class _TransformOutcome:
+    """Mutable holder a transform worker writes and the caller reads after `join`.
+
+    Not frozen: the worker thread populates exactly one of these fields after
+    the main thread has already constructed and started reading from it.
+    """
+
+    value: MediaSearchPayload | None = None
+    error: Exception | None = None
 
 
 class PluginManager:
@@ -169,12 +183,9 @@ class PluginManager:
             payload=isolated_payload,
             timeout=request.timeout,
         )
-        try:
-            result = transformer(isolated_request)
-        except Exception as error:
-            raise PluginExecutionError(
-                plugin_id, "metadata_transformer", error
-            ) from error
+        result = self._run_transformer_with_timeout(
+            plugin_id, transformer, isolated_request, request.timeout
+        )
         if result is None:
             return request.payload
         if not isinstance(result, MediaSearchPayload):
@@ -192,6 +203,52 @@ class PluginManager:
             raise PluginExecutionError(
                 plugin_id, "metadata_transformer", error
             ) from error
+
+    @staticmethod
+    def _run_transformer_with_timeout(
+        plugin_id: str,
+        transformer: MetadataTransformer,
+        isolated_request: MetadataTransformRequest,
+        timeout: int,
+    ) -> MediaSearchPayload | None:
+        """Run `transformer` on a background thread and enforce `timeout`.
+
+        A transformer's worker thread cannot be forcibly killed, so a hung
+        transformer is abandoned rather than awaited: the worker keeps running
+        as a daemon thread, which does not block interpreter exit (unlike a
+        `ThreadPoolExecutor` worker, which is non-daemon and would be joined by
+        an `atexit` handler at shutdown). Abandoning it is safe because
+        `isolated_request` wraps a deep copy of the payload; a write from the
+        abandoned thread after this function returns can never reach canonical
+        state.
+        """
+
+        outcome = _TransformOutcome()
+
+        def _run() -> None:
+            try:
+                outcome.value = transformer(isolated_request)
+            except Exception as error:
+                outcome.error = error
+
+        worker = threading.Thread(
+            target=_run,
+            name=f"plugin-transform-{plugin_id}",
+            daemon=True,
+        )
+        worker.start()
+        worker.join(timeout)
+        if worker.is_alive():
+            raise PluginExecutionError(
+                plugin_id,
+                "metadata_transformer",
+                TimeoutError(f"timed out after {timeout}s and was abandoned"),
+            )
+        if outcome.error is not None:
+            raise PluginExecutionError(
+                plugin_id, "metadata_transformer", outcome.error
+            ) from outcome.error
+        return outcome.value
 
     def _require_capability(self, plugin_id: str, capability: str) -> PluginRecord:
         record = self.get(plugin_id)

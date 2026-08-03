@@ -61,6 +61,15 @@ A Python distribution may expose the same `PluginDefinition` through the
 Local repositories remain the recommended installation method for packaged NfoForge
 builds.
 
+### ID collision precedence
+
+Local plugin directories are loaded before installed entry points. If a local plugin
+and an entry point share the same ID, the local plugin registers first and wins;
+the entry point's registration then fails with a duplicate-ID error and is reported
+as a load failure rather than applied silently. This is deliberate: local plugins are
+the recommended installation method, so an installed package can never silently
+shadow one.
+
 ## Capabilities and failures
 
 Wizard pages, token replacers, pre-upload processors, and metadata transformers are
