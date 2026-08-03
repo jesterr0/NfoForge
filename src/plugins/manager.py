@@ -46,7 +46,7 @@ class _TransformOutcome:
     """
 
     value: MediaSearchPayload | None = None
-    error: Exception | None = None
+    error: BaseException | None = None
 
 
 class PluginManager:
@@ -217,10 +217,19 @@ class PluginManager:
         transformer is abandoned rather than awaited: the worker keeps running
         as a daemon thread, which does not block interpreter exit (unlike a
         `ThreadPoolExecutor` worker, which is non-daemon and would be joined by
-        an `atexit` handler at shutdown). Abandoning it is safe because
-        `isolated_request` wraps a deep copy of the payload; a write from the
-        abandoned thread after this function returns can never reach canonical
-        state.
+        an `atexit` handler at shutdown).
+
+        Abandoning it is safe only for `isolated_request.payload` and
+        `isolated_request.context.media_search`: both wrap a deep copy, so a
+        write to either from the abandoned thread after this function returns
+        can never reach canonical state. `isolated_request.config` is *not*
+        isolated -- it is the live `ConfigManager` shared with the UI thread,
+        by reference (deep-copying it is not viable; it owns the plugin
+        manager and the live settings tree). Transformers must already treat
+        `config` as read-only (see `docs/view/plugins/metadata-transformers.md`);
+        a transformer that writes to `config` and then hangs can race the UI
+        thread for as long as it keeps running, and this timeout provides no
+        protection against that.
         """
 
         outcome = _TransformOutcome()
@@ -228,7 +237,16 @@ class PluginManager:
         def _run() -> None:
             try:
                 outcome.value = transformer(isolated_request)
-            except Exception as error:
+            except BaseException as error:
+                # Catch BaseException, not Exception: a transformer calling
+                # sys.exit() raises SystemExit, which Exception does not
+                # catch. Left uncaught, the thread would die silently,
+                # outcome would stay empty, and the caller would read that
+                # as "the transformer chose not to change anything" instead
+                # of a crash. KeyboardInterrupt cannot be delivered to a
+                # non-main thread, so catching BaseException here does not
+                # carry the usual risk of swallowing an interactive
+                # interrupt.
                 outcome.error = error
 
         worker = threading.Thread(

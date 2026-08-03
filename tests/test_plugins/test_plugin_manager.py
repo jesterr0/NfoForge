@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import threading
 import time
 
@@ -127,3 +128,26 @@ def test_a_transformer_exception_still_propagates_as_plugin_execution_error() ->
 
     with pytest.raises(PluginExecutionError, match="provider unavailable"):
         manager.transform_metadata("test.fails", _transform_request(timeout=2))
+
+
+def test_a_transformer_calling_sys_exit_surfaces_as_an_error() -> None:
+    """SystemExit is a BaseException, not an Exception.
+
+    Catching only ``Exception`` in the worker would let the thread die
+    silently on ``sys.exit()``: ``outcome`` would stay empty and the caller
+    would read that as "the transformer chose not to change anything"
+    instead of a crash.
+    """
+    manager = PluginManager()
+
+    def exits(request: MetadataTransformRequest) -> MediaSearchPayload:
+        sys.exit("plugin requested exit")
+
+    manager.register(
+        "test.exits",
+        _definition(plugin_id="test.exits", metadata_transformer=exits),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="plugin requested exit"):
+        manager.transform_metadata("test.exits", _transform_request(timeout=2))
