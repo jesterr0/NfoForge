@@ -1,6 +1,6 @@
 import asyncio
 import base64
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import re
 from typing import Any, cast
 import zlib
@@ -290,7 +290,7 @@ class MediaSearchBackEnd:
         tmdb_title: str,
         tmdb_year: int,
         original_language: str,
-        tmdb_genres: list[TMDBGenreIDsMovies],
+        tmdb_genres: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         tmdb_id: str = "",
         tvdb_id: str = "",
     ) -> dict[str, Any]:

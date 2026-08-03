@@ -7,7 +7,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
-from src.enums.tmdb_genres import TMDBGenreIDsMovies
+from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.frontend.wizards.media_search import (
     MediaSearch,
@@ -51,6 +51,29 @@ def _make_page(tmp_path: Path) -> MediaSearch:
         media_input=MediaInputPayload(input_path=tmp_path / "Movie.mkv")
     )
     return MediaSearch(config, context, None)  # type: ignore[reportArgumentType]
+
+
+def _media_search_page_with_selected_row(
+    tmp_path: Path,
+    media_type: str,
+    genre_ids: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
+) -> MediaSearch:
+    page = _make_page(tmp_path)
+    item_name = "1) Selected (2020)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": MediaType.strict_search_type(media_type).value,
+            "title": "Selected",
+            "year": "2020",
+            "original_title": "Selected",
+            "genre_ids": genre_ids,
+            "raw_data": {"id": 123, "original_language": "ja"},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    return page
 
 
 def test_empty_search_result_does_not_complete_page(tmp_path: Path) -> None:
@@ -529,6 +552,41 @@ def test_cancelled_mal_prompt_does_not_store_a_fake_zero_id(
     assert page.context.media_search.anilist_id is None
     assert page.context.media_search.mal_id is None
     assert page.mal_id_entry.text() == ""
+
+
+def test_series_row_genres_reach_the_id_parse_worker(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A series row's genres are TMDBGenreIDsSeries members. Filtering for
+    TMDBGenreIDsMovies dropped every one of them, so anime series never
+    reached the AniList lookup."""
+    captured: dict[str, object] = {}
+
+    class _StubSignal:
+        def connect(self, *_args: object, **_kwargs: object) -> None:
+            return None
+
+    class _CapturingWorker:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+            self.job_finished = _StubSignal()
+            self.job_failed = _StubSignal()
+
+        def start(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "src.frontend.wizards.media_search.IDParseWorker", _CapturingWorker
+    )
+
+    page = _media_search_page_with_selected_row(
+        tmp_path,
+        media_type="tv",
+        genre_ids=[TMDBGenreIDsSeries.ANIMATION],
+    )
+    page._search_other_ids()
+
+    assert TMDBGenreIDsSeries.ANIMATION in captured["tmdb_genres"]  # type: ignore[operator]
 
 
 def test_reset_page_restores_tmdb_placeholder(tmp_path: Path) -> None:

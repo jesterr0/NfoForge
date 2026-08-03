@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -125,7 +125,7 @@ class IDParseWorker(QThread):
         tmdb_title: str,
         tmdb_year: int,
         original_language: str,
-        tmdb_genres: list[TMDBGenreIDsMovies],
+        tmdb_genres: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         tmdb_id: str = "",
         tvdb_id: str = "",
         metadata_transformer_id: str | None = None,
@@ -488,7 +488,7 @@ class MediaSearch(BaseWizardPage):
                     [
                         genre
                         for genre in genre_ids
-                        if isinstance(genre, TMDBGenreIDsMovies)
+                        if isinstance(genre, TMDBGenreIDsMovies | TMDBGenreIDsSeries)
                     ]
                     if isinstance(genre_ids, list)
                     else []

@@ -8,7 +8,7 @@ import pytest
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_type import MediaType
-from src.enums.tmdb_genres import TMDBGenreIDsMovies
+from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 
 
@@ -334,3 +334,37 @@ def test_stale_anime_looking_row_does_not_trigger_anilist_when_fetched_record_di
 
     assert anilist_calls == []
     assert "ani_list_data" not in result
+
+
+def test_series_animation_genre_triggers_anilist_without_a_manual_id() -> None:
+    # A series row's genres are TMDBGenreIDsSeries members, not
+    # TMDBGenreIDsMovies. `tmdb_id=""` keeps `tmdb_complete_data` at None, so
+    # Task 16's fetched-record override cannot mask whether the row's own
+    # genres are enough to trigger the AniList lookup on the ordinary
+    # browse-and-select path (no manually entered TMDB ID).
+    backend = MediaSearchBackEnd()
+    anilist_calls: list[tuple[str, int]] = []
+
+    async def fake_parse_ani_list(tmdb_title: str, tmdb_year: int) -> dict[str, Any]:
+        anilist_calls.append((tmdb_title, tmdb_year))
+        return {"id": 1, "idMal": 2}
+
+    backend.parse_ani_list = fake_parse_ani_list  # type: ignore[method-assign]
+
+    result = asyncio.run(
+        backend.parse_other_ids(
+            media_type=MediaType.SERIES,
+            imdb_id="",
+            tmdb_title="Some Anime",
+            tmdb_year=2020,
+            original_language="ja",
+            tmdb_genres=[TMDBGenreIDsSeries.ANIMATION],
+            tmdb_id="",
+        )
+    )
+
+    assert anilist_calls == [("Some Anime", 2020)]
+    assert result["ani_list_data"] == {
+        "success": True,
+        "result": {"id": 1, "idMal": 2},
+    }
