@@ -2,7 +2,9 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
+import pytest
 
+from src.backend.media_search import MediaSearchBackEnd
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
@@ -332,6 +334,62 @@ def test_id_validation_accepts_supported_manual_id_shapes(tmp_path: Path) -> Non
     page.imdb_id_entry.setText("tt1234567")
     page.tmdb_id_entry.setText("²")
     assert page._has_invalid_id_formats() is True
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "../../person/1234",  # path traversal into another TMDB endpoint
+        "123&api_key=x",  # query-parameter injection
+    ],
+)
+def test_hostile_tmdb_id_shapes_are_rejected(bad_id: str, tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    page.imdb_id_entry.setText("tt1234567")
+    page.tvdb_id_entry.setText("456")
+    page.tmdb_id_entry.setText(bad_id)
+
+    assert page._has_invalid_id_formats() is True
+
+
+def test_search_other_ids_is_not_reached_when_id_formats_are_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_has_invalid_id_formats` is what actually keeps a hostile manual TMDB
+    ID from reaching `_search_other_ids` -- and, through it, the URL-path
+    interpolation in `MediaSearchBackEnd.fetch_complete_tmdb_data_for_selection`.
+    `MediaSearchBackEnd._validate_tmdb_id` is the second line of defence; this
+    asserts the first one, which is what keeps the backend unreachable here.
+    """
+    page = _make_page(tmp_path)
+    page.loading_complete = True
+    item_name = "1) Movie (2024)"
+    page.backend.media_data = {item_name: {"title": "Movie"}}
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("../../person/1234")
+
+    called = False
+
+    def record_call() -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(page, "_search_other_ids", record_call)
+
+    result = page.validatePage()
+
+    assert called is False
+    assert result is False
+
+
+def test_backend_rejects_a_traversal_id_even_if_the_ui_is_bypassed() -> None:
+    # Defence in depth: `_validate_tmdb_id` is called directly by
+    # `fetch_complete_tmdb_data_for_selection` before it builds the request
+    # URL, so it must reject a hostile shape on its own even if a caller
+    # (or a future code path) skips the UI guard above.
+    with pytest.raises(MediaSearchError):
+        MediaSearchBackEnd._validate_tmdb_id("../../person/1234")
 
 
 def test_payload_update_commits_transformed_metadata(

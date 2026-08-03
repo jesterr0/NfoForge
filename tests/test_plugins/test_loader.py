@@ -215,6 +215,63 @@ def test_local_manifest_rejects_module_paths(
     assert "top-level Python module" in report.failures[0].reason
 
 
+def _write_manifest(tmp_path: Path, manifest_text: str) -> Path:
+    """Write a single local plugin's manifest with arbitrary (possibly
+    invalid) text and return the plugin directory to pass to `PluginLoader`.
+
+    No package/module is created alongside it: every case below fails
+    manifest validation before the loader would ever try to import one.
+    """
+    plugin_dir = tmp_path / "plugins"
+    plugin_root = plugin_dir / "candidate"
+    plugin_root.mkdir(parents=True)
+    (plugin_root / "nfoforge-plugin.toml").write_text(manifest_text, encoding="utf-8")
+    return plugin_dir
+
+
+def test_manifest_with_unknown_schema_version_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = _write_manifest(
+        tmp_path, 'schema_version = 99\nid = "test.future"\nmodule = "plugin"\n'
+    )
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(PluginManager(), plugin_dir=plugin_dir).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert "Unsupported manifest schema version 99" in report.failures[0].reason
+
+
+def test_manifest_missing_id_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_dir = _write_manifest(tmp_path, 'schema_version = 1\nmodule = "plugin"\n')
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(PluginManager(), plugin_dir=plugin_dir).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert "non-empty string id" in report.failures[0].reason
+
+
+def test_malformed_manifest_toml_is_reported_not_raised(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A broken third-party manifest must never prevent startup -- the parse
+    # error is collected as a load failure, not left to propagate.
+    plugin_dir = _write_manifest(tmp_path, 'schema_version = "unterminated\n')
+    monkeypatch.setattr(PluginLoader, "_entry_points", staticmethod(lambda: ()))
+
+    report = PluginLoader(PluginManager(), plugin_dir=plugin_dir).load_plugins()
+
+    assert report.loaded == ()
+    assert len(report.failures) == 1
+    assert "Invalid nfoforge-plugin.toml" in report.failures[0].reason
+
+
 def test_installed_entry_point_uses_its_name_as_the_plugin_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
