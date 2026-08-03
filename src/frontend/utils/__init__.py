@@ -244,11 +244,17 @@ class QWidgetTempStyle:
         timer = QTimer(singleShot=True, interval=duration)
 
         def restore() -> None:
-            # only restore if the widget still exists and has the temp style
+            # only restore if the widget still has the temp style
             original_style = self.styles.pop(widget, None)
-            if original_style is not None:
-                widget.setStyleSheet(original_style)
             self.timers.pop(widget, None)
+            if original_style is None:
+                return
+            try:
+                widget.setStyleSheet(original_style)
+            except RuntimeError:
+                # The widget's C++ object was deleted while the timer was
+                # pending; there is nothing left to restore.
+                return
 
         timer.timeout.connect(restore)
         if system_beep:
