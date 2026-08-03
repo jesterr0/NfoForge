@@ -251,7 +251,7 @@ def test_migration_renames_tokens_in_template_settings() -> None:
 
     assert not unmapped
     assert (
-        new["template_settings"]["some_future_token_field"] == "{title} {audio_codec}"
+        new["template_settings"]["some_future_token_field"] == "{title} {audio_codec}"  # noqa: S105 - NFO template token field name/value used as test fixture data, not a credential
     )
     # non-token config is left untouched
     assert new["template_settings"]["block_syntax_color"] == "#89689d"

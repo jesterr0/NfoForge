@@ -55,7 +55,7 @@ def test_active_file_drives_file_specific_tokens_in_series_pack() -> None:
         return TokenReplacer(
             media_input_obj=payload,
             media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
-            token_string="{resolution}|{release_group}|{re_release}|{original_filename}",
+            token_string="{resolution}|{release_group}|{re_release}|{original_filename}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
             colon_replace=ColonReplace.REPLACE_WITH_DASH,
             flatten=True,
             file_name_mode=False,
@@ -205,7 +205,7 @@ def _series_replacer_with_special() -> TokenReplacer:
             },
         ),
         media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
-        token_string="{episode_metadata}",
+        token_string="{episode_metadata}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replace=ColonReplace.REPLACE_WITH_DASH,
         flatten=True,
         file_name_mode=False,
@@ -428,7 +428,7 @@ def test_episode_number_absolute_falls_back_when_tvdb_value_is_zero() -> None:
                 ]
             },
         ),
-        token_string="{episode_number_absolute}",
+        token_string="{episode_number_absolute}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replace=ColonReplace.REPLACE_WITH_DASH,
         flatten=True,
         file_name_mode=False,
@@ -467,7 +467,7 @@ def test_end_episode_number_renders_range_end_for_multi_episode_file() -> None:
             media_type=MediaType.SERIES,
             tvdb_data={"episodes": []},
         ),
-        token_string="{end_episode_number}",
+        token_string="{end_episode_number}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replace=ColonReplace.REPLACE_WITH_DASH,
         flatten=True,
         file_name_mode=False,
@@ -568,7 +568,7 @@ def test_episode_number_single_episode_unchanged_raw_number() -> None:
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.SERIES, tvdb_data={"episodes": []}
         ),
-        token_string="{episode_number}",
+        token_string="{episode_number}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replace=ColonReplace.REPLACE_WITH_DASH,
         flatten=True,
         file_name_mode=False,
@@ -725,7 +725,7 @@ def test_series_nfo_tokens_render_selected_episode_context() -> None:
     output = TokenReplacer(
         media_input_obj=media_input,
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
-        token_string=(
+        token_string=(  # noqa: S106 - NFO template token string used as test fixture data, not a credential
             "{{ season_number }}|{{ episode_number }}|"
             "{{ episode_title_exact }}|{{ air_date }}|{{ episode_air_date }}"
         ),
@@ -780,7 +780,7 @@ def test_series_pack_nfo_single_episode_tokens_stay_blank() -> None:
     output = TokenReplacer(
         media_input_obj=media_input,
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
-        token_string=(
+        token_string=(  # noqa: S106 - NFO template token string used as test fixture data, not a credential
             "{{ season_number }}|{{ episode_number }}|"
             "{{ episode_title_exact }}|{{ episode_metadata }}"
         ),
@@ -909,7 +909,7 @@ def test_jinja_nfo_rendering_only_evaluates_referenced_tokens() -> None:
     output = TokenReplacer(
         media_input_obj=media_input,
         media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
-        token_string="{{ title }}",
+        token_string="{{ title }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
 
@@ -933,7 +933,7 @@ def test_get_mi_synopsis_handles_no_video_track() -> None:
 def test_media_type_token_renders_series() -> None:
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{{ media_type }}",
+        token_string="{{ media_type }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
@@ -944,7 +944,7 @@ def test_media_type_token_renders_series() -> None:
 def test_media_type_token_drives_the_series_branch_of_a_conditional() -> None:
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',
+        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
@@ -980,7 +980,7 @@ def test_is_anime_token_covers_each_signal(
 
     output = TokenReplacer(
         media_input_obj=media_input,
-        token_string="{{ is_anime }}",
+        token_string="{{ is_anime }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.SERIES,
             anilist_id=anilist_id,
@@ -998,7 +998,7 @@ def test_is_anime_token_is_falsy_in_a_conditional_when_not_anime() -> None:
     # {% if is_anime %} block.
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{% if is_anime %}anime{% else %}not anime{% endif %}",
+        token_string="{% if is_anime %}anime{% else %}not anime{% endif %}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
@@ -1013,7 +1013,7 @@ def _series_audio_replacer() -> TokenReplacer:
     # variant, which is the non-Atmos case.
     return TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{audio_codec}",
+        token_string="{audio_codec}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         flatten=True,
         file_name_mode=True,

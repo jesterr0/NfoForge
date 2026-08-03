@@ -30,7 +30,7 @@ def test_tracker_title_applies_processing_context_flat_filters() -> None:
         SimpleNamespace(
             settings=SimpleNamespace(
                 movie=SimpleNamespace(
-                    title_token="{title_clean|append_marker}",
+                    title_token="{title_clean|append_marker}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
                 ),
                 series=SimpleNamespace(

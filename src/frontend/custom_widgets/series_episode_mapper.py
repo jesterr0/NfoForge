@@ -247,9 +247,10 @@ class SeriesEpisodeMapper(QWidget):
         else:
             # a QTableWidgetItem represents a single cell, so `column` has no
             # meaning here; a non-default value would be silently dropped.
-            assert column == 0, (
-                "column is meaningless for a QTableWidgetItem, which represents a single cell"
-            )
+            if column != 0:
+                raise ValueError(
+                    "column is meaningless for a QTableWidgetItem, which represents a single cell"
+                )
             item.setBackground(colour)
             item.setForeground(cls._CELL_FOREGROUND)
 
@@ -262,9 +263,10 @@ class SeriesEpisodeMapper(QWidget):
             item.setBackground(column, QBrush())
             item.setForeground(column, QBrush())
         else:
-            assert column == 0, (
-                "column is meaningless for a QTableWidgetItem, which represents a single cell"
-            )
+            if column != 0:
+                raise ValueError(
+                    "column is meaningless for a QTableWidgetItem, which represents a single cell"
+                )
             item.setBackground(QBrush())
             item.setForeground(QBrush())
 

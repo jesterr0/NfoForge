@@ -197,7 +197,7 @@ class TokenTable(QWidget):
         if not token:
             return
         token_text = token.text()
-        if token_text == "Copied!":
+        if token_text == "Copied!":  # noqa: S105 - UI clipboard-feedback label, not a credential
             return
         clipboard = QApplication.clipboard()
         clipboard.setText(token_text)

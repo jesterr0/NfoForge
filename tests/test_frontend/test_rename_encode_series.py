@@ -17,7 +17,7 @@ from src.payloads.media_search import MediaSearchPayload
 # a token template that exercises the same "{token|filter}" shape used by the
 # real default series tokens (tvr_standard_episode_token pipes season_number
 # and episode_number through "|zfill(2)")
-TEST_TOKEN = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)}"
+TEST_TOKEN = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)}"  # noqa: S105 - NFO template token string used as test fixture data, not a credential
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:

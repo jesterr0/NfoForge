@@ -501,7 +501,10 @@ class NfoForge:
                 return
             return sorted([x.stem for x in config_dir.glob("*.toml")])
         except Exception:
-            pass
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to list available configs: {traceback.format_exc()}",
+            )
 
     def _get_last_used_config(self, available_configs: list[str]) -> str | None:
         """Return the saved profile when it is still available.
@@ -520,7 +523,10 @@ class NfoForge:
             if isinstance(current_config, str) and current_config in available_configs:
                 return current_config
         except Exception:
-            pass
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to read last used config: {traceback.format_exc()}",
+            )
         return None
 
     @Slot(str)

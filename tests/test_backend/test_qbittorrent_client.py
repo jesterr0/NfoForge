@@ -17,7 +17,7 @@ def _config() -> QBittorrentConfig:
         host="http://127.0.0.1",
         port=8080,
         user="user",
-        password="password",
+        password="password",  # noqa: S106 - dummy test fixture credential for a mocked client, not a real secret
         category="Movies",
         super_seeding=False,
         save_path_mode=QBittorrentSavePathMode.CLIENT_DEFAULT,

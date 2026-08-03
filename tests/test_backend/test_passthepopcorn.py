@@ -14,7 +14,7 @@ from src.plugins.api import MetadataMediaKind
 def _uploader(cookie_dir: Path, mediainfo_obj: MagicMock | None = None) -> PTPUploader:
     return PTPUploader(
         username="user",
-        password="password",
+        password="password",  # noqa: S106 - dummy test fixture credential for a mocked client, not a real secret
         mediainfo_obj=mediainfo_obj or MagicMock(),
         announce_url="https://tracker.example/announce",
         cookie_dir=cookie_dir,
@@ -88,7 +88,7 @@ def test_ptp_upload_post_has_a_timeout(
 
     with pytest.raises(TrackerError, match="is not the expected one"):
         uploader.upload(
-            auth_token="token",
+            auth_token="token",  # noqa: S106 - dummy test fixture auth token, not a real secret
             media_search_payload=media_search_payload,
             torrent_file=torrent_file,
             input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
@@ -129,7 +129,7 @@ def test_ptp_upload_does_not_close_the_shared_session(
 
     with pytest.raises(TrackerError, match="is not the expected one"):
         uploader.upload(
-            auth_token="token",
+            auth_token="token",  # noqa: S106 - dummy test fixture auth token, not a real secret
             media_search_payload=media_search_payload,
             torrent_file=torrent_file,
             input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",

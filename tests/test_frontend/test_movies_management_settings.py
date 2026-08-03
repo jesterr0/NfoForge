@@ -103,7 +103,7 @@ def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(
         "test",
     )
     manager.settings.general.enable_plugins = True
-    token = "{title_clean|append_marker}"
+    token = "{title_clean|append_marker}"  # noqa: S105 - NFO template token string used as test fixture data, not a credential
 
     preview = widget._update_example(
         token,

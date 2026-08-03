@@ -79,7 +79,7 @@ class ImageGeneration(ABC):
                 LOG.LOG_SOURCE.BE, f"FFMPEG command: {' '.join(map(str, command))}"
             )
 
-            with subprocess.Popen(
+            with subprocess.Popen(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary, return code checked below
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -121,7 +121,7 @@ class ImageGeneration(ABC):
         completed = False
         progress = 0
         LOG.debug(LOG.LOG_SOURCE.BE, f"FrameForge command: {' '.join(command)}")
-        with subprocess.Popen(
+        with subprocess.Popen(  # noqa: S603 - list argv, no shell; FrameForge path is the configured binary, return code checked below
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -190,7 +190,7 @@ class BasicImageGeneration(ImageGeneration):
         duration_seconds = available_frames / frame_rate
 
         # add random offset
-        rand_offset = random.randint(0, int(frame_rate) * 10)
+        rand_offset = random.randint(0, int(frame_rate) * 10)  # noqa: S311 - jitters a comparison screenshot timestamp, not security sensitive
         random_time_offset = rand_offset / frame_rate
 
         # calculate timestamps for each frame we want
@@ -247,7 +247,7 @@ class BasicImageGeneration(ImageGeneration):
 
             # run the command
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary, return code checked
                     command,
                     capture_output=True,
                     text=True,
@@ -375,7 +375,7 @@ class ComparisonImageGeneration(ImageGeneration):
         signal.emit(generate_enc_img_msg, 0)
 
         frame_rate = get_frame_rate(media_file_mi_obj)
-        random_offset = random.randint(0, (int(frame_rate) * 10))
+        random_offset = random.randint(0, (int(frame_rate) * 10))  # noqa: S311 - jitters a comparison screenshot timestamp, not security sensitive
 
         # convert re_sync frames to seconds (positive value means source is ahead, so we delay source)
         # this matches FrameForge behavior where positive re_sync delays the source
@@ -594,7 +594,7 @@ class ComparisonImageGeneration(ImageGeneration):
 
             # run the command
             try:
-                result = subprocess.run(
+                result = subprocess.run(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary, return code checked
                     command,
                     capture_output=True,
                     text=True,
@@ -624,7 +624,7 @@ class ComparisonImageGeneration(ImageGeneration):
 
     @staticmethod
     def check_draw_text(ffmpeg_path: Path) -> bool:
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary, return code checked
             [str(ffmpeg_path), "-filters"],
             text=True,
             capture_output=True,
@@ -698,10 +698,10 @@ class ComparisonImageGeneration(ImageGeneration):
             comparison_frames.append(frame_number)
 
         # select 2 random frames from the comparison frames (similar to FrameForge)
-        sync_frame_1 = random.choice(comparison_frames)
+        sync_frame_1 = random.choice(comparison_frames)  # noqa: S311 - selects a preview frame to display, not security sensitive
         remaining_frames = [f for f in comparison_frames if f != sync_frame_1]
         sync_frame_2 = (
-            random.choice(remaining_frames)
+            random.choice(remaining_frames)  # noqa: S311 - selects a preview frame to display, not security sensitive
             if remaining_frames
             else sync_frame_1 + int(frame_rate * 30)
         )
@@ -908,7 +908,7 @@ class ComparisonImageGeneration(ImageGeneration):
     ) -> None:
         """Run one required frame command and fail before creating a broken set."""
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary, return code checked
                 command,
                 capture_output=True,
                 text=True,

@@ -53,7 +53,10 @@ class PluginManager:
     """Validate, register, query, and invoke external plugins."""
 
     def __init__(self) -> None:
-        jinja_environment = Environment()
+        # noqa reason: only used below to read the built-in filter/global
+        # names so plugins can't shadow them; nothing is ever rendered
+        # through this environment, so autoescape is irrelevant here
+        jinja_environment = Environment()  # noqa: S701
         self._records: dict[str, PluginRecord] = {}
         self._jinja2_filters: dict[str, Any] = {}
         self._jinja2_functions: dict[str, Any] = {}
@@ -135,7 +138,9 @@ class PluginManager:
     def replace_tokens(self, plugin_id: str, request: TokenReplaceRequest) -> str:
         record = self._require_capability(plugin_id, "token_replacer")
         replacer = record.definition.token_replacer
-        assert replacer is not None
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert replacer is not None  # noqa: S101
         try:
             result = replacer(request)
         except Exception as error:
@@ -153,7 +158,9 @@ class PluginManager:
     ) -> PreUploadDecision:
         record = self._require_capability(plugin_id, "pre_upload")
         processor = record.definition.pre_upload
-        assert processor is not None
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert processor is not None  # noqa: S101
         try:
             result = processor(request)
         except Exception as error:
@@ -175,7 +182,9 @@ class PluginManager:
 
         record = self._require_capability(plugin_id, "metadata_transformer")
         transformer = record.definition.metadata_transformer
-        assert transformer is not None
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert transformer is not None  # noqa: S101
         isolated_payload = deepcopy(request.payload)
         isolated_request = MetadataTransformRequest(
             config=request.config,

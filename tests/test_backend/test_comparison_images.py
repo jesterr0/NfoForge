@@ -61,7 +61,7 @@ def test_drawtext_filter_parses_with_bundled_ffmpeg() -> None:
         x="(w-text_w)/2",
         y="10",
     )
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary
         [
             str(ffmpeg),
             "-v",

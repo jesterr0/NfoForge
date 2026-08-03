@@ -62,7 +62,7 @@ def _movie_replacer() -> TokenReplacer:
     # same path that runs when the Settings token preview renders on launch.
     return TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{frame_size}",
+        token_string="{frame_size}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         flatten=True,
         file_name_mode=True,
@@ -116,7 +116,7 @@ def test_title_tokens_use_first_guessit_title_when_list_shaped(
     )
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{title_exact}",
+        token_string="{title_exact}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
         flatten=True,
         file_name_mode=True,
@@ -139,7 +139,7 @@ def test_original_title_token_prefers_provider_original_title() -> None:
     media_search.original_title = "Provider original title"
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{original_title}",
+        token_string="{original_title}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=media_search,
         flatten=True,
         file_name_mode=True,
@@ -153,7 +153,7 @@ def test_original_title_token_prefers_provider_original_title() -> None:
 def test_original_title_token_falls_back_to_tmdb_original_title() -> None:
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{original_title}",
+        token_string="{original_title}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.MOVIE,
             title="Selected title",
@@ -171,7 +171,7 @@ def test_original_title_token_falls_back_to_tmdb_original_title() -> None:
 def test_original_title_without_original_only_uses_explicit_fallback() -> None:
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{original_title}",
+        token_string="{original_title}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.MOVIE,
             title="Selected Title",
@@ -189,7 +189,7 @@ def test_original_title_without_original_only_uses_explicit_fallback() -> None:
 def test_media_type_token_renders_movie() -> None:
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{{ media_type }}",
+        token_string="{{ media_type }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
@@ -203,7 +203,7 @@ def test_media_type_token_drives_the_movie_branch_of_a_conditional() -> None:
     # returns breaks a test that looks like a real template.
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',
+        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
@@ -216,7 +216,7 @@ def test_is_anime_token_renders_for_an_anime_film() -> None:
     # with no media type condition, so anime films resolve too.
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{{ is_anime }}",
+        token_string="{{ is_anime }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.MOVIE, anilist_id="123"
         ),
@@ -314,7 +314,7 @@ def test_audio_codec_tokens_resolve_through_the_token_string() -> None:
     # so it fails if the tokens stop being reachable.
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{audio_codec_no_atmos}.{atmos}",
+        token_string="{audio_codec_no_atmos}.{atmos}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         flatten=True,
         file_name_mode=True,
@@ -356,7 +356,7 @@ def test_unknown_flat_filter_is_logged(caplog: pytest.LogCaptureFixture) -> None
     # emitting the value unfiltered with no way to find out why.
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{title|no_such_filter}",
+        token_string="{title|no_such_filter}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(title="Example"),
         flat_filters={"real_filter": str.upper},
         # filters (flat_filters, |zfill, |replace, etc.) only apply in flat

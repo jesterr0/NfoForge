@@ -39,7 +39,7 @@ def test_series_renamer_uses_the_episode_being_rendered() -> None:
     result = RenameEncodeSeriesBackEnd().series_renamer(
         media_input_obj=payload,
         media_file=second_file,
-        token="{re_release} {release_group}",
+        token="{re_release} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replacement=ColonReplace.REPLACE_WITH_DASH,
         media_search_payload=_empty_series_search(),
         season_num=1,
@@ -59,7 +59,7 @@ def test_series_folder_renamer_renders_multi_season_range() -> None:
     backend = RenameEncodeSeriesBackEnd()
     result = backend.series_folder_renamer(
         media_input_obj=_minimal_series_payload(),
-        token="S{season_number|zfill(2)}",
+        token="S{season_number|zfill(2)}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replacement=ColonReplace.REPLACE_WITH_DASH,
         media_search_payload=_empty_series_search(),
         season_num=1,
@@ -75,7 +75,7 @@ def test_series_folder_renamer_single_season_includes_title() -> None:
     backend = RenameEncodeSeriesBackEnd()
     result = backend.series_folder_renamer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token="{title_clean} S{season_number|zfill(2)}",
+        token="{title_clean} S{season_number|zfill(2)}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replacement=ColonReplace.REPLACE_WITH_DASH,
         media_search_payload=EXAMPLE_SEARCH_PAYLOAD,
         season_num=3,
@@ -91,7 +91,7 @@ def test_series_folder_renamer_omits_episode_context() -> None:
     backend = RenameEncodeSeriesBackEnd()
     result = backend.series_folder_renamer(
         media_input_obj=_minimal_series_payload(),
-        token="S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)}",
+        token="S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replacement=ColonReplace.REPLACE_WITH_DASH,
         media_search_payload=_empty_series_search(),
         season_num=1,

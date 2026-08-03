@@ -39,13 +39,13 @@ def open_explorer(path: Path) -> None:
             # we're not importing this at the top as this won't be available on any other platform
             from os import startfile
 
-            startfile(str(path))
+            startfile(str(path))  # noqa: S606 - opens a local, app-derived directory in the OS file browser, no shell involved
         # mac
         elif cur_platform == "Darwin":
-            run(["open", str(path.as_posix())])
+            run(["open", str(path.as_posix())])  # noqa: S603, S607 - list argv, no shell; "open" is the OS-provided launcher
         # Linux and others
         else:
-            run(["xdg-open", str(path.as_posix())])
+            run(["xdg-open", str(path.as_posix())])  # noqa: S603, S607 - list argv, no shell; "xdg-open" is the OS-provided launcher
 
 
 def file_bytes_to_str(size: float) -> str:

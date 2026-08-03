@@ -61,7 +61,7 @@ def _make_plugin_settings(
     )
     manager.plugin_manager.record_load_issue("broken.plugin", "invalid definition")
     manager.settings.general.enable_plugins = False
-    manager.settings.plugins.token_replacer = "example.tokens"
+    manager.settings.plugins.token_replacer = "example.tokens"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     manager.settings.plugins.metadata_transformer = "missing.metadata"
 
     widget = PluginsSettings(
@@ -85,7 +85,7 @@ def test_plugin_settings_preserve_selections_while_disabled(
     widget._save_settings()
 
     assert manager.settings.general.enable_plugins is True
-    assert manager.settings.plugins.token_replacer == "example.tokens"
+    assert manager.settings.plugins.token_replacer == "example.tokens"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     assert manager.settings.plugins.metadata_transformer == "missing.metadata"
 
 

@@ -253,8 +253,14 @@ class FileSystemTreeView(QTreeView):
             # check if we got a meaningful icon (not just the generic file icon)
             if not system_icon.isNull():
                 return QIcon(system_icon)
-        except Exception:
-            pass
+        except Exception as error:
+            # system icon lookup can fail per-file/platform; this is a
+            # routine fallback path, so log at debug level and continue to
+            # the bundled-icon fallback below
+            LOG.debug(
+                LOG.LOG_SOURCE.FE,
+                f"System icon lookup failed for {item_path}: {error}",
+            )
 
         # fallback to custom icons for specific types
         try:

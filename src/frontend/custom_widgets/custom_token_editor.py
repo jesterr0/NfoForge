@@ -76,7 +76,7 @@ class CustomTokenEditor(QWidget):
     def __init__(
         self,
         token_types: Sequence[str],
-        token_prefix: str = "usr_",
+        token_prefix: str = "usr_",  # noqa: S107 - default prefix for user-defined NFO tokens, not a credential
         hide_save_btn: bool = False,
         hide_expand_editor: bool = False,
         parent: QWidget | None = None,

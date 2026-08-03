@@ -260,7 +260,7 @@ def _selector_with_plugin(
     """
     selector = _make_selector(tmp_path, monkeypatch)
     selector.config.settings.general.enable_plugins = True
-    selector.config.settings.plugins.token_replacer = "fake_plugin"
+    selector.config.settings.plugins.token_replacer = "fake_plugin"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     selector.config.plugin_manager.register(
         "fake_plugin",
         PluginDefinition(

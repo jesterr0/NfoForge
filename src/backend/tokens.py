@@ -39,8 +39,8 @@ class NfoToken(TokenType):
 
 
 class TokenSelection(CaseInsensitiveStrEnum):
-    FILE_TOKEN = "FileToken"
-    NFO_TOKEN = "NfoToken"
+    FILE_TOKEN = "FileToken"  # noqa: S105 - enum value naming a token category, not a credential
+    NFO_TOKEN = "NfoToken"  # noqa: S105 - enum value naming a token category, not a credential
 
     def get_token_obj(self) -> type[TokenType]:
         if self == TokenSelection.FILE_TOKEN:

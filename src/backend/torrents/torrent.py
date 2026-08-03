@@ -127,7 +127,7 @@ def mkbrr_generate_torrent(
 
     LOG.debug(LOG.LOG_SOURCE.BE, f"mkbrr command: {' '.join(cmd_line)}")
 
-    with subprocess.Popen(
+    with subprocess.Popen(  # noqa: S603 - list argv, no shell; mkbrr path is the configured binary
         cmd_line,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

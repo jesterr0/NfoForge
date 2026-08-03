@@ -28,6 +28,7 @@ from src.frontend.utils import QWidgetTempStyle, build_v_line
 from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ComparisonPair
 
 
@@ -572,13 +573,15 @@ class MediaInput(BaseWizardPage):
                 QItemSelectionModel.SelectionFlag.ClearAndSelect
                 | QItemSelectionModel.SelectionFlag.Rows,
             )
-            try:
-                self.file_tree.scrollTo(idx)
-            except Exception:
-                pass
-        except Exception:
+            # scrollTo's own failures are covered by the outer catch below;
+            # a separate inner try/except here would handle them identically
+            self.file_tree.scrollTo(idx)
+        except Exception as error:
             # best effort only; prevent breaking the flow on unexpected shapes
-            pass
+            LOG.debug(
+                LOG.LOG_SOURCE.FE,
+                f"Could not auto-select the single tree file: {error}",
+            )
 
     def _reset_comparison_widget(self, set_disabled: bool) -> None:
         """Hides comparison section and resets all entries"""

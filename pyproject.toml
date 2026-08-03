@@ -66,11 +66,15 @@ constraint-dependencies = ["requests>=2.32.4"]
 # `select` replaces ruff's defaults rather than extending them, so "F"
 # (pyflakes) has to be listed explicitly or unused imports, redefinitions,
 # undefined names, and unused locals go un-linted.
-select = ["F", "I", "UP", "B", "S323"]
+select = ["F", "I", "UP", "B", "S"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
 force-sort-within-sections = true
+
+[tool.ruff.lint.per-file-ignores]
+# pytest is built on `assert`; S101 in tests is not a finding.
+"tests/**" = ["S101"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
