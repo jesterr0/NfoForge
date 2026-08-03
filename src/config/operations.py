@@ -1957,7 +1957,7 @@ class TypedTomlOperations:
             Mapping[str, Any], tracker_data.get("tvr_title_overrides", {})
         )
         overrides: dict[EpisodeFormat, TitleOverridePayload] = {}
-        for episode_format in EpisodeFormat:
+        for episode_format in SUPPORTED_TVR_FORMATS:
             key = str(episode_format).lower()
             data = cast(Mapping[str, Any], override_data.get(key, {}))
             overrides[episode_format] = TitleOverridePayload(

@@ -9,8 +9,11 @@ import tomlkit
 
 from src.config.codec import TomlConfigCodec
 from src.config.config import ConfigManager
+from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
+from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from src.enums.series import EpisodeFormat
 from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ConfigError, ConfigSchemaError
@@ -20,7 +23,7 @@ from src.payloads.clients import (
     RTorrentConfig,
     TransmissionConfig,
 )
-from src.payloads.trackers import MoreThanTVInfo
+from src.payloads.trackers import MoreThanTVInfo, TrackerInfo
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
@@ -955,6 +958,72 @@ def test_default_season_folder_token_is_scene_style() -> None:
     # no episode tokens belong in a season-pack folder name
     assert "{episode_number" not in token
     assert "{episode_title_clean}" not in token
+
+
+def test_series_title_override_loader_matches_serialiser_formats() -> None:
+    """The loader must read exactly the episode formats the serialiser
+    writes -- no more, no less.
+
+    ``SUPPORTED_TVR_FORMATS`` deliberately excludes ``EpisodeFormat.DVD``
+    (a documented placeholder that reuses the Standard token set and is not
+    yet wired up -- see ``src/enums/series.py``), so the relationship
+    between the two must stay a subset, not equality. Before this loader
+    was narrowed to ``SUPPORTED_TVR_FORMATS`` it iterated all of
+    ``EpisodeFormat``, so a ``dvd`` override would load into memory and
+    then be silently dropped the next time the serialiser (which only ever
+    wrote the three supported formats) ran.
+    """
+    assert set(SUPPORTED_TVR_FORMATS) <= set(EpisodeFormat)
+
+    serialised = TypedTomlOperations._serialize_series_title_overrides(TrackerInfo())
+    loaded = TypedTomlOperations._load_series_title_overrides({})
+
+    assert set(loaded.keys()) == set(SUPPORTED_TVR_FORMATS)
+    assert {str(fmt).lower() for fmt in loaded} == set(serialised.keys())
+
+
+def test_on_disk_dvd_title_override_is_ignored_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``dvd`` title-override table hand-edited (or left over from a
+    build that once wrote one) into a profile must be ignored on load --
+    not loaded into memory and then silently dropped on the next save.
+    Loading and saving such a profile must not raise, and the ``dvd``
+    table must not reappear once ``save`` rewrites the file.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    tracker = cast(MutableMapping[str, Any], document["tracker"])
+    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
+    more_than_tv["tvr_title_overrides"] = {
+        "dvd": {
+            "enabled": True,
+            "colon_replace": 3,
+            "token": "probe-dvd-token",
+            "replace_map": [],
+        }
+    }
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)  # must not raise
+
+    overrides = manager.settings.trackers.more_than_tv.tvr_title_overrides
+    assert EpisodeFormat.DVD not in overrides
+    assert set(overrides.keys()) == set(SUPPORTED_TVR_FORMATS)
+
+    manager.save()  # must not raise
+
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
+    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
+    saved_overrides = cast(MutableMapping[str, Any], saved_mtv["tvr_title_overrides"])
+    assert "dvd" not in saved_overrides
 
 
 def _write_fixture_profile(paths: ConfigPaths, fixture: str) -> tuple[Path, str]:
