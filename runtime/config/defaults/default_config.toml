@@ -381,6 +381,9 @@ image_width = 500
 
 [torrent_client.qbittorrent]
 enabled = false
+# Loopback default -- fine for a local client. If this is pointed at a
+# remote host, use "https://" or the WebUI password will be sent in
+# cleartext.
 host = "http://127.0.0.1"
 port = 0
 user = ""
@@ -389,6 +392,9 @@ specific_params = { "category" = "", "super_seeding" = false, "save_path_mode" =
 
 [torrent_client.deluge]
 enabled = false
+# Loopback default -- fine for a local client. If this is pointed at a
+# remote host, use "https://" or the WebUI password will be sent in
+# cleartext.
 host = "http://127.0.0.1"
 port = 0
 user = ""
@@ -405,6 +411,9 @@ specific_params = { "label" = "", "path" = "", "verify_tls" = true, "ca_bundle" 
 
 [torrent_client.transmission]
 enabled = false
+# Loopback default -- fine for a local client. The user/password below are
+# embedded in this URI; if it is pointed at a remote host, use "https://"
+# or those credentials will be sent in cleartext.
 host = "http://<user>:<password>@127.0.0.1/transmission/rpc"
 port = 0
 user = ""

@@ -322,68 +322,70 @@ class PTPUploader:
             }
             data.update(new_group_data)
 
-        # upload the torrent
-        with self._session as response:
-            files: MultiPartFilesAltType = {}
-            with open(torrent_file, "rb") as t_file:
-                files.update(
-                    {
-                        "file_input": (
-                            "placeholder.torrent",
-                            t_file.read(),
-                            "application/x-bittorent",
-                        )
-                    }
-                )
-            try:
-                upload = response.post(
-                    url=url,
-                    headers=TRACKER_HEADERS,
-                    data=data,
-                    files=files,
-                    timeout=self.timeout,
-                )
-            except niquests.exceptions.RequestException as error:
-                upload_error_msg = f"Upload to PTP failed: {error}"
-                LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
-                retryable, server_accepted = classify_upload_post_error(error)
-                raise TrackerError(
-                    upload_error_msg,
-                    retryable=retryable,
-                    server_accepted=server_accepted,
-                ) from error
+        # upload the torrent. `self._session` is reused across `login()` and
+        # `upload()`, so it must not be closed here -- only its `post()`
+        # response is used, and the session itself stays open for the
+        # lifetime of the PTPUploader instance.
+        files: MultiPartFilesAltType = {}
+        with open(torrent_file, "rb") as t_file:
+            files.update(
+                {
+                    "file_input": (
+                        "placeholder.torrent",
+                        t_file.read(),
+                        "application/x-bittorent",
+                    )
+                }
+            )
+        try:
+            upload = self._session.post(
+                url=url,
+                headers=TRACKER_HEADERS,
+                data=data,
+                files=files,
+                timeout=self.timeout,
+            )
+        except niquests.exceptions.RequestException as error:
+            upload_error_msg = f"Upload to PTP failed: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                upload_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
 
-            extracted_error = self._extract_upload_error(upload.text)
-            LOG.debug(
-                LOG.LOG_SOURCE.BE,
-                "PassThePopcorn upload response: "
-                f"status={upload.status_code}, "
-                f"url={scrub_secrets(str(upload.url))}, "
-                f"error={extracted_error or 'none'}",
+        extracted_error = self._extract_upload_error(upload.text)
+        LOG.debug(
+            LOG.LOG_SOURCE.BE,
+            "PassThePopcorn upload response: "
+            f"status={upload.status_code}, "
+            f"url={scrub_secrets(str(upload.url))}, "
+            f"error={extracted_error or 'none'}",
+        )
+
+        # if the response contains our announce URL, then we are on the upload page and the upload wasn't successful.
+        if upload.text and upload.text.find(self.announce_url) != -1:
+            raise TrackerError(
+                f"Upload to PTP failed: {extracted_error or 'unknown error'} "
+                f"({upload.status_code})"
             )
 
-            # if the response contains our announce URL, then we are on the upload page and the upload wasn't successful.
-            if upload.text and upload.text.find(self.announce_url) != -1:
-                raise TrackerError(
-                    f"Upload to PTP failed: {extracted_error or 'unknown error'} "
-                    f"({upload.status_code})"
-                )
-
-            # URL format in case of successful upload: https://passthepopcorn.me/torrents.php?id=9329&torrentid=91868
-            check_for_success = (
-                re.match(
-                    r".*?passthepopcorn\.me/torrents\.php\?id=(\d+)&torrentid=(\d+)",
-                    upload.url,
-                )
-                if upload.url
-                else None
+        # URL format in case of successful upload: https://passthepopcorn.me/torrents.php?id=9329&torrentid=91868
+        check_for_success = (
+            re.match(
+                r".*?passthepopcorn\.me/torrents\.php\?id=(\d+)&torrentid=(\d+)",
+                upload.url,
             )
-            if not check_for_success:
-                raise TrackerError(
-                    f"Upload to PTP failed: result URL {upload.url} ({upload.status_code}) is not the expected one."
-                )
-            else:
-                return True
+            if upload.url
+            else None
+        )
+        if not check_for_success:
+            raise TrackerError(
+                f"Upload to PTP failed: result URL {upload.url} ({upload.status_code}) is not the expected one."
+            )
+        else:
+            return True
 
     @staticmethod
     def _extract_upload_error(body: str | None) -> str | None:

@@ -32,14 +32,14 @@ def test_unit3d_download_replaces_generated_torrent_atomically(
     get.return_value.__enter__.return_value = response
 
     result = _uploader(torrent_file)._download_uploaded_torrent(
-        "https://tracker.example/torrents/download/123.key"
+        "https://hawke.uno/torrents/download/123.key"
     )
 
     assert result == torrent_file
     assert torrent_file.read_bytes() == b"d8:announce1:ae"
     assert not list(tmp_path.glob("*.part"))
     get.assert_called_once_with(
-        "https://tracker.example/torrents/download/123.key",
+        "https://hawke.uno/torrents/download/123.key",
         headers=ANY,
         timeout=60,
         stream=True,
@@ -61,9 +61,49 @@ def test_unit3d_download_preserves_original_torrent_on_invalid_response(
 
     with pytest.raises(TrackerError, match="not a valid torrent"):
         _uploader(torrent_file)._download_uploaded_torrent(
-            "https://tracker.example/torrents/download/123.key"
+            "https://hawke.uno/torrents/download/123.key"
         )
 
+    assert torrent_file.read_bytes() == b"original torrent"
+    assert not list(tmp_path.glob("*.part"))
+
+
+@pytest.mark.parametrize(
+    "download_url",
+    [
+        "ftp://hawke.uno/torrents/download/123.key",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+    ],
+)
+@patch("src.backend.trackers.unit3d_base.niquests.get")
+def test_unit3d_download_rejects_unsupported_scheme(
+    get: MagicMock, download_url: str, tmp_path: Path
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+
+    with pytest.raises(TrackerError, match="unsupported scheme"):
+        _uploader(torrent_file)._download_uploaded_torrent(download_url)
+
+    get.assert_not_called()
+    assert torrent_file.read_bytes() == b"original torrent"
+    assert not list(tmp_path.glob("*.part"))
+
+
+@patch("src.backend.trackers.unit3d_base.niquests.get")
+def test_unit3d_download_rejects_mismatched_host(
+    get: MagicMock, tmp_path: Path
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+
+    with pytest.raises(TrackerError, match="unexpected host"):
+        _uploader(torrent_file)._download_uploaded_torrent(
+            "https://evil.example/torrents/download/123.key"
+        )
+
+    get.assert_not_called()
     assert torrent_file.read_bytes() == b"original torrent"
     assert not list(tmp_path.glob("*.part"))
 

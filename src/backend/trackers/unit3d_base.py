@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 from tempfile import mkstemp
 from typing import Any, TypeAlias
+from urllib.parse import urlparse
 
 import niquests
 from pymediainfo import MediaInfo
@@ -256,6 +257,25 @@ class Unit3dBaseUploader:
 
     def _download_uploaded_torrent(self, download_url: str) -> Path:
         """Stream the tracker-generated torrent to its final path atomically."""
+        parsed_download_url = urlparse(download_url)
+        if parsed_download_url.scheme not in ("https", "http"):
+            raise TrackerError(
+                f"{self.tracker_name} returned a download URL with an "
+                "unsupported scheme",
+                retryable=False,
+            )
+        # `upload_url` is derived from the same `base_url` the tracker was
+        # configured with, so its host is what a legitimate download URL
+        # should share. Refuse a response pointing somewhere else.
+        expected_host = urlparse(self.upload_url).hostname
+        if expected_host and parsed_download_url.hostname != expected_host:
+            raise TrackerError(
+                f"{self.tracker_name} returned a download URL for an "
+                f"unexpected host ({parsed_download_url.hostname!r}, "
+                f"expected {expected_host!r})",
+                retryable=False,
+            )
+
         destination = self.torrent_file
         destination.parent.mkdir(parents=True, exist_ok=True)
         file_descriptor, temporary_name = mkstemp(

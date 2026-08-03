@@ -142,7 +142,11 @@ class FullConnectionClientEditBase(ClientEditBase):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.host = QLineEdit(parent=self)
-        self.host.setToolTip("Client hostname")
+        self.host.setToolTip(
+            "Client hostname. Loopback (127.0.0.1) is fine over http://; for "
+            "a remote host, use https:// or the password above will be sent "
+            "in cleartext."
+        )
         self.port = QSpinBox(self)
         self.port.setToolTip("Client port (0 = disabled)")
         self.port.setRange(0, 65535)
@@ -174,7 +178,11 @@ class UriClientEditBase(ClientEditBase):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.host = QLineEdit(parent=self)
-        self.host.setToolTip("URI (http://<user>:<password>@127.0.0.1)")
+        self.host.setToolTip(
+            "URI (http://<user>:<password>@127.0.0.1). Loopback is fine "
+            "over http://; for a remote host, use https:// or the embedded "
+            "credentials will be sent in cleartext."
+        )
 
     def add_uri_field(self, layout: QFormLayout) -> None:
         self.add_form_row(layout, "Host", self.host)

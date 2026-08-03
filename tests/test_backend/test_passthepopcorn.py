@@ -78,8 +78,6 @@ def test_ptp_upload_post_has_a_timeout(
 
     fake_response = MagicMock(text="", url=None, status_code=None)
     fake_session = MagicMock()
-    fake_session.__enter__.return_value = fake_session
-    fake_session.__exit__.return_value = False
     fake_session.post.return_value = fake_response
     uploader._session = fake_session
 
@@ -100,6 +98,50 @@ def test_ptp_upload_post_has_a_timeout(
 
     fake_session.post.assert_called_once()
     assert fake_session.post.call_args.kwargs["timeout"] == uploader.timeout
+
+
+@patch("src.backend.trackers.passthepopcorn.VideoResolutionAnalyzer")
+def test_ptp_upload_does_not_close_the_shared_session(
+    _resolution_analyzer: MagicMock, tmp_path: Path
+) -> None:
+    """``PTPUploader`` is built once per ``ptp_uploader()`` call and
+    ``login()`` runs on the same instance before ``upload()``; both share
+    ``self._session``. ``upload()`` must not close it -- doing so would
+    make the object usable for exactly one upload, undocumented, and would
+    break any caller that reuses the instance (e.g. for a retry) after a
+    failed upload."""
+    uploader = _uploader(tmp_path)
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"torrent contents")
+
+    # Use the real `niquests.Session` created by `PTPUploader.__init__` --
+    # only the network call and `close()` are stubbed -- so `__exit__`
+    # closing the session (the actual bug) would be caught here even though
+    # a MagicMock session would not exhibit it.
+    fake_response = MagicMock(text="", url=None, status_code=None)
+    post = MagicMock(return_value=fake_response)
+    close = MagicMock()
+    uploader._session.post = post
+    uploader._session.close = close
+
+    media_search_payload = MagicMock()
+    media_search_payload.media_type = MediaType.MOVIE
+
+    with pytest.raises(TrackerError, match="is not the expected one"):
+        uploader.upload(
+            auth_token="token",
+            media_search_payload=media_search_payload,
+            torrent_file=torrent_file,
+            input_path=tmp_path / "Example.2026.1080p.WEB-DL-GRP",
+            nfo="nfo contents",
+            group_id="12345",
+        )
+
+    post.assert_called_once()
+    close.assert_not_called()
+    # The session object itself must still be the one created in __init__
+    # (not replaced or torn down), so a second call could reuse it.
+    assert uploader._session.post is post
 
 
 def test_ptp_2fa_uses_interactive_prompt_after_automatic_code(
