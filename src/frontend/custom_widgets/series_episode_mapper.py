@@ -6,7 +6,7 @@ from typing import Any
 
 from guessit import guessit
 from PySide6.QtCore import QSize, Qt, Signal, Slot
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -221,6 +222,43 @@ class EpisodeListItem:
 class SeriesEpisodeMapper(QWidget):
     mapping_changed = Signal()
     validation_changed = Signal(bool)
+
+    # Semantic cell colours. The foreground is set alongside every background:
+    # the app's default text colour follows the theme, and on the dark theme it
+    # is near-white, which is unreadable on any of these.
+    _CELL_FOREGROUND = QColor(20, 20, 20)
+    _CONFIDENCE_HIGH_COLOR = QColor(200, 255, 200)  # confidence >= 90%
+    _CONFIDENCE_MEDIUM_COLOR = QColor(255, 243, 150)  # confidence >= 70%
+    _CONFIDENCE_LOW_COLOR = QColor(255, 179, 179)  # confidence below 70%
+    _ASSIGNED_EPISODE_COLOR = QColor(200, 255, 200)  # assigned tree row
+    _UNASSIGNED_EPISODE_COLOR = QColor(255, 220, 220)  # unassigned tree row
+    _SEARCH_HIGHLIGHT_COLOR = QColor(255, 243, 150)  # search term match
+    _MANUAL_MATCH_COLOR = QColor(200, 255, 200)  # manual edit matched TVDB
+    _MANUAL_UNVERIFIED_COLOR = QColor(255, 205, 120)  # manual edit unverified
+
+    @classmethod
+    def _paint_cell(
+        cls, item: QTableWidgetItem | QTreeWidgetItem, colour: QColor, column: int = 0
+    ) -> None:
+        """Set a background and a foreground legible against it."""
+        if isinstance(item, QTreeWidgetItem):
+            item.setBackground(column, colour)
+            item.setForeground(column, cls._CELL_FOREGROUND)
+        else:
+            item.setBackground(colour)
+            item.setForeground(cls._CELL_FOREGROUND)
+
+    @classmethod
+    def _clear_cell_paint(
+        cls, item: QTableWidgetItem | QTreeWidgetItem, column: int = 0
+    ) -> None:
+        """Reset both brushes so the theme's own colours apply again."""
+        if isinstance(item, QTreeWidgetItem):
+            item.setBackground(column, QBrush())
+            item.setForeground(column, QBrush())
+        else:
+            item.setBackground(QBrush())
+            item.setForeground(QBrush())
 
     def __init__(
         self,
@@ -753,6 +791,12 @@ class SeriesEpisodeMapper(QWidget):
     def _auto_match_files(self) -> None:
         """Enhanced auto-matching with fuzzy fallback"""
         if not self.available_episodes:
+            QMessageBox.information(
+                self,
+                "No Episode Data",
+                "There is no TVDB episode data loaded, so files cannot be "
+                "re-matched. Set a TVDB ID on the previous page and try again.",
+            )
             return
 
         matched_count = 0
@@ -1072,11 +1116,11 @@ class SeriesEpisodeMapper(QWidget):
                 confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
             )
             if confidence >= 0.9:
-                confidence_item.setBackground(Qt.GlobalColor.green)
+                self._paint_cell(confidence_item, self._CONFIDENCE_HIGH_COLOR)
             elif confidence >= 0.7:
-                confidence_item.setBackground(Qt.GlobalColor.yellow)
+                self._paint_cell(confidence_item, self._CONFIDENCE_MEDIUM_COLOR)
             else:
-                confidence_item.setBackground(Qt.GlobalColor.red)
+                self._paint_cell(confidence_item, self._CONFIDENCE_LOW_COLOR)
             self.files_table.setItem(row, 3, confidence_item)
 
             # method (read only)
@@ -1105,7 +1149,7 @@ class SeriesEpisodeMapper(QWidget):
             confidence_item.setFlags(
                 confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable
             )
-            confidence_item.setBackground(Qt.GlobalColor.transparent)
+            self._clear_cell_paint(confidence_item)
             self.files_table.setItem(row, 3, confidence_item)
 
             # clear Method (read-only)
@@ -1310,18 +1354,16 @@ class SeriesEpisodeMapper(QWidget):
                 # color code episodes based on assignment status
                 if is_assigned:
                     # light green background
-                    assigned_color = QColor(200, 255, 200)
                     for col in range(4):
-                        tree_item.setBackground(col, assigned_color)
+                        self._paint_cell(tree_item, self._ASSIGNED_EPISODE_COLOR, col)
                 else:
                     # light red background to make them stand out
-                    unassigned_color = QColor(255, 220, 220)
                     for col in range(4):
-                        tree_item.setBackground(col, unassigned_color)
+                        self._paint_cell(tree_item, self._UNASSIGNED_EPISODE_COLOR, col)
 
                 # highlight search terms (override assignment color if searching)
                 if search_text and search_text in episode_item.name.lower():
-                    tree_item.setBackground(0, Qt.GlobalColor.yellow)
+                    self._paint_cell(tree_item, self._SEARCH_HIGHLIGHT_COLOR, 0)
 
                 season_item.addChild(tree_item)
 
@@ -1484,7 +1526,9 @@ class SeriesEpisodeMapper(QWidget):
             method_item.setFlags(method_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
             if has_tvdb_match:
-                confidence_item.setBackground(Qt.GlobalColor.green)  # Manual = green
+                self._paint_cell(
+                    confidence_item, self._MANUAL_MATCH_COLOR
+                )  # Manual = green
                 # season/episode items are already attached to the table;
                 # a previous edit may have painted them amber (unverified
                 # manual mapping) before this correction matched TVDB
@@ -1493,22 +1537,21 @@ class SeriesEpisodeMapper(QWidget):
                 # emits itemChanged) doesn't re-enter this slot
                 self.files_table.blockSignals(True)
                 try:
-                    season_item.setBackground(Qt.GlobalColor.transparent)
-                    episode_item.setBackground(Qt.GlobalColor.transparent)
+                    self._clear_cell_paint(season_item)
+                    self._clear_cell_paint(episode_item)
                 finally:
                     self.files_table.blockSignals(False)
             else:
                 # amber: manual entry not confirmed against TVDB data
-                unverified_color = QColor(255, 205, 120)
-                confidence_item.setBackground(unverified_color)
-                method_item.setBackground(unverified_color)
+                self._paint_cell(confidence_item, self._MANUAL_UNVERIFIED_COLOR)
+                self._paint_cell(method_item, self._MANUAL_UNVERIFIED_COLOR)
                 # season/episode items are already attached to the table;
                 # block signals while touching them so setBackground()
                 # (which emits itemChanged) doesn't re-enter this slot
                 self.files_table.blockSignals(True)
                 try:
-                    season_item.setBackground(unverified_color)
-                    episode_item.setBackground(unverified_color)
+                    self._paint_cell(season_item, self._MANUAL_UNVERIFIED_COLOR)
+                    self._paint_cell(episode_item, self._MANUAL_UNVERIFIED_COLOR)
                 finally:
                     self.files_table.blockSignals(False)
 
@@ -1532,7 +1575,7 @@ class SeriesEpisodeMapper(QWidget):
         # clear confidence
         confidence_item = QTableWidgetItem("")
         confidence_item.setFlags(confidence_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-        confidence_item.setBackground(Qt.GlobalColor.transparent)
+        self._clear_cell_paint(confidence_item)
         self.files_table.setItem(row, 3, confidence_item)
 
         # clear method
@@ -1550,8 +1593,8 @@ class SeriesEpisodeMapper(QWidget):
         if season_item is not None and episode_item is not None:
             self.files_table.blockSignals(True)
             try:
-                season_item.setBackground(Qt.GlobalColor.transparent)
-                episode_item.setBackground(Qt.GlobalColor.transparent)
+                self._clear_cell_paint(season_item)
+                self._clear_cell_paint(episode_item)
             finally:
                 self.files_table.blockSignals(False)
 

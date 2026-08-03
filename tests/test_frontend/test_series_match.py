@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtWidgets import QMessageBox
+import pytest
+
 from src.enums.media_type import MediaType
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.frontend.wizards.series_match import _incomplete_mapping_message
@@ -13,6 +17,23 @@ def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
         media_type=MediaType.SERIES,
         file_list=file_list,
     )
+    return mapper
+
+
+def _mapper_without_tvdb_data() -> SeriesEpisodeMapper:
+    """A mapper with files but no TVDB episode data loaded."""
+    return _make_mapper_with_files([Path("Show.S01E01.mkv")])
+
+
+def _mapper_with_tvdb_data() -> SeriesEpisodeMapper:
+    """A mapper with files and TVDB episode data loaded, ready to match."""
+    mapper = _make_mapper_with_files([Path("Show.S01E01.mkv"), Path("Show.S01E02.mkv")])
+    mapper.available_episodes = {
+        1: {
+            1: {"seasonNumber": 1, "number": 1, "name": "Pilot"},
+            2: {"seasonNumber": 1, "number": 2, "name": "Second Episode"},
+        }
+    }
     return mapper
 
 
@@ -101,3 +122,71 @@ def test_get_episode_map_returns_a_copy() -> None:
     returned.clear()
 
     assert file_path in mapper.file_episode_mappings
+
+
+def test_re_match_all_reports_when_there_is_no_episode_data(
+    qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The button must not be a silent no-op."""
+    mapper = _mapper_without_tvdb_data()
+    shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda _parent, title, text: shown.append((title, text)),
+    )
+
+    mapper._auto_match_files()
+
+    assert len(shown) == 1
+    assert "TVDB" in shown[0][1]
+
+
+def test_re_match_all_stays_silent_when_episode_data_exists(
+    qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard must not fire on the normal path."""
+    mapper = _mapper_with_tvdb_data()
+    shown: list[object] = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: shown.append(a))
+
+    mapper._auto_match_files()
+
+    assert shown == []
+
+
+def test_every_coloured_cell_also_sets_a_foreground(qapp: QCoreApplication) -> None:
+    """A background without a foreground is unreadable on the dark theme.
+
+    Asserts the invariant across the real widget rather than per call site,
+    so a future site added without a foreground fails this too.
+
+    ``_populate_files_table`` alone never paints a cell -- coloring happens
+    in ``_auto_match_files`` (and other assignment paths), so both are
+    driven here to actually exercise the invariant rather than iterating an
+    always-uncoloured table.
+    """
+    mapper = _mapper_with_tvdb_data()
+    mapper._populate_files_table()
+    mapper._auto_match_files()
+
+    table = mapper.files_table
+    coloured_cells = 0
+    for row in range(table.rowCount()):
+        for column in range(table.columnCount()):
+            item = table.item(row, column)
+            if item is None:
+                continue
+            background = item.background()
+            if background.style() == Qt.BrushStyle.NoBrush:
+                continue
+            if background.color().alpha() == 0:
+                continue
+            coloured_cells += 1
+            assert item.foreground().style() != Qt.BrushStyle.NoBrush, (
+                f"cell ({row}, {column}) sets a background with no foreground"
+            )
+
+    assert coloured_cells > 0, (
+        "no cell was coloured -- this test would otherwise pass vacuously"
+    )
