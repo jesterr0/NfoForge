@@ -1,4 +1,6 @@
+import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -27,6 +29,7 @@ from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.uploadcx import UploadCXUploader
 from src.backend.utils.anime import is_anime_release
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.series import EpisodeFormat
 from src.enums.tracker_selection import TrackerSelection
@@ -43,6 +46,7 @@ from src.enums.trackers.torrentleech import TLCategories
 from src.exceptions import TrackerError
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.series import SeriesReleaseInfo, build_series_release_info
 
 
 @pytest.mark.parametrize(
@@ -681,3 +685,175 @@ def test_reelflix_does_not_resolve_series_tv_category(tmp_path: Path) -> None:
 
     with pytest.raises(TrackerError, match="does not support"):
         uploader._get_category_id()
+
+
+# ---------------------------------------------------------------------------
+# Guard-site coverage: the table above (UNSUPPORTED_SERIES_TRACKERS) is fully
+# tested, but nothing exercised the two call sites that actually *consume*
+# it -- ProcessBackEnd.upload (process.py:1607) and ProcessBackEnd.dupe_checks
+# (process.py:153). Without the former, a series upload to an unsupporting
+# tracker would be attempted for real.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _UploadFixture:
+    """Everything `ProcessBackEnd.upload`/`dupe_checks` need beyond the
+    tracker itself."""
+
+    torrent_file: Path
+    context: ProcessingContext
+    release_info: SeriesReleaseInfo
+
+
+def _mediainfo_obj() -> MediaInfo:
+    return MediaInfo(
+        """<Mediainfo><File>
+        <track type="General"><Duration>60000</Duration><File_size>1000</File_size></track>
+        <track type="Video"><Width>1920</Width><Height>1080</Height><Scan_type>Progressive</Scan_type><Frame_rate>24.000</Frame_rate><Format>AVC</Format></track>
+        <track type="Audio"><Format>AC-3</Format><Channel_s>2</Channel_s><Language>en</Language></track>
+        </File></Mediainfo>"""
+    )
+
+
+def _process_backend() -> ProcessBackEnd:
+    """Build a `ProcessBackEnd` via `object.__new__`, skipping `__init__`
+    (template loading, torrent-client bookkeeping) that these guard tests
+    have no use for -- the same shortcut already used by
+    `test_torrentleech_upload_receives_derived_anime_signal` above and by
+    `test_flat_filter_runtime.py`. `config` is a MagicMock; the handful of
+    credential fields that `upload`/`dupe_checks` can reach once the series
+    guard is cleared are pinned to falsy values so a supported tracker fails
+    on "missing credentials" rather than attempting a real network call.
+    """
+    backend = object.__new__(ProcessBackEnd)
+    backend.config = MagicMock()
+    backend.config.settings.trackers.more_than_tv.username = ""
+    backend.config.settings.trackers.more_than_tv.password = ""
+    backend.config.settings.trackers.pass_the_popcorn.api_user = ""
+    backend.config.settings.trackers.reelflix.api_key = ""
+    return backend
+
+
+@pytest.fixture
+def series_context() -> _UploadFixture:
+    file_path = Path("Show.S01E01.1080p.WEB-DL.H.264-GRP.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        file_list_mediainfo={file_path: _mediainfo_obj()},
+    )
+    context = ProcessingContext(
+        media_input=media_input,
+        media_search=MediaSearchPayload(media_type=MediaType.SERIES),
+    )
+    return _UploadFixture(
+        torrent_file=Path("release.torrent"),
+        context=context,
+        release_info=build_series_release_info(media_input),
+    )
+
+
+@pytest.fixture
+def movie_context() -> _UploadFixture:
+    file_path = Path("Movie.2024.1080p.WEB-DL.H.264-GRP.mkv")
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.MOVIE,
+        file_list=[file_path],
+        file_list_mediainfo={file_path: _mediainfo_obj()},
+    )
+    context = ProcessingContext(
+        media_input=media_input,
+        media_search=MediaSearchPayload(media_type=MediaType.MOVIE),
+    )
+    return _UploadFixture(
+        torrent_file=Path("release.torrent"),
+        context=context,
+        release_info=build_series_release_info(media_input),
+    )
+
+
+@pytest.mark.parametrize("tracker", sorted(UNSUPPORTED_SERIES_TRACKERS, key=str))
+def test_series_upload_is_refused_for_every_unsupported_tracker(
+    tracker: TrackerSelection, series_context: _UploadFixture
+) -> None:
+    """`process.py:1607` is the only thing stopping a real upload attempt."""
+    backend = _process_backend()
+
+    with pytest.raises(TrackerError, match="does not support series uploads"):
+        backend.upload(
+            tracker=tracker,
+            torrent_file=series_context.torrent_file,
+            nfo="",
+            tracker_title="Show S01",
+            context=series_context.context,
+            release_info=series_context.release_info,
+        )
+
+
+def test_a_supporting_tracker_passes_the_series_guard(
+    series_context: _UploadFixture,
+) -> None:
+    """The guard must not fire for a tracker that does support series."""
+    supported = next(
+        tracker
+        for tracker in TrackerSelection
+        if tracker not in UNSUPPORTED_SERIES_TRACKERS
+    )
+    backend = _process_backend()
+
+    with pytest.raises(TrackerError) as excinfo:
+        backend.upload(
+            tracker=supported,
+            torrent_file=series_context.torrent_file,
+            nfo="",
+            tracker_title="Show S01",
+            context=series_context.context,
+            release_info=series_context.release_info,
+        )
+
+    # Anything raised past the guard is a downstream concern (credentials).
+    assert "does not support series uploads" not in str(excinfo.value)
+
+
+def test_a_movie_upload_is_never_blocked_by_the_series_guard(
+    movie_context: _UploadFixture,
+) -> None:
+    backend = _process_backend()
+
+    for tracker in sorted(UNSUPPORTED_SERIES_TRACKERS, key=str):
+        with pytest.raises(TrackerError) as excinfo:
+            backend.upload(
+                tracker=tracker,
+                torrent_file=movie_context.torrent_file,
+                nfo="",
+                tracker_title="Movie 2024",
+                context=movie_context.context,
+                release_info=movie_context.release_info,
+            )
+        assert "does not support series uploads" not in str(excinfo.value)
+
+
+def test_dupe_check_queues_a_placeholder_for_an_unsupported_series_tracker(
+    series_context: _UploadFixture,
+) -> None:
+    """`process.py:153` is the dupe-check counterpart of the upload guard:
+    for a series release it must append `_unsupported_series_tracker_dupe`'s
+    placeholder instead of running a real search against the tracker."""
+    backend = _process_backend()
+
+    results = asyncio.run(
+        backend.dupe_checks(
+            processing_queue=[TrackerSelection.PASS_THE_POPCORN],
+            media_input_payload=series_context.context.media_input,
+            media_search_payload=series_context.context.media_search,
+        )
+    )
+
+    assert results[TrackerSelection.PASS_THE_POPCORN] == (
+        TrackerSelection.PASS_THE_POPCORN,
+        False,
+        "PassThePopcorn does not support series uploads yet",
+    )
