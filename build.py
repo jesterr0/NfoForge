@@ -8,16 +8,7 @@ import sys
 
 from stdlib_list import stdlib_list
 
-
-def get_executable_string_by_os() -> str:
-    """Check executable type based on operating system"""
-    operating_system = platform.system()
-    if operating_system == "Windows":
-        return ".exe"
-    elif operating_system == "Linux":
-        return ""
-    else:
-        raise ValueError("Only Windows and Linux is currently supported")
+from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
 
 
 def get_std_lib() -> list:
@@ -154,6 +145,10 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # define paths before changing directory
     entry_script = project_root / "start_ui.py"
     icon_path = project_root / "runtime" / "images" / "hammer_merged.ico"
+    if platform.system() == "Darwin":
+        icns_candidate = project_root / "runtime" / "images" / "hammer_merged.icns"
+        if icns_candidate.exists():
+            icon_path = icns_candidate
     site_packages = get_site_packages()
     babel_fish = site_packages / "babelfish"
     guessit = site_packages / "guessit"
@@ -202,13 +197,26 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
 
     # ensure the output of the executable
     success = "Did not complete successfully"
-    exe_path = (
-        project_root
-        / pyinstaller_folder
-        / "dist"
-        / "NfoForge"
-        / f"NfoForge{get_executable_string_by_os()}"
-    )
+    if platform.system() == "Darwin":
+        # PyInstaller's windowed (-w) onedir build on macOS wraps the output
+        # into an .app bundle instead of the flat folder Windows/Linux produce
+        exe_path = (
+            project_root
+            / pyinstaller_folder
+            / "dist"
+            / "NfoForge.app"
+            / "Contents"
+            / "MacOS"
+            / "NfoForge"
+        )
+    else:
+        exe_path = (
+            project_root
+            / pyinstaller_folder
+            / "dist"
+            / "NfoForge"
+            / f"NfoForge{get_executable_string_by_os()}"
+        )
     if exe_path.is_file() and str(build_job.returncode) == "0":
         success = f"\nSuccess!\nPath to executable: {str(exe_path)}"
 
