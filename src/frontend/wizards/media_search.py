@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,13 +34,12 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.media_search import MediaSearchBackEnd
-from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.title_inference import MediaTitleInferer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
-from src.enums.tmdb_genres import TMDBGenreIDsMovies
+from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import (
     MediaFileNotFoundError,
     MediaSearchError,
@@ -57,6 +56,7 @@ from src.plugins.api import (
     MetadataTransformContext,
     MetadataTransformRequest,
 )
+from src.utils.super_sub import normalize_super_sub
 
 
 class _MediaSearchBackend(Protocol):
@@ -125,7 +125,7 @@ class IDParseWorker(QThread):
         tmdb_title: str,
         tmdb_year: int,
         original_language: str,
-        tmdb_genres: list[TMDBGenreIDsMovies],
+        tmdb_genres: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         tmdb_id: str = "",
         tvdb_id: str = "",
         metadata_transformer_id: str | None = None,
@@ -243,9 +243,10 @@ class MediaSearch(BaseWizardPage):
         self.backend = MediaSearchBackEnd(
             language=self.config.settings.general.tmdb_language,
             timeout=self.config.settings.general.timeout,
+            api_key=self.config.settings.api_keys.tmdb_api_key,
         )
 
-        # listen for settings changes to update language
+        # listen for settings changes to update the language and TMDB API key
         GSigs().settings_close.connect(self._update_backend_settings)
 
         self.search_worker: GeneralWorker | None = None
@@ -488,7 +489,7 @@ class MediaSearch(BaseWizardPage):
                     [
                         genre
                         for genre in genre_ids
-                        if isinstance(genre, TMDBGenreIDsMovies)
+                        if isinstance(genre, TMDBGenreIDsMovies | TMDBGenreIDsSeries)
                     ]
                     if isinstance(genre_ids, list)
                     else []
@@ -647,12 +648,6 @@ class MediaSearch(BaseWizardPage):
             normalize_super_sub(original_title) if original_title else None
         )
 
-        # set genres from TMDB data
-        genres = None
-        if isinstance(item_data.get("genre_ids"), list):
-            genres = item_data.get("genre_ids")
-        self.context.media_search.genres = genres if genres else []
-
         if media_data:
             # handle complete TMDB data first
             tmdb_complete_data = media_data.get("tmdb_complete_data")
@@ -709,6 +704,16 @@ class MediaSearch(BaseWizardPage):
                 f"Using TMDB title selected by backend: '{self.context.media_search.title}'",
             )
 
+        # `genres` must agree with `genre_names`, which `populate_from_tmdb`
+        # (below) rewrites from `tmdb_data`. Computing it here -- after any
+        # complete TMDB record fetched for a manually entered ID has already
+        # replaced `tmdb_data` above -- keeps the two in sync. Reading the
+        # listbox row directly left them disagreeing after a manual ID
+        # entry, and downstream genre-aware logic reads `genres`.
+        self.context.media_search.genres = self._genre_enums_from_tmdb(
+            self.context.media_search.tmdb_data, item_data
+        )
+
         self.context.media_search.populate_from_tmdb()
         if media_data:
             transformed_result = media_data.get("metadata_transformation")
@@ -733,6 +738,47 @@ class MediaSearch(BaseWizardPage):
                     self.tmdb_id_entry.setText(transformed.tmdb_id or "")
                     self.tvdb_id_entry.setText(transformed.tvdb_id or "")
                     self.mal_id_entry.setText(transformed.mal_id or "")
+
+    def _genre_enums_from_tmdb(
+        self,
+        tmdb_data: dict[str, Any] | None,
+        item_data: dict[str, Any] | None,
+    ) -> list[TMDBGenreIDsMovies | TMDBGenreIDsSeries]:
+        """Genre enums from the fetched record, falling back to the search row.
+
+        A complete TMDB record carries `genres` as objects with an `id`; a
+        search result carries `genre_ids` as already-resolved genre enums.
+        Prefer the former since it reflects a manually entered TMDB ID, and
+        only fall back to the row when the record has no usable `genres` key
+        at all. TMDB legitimately returns `genres: []` for some titles, and
+        that empty-but-present list must be accepted as-is rather than
+        treated as "missing" and backfilled from an unrelated search row.
+        """
+        enum_class: type[TMDBGenreIDsMovies] | type[TMDBGenreIDsSeries] = (
+            TMDBGenreIDsSeries
+            if self.context.media_search.media_type is MediaType.SERIES
+            else TMDBGenreIDsMovies
+        )
+
+        if tmdb_data:
+            raw_genres = tmdb_data.get("genres")
+            if isinstance(raw_genres, list):
+                resolved: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries] = []
+                for entry in raw_genres:
+                    if not isinstance(entry, dict) or "id" not in entry:
+                        continue
+                    try:
+                        resolved.append(enum_class(entry["id"]))
+                    except ValueError:
+                        resolved.append(enum_class.UNDEFINED)
+                return resolved
+
+        if item_data:
+            genre_ids = item_data.get("genre_ids")
+            if isinstance(genre_ids, list):
+                return [genre for genre in genre_ids if isinstance(genre, enum_class)]
+
+        return []
 
     def _apply_anilist_data(self, anilist_data: dict[str, Any]) -> None:
         self.context.media_search.anilist_data = anilist_data
@@ -759,6 +805,7 @@ class MediaSearch(BaseWizardPage):
         """Update MediaSearchBackEnd when settings change"""
         new_language = self.config.settings.general.tmdb_language
         self.backend.update_language(new_language)
+        self.backend.update_api_key(self.config.settings.api_keys.tmdb_api_key)
 
     def isComplete(self) -> bool:
         """Overrides isComplete method to control the next button"""

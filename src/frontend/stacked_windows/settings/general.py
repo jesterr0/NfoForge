@@ -32,6 +32,7 @@ from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
 from src.exceptions import ConfigSchemaError
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
@@ -113,6 +114,15 @@ class GeneralSettings(BaseSettings):
             completer=True, completer_strict=True, disable_mouse_wheel=True, parent=self
         )
         self.tmdb_language_combo.activated.connect(self._handle_language_selection)
+
+        tmdb_api_key_lbl = QLabel("TMDB API Key", self)
+        tmdb_api_key_lbl.setToolTip(
+            "Optional. Leave blank to use the key bundled with NfoForge.\n"
+            "Supply your own TMDB v3 API key to make requests under your own "
+            "account instead."
+        )
+        self.tmdb_api_key_entry = MaskedQLineEdit(parent=self, masked=True)
+        self.tmdb_api_key_entry.setPlaceholderText("Using bundled key")
 
         self.enable_prompt_overview = QCheckBox("Prompt for Overview", self)
         self.enable_prompt_overview.setToolTip(
@@ -229,6 +239,7 @@ class GeneralSettings(BaseSettings):
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(tmdb_language_lbl, self.tmdb_language_combo))
+        self.add_layout(create_form_layout(tmdb_api_key_lbl, self.tmdb_api_key_entry))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(self.enable_prompt_overview))
         self.add_layout(create_form_layout(mkbrr_widget))
@@ -256,6 +267,7 @@ class GeneralSettings(BaseSettings):
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
         self._load_tmdb_language_combo(payload.tmdb_language)
+        self.tmdb_api_key_entry.setText(self.config.settings.api_keys.tmdb_api_key)
         self.enable_prompt_overview.setChecked(payload.enable_prompt_overview)
         self.enable_mkbrr.setChecked(payload.enable_mkbrr)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
@@ -507,6 +519,9 @@ class GeneralSettings(BaseSettings):
         self.config.settings.general.tmdb_language = (
             self.tmdb_language_combo.currentData()
         )
+        self.config.settings.api_keys.tmdb_api_key = (
+            self.tmdb_api_key_entry.text().strip()
+        )
         self.config.settings.general.timeout = self.global_timeout_spinbox.value()
         self.config.settings.general.enable_prompt_overview = (
             self.enable_prompt_overview.isChecked()
@@ -536,6 +551,7 @@ class GeneralSettings(BaseSettings):
             ):
                 self.tmdb_language_combo.setCurrentIndex(i)
                 break
+        self.tmdb_api_key_entry.clear()
         self.global_timeout_spinbox.setValue(self.config.defaults.general.timeout)
         self.enable_prompt_overview.setChecked(
             self.config.settings.general.enable_prompt_overview

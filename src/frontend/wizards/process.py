@@ -164,7 +164,7 @@ class _UploadRetryWaiter(QObject):
 
 class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
-    progress_signal = Signal(int)
+    progress_signal = Signal(float)
     prompt_tokens_signal = Signal(list)
     overview_signal = Signal(object)
     upload_retry_signal = Signal(object)
@@ -216,7 +216,7 @@ class ProcessWorker(BaseWorker):
             self.queued_status_update.emit(tracker, status)
 
     def _progress_cb(self, progress: float) -> None:
-        if progress:
+        if progress is not None:
             self.progress_signal.emit(progress)
 
     def token_prompt_and_wait_cb(

@@ -32,14 +32,14 @@ def test_unit3d_download_replaces_generated_torrent_atomically(
     get.return_value.__enter__.return_value = response
 
     result = _uploader(torrent_file)._download_uploaded_torrent(
-        "https://tracker.example/torrents/download/123.key"
+        "https://hawke.uno/torrents/download/123.key"
     )
 
     assert result == torrent_file
     assert torrent_file.read_bytes() == b"d8:announce1:ae"
     assert not list(tmp_path.glob("*.part"))
     get.assert_called_once_with(
-        "https://tracker.example/torrents/download/123.key",
+        "https://hawke.uno/torrents/download/123.key",
         headers=ANY,
         timeout=60,
         stream=True,
@@ -61,9 +61,63 @@ def test_unit3d_download_preserves_original_torrent_on_invalid_response(
 
     with pytest.raises(TrackerError, match="not a valid torrent"):
         _uploader(torrent_file)._download_uploaded_torrent(
-            "https://tracker.example/torrents/download/123.key"
+            "https://hawke.uno/torrents/download/123.key"
         )
 
+    assert torrent_file.read_bytes() == b"original torrent"
+    assert not list(tmp_path.glob("*.part"))
+
+
+@pytest.mark.parametrize(
+    "download_url",
+    [
+        "ftp://hawke.uno/torrents/download/123.key",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+    ],
+)
+@patch("src.backend.trackers.unit3d_base.niquests.get")
+def test_unit3d_download_rejects_unsupported_scheme(
+    get: MagicMock, download_url: str, tmp_path: Path
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+
+    with pytest.raises(TrackerError, match="unsupported scheme") as exc_info:
+        _uploader(torrent_file)._download_uploaded_torrent(download_url)
+
+    # The tracker already accepted the upload by the time this method runs
+    # (`upload()` only calls it after a successful response), so this must
+    # be flagged the same way as the two sibling raises in this method:
+    # server_accepted so the whole upload is never silently re-POSTed, and
+    # phase="download" so the UI hides the "re-upload" button entirely
+    # instead of inviting a duplicate. Not automatically retried: the same
+    # malformed URL would fail identically on every attempt.
+    assert exc_info.value.retryable is False
+    assert exc_info.value.server_accepted is True
+    assert exc_info.value.phase == "download"
+    get.assert_not_called()
+    assert torrent_file.read_bytes() == b"original torrent"
+    assert not list(tmp_path.glob("*.part"))
+
+
+@patch("src.backend.trackers.unit3d_base.niquests.get")
+def test_unit3d_download_rejects_mismatched_host(
+    get: MagicMock, tmp_path: Path
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"original torrent")
+
+    with pytest.raises(TrackerError, match="unexpected host") as exc_info:
+        _uploader(torrent_file)._download_uploaded_torrent(
+            "https://evil.example/torrents/download/123.key"
+        )
+
+    # Same reasoning as test_unit3d_download_rejects_unsupported_scheme.
+    assert exc_info.value.retryable is False
+    assert exc_info.value.server_accepted is True
+    assert exc_info.value.phase == "download"
+    get.assert_not_called()
     assert torrent_file.read_bytes() == b"original torrent"
     assert not list(tmp_path.glob("*.part"))
 
@@ -102,6 +156,46 @@ def test_unit3d_upload_redownloads_tracker_torrent_before_success(
     download_torrent.assert_called_once_with(
         "https://tracker.example/torrents/download/123.key"
     )
+
+
+@pytest.mark.parametrize(
+    "response_payload",
+    [
+        {"success": True, "message": "Torrent uploaded successfully."},
+        {"success": True, "message": "Torrent uploaded successfully.", "data": ""},
+        {"success": True, "message": "Torrent uploaded successfully.", "data": 12345},
+    ],
+)
+@patch.object(Unit3dBaseUploader, "_build_upload_payload", return_value={})
+@patch("src.backend.trackers.unit3d_base.niquests.post")
+def test_unit3d_upload_flags_missing_download_url_as_already_accepted(
+    post: MagicMock,
+    _build_payload: MagicMock,
+    response_payload: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"generated torrent")
+    response = MagicMock()
+    response.json.return_value = response_payload
+    post.return_value.__enter__.return_value = response
+    uploader = _uploader(torrent_file)
+
+    with pytest.raises(
+        TrackerError, match="did not return a torrent download URL"
+    ) as exc_info:
+        uploader.upload(tracker_title="Example")
+
+    # The tracker already confirmed the upload (`success` and "successfully"
+    # in its message) before this raise fires, so it must be flagged the same
+    # way as the sibling raises in `_download_uploaded_torrent`: server_accepted
+    # so a retry is never silently re-POSTed as a duplicate upload, and
+    # phase="download" so the UI hides the "re-upload" button entirely instead
+    # of inviting one. Not automatically retried: the tracker's response won't
+    # gain a download URL on a second identical request.
+    assert exc_info.value.retryable is False
+    assert exc_info.value.server_accepted is True
+    assert exc_info.value.phase == "download"
 
 
 def test_unit3d_download_retry_does_not_repeat_upload_post(

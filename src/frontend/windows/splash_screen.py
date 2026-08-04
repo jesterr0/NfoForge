@@ -418,9 +418,16 @@ class SplashScreen(QWidget):
 
     def _set_open_screen(self) -> None:
         """Open on active display based on mouse location and then primary screen."""
+        # Connected first, deliberately: a guard below must never be able to
+        # skip it. This connection is what drives every splash message.
+        self.update_message_box.connect(self.updateMessageBox)
+
         active_screen = (
             QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         )
-        self.move(active_screen.availableGeometry().center() - self.rect().center())
+        if active_screen is None:
+            # Headless, or displays are mid-reconfiguration. Leave the window
+            # where Qt put it rather than failing construction.
+            return
 
-        self.update_message_box.connect(self.updateMessageBox)
+        self.move(active_screen.availableGeometry().center() - self.rect().center())

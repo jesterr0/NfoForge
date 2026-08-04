@@ -17,12 +17,13 @@ from src.frontend.custom_widgets.template_selector import (
     saved_status_message,
 )
 from src.plugins.api import PluginDefinition, TokenReplaceRequest
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(
@@ -217,6 +218,23 @@ def test_series_preview_fills_the_season_number_token(
     assert selector.text_edit.toPlainText() == "Season=1"
 
 
+def test_preview_button_unchecks_when_input_path_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `preview_template` used to raise with `preview_btn` still checked,
+    # leaving preview mode "on" with nothing previewed and no way to retry
+    # without manually unchecking the button first.
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.template_combo.addItem("template")
+    selector.template_combo.setCurrentText("template")
+    selector.preview_btn.setChecked(True)
+
+    with pytest.raises(FileNotFoundError):
+        selector.preview_template()
+
+    assert selector.preview_btn.isChecked() is False
+
+
 def test_status_message_is_unchanged_when_everything_resolves() -> None:
     assert saved_status_message(0) == "Saved template"
 
@@ -243,7 +261,7 @@ def _selector_with_plugin(
     """
     selector = _make_selector(tmp_path, monkeypatch)
     selector.config.settings.general.enable_plugins = True
-    selector.config.settings.plugins.token_replacer = "fake_plugin"
+    selector.config.settings.plugins.token_replacer = "fake_plugin"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     selector.config.plugin_manager.register(
         "fake_plugin",
         PluginDefinition(

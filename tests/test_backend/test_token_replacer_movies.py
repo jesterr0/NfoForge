@@ -62,7 +62,7 @@ def _movie_replacer() -> TokenReplacer:
     # same path that runs when the Settings token preview renders on launch.
     return TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{frame_size}",
+        token_string="{frame_size}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         flatten=True,
         file_name_mode=True,
@@ -116,7 +116,7 @@ def test_title_tokens_use_first_guessit_title_when_list_shaped(
     )
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{title_exact}",
+        token_string="{title_exact}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
         flatten=True,
         file_name_mode=True,
@@ -139,7 +139,7 @@ def test_original_title_token_prefers_provider_original_title() -> None:
     media_search.original_title = "Provider original title"
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{original_title}",
+        token_string="{original_title}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=media_search,
         flatten=True,
         file_name_mode=True,
@@ -153,7 +153,7 @@ def test_original_title_token_prefers_provider_original_title() -> None:
 def test_original_title_token_falls_back_to_tmdb_original_title() -> None:
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{original_title}",
+        token_string="{original_title}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.MOVIE,
             title="Selected title",
@@ -171,7 +171,7 @@ def test_original_title_token_falls_back_to_tmdb_original_title() -> None:
 def test_original_title_without_original_only_uses_explicit_fallback() -> None:
     replacer = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{original_title}",
+        token_string="{original_title}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.MOVIE,
             title="Selected Title",
@@ -189,7 +189,7 @@ def test_original_title_without_original_only_uses_explicit_fallback() -> None:
 def test_media_type_token_renders_movie() -> None:
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{{ media_type }}",
+        token_string="{{ media_type }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
@@ -203,7 +203,7 @@ def test_media_type_token_drives_the_movie_branch_of_a_conditional() -> None:
     # returns breaks a test that looks like a real template.
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',
+        token_string='{% if media_type == "Series" %}series{% else %}movie{% endif %}',  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         jinja_engine=Jinja2TemplateEngine(),
     ).get_output()
@@ -216,7 +216,7 @@ def test_is_anime_token_renders_for_an_anime_film() -> None:
     # with no media type condition, so anime films resolve too.
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{{ is_anime }}",
+        token_string="{{ is_anime }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.MOVIE, anilist_id="123"
         ),
@@ -280,14 +280,12 @@ def test_resolution_cache_is_shared_across_replacers(monkeypatch) -> None:
 
     # TokenReplacer instances share the cache through their common payload;
     # callers do not need to thread a cache through every renderer call.
-    EXAMPLE_MEDIA_INPUT_PAYLOAD.analysis_cache.clear()
     first = _movie_replacer()
     second = _movie_replacer()
 
     assert first._detect_resolution(first.media_info_obj, True) == "1080"
     assert second._detect_resolution(second.media_info_obj, True) == "1080"
     assert calls == [True]
-    EXAMPLE_MEDIA_INPUT_PAYLOAD.analysis_cache.clear()
 
 
 def test_audio_codec_tokens_split_atmos_out() -> None:
@@ -314,7 +312,7 @@ def test_audio_codec_tokens_resolve_through_the_token_string() -> None:
     # so it fails if the tokens stop being reachable.
     output = TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{audio_codec_no_atmos}.{atmos}",
+        token_string="{audio_codec_no_atmos}.{atmos}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
         flatten=True,
         file_name_mode=True,
@@ -348,3 +346,72 @@ def test_empty_token_at_either_end_leaves_no_stray_separator() -> None:
     assert _movie_filename("{title_exact}") == "Movie.Name.mkv"
     assert _movie_filename("{title_exact}.{video_3d}") == "Movie.Name.mkv"
     assert _movie_filename("{video_3d}.{title_exact}") == "Movie.Name.mkv"
+
+
+def test_unknown_flat_filter_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    # A typo'd filter name (e.g. "zfil" instead of "zfill") previously fell
+    # through _apply_extensible_filter's "unknown filter" branch silently,
+    # emitting the value unfiltered with no way to find out why.
+    replacer = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{title|no_such_filter}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=MediaSearchPayload(title="Example"),
+        flat_filters={"real_filter": str.upper},
+        # filters (flat_filters, |zfill, |replace, etc.) only apply in flat
+        # mode -- see token_replacer.py's "if self.flatten and
+        # token_data.filters" guard just before _apply_custom_filters runs.
+        flatten=True,
+    )
+    with caplog.at_level("WARNING"):
+        replacer.get_output()
+
+    assert any("no_such_filter" in record.message for record in caplog.records)
+
+
+@pytest.mark.parametrize(
+    "filter_expr", ["zfill(abc)", "zfill(-5)", "zfill()", "zfill( 5 )"]
+)
+def test_malformed_zfill_argument_is_logged_and_left_unchanged(
+    filter_expr: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    # The zfill regex (r"zfill\((\d+)\)") requires an all-digit argument, so
+    # `re.match` returns None for every one of these -- the `if m:` body,
+    # including the log call inside its own `except ValueError`, never runs.
+    # Only the sibling `else` branch (added for this argument-unparseable
+    # case) can log anything for a genuinely malformed zfill argument.
+    with caplog.at_level("WARNING"):
+        output = _filename_replacer(f"{{title|{filter_expr}}}", title="7").get_output()
+
+    assert output == "7.mkv"
+    assert any(filter_expr in record.message for record in caplog.records)
+
+
+def test_well_formed_zfill_argument_applies_and_logs_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Guard against over-correcting: a valid width must still zero-pad and
+    # must not trip the new "malformed" branch.
+    with caplog.at_level("WARNING"):
+        output = _filename_replacer("{title|zfill(3)}", title="7").get_output()
+
+    assert output == "007.mkv"
+    assert not any("zfill" in record.message for record in caplog.records)
+
+
+def test_flat_filter_that_raises_is_logged_and_value_passes_through(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def _boom(value: str) -> str:
+        raise ValueError("boom")
+
+    replacer = _filename_replacer("{title|boom}", title="Example")
+    replacer.flat_filters = {"boom": _boom}
+
+    with caplog.at_level("WARNING"):
+        output = replacer.get_output()
+
+    assert output == "Example.mkv"
+    assert any(
+        "boom" in record.message and "unfiltered" in record.message
+        for record in caplog.records
+    )

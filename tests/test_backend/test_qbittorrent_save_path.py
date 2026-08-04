@@ -6,6 +6,10 @@ from typing import cast
 import pytest
 
 from src.backend.torrent_clients.qbittorrent.save_path import (
+    _colon_replace_for_destination,
+    _is_windows_destination,
+    _split_windows_anchor,
+    get_qbittorrent_save_path_warning,
     resolve_qbittorrent_save_path,
 )
 from src.backend.utils.example_parsed_movie_data import (
@@ -14,7 +18,9 @@ from src.backend.utils.example_parsed_movie_data import (
 )
 from src.config.models import AppConfig
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
+from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import (
     QBittorrentSavePathMode,
     TorrentClientSelection,
@@ -28,6 +34,8 @@ def _config(
     mode: QBittorrentSavePathMode,
     template: str = "",
     user_tokens: dict[str, tuple[str, object]] | None = None,
+    movie_colon_replace: ColonReplace = ColonReplace.KEEP,
+    series_colon_replace: ColonReplace = ColonReplace.KEEP,
 ) -> AppConfig:
     return cast(
         AppConfig,
@@ -47,8 +55,10 @@ def _config(
                 title_clean_rules=[],
                 video_dynamic_range=None,
             ),
+            movie=SimpleNamespace(filename_colon_replace=movie_colon_replace),
             series=SimpleNamespace(
                 multi_episode_style=MultiEpisodeStyle.RANGE,
+                filename_colon_replace=series_colon_replace,
             ),
         ),
     )
@@ -200,3 +210,282 @@ def test_run_override_wins_over_invalid_configured_template() -> None:
         )
         == "/remote/media/Movie Name"
     )
+
+
+def test_windows_destination_replaces_colons_in_save_path() -> None:
+    """The final segment must be read with Windows separator rules.
+
+    Plain `Path` is `PosixPath` off Windows, where a backslash is an ordinary
+    character, so `.name` returns the whole template and the drive letter's
+    own `:` fails the assertion on a Linux runner.
+    """
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            r"D:\Media\Movies\{title_exact}",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path is not None
+    assert ":" not in PureWindowsPath(path).name
+
+
+def test_windows_destination_preserves_drive_letter_colon() -> None:
+    """Colon replacement must not corrupt the drive letter's own `:`."""
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            r"D:\Media\Movies\{title_exact}",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path is not None
+    assert path.startswith("D:\\")
+
+
+def test_linux_destination_keeps_colons_in_save_path() -> None:
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            "/media/movies/{title_exact}",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path is not None
+    assert "Mission: Impossible" in path
+
+
+@pytest.mark.parametrize(
+    ("root", "expected"),
+    [
+        ("D:\\Media", True),
+        ("d:/media", True),
+        ("/media/movies", False),
+        ("", False),
+        ("relative/path", False),
+    ],
+)
+def test_windows_destination_detection(root: str, expected: bool) -> None:
+    assert _is_windows_destination(root) is expected
+
+
+def test_colon_replace_for_destination_uses_movie_setting_for_movies() -> None:
+    context = _movie_context()
+    config = _config(
+        QBittorrentSavePathMode.TEMPLATE,
+        movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        series_colon_replace=ColonReplace.DELETE,
+    )
+
+    assert (
+        _colon_replace_for_destination(config, context)
+        is ColonReplace.REPLACE_WITH_DASH
+    )
+
+
+def test_colon_replace_for_destination_uses_series_setting_for_series() -> None:
+    context = ProcessingContext(
+        media_input=MediaInputPayload(media_type=MediaType.SERIES),
+    )
+    config = _config(
+        QBittorrentSavePathMode.TEMPLATE,
+        movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        series_colon_replace=ColonReplace.DELETE,
+    )
+
+    assert _colon_replace_for_destination(config, context) is ColonReplace.DELETE
+
+
+@pytest.mark.parametrize(
+    ("template", "expected_root", "expected_body"),
+    [
+        (r"\\nas\movies", r"\\nas\movies", ""),
+        ("D:\\", "D:\\", ""),
+        (r"D:\Media\{title_exact}", "D:\\", r"Media\{title_exact}"),
+        ("//media/movies/{title_exact}", "//media/movies/", "{title_exact}"),
+    ],
+)
+def test_split_windows_anchor_preserves_original_characters(
+    template: str, expected_root: str, expected_body: str
+) -> None:
+    """The root must be a verbatim slice, not pathlib's normalized anchor.
+
+    A bare UNC root with no trailing separator (``\\\\nas\\movies``) must not
+    raise despite `PureWindowsPath.anchor` reporting one character more than
+    the template has, and a POSIX-style ``//`` root must come back with its
+    own forward slashes, never rewritten to backslashes.
+    """
+    assert _split_windows_anchor(template) == (expected_root, expected_body)
+
+
+def test_unc_root_with_body_renders_and_replaces_only_the_title_colon() -> None:
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            r"\\nas\movies\{title_exact}",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path == r"\\nas\movies\Mission- Impossible"
+
+
+def test_unc_root_only_template_resolves_instead_of_raising() -> None:
+    """A "dump everything in the share root" configuration is valid input."""
+    context = _movie_context()
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            r"\\nas\movies",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path == r"\\nas\movies"
+
+
+def test_drive_root_only_template_resolves_instead_of_raising() -> None:
+    context = _movie_context()
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            "D:\\",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path == "D:\\"
+
+
+def test_padded_windows_template_preserves_drive_letter_colon() -> None:
+    """Leading/trailing whitespace must not desync detection from splitting."""
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            "  D:\\Media\\{title_exact}  ",
+            movie_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        ),
+        context,
+    )
+
+    assert path == r"D:\Media\Mission- Impossible"
+
+
+def test_posix_double_slash_template_stays_forward_slashed_and_keeps_colon() -> None:
+    """A `//`-rooted template must not have its separators rewritten.
+
+    With the (default) `ColonReplace.KEEP` setting this also confirms the
+    title's colon survives, matching the pre-anchor-splitting behaviour for
+    this shape.
+    """
+    context = _movie_context()
+    context.media_search.title = "Mission: Impossible"
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            "//media/movies/{title_exact}",
+        ),
+        context,
+    )
+
+    assert path == "//media/movies/Mission: Impossible"
+    assert "\\" not in (path or "")
+
+
+def test_remote_qbittorrent_unc_warning_does_not_call_it_a_drive_path() -> None:
+    """A UNC path is machine-independent; the wording must not overclaim."""
+    warning = get_qbittorrent_save_path_warning(
+        "https://seedbox.example",
+        r"\\nas\movies",
+    )
+
+    assert warning is not None
+    assert "drive path" not in warning
+    assert "UNC" in warning
+
+
+@pytest.mark.parametrize(
+    ("template", "hostile_title"),
+    [
+        (r"D:\Media\{title_exact}", r"..\..\..\Windows\Temp\pwn"),
+        (r"D:\Media\{title_clean}", r"..\..\..\Windows\Temp\pwn"),
+        ("/mnt/media/{title_exact}", "../../../etc/cron.d/pwn"),
+        (r"\nas\movies\{title_exact}", r"..\..\..\Users\Public\Startup\pwn"),
+        ("{title_exact}", "../../../etc/cron.d/pwn"),
+    ],
+)
+def test_template_rejects_remote_title_that_escapes_the_save_root(
+    template: str,
+    hostile_title: str,
+) -> None:
+    """A TMDB-supplied title must not walk out of the configured save root.
+
+    `title` comes straight off the TMDB HTTP API and TMDB entries are
+    community editable, so a poisoned title is remote input. It reaches the
+    save path through the raw `{title_exact}`/`{title_clean}` tokens, which
+    -- unlike `{title}` -- do not pass through `_TITLE_UNSAFE_CHARS`.
+    """
+    context = _movie_context()
+    context.media_search.title = hostile_title
+
+    with pytest.raises(TrackerClientError, match="outside the configured"):
+        resolve_qbittorrent_save_path(
+            _config(QBittorrentSavePathMode.TEMPLATE, template),
+            context,
+        )
+
+
+def test_template_rejects_remote_title_that_injects_an_absolute_root() -> None:
+    """A title expanding to its own drive root must not redirect the path."""
+    context = _movie_context()
+    context.media_search.title = r"C:\Windows\Temp\pwn"
+
+    with pytest.raises(TrackerClientError, match="outside the configured"):
+        resolve_qbittorrent_save_path(
+            _config(
+                QBittorrentSavePathMode.TEMPLATE,
+                r"D:\Media\{title_exact}",
+                movie_colon_replace=ColonReplace.KEEP,
+            ),
+            context,
+        )
+
+
+def test_template_allows_a_separator_in_a_title_that_stays_under_the_root() -> None:
+    """`Face/Off` is a real title; nesting under the root is not an escape."""
+    context = _movie_context()
+    context.media_search.title = "Face/Off"
+
+    path = resolve_qbittorrent_save_path(
+        _config(QBittorrentSavePathMode.TEMPLATE, "/mnt/media/{title_exact}"),
+        context,
+    )
+
+    assert path == "/mnt/media/Face/Off"

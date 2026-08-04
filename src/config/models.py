@@ -72,6 +72,14 @@ class DynamicRangeSettingsData(TypedDict):
 class ProgramConfig:
     current_config: str | None = None
     main_window_position: str | None = None
+    suppress_template_token_prompt: bool = False
+
+
+@dataclass(slots=True)
+class ApiKeysSettings:
+    """Optional user-supplied API keys that override the bundled defaults."""
+
+    tmdb_api_key: str = ""
 
 
 @dataclass(slots=True)
@@ -380,6 +388,7 @@ class WidgetSettings:
 @dataclass(slots=True)
 class AppConfig:
     general: GeneralSettings
+    api_keys: ApiKeysSettings
     dependencies: DependencySettings
     trackers: TrackerSettings
     torrent_clients: TorrentClientSettings

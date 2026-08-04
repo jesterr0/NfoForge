@@ -95,7 +95,7 @@ class PluginError(NfoForgeError):
 class PluginExecutionError(PluginError):
     """A validated plugin failed while executing one of its capabilities."""
 
-    def __init__(self, plugin_id: str, capability: str, cause: Exception) -> None:
+    def __init__(self, plugin_id: str, capability: str, cause: BaseException) -> None:
         super().__init__(f"Plugin '{plugin_id}' failed in {capability}: {cause}")
         self.plugin_id = plugin_id
         self.capability = capability

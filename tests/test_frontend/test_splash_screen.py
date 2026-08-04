@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtTest import QTest
 
 from src.frontend.windows import splash_screen
@@ -57,3 +58,20 @@ def test_plugin_discovery_is_skipped_when_external_plugins_are_disabled(
 
     assert loader.init_plugins() is None
     assert status_updates == ["External plugins disabled"]
+
+
+def test_splash_still_connects_its_message_signal_without_a_screen(
+    qapp, monkeypatch
+) -> None:
+    """A missing screen must not skip the update_message_box connection."""
+    monkeypatch.setattr(QGuiApplication, "screenAt", staticmethod(lambda _pos: None))
+    monkeypatch.setattr(QGuiApplication, "primaryScreen", staticmethod(lambda: None))
+
+    splash = SplashScreen()
+
+    # updateMessageBox is only reachable through the connection made inside
+    # _set_open_screen; if the None guard skipped it, this text never updates.
+    splash.update_message_box.emit("loading")
+
+    assert splash.message_label.text() == "loading"
+    splash.close()

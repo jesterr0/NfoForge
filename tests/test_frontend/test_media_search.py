@@ -2,11 +2,14 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
+import pytest
 
+from src.backend.media_search import MediaSearchBackEnd
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
+from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.frontend.wizards.media_search import (
     MediaSearch,
@@ -19,12 +22,13 @@ from src.plugins.api import (
     MetadataTransformRequest,
     PluginDefinition,
 )
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 def _config_paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(
@@ -50,6 +54,29 @@ def _make_page(tmp_path: Path) -> MediaSearch:
         media_input=MediaInputPayload(input_path=tmp_path / "Movie.mkv")
     )
     return MediaSearch(config, context, None)  # type: ignore[reportArgumentType]
+
+
+def _media_search_page_with_selected_row(
+    tmp_path: Path,
+    media_type: str,
+    genre_ids: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
+) -> MediaSearch:
+    page = _make_page(tmp_path)
+    item_name = "1) Selected (2020)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": MediaType.strict_search_type(media_type).value,
+            "title": "Selected",
+            "year": "2020",
+            "original_title": "Selected",
+            "genre_ids": genre_ids,
+            "raw_data": {"id": 123, "original_language": "ja"},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    return page
 
 
 def test_empty_search_result_does_not_complete_page(tmp_path: Path) -> None:
@@ -310,6 +337,62 @@ def test_id_validation_accepts_supported_manual_id_shapes(tmp_path: Path) -> Non
     assert page._has_invalid_id_formats() is True
 
 
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "../../person/1234",  # path traversal into another TMDB endpoint
+        "123&api_key=x",  # query-parameter injection
+    ],
+)
+def test_hostile_tmdb_id_shapes_are_rejected(bad_id: str, tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    page.imdb_id_entry.setText("tt1234567")
+    page.tvdb_id_entry.setText("456")
+    page.tmdb_id_entry.setText(bad_id)
+
+    assert page._has_invalid_id_formats() is True
+
+
+def test_search_other_ids_is_not_reached_when_id_formats_are_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_has_invalid_id_formats` is what actually keeps a hostile manual TMDB
+    ID from reaching `_search_other_ids` -- and, through it, the URL-path
+    interpolation in `MediaSearchBackEnd.fetch_complete_tmdb_data_for_selection`.
+    `MediaSearchBackEnd._validate_tmdb_id` is the second line of defence; this
+    asserts the first one, which is what keeps the backend unreachable here.
+    """
+    page = _make_page(tmp_path)
+    page.loading_complete = True
+    item_name = "1) Movie (2024)"
+    page.backend.media_data = {item_name: {"title": "Movie"}}
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("../../person/1234")
+
+    called = False
+
+    def record_call() -> None:
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(page, "_search_other_ids", record_call)
+
+    result = page.validatePage()
+
+    assert called is False
+    assert result is False
+
+
+def test_backend_rejects_a_traversal_id_even_if_the_ui_is_bypassed() -> None:
+    # Defence in depth: `_validate_tmdb_id` is called directly by
+    # `fetch_complete_tmdb_data_for_selection` before it builds the request
+    # URL, so it must reject a hostile shape on its own even if a caller
+    # (or a future code path) skips the UI guard above.
+    with pytest.raises(MediaSearchError):
+        MediaSearchBackEnd._validate_tmdb_id("../../person/1234")
+
+
 def test_payload_update_commits_transformed_metadata(
     tmp_path: Path,
 ) -> None:
@@ -387,6 +470,78 @@ def test_payload_update_commits_transformed_metadata(
     assert page.context.media_search.genre_names == ("Provider Genre",)
 
 
+def test_manual_tmdb_id_refreshes_genres_to_match_genre_names(tmp_path: Path) -> None:
+    # A manually entered TMDB ID fetches a complete record whose `genres` can
+    # differ from the search row's `genre_ids` (here: the row is Action, the
+    # fetched record is Animation). `genres` must track the record
+    # `populate_from_tmdb` uses to build `genre_names`, not the stale row --
+    # downstream anime/genre-aware logic reads `genres` directly.
+    page = _make_page(tmp_path)
+    item_name = "1) Anime Movie (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Movie",
+            "title": "Anime Movie",
+            "year": "2024",
+            "original_title": "Anime Movie",
+            "genre_ids": [TMDBGenreIDsMovies.ACTION],
+            "raw_data": {"id": 123, "genre_ids": [28]},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("123")
+    complete_tmdb = {
+        "id": 123,
+        "title": "Anime Movie",
+        "genres": [{"id": 16, "name": "Animation"}],
+    }
+
+    page._update_payload_data(
+        {"tmdb_complete_data": {"success": True, "result": complete_tmdb}}
+    )
+
+    assert page.context.media_search.genres == [TMDBGenreIDsMovies.ANIMATION]
+    assert page.context.media_search.genre_names == ("Animation",)
+
+
+def test_manual_tmdb_id_with_no_genres_does_not_fall_back_to_the_stale_row(
+    tmp_path: Path,
+) -> None:
+    # TMDB legitimately returns `genres: []` for some titles. A present-but-
+    # empty list must be accepted as-is, not treated as "missing" and
+    # backfilled with the previous, unrelated search row's genres.
+    page = _make_page(tmp_path)
+    item_name = "1) Some Movie (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Movie",
+            "title": "Some Movie",
+            "year": "2024",
+            "original_title": "Some Movie",
+            "genre_ids": [TMDBGenreIDsMovies.ACTION],
+            "raw_data": {"id": 123, "genre_ids": [28]},
+        }
+    }
+    page.listbox.clear()
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+    page.tmdb_id_entry.setText("123")
+    complete_tmdb = {
+        "id": 123,
+        "title": "Some Movie",
+        "genres": [],
+    }
+
+    page._update_payload_data(
+        {"tmdb_complete_data": {"success": True, "result": complete_tmdb}}
+    )
+
+    assert page.context.media_search.genres == []
+    assert page.context.media_search.genre_names == ()
+
+
 def test_user_entered_mal_id_survives_metadata_transformer_commit(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -456,6 +611,41 @@ def test_cancelled_mal_prompt_does_not_store_a_fake_zero_id(
     assert page.context.media_search.anilist_id is None
     assert page.context.media_search.mal_id is None
     assert page.mal_id_entry.text() == ""
+
+
+def test_series_row_genres_reach_the_id_parse_worker(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """A series row's genres are TMDBGenreIDsSeries members. Filtering for
+    TMDBGenreIDsMovies dropped every one of them, so anime series never
+    reached the AniList lookup."""
+    captured: dict[str, object] = {}
+
+    class _StubSignal:
+        def connect(self, *_args: object, **_kwargs: object) -> None:
+            return None
+
+    class _CapturingWorker:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+            self.job_finished = _StubSignal()
+            self.job_failed = _StubSignal()
+
+        def start(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        "src.frontend.wizards.media_search.IDParseWorker", _CapturingWorker
+    )
+
+    page = _media_search_page_with_selected_row(
+        tmp_path,
+        media_type="tv",
+        genre_ids=[TMDBGenreIDsSeries.ANIMATION],
+    )
+    page._search_other_ids()
+
+    assert TMDBGenreIDsSeries.ANIMATION in captured["tmdb_genres"]  # type: ignore[operator]
 
 
 def test_reset_page_restores_tmdb_placeholder(tmp_path: Path) -> None:

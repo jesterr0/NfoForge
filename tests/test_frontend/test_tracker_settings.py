@@ -17,12 +17,13 @@ from src.frontend.custom_widgets.tracker_settings import (
     TrackerSettingsWidget,
 )
 from src.frontend.stacked_windows.settings.trackers import TrackersSettings
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(
@@ -129,12 +130,12 @@ def test_editor_values_save_without_overwriting_other_tracker_settings(
     editor = cast(MTVTrackerEdit, widget._editor_map[tracker])
     editor.api_key.setText("new-api-key")
 
-    manager.settings.trackers.more_than_tv.mvr_title_token_override = "movie-page"
+    manager.settings.trackers.more_than_tv.mvr_title_token_override = "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
     widget._save_settings()
 
     assert manager.settings.trackers.more_than_tv.api_key == "new-api-key"
     assert (
-        manager.settings.trackers.more_than_tv.mvr_title_token_override == "movie-page"
+        manager.settings.trackers.more_than_tv.mvr_title_token_override == "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
     )
 
 

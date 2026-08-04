@@ -19,7 +19,10 @@ from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
 from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.image_host_uploading.img_downloader import ImageDownloader
-from src.backend.image_host_uploading.img_uploader import ImageUploader
+from src.backend.image_host_uploading.img_uploader import (
+    ImageUploader,
+    assert_all_images_uploaded,
+)
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
@@ -94,7 +97,12 @@ from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ImageHostError, ProcessCancelled, TrackerError
+from src.exceptions import (
+    ImageHostError,
+    PluginExecutionError,
+    ProcessCancelled,
+    TrackerError,
+)
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 from src.payloads.media_inputs import MediaInputPayload
@@ -1008,27 +1016,24 @@ class ProcessBackEnd:
                     log_out.write(nfo)
 
             # pre upload plugin
-            pre_upload_decision: PreUploadDecision | None = None
-            if self.config.settings.general.enable_plugins:
-                pre_upload_plugin = self.config.settings.plugins.pre_upload
-                if pre_upload_plugin:
-                    record = self.config.plugin_manager.get(pre_upload_plugin)
-                    if record and record.definition.pre_upload is not None:
-                        pre_upload_decision = self.config.plugin_manager.run_pre_upload(
-                            pre_upload_plugin,
-                            PreUploadRequest(
-                                config=self.config,
-                                context=context,
-                                tracker=cur_tracker,
-                                torrent_file=torrent_path,
-                                reporter=UploadReporter(
-                                    append_text=queued_text_update,
-                                    replace_last_line=queued_text_update_replace_last_line,
-                                    set_progress=self.progress_bar_cb
-                                    or (lambda _value: None),
-                                ),
-                            ),
-                        )
+            pre_upload_decision, pre_upload_error = self._run_pre_upload_plugin(
+                cur_tracker=cur_tracker,
+                context=context,
+                torrent_path=torrent_path,
+                queued_text_update=queued_text_update,
+                queued_text_update_replace_last_line=(
+                    queued_text_update_replace_last_line
+                ),
+            )
+            if pre_upload_error:
+                # One tracker's plugin failure must not cancel the rest of the
+                # queue, so this continues rather than propagating.
+                LOG.error(
+                    LOG.LOG_SOURCE.BE,
+                    f"Pre-upload plugin failed for {cur_tracker}: {pre_upload_error}",
+                )
+                queued_status_update(tracker_name, "❌ Failed")
+                continue
 
             # upload
             if (
@@ -1127,6 +1132,51 @@ class ProcessBackEnd:
 
         # disconnect from clients and reset related variables after use
         self.disconnect_from_clients()
+
+    def _run_pre_upload_plugin(
+        self,
+        cur_tracker: TrackerSelection,
+        context: ProcessingContext,
+        torrent_path: Path,
+        queued_text_update: Callable[[str], None],
+        queued_text_update_replace_last_line: Callable[[str], None],
+    ) -> tuple[PreUploadDecision | None, str | None]:
+        """Run the configured pre-upload plugin for one tracker.
+
+        Returns ``(decision, None)`` on success or when no plugin applies, and
+        ``(None, message)`` when the plugin failed. Returning the failure
+        rather than raising is what keeps one tracker's plugin from cancelling
+        the rest of the queue, and it is what makes that property testable.
+        """
+        if not self.config.settings.general.enable_plugins:
+            return None, None
+
+        pre_upload_plugin = self.config.settings.plugins.pre_upload
+        if not pre_upload_plugin:
+            return None, None
+
+        record = self.config.plugin_manager.get(pre_upload_plugin)
+        if not record or record.definition.pre_upload is None:
+            return None, None
+
+        try:
+            decision = self.config.plugin_manager.run_pre_upload(
+                pre_upload_plugin,
+                PreUploadRequest(
+                    config=self.config,
+                    context=context,
+                    tracker=cur_tracker,
+                    torrent_file=torrent_path,
+                    reporter=UploadReporter(
+                        append_text=queued_text_update,
+                        replace_last_line=queued_text_update_replace_last_line,
+                        set_progress=self.progress_bar_cb or (lambda _value: None),
+                    ),
+                ),
+            )
+        except PluginExecutionError as error:
+            return None, str(error)
+        return decision, None
 
     def handle_images_for_trackers(
         self,
@@ -1278,7 +1328,9 @@ class ProcessBackEnd:
                 # map the uploaded image hosts to the appropriate trackers
                 for tracker, img_host in tracker_to_host_map.items():
                     if img_host in upload_results:
-                        url_data[tracker] = upload_results[img_host]
+                        tracker_results = upload_results[img_host]
+                        assert_all_images_uploaded(str(tracker), tracker_results)
+                        url_data[tracker] = tracker_results
                     else:
                         LOG.debug(
                             LOG.LOG_SOURCE.BE,
@@ -1291,10 +1343,12 @@ class ProcessBackEnd:
             url_host_count = 0
             for tracker, img_host in tracker_to_host_map.items():
                 if img_host is ImageSource.URLS:
-                    url_data[tracker] = {
+                    tracker_url_data = {
                         i: img_data
                         for i, img_data in enumerate(context.shared_data.url_data)
                     }
+                    assert_all_images_uploaded(str(tracker), tracker_url_data)
+                    url_data[tracker] = tracker_url_data
                     url_host_count += 1
 
             queued_text_update(
@@ -1641,7 +1695,7 @@ class ProcessBackEnd:
                 or not ptp_payload.announce_url
             ):
                 raise TrackerError(
-                    "TorrentLeech requires API user, API key, username, password, and announce URL"
+                    "PassThePopcorn requires API user, API key, username, password, and announce URL"
                 )
             return ptp_uploader(
                 api_user=ptp_payload.api_user,

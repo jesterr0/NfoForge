@@ -46,7 +46,7 @@ class CropDetect:
             "-hide_banner",
         )
 
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary
             command,
             stderr=subprocess.PIPE,
             text=True,

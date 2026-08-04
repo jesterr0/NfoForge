@@ -7,12 +7,13 @@ import pytest
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.frontend.stacked_windows.settings.templates import TemplatesSettings
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 import uuid
 
@@ -7,7 +7,25 @@ from src.backend.image_host_uploading.base_image_host import (
     BaseImageHostUploader,
     ImageUploadRequest,
 )
+from src.exceptions import ImageUploadError
 from src.packages.custom_types import ImageUploadData
+
+
+def assert_all_images_uploaded(
+    tracker: str, images: Mapping[int, ImageUploadData]
+) -> None:
+    """Raise if any requested upload produced no URL.
+
+    PassThePopcorn's poster path already checks for this shape; the general
+    path did not, so a partially failed batch reached the tracker looking
+    like a complete set.
+    """
+    failed = sorted(index for index, item in images.items() if not item.url)
+    if failed:
+        raise ImageUploadError(
+            f"{len(failed)} of {len(images)} image uploads failed for "
+            f"{tracker} (positions: {', '.join(str(index) for index in failed)})"
+        )
 
 
 class ImageUploader:

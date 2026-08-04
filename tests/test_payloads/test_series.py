@@ -267,7 +267,7 @@ def test_release_info_token_kwargs_multi_season_pack_feeds_range_into_token_repl
     output = TokenReplacer(
         media_input_obj=media_input,
         media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
-        token_string="S{season_number|zfill(2)}",
+        token_string="S{season_number|zfill(2)}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replace=ColonReplace.REPLACE_WITH_DASH,
         flatten=True,
         file_name_mode=False,

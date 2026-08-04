@@ -527,6 +527,7 @@ class TemplateSelector(QWidget):
                         return
 
             if not self.context.media_input.input_path:
+                self.preview_btn.setChecked(False)
                 raise FileNotFoundError("No input path to check template")
 
             if self.sandbox and not self.reset_sandbox_cache.isVisible():

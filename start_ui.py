@@ -26,12 +26,17 @@ from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 import tomlkit
 
+from src.backend.utils.template_token_migration import (
+    migrate_templates,
+    scan_template_dir,
+)
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.main_window import MainWindow
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
+from src.frontend.windows.template_migration_dialog import TemplateMigrationDialog
 from src.logger.nfo_forge_logger import LOG
 
 
@@ -52,6 +57,11 @@ class NfoForge:
         self.config: ConfigManager | None = None
         self.main_window: MainWindow | None = None
         self.splash_screen: SplashScreen | None = None
+        # Set only by `_resolve_config_path` when `program/conf.toml` itself
+        # fails to parse, so `_handle_config_error` can distinguish that
+        # recoverable, single-file problem from "no config named" -- both of
+        # which otherwise collapse to `_resolve_config_path` returning None.
+        self.program_config_malformed = False
 
         # check if there is any messages from arg parser
         if not self._arg_parse_msg():
@@ -225,6 +235,14 @@ class NfoForge:
         independently resolved from the config the app was asked to load.
         """
         config_path = self._resolve_config_path()
+        # Checked ahead of (rather than alongside) `config_path`: a malformed
+        # program config always resolves `config_path` to `None` in the same
+        # call that sets this flag (see `_resolve_config_path`), so the flag
+        # alone is the authoritative signal -- a known profile name must not
+        # let this be missed.
+        if self.program_config_malformed:
+            self._offer_program_config_reset(str(error))
+            return
         if not config_path:
             self._error_on_splash(str(error))
             return
@@ -244,17 +262,98 @@ class NfoForge:
         try:
             paths = ConfigPaths()
             config_file = self.config_file
-            if not config_file and paths.program.exists():
-                program_doc = tomlkit.parse(paths.program.read_text(encoding="utf-8"))
-                # mirrors `ConfigManager.decode_program`, which defaults a
-                # missing `current_config` key to "config" -- keep both
-                # resolutions of an absent key in agreement.
-                config_file = program_doc.get("current_config", "config")
+            # `ConfigManager.load_program` parses `paths.program` on every
+            # init regardless of whether a profile name was already
+            # supplied (e.g. via `-c/--config`, or via the multi-profile
+            # splash selector, which only globs `user_configs` and never
+            # touches the program config) -- so detection here must not be
+            # gated behind "no config file was given" either, or a
+            # malformed program config with a known profile name silently
+            # resolves to that profile's (fine) path instead, routing to
+            # the profile archive+regenerate dialog and discarding a good
+            # profile on every launch while never touching the file that
+            # is actually broken.
+            if paths.program.exists():
+                try:
+                    program_doc = tomlkit.parse(
+                        paths.program.read_text(encoding="utf-8")
+                    )
+                except Exception:
+                    # The program config itself is unparseable. That is its
+                    # own recoverable problem -- one small file -- and must
+                    # not be reported as an unrecoverable profile error.
+                    self.program_config_malformed = True
+                    return None
+                if not config_file:
+                    # mirrors `ConfigManager.decode_program`, which defaults
+                    # a missing `current_config` key to "config" -- keep
+                    # both resolutions of an absent key in agreement. Only
+                    # fills in a profile name that wasn't already known;
+                    # an explicitly supplied one always wins.
+                    config_file = program_doc.get("current_config", "config")
             if not config_file:
                 return None
             return paths.user_configs / f"{config_file}.toml"
         except Exception:
             return None
+
+    def _offer_program_config_reset(self, error_text: str) -> None:
+        """`program/conf.toml` is unparseable. Unlike a profile reset -- which
+        loses every setting the user has entered -- this file stores only
+        which profile is active and the window position, so regenerating it
+        is safe and the recovery dialog says so instead of reusing the more
+        alarming "settings will reset" wording used for a profile.
+        """
+        if self.splash_screen is None:
+            raise RuntimeError("Splash screen is not initialized")
+
+        # Reset up front rather than only on the success path: this handler
+        # only ever runs because the flag was true, so its job of routing
+        # here is already done, and the invariant ("true" means the next
+        # `_resolve_config_path` call hasn't run yet) shouldn't depend on
+        # `_error_on_splash`/`QApplication.quit()` on the decline/failure
+        # branches below actually terminating startup rather than merely
+        # requesting it.
+        self.program_config_malformed = False
+
+        paths = ConfigPaths()
+        response = QMessageBox.question(
+            self.splash_screen,
+            "Invalid Program Config",
+            (
+                f"{error_text}\n\n"
+                "NfoForge's program configuration file could not be read. It "
+                "stores only which profile is active and the window "
+                "position, so it can be safely recreated -- your profiles "
+                "and settings are not affected.\n\n"
+                f"File:\n{paths.program}\n\n"
+                "Recreate it and continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if response != QMessageBox.StandardButton.Yes:
+            QApplication.quit()
+            return
+
+        try:
+            if paths.program.exists():
+                backup = paths.program.with_name(
+                    f"{paths.program.name}.{datetime.now():%Y-%m-%d_%H-%M-%S}.bak"
+                )
+                paths.program.replace(backup)
+        except OSError as reset_error:
+            self._error_on_splash(
+                f"Could not archive the program config: {reset_error}"
+            )
+            return
+
+        # `_continue_init` -> `ConfigManager.__init__` -> `load_program`
+        # recreates `program/conf.toml` from the bundled default the moment
+        # `paths.program.exists()` is false, so this cannot loop back into
+        # the same malformed-parse failure: the offending file is gone
+        # before the retry ever reads it again.
+        self._continue_init()
 
     def _offer_archive_and_regenerate(
         self, config_path: Path, error_text: str, issue_description: str, title: str
@@ -316,6 +415,8 @@ class NfoForge:
                 self.splash_screen, "Plugin Load Warning", plugin_warning
             )
 
+        self._maybe_prompt_template_migration()
+
         self.splash_screen.update_message_box.emit("Loading main window")
         if not self.config:
             raise AttributeError("Failed to load config")
@@ -332,6 +433,66 @@ class NfoForge:
         self.splash_screen.close()
         self.main_window.show()
 
+    def _maybe_prompt_template_migration(self) -> None:
+        """Offer to update templates that reference renamed tokens.
+
+        Runs after the config migration has already completed and committed,
+        so declining here -- or a write failure below -- can never leave the
+        profile half-migrated. Any unexpected failure is swallowed: a
+        convenience prompt must never block startup.
+        """
+        if not self.config or self.config.program.suppress_template_token_prompt:
+            return
+
+        try:
+            reports = scan_template_dir(RUNTIME_DIR / "templates")
+            if not reports:
+                return
+
+            dialog = TemplateMigrationDialog(reports, parent=self.splash_screen)
+            dialog.exec()
+            migrate_requested = dialog.migrate_requested
+            suppress_future_prompts = dialog.suppress_future_prompts
+            dialog.deleteLater()
+
+            # The migration the user just asked for runs first, and its
+            # success does not depend on the suppression write below: a
+            # failure persisting "don't ask again" must never look like a
+            # failure to update the templates themselves.
+            if migrate_requested:
+                migrated = migrate_templates(reports)
+                skipped = len(reports) - len(migrated)
+                message = f"Updated {len(migrated)} template(s)."
+                if skipped:
+                    message += (
+                        f"\n\n{skipped} template(s) were left unchanged; they "
+                        "either could not be written or only reference tokens "
+                        "that have no replacement."
+                    )
+                QMessageBox.information(
+                    self.splash_screen, "Templates Updated", message
+                )
+
+            if suppress_future_prompts:
+                self.config.program.suppress_template_token_prompt = True
+                try:
+                    self.config.save_program()
+                except ConfigError:
+                    # Best-effort only: the migration above (if requested)
+                    # has already happened, so losing this write just means
+                    # the user is asked again next launch -- not silently
+                    # left without the migration they consented to.
+                    LOG.warning(
+                        LOG.LOG_SOURCE.FE,
+                        "Failed to persist template-token prompt suppression: "
+                        f"{traceback.format_exc()}",
+                    )
+        except Exception:
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Template token migration prompt failed: {traceback.format_exc()}",
+            )
+
     def _get_available_configs(self) -> list[str] | None:
         """Get list of available config file names (without .toml extension)"""
         try:
@@ -340,7 +501,10 @@ class NfoForge:
                 return
             return sorted([x.stem for x in config_dir.glob("*.toml")])
         except Exception:
-            pass
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to list available configs: {traceback.format_exc()}",
+            )
 
     def _get_last_used_config(self, available_configs: list[str]) -> str | None:
         """Return the saved profile when it is still available.
@@ -359,7 +523,10 @@ class NfoForge:
             if isinstance(current_config, str) and current_config in available_configs:
                 return current_config
         except Exception:
-            pass
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to read last used config: {traceback.format_exc()}",
+            )
         return None
 
     @Slot(str)

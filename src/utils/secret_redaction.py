@@ -63,6 +63,18 @@ _NAMED_SECRET_PATH = re.compile(
     r"[^/?\s\"'<>:),\]}]+"
 )
 
+# Tracker announce URLs carry the passkey as a bare path segment rather than a
+# named field, so the patterns above cannot see it. Both orderings are in use:
+# `/<passkey>/announce` and `/announce/<passkey>`. The lookbehind on the first
+# keeps `https://host/announce` from having its hostname mistaken for a key --
+# the `/` before a hostname is always the second of the scheme's `//`.
+_ANNOUNCE_KEY_PREFIX = re.compile(
+    r"(?i)(?<!/)/[^/?\s\"'<>:),\]}]+(?P<suffix>/announce(?:\.php)?\b)"
+)
+_ANNOUNCE_KEY_SUFFIX = re.compile(
+    r"(?i)(?P<prefix>/announce(?:\.php)?/)[^/?\s\"'<>:),\]}]+"
+)
+
 # URL userinfo is used by rTorrent. The first pattern handles a normal URI;
 # the second handles the schemeless form emitted by xmlrpc.client.ProtocolError
 # after ServerProxy has normalized the configured URL.
@@ -90,6 +102,8 @@ def scrub_secrets(text: str) -> str:
     text = _TRACKER_DOWNLOAD_PATH.sub(rf"\g<prefix>{_REDACTED}", text)
     text = _SECRET_API_PATH.sub(rf"\g<prefix>{_REDACTED}", text)
     text = _NAMED_SECRET_PATH.sub(rf"\g<prefix>{_REDACTED}", text)
+    text = _ANNOUNCE_KEY_PREFIX.sub(rf"/{_REDACTED}\g<suffix>", text)
+    text = _ANNOUNCE_KEY_SUFFIX.sub(rf"\g<prefix>{_REDACTED}", text)
     text = _URI_USERINFO_PASSWORD.sub(rf"\g<prefix>{_REDACTED}\g<suffix>", text)
     text = _SCHEMELESS_USERINFO_PASSWORD.sub(rf"\g<prefix>{_REDACTED}\g<suffix>", text)
     return _SECRET_MAPPING_VALUE.sub(_replace_mapping_value, text)

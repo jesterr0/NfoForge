@@ -1,6 +1,6 @@
 import asyncio
 import base64
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 import re
 from typing import Any, cast
 import zlib
@@ -11,13 +11,14 @@ from rapidfuzz import fuzz
 from unidecode import unidecode
 
 from src.backend.utils.guessit_helpers import get_guessit_title
-from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.logger.nfo_forge_logger import LOG
+from src.utils.secret_redaction import scrub_secrets
+from src.utils.super_sub import normalize_super_sub
 
 
 class MediaSearchBackEnd:
@@ -26,6 +27,7 @@ class MediaSearchBackEnd:
         language: str = "en-US",
         use_base_language_for_images: bool = True,
         timeout: int = 60,
+        api_key: str = "",
     ) -> None:
         self.media_data: dict[str, dict[str, Any]] = {}
         self.session = niquests.Session()
@@ -33,13 +35,17 @@ class MediaSearchBackEnd:
         self.use_base_language_for_images = use_base_language_for_images
         self.timeout = max(1, timeout)
         self.params = {
-            "api_key": self._get_tmdb_k(),
+            "api_key": api_key.strip() or self._get_tmdb_k(),
             "language": language,
             "include_adult": "false",
         }
 
     def update_language(self, language: str) -> None:
         self.params["language"] = language
+
+    def update_api_key(self, api_key: str) -> None:
+        """Swap the key when settings change, mirroring `update_language`."""
+        self.params["api_key"] = api_key.strip() or self._get_tmdb_k()
 
     def close_session(self) -> None:
         """Properly close the session when done"""
@@ -185,7 +191,9 @@ class MediaSearchBackEnd:
                 "TMDB search is unavailable. Check your internet connection and try again."
             ) from error
         except niquests.exceptions.RequestException as error:
-            raise MediaSearchError(f"TMDB search failed: {error}") from error
+            raise MediaSearchError(
+                f"TMDB search failed: {scrub_secrets(str(error))}"
+            ) from error
         except (TypeError, ValueError) as error:
             raise MediaSearchError(
                 "TMDB returned an invalid search response."
@@ -265,7 +273,9 @@ class MediaSearchBackEnd:
                 "TMDB metadata is unavailable. Check your internet connection and try again."
             ) from error
         except niquests.exceptions.RequestException as error:
-            raise MediaSearchError(f"TMDB metadata lookup failed: {error}") from error
+            raise MediaSearchError(
+                f"TMDB metadata lookup failed: {scrub_secrets(str(error))}"
+            ) from error
         except (TypeError, ValueError) as error:
             raise MediaSearchError(
                 "TMDB returned an invalid metadata response."
@@ -290,7 +300,7 @@ class MediaSearchBackEnd:
         tmdb_title: str,
         tmdb_year: int,
         original_language: str,
-        tmdb_genres: list[TMDBGenreIDsMovies],
+        tmdb_genres: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
         tmdb_id: str = "",
         tvdb_id: str = "",
     ) -> dict[str, Any]:
@@ -319,8 +329,27 @@ class MediaSearchBackEnd:
                 self.parse_tvdb_data(imdb_id, resolved_tvdb_id)
             )
 
+        # `tmdb_genres` and `original_language` describe the search row that was
+        # selected, which is not the record a manually entered TMDB ID resolves
+        # to. Prefer the fetched record whenever we have one, or an anime found
+        # by manual ID silently skips the AniList lookup.
+        animation_id = TMDBGenreIDsMovies.ANIMATION.value
+        genre_ids = {getattr(genre, "value", genre) for genre in tmdb_genres}
+        anime_language = original_language
+        if tmdb_complete_data:
+            raw_genres = tmdb_complete_data.get("genres")
+            if isinstance(raw_genres, list):
+                genre_ids = {
+                    entry["id"]
+                    for entry in raw_genres
+                    if isinstance(entry, dict) and isinstance(entry.get("id"), int)
+                }
+            fetched_language = tmdb_complete_data.get("original_language")
+            if isinstance(fetched_language, str) and fetched_language:
+                anime_language = fetched_language
+
         # parse anime if needed
-        if TMDBGenreIDsMovies.ANIMATION in tmdb_genres and original_language == "ja":
+        if animation_id in genre_ids and anime_language == "ja":
             tasks["ani_list_data"] = asyncio.create_task(
                 self.parse_ani_list(tmdb_title, tmdb_year)
             )
@@ -588,6 +617,10 @@ class MediaSearchBackEnd:
 
     @staticmethod
     def _get_tmdb_k() -> str:
+        """A bundled key so search works out of the box, encoded to keep
+        automated credential scrapers from harvesting it off the public
+        repository. Add your own key in settings if preferred.
+        """
         # cSpell:disable
         k = b"eJwzT7MwNTVOsTA0ME4xTjM2NjIzMzIzTjU3sjQ2MUi2TAYAgTIH3A=="
         # cSpell:enable

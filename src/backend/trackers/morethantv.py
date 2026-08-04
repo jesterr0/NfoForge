@@ -156,7 +156,7 @@ class MTVUploader:
         # Extract the token from the login page
         token = self.get_token(login_page.text)
         if not token:
-            token_code_error_msg = "Failed to retrieve login token"
+            token_code_error_msg = "Failed to retrieve login token"  # noqa: S105 - log message text, not a credential
             LOG.error(
                 LOG.LOG_SOURCE.BE,
                 token_code_error_msg,
@@ -331,7 +331,11 @@ class MTVUploader:
             files["file_input"] = (torrent_file.name, f.read())
 
         # auto_fill = self._auto_fill(auth_token)
-        # TODO: do some checks to see if things was auto filled correctly?
+        # Auto-fill is not currently performed: the call above is disabled,
+        # and this class (and its base) defines no `_auto_fill` method for it
+        # to invoke. Every field in `data` above is set explicitly from
+        # arguments and analyzer output, so there is no auto-filled value
+        # here that needs verifying.
 
         try:
             upload_page = self._session.post(
@@ -759,7 +763,13 @@ class MTVSearch:
         results: list[TrackerSearchResult] = []
         if not xml_str:
             return results
-        tree = ET.ElementTree(ET.fromstring(xml_str))
+        # lint reason: torznab XML fetched over HTTPS from the user's own
+        # configured tracker with their API key; stdlib ElementTree already
+        # blocks external entity resolution (patched since Python 3.7.1), so
+        # the residual risk is an entity-expansion memory bomb from a
+        # compromised tracker response — accepted rather than adding a new
+        # XML dependency for this one call site
+        tree = ET.ElementTree(ET.fromstring(xml_str))  # noqa: S314
         root = tree.getroot()
 
         nso_namespaces = {"ns0": "http://torznab.com/schemas/2015/feed"}

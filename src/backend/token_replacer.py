@@ -39,6 +39,7 @@ from src.enums.rename import QualitySelection
 from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledTokenRemoval
 from src.exceptions import GuessitParsingError, InvalidTokenError
+from src.logger.nfo_forge_logger import LOG
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import ImageUploadData
 from src.payloads.media_inputs import MediaInputPayload
@@ -49,6 +50,12 @@ from src.version import __version__, program_name, program_url
 
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL"})
+
+# Characters that cannot appear in a Windows path component. Shared by the
+# standard title formatter and the exact-episode-title token so the two
+# cannot drift apart.
+_TITLE_UNSAFE_CHARS = re.compile(r'[:\\/<>\?*"|]')
+_REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 
 
 class TokenReplacer:
@@ -539,7 +546,15 @@ class TokenReplacer:
                     try:
                         value = value.zfill(int(m.group(1)))
                     except ValueError:
-                        pass
+                        LOG.warning(
+                            LOG.LOG_SOURCE.BE,
+                            f"Ignoring zfill filter with an unusable width: {f}",
+                        )
+                else:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.BE,
+                        f"Ignoring malformed zfill filter argument: {f}",
+                    )
             elif f_lowered.startswith("replace(") and f_lowered.endswith(")"):
                 m = re.match(r"replace\((['\"])(.*?)\1,\s*?(['\"])(.*?)\3\)", f)
                 if m:
@@ -592,11 +607,21 @@ class TokenReplacer:
                 if args:
                     return self.flat_filters[filter_name](value, *args)
                 return self.flat_filters[filter_name](value)
-            except Exception:
+            except Exception as error:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Flat filter '{filter_name}' failed, using the unfiltered "
+                    f"value: {error}",
+                )
                 # return original value if filter fails
                 return value
 
         # unknown filter: return unchanged (graceful degradation)
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Unknown flat filter '{filter_name}'; the value is emitted "
+            "unfiltered. Check the filter name and that its plugin is enabled.",
+        )
         return value
 
     def _media_tokens(self, token_data: TokenData) -> str:
@@ -1022,7 +1047,12 @@ class TokenReplacer:
                                 rf"{replace}", rf"{replace_with}", formatted_title
                             )
                 return formatted_title
-        except (ValueError, KeyError, IndexError):
+        except (ValueError, KeyError, IndexError) as error:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Failed to format token string '{self.token_string}': "
+                f"{type(error).__name__}: {error}",
+            )
             return None
 
     def _sanitize_filename(self, filename: str) -> str | None:
@@ -1182,7 +1212,14 @@ class TokenReplacer:
         return self._optional_user_input(bitrate, token_data)
 
     def _audio_channel_s(self, token_data: TokenData, convert_to_layout: bool) -> str:
-        # TODO: might need to handle multiple audio tracks instead of just 0
+        # Only audio_tracks[0] is read here, matching every other single-value
+        # audio token in this class (bitrate, layout, codec, sample rate,
+        # etc.): there's no single channel count that could represent
+        # multiple tracks with differing layouts, so the first/primary track
+        # is treated as canonical. Tokens that need to reflect every track
+        # (dual/multi audio detection, combined language lists) iterate
+        # `audio_tracks` instead -- see `_audio_language_dual` and
+        # `_audio_language_multi` below.
         audio_channel_s = self.guess_name.get("audio_channels", "")
         if self.media_info_obj and self.media_info_obj.audio_tracks:
             mi_audio_channels = self.media_info_obj.audio_tracks[0].channel_s
@@ -2157,6 +2194,13 @@ class TokenReplacer:
             title = episode_data.get("name", "")
         if self._is_placeholder_episode_title(title):
             title = ""
+        if title:
+            # Strip only what cannot appear in a path component. Deliberately
+            # no `unidecode` here, unlike `_title_formatting_standard` --
+            # this token's whole contract is that it is the exact title.
+            title = _REPEATED_WHITESPACE.sub(
+                " ", _TITLE_UNSAFE_CHARS.sub(" ", title)
+            ).strip()
         return self._optional_user_input(title, token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:
@@ -3120,8 +3164,8 @@ class TokenReplacer:
         if not title:
             return ""
         title = unidecode.unidecode(title)
-        title = re.sub(r'[:\\/<>\?*"|]', " ", title)
-        title = re.sub(r"\s{2,}", " ", title)
+        title = _TITLE_UNSAFE_CHARS.sub(" ", title)
+        title = _REPEATED_WHITESPACE.sub(" ", title)
         return title
 
     @staticmethod

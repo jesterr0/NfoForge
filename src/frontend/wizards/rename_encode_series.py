@@ -397,6 +397,7 @@ class RenameEncodeSeries(BaseWizardPage):
             return False
 
         rename_map: dict[Path, Path] = {}
+        failed_files: list[Path] = []
         for (
             media_file,
             media_data,
@@ -422,11 +423,30 @@ class RenameEncodeSeries(BaseWizardPage):
                 season_end=media_data["season"],
             )
 
-            if renamed_file:
-                # Get extension from original file
-                ext = media_file.suffix
-                renamed_output = media_file.parent / f"{renamed_file.stem}{ext}"
-                rename_map[media_file] = renamed_output
+            if not renamed_file:
+                failed_files.append(media_file)
+                continue
+            # Get extension from original file
+            ext = media_file.suffix
+            renamed_output = media_file.parent / f"{renamed_file.stem}{ext}"
+            rename_map[media_file] = renamed_output
+
+        if failed_files:
+            names = "\n".join(f"  {path.name}" for path in failed_files)
+            if not rename_map:
+                QMessageBox.warning(
+                    self,
+                    "Rename Failed",
+                    "No filenames could be generated from the current token "
+                    f"template. Nothing was renamed.\n\n{names}",
+                )
+                return False
+            QMessageBox.warning(
+                self,
+                "Some Files Skipped",
+                f"{len(failed_files)} file(s) could not have a name generated "
+                f"and will be left unchanged:\n\n{names}",
+            )
 
         # rename the opened folder to a season-pack name, mirroring the movie
         # flow. build_folder_rename_targets only relocates the map when a

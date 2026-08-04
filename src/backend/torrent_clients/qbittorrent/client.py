@@ -48,7 +48,7 @@ class QBittorrentClient:
 
     def logout(self) -> None:
         try:
-            self.client.auth_log_out()
+            self.client.auth_log_out(requests_args={"timeout": self.timeout})
         except Exception as error:
             raise TrackerClientError(f"Failed to logout: {error}") from error
 
@@ -80,6 +80,7 @@ class QBittorrentClient:
                 use_auto_torrent_management=effective_save_path is None,
                 is_skip_checking=effective_save_path is None,
                 category=self._get_category(),
+                requests_args={"timeout": self.timeout},
             )
             if add_torrent != "Ok.":
                 return False, "qBittorrent injection failed"
@@ -89,6 +90,7 @@ class QBittorrentClient:
                 self.client.torrents_set_super_seeding(
                     enable=True,
                     torrent_hashes=torrent.infohash,
+                    requests_args={"timeout": self.timeout},
                 )
             return True, "qBittorrent injection successful"
         except qbittorrentapi.exceptions.APIError as error:

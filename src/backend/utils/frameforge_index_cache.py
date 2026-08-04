@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import tempfile
 import time
 from typing import ClassVar
 
@@ -66,9 +65,13 @@ class FrameForgeIndexCache:
         if index_path.exists() and not index_path.is_file():
             raise OSError(f"FrameForge index path is not a file: {index_path}")
 
-        existed_before = self._is_reusable(index_path)
-        if not index_path.exists():
-            index_path.touch()
+        existed_before = self._is_reusable(index_path, encode)
+        if not existed_before:
+            # Covers both the brand-new-entry case and a detected-stale
+            # entry: reset to the empty placeholder that tells FrameForge
+            # "no index, build one." Leaving a stale file's bytes in place
+            # would hand FrameForge the previous encode's index unchanged.
+            index_path.write_bytes(b"")
 
         self.prune(cache_root, active_index=index_path)
         LOG.debug(
@@ -124,6 +127,10 @@ class FrameForgeIndexCache:
 
         indexes: list[tuple[int, Path]] = []
         for entry in root.iterdir():
+            if entry.is_symlink():
+                # `is_dir()` follows symlinks, so without this a link planted
+                # in the cache root would be handed to `shutil.rmtree`.
+                continue
             if entry.is_dir():
                 self._remove_legacy_entry(entry)
                 continue
@@ -161,7 +168,10 @@ class FrameForgeIndexCache:
     def _safe_cache_root(self, protected_media_root: Path | None) -> Path:
         root = self.cache_root
         if protected_media_root and self._is_relative_to(root, protected_media_root):
-            fallback = Path(tempfile.gettempdir()) / "nfoforge" / self.CACHE_DIR_NAME
+            # Not `tempfile.gettempdir()`: on Linux and macOS that is a fixed
+            # path under a world-writable directory that another local user can
+            # pre-create, and `prune` deletes directories it finds there.
+            fallback = ConfigPaths.default_working_dir() / self.CACHE_DIR_NAME
             LOG.warning(
                 LOG.LOG_SOURCE.BE,
                 f"FrameForge cache is inside the media tree; using {fallback}",
@@ -189,9 +199,20 @@ class FrameForgeIndexCache:
             raise ValueError(f"Unsupported FrameForge indexer: {indexer}") from error
 
     @staticmethod
-    def _is_reusable(path: Path) -> bool:
+    def _is_reusable(path: Path, encode: Path | None = None) -> bool:
+        """True when `path` is a usable index for `encode`.
+
+        The index filename carries only the encode's path and indexer, so a
+        re-encode written to the same filename would otherwise be served its
+        predecessor's index. Comparing mtimes catches that without changing
+        the naming scheme, which would churn the cache on every rename.
+        """
         try:
-            return path.is_file() and path.stat().st_size > 0
+            if not (path.is_file() and path.stat().st_size > 0):
+                return False
+            if encode is None:
+                return True
+            return path.stat().st_mtime_ns >= encode.stat().st_mtime_ns
         except OSError:
             return False
 
@@ -216,6 +237,13 @@ class FrameForgeIndexCache:
 
     @staticmethod
     def _remove_legacy_entry(entry: Path) -> None:
+        resolved = Path(os.path.realpath(entry))
+        if resolved.parent != Path(os.path.realpath(entry.parent)):
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Refusing to prune FrameForge cache entry outside its root: {entry}",
+            )
+            return
         try:
             shutil.rmtree(entry)
         except OSError as error:

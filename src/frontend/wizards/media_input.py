@@ -28,6 +28,7 @@ from src.frontend.utils import QWidgetTempStyle, build_v_line
 from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ComparisonPair
 
 
@@ -58,7 +59,6 @@ class MediaInput(BaseWizardPage):
         self.backend = MediaInputBackEnd(self.progress_signal)
         self.worker: GeneralWorker | None = None
         self._loading_completed = False
-        self._files_being_processed: tuple[Path, ...] = ()
         self._progress_connected = False
 
         self.media_input_entry: QLineEdit = DNDLineEdit(
@@ -289,8 +289,6 @@ class MediaInput(BaseWizardPage):
             if comparison_pair.media not in files_to_process:
                 files_to_process.append(comparison_pair.media)
 
-        self._files_being_processed = tuple(files_to_process)
-
         self.worker = GeneralWorker(
             func=self.backend.get_media_info_files, files=files_to_process, parent=self
         )
@@ -306,14 +304,17 @@ class MediaInput(BaseWizardPage):
         self.worker.start()
 
     @Slot(object)
-    def _worker_finished(self, files_mi_data: dict[Path, MediaInfo]) -> None:
-        expected_files = set(self._files_being_processed)
-        missing_files = sorted(expected_files - set(files_mi_data), key=str)
-        if missing_files:
-            missing_display = "\n".join(f"- {path}" for path in missing_files)
+    def _worker_finished(
+        self, result: tuple[dict[Path, MediaInfo], dict[Path, str]]
+    ) -> None:
+        files_mi_data, failures = result
+        if failures:
+            failure_display = "\n".join(
+                f"- {path}: {reason}" for path, reason in sorted(failures.items())
+            )
             self._handle_worker_failure(
                 "MediaInfo could not be read for the following file(s):\n"
-                f"{missing_display}"
+                f"{failure_display}"
             )
             return
 
@@ -329,7 +330,6 @@ class MediaInput(BaseWizardPage):
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
         self._disconnect_progress_signal()
-        self._files_being_processed = ()
         # if finished has a cb, utilize that instead of emit (for sandbox)
         if self._on_finished_cb:
             self._on_finished_cb()
@@ -344,7 +344,6 @@ class MediaInput(BaseWizardPage):
         """Restore the page after a MediaInfo worker failure."""
 
         self._loading_completed = False
-        self._files_being_processed = ()
         self._disconnect_progress_signal()
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
@@ -569,13 +568,15 @@ class MediaInput(BaseWizardPage):
                 QItemSelectionModel.SelectionFlag.ClearAndSelect
                 | QItemSelectionModel.SelectionFlag.Rows,
             )
-            try:
-                self.file_tree.scrollTo(idx)
-            except Exception:
-                pass
-        except Exception:
+            # scrollTo's own failures are covered by the outer catch below;
+            # a separate inner try/except here would handle them identically
+            self.file_tree.scrollTo(idx)
+        except Exception as error:
             # best effort only; prevent breaking the flow on unexpected shapes
-            pass
+            LOG.debug(
+                LOG.LOG_SOURCE.FE,
+                f"Could not auto-select the single tree file: {error}",
+            )
 
     def _reset_comparison_widget(self, set_disabled: bool) -> None:
         """Hides comparison section and resets all entries"""

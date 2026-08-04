@@ -10,7 +10,7 @@ class TrackerSelection(CaseInsensitiveEnum):
     MORE_THAN_TV = "MoreThanTV"
     TORRENT_LEECH = "TorrentLeech"
     BEYOND_HD = "BeyondHD"
-    PASS_THE_POPCORN = "PassThePopcorn"
+    PASS_THE_POPCORN = "PassThePopcorn"  # noqa: S105 - tracker name, not a credential
     REELFLIX = "ReelFliX"
     AITHER = "Aither"
     HUNO = "HUNO"

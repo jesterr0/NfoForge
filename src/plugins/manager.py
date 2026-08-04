@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment
@@ -12,6 +13,7 @@ from src.exceptions import PluginError, PluginExecutionError
 from src.plugins.api import (
     PLUGIN_API_VERSION,
     FlatFilter,
+    MetadataTransformer,
     MetadataTransformRequest,
     PluginDefinition,
     PluginRecord,
@@ -35,11 +37,26 @@ class PluginLoadIssue:
     reason: str
 
 
+@dataclass(slots=True)
+class _TransformOutcome:
+    """Mutable holder a transform worker writes and the caller reads after `join`.
+
+    Not frozen: the worker thread populates exactly one of these fields after
+    the main thread has already constructed and started reading from it.
+    """
+
+    value: MediaSearchPayload | None = None
+    error: BaseException | None = None
+
+
 class PluginManager:
     """Validate, register, query, and invoke external plugins."""
 
     def __init__(self) -> None:
-        jinja_environment = Environment()
+        # lint reason: only used below to read the built-in filter/global
+        # names so plugins can't shadow them; nothing is ever rendered
+        # through this environment, so autoescape is irrelevant here
+        jinja_environment = Environment()  # noqa: S701
         self._records: dict[str, PluginRecord] = {}
         self._jinja2_filters: dict[str, Any] = {}
         self._jinja2_functions: dict[str, Any] = {}
@@ -121,7 +138,9 @@ class PluginManager:
     def replace_tokens(self, plugin_id: str, request: TokenReplaceRequest) -> str:
         record = self._require_capability(plugin_id, "token_replacer")
         replacer = record.definition.token_replacer
-        assert replacer is not None
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert replacer is not None  # noqa: S101
         try:
             result = replacer(request)
         except Exception as error:
@@ -139,7 +158,9 @@ class PluginManager:
     ) -> PreUploadDecision:
         record = self._require_capability(plugin_id, "pre_upload")
         processor = record.definition.pre_upload
-        assert processor is not None
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert processor is not None  # noqa: S101
         try:
             result = processor(request)
         except Exception as error:
@@ -161,7 +182,9 @@ class PluginManager:
 
         record = self._require_capability(plugin_id, "metadata_transformer")
         transformer = record.definition.metadata_transformer
-        assert transformer is not None
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert transformer is not None  # noqa: S101
         isolated_payload = deepcopy(request.payload)
         isolated_request = MetadataTransformRequest(
             config=request.config,
@@ -169,12 +192,9 @@ class PluginManager:
             payload=isolated_payload,
             timeout=request.timeout,
         )
-        try:
-            result = transformer(isolated_request)
-        except Exception as error:
-            raise PluginExecutionError(
-                plugin_id, "metadata_transformer", error
-            ) from error
+        result = self._run_transformer_with_timeout(
+            plugin_id, transformer, isolated_request, request.timeout
+        )
         if result is None:
             return request.payload
         if not isinstance(result, MediaSearchPayload):
@@ -192,6 +212,70 @@ class PluginManager:
             raise PluginExecutionError(
                 plugin_id, "metadata_transformer", error
             ) from error
+
+    @staticmethod
+    def _run_transformer_with_timeout(
+        plugin_id: str,
+        transformer: MetadataTransformer,
+        isolated_request: MetadataTransformRequest,
+        timeout: int,
+    ) -> MediaSearchPayload | None:
+        """Run `transformer` on a background thread and enforce `timeout`.
+
+        A transformer's worker thread cannot be forcibly killed, so a hung
+        transformer is abandoned rather than awaited: the worker keeps running
+        as a daemon thread, which does not block interpreter exit (unlike a
+        `ThreadPoolExecutor` worker, which is non-daemon and would be joined by
+        an `atexit` handler at shutdown).
+
+        Abandoning it is safe only for `isolated_request.payload` and
+        `isolated_request.context.media_search`: both wrap a deep copy, so a
+        write to either from the abandoned thread after this function returns
+        can never reach canonical state. `isolated_request.config` is *not*
+        isolated -- it is the live `ConfigManager` shared with the UI thread,
+        by reference (deep-copying it is not viable; it owns the plugin
+        manager and the live settings tree). Transformers must already treat
+        `config` as read-only (see `docs/view/plugins/metadata-transformers.md`);
+        a transformer that writes to `config` and then hangs can race the UI
+        thread for as long as it keeps running, and this timeout provides no
+        protection against that.
+        """
+
+        outcome = _TransformOutcome()
+
+        def _run() -> None:
+            try:
+                outcome.value = transformer(isolated_request)
+            except BaseException as error:
+                # Catch BaseException, not Exception: a transformer calling
+                # sys.exit() raises SystemExit, which Exception does not
+                # catch. Left uncaught, the thread would die silently,
+                # outcome would stay empty, and the caller would read that
+                # as "the transformer chose not to change anything" instead
+                # of a crash. KeyboardInterrupt cannot be delivered to a
+                # non-main thread, so catching BaseException here does not
+                # carry the usual risk of swallowing an interactive
+                # interrupt.
+                outcome.error = error
+
+        worker = threading.Thread(
+            target=_run,
+            name=f"plugin-transform-{plugin_id}",
+            daemon=True,
+        )
+        worker.start()
+        worker.join(timeout)
+        if worker.is_alive():
+            raise PluginExecutionError(
+                plugin_id,
+                "metadata_transformer",
+                TimeoutError(f"timed out after {timeout}s and was abandoned"),
+            )
+        if outcome.error is not None:
+            raise PluginExecutionError(
+                plugin_id, "metadata_transformer", outcome.error
+            ) from outcome.error
+        return outcome.value
 
     def _require_capability(self, plugin_id: str, capability: str) -> PluginRecord:
         record = self.get(plugin_id)

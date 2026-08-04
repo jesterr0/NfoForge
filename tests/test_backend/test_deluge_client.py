@@ -14,7 +14,7 @@ from src.payloads.clients import DelugeConfig
 def deluge_config(**kwargs: Any) -> DelugeConfig:
     return DelugeConfig(
         host="https://deluge.example.test",
-        password="secret",
+        password="secret",  # noqa: S106 - dummy test fixture credential for a mocked client, not a real secret
         **kwargs,
     )
 

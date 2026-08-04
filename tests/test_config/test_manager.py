@@ -1,4 +1,4 @@
-from collections.abc import Mapping, MutableMapping
+from collections.abc import MutableMapping
 import dataclasses
 import enum
 from pathlib import Path
@@ -9,8 +9,11 @@ import tomlkit
 
 from src.config.codec import TomlConfigCodec
 from src.config.config import ConfigManager
+from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
+from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from src.enums.series import EpisodeFormat
 from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ConfigError, ConfigSchemaError
@@ -20,42 +23,12 @@ from src.payloads.clients import (
     RTorrentConfig,
     TransmissionConfig,
 )
-from src.payloads.trackers import MoreThanTVInfo
-
-
-def _paths(tmp_path: Path) -> ConfigPaths:
-    defaults = tmp_path / "defaults"
-    defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
-    default_config = defaults / "default_config.toml"
-    default_program = defaults / "default_program_conf.toml"
-    default_config.write_text(
-        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    default_program.write_text(
-        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    return ConfigPaths(
-        default_config=default_config,
-        default_program=default_program,
-        program=tmp_path / "program/conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-
-
-def _leaf_key_paths(document: Mapping[str, Any], prefix: str = "") -> set[str]:
-    """Every dotted leaf-key path in a parsed TOML document."""
-    paths: set[str] = set()
-    for key, value in document.items():
-        path = f"{prefix}.{key}" if prefix else str(key)
-        if isinstance(value, Mapping):
-            paths |= _leaf_key_paths(value, path)
-        else:
-            paths.add(path)
-    return paths
+from src.payloads.trackers import MoreThanTVInfo, TrackerInfo
+from tests.repo_paths import CONFIG_FIXTURE_DIR, DEFAULT_CONFIG_TOML
+from tests.test_config.config_tree import (
+    build_config_paths as _paths,
+    leaf_key_paths as _leaf_key_paths,
+)
 
 
 def test_manager_loads_nested_typed_settings(
@@ -120,9 +93,14 @@ def test_save_preserves_unknown_keys_and_comments(
     assert saved_specific["third_party_option"] == "preserve-me"
 
 
-def test_save_removes_retired_tmdb_api_keys_table(
+def test_save_preserves_a_user_supplied_tmdb_api_key(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A user-supplied override in `[api_keys]` must survive a load + save,
+    not be stripped. Restores the override this table provides -- an earlier
+    revision removed it in favor of the bundled key alone and popped the
+    table on every save.
+    """
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,
@@ -131,13 +109,15 @@ def test_save_removes_retired_tmdb_api_keys_table(
     manager = ConfigManager("test", paths)
     profile = paths.user_configs / "test.toml"
     document = tomlkit.parse(profile.read_text(encoding="utf-8"))
-    document["api_keys"] = {"tmdb_api_key": "retired"}
+    document["api_keys"] = {"tmdb_api_key": "user-supplied"}
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     manager.load_profile("test")
 
+    assert manager.settings.api_keys.tmdb_api_key == "user-supplied"
     saved_document = tomlkit.parse(profile.read_text(encoding="utf-8"))
-    assert "api_keys" not in saved_document
+    saved_api_keys = cast(MutableMapping[str, Any], saved_document["api_keys"])
+    assert saved_api_keys["tmdb_api_key"] == "user-supplied"
 
 
 def test_manager_preserves_qbittorrent_super_seeding_false(
@@ -303,9 +283,7 @@ def test_unchanged_settings_do_not_write(
 
 
 def test_codec_reports_dotted_path_for_invalid_type() -> None:
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     invalid = tomlkit.parse(tomlkit.dumps(defaults))
     general = cast(MutableMapping[str, Any], invalid["general"])
     general["timeout"] = "sixty"
@@ -318,9 +296,7 @@ def test_int_accepted_where_float_expected() -> None:
     """A hand-edited or plugin-written config with an int value where the
     default is a float (e.g. `ui_scale_factor = 1` vs. the default `1.0`)
     is current-schema and salvageable -- it must not be rejected."""
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     doc = tomlkit.parse(tomlkit.dumps(defaults))
     general = cast(MutableMapping[str, Any], doc["general"])
     assert isinstance(general["ui_scale_factor"].unwrap(), float)
@@ -332,9 +308,7 @@ def test_int_accepted_where_float_expected() -> None:
 def test_bool_still_rejected_where_float_expected() -> None:
     """`bool` is a subclass of `int` in Python and must still be rejected
     where a float is expected, even though a plain `int` is now tolerated."""
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     invalid = tomlkit.parse(tomlkit.dumps(defaults))
     general = cast(MutableMapping[str, Any], invalid["general"])
     general["ui_scale_factor"] = True
@@ -942,9 +916,7 @@ def test_all_tracker_scalar_fields_round_trip(
 
 
 def test_default_season_folder_token_is_scene_style() -> None:
-    defaults = tomlkit.parse(
-        Path("runtime/config/defaults/default_config.toml").read_text(encoding="utf-8")
-    )
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
     series = cast(MutableMapping[str, Any], defaults["series_management"])
     token = str(series["tvr_season_folder_token"])
 
@@ -957,13 +929,79 @@ def test_default_season_folder_token_is_scene_style() -> None:
     assert "{episode_title_clean}" not in token
 
 
+def test_series_title_override_loader_matches_serialiser_formats() -> None:
+    """The loader must read exactly the episode formats the serialiser
+    writes -- no more, no less.
+
+    ``SUPPORTED_TVR_FORMATS`` deliberately excludes ``EpisodeFormat.DVD``
+    (a documented placeholder that reuses the Standard token set and is not
+    yet wired up -- see ``src/enums/series.py``), so the relationship
+    between the two must stay a subset, not equality. Before this loader
+    was narrowed to ``SUPPORTED_TVR_FORMATS`` it iterated all of
+    ``EpisodeFormat``, so a ``dvd`` override would load into memory and
+    then be silently dropped the next time the serialiser (which only ever
+    wrote the three supported formats) ran.
+    """
+    assert set(SUPPORTED_TVR_FORMATS) <= set(EpisodeFormat)
+
+    serialised = TypedTomlOperations._serialize_series_title_overrides(TrackerInfo())
+    loaded = TypedTomlOperations._load_series_title_overrides({})
+
+    assert set(loaded.keys()) == set(SUPPORTED_TVR_FORMATS)
+    assert {str(fmt).lower() for fmt in loaded} == set(serialised.keys())
+
+
+def test_on_disk_dvd_title_override_is_ignored_cleanly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A ``dvd`` title-override table hand-edited (or left over from a
+    build that once wrote one) into a profile must be ignored on load --
+    not loaded into memory and then silently dropped on the next save.
+    Loading and saving such a profile must not raise, and the ``dvd``
+    table must not reappear once ``save`` rewrites the file.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    profile = paths.user_configs / "test.toml"
+    profile.parent.mkdir(parents=True)
+    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
+    tracker = cast(MutableMapping[str, Any], document["tracker"])
+    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
+    more_than_tv["tvr_title_overrides"] = {
+        "dvd": {
+            "enabled": True,
+            "colon_replace": 3,
+            "token": "probe-dvd-token",
+            "replace_map": [],
+        }
+    }
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)  # must not raise
+
+    overrides = manager.settings.trackers.more_than_tv.tvr_title_overrides
+    assert EpisodeFormat.DVD not in overrides
+    assert set(overrides.keys()) == set(SUPPORTED_TVR_FORMATS)
+
+    manager.save()  # must not raise
+
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
+    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
+    saved_overrides = cast(MutableMapping[str, Any], saved_mtv["tvr_title_overrides"])
+    assert "dvd" not in saved_overrides
+
+
 def _write_fixture_profile(paths: ConfigPaths, fixture: str) -> tuple[Path, str]:
     """Install a fixture config as the "test" profile. Returns the profile
     path and the exact text written, so a test can assert the file was left
     byte-for-byte untouched."""
     profile = paths.user_configs / "test.toml"
     profile.parent.mkdir(parents=True, exist_ok=True)
-    text = Path(f"tests/test_config/fixtures/{fixture}").read_text(encoding="utf-8")
+    text = (CONFIG_FIXTURE_DIR / fixture).read_text(encoding="utf-8")
     profile.write_text(text, encoding="utf-8")
     return profile, text
 
@@ -1182,6 +1220,46 @@ def test_metadata_transformer_backfills_when_a_profile_lacks_it(
     manager.load_profile("test")
 
     assert manager.settings.plugins.metadata_transformer is None
+
+
+def test_api_key_is_absent_from_an_upgraded_profile_without_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Profiles already migrated to v4 had `api_keys` stripped (the old
+    `save()` popped it and the old `migrate_v3_to_v4` dropped it). Loading
+    one must default the key, not raise, on startup.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    del document["api_keys"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")  # must not raise
+
+    assert manager.settings.api_keys.tmdb_api_key == ""
+
+
+def test_api_key_round_trips_through_save_and_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.api_keys.tmdb_api_key = "abc123"
+    manager.save()
+    manager.load_profile("test")
+
+    assert manager.settings.api_keys.tmdb_api_key == "abc123"
 
 
 def test_metadata_transformer_is_written_on_save(

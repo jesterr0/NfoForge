@@ -18,12 +18,13 @@ from src.frontend.stacked_windows.settings.movies_management import (
     MoviesManagementSettings,
 )
 from src.plugins.api import PluginDefinition
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(
@@ -103,7 +104,7 @@ def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(
         "test",
     )
     manager.settings.general.enable_plugins = True
-    token = "{title_clean|append_marker}"
+    token = "{title_clean|append_marker}"  # noqa: S105 - NFO template token string used as test fixture data, not a credential
 
     preview = widget._update_example(
         token,

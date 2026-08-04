@@ -7,7 +7,7 @@ from src.backend.utils.token_validation import (
 
 
 def _env() -> Environment:
-    return Environment()
+    return Environment()  # noqa: S701 - test-only Environment is only ever used with .parse() for AST inspection, never .render(), so autoescape is irrelevant
 
 
 def test_known_token_is_not_flagged() -> None:

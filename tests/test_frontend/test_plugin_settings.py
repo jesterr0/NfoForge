@@ -8,6 +8,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.frontend.stacked_windows.settings.plugins import PluginsSettings
 from src.plugins.api import PluginDefinition, TokenReplaceRequest
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 class _FakeSettingsWindow(QWidget):
@@ -17,7 +18,7 @@ class _FakeSettingsWindow(QWidget):
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
     defaults.mkdir()
-    source_defaults = Path("runtime/config/defaults")
+    source_defaults = DEFAULT_CONFIG_DIR
     default_config = defaults / "default_config.toml"
     default_program = defaults / "default_program_conf.toml"
     default_config.write_text(
@@ -61,7 +62,7 @@ def _make_plugin_settings(
     )
     manager.plugin_manager.record_load_issue("broken.plugin", "invalid definition")
     manager.settings.general.enable_plugins = False
-    manager.settings.plugins.token_replacer = "example.tokens"
+    manager.settings.plugins.token_replacer = "example.tokens"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     manager.settings.plugins.metadata_transformer = "missing.metadata"
 
     widget = PluginsSettings(
@@ -85,7 +86,7 @@ def test_plugin_settings_preserve_selections_while_disabled(
     widget._save_settings()
 
     assert manager.settings.general.enable_plugins is True
-    assert manager.settings.plugins.token_replacer == "example.tokens"
+    assert manager.settings.plugins.token_replacer == "example.tokens"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     assert manager.settings.plugins.metadata_transformer == "missing.metadata"
 
 
