@@ -1,0 +1,154 @@
+name: Build and Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description:
+          "Release tag/version to build and attach artifacts to (e.g. 0.8.15). Created
+          as a draft release if it doesn't exist."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.set.outputs.tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Determine tag
+        id: set
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure a release exists for this tag (create draft if missing)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.set.outputs.tag }}"
+          if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --draft \
+              --title "$TAG" \
+              --generate-notes
+          fi
+
+  build:
+    needs: resolve-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: ubuntu-latest
+            platform: linux
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.platform == 'macos' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Qt runtime libraries
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: python -m pip install --upgrade uv
+
+      - name: Generate macOS icon (.icns)
+        if: matrix.platform == 'macos'
+        run: |
+          set -e
+          ICONSET="runtime/images/hammer_merged.iconset"
+          mkdir -p "$ICONSET"
+          for sz in 16 32 128 256 512; do
+            sips -z $sz $sz runtime/images/hammer_merged.png --out "$ICONSET/icon_${sz}x${sz}.png"
+            dsz=$((sz * 2))
+            sips -z $dsz $dsz runtime/images/hammer_merged.png --out "$ICONSET/icon_${sz}x${sz}@2x.png"
+          done
+          iconutil -c icns "$ICONSET" -o runtime/images/hammer_merged.icns
+
+      - name: Check version matches release tag
+        shell: bash
+        run: |
+          TAG="${{ needs.resolve-release.outputs.tag }}"
+          CURRENT_VERSION="$(uv run python -c 'from src.version import __version__; print(__version__)')"
+          if [ "$CURRENT_VERSION" != "$TAG" ]; then
+            echo "::warning::src/version.py (__version__=$CURRENT_VERSION) does not match the release tag ($TAG) - did you forget to bump the version?"
+          fi
+
+      - name: Build application
+        shell: bash
+        run: uv run python build.py
+
+      - name: Package artifact (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.resolve-release.outputs.tag }}"
+          Compress-Archive -Path "pyinstaller_build_full/dist/NfoForge/*" -DestinationPath "NfoForge-$tag-windows.zip"
+          echo "ARCHIVE_PATH=NfoForge-$tag-windows.zip" >> $env:GITHUB_ENV
+
+      - name: Package artifact (Linux)
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          TAG="${{ needs.resolve-release.outputs.tag }}"
+          tar -czf "NfoForge-$TAG-linux.tar.gz" -C "pyinstaller_build_full/dist/NfoForge" .
+          echo "ARCHIVE_PATH=NfoForge-$TAG-linux.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package artifact (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          TAG="${{ needs.resolve-release.outputs.tag }}"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "pyinstaller_build_full/dist/NfoForge.app" \
+            "NfoForge-$TAG-macos.zip"
+          echo "ARCHIVE_PATH=NfoForge-$TAG-macos.zip" >> "$GITHUB_ENV"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NfoForge-${{ needs.resolve-release.outputs.tag }}-${{ matrix.platform }}
+          path: ${{ env.ARCHIVE_PATH }}
+
+      - name: Upload to release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.resolve-release.outputs.tag }}" "$ARCHIVE_PATH" \
+            --repo "${{ github.repository }}" --clobber
