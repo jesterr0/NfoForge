@@ -242,7 +242,7 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # copy example jinja2 plugin example to the release
     shutil.copytree(
         project_root / "plugins" / "jinja2_plugin_example",
-        plugin_folder / "plugin_example",
+        plugin_folder / "jinja2_plugin_example",
         ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
         copy_function=shutil.copy,
     )
@@ -250,7 +250,7 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # copy example metadata plugin example to the release
     shutil.copytree(
         project_root / "plugins" / "metadata_plugin_example",
-        plugin_folder / "plugin_example",
+        plugin_folder / "metadata_plugin_example",
         ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
         copy_function=shutil.copy,
     )
