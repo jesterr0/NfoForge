@@ -255,6 +255,14 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
         copy_function=shutil.copy,
     )
 
+    # copy example metadata plugin example to the release
+    shutil.copytree(
+        project_root / "plugins" / "metadata_plugin_example",
+        plugin_folder / "metadata_plugin_example",
+        ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
+        copy_function=shutil.copy,
+    )
+
     # remove dev files
     bundled_runtime = Path(exe_path.parent / "bundle" / "runtime")
 
