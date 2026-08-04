@@ -1,4 +1,4 @@
-from collections.abc import Mapping, MutableMapping
+from collections.abc import MutableMapping
 import dataclasses
 import enum
 from pathlib import Path
@@ -24,42 +24,11 @@ from src.payloads.clients import (
     TransmissionConfig,
 )
 from src.payloads.trackers import MoreThanTVInfo, TrackerInfo
-from tests.repo_paths import CONFIG_FIXTURE_DIR, DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_TOML
-
-
-def _paths(tmp_path: Path) -> ConfigPaths:
-    defaults = tmp_path / "defaults"
-    defaults.mkdir()
-    source_defaults = DEFAULT_CONFIG_DIR
-    default_config = defaults / "default_config.toml"
-    default_program = defaults / "default_program_conf.toml"
-    default_config.write_text(
-        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    default_program.write_text(
-        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    return ConfigPaths(
-        default_config=default_config,
-        default_program=default_program,
-        program=tmp_path / "program/conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-
-
-def _leaf_key_paths(document: Mapping[str, Any], prefix: str = "") -> set[str]:
-    """Every dotted leaf-key path in a parsed TOML document."""
-    paths: set[str] = set()
-    for key, value in document.items():
-        path = f"{prefix}.{key}" if prefix else str(key)
-        if isinstance(value, Mapping):
-            paths |= _leaf_key_paths(value, path)
-        else:
-            paths.add(path)
-    return paths
+from tests.repo_paths import CONFIG_FIXTURE_DIR, DEFAULT_CONFIG_TOML
+from tests.test_config.config_tree import (
+    build_config_paths as _paths,
+    leaf_key_paths as _leaf_key_paths,
+)
 
 
 def test_manager_loads_nested_typed_settings(

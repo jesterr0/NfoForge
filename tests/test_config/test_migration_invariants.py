@@ -15,6 +15,7 @@ import pytest
 import tomlkit
 
 from src.config.codec import TomlConfigCodec
+from src.config.config import ConfigManager
 from src.config.migrations import (
     MIGRATIONS,
     SCHEMA_1_VERSION,
@@ -23,6 +24,7 @@ from src.config.migrations import (
     migrate_document,
 )
 from tests.repo_paths import DEFAULT_CONFIG_TOML
+from tests.test_config.config_tree import build_config_paths, leaf_key_paths
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -133,6 +135,53 @@ def test_every_version_fixture_migrates_to_the_current_schema(fixture: Path) -> 
 
     assert not unmapped
     assert new["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
+
+
+@pytest.mark.parametrize(
+    "fixture", _version_fixtures(), ids=lambda fixture: fixture.stem
+)
+def test_every_version_fixture_is_complete_after_migrating_and_loading(
+    fixture: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Migrating is not enough -- the result must also load, and be complete.
+
+    The test above drives `migrate_document` directly and asserts only
+    `unmapped == []` and the version number. It never runs `validate_types` or
+    the load path, so a key the packaged default gained *without* a schema bump
+    can be missing from every historical profile and it stays green.
+
+    Such keys are real, and deliberate: `merge_defaults` backfills anything the
+    default declares but a profile lacks, which is precisely why they need no
+    migration. `template_settings.warning_syntax_color` was added that way.
+
+    The backfill is therefore load-bearing. Sabotaging it for one key turns all
+    three fixtures into `ConfigSchemaError: Could not migrate configuration
+    schema_version N: ConfigError: Missing configuration key: ...` -- the
+    unsupported-schema-at-startup failure this module exists to guard, with no
+    recovery but archive+regenerate. That is caught here and nowhere else.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = build_config_paths(tmp_path)
+    paths.user_configs.mkdir(parents=True, exist_ok=True)
+    profile = paths.user_configs / f"{fixture.stem}.toml"
+    profile.write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+
+    # Constructing the manager migrates, backfills and saves. A missing key
+    # raises out of here rather than failing an assertion below.
+    ConfigManager(fixture.stem, paths)
+
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    assert saved["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
+
+    packaged = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
+    missing = leaf_key_paths(packaged) - leaf_key_paths(saved)
+    assert not missing, (
+        f"{fixture.name} is missing key(s) the packaged default declares: "
+        f"{sorted(missing)}"
+    )
 
 
 def test_packaged_default_declares_the_current_schema_version() -> None:
