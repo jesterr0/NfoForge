@@ -391,3 +391,51 @@ def test_series_animation_genre_triggers_anilist_without_a_manual_id() -> None:
         "success": True,
         "result": {"id": 1, "idMal": 2},
     }
+
+
+def test_tmdb_search_failure_scrubs_the_api_key_from_the_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A niquests error stringifies the request URL, which carries `api_key=`.
+
+    That message reaches the log and an on-screen error dialog, so the key
+    must not survive into it.
+    """
+    backend = MediaSearchBackEnd()
+
+    def get(*_args: object, **_kwargs: object) -> _Response:
+        raise niquests.exceptions.RequestException(
+            "503 Server Error for url: "
+            "https://api.themoviedb.org/3/search/multi"
+            "?api_key=topsecretkeyvalue&page=1"
+        )
+
+    monkeypatch.setattr(backend.session, "get", get)
+
+    with pytest.raises(MediaSearchError) as error:
+        backend._fetch_tmdb_results("https://api.themoviedb.org/3/search/multi")
+
+    assert "topsecretkeyvalue" not in str(error.value)
+    assert "[redacted]" in str(error.value)
+
+
+def test_tmdb_metadata_failure_scrubs_the_api_key_from_the_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same leak on the metadata endpoint used after a selection is made."""
+    backend = MediaSearchBackEnd()
+
+    def get(*_args: object, **_kwargs: object) -> _Response:
+        raise niquests.exceptions.RequestException(
+            "503 Server Error for url: "
+            "https://api.themoviedb.org/3/movie/550988"
+            "?api_key=topsecretkeyvalue&language=en"
+        )
+
+    monkeypatch.setattr(backend.session, "get", get)
+
+    with pytest.raises(MediaSearchError) as error:
+        backend.fetch_complete_tmdb_data_for_selection("550988", MediaType.MOVIE)
+
+    assert "topsecretkeyvalue" not in str(error.value)
+    assert "[redacted]" in str(error.value)

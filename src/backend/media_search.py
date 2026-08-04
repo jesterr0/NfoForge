@@ -18,6 +18,7 @@ from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.logger.nfo_forge_logger import LOG
+from src.utils.secret_redaction import scrub_secrets
 
 
 class MediaSearchBackEnd:
@@ -190,7 +191,9 @@ class MediaSearchBackEnd:
                 "TMDB search is unavailable. Check your internet connection and try again."
             ) from error
         except niquests.exceptions.RequestException as error:
-            raise MediaSearchError(f"TMDB search failed: {error}") from error
+            raise MediaSearchError(
+                f"TMDB search failed: {scrub_secrets(str(error))}"
+            ) from error
         except (TypeError, ValueError) as error:
             raise MediaSearchError(
                 "TMDB returned an invalid search response."
@@ -270,7 +273,9 @@ class MediaSearchBackEnd:
                 "TMDB metadata is unavailable. Check your internet connection and try again."
             ) from error
         except niquests.exceptions.RequestException as error:
-            raise MediaSearchError(f"TMDB metadata lookup failed: {error}") from error
+            raise MediaSearchError(
+                f"TMDB metadata lookup failed: {scrub_secrets(str(error))}"
+            ) from error
         except (TypeError, ValueError) as error:
             raise MediaSearchError(
                 "TMDB returned an invalid metadata response."
