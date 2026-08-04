@@ -213,6 +213,12 @@ def test_run_override_wins_over_invalid_configured_template() -> None:
 
 
 def test_windows_destination_replaces_colons_in_save_path() -> None:
+    """The final segment must be read with Windows separator rules.
+
+    Plain `Path` is `PosixPath` off Windows, where a backslash is an ordinary
+    character, so `.name` returns the whole template and the drive letter's
+    own `:` fails the assertion on a Linux runner.
+    """
     context = _movie_context()
     context.media_search.title = "Mission: Impossible"
 
@@ -226,7 +232,7 @@ def test_windows_destination_replaces_colons_in_save_path() -> None:
     )
 
     assert path is not None
-    assert ":" not in Path(path).name
+    assert ":" not in PureWindowsPath(path).name
 
 
 def test_windows_destination_preserves_drive_letter_colon() -> None:
