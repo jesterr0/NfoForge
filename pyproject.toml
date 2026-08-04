@@ -53,7 +53,18 @@ dev = [
     "types-psutil",
     "poethepoet>=0.48.0",
 ]
-build = ["pyinstaller-hooks-contrib>=2025.1", "pyinstaller>=6.9.0"]
+build = [
+    "pyinstaller-hooks-contrib>=2025.1",
+    "pyinstaller>=6.9.0",
+    # PyInstaller's altgraph dependency does an unconditional `import
+    # pkg_resources` at import time; uv-managed venvs don't seed
+    # setuptools/pip by default (unlike stdlib venv), so this must be an
+    # explicit build-extra dependency, not just a dev one. Capped below 82
+    # because setuptools removed pkg_resources entirely starting at 82.0.0
+    # (confirmed: 81.0.0 still ships it, 82.0.0 does not) - drop the cap
+    # once altgraph/pyinstaller stop depending on it upstream.
+    "setuptools>=78.1.1,<82",
+]
 docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [tool.ruff]

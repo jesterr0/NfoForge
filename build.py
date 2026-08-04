@@ -176,7 +176,8 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
             "--name",
             "NfoForge",
             str(entry_script),
-        ]
+        ],
+        check=True,
     )
 
     # modify the generated spec file
@@ -217,20 +218,39 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
             / "NfoForge"
             / f"NfoForge{get_executable_string_by_os()}"
         )
-    if exe_path.is_file() and str(build_job.returncode) == "0":
+    if exe_path.is_file() and build_job.returncode == 0:
         success = f"\nSuccess!\nPath to executable: {str(exe_path)}"
 
     # change directory back to the original directory
     os.chdir(project_root)
 
+    # bail out loudly instead of silently shipping a folder that only
+    # contains the plugins directory created below - a failed PyInstaller
+    # run must fail the build (and CI), not produce a bogus "successful" one
+    if build_job.returncode != 0:
+        raise RuntimeError(f"PyInstaller failed with exit code {build_job.returncode}.")
+    if not exe_path.is_file():
+        raise FileNotFoundError(
+            f"PyInstaller reported success but the expected executable is "
+            f"missing: {exe_path}"
+        )
+
     # create plugin folder
     plugin_folder = Path(exe_path.parent / "plugins")
     plugin_folder.mkdir(parents=True)
 
-    # copy example jinja2 plugin to the release
+    # copy example jinja2 plugin example to the release
     shutil.copytree(
         project_root / "plugins" / "jinja2_plugin_example",
-        plugin_folder / "jinja2_plugin_example",
+        plugin_folder / "plugin_example",
+        ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
+        copy_function=shutil.copy,
+    )
+
+    # copy example metadata plugin example to the release
+    shutil.copytree(
+        project_root / "plugins" / "metadata_plugin_example",
+        plugin_folder / "plugin_example",
         ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
         copy_function=shutil.copy,
     )
