@@ -44,8 +44,14 @@ jobs:
         run: |
           TAG="${{ steps.set.outputs.tag }}"
           if ! gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            # Without --target, `gh release create` silently points the new
+            # tag at the repo's default branch (main) instead of whatever
+            # ref/commit actually triggered this workflow_dispatch run -
+            # which then desyncs from what the build job below actually
+            # checks out and builds.
             gh release create "$TAG" \
               --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
               --draft \
               --title "$TAG" \
               --generate-notes
