@@ -19,6 +19,91 @@ _UNRESOLVED_TOKEN_PATTERN = re.compile(r"{[^{}]+}")
 _FLAT_TOKEN_PATTERN = re.compile(r"{(?::opt=([^:}]*):)?([^}]+?)(?::opt=([^:}]*):)?}")
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_PATH_SEPARATOR = re.compile(r"[\\/]")
+# A drive root reached after the start of the rendered body can only have come
+# from a token value, since the template's own root is split off as the anchor.
+_EMBEDDED_DRIVE_ROOT = re.compile(r"[\\/][A-Za-z]:[\\/]")
+
+
+def _path_components(path_text: str) -> list[str]:
+    """Split on either separator, dropping empties and no-op `.` segments."""
+    return [
+        component
+        for component in _PATH_SEPARATOR.split(path_text)
+        if component and component != "."
+    ]
+
+
+def _resolve_components(path_text: str) -> list[str] | None:
+    """Resolve `..` lexically, or return None if the path walks above its root.
+
+    Lexical rather than filesystem resolution: the destination belongs to
+    whatever host runs qBittorrent, so it cannot be stat'd from here.
+    """
+    resolved: list[str] = []
+    for component in _path_components(path_text):
+        if component != "..":
+            resolved.append(component)
+            continue
+        if not resolved:
+            return None
+        resolved.pop()
+    return resolved
+
+
+def _is_absolute(path_text: str) -> bool:
+    stripped = path_text.strip()
+    return bool(_WINDOWS_DRIVE_PATH.match(stripped)) or stripped.startswith(("\\", "/"))
+
+
+def _unsafe_save_path_error() -> TrackerClientError:
+    return TrackerClientError(
+        "The qBittorrent save location template resolved to a path outside the "
+        "configured save location. Online metadata for this title contains "
+        "path characters; use {title} in the template, which strips them, or "
+        "set the save location manually for this upload."
+    )
+
+
+def _ensure_safe_remote_titles(context: ProcessingContext) -> None:
+    """Reject remote title metadata that would restructure the save path.
+
+    `title` and `original_title` come straight off the TMDB API, and TMDB
+    entries are community editable, so they are untrusted input. They reach
+    the path through `{title_exact}`, `{title_clean}`, and `{original_title}`,
+    which -- unlike `{title}` -- are not run through `_TITLE_UNSAFE_CHARS`.
+
+    A separator on its own is left alone: `Face/Off` is a real title, and
+    nesting a directory deeper is still inside the configured root. Only `..`
+    segments and a title carrying its own drive/share root are refused, since
+    only those relocate the write outside that root. Values supplied by user
+    tokens are deliberately not checked -- those are local configuration, and
+    a user token holding a UNC root is a supported way to write the template.
+    """
+    media_search = context.media_search
+    if media_search is None:
+        return
+
+    for value in (media_search.title, media_search.original_title):
+        if not value:
+            continue
+        if _is_absolute(value) or _EMBEDDED_DRIVE_ROOT.search(value):
+            raise _unsafe_save_path_error()
+        if any(component == ".." for component in _path_components(value)):
+            raise _unsafe_save_path_error()
+
+
+def _ensure_within_save_root(full_output: str, template: str) -> None:
+    """Defence in depth: confirm the rendered path never climbs above its root.
+
+    `_ensure_safe_remote_titles` is the primary control. This catches any
+    other token that expands to a `..` segment, so the rendered destination
+    still has to start with the literal directory the template named.
+    """
+    resolved = _resolve_components(full_output)
+    root = _resolve_components(template.split("{", maxsplit=1)[0])
+    if resolved is None or root is None or resolved[: len(root)] != root:
+        raise _unsafe_save_path_error()
 
 
 def _is_windows_destination(path_text: str) -> bool:
@@ -161,6 +246,7 @@ def _render_save_path_template(
     # other, leaving colon replacement applied to an un-split (and thus
     # un-protected) drive/UNC root.
     template = template.strip()
+    _ensure_safe_remote_titles(context)
     release_info = build_series_release_info(context.media_input)
     user_tokens = {
         key: value
@@ -237,4 +323,6 @@ def _render_save_path_template(
             "Unknown or unsupported token(s) in qBittorrent save location "
             f"template: {', '.join(unresolved)}"
         )
+
+    _ensure_within_save_root(full_output, template)
     return full_output.strip()

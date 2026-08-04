@@ -423,3 +423,63 @@ def test_remote_qbittorrent_unc_warning_does_not_call_it_a_drive_path() -> None:
     assert warning is not None
     assert "drive path" not in warning
     assert "UNC" in warning
+
+
+@pytest.mark.parametrize(
+    ("template", "hostile_title"),
+    [
+        (r"D:\Media\{title_exact}", r"..\..\..\Windows\Temp\pwn"),
+        (r"D:\Media\{title_clean}", r"..\..\..\Windows\Temp\pwn"),
+        ("/mnt/media/{title_exact}", "../../../etc/cron.d/pwn"),
+        (r"\nas\movies\{title_exact}", r"..\..\..\Users\Public\Startup\pwn"),
+        ("{title_exact}", "../../../etc/cron.d/pwn"),
+    ],
+)
+def test_template_rejects_remote_title_that_escapes_the_save_root(
+    template: str,
+    hostile_title: str,
+) -> None:
+    """A TMDB-supplied title must not walk out of the configured save root.
+
+    `title` comes straight off the TMDB HTTP API and TMDB entries are
+    community editable, so a poisoned title is remote input. It reaches the
+    save path through the raw `{title_exact}`/`{title_clean}` tokens, which
+    -- unlike `{title}` -- do not pass through `_TITLE_UNSAFE_CHARS`.
+    """
+    context = _movie_context()
+    context.media_search.title = hostile_title
+
+    with pytest.raises(TrackerClientError, match="outside the configured"):
+        resolve_qbittorrent_save_path(
+            _config(QBittorrentSavePathMode.TEMPLATE, template),
+            context,
+        )
+
+
+def test_template_rejects_remote_title_that_injects_an_absolute_root() -> None:
+    """A title expanding to its own drive root must not redirect the path."""
+    context = _movie_context()
+    context.media_search.title = r"C:\Windows\Temp\pwn"
+
+    with pytest.raises(TrackerClientError, match="outside the configured"):
+        resolve_qbittorrent_save_path(
+            _config(
+                QBittorrentSavePathMode.TEMPLATE,
+                r"D:\Media\{title_exact}",
+                movie_colon_replace=ColonReplace.KEEP,
+            ),
+            context,
+        )
+
+
+def test_template_allows_a_separator_in_a_title_that_stays_under_the_root() -> None:
+    """`Face/Off` is a real title; nesting under the root is not an escape."""
+    context = _movie_context()
+    context.media_search.title = "Face/Off"
+
+    path = resolve_qbittorrent_save_path(
+        _config(QBittorrentSavePathMode.TEMPLATE, "/mnt/media/{title_exact}"),
+        context,
+    )
+
+    assert path == "/mnt/media/Face/Off"
