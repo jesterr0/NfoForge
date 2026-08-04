@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] - 2025-m?-d?
+## [1.0.0] - 2025-m?-d?
 
 ### Added
 
