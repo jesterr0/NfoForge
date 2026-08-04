@@ -245,6 +245,62 @@ def test_screenshot_worker_is_parented_to_the_page(
     assert page.queued_worker.parent() is page
 
 
+def test_regenerating_deletes_the_previous_screenshot_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Parenting the worker moved ownership to C++, so rebinding the Python
+    attribute no longer frees it. The re-sync loop can run many times, so a
+    worker left behind per run is unbounded growth.
+    """
+    page = _images_page(tmp_path, monkeypatch)
+    monkeypatch.setattr(QueuedWorker, "start", lambda self: None)
+    deleted: list[object] = []
+    original = QueuedWorker.deleteLater
+    monkeypatch.setattr(
+        QueuedWorker,
+        "deleteLater",
+        lambda self: (deleted.append(self), original(self))[1],
+    )
+
+    page._execute_image_generation()
+    first = page.queued_worker
+    page._execute_image_generation()
+
+    assert first is not None
+    assert first in deleted
+    assert page.queued_worker is not first
+
+
+def test_a_running_screenshot_worker_is_never_deleted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Deleting a running QThread aborts the process outright, so the
+    `isRunning()` early return is what makes the delete-on-rebind safe. This
+    locks the guard rather than the delete: without it the test above would
+    still pass while a live worker got deleted underneath a running thread.
+    """
+    page = _images_page(tmp_path, monkeypatch)
+    monkeypatch.setattr(QueuedWorker, "start", lambda self: None)
+
+    page._execute_image_generation()
+    first = page.queued_worker
+    assert first is not None
+
+    deleted: list[object] = []
+    original = QueuedWorker.deleteLater
+    monkeypatch.setattr(
+        QueuedWorker,
+        "deleteLater",
+        lambda self: (deleted.append(self), original(self))[1],
+    )
+    monkeypatch.setattr(QueuedWorker, "isRunning", lambda self: True)
+
+    page._execute_image_generation()
+
+    assert deleted == []
+    assert page.queued_worker is first
+
+
 def test_manual_crop_with_script_applies_values_without_prompting(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
