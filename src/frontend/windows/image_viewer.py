@@ -1,9 +1,8 @@
-from os import PathLike
 from pathlib import Path
 import re
 
 from PySide6.QtCore import QSize, Qt, Signal, Slot
-from PySide6.QtGui import QImage, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QImage, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -31,12 +30,12 @@ class ImageViewer(QWidget):
 
     def __init__(
         self,
-        image_base_dir: PathLike[str],
+        image_base_dir: Path,
         comparison_mode: ScreenShotMode,
         min_required_selected_screens: int = 0,
         max_required_selected_screens: int = 0,
-        parent=None,
-    ):
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("imageViewer")
         self.setWindowTitle("Image Viewer")
@@ -65,24 +64,25 @@ class ImageViewer(QWidget):
         self.ignore_requirements = False
 
         # image tab vars (these will be defined in _build_image_tab)
-        self.img_path_lbl: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.resolution_lbl: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.img_selection_lbl: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.selected_image_count: QLabel = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.selection_listbox: QListWidget = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.mini_preview_lbl: ImageLabel = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.seek_left_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.seek_right_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.de_select_images_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.select_images_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
-        self.confirm_selection_btn: QToolButton = None  # pyright: ignore [reportAttributeAccessIssue]
+        self.img_path_lbl: QLabel
+        self.resolution_lbl: QLabel
+        self.img_selection_lbl: QLabel
+        self.selected_image_count: QLabel
+        self.selection_listbox: QListWidget
+        self.mini_preview_lbl: ImageLabel
+        self.seek_left_btn: QToolButton
+        self.seek_right_btn: QToolButton
+        self.de_select_images_btn: QToolButton
+        self.select_images_btn: QToolButton
+        self.confirm_selection_btn: QToolButton
 
         # images vars
         self.image_path = None
         if self.comparison_images:
             self.image_path = self.comparison_images[self.current_selected_index]
         self.image_label = ImageLabel()
-        self.image_label.setImage(QImage(self.image_path))
+        if self.image_path:
+            self.image_label.setImage(QImage(self.image_path))
 
         self.tabbed_widget = QTabWidget()
         tab1 = self._build_image_tab()
@@ -106,7 +106,7 @@ class ImageViewer(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.tabbed_widget)
 
-    def _build_image_tab(self):
+    def _build_image_tab(self) -> QWidget:
         if not self.image_path:
             raise AttributeError("Cannot build image tab with invalid image_path")
         image_info_box = QGroupBox("Image Info")
@@ -234,25 +234,25 @@ class ImageViewer(QWidget):
 
         return main_widget
 
-    def show_image(self):
+    def show_image(self) -> None:
         self.image_path = self.comparison_images[self.current_selected_index]
         self.image_label.setImage(QImage(self.image_path))
 
     @Slot()
-    def _next_image(self):
+    def _next_image(self) -> None:
         if 0 <= self.current_selected_index < self.comparison_images_total - 1:
             self.current_selected_index += 1
             self.show_image()
             self._update_image_info_labels()
 
     @Slot()
-    def _previous_image(self):
+    def _previous_image(self) -> None:
         if 0 < self.current_selected_index < self.comparison_images_total:
             self.current_selected_index -= 1
             self.show_image()
             self._update_image_info_labels()
 
-    def _update_image_info_labels(self):
+    def _update_image_info_labels(self) -> None:
         if not self.image_path:
             raise AttributeError("Cannot build image tab with invalid image_path")
         self.img_path_lbl.setText(self.image_path.name)
@@ -260,13 +260,13 @@ class ImageViewer(QWidget):
             f"{self.current_selected_index + 1} of {self.comparison_images_total}"
         )
 
-    def _clear_image_info_labels(self):
+    def _clear_image_info_labels(self) -> None:
         self.img_path_lbl.clear()
         self.img_selection_lbl.clear()
         self.resolution_lbl.clear()
 
     @Slot()
-    def _select_image_pair(self):
+    def _select_image_pair(self) -> None:
         if self.comparison_images_total != 0:
             # ensure we're not still in the process of moving an image
             if self.moving_image_s:
@@ -318,7 +318,7 @@ class ImageViewer(QWidget):
         self.moving_image_s = False
 
     @Slot()
-    def _select_single_image(self):
+    def _select_single_image(self) -> None:
         if self.comparison_images_total != 0:
             # ensure we're not still in the process of moving an image
             if self.moving_image_s:
@@ -340,7 +340,7 @@ class ImageViewer(QWidget):
 
         self.moving_image_s = False
 
-    def _move_image_cleanup(self, selected_index_var: int):
+    def _move_image_cleanup(self, selected_index_var: int) -> None:
         # clear and update the listbox
         self.selection_listbox.clear()
         # TODO handle more extensions
@@ -386,7 +386,7 @@ class ImageViewer(QWidget):
         self._button_control()
 
     @Slot()
-    def hotkey_remove_single_image_from_listbox(self):
+    def hotkey_remove_single_image_from_listbox(self) -> None:
         """Selects last moved image to be removed from listbox"""
         # check if we're moving still moving an image currently
         if self.moving_image_s:
@@ -409,7 +409,7 @@ class ImageViewer(QWidget):
             self.moving_image_s = False
 
     @Slot()
-    def hotkey_remove_image_pair_from_listbox(self):
+    def hotkey_remove_image_pair_from_listbox(self) -> None:
         """Selects last moved image pair to be removed from listbox"""
         # check if we're moving still moving an image currently
         if self.moving_image_s:
@@ -450,7 +450,7 @@ class ImageViewer(QWidget):
             self.moving_image_s = False
 
     @Slot()
-    def _remove_image_pair(self):
+    def _remove_image_pair(self) -> None:
         """removes pair from listbox function"""
         if self.moving_image_s:
             return
@@ -485,7 +485,7 @@ class ImageViewer(QWidget):
         self.moving_image_s = False
 
     @Slot()
-    def _remove_single_image(self):
+    def _remove_single_image(self) -> None:
         """removes single image from listbox"""
         if self.moving_image_s:
             return
@@ -504,7 +504,7 @@ class ImageViewer(QWidget):
 
         self.moving_image_s = False
 
-    def _remove_image_cleanup(self):
+    def _remove_image_cleanup(self) -> None:
         # delete the list box and update it with what ever is left
         self.selection_listbox.clear()
         for img_file in sorted(Path(self.img_selected_dir).glob("*.png")):
@@ -543,7 +543,7 @@ class ImageViewer(QWidget):
 
         self._button_control()
 
-    def _button_control(self):
+    def _button_control(self) -> None:
         """
         Enables/disables buttons based on min/max required selected screens.
         Confirm is enabled only if min <= count <= max (if max is set).
@@ -573,24 +573,24 @@ class ImageViewer(QWidget):
             self.confirm_selection_btn.setStyleSheet("background-color: #32CD32;")
 
     @Slot()
-    def _update_preview_img(self):
+    def _update_preview_img(self) -> None:
         selected_item = self.selection_listbox.currentItem()
         img_path = Path(self.img_selected_dir) / selected_item.text()
         self.mini_preview_lbl.setImage(QImage(img_path))
 
-    def _build_sync_tab(self):
+    def _build_sync_tab(self) -> SideBySideImage:
         sync_tab_widget = SideBySideImage(self.img_sync_dir, self)
         return sync_tab_widget
 
     @Slot(int)
-    def accept_offset(self, offset: int):
+    def accept_offset(self, offset: int) -> None:
         """Accepts offset from sync tab widget"""
         self.re_sync_images.emit(offset)
         self.ignore_requirements = True
         self.close()
 
     @Slot()
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent) -> None:
         if self.ignore_requirements:
             event.accept()
         else:
@@ -612,7 +612,7 @@ class ImageViewer(QWidget):
             self.exit_viewer.emit([img for img in self.img_selected_dir.glob("*.png")])
             event.accept()
 
-    def setup_key_binds(self):
+    def setup_key_binds(self) -> None:
         next_image_hotkey = QShortcut(QKeySequence("Right"), self)
         next_image_hotkey.activated.connect(self._next_image)
 
@@ -636,7 +636,7 @@ class ImageViewer(QWidget):
             )
 
     @staticmethod
-    def _custom_numerical_sort(filename):
+    def _custom_numerical_sort(filename: str) -> int | str:
         """a helper to sort the images in the viewer properly when files are over 99 images"""
         match = re.search(r"(\d+)[ab]_", filename)
         if match:

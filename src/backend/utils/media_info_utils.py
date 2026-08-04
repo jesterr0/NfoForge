@@ -1,11 +1,22 @@
-import re
 from os import PathLike
-from typing import Optional
 from pathlib import Path
-from pymediainfo import MediaInfo
+import re
+
+from pymediainfo import MediaInfo, Track
 
 
-def calculate_avg_video_bit_rate(mi_object: Optional[MediaInfo]) -> Optional[int]:
+def calculate_avg_bitrate(mi_track: Track) -> int | None:
+    if mi_track.stream_size and mi_track.duration:
+        avg_bitrate = round(
+            (float(mi_track.stream_size) / 1000)
+            / ((float(mi_track.duration) / 60000) * 0.0075)
+            / 1000
+        )
+        return avg_bitrate
+    return None
+
+
+def calculate_avg_video_bit_rate(mi_object: MediaInfo | None) -> int | None:
     mi_bit_rate = None
     if mi_object:
         video_track = mi_object.video_tracks[0]
@@ -32,21 +43,32 @@ def calculate_avg_video_bit_rate(mi_object: Optional[MediaInfo]) -> Optional[int
 
 
 class MinimalMediaInfo:
-    def __init__(self, file_input: PathLike):
+    def __init__(self, file_input: PathLike[str]) -> None:
         self.file_input = Path(file_input)
 
     def get_full_mi_str(self, cleansed: bool = False) -> str:
         if cleansed:
             return self.cleanse_mi(
-                str(MediaInfo.parse(self.file_input, full=False, output=""))
+                str(
+                    MediaInfo.parse(
+                        self.file_input,
+                        full=False,
+                        output="",
+                        legacy_stream_display=True,
+                    )
+                )
             )
-        return str(MediaInfo.parse(self.file_input, full=False, output=""))
+        return str(
+            MediaInfo.parse(
+                self.file_input, full=False, output="", legacy_stream_display=True
+            )
+        )
 
     def get_minimal_mi_str(self) -> str:
         """Mocks MediaInfo's normal output with stripped down information"""
         LENGTH = 41
         mi_str = ""
-        media_info_obj = MediaInfo.parse(self.file_input)
+        media_info_obj = MediaInfo.parse(self.file_input, legacy_stream_display=True)
 
         if not isinstance(media_info_obj, MediaInfo):
             raise TypeError("Should be of type 'MediaInfo'")

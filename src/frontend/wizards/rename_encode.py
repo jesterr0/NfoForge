@@ -1,10 +1,9 @@
 from collections.abc import Sequence
 from functools import partial
-from pathlib import Path
 import re
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -28,21 +27,26 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.rename_encode import RenameEncodeBackEnd
-from src.backend.tokens import FileToken, Tokens
-from src.backend.tokens import TokenSelection, TokenType
+from src.backend.rename_files import RenamePlan, RenameResult
+from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
     FRAME_SIZE_INFO,
     LOCALIZATION_INFO,
     RE_RELEASE_INFO,
+    is_imax,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.config.config import Config
+from src.config.config import ConfigManager
+from src.context.processing_context import ProcessingContext
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from src.frontend.custom_widgets.token_table import TokenTable
-from src.frontend.utils import block_all_signals, build_h_line
+from src.frontend.global_signals import GSigs
+from src.frontend.utils import build_h_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from src.frontend.utils.rename_operation import RenameOperationController
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.packages.custom_types import RenameNormalization
 
@@ -69,17 +73,24 @@ class RenameEncode(BaseWizardPage):
 
     REASON_STR = "Select or enter reason"
 
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
+    def __init__(
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
         self.setTitle("Rename")
         self.setObjectName("renameEncode")
         self.setCommitPage(True)
 
         self.config = config
-        self.backend = RenameEncodeBackEnd()
+        self.context = context
+        self.backend = RenameEncodeBackEnd(context.flat_filters)
         self._input_ext: str | None = None
         self._token_window: QWidget | None = None
-        self._overridden_tokens = set()
+        self._overridden_tokens: set[str] = set()
+
+        self._rename_operation = RenameOperationController(self)
+        self._rename_operation.completed.connect(self._on_rename_completed)
+        self._advance_after_rename = False
 
         self.media_label = QLabel()
         self.media_label.setSizePolicy(
@@ -166,7 +177,7 @@ class RenameEncode(BaseWizardPage):
             CustomComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self.proper_reason_combo.addItems(self.PROPER_REASONS)
-        proper_reason_combo_line_edit = self.repack_reason_combo.lineEdit()
+        proper_reason_combo_line_edit = self.proper_reason_combo.lineEdit()
         if not proper_reason_combo_line_edit:
             raise AttributeError(
                 "Could not detect proper_reason_combo_line_edit.lineEdit()"
@@ -183,7 +194,7 @@ class RenameEncode(BaseWizardPage):
             parent=self,
         )
         self.quality_combo.addItem("")
-        self.quality_combo.addItems(QualitySelection)
+        self.quality_combo.addItems([str(q) for q in QualitySelection])
         self.quality_combo.currentIndexChanged.connect(self._update_quality_combo)
 
         self.remux_checkbox = QCheckBox("REMUX", self)
@@ -283,14 +294,9 @@ class RenameEncode(BaseWizardPage):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def initializePage(self) -> None:
-        data = self.config.media_input_payload
-        media_file = data.encode_file
-        release_group_name = self.config.cfg_payload.mvr_release_group
-
-        if not media_file:
-            raise FileNotFoundError("Failed to load 'media_file' data")
-        else:
-            media_file = Path(media_file)
+        # this is a movie so there's only ever 1 to rename, grab it with index 0
+        media_file = self.context.media_input.file_list[0]
+        release_group_name = self.config.settings.movie.release_group
 
         self.media_label.setText(media_file.stem)
         self.media_label.setToolTip(media_file.stem)
@@ -298,16 +304,19 @@ class RenameEncode(BaseWizardPage):
         self._pre_load_attribute_combos(media_file.stem)
 
         # apply localization override from plugin if present # TODO: handle all potential overrides later
-        localization_override = self.config.shared_data.dynamic_data.get("localization_override")
+        localization_override = self.context.shared_data.dynamic_data.get(
+            "localization_override"
+        )
         if localization_override:
             localization_idx = self.localization_combo.findText(localization_override)
             if localization_idx > -1:
                 self.localization_combo.setCurrentIndex(localization_idx)
 
-        self.token_override.setText(self.config.cfg_payload.mvr_token)
+        self.token_override.setText(self.config.settings.movie.filename_token)
 
+        comp_pair = self.context.media_input.comparison_pair
         get_quality = self.backend.get_quality(
-            media_input=media_file, source_input=data.source_file
+            media_input=media_file, source_input=comp_pair.source if comp_pair else None
         )
         if get_quality:
             quality_idx = self.quality_combo.findText(get_quality)
@@ -321,45 +330,135 @@ class RenameEncode(BaseWizardPage):
         self.update_generated_name()
 
     def validatePage(self) -> bool:
-        file_input = self.config.media_input_payload.encode_file
+        if self._advance_after_rename:
+            self._advance_after_rename = False
+            return self._complete_validation()
+        if self._rename_operation.is_running:
+            return False
+
+        file_input = self.context.media_input.file_list[0]
         if file_input:
             if not self._name_validations() or not self._quality_validations():
                 return False
-            self.config.media_input_payload.renamed_file = Path(
-                file_input
-            ).parent / Path(f"{self.output_entry.text().strip()}{self._input_ext}")
+            output_name = self.output_entry.text().strip()
+            renamed_output = file_input.parent / f"{output_name}{file_input.suffix}"
+            rename_map = {file_input: renamed_output}
 
-            # update config shared data with detected edition
-            edition_combo_text = self.edition_combo.currentText()
-            if edition_combo_text:
-                self.config.shared_data.dynamic_data["edition_override"] = (
-                    edition_combo_text
+            # if user opened a folder (not a single file), rename the folder to match the movie
+            if (
+                self.context.media_input.input_path
+                and self.context.media_input.input_path.is_dir()
+                and file_input.parent == self.context.media_input.input_path
+            ):
+                # rename folder to match the renamed file's stem
+                old_folder = file_input.parent
+                new_folder = old_folder.parent / self.output_entry.text().strip()
+
+                # update the renamed_output to be in the new folder
+                renamed_output = new_folder / f"{output_name}{file_input.suffix}"
+                rename_map[file_input] = renamed_output
+
+            # determine if there are any effective renames (source != target).
+            effective_renames = {
+                src: trg
+                for src, trg in rename_map.items()
+                if str(src.absolute()) != str(trg.absolute())
+            }
+
+            # If there are no actual renames, skip the preview and worker.
+            if not effective_renames:
+                return self._complete_validation()
+
+            try:
+                plan = RenamePlan.build(
+                    effective_renames,
+                    self.context.media_input.input_path,
                 )
+            except ValueError as error:
+                QMessageBox.warning(self, "Invalid Rename", str(error))
+                return False
 
-            # update config shared data with frame size
-            frame_size_text = self.frame_size_combo.currentText()
-            if frame_size_text:
-                self.config.shared_data.dynamic_data["frame_size_override"] = (
-                    frame_size_text
-                )
+            preview_dialog = RenamePreviewDialog(self)
+            preview_dialog.set_renames(plan.file_targets)
+            if preview_dialog.exec() != QDialog.DialogCode.Accepted:
+                return False
 
-            # update config shared data with over ride tokens
-            self.config.shared_data.dynamic_data["override_tokens"] = (
-                self.backend.override_tokens
-            )
-
-            # update re release tokens
-            self._re_release_reason_tokens_update()
-
-            # close token window
-            self._close_token_window()
-
-            super().validatePage()
-            return True
+            self._rename_operation.start(plan, "Renaming media...")
+            return False
         return False
 
+    @Slot(object)
+    def _on_rename_completed(self, result: object) -> None:
+        if not isinstance(result, RenameResult):
+            QMessageBox.critical(
+                self, "Rename Failed", "The rename operation returned invalid data."
+            )
+            return
+
+        current_input = self.context.media_input.input_path
+        if result.path_mapping or result.updated_input_path != current_input:
+            self.context.media_input.apply_rename_mapping(
+                result.path_mapping,
+                result.updated_input_path,
+            )
+
+        if not result.success:
+            message = result.message or "The rename operation failed."
+            if result.rollback_complete:
+                QMessageBox.warning(self, "Rename Failed", message)
+            else:
+                QMessageBox.critical(self, "Rename Requires Attention", message)
+            return
+
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=True
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Rename Verification Failed",
+                f"The files were renamed, but the updated media paths could not "
+                f"be verified:\n\n{error}",
+            )
+            return
+
+        self._advance_after_rename = True
+        GSigs().wizard_next.emit()
+
+    def _complete_validation(self) -> bool:
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=True
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.warning(self, "Media Files Unavailable", str(error))
+            return False
+
+        edition_combo_text = self.edition_combo.currentText()
+        if edition_combo_text:
+            self.context.shared_data.dynamic_data["edition_override"] = (
+                edition_combo_text
+            )
+
+        frame_size_text = self.frame_size_combo.currentText()
+        if frame_size_text:
+            self.context.shared_data.dynamic_data["frame_size_override"] = (
+                frame_size_text
+            )
+
+        self.context.shared_data.dynamic_data["override_tokens"] = (
+            self.backend.override_tokens
+        )
+        self._re_release_reason_tokens_update()
+        self._close_token_window()
+        super().validatePage()
+        return True
+
     def _pre_load_attribute_combos(self, filename: str) -> None:
-        def select_combo_by_regex(norm_list, combo):
+        def select_combo_by_regex(
+            norm_list: Sequence[RenameNormalization], combo: CustomComboBox
+        ) -> None:
             for item in norm_list:
                 for pat in item.re_gex:
                     if re.search(pat, filename, flags=re.I):
@@ -374,8 +473,8 @@ class RenameEncode(BaseWizardPage):
         select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
 
     def _auto_check_remux_checkbox(self) -> None:
-        fp = self.config.media_input_payload.encode_file
-        if fp and "remux" in fp.stem.lower():
+        media_file = self.context.media_input.file_list[0]
+        if media_file and "remux" in media_file.stem.lower():
             self.remux_checkbox.setChecked(True)
 
     @Slot(bool)
@@ -384,7 +483,7 @@ class RenameEncode(BaseWizardPage):
             # remove only the overridden tokens
             for k in self._overridden_tokens:
                 self.backend.override_tokens.pop(k, None)
-                self.config.shared_data.dynamic_data.get("override_tokens", {}).pop(
+                self.context.shared_data.dynamic_data.get("override_tokens", {}).pop(
                     k, None
                 )
             self._overridden_tokens.clear()
@@ -413,7 +512,7 @@ class RenameEncode(BaseWizardPage):
 
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
-            for k, (_, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (_, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         ]
 
@@ -435,13 +534,37 @@ class RenameEncode(BaseWizardPage):
         self._token_window = None
 
     def _name_validations(self) -> bool:
-        renamed_output_lowered = self.output_entry.text().lower()
+        output_name = self.output_entry.text().strip()
+        if not output_name:
+            QMessageBox.warning(
+                self,
+                "Invalid Rename",
+                "The generated filename is empty. Choose a token template that "
+                "produces a filename before continuing.",
+            )
+            return False
+        if self._input_ext is None:
+            QMessageBox.warning(
+                self,
+                "Invalid Rename",
+                "A valid filename could not be generated from the selected media.",
+            )
+            return False
+        if not self.context.media_input.file_list[0].suffix:
+            QMessageBox.warning(
+                self,
+                "Invalid Rename",
+                "The input media has no file extension to preserve.",
+            )
+            return False
+
+        renamed_output_lowered = output_name.lower()
         if "subbed" in renamed_output_lowered and "dubbed" in renamed_output_lowered:
             QMessageBox.warning(
                 self, "Error", "Both 'Subbed' and 'Dubbed' should not be used together."
             )
             return False
-        if "imax" in renamed_output_lowered and re.search(
+        if is_imax(renamed_output_lowered) and re.search(
             r"open[\s|\.]*matte", renamed_output_lowered, flags=re.I
         ):
             QMessageBox.warning(
@@ -461,7 +584,12 @@ class RenameEncode(BaseWizardPage):
         if not cur_quality:
             return True
         elif cur_quality in {QualitySelection.DVD, QualitySelection.SDTV}:
-            mi_obj = self.config.media_input_payload.encode_file_mi_obj
+            first_file = self.context.media_input.require_first_file()
+            mi_obj = (
+                self.context.media_input.file_list_mediainfo.get(first_file)
+                if self.context.media_input.file_list_mediainfo
+                else None
+            )
             if not mi_obj:
                 raise FileNotFoundError("Failed to parse MediaInfo")
             detect_resolution = VideoResolutionAnalyzer(mi_obj).get_resolution(
@@ -491,10 +619,10 @@ class RenameEncode(BaseWizardPage):
 
         for global_name, (combo_text, pattern) in combo_to_global_map.items():
             if combo_text:
-                self.config.jinja_engine.add_global(global_name, combo_text, True)
+                self.context.jinja_engine.add_global(global_name, combo_text, True)
                 match = re.search(pattern, final_output_text, flags=re.I)
                 if match:
-                    self.config.jinja_engine.add_global(
+                    self.context.jinja_engine.add_global(
                         global_name.replace("_reason", "_n"), match.group(1), True
                     )
                 # ensure only one combo box is processed
@@ -560,16 +688,11 @@ class RenameEncode(BaseWizardPage):
     def update_generated_name(self, _: int | None = None) -> None:
         """Update the generated name based on current selections."""
 
-        token = self.config.cfg_payload.mvr_token
+        token = self.config.settings.movie.filename_token
         if self.override_group.isChecked():
             token = self.token_override.text()
         else:
             self.token_override.setText(token)
-
-        data = self.config.media_input_payload
-        media_file = data.encode_file
-        source_file = data.source_file
-        media_info_obj = data.encode_file_mi_obj
 
         # treat release group as a pure override token
         release_group = self.release_group_entry.text().strip()
@@ -578,27 +701,19 @@ class RenameEncode(BaseWizardPage):
         else:
             self.backend.override_tokens.pop("release_group", None)
 
-        if not media_file:
-            raise FileNotFoundError("Failed to read media_file")
-        if not media_info_obj:
-            raise AttributeError("Failed to parse MediaInfo")
-
         user_tokens = {
             k: v
-            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
 
         get_file_name = self.backend.media_renamer(
-            media_file=media_file,
-            source_file=source_file,
+            media_input_obj=self.context.media_input,
             mvr_token=token,
-            mvr_colon_replacement=self.config.cfg_payload.mvr_colon_replace_filename,
-            media_search_payload=self.config.media_search_payload,
-            media_info_obj=media_info_obj,
-            source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
-            movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+            mvr_colon_replacement=self.config.settings.movie.filename_colon_replace,
+            media_search_payload=self.context.media_search,
+            title_clean_rules=self.config.settings.global_management.title_clean_rules,
+            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
             user_tokens=user_tokens,
         )
 
@@ -618,6 +733,9 @@ class RenameEncode(BaseWizardPage):
             # update entries
             self._input_ext = get_file_name.suffix
             self.output_entry.setText(str(get_file_name.with_suffix("")))
+        else:
+            self._input_ext = None
+            self.output_entry.clear()
 
     def _reset_re_release_reason_widgets(self) -> None:
         """Hide and reset both repack and proper reason widgets."""
@@ -645,29 +763,6 @@ class RenameEncode(BaseWizardPage):
                 self.proper_reason_lbl.show()
                 self.proper_reason_combo.show()
 
-    def reset_page(self) -> None:
-        block_all_signals(self, True)
-        self.media_label.clear()
-        for combo_box in (
-            self.edition_combo,
-            self.frame_size_combo,
-            self.localization_combo,
-            self.re_release_combo,
-        ):
-            combo_box.setCurrentIndex(0)
-        self._reset_re_release_reason_widgets()
-        self.release_group_entry.clear()
-        self.options_scroll_area.verticalScrollBar().setValue(0)
-        self.override_group.setChecked(False)
-        self.output_entry.clear()
-
-        self._input_ext = None
-        self._close_token_window()
-        self._overridden_tokens.clear()
-
-        self.backend.reset()
-        block_all_signals(self, False)
-
     @staticmethod
     def _update_combo_box(
         combobox: CustomComboBox,
@@ -681,7 +776,7 @@ class RenameEncode(BaseWizardPage):
 class RenameTokenControl(QWidget):
     row_modified = Signal(tuple)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         desc = QLabel(
@@ -762,9 +857,9 @@ class RenameTokenControl(QWidget):
                 ),
             )
 
-    def get_token_values(self) -> dict:
+    def get_token_values(self) -> dict[str, str]:
         """Return a dict of token: value"""
-        values = {}
+        values: dict[str, str] = {}
         for row in range(self.table.rowCount()):
             token = self.table.item(row, 0)
             value = self.table.item(row, 1)
@@ -782,9 +877,3 @@ class RenameTokenControl(QWidget):
                     match = True
                     break
             self.table.setRowHidden(row, not match)
-
-    def reset(self) -> None:
-        self.table.blockSignals(True)
-        self.table.setRowCount(0)
-        self.table.clearContents()
-        self.table.setAutoScroll(False)

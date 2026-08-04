@@ -114,7 +114,7 @@ class CommercialResolutionInfer:
             obs_ar = w / h
 
             # tolerance helpers
-            def tol(b):
+            def tol(b: int) -> float:
                 return max(cls.ABS_TOL, cls.REL_TOL * b)
 
             # measure relative differences
@@ -262,20 +262,20 @@ class VideoResolutionAnalyzer:
         if not track.width or track.width == 0:
             LOG.warning(LOG.LOG_SOURCE.BE, "Failed to determine video width")
             return 0
-        return track.width
+        return int(track.width)
 
     @staticmethod
     def _get_height(track: Track) -> int:
         if not track.height or track.height == 0:
             LOG.warning(LOG.LOG_SOURCE.BE, "Failed to determine video height")
             return 0
-        return track.height
+        return int(track.height)
 
     @staticmethod
     def _get_fps(track: Track) -> str | None:
         if not track.frame_rate:
             LOG.warning(LOG.LOG_SOURCE.BE, "Failed to determine video frame rate")
-        return track.frame_rate
+        return str(track.frame_rate) if track.frame_rate else None
 
     @staticmethod
     def _get_scan(track: Track) -> str | None:
@@ -284,7 +284,7 @@ class VideoResolutionAnalyzer:
                 LOG.LOG_SOURCE.BE,
                 "Video file contains no scan type, assuming Progressive",
             )
-        return track.scan_type
+        return str(track.scan_type) if track.scan_type else None
 
     def _get_video_track(self) -> Track:
         """

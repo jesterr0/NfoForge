@@ -1,15 +1,26 @@
-import sys
-import logging
-import json
-import shortuuid
 from datetime import datetime
+import json
+import logging
+from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
+import os
 from pathlib import Path
+import re
+import sys
+from typing import Any, TextIO
 
-from src.enums.logging_settings import LogLevel, LogSource, DebugDataType
-from src.exceptions import DebugDumpError
+import shortuuid
+
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.version import program_name, __version__
+from src.enums.logging_settings import DebugDataType, LogLevel, LogSource
+from src.exceptions import DebugDumpError
+from src.utils.secret_redaction import scrub_secrets
+from src.version import __version__, program_name
+
+_LOG_FILENAME_PATTERN = re.compile(
+    r"^nfoforge_(?P<timestamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})_[^.]+\.log$"
+)
+_LOG_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 
 
 class Logger:
@@ -27,8 +38,8 @@ class Logger:
         self.logger.setLevel(log_level.value)
         self.log_file = log_file
         self.log_level = log_level
-        self.file_handler = None
-        self.console_handler = None
+        self.file_handler: RotatingFileHandler | None = None
+        self.console_handler: StreamHandler[TextIO] | None = None
         self.to_console = to_console
         self.dumps = log_file.parent / "dumps"
 
@@ -54,7 +65,7 @@ class Logger:
 
         # console handler (print to console)
         if self.console_handler is None and self.to_console:
-            self.console_handler = logging.StreamHandler()
+            self.console_handler = logging.StreamHandler(sys.stdout)
             self.console_handler.setFormatter(
                 logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             )
@@ -64,53 +75,77 @@ class Logger:
         if log_program_info:
             self.info(self.LOG_SOURCE.FE, f"{program_name} v{__version__}")
 
-    def debug(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.DEBUG:
+    def _log(self, level: int, source: LogSource, message: object) -> None:
+        if self.logger.level <= level:
             self._initialize_file_handler()
-            self.logger.debug(f"{source.value}: {str(message).strip()}")
+            safe_message = scrub_secrets(str(message).strip())
+            self.logger.log(level, f"{source.value}: {safe_message}")
 
-    def info(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.INFO:
-            self._initialize_file_handler()
-            self.logger.info(f"{source.value}: {str(message).strip()}")
+    def debug(self, source: LogSource, message: object) -> None:
+        self._log(logging.DEBUG, source, message)
 
-    def warning(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.WARNING:
-            self._initialize_file_handler()
-            self.logger.warning(f"{source.value}: {str(message).strip()}")
+    def info(self, source: LogSource, message: object) -> None:
+        self._log(logging.INFO, source, message)
 
-    def error(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.ERROR:
-            self._initialize_file_handler()
-            self.logger.error(f"{source.value}: {str(message).strip()}")
+    def warning(self, source: LogSource, message: object) -> None:
+        self._log(logging.WARNING, source, message)
 
-    def critical(self, source: LogSource, message: str) -> None:
-        if self.logger.level <= logging.CRITICAL:
-            self._initialize_file_handler()
-            self.logger.critical(f"{source.value}: {str(message).strip()}")
+    def error(self, source: LogSource, message: object) -> None:
+        self._log(logging.ERROR, source, message)
+
+    def critical(self, source: LogSource, message: object) -> None:
+        self._log(logging.CRITICAL, source, message)
 
     def set_log_level(self, log_level: LogLevel) -> None:
         self.logger.setLevel(log_level.value)
 
     def clean_up_logs(self, max_logs: int) -> None:
-        log_files = list(self.log_file.parent.glob("*.log"))
-        total_files = len(log_files)
+        """Remove old per-run logs without touching diagnostic log files.
 
-        # sort log files by extracting the timestamp part of the filename
-        log_files.sort(
-            key=lambda f: datetime.strptime(
-                f.name.split("_")[1] + "_" + f.name.split("_")[2], "%Y-%m-%d_%H-%M-%S"
-            )
-        )
+        Session logs are named ``nfoforge_<timestamp>_<id>.log``.  The crash
+        dump is intentionally stored beside them as ``crash.log`` and must not
+        be included in this retention count.  Invalid or incomplete filenames
+        are ignored rather than preventing startup from completing.
+        """
+        if max_logs < 1:
+            # Keep the active log alive even if an old/hand-edited config has a
+            # zero retention value. The settings UI already requires at least
+            # ten files, but this also protects legacy configurations.
+            return
 
-        if total_files > max_logs:
-            files_to_delete = log_files[: total_files - max_logs]
+        log_files: list[tuple[datetime, Path]] = []
+        for candidate in self.log_file.parent.glob("nfoforge_*.log"):
+            timestamp = self._parse_log_timestamp(candidate)
+            if timestamp is not None:
+                log_files.append((timestamp, candidate))
 
-            for del_file in files_to_delete:
-                del_file.unlink()
+        log_files.sort(key=lambda item: (item[0], item[1].name))
+        files_to_delete = log_files[:-max_logs]
+
+        for _, log_file in files_to_delete:
+            try:
+                log_file.unlink()
+            except OSError as error:
+                # Cleanup is best-effort: another NfoForge instance or an
+                # antivirus scanner may briefly hold a file open on Windows.
+                self.warning(
+                    self.LOG_SOURCE.FE,
+                    f"Could not remove old log file {log_file}: {error}",
+                )
+
+    @staticmethod
+    def _parse_log_timestamp(log_file: Path) -> datetime | None:
+        match = _LOG_FILENAME_PATTERN.fullmatch(log_file.name)
+        if match is None:
+            return None
+
+        try:
+            return datetime.strptime(match.group("timestamp"), _LOG_TIMESTAMP_FORMAT)
+        except ValueError:
+            return None
 
     def dump_debug_data(
-        self, file_output: Path, debug_type: DebugDataType, data: str | dict
+        self, file_output: Path, debug_type: DebugDataType, data: str | dict[str, Any]
     ) -> None:
         self._check_dump_type(debug_type, data)
         file_output = self._generate_dump_file_path(Path(file_output), debug_type)
@@ -120,7 +155,7 @@ class Logger:
             if debug_type == self.DUMP_TYPE.TEXT and isinstance(data, str):
                 self._dump_debug_data_str(file_output, data)
         except Exception as e:
-            raise DebugDumpError(f"Error dumping debug data: {str(e)}")
+            raise DebugDumpError(f"Error dumping debug data: {str(e)}") from e
 
     def _generate_dump_file_path(
         self, file_output: Path, debug_type: DebugDataType
@@ -131,7 +166,9 @@ class Logger:
         )
         return self.dumps / file_name
 
-    def _check_dump_type(self, debug_type: DebugDataType, data: str | dict) -> None:
+    def _check_dump_type(
+        self, debug_type: DebugDataType, data: str | dict[str, Any]
+    ) -> None:
         if debug_type == self.DUMP_TYPE.JSON and not isinstance(data, dict):
             raise DebugDumpError(
                 "Invalid data type for JSON debug dump: expected 'dict'"
@@ -142,7 +179,9 @@ class Logger:
                 "Invalid data type for text debug dump: expected 'str'"
             )
 
-    def _dump_debug_data_json(self, file_output: Path, data: dict | None) -> None:
+    def _dump_debug_data_json(
+        self, file_output: Path, data: dict[str, Any] | None
+    ) -> None:
         if data:
             with open(file_output, "w") as json_file:
                 self.debug(
@@ -164,4 +203,8 @@ class Logger:
 _date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _short_uuid = shortuuid.uuid()[:7]
 _log_path = RUNTIME_DIR / "logs" / f"nfoforge_{_date_time_str}_{_short_uuid}.log"
-LOG = Logger(_log_path, to_console=True if "debug" in sys.executable.lower() else False)
+debug_env = str(os.environ.get("LOG_LEVEL", "")).lower()
+LOG = Logger(
+    _log_path,
+    to_console="debug" in sys.executable.lower() or debug_env == "debug",
+)

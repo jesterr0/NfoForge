@@ -1,4 +1,5 @@
 from enum import Enum
+
 from typing_extensions import override
 
 
@@ -93,7 +94,7 @@ class BHDEdition(Enum):
         Returns:
             BHDEdition enum member if mapping exists, None otherwise
         """
-        # Mapping from NfoForge edition names to BHD editions
+        # mapping from NfoForge edition names to BHD editions
         mapping = {
             "Collectors Edition": cls.COLLECTOR,
             "Directors Cut": cls.DIRECTOR,

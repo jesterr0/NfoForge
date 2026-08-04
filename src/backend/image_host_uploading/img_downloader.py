@@ -1,9 +1,10 @@
 import asyncio
-import aiohttp
-import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Sequence
+import shutil
+
+import aiohttp
+
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
 

@@ -1,9 +1,10 @@
 from collections import Counter
 from os import PathLike
 from pathlib import Path
-import platform
 import re
 import subprocess
+
+from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
 
 
 class CropDetect:
@@ -24,13 +25,13 @@ class CropDetect:
         crop = self._convert_raw_to_crop_params(largest_common_crop)
         return crop
 
-    def _detect_crop_in_segments(self) -> list:
+    def _detect_crop_in_segments(self) -> list[str]:
         crop_params_list = self._run_crop_detect(
             self.file_input, self.segments * self.frames
         )
         return crop_params_list
 
-    def _run_crop_detect(self, input_video, num_frames) -> list[str]:
+    def _run_crop_detect(self, input_video: Path, num_frames: int) -> list[str]:
         command = (
             str(self.ffmpeg),
             "-i",
@@ -45,13 +46,11 @@ class CropDetect:
             "-hide_banner",
         )
 
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 - list argv, no shell; ffmpeg path is the configured binary
             command,
             stderr=subprocess.PIPE,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
-            if platform.system() == "Windows"
-            else 0,
+            creationflags=get_subprocess_creation_flags(),
         )
         output = result.stderr
 
@@ -62,7 +61,7 @@ class CropDetect:
 
     def _convert_raw_to_crop_params(self, raw_crop: str | None) -> str | None:
         if not raw_crop:
-            return
+            return None
         width, height, x, y = map(int, raw_crop)
         # ensure even values for video encoding compatibility
         width = self._round_up_to_even(width)
@@ -72,7 +71,9 @@ class CropDetect:
         return f"crop={width}:{height}:{x}:{y}"
 
     @staticmethod
-    def _get_largest_common_crop_params(crop_params_list: list) -> str | None:
+    def _get_largest_common_crop_params(
+        crop_params_list: list[str],
+    ) -> str | None:
         # count the occurrences of each crop parameter set
         counter = Counter(crop_params_list)
 
@@ -82,7 +83,7 @@ class CropDetect:
         # track the largest common crop
         largest_common_crop = None
 
-        for crop, freq in most_common_crops:
+        for crop, _freq in most_common_crops:
             # if no largest crop has been selected yet or if the current crop is larger
             if largest_common_crop is None:
                 largest_common_crop = crop

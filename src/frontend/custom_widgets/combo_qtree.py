@@ -1,19 +1,35 @@
 from collections.abc import Sequence
 from typing import Any
-from typing_extensions import override
-from PySide6.QtCore import Signal
+
+from PySide6.QtCore import QPoint, Signal
+from PySide6.QtGui import QAction, Qt
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
+    QFrame,
     QHBoxLayout,
+    QHeaderView,
+    QMenu,
     QTreeWidget,
     QTreeWidgetItem,
-    QHeaderView,
-    QFrame,
-    QComboBox,
     QWidget,
-    QMenu,
 )
-from PySide6.QtGui import QAction, Qt
+from typing_extensions import override
+
+
+class _UserData:
+    """Holds combo box item data so Qt hands back the object that was stored.
+
+    PySide6 converts a sequence passed as ``userData`` into a plain list on the
+    way back out, so a NamedTuple such as ``ImageUploadFromTo`` returns as a
+    list and fails every ``isinstance`` check downstream. Qt passes an ordinary
+    Python object through untouched, so wrapping keeps the payload intact.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: Any) -> None:
+        self.value = value
 
 
 class ComboBoxTreeWidget(QTreeWidget):
@@ -24,11 +40,11 @@ class ComboBoxTreeWidget(QTreeWidget):
         headers: Sequence[str],
         rows: Sequence[tuple[Sequence[str], list[tuple[int, list[tuple[str, Any]]]]]]
         | None = None,
-        parent=None,
-    ):
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.combo_box_map: dict[tuple[QTreeWidgetItem, int], QComboBox] = {}
-        self.combo_options: list[set] = []
+        self.combo_options: list[set[str]] = []
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
         self.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
@@ -59,6 +75,8 @@ class ComboBoxTreeWidget(QTreeWidget):
         key_exists = None
         for idx in range(self.topLevelItemCount()):
             sub_item = self.topLevelItem(idx)
+            if sub_item is None:
+                continue
             if sub_item.text(0) == key:
                 sub_item.setText(col, new_value)
                 return key
@@ -107,6 +125,7 @@ class ComboBoxTreeWidget(QTreeWidget):
         if combo_data:
             for col_index, combo_items in combo_data:
                 return self.add_combobox_to_row(item, col_index, combo_items)
+        return None
 
     def add_combobox_to_row(
         self, item: QTreeWidgetItem, col_index: int, combo_items: list[tuple[str, Any]]
@@ -121,9 +140,9 @@ class ComboBoxTreeWidget(QTreeWidget):
         layout.addWidget(combo_box, stretch=3)
         layout.addStretch(2)
 
-        option_set = set()
+        option_set: set[str] = set()
         for txt, data in combo_items:
-            combo_box.addItem(txt, data)
+            combo_box.addItem(txt, _UserData(data))
             option_set.add(txt)
 
         self.combo_options.append(option_set)
@@ -143,24 +162,32 @@ class ComboBoxTreeWidget(QTreeWidget):
             if index != -1:
                 combo_box.setCurrentIndex(index)
 
-    def get_item_values(self) -> list[tuple[str, str, tuple[str, Any]]]:
-        values = []
+    @staticmethod
+    def _item_data(combo_box: QComboBox) -> Any:
+        """Unwrap the payload stored for the current item."""
+        data = combo_box.currentData()
+        return data.value if isinstance(data, _UserData) else data
+
+    def get_item_values(self) -> list[tuple[str | tuple[str, Any], ...]]:
+        values: list[tuple[str | tuple[str, Any], ...]] = []
         for idx in range(self.topLevelItemCount()):
             item = self.topLevelItem(idx)
+            if item is None:
+                continue
             row_values: list[Any] = []
             for col_index in range(self.header_len):
                 # check if a combo box exists in this column
                 if (item, col_index) in self.combo_box_map:
                     combo_box = self.combo_box_map[(item, col_index)]
                     row_values.append(
-                        (combo_box.currentText(), combo_box.currentData())
+                        (combo_box.currentText(), self._item_data(combo_box))
                     )
                 else:
                     row_values.append(item.text(col_index))
             values.append(tuple(row_values))
         return values
 
-    def _open_context_menu(self, position) -> None:
+    def _open_context_menu(self, position: QPoint) -> None:
         """Opens the right-click context menu for setting all combo boxes in a column"""
         common_options = self.get_common_options()
         if common_options:

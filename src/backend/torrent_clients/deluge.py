@@ -1,16 +1,22 @@
-from deluge_web_client.client import DelugeWebClient
 from pathlib import Path
 
+from deluge_web_client import DelugeWebClient, TorrentOptions
+
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import DelugeConfig
 
 
 class DelugeClient:
     """Deluge Web Client"""
 
-    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
+    def __init__(self, config: DelugeConfig, timeout: int = 10) -> None:
         self.deluge_config = config
         self.timeout = timeout
+
+        if not self.deluge_config.host or not self.deluge_config.password:
+            raise TrackerClientError(
+                "Host and password must be defined when initializing DelugeClient"
+            )
 
         self.client = DelugeWebClient(
             url=self.deluge_config.host, password=self.deluge_config.password
@@ -18,49 +24,53 @@ class DelugeClient:
 
     def login(self) -> tuple[bool, str]:
         try:
-            login = self.client.login(self.timeout)
+            login = self.client.login(timeout=self.timeout)
             if not login.result or login.error:
-                raise TrackerClientError("Failed to login")
+                reason = login.error or login.message or "Unknown login failure"
+                raise TrackerClientError(f"Failed to login: {reason}")
             return True, "Login successful"
-        except Exception as e:
-            raise TrackerClientError(f"Failed to login: {e}")
+        except TrackerClientError:
+            raise
+        except Exception as error:
+            raise TrackerClientError(f"Failed to login: {error}") from error
 
     def logout(self) -> None:
         try:
             self.client.close_session()
-        except Exception as e:
-            raise TrackerClientError(f"Failed to logout: {e}")
+        except Exception as error:
+            raise TrackerClientError(f"Failed to logout: {error}") from error
 
     def test(self) -> tuple[bool, str]:
         try:
             self.login()
             return (
-                False,
-                "Login success, everything should work well if your category/path is correctly configured.",
+                True,
+                "Login successful! If your label/path is configured correctly, injection should work.",
             )
-        except TrackerClientError:
-            return False, "Failed"
+        except TrackerClientError as error:
+            return False, str(error)
 
     def inject_torrent(self, torrent_path: Path) -> tuple[bool, str]:
         try:
             inject = self.client.upload_torrent(
                 torrent_path=torrent_path,
-                seed_mode=True,
-                auto_managed=True,
-                save_directory=self._get_save_directory(),
-                label=self._get_label(),
+                torrent_options=TorrentOptions(
+                    seed_mode=True,
+                    auto_managed=True,
+                    download_location=self._get_save_directory(),
+                    label=self._get_label(),
+                ),
                 timeout=self.timeout,
             )
             if not inject.error and inject.result:
-                return True, "Deluge injection successful"
-            return False, "Deluge injection failed"
-        except Exception as e:
-            raise TrackerClientError(f"Failed to inject torrent: {e}")
+                return True, inject.message or "Deluge injection successful"
+            reason = inject.error or inject.message or "Unknown upload failure"
+            return False, f"Deluge injection failed: {reason}"
+        except Exception as error:
+            raise TrackerClientError(f"Failed to inject torrent: {error}") from error
 
     def _get_label(self) -> str | None:
-        label = self.deluge_config.specific_params.get("label", "").strip()
-        return label if label else None
+        return self.deluge_config.label.strip() or None
 
     def _get_save_directory(self) -> str | None:
-        path = self.deluge_config.specific_params.get("path", "").strip()
-        return path if path else None
+        return self.deluge_config.path.strip() or None

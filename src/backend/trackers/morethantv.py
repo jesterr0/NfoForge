@@ -1,24 +1,27 @@
-import pickle
-import re
 from collections.abc import Sequence
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
+import re
 from typing import Any
 from xml.etree import ElementTree as ET
 
+from bs4 import BeautifulSoup, Tag as bs4Tag
+import guessit
 import niquests
-import pyotp
-from bs4 import BeautifulSoup
-from bs4 import Tag as bs4Tag
+from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
+import pyotp
 from unidecode import unidecode
 
+from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.audio_formats import AudioFormats
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.morethantv import (
     MTVAudioTags,
     MTVCategories,
@@ -30,6 +33,7 @@ from src.exceptions import TrackerError
 from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
+from src.utils.secret_redaction import scrub_secrets
 
 
 def mtv_uploader(
@@ -39,18 +43,18 @@ def mtv_uploader(
     nfo: str,
     group_desc: str | None,
     torrent_file: Path | PathLike[str],
-    file_input: Path | str,
+    input_path: Path,
     tracker_title: str | None,
     mediainfo_obj: MediaInfo,
     genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-    media_mode: MediaMode,
+    media_type: MediaType,
+    is_pack: bool,
     anonymous: bool,
     source_origin: MTVSourceOrigin,
     cookie_dir: Path,
     timeout: int,
-):
+) -> Path:
     torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = MTVUploader(
         torrent_input=torrent_file,
         mediainfo_obj=mediainfo_obj,
@@ -64,12 +68,13 @@ def mtv_uploader(
     upload = uploader.upload(
         auth_token=auth_token,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         tracker_title=tracker_title,
         nfo=nfo,
         group_desc=group_desc,
         genre_ids=genre_ids,
-        media_mode=media_mode,
+        media_type=media_type,
+        is_pack=is_pack,
         anonymous=anonymous,
         source_origin=source_origin,
     )
@@ -77,10 +82,10 @@ def mtv_uploader(
 
 
 class MTVUploader:
-    LOGIN_URL = "https://www.morethantv.me/login"
-    LOGIN_URL_2FA = "https://www.morethantv.me/twofactor/login"
-    UPLOAD_URL = "https://www.morethantv.me/upload.php"
-    SEARCH_URL = "https://www.morethantv.me/api/torznab"
+    LOGIN_URL = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}login"
+    LOGIN_URL_2FA = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}twofactor/login"
+    UPLOAD_URL = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}upload.php"
+    SEARCH_URL = f"{TrackerSelection.MORE_THAN_TV.get_root_url()}api/torznab"
 
     def __init__(
         self,
@@ -91,7 +96,7 @@ class MTVUploader:
     ) -> None:
         self.torrent_input = torrent_input
         self.mediainfo_obj = mediainfo_obj
-        self.cookie_path = cookie_dir / "mtv_cookie.pkl"
+        self.cookie_path = cookie_dir / "mtv_cookie.json"
         self.timeout = timeout
 
         self._session = niquests.Session()
@@ -151,7 +156,7 @@ class MTVUploader:
         # Extract the token from the login page
         token = self.get_token(login_page.text)
         if not token:
-            token_code_error_msg = "Failed to retrieve login token"
+            token_code_error_msg = "Failed to retrieve login token"  # noqa: S105 - log message text, not a credential
             LOG.error(
                 LOG.LOG_SOURCE.BE,
                 token_code_error_msg,
@@ -242,21 +247,17 @@ class MTVUploader:
     def _validate_session(self) -> str | None:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
-            with self._session.get(self.UPLOAD_URL) as response:
+            with self._session.get(self.UPLOAD_URL, timeout=self.timeout) as response:
                 return self.get_auth_key(response.text)
         except niquests.RequestException:
             return None
 
     def _save_cookies(self) -> None:
-        with open(self.cookie_path, "wb") as file:
-            pickle.dump(self._session.cookies, file)
+        save_cookies(self._session.cookies, self.cookie_path)
         LOG.debug(LOG.LOG_SOURCE.BE, f"MoreThanTV cookies saved: {self.cookie_path}")
 
     def _load_cookies(self) -> bool:
-        if self.cookie_path.exists():
-            with open(self.cookie_path, "rb") as file:
-                cookies = pickle.load(file)
-                self._session.cookies = cookies
+        if load_cookies(self._session.cookies, self.cookie_path):
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"MoreThanTV cookies loaded from {self.cookie_path}",
@@ -269,22 +270,24 @@ class MTVUploader:
         self,
         auth_token: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         tracker_title: str | None,
         nfo: str,
         group_desc: str | None,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-        media_mode: MediaMode,
+        media_type: MediaType,
+        is_pack: bool,
         anonymous: bool,
         source_origin: MTVSourceOrigin,
     ) -> Path:
+        release_title = self.generate_release_title(
+            tracker_title if tracker_title else input_path.stem
+        )
         data = {
             # "image": "",
-            "title": self.generate_release_title(tracker_title)
-            if tracker_title
-            else self.generate_release_title(file_input.stem),
-            "category": self._get_cat_id(torrent_file.name),
-            "source": self._get_source_id(file_input),
+            "title": release_title,
+            "category": self._get_cat_id(release_title, media_type, is_pack),
+            "source": self._get_source_id(input_path),
             "desc": nfo,
             "groupDesc": group_desc,
             "ignoredupes": "1",
@@ -308,9 +311,10 @@ class MTVUploader:
         # update all tags
         tags = self.collect_tags(
             resolution=get_resolution,
-            file_input=file_input,
+            input_path=input_path,
             genre_ids=genre_ids,
-            media_mode=media_mode,
+            media_type=media_type,
+            is_pack=is_pack,
         )
         if tags:
             data["taglist"] = " ".join(tags)
@@ -322,29 +326,42 @@ class MTVUploader:
             data["taglist"] = f"{data['taglist']} {get_source_origin[1]}"
 
         # open file in binary
-        files = {}
+        files: MultiPartFilesAltType = {}
         with open(torrent_file, "rb") as f:
             files["file_input"] = (torrent_file.name, f.read())
 
         # auto_fill = self._auto_fill(auth_token)
-        # TODO: do some checks to see if things was auto filled correctly?
+        # Auto-fill is not currently performed: the call above is disabled,
+        # and this class (and its base) defines no `_auto_fill` method for it
+        # to invoke. Every field in `data` above is set explicitly from
+        # arguments and analyzer output, so there is no auto-filled value
+        # here that needs verifying.
 
+        try:
+            upload_page = self._session.post(
+                self.UPLOAD_URL,
+                data=data,
+                files=files,
+                headers=TRACKER_HEADERS,
+                timeout=self.timeout,
+            )
+        except niquests.exceptions.RequestException as error:
+            upload_error_msg = f"There was an error uploading to MoreThanTV: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                upload_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
+
+        failure_str = self._extract_upload_error(upload_page.text)
         LOG.debug(
             LOG.LOG_SOURCE.BE,
-            f"\n#### UPLOAD PAYLOAD ####\n{data}\n#### UPLOAD PAYLOAD ####\n",
-        )
-
-        upload_page = self._session.post(
-            self.UPLOAD_URL,
-            data=data,
-            files=files,
-            headers=TRACKER_HEADERS,
-            timeout=self.timeout,
-        )
-
-        LOG.debug(
-            LOG.LOG_SOURCE.BE,
-            f"\n#### DEBUG HTML OUTPUT ####\n{upload_page.text}\n#### DEBUG HTML OUTPUT ####\n",
+            "MoreThanTV upload response: "
+            f"status={upload_page.status_code}, "
+            f"url={scrub_secrets(str(upload_page.url))}, "
+            f"error={failure_str or 'none'}",
         )
 
         # dupe detected
@@ -370,24 +387,28 @@ class MTVUploader:
         # error :(
         else:
             # try to get error
-            failure_str = None
-            get_failure = (
-                re.search(
-                    r'(?s)<div id="messagebar.*?".+?<pre>(.+?)</pre>|<div id="messagebar.*?>.(.+?)</div>',
-                    upload_page.text,
-                    flags=re.MULTILINE,
-                )
-                if upload_page.text
-                else None
-            )
-            if get_failure:
-                failure_str = next(
-                    (group for group in get_failure.groups() if group is not None), None
-                )
-
             failed_error_msg = f"Failed to upload torrent: {failure_str if failure_str else upload_page.reason} ({upload_page.status_code})"
             LOG.error(LOG.LOG_SOURCE.BE, failed_error_msg)
             raise TrackerError(failed_error_msg)
+
+    @staticmethod
+    def _extract_upload_error(body: str | None) -> str | None:
+        if not body:
+            return None
+        get_failure = re.search(
+            r'(?s)<div id="messagebar.*?".+?<pre>(.+?)</pre>|<div id="messagebar.*?>.(.+?)</div>',
+            body,
+            flags=re.MULTILINE,
+        )
+        if not get_failure:
+            return None
+        failure = next(
+            (group for group in get_failure.groups() if group is not None), None
+        )
+        if not failure:
+            return None
+        failure_text = BeautifulSoup(failure, features="lxml").get_text(" ", strip=True)
+        return scrub_secrets(failure_text)[:500] or None
 
     @staticmethod
     def generate_release_title(release_title: str) -> str:
@@ -406,8 +427,30 @@ class MTVUploader:
             )
         return release_title
 
+    # MTV has only two categories, HD and SD, for both movies and TV. Any
+    # resolution of 720 lines or more (interlaced or progressive) is HD;
+    # anything below 720 -- or no resolution at all -- is SD. This threshold
+    # is used at every site that decides HD vs SD: category selection
+    # (_get_cat_id, for both the movie and series branches) and tagging
+    # (find_series_tags, find_movies_tags). Keep these in sync: a release
+    # must never be placed in an HD category while being tagged SD, or vice
+    # versa.
+    _RESOLUTION_TOKEN = re.compile(r"\b(\d{3,4})[ip]\b")
+
     @staticmethod
-    def _get_cat_id(release_title: str) -> str:
+    def _is_hd(text: str) -> bool:
+        """MoreThanTV has only HD and SD categories (movies and TV). Any
+        resolution >= 720 lines (interlaced or progressive) is HD; below 720
+        is SD. Works on a full release title or a bare resolution string."""
+        match = MTVUploader._RESOLUTION_TOKEN.search(text.lower())
+        return match is not None and int(match.group(1)) >= 720
+
+    @staticmethod
+    def _get_cat_id(
+        release_title: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+    ) -> str:
         """
         default: 0,
         HD Episode: 3,
@@ -418,13 +461,18 @@ class MTVUploader:
         SD Season: 6,
         """
         category = MTVCategories.DEFAULT.value
+        if media_type is MediaType.SERIES and is_pack:
+            if MTVUploader._is_hd(release_title):
+                return str(MTVCategories.HD_SEASON.value)
+            return str(MTVCategories.SD_SEASON.value)
+
         # normal
         if re.search(
             r"( |\.)(S[0-9]+)?E[0-9]+(-?E[0-9]+){0,2}?( |\.)",
             release_title,
             re.IGNORECASE,
         ):
-            if re.search("7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_EPISODE.value
             else:
                 category = MTVCategories.SD_EPISODE.value
@@ -434,27 +482,27 @@ class MTVUploader:
             release_title,
             re.IGNORECASE,
         ):
-            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_EPISODE.value
             else:
                 category = MTVCategories.SD_EPISODE.value
         # season
         elif re.search(r"( |\.)S[0-9]+( |\.)", release_title, re.IGNORECASE):
-            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_SEASON.value
             else:
                 category = MTVCategories.SD_SEASON.value
         # movies
         else:
-            if re.search(r"7[0-9]{2}p|[1-2][0-9]{3}[pi]", release_title):
+            if MTVUploader._is_hd(release_title):
                 category = MTVCategories.HD_MOVIES.value
             else:
                 category = MTVCategories.SD_MOVIES.value
         return str(category)
 
     @staticmethod
-    def _get_source_id(file_input: Path) -> str:
-        file_input_lowered = re.sub(r"\W", "", file_input.stem).lower()
+    def _get_source_id(input_path: Path) -> str:
+        file_input_lowered = re.sub(r"\W", "", input_path.stem).lower()
 
         source_mapping = {
             "hdtv": MTVSourceIDs.HDTV,
@@ -492,23 +540,24 @@ class MTVUploader:
     def collect_tags(
         self,
         resolution: str,
-        file_input: Path,
+        input_path: Path,
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-        media_mode: MediaMode,
-    ) -> set:
+        media_type: MediaType,
+        is_pack: bool,
+    ) -> set[str]:
         tags = self.find_audio_tags(self.mediainfo_obj)
         tags.update(self.find_genre_tags(genre_ids))
         tags.update(self.find_resolution_tags(resolution))
-        tags.update(self.find_type_source_tags(file_input))
-        tags.update(self.find_type_tags(media_mode, resolution))
+        tags.update(self.find_type_source_tags(input_path))
+        tags.update(self.find_type_tags(media_type, resolution, is_pack))
         tags.update(self.find_video_codec_tags(self.mediainfo_obj))
-        # tags.update(self.find_release_group_tags(file_input))
+        tags.update(self.find_release_group_tags(input_path))
         tags.update(self.has_subtitles_tags(self.mediainfo_obj))
 
         return tags
 
     @staticmethod
-    def find_audio_tags(mediainfo_obj: MediaInfo) -> set:
+    def find_audio_tags(mediainfo_obj: MediaInfo) -> set[str]:
         format_to_tag = {
             AudioFormats.AAC.value: MTVAudioTags.AAC.value,
             AudioFormats.AC3.value: MTVAudioTags.DD.value,
@@ -522,7 +571,7 @@ class MTVUploader:
             AudioFormats.TRUEHD.value: MTVAudioTags.TRUEHD.value,
         }
 
-        audio_tags = set()
+        audio_tags: set[str] = set()
 
         for track in mediainfo_obj.audio_tracks:
             audio_format = track.format or ""
@@ -548,8 +597,8 @@ class MTVUploader:
     @staticmethod
     def find_genre_tags(
         genre_ids: Sequence[TMDBGenreIDsMovies | TMDBGenreIDsSeries],
-    ) -> set:
-        genres = set()
+    ) -> set[str]:
+        genres: set[str] = set()
         for item in genre_ids:
             if item not in (TMDBGenreIDsMovies.UNDEFINED, TMDBGenreIDsSeries.UNDEFINED):
                 name = str(item.name).replace("_", ".").lower()
@@ -557,8 +606,8 @@ class MTVUploader:
         return genres
 
     @staticmethod
-    def find_resolution_tags(resolution: str) -> set:
-        res_set = set()
+    def find_resolution_tags(resolution: str) -> set[str]:
+        res_set: set[str] = set()
         res_set.add(resolution)
         if resolution in ("2160p", "4320p"):
             res_set.add("uhd")
@@ -567,52 +616,44 @@ class MTVUploader:
         return res_set
 
     @staticmethod
-    def find_type_source_tags(file_input: Path) -> set:
-        type_source = set()
-        stem_lowered = file_input.stem.lower()
+    def find_type_source_tags(input_path: Path) -> set[str]:
+        type_source: set[str] = set()
+        stem_lowered = input_path.stem.lower()
         for item in ("remux", "webdl", "webrip", "hdtv", "bluray", "dvd", "hddvd"):
             if item in stem_lowered:
                 type_source.add(item)
         return type_source
 
     @staticmethod
-    def find_type_tags(media_mode: MediaMode, resolution: str) -> set:
-        if media_mode == MediaMode.MOVIES:
+    def find_type_tags(
+        media_type: MediaType, resolution: str, is_pack: bool = False
+    ) -> set[str]:
+        if media_type is MediaType.MOVIE:
             return MTVUploader.find_movies_tags(resolution)
-        elif media_mode == MediaMode.SERIES:
-            return MTVUploader.find_movies_tags(resolution)
+        # there is only movie/series so this can only be series
+        return MTVUploader.find_series_tags(resolution, is_pack)
 
     @staticmethod
-    def find_movies_tags(resolution: str) -> set:
-        movies = set()
-        if resolution in ("720p", "1080p", "2160p", "4320p"):
+    def find_movies_tags(resolution: str) -> set[str]:
+        movies: set[str] = set()
+        if MTVUploader._is_hd(resolution):
             movies.add("hd.movie")
         return movies
 
     @staticmethod
-    def find_series_tags(resolution: str) -> set:
-        # TODO: add a check for episodes vs seasons
-        # # Episodes
-        # if meta['sd'] == 1:
-        #     tags.extend(['episode.release', 'sd.episode'])
-        # else:
-        #     tags.extend(['episode.release', 'hd.episode'])
-
-        # # Seasons
-        # if meta['sd'] == 1:
-        #     tags.append('sd.season')
-        # else:
-        #     tags.append('hd.season')
-        series = set()
-        # if resolution in ("2160p", "4320p"):
-        #     series.add("uhd.movie")
-        # elif resolution in ("720p", "1080p"):
-        #     series.add("hd.movie")
+    def find_series_tags(resolution: str, is_pack: bool = False) -> set[str]:
+        series: set[str] = set()
+        hd = MTVUploader._is_hd(resolution)
+        if is_pack:
+            series.add("hd.season" if hd else "sd.season")
+        else:
+            series.add("episode.release")
+            series.add("hd.episode" if hd else "sd.episode")
         return series
 
     @staticmethod
-    def find_video_codec_tags(mediainfo_obj: MediaInfo) -> set:
-        v_codecs = set()
+    def find_video_codec_tags(mediainfo_obj: MediaInfo) -> set[str]:
+        v_codecs: set[str] = set()
         for track in mediainfo_obj.video_tracks:
             codec = track.format
             if codec:
@@ -623,20 +664,18 @@ class MTVUploader:
                 v_codecs.add(str(codec).lower())
         return v_codecs
 
-    # @staticmethod
-    # def find_release_group_tags(file_input: Path) -> set:
-    #     # TODO: add different logic for movies vs series
-    #     # NOTE: this can break, so for now we'll just let MTV detect this ->
-    #     # if guessit parses something like -ReleaseGroup_temp it'll return 'releasegroup.temp'
-    #     release_group_set = set()
-    #     release_group = guessit.guessit(file_input).get("release_group", "")
-    #     if release_group:
-    #         release_group_set.add(f"{release_group.lower()}.release")
-    #     return release_group_set
+    @staticmethod
+    def find_release_group_tags(input_path: Path) -> set[str]:
+        """Return the release-group tag shared by movie and series uploads."""
+        release_group_set: set[str] = set()
+        release_group = guessit.guessit(input_path).get("release_group", "")
+        if release_group:
+            release_group_set.add(f"{release_group.lower()}.release")
+        return release_group_set
 
     @staticmethod
-    def has_subtitles_tags(mediainfo_obj: MediaInfo) -> set:
-        has_subtitles = set()
+    def has_subtitles_tags(mediainfo_obj: MediaInfo) -> set[str]:
+        has_subtitles: set[str] = set()
         try:
             gen_track = mediainfo_obj.general_tracks[0].count_of_text_streams
             if gen_track and int(gen_track) > 0:
@@ -714,15 +753,23 @@ class MTVSearch:
                     f"Failed to reach server ({response.reason} - {response.status_code})"
                 )
         except niquests.RequestException as e:
-            raise TrackerError(f"Failed to reach server: {e}")
+            raise TrackerError(f"Failed to reach server: {e}") from e
         except Exception as unhandled_error:
-            raise TrackerError(f"Failed to parse XML: {unhandled_error}")
+            raise TrackerError(
+                f"Failed to parse XML: {unhandled_error}"
+            ) from unhandled_error
 
     def handle_xml(self, xml_str: str | None) -> list[TrackerSearchResult]:
-        results = []
+        results: list[TrackerSearchResult] = []
         if not xml_str:
             return results
-        tree = ET.ElementTree(ET.fromstring(xml_str))
+        # lint reason: torznab XML fetched over HTTPS from the user's own
+        # configured tracker with their API key; stdlib ElementTree already
+        # blocks external entity resolution (patched since Python 3.7.1), so
+        # the residual risk is an entity-expansion memory bomb from a
+        # compromised tracker response — accepted rather than adding a new
+        # XML dependency for this one call site
+        tree = ET.ElementTree(ET.fromstring(xml_str))  # noqa: S314
         root = tree.getroot()
 
         nso_namespaces = {"ns0": "http://torznab.com/schemas/2015/feed"}
@@ -766,6 +813,7 @@ class MTVSearch:
         check = item.find(value)
         if check is not None:
             return check.text
+        return None
 
     @staticmethod
     def int_cast_fb(i: Any) -> int | Any:
@@ -781,3 +829,4 @@ class MTVSearch:
         check = item.find(value)
         if check is not None and check.text:
             return datetime.strptime(check.text, "%a, %d %b %Y %H:%M:%S %z")
+        return None

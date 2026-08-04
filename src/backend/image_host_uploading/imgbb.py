@@ -3,10 +3,14 @@ import base64
 from collections.abc import Awaitable, Callable, Sequence
 from os import PathLike
 from pathlib import Path
+from typing import Any, cast
 
 import aiohttp
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.exceptions import ImageUploadError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
@@ -14,7 +18,7 @@ from src.packages.custom_types import ImageUploadData
 
 async def upload_image(
     url: str, api_key: str, image_data: str, retries: int = 3
-) -> dict:
+) -> dict[str, Any]:
     """Uploads an image using aiohttp with retries and proper error handling."""
 
     async with aiohttp.ClientSession() as session:
@@ -24,7 +28,7 @@ async def upload_image(
                     url, data={"key": api_key, "image": image_data}
                 ) as response:
                     if response.status == 200:
-                        return await response.json()
+                        return cast(dict[str, Any], await response.json())
 
                     if response.status in {429, 500, 502, 503, 504}:
                         await asyncio.sleep(2**attempt)
@@ -48,22 +52,24 @@ async def _imgbb_upload_batch(
     api_key: str,
     filepaths: Sequence[Path],
     start_index: int,
-    cb: Callable[[int], Awaitable] | None = None,
+    cb: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData]:
     async def upload_single_image(
-        url: str, filepath: PathLike, index: int
+        url: str, filepath: PathLike[str], index: int
     ) -> tuple[int, ImageUploadData]:
         with open(filepath, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
             response = await upload_image(url, api_key, image_data)
             data = response.get("data", {})
-            image_data = ImageUploadData(
-                data.get("image", {}).get("url", ""),
-                data.get("medium", {}).get("url", ""),
+            image_urls = data.get("image", {}) if isinstance(data, dict) else {}
+            medium_urls = data.get("medium", {}) if isinstance(data, dict) else {}
+            upload_data = ImageUploadData(
+                image_urls.get("url", "") if isinstance(image_urls, dict) else "",
+                medium_urls.get("url", "") if isinstance(medium_urls, dict) else "",
             )
             if cb:
                 await cb(index + 1)
-            return index, image_data
+            return index, upload_data
 
     URL = "https://api.imgbb.com/1/upload"
     tasks = []
@@ -79,7 +85,7 @@ async def imgbb_upload(
     api_key: str,
     filepaths: Sequence[Path],
     batch_size: int = 4,
-    progress_callback: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     if not api_key:
         raise ImageUploadError("You are required to have an API key")
@@ -88,8 +94,8 @@ async def imgbb_upload(
         return {}
     filepaths = sorted(filepaths)
 
-    results = {}
-    tasks = []
+    results: dict[int, ImageUploadData] = {}
+    tasks: list[asyncio.Task[dict[int, ImageUploadData]]] = []
     for i in range(0, len(filepaths), batch_size):
         batch = filepaths[i : i + batch_size]
         task = asyncio.create_task(
@@ -112,16 +118,14 @@ class ImageBBUploader(BaseImageHostUploader):
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
 
-    async def upload(
-        self,
-        filepaths: Sequence[Path],
-        batch_size: int = 4,
-        progress_callback: Callable[[int], Awaitable] | None = None,
-    ) -> dict[int, ImageUploadData] | None:
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
         """Upload images to ImageBB."""
-        return await imgbb_upload(
-            api_key=self.api_key,
-            filepaths=filepaths,
-            batch_size=4,
-            progress_callback=progress_callback,
+        return (
+            await imgbb_upload(
+                api_key=self.api_key,
+                filepaths=request.filepaths,
+                batch_size=request.batch_size,
+                progress_callback=request.progress_callback,
+            )
+            or {}
         )

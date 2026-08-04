@@ -8,54 +8,97 @@ requires-python = ">=3.10,<3.14"
 dependencies = [
     "flatbencode",
     "pymediainfo>=7.0.1",
-    "tomlkit>=0.13.2",
-    "guessit>=3.8.0",
+    "tomlkit>=0.13.3",
+    "guessit>=4.2.1",
     "autoqpf>=0.2.4",
-    "lxml>=5.3.1",
+    "lxml>=5.3.2",
     "iso639-lang>=2.6.3",
     "unidecode>=1.4.0",
     "shortuuid>=1.0.13",
-    "cinemagoer>=2023.5.1",
     "torf>=4.3.0",
-    "pillow>=11.3.0",
-    "platformdirs>=4.3.8",
-    "pyside6==6.8.3",
-    "psutil>=7.0.0",
+    "pillow>=12.3.0",
+    "platformdirs>=4.11.0",
+    "pyside6-essentials==6.11.1",
+    "psutil>=7.2.0",
     "pyimgbox>=1.0.7",
-    "aiohttp>=3.12.15",
+    "aiohttp>=3.13.3",
     "semver>=3.0.4",
     "pyotp>=2.9.0",
-    "qbittorrent-api>=2025.7.0",
+    "qbittorrent-api>=2025.11.1",
     "bencode-py>=4.0.0",
     "transmission-rpc>=7.0.11",
-    "deluge-web-client>=1.0.7",
-    "niquests>=3.15.1",
-    "regex>=2025.7.34",
-    "stdlib-list>=0.11.1",
+    "deluge-web-client>=2.0.3",
+    "niquests[speedups]>=3.20.1",
+    "regex>=2025.11.3",
+    "stdlib-list>=0.12.0",
     "jinja2>=3.1.6",
     "beautifulsoup4>=4.13.4",
-    "tvdb-v4-official>=1.1.0",
-    "rapidfuzz>=3.13.0",
-    "oslex2>=0.1.5",
+    "rapidfuzz>=3.14.3",
     "qtawesome>=1.4.0",
+    "urllib3>=2.7.0",
+    "tenacity>=9.1.4",
+    "python-dotenv>=1.2.2",
+    "typing-extensions>=4.12.2",
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.9.6", "cython>=3.0.12", "pytest", "pytest-cov"]
+dev = [
+    "basedpyright",
+    "ruff>=0.9.6",
+    "cython>=3.0.12",
+    "pytest",
+    "pytest-cov",
+    "setuptools>=78.1.1",
+    "debugpy",
+    "types-psutil",
+    "poethepoet>=0.48.0",
+]
 build = ["pyinstaller-hooks-contrib>=2025.1", "pyinstaller>=6.9.0"]
 docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [tool.ruff]
 line-length = 88
 
+[tool.uv]
+constraint-dependencies = ["requests>=2.32.4"]
+
+[tool.ruff.lint]
+# `select` replaces ruff's defaults rather than extending them, so "F"
+# (pyflakes) has to be listed explicitly or unused imports, redefinitions,
+# undefined names, and unused locals go un-linted.
+select = ["F", "I", "UP", "B", "S", "RUF100"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.per-file-ignores]
+# pytest is built on `assert`; S101 in tests is not a finding.
+"tests/**" = ["S101"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = ["-v", "--tb=short"]
 
 [tool.basedpyright]
-include = ["src", "plugins"]
-# ignore = [""]
-typeCheckingMode = "standard" # "off", "basic", "standard", "strict", "recommended" or "all"
+include = [
+    "src",
+    "start_ui.py",
+    "build.py",
+    "plugins/jinja2_plugin_example",
+    "plugins/metadata_plugin_example",
+]
+typeCheckingMode = "standard"
+
+[tool.poe.tasks]
+typecheck = "basedpyright"
+lint = "ruff check ."
+lint-fix = "ruff check . --fix"
+format-check = "ruff format . --check"
+format-code = "ruff format ."
+format.sequence = ["lint-fix", "format-code"]
+format-docs = "npm run format:md"

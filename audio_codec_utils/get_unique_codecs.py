@@ -1,6 +1,6 @@
-import os
-import csv
 from collections import OrderedDict
+import csv
+import os
 
 
 def remove_duplicates(input_files, output_file):
@@ -10,7 +10,7 @@ def remove_duplicates(input_files, output_file):
 
     # Iterate over each input CSV file
     for input_file in input_files:
-        with open(input_file, "r", newline="", encoding="utf-8") as csvfile:
+        with open(input_file, newline="", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             # Read the title row
             title_row = next(reader)

@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.enums.settings_window import SettingsTabs
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.about import AboutTab
@@ -21,9 +21,17 @@ from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.stacked_windows.settings.clients import ClientsSettings
 from src.frontend.stacked_windows.settings.dependencies import DependencySettings
 from src.frontend.stacked_windows.settings.general import GeneralSettings
-from src.frontend.stacked_windows.settings.movies import MoviesSettings
+from src.frontend.stacked_windows.settings.global_management import (
+    GlobalManagementSettings,
+)
+from src.frontend.stacked_windows.settings.movies_management import (
+    MoviesManagementSettings,
+)
+from src.frontend.stacked_windows.settings.plugins import PluginsSettings
 from src.frontend.stacked_windows.settings.screenshots import ScreenShotSettings
-from src.frontend.stacked_windows.settings.security import SecuritySettings
+from src.frontend.stacked_windows.settings.series_management import (
+    SeriesManagementSettings,
+)
 from src.frontend.stacked_windows.settings.templates import TemplatesSettings
 from src.frontend.stacked_windows.settings.trackers import TrackersSettings
 from src.frontend.stacked_windows.settings.user_tokens import UserTokenSettings
@@ -35,7 +43,7 @@ if TYPE_CHECKING:
 class Settings(QWidget):
     re_load_settings = Signal()
 
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
+    def __init__(self, config: ConfigManager, parent: "MainWindow") -> None:
         super().__init__(parent)
         self.setObjectName("settingsWindow")
 
@@ -50,17 +58,22 @@ class Settings(QWidget):
         self.general_settings_content = GeneralSettings(
             self.config, self.main_window, self
         )
-        self.movies_settings_content = MoviesSettings(
+        self.plugins_settings_content = PluginsSettings(
             self.config, self.main_window, self
         )
-        # self.series_settings_content = SeriesSettings()
+        self.movies_settings_content = MoviesManagementSettings(
+            self.config, self.main_window, self
+        )
+        self.series_settings_content = SeriesManagementSettings(
+            self.config, self.main_window, self
+        )
+        self.global_settings_content = GlobalManagementSettings(
+            self.config, self.main_window, self
+        )
         self.template_settings_content = TemplatesSettings(
             self.config, self.main_window, self
         )
         self.user_token_settings_content = UserTokenSettings(
-            self.config, self.main_window, self
-        )
-        self.security_settings_content = SecuritySettings(
             self.config, self.main_window, self
         )
         self.clients_settings_content = ClientsSettings(
@@ -79,11 +92,12 @@ class Settings(QWidget):
 
         self.settings_map: dict[SettingsTabs, BaseSettings] = {
             SettingsTabs.GENERAL_SETTINGS: self.general_settings_content,
+            SettingsTabs.PLUGINS_SETTINGS: self.plugins_settings_content,
             SettingsTabs.MOVIES_SETTINGS: self.movies_settings_content,
-            # SettingsTabs.SERIES_SETTINGS: self.series_settings_content,
+            SettingsTabs.SERIES_SETTINGS: self.series_settings_content,
+            SettingsTabs.GLOBAL_SETTINGS: self.global_settings_content,
             SettingsTabs.TEMPLATES_SETTINGS: self.template_settings_content,
-            SettingsTabs.TEMPLATES_SETTINGS: self.user_token_settings_content,
-            SettingsTabs.SECURITY_SETTINGS: self.security_settings_content,
+            SettingsTabs.USER_TOKENS_SETTINGS: self.user_token_settings_content,
             SettingsTabs.CLIENTS_SETTINGS: self.clients_settings_content,
             SettingsTabs.TRACKERS_SETTINGS: self.trackers_settings_content,
             SettingsTabs.SCREENSHOTS_SETTINGS: self.screenshots_settings_content,
@@ -99,11 +113,12 @@ class Settings(QWidget):
         self.tab_widget = QTabWidget()
         self.tab_widget.currentChanged.connect(GSigs().settings_tab_changed.emit)
         self.tab_widget.addTab(self.general_settings_content, "General")
-        self.tab_widget.addTab(self.movies_settings_content, "Movies")
-        # self.tab_widget.addTab(self.series_settings_content, "Series")
+        self.tab_widget.addTab(self.plugins_settings_content, "Plugins")
+        self.tab_widget.addTab(self.movies_settings_content, "Movies Management")
+        self.tab_widget.addTab(self.series_settings_content, "Series Management")
+        self.tab_widget.addTab(self.global_settings_content, "Global Management")
         self.tab_widget.addTab(self.template_settings_content, "Templates")
         self.tab_widget.addTab(self.user_token_settings_content, "User Tokens")
-        self.tab_widget.addTab(self.security_settings_content, "Security")
         self.tab_widget.addTab(self.clients_settings_content, "Clients")
         self.tab_widget.addTab(self.trackers_settings_content, "Trackers")
         self.tab_widget.addTab(self.screenshots_settings_content, "Screenshots")
@@ -141,7 +156,7 @@ class Settings(QWidget):
         layout.addLayout(right_layout_box)
 
     @Slot(object)
-    def _swap_tab(self, tab: SettingsTabs):
+    def _swap_tab(self, tab: SettingsTabs) -> None:
         self.tab_widget.setCurrentWidget(self.settings_map[tab])
 
     def _cancel_settings(self) -> None:
@@ -149,26 +164,26 @@ class Settings(QWidget):
         GSigs().settings_close.emit()
 
     def _save_new_config(self) -> None:
-        save_cfg, _ = QFileDialog.getSaveFileName(
+        save_cfg_path, _ = QFileDialog.getSaveFileName(
             parent=self,
             caption="Save Config As",
             filter="*.toml",
-            dir=str(self.config.USER_CONFIG_DIR),
+            dir=str(self.config.paths.user_configs),
         )
-        if save_cfg:
-            save_cfg = Path(save_cfg)
-            self.config.program_conf.current_config = save_cfg.stem
-            self.config.save_config(save_cfg)
+        if save_cfg_path:
+            self.config.save_as(Path(save_cfg_path))
             self.general_settings_content.load_selected_configs()
             self._apply_settings()
 
     def _apply_settings(self) -> None:
         self._save_approved_counter = 0
         self.general_settings_content.update_saved_settings.emit()
+        self.plugins_settings_content.update_saved_settings.emit()
         self.movies_settings_content.update_saved_settings.emit()
+        self.series_settings_content.update_saved_settings.emit()
+        self.global_settings_content.update_saved_settings.emit()
         self.template_settings_content.update_saved_settings.emit()
         self.user_token_settings_content.update_saved_settings.emit()
-        self.security_settings_content.update_saved_settings.emit()
         self.clients_settings_content.update_saved_settings.emit()
         self.trackers_settings_content.update_saved_settings.emit()
         self.screenshots_settings_content.update_saved_settings.emit()
@@ -183,17 +198,19 @@ class Settings(QWidget):
 
     def _save_all_settings(self) -> None:
         self._save_approved_counter = 0
-        self.config.save_config()
+        self.config.save()
         GSigs().settings_close.emit()
         self._reload_settings()
 
     def _reload_settings(self) -> None:
         self._save_approved_counter = 0
         self.general_settings_content.load_saved_settings.emit()
+        self.plugins_settings_content.load_saved_settings.emit()
         self.movies_settings_content.load_saved_settings.emit()
+        self.series_settings_content.load_saved_settings.emit()
+        self.global_settings_content.load_saved_settings.emit()
         self.template_settings_content.load_saved_settings.emit()
         self.user_token_settings_content.load_saved_settings.emit()
-        self.security_settings_content.load_saved_settings.emit()
         self.clients_settings_content.load_saved_settings.emit()
         self.trackers_settings_content.load_saved_settings.emit()
         self.screenshots_settings_content.load_saved_settings.emit()

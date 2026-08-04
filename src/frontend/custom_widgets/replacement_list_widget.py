@@ -1,8 +1,8 @@
 from collections.abc import Sequence
 import re
 
-from PySide6.QtCore import QSize, QTimer, Qt, Signal, Slot
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QColor, QDragMoveEvent, QHideEvent, QPalette, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -29,7 +29,9 @@ class LoadedReplacementListWidget(QWidget):
     defaults_applied = Signal()
 
     def __init__(
-        self, default_rules: list[tuple[str, str]] | None = None, parent=None
+        self,
+        default_rules: list[tuple[str, str]] | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         """
         Args:
@@ -102,7 +104,7 @@ class LoadedReplacementListWidget(QWidget):
 
     def add_row(self, txt1: str = "", txt2: str = "") -> None:
         """Add a new row to the table with default empty text."""
-        self.add_row(txt1, txt2)
+        self.replacement_list_widget.add_row(txt1, txt2)
 
     def add_rows(self, rows: Sequence[tuple[str, str]]) -> None:
         """Convenient method to easily add more than one row at a time."""
@@ -156,7 +158,9 @@ class ReplacementListWidget(QTableWidget):
     set_defaults = Signal()
 
     def __init__(
-        self, default_rules: list[tuple[str, str]] | None = None, parent=None
+        self,
+        default_rules: list[tuple[str, str]] | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("replacementListWidget")
@@ -249,7 +253,7 @@ class ReplacementListWidget(QTableWidget):
             self.setCurrentCell(row - 1, 0)
             self.rows_changed.emit(self.get_replacements())
 
-    def dragMoveEvent(self, event) -> None:
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
         """Override this to ensure we can only drag within the bounds of the table."""
         if self.indexAt(event.position().toPoint()).isValid():
             super().dragMoveEvent(event)
@@ -271,6 +275,8 @@ class ReplacementListWidget(QTableWidget):
             replace_text = replace_item.text().strip() if replace_item else ""
 
             if replace_text:
+                if replace_item is None:
+                    continue
                 try:
                     re.compile(replace_text)
                 except re.error as e:
@@ -302,12 +308,12 @@ class ReplacementListWidget(QTableWidget):
         """Stop the validation loop."""
         self._validation_active = False
 
-    def hideEvent(self, event) -> None:
+    def hideEvent(self, event: QHideEvent) -> None:
         """Stop validation when the widget is hidden."""
         self.stop_validation()
         super().hideEvent(event)
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         """Resume validation when the widget is shown."""
         self.start_validation()
         super().showEvent(event)
@@ -319,7 +325,7 @@ class ReplacementListWidget(QTableWidget):
         Returns:
             list of tuples: [(replace, with), ...]
         """
-        replacements = []
+        replacements: list[tuple[str, str]] = []
         for row in range(self.rowCount()):
             replace_item = self.item(row, 0)
             with_item = self.item(row, 1)

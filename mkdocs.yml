@@ -8,6 +8,7 @@ nav:
       - Install: view/getting-started/install.md
       - Initial Setup: view/getting-started/initial-setup.md
       - Using The Wizard: view/getting-started/using-the-wizard.md
+      - Series Support: view/getting-started/series-support.md
   - TokenReplacer:
       - Introduction: view/token-replacer/introduction.md
       - Tokens: view/token-replacer/tokens.md
@@ -15,6 +16,9 @@ nav:
       - Multi-Line Strings: view/token-replacer/multi-line.md
       - Prompt Tokens: view/token-replacer/prompt-tokens.md
       - Advanced: view/token-replacer/advanced.md
+  - Plugins:
+      - Plugin System: view/plugins/plugin-system.md
+      - Metadata Transformers: view/plugins/metadata-transformers.md
 
 not_in_nav: |
   file_tokens.md

@@ -4,7 +4,7 @@ from pymediainfo import MediaInfo
 from typing_extensions import override
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
 from src.exceptions import TrackerError
@@ -12,10 +12,10 @@ from src.payloads.media_search import MediaSearchPayload
 
 
 def lst_uploader(
-    media_mode: MediaMode,
+    media_type: MediaType,
     api_key: str,
     torrent_file: Path,
-    file_input: Path,
+    input_path: Path,
     tracker_title: str | None,
     nfo: str,
     internal: bool,
@@ -30,14 +30,15 @@ def lst_uploader(
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+    season_pack: bool = False,
 ) -> bool | None:
-    torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = LSTUploader(
-        media_mode=media_mode,
+        media_type=media_type,
         api_key=api_key,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
     )
@@ -57,6 +58,9 @@ def lst_uploader(
         free=free,
         double_up=double_up,
         sticky=sticky,
+        season_number=season_number,
+        episode_number=episode_number,
+        season_pack=season_pack,
     )
     return upload
 
@@ -68,29 +72,26 @@ class LSTUploader(Unit3dBaseUploader):
 
     def __init__(
         self,
-        media_mode: MediaMode,
+        media_type: MediaType,
         api_key: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.LST,
-            base_url="https://lst.gg",
-            media_mode=media_mode,
+            base_url=TrackerSelection.LST.get_root_url(),
+            media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
-            file_input=file_input,
+            input_path=input_path,
             mediainfo_obj=mediainfo_obj,
             cat_enum=LSTCategory,
             res_enum=LSTResolution,
             type_enum=LSTType,
             timeout=timeout,
         )
-
-    # def _get_category_id(self) -> str:  # TODO: detect TV here when support is added
-    #     return super()._get_category_id()
 
     @override
     def _get_resolution_id(self) -> str:
@@ -108,7 +109,7 @@ class LSTSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.LST,
-            base_url="https://lst.gg",
+            base_url=TrackerSelection.LST.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

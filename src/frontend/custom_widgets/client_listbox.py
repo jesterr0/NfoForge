@@ -1,34 +1,44 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
+from typing import Protocol, cast
 
+from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
     QFrame,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
-    QPushButton,
-    QLabel,
-    QFormLayout,
-    QLineEdit,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QMenu,
-    QSpinBox,
-    QMessageBox,
-    QCheckBox,
 )
-from PySide6.QtCore import Qt, Signal, Slot, QThread
-from PySide6.QtGui import QAction
 
-from src.config.config import Config
-from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.deluge import DelugeClient
-from src.backend.torrent_clients.transmission import TransmissionClient
+from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.rtorrent import RTorrentClient
-from src.enums.torrent_client import TorrentClientSelection
-from src.payloads.watch_folder import WatchFolder
-from src.payloads.clients import TorrentClient
-from src.frontend.utils import build_h_line
+from src.backend.torrent_clients.transmission import TransmissionClient
+from src.enums.torrent_client import QBittorrentSavePathMode
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
+from src.payloads.clients import (
+    DelugeConfig,
+    QBittorrentConfig,
+    RTorrentConfig,
+    TorrentClient,
+    TransmissionConfig,
+)
+from src.payloads.watch_folder import WatchFolder
+
+
+class ClientTester(Protocol):
+    def test(self) -> tuple[bool, str]: ...
+
+
+ClientTesterFactory = Callable[[], ClientTester]
 
 
 class ClientTestWorker(QThread):
@@ -37,98 +47,106 @@ class ClientTestWorker(QThread):
 
     def __init__(
         self,
-        test_class: Callable | None = None,
-        test_args: tuple | None = None,
-        parent=None,
+        test_factory: ClientTesterFactory,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.test_class = test_class
-        self.test_args = test_args
+        self.test_factory = test_factory
 
     def run(self) -> None:
         try:
-            if self.test_class:
-                if self.test_args:
-                    test_class = self.test_class(*self.test_args)
-                else:
-                    test_class = self.test_class()
-                status, message = test_class.test()
-                self.job_finished.emit((status, message))
-        except Exception as e:
-            self.job_failed.emit(f"Error: {e}")
+            status, message = self.test_factory().test()
+            self.job_finished.emit((status, message))
+        except Exception as error:
+            self.job_failed.emit(f"Error: {error}")
 
 
 class ClientEditBase(QFrame):
-    test_client_signal = Signal(object)
-    test_client_signal_completed = Signal()
+    MAX_CONTROL_WIDTH = 650
+    MAX_LABEL_WIDTH = 280
 
-    def __init__(self, parent=None) -> None:
+    testing_started = Signal()
+    testing_ended = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-
-        self.specific_params_layout = QVBoxLayout()
-        self.specific_params_map: dict[str, QLineEdit | QCheckBox] = {}
-
-        self.test_class: Callable | None = None
+        self.config: TorrentClient | WatchFolder
         self.client_test_worker: ClientTestWorker | None = None
-        self.test_client_signal.connect(self._test_client)
 
-    BOOL_PARAM_LABELS = {
-        "super_seeding": "Add new torrents in super seeding mode",
-    }
+    def save(self) -> None:
+        raise NotImplementedError
 
-    def build_widgets_from_dict(self, data: dict[str, str | bool]) -> None:
-        """Builds widgets as needed dynamically"""
-        for key, value in data.items():
-            if isinstance(value, bool):
-                label_text = self.BOOL_PARAM_LABELS.get(
-                    key, key.title().replace("_", " ")
-                )
-                widget = QCheckBox(self)
-                widget.setChecked(value)
-                self.specific_params_map[key] = widget
-                form = self.build_form_layout(label_text, widget)
-                self.specific_params_layout.addLayout(form)
-            else:
-                widget = QLineEdit(self)
-                widget.setText(value)
-                self.specific_params_map[key] = widget
-                form = self.build_form_layout(key.title().replace("_", " "), widget)
-                self.specific_params_layout.addLayout(form)
+    def load(self) -> None:
+        raise NotImplementedError
 
-    @Slot(object)
-    def _test_client(self, test_payload: TorrentClient) -> None:
-        self.client_test_worker = ClientTestWorker(
-            self.test_class, (test_payload,), parent=self
-        )
+    def _start_test(self, test_factory: ClientTesterFactory) -> None:
+        self.testing_started.emit()
+        self.client_test_worker = ClientTestWorker(test_factory, parent=self)
         self.client_test_worker.job_finished.connect(self._test_worker_finished)
         self.client_test_worker.job_failed.connect(self._test_worker_failed)
         self.client_test_worker.start()
 
     @Slot(tuple)
-    def _test_worker_finished(self, result: tuple) -> None:
+    def _test_worker_finished(self, result: tuple[bool, str]) -> None:
         _, message = result
-        self.test_client_signal_completed.emit()
+        self.testing_ended.emit()
         QMessageBox.information(self, "Result", message)
 
     @Slot(str)
-    def _test_worker_failed(self, msg: str) -> None:
-        self.test_client_signal_completed.emit()
-        QMessageBox.warning(self, "Result", msg)
+    def _test_worker_failed(self, message: str) -> None:
+        self.testing_ended.emit()
+        QMessageBox.warning(self, "Result", message)
 
-    @staticmethod
-    def build_form_layout(text: str, widget: QWidget) -> QFormLayout:
+    @classmethod
+    def build_form_layout(cls) -> QFormLayout:
         layout = QFormLayout()
-        layout.addWidget(QLabel(text))
-        layout.addWidget(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        layout.setHorizontalSpacing(16)
+        layout.setVerticalSpacing(6)
         return layout
 
+    @classmethod
+    def add_form_row(
+        cls, layout: QFormLayout, label_text: str, widget: QWidget
+    ) -> None:
+        label = QLabel(label_text)
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        label.setMaximumWidth(cls.MAX_LABEL_WIDTH)
+        label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
-class ClientEdit(ClientEditBase):
-    def __init__(self, parent=None) -> None:
+        widget.setMaximumWidth(cls.MAX_CONTROL_WIDTH)
+        widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        layout.addRow(label, widget)
+        layout.setAlignment(widget, Qt.AlignmentFlag.AlignTop)
+
+    def finish_layout(
+        self, layout: QFormLayout, test_button: QPushButton | None
+    ) -> None:
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(8)
+        main_layout.addLayout(layout)
+        if test_button is not None:
+            main_layout.addWidget(
+                test_button,
+                alignment=Qt.AlignmentFlag.AlignRight,
+            )
+
+
+class FullConnectionClientEditBase(ClientEditBase):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-
         self.host = QLineEdit(parent=self)
-        self.host.setToolTip("Client hostname")
+        self.host.setToolTip(
+            "Client hostname. Loopback (127.0.0.1) is fine over http://; for "
+            "a remote host, use https:// or the password above will be sent "
+            "in cleartext."
+        )
         self.port = QSpinBox(self)
         self.port.setToolTip("Client port (0 = disabled)")
         self.port.setRange(0, 65535)
@@ -136,286 +154,310 @@ class ClientEdit(ClientEditBase):
         self.user.setToolTip("Client username")
         self.password = MaskedQLineEdit(parent=self, masked=True)
         self.password.setToolTip("Client password")
-        self.test_client = QPushButton("Test", self)
-        self.test_client.clicked.connect(self._test)
 
-        settings_layout = QVBoxLayout()
-        settings_layout.addLayout(self.build_form_layout("Host", self.host))
-        settings_layout.addLayout(self.build_form_layout("Port", self.port))
-        settings_layout.addLayout(self.build_form_layout("User", self.user))
-        settings_layout.addLayout(self.build_form_layout("Password", self.password))
-        settings_layout.addLayout(self.specific_params_layout)
-        settings_layout.addWidget(
-            self.test_client, alignment=Qt.AlignmentFlag.AlignRight
+    def add_connection_fields(self, layout: QFormLayout) -> None:
+        self.add_form_row(layout, "Host", self.host)
+        self.add_form_row(layout, "Port", self.port)
+        self.add_form_row(layout, "User", self.user)
+        self.add_form_row(layout, "Password", self.password)
+
+    def load_connection(self, config: TorrentClient) -> None:
+        self.host.setText(config.host or "")
+        self.port.setValue(config.port or 0)
+        self.user.setText(config.user or "")
+        self.password.setText(config.password or "")
+
+    def save_connection(self, config: TorrentClient) -> None:
+        config.host = self.host.text().strip()
+        config.port = self.port.value()
+        config.user = self.user.text().strip()
+        config.password = self.password.text().strip()
+
+
+class UriClientEditBase(ClientEditBase):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.host = QLineEdit(parent=self)
+        self.host.setToolTip(
+            "URI (http://<user>:<password>@127.0.0.1). Loopback is fine "
+            "over http://; for a remote host, use https:// or the embedded "
+            "credentials will be sent in cleartext."
         )
-        settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
 
-        main_layout = QVBoxLayout(self)
-        main_layout.addLayout(settings_layout)
-        self.setLayout(main_layout)
+    def add_uri_field(self, layout: QFormLayout) -> None:
+        self.add_form_row(layout, "Host", self.host)
+
+
+class LabelPathUriClientEditBase(UriClientEditBase):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.label = QLineEdit(self)
+        self.path = QLineEdit(self)
+        self.test_button = QPushButton("Test", self)
+
+    def build_layout(self) -> None:
+        settings_layout = self.build_form_layout()
+        self.add_uri_field(settings_layout)
+        self.add_form_row(settings_layout, "Label", self.label)
+        self.add_form_row(settings_layout, "Path", self.path)
+        self.finish_layout(settings_layout, self.test_button)
+
+
+class QBittorrentClientEdit(FullConnectionClientEditBase):
+    def __init__(
+        self,
+        config: QBittorrentConfig,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.config = config
+
+        self.category = QLineEdit(self)
+        self.super_seeding = QCheckBox(self)
+        self.save_path_mode = QComboBox(self)
+        for mode in QBittorrentSavePathMode:
+            self.save_path_mode.addItem(str(mode), mode.value)
+        self.save_path_mode.setToolTip(
+            "Choose whether qBittorrent/category settings, the selected media "
+            "location, or a token template determines the save path."
+        )
+        self.save_path_mode.currentIndexChanged.connect(
+            self._sync_save_path_template_state
+        )
+
+        self.save_path_template = QLineEdit(self)
+        self.save_path_template.setPlaceholderText(
+            r"\\server\media\{title_exact} {release_year_parentheses}"
+        )
+        self.save_path_template.setToolTip(
+            "Full path as seen by qBittorrent. Existing FileTokens and "
+            "configured FileToken user tokens are supported."
+        )
+
+        self.test_button = QPushButton("Test", self)
+        self.test_button.clicked.connect(self._test)
+
+        settings_layout = self.build_form_layout()
+        self.add_connection_fields(settings_layout)
+        self.add_form_row(settings_layout, "Category", self.category)
+        self.add_form_row(
+            settings_layout,
+            "Add new torrents in super seeding mode",
+            self.super_seeding,
+        )
+        self.add_form_row(settings_layout, "Save location mode", self.save_path_mode)
+        self.add_form_row(
+            settings_layout,
+            "Save location template",
+            self.save_path_template,
+        )
+        self.finish_layout(settings_layout, self.test_button)
+        self.load()
+
+    def load(self) -> None:
+        config = cast(QBittorrentConfig, self.config)
+        self.load_connection(config)
+        self.category.setText(config.category)
+        self.super_seeding.setChecked(config.super_seeding)
+        mode_index = self.save_path_mode.findData(config.save_path_mode.value)
+        self.save_path_mode.setCurrentIndex(max(mode_index, 0))
+        self.save_path_template.setText(config.save_path_template)
+        self._sync_save_path_template_state()
+
+    def save(self) -> None:
+        config = cast(QBittorrentConfig, self.config)
+        self.save_connection(config)
+        config.category = self.category.text().strip()
+        config.super_seeding = self.super_seeding.isChecked()
+        config.save_path_mode = QBittorrentSavePathMode(
+            str(self.save_path_mode.currentData())
+        )
+        config.save_path_template = self.save_path_template.text().strip()
+
+    @Slot()
+    def _sync_save_path_template_state(self) -> None:
+        self.save_path_template.setEnabled(
+            self.save_path_mode.currentData() == QBittorrentSavePathMode.TEMPLATE.value
+        )
 
     @Slot()
     def _test(self) -> None:
-        test_payload = TorrentClient(
+        payload = QBittorrentConfig(
             enabled=True,
             host=self.host.text().strip(),
             port=self.port.value(),
             user=self.user.text().strip(),
             password=self.password.text().strip(),
+            category=self.category.text().strip(),
+            super_seeding=self.super_seeding.isChecked(),
         )
-        self.test_client_signal.emit(test_payload)
+        self._start_test(lambda: QBittorrentClient(payload))
 
 
-class ClientEditURI(ClientEditBase):
-    def __init__(self, parent=None) -> None:
+class DelugeClientEdit(FullConnectionClientEditBase):
+    def __init__(
+        self,
+        config: DelugeConfig,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self.config = config
+        self.label = QLineEdit(self)
+        self.path = QLineEdit(self)
+        self.test_button = QPushButton("Test", self)
+        self.test_button.clicked.connect(self._test)
 
-        self.host = QLineEdit(parent=self)
-        self.host.setToolTip("URI (http://<user>:<password>@127.0.0.1)")
-        self.test_client = QPushButton("Test", self)
-        self.test_client.clicked.connect(self._test)
+        settings_layout = self.build_form_layout()
+        self.add_connection_fields(settings_layout)
+        self.add_form_row(settings_layout, "Label", self.label)
+        self.add_form_row(settings_layout, "Path", self.path)
+        self.finish_layout(settings_layout, self.test_button)
+        self.load()
 
-        settings_layout = QVBoxLayout()
-        settings_layout.addLayout(self.build_form_layout("Host", self.host))
-        settings_layout.addLayout(self.specific_params_layout)
-        settings_layout.addWidget(
-            self.test_client, alignment=Qt.AlignmentFlag.AlignRight
-        )
-        settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
+    def load(self) -> None:
+        config = cast(DelugeConfig, self.config)
+        self.load_connection(config)
+        self.label.setText(config.label)
+        self.path.setText(config.path)
 
-        main_layout = QVBoxLayout(self)
-        main_layout.addLayout(settings_layout)
-        self.setLayout(main_layout)
+    def save(self) -> None:
+        config = cast(DelugeConfig, self.config)
+        self.save_connection(config)
+        config.label = self.label.text().strip()
+        config.path = self.path.text().strip()
 
     @Slot()
     def _test(self) -> None:
-        test_payload = TorrentClient(
+        payload = DelugeConfig(
             enabled=True,
             host=self.host.text().strip(),
+            port=self.port.value(),
+            user=self.user.text().strip(),
+            password=self.password.text().strip(),
+            label=self.label.text().strip(),
+            path=self.path.text().strip(),
         )
-        self.test_client_signal.emit(test_payload)
+        self._start_test(lambda: DelugeClient(payload))
 
 
-class ClientEditWatchFolder(ClientEditBase):
-    def __init__(self, parent=None) -> None:
+class RTorrentClientEdit(LabelPathUriClientEditBase):
+    def __init__(
+        self,
+        config: RTorrentConfig,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self.config = config
+        self.verify_tls = QCheckBox(self)
+        self.verify_tls.setToolTip(
+            "Reject invalid rTorrent TLS certificates (recommended)"
+        )
+        self.verify_tls.toggled.connect(self._sync_tls_controls)
+        self.ca_bundle = QLineEdit(self)
+        self.ca_bundle.setPlaceholderText("Use the system certificate store")
+        self.ca_bundle.setToolTip(
+            "Optional CA bundle path for a private/self-signed rTorrent certificate"
+        )
+        self.test_button.clicked.connect(self._test)
+        settings_layout = self.build_form_layout()
+        self.add_uri_field(settings_layout)
+        self.add_form_row(settings_layout, "Label", self.label)
+        self.add_form_row(settings_layout, "Path", self.path)
+        self.add_form_row(settings_layout, "Verify TLS", self.verify_tls)
+        self.add_form_row(settings_layout, "CA bundle", self.ca_bundle)
+        self.finish_layout(settings_layout, self.test_button)
+        self.load()
 
+    def load(self) -> None:
+        config = cast(RTorrentConfig, self.config)
+        self.host.setText(config.host or "")
+        self.label.setText(config.label)
+        self.path.setText(config.path)
+        self.verify_tls.setChecked(config.verify_tls)
+        self.ca_bundle.setText(config.ca_bundle)
+        self._sync_tls_controls()
+
+    def save(self) -> None:
+        config = cast(RTorrentConfig, self.config)
+        config.host = self.host.text().strip()
+        config.label = self.label.text().strip()
+        config.path = self.path.text().strip()
+        config.verify_tls = self.verify_tls.isChecked()
+        config.ca_bundle = self.ca_bundle.text().strip()
+
+    @Slot()
+    def _sync_tls_controls(self) -> None:
+        self.ca_bundle.setEnabled(self.verify_tls.isChecked())
+
+    @Slot()
+    def _test(self) -> None:
+        payload = RTorrentConfig(
+            enabled=True,
+            host=self.host.text().strip(),
+            label=self.label.text().strip(),
+            path=self.path.text().strip(),
+            verify_tls=self.verify_tls.isChecked(),
+            ca_bundle=self.ca_bundle.text().strip(),
+        )
+        self._start_test(lambda: RTorrentClient(payload))
+
+
+class TransmissionClientEdit(LabelPathUriClientEditBase):
+    def __init__(
+        self,
+        config: TransmissionConfig,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.config = config
+        self.test_button.clicked.connect(self._test)
+        self.build_layout()
+        self.load()
+
+    def load(self) -> None:
+        config = cast(TransmissionConfig, self.config)
+        self.host.setText(config.host or "")
+        self.label.setText(config.label)
+        self.path.setText(config.path)
+
+    def save(self) -> None:
+        config = cast(TransmissionConfig, self.config)
+        config.host = self.host.text().strip()
+        config.label = self.label.text().strip()
+        config.path = self.path.text().strip()
+
+    @Slot()
+    def _test(self) -> None:
+        payload = TransmissionConfig(
+            enabled=True,
+            host=self.host.text().strip(),
+            label=self.label.text().strip(),
+            path=self.path.text().strip(),
+        )
+        self._start_test(lambda: TransmissionClient(payload))
+
+
+class WatchFolderClientEdit(ClientEditBase):
+    def __init__(
+        self,
+        config: WatchFolder,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.config = config
         self.path = QLineEdit(parent=self)
         self.path.setToolTip("Path to watch directory")
 
-        settings_layout = QVBoxLayout()
-        settings_layout.addLayout(self.build_form_layout("Path", self.path))
-        settings_layout.addWidget(build_h_line((0, 1, 0, 1)))
+        settings_layout = self.build_form_layout()
+        self.add_form_row(settings_layout, "Path", self.path)
+        self.finish_layout(settings_layout, None)
+        self.load()
 
-        main_layout = QVBoxLayout(self)
-        main_layout.addLayout(settings_layout)
-        self.setLayout(main_layout)
+    def load(self) -> None:
+        config = cast(WatchFolder, self.config)
+        self.path.setText(str(config.path) if config.path else "")
 
-
-class ClientListWidget(QWidget):
-    testing_started = Signal()
-    testing_ended = Signal()
-
-    FULL_CLIENTS = (
-        TorrentClientSelection.QBITTORRENT,
-        TorrentClientSelection.DELUGE,
-    )
-    URI_CLIENTS = (
-        TorrentClientSelection.RTORRENT,
-        TorrentClientSelection.TRANSMISSION,
-    )
-    CLIENT_CLASS_MAP = {
-        TorrentClientSelection.QBITTORRENT: QBittorrentClient,
-        TorrentClientSelection.DELUGE: DelugeClient,
-        TorrentClientSelection.RTORRENT: RTorrentClient,
-        TorrentClientSelection.TRANSMISSION: TransmissionClient,
-    }
-
-    def __init__(self, config: Config, parent=None) -> None:
-        super().__init__(parent)
-
-        self.config = config
-
-        self._save_settings_map = {}
-
-        self.tree = QTreeWidget(self)
-        self.tree.setHeaderHidden(True)
-        self.tree.setVerticalScrollMode(QTreeWidget.ScrollMode.ScrollPerPixel)
-        self.tree.verticalScrollBar().setSingleStep(20)
-        self.tree.setAutoScroll(False)
-        self.tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
-        self.tree.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.tree.setFrameShape(QFrame.Shape.Box)
-        self.tree.setFrameShadow(QFrame.Shadow.Sunken)
-
-        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.tree.customContextMenuRequested.connect(self._open_context_menu)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.tree)
-
-    def add_items(
-        self, items: dict[TorrentClientSelection, TorrentClient | WatchFolder]
-    ) -> None:
-        # we'll check if this is empty, if it is we can assume there was never a signal connected
-        if self._save_settings_map:
-            self.tree.itemChanged.disconnect(self._toggle_client)
-            self._save_settings_map.clear()
-
-        # clear tree widget
-        self.tree.clear()
-
-        for client, client_info in items.items():
-            parent_item = QTreeWidgetItem(self.tree)
-            parent_item.setText(0, str(client))
-
-            # add checkbox to the parent item
-            parent_item.setCheckState(
-                0,
-                Qt.CheckState.Checked
-                if client_info.enabled
-                else Qt.CheckState.Unchecked,
-            )
-
-            self.add_child_widgets(parent_item, client, client_info)
-
-        self.tree.itemChanged.connect(self._toggle_client)
-
-    def add_child_widgets(
-        self,
-        parent_item,
-        client: TorrentClientSelection,
-        client_info: TorrentClient | WatchFolder,
-    ) -> None:
-        child_widget = QWidget()
-        child_layout = QVBoxLayout(child_widget)
-        child_layout.setContentsMargins(0, 0, 0, 0)
-
-        client_widget = None
-        if client in self.FULL_CLIENTS and isinstance(client_info, TorrentClient):
-            client_widget = ClientEdit()
-            client_widget.host.setText(client_info.host)
-            client_widget.port.setValue(client_info.port)
-            client_widget.user.setText(client_info.user)
-            client_widget.password.setText(client_info.password)
-            client_widget.build_widgets_from_dict(client_info.specific_params)
-            client_widget.test_class = self.CLIENT_CLASS_MAP[client]
-            client_widget.test_client_signal.connect(self._test_client)
-            client_widget.test_client_signal_completed.connect(self.testing_ended.emit)
-
-        elif client in self.URI_CLIENTS and isinstance(client_info, TorrentClient):
-            client_widget = ClientEditURI()
-            client_widget.host.setText(client_info.host)
-            client_widget.build_widgets_from_dict(client_info.specific_params)
-            client_widget.test_class = self.CLIENT_CLASS_MAP[client]
-            client_widget.test_client_signal.connect(self._test_client)
-            client_widget.test_client_signal_completed.connect(self.testing_ended.emit)
-
-        elif client == TorrentClientSelection.WATCH_FOLDER and isinstance(
-            client_info, WatchFolder
-        ):
-            client_widget = ClientEditWatchFolder()
-            client_widget.path.setText(
-                str(client_info.path) if client_info.path else ""
-            )
-
-        if not client_widget:
-            raise AttributeError("Failed to build 'client_widget'")
-
-        self._save_settings_map[client] = client_widget
-
-        child_layout.addWidget(client_widget)
-
-        # add child widget to tree under parent item
-        child_item = QTreeWidgetItem(parent_item)
-        self.tree.setItemWidget(child_item, 0, child_widget)
-
-    def _open_context_menu(self, position) -> None:
-        """Opens the right-click context menu for expanding and collapsing all items"""
-        menu = QMenu()
-
-        expand_action = QAction("Expand All", self)
-        expand_action.triggered.connect(self.expand_all_items)
-        menu.addAction(expand_action)
-
-        collapse_action = QAction("Collapse All", self)
-        collapse_action.triggered.connect(self.collapse_all_items)
-        menu.addAction(collapse_action)
-
-        # display the context menu at the mouse position
-        menu.exec(self.tree.viewport().mapToGlobal(position))
-
-    def expand_all_items(self) -> None:
-        """Expand all parent items in the QTreeWidget"""
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            item.setExpanded(True)
-
-    def collapse_all_items(self) -> None:
-        """Collapse all parent items in the QTreeWidget"""
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            item.setExpanded(False)
-
-    @Slot(object)
-    def _test_client(self, _: TorrentClient) -> None:
-        self.testing_started.emit()
-
-    @Slot(object, int)
-    def _toggle_client(self, item: QTreeWidgetItem, column: int) -> None:
-        client_attributes: TorrentClient | WatchFolder = self.config.client_map[
-            TorrentClientSelection(item.text(column))
-        ]
-        client_attributes.enabled = (
-            True if item.checkState(column) == Qt.CheckState.Checked else False
-        )
-
-    @Slot(object)
-    def save_client_info(self, client: TorrentClientSelection) -> None:
-        client_attributes: TorrentClient | WatchFolder = self.config.client_map[client]
-
-        if client in self.FULL_CLIENTS and isinstance(client_attributes, TorrentClient):
-            full_client_widget: ClientEdit = self._save_settings_map[client]
-            client_attributes.host = full_client_widget.host.text().strip()
-            client_attributes.port = full_client_widget.port.value()
-            client_attributes.user = full_client_widget.user.text().strip()
-            client_attributes.password = full_client_widget.password.text().strip()
-            for key, val_widget in full_client_widget.specific_params_map.items():
-                if isinstance(val_widget, QCheckBox):
-                    client_attributes.specific_params[key] = val_widget.isChecked()
-                else:
-                    client_attributes.specific_params[key] = val_widget.text().strip()
-
-        elif client in self.URI_CLIENTS and isinstance(
-            client_attributes, TorrentClient
-        ):
-            uri_client_widget: ClientEditURI = self._save_settings_map[client]
-            client_attributes.host = uri_client_widget.host.text().strip()
-            for key, val_widget in uri_client_widget.specific_params_map.items():
-                client_attributes.specific_params[key] = val_widget.text().strip()
-
-        elif client == TorrentClientSelection.WATCH_FOLDER and isinstance(
-            client_attributes, WatchFolder
-        ):
-            watch_folder: ClientEditWatchFolder = self._save_settings_map[client]
-            watch_folder_path = watch_folder.path.text().strip()
-            client_attributes.path = (
-                Path(watch_folder_path) if watch_folder_path else None
-            )
-
-    def get_selected_clients(self) -> list[TorrentClientSelection | None]:
-        selected_items = []
-
-        for i in range(self.tree.topLevelItemCount()):
-            parent_item = self.tree.topLevelItem(i)
-            name = parent_item.text(0)
-            check_state = parent_item.checkState(0)
-            if check_state == Qt.CheckState.Checked:
-                selected_items.append(TorrentClientSelection(name))
-
-        return selected_items
-
-    def clear(self) -> None:
-        self.tree.clear()
-        self._save_settings_map.clear()
+    def save(self) -> None:
+        config = cast(WatchFolder, self.config)
+        path = self.path.text().strip()
+        config.path = Path(path) if path else None

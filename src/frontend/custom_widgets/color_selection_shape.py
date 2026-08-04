@@ -1,11 +1,11 @@
-from PySide6.QtCore import QSize, Qt, QRectF, Signal
-from PySide6.QtGui import QColor, QPaintEvent, QPainter, QPainterPath, QMouseEvent
+from PySide6.QtCore import QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath, QPaintEvent
 from PySide6.QtWidgets import (
     QApplication,
     QColorDialog,
-    QWidget,
-    QVBoxLayout,
     QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
 
 
@@ -19,52 +19,67 @@ class ColorSelectionShape(QWidget):
         self,
         width: int = 20,
         height: int = 20,
-        initial_color: QColor = QColor("white"),
+        initial_color: QColor | None = None,
         enable_alpha: bool = False,
         circle: bool = False,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.current_color = initial_color
+        self.current_color = (
+            initial_color if initial_color is not None else QColor("white")
+        )
         self.setFixedSize(QSize(width, height))
         self.enable_alpha = enable_alpha
+        self.circle = circle
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        if circle:
-            self.paintEvent = self.circlePaintEvent
+    def paintEvent(self, event: QPaintEvent) -> None:
+        if self.circle:
+            self.circlePaintEvent(event)
         else:
-            self.paintEvent = self.squaredPaintEvent
+            self.squaredPaintEvent(event)
 
     def circlePaintEvent(self, event: QPaintEvent) -> None:
         """Draw the circle with the current color."""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        path = QPainterPath()
-        widget_rect = self.rect()
-        size = min(widget_rect.width(), widget_rect.height()) - 2 * self.PADDING
-        circle = QRectF(
-            widget_rect.left() + self.PADDING,
-            widget_rect.top() + self.PADDING,
-            size,
-            size,
-        )
-        path.addEllipse(circle)
-        painter.fillPath(path, self.current_color)
-        painter.end()
+        painter = QPainter()
+        if not painter.begin(self):
+            return
+
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            path = QPainterPath()
+            widget_rect = self.rect()
+            size = min(widget_rect.width(), widget_rect.height()) - 2 * self.PADDING
+            circle = QRectF(
+                widget_rect.left() + self.PADDING,
+                widget_rect.top() + self.PADDING,
+                size,
+                size,
+            )
+            path.addEllipse(circle)
+            painter.fillPath(path, self.current_color)
+        finally:
+            painter.end()
 
     def squaredPaintEvent(self, event: QPaintEvent) -> None:
         """Draw the square with rounded corners and the current color."""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter = QPainter()
+        if not painter.begin(self):
+            return
 
-        rect_size = min(self.width(), self.height()) - 2 * self.PADDING
-        rounded_rect = QRectF(self.PADDING, self.PADDING, rect_size, rect_size)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        corner_radius = rect_size * self.SQUARE_CORNER_VALUE
-        path = QPainterPath()
-        path.addRoundedRect(rounded_rect, corner_radius, corner_radius)
+            rect_size = min(self.width(), self.height()) - 2 * self.PADDING
+            rounded_rect = QRectF(self.PADDING, self.PADDING, rect_size, rect_size)
 
-        painter.fillPath(path, self.current_color)
+            corner_radius = rect_size * self.SQUARE_CORNER_VALUE
+            path = QPainterPath()
+            path.addRoundedRect(rounded_rect, corner_radius, corner_radius)
+
+            painter.fillPath(path, self.current_color)
+        finally:
+            painter.end()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle mouse click to open a color picker."""
@@ -99,20 +114,20 @@ if __name__ == "__main__":
     app = QApplication([])
 
     class MainWindow(QWidget):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__()
             self.setWindowTitle("Color Circle Example")
-            self.setLayout(QVBoxLayout())
+            self.main_layout = QVBoxLayout(self)
 
             # create a color circle and add it to the layout
             self.color_circle = ColorSelectionShape(
                 initial_color=QColor("blue"), circle=True
             )
-            self.layout().addWidget(self.color_circle)
+            self.main_layout.addWidget(self.color_circle)
 
             # add a button to demonstrate other UI elements
             self.test_button = QPushButton("Click Me!")
-            self.layout().addWidget(self.test_button)
+            self.main_layout.addWidget(self.test_button)
 
     main_window = MainWindow()
     main_window.show()

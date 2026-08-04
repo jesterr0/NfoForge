@@ -1,21 +1,25 @@
-from PySide6.QtCore import QEvent
-from PySide6.QtGui import QEnterEvent
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QLineEdit, QWidget
+from typing_extensions import override
 
 
 class MaskedQLineEdit(QLineEdit):
-    def __init__(
-        self, parent: QWidget | None = None, masked: bool = False, **kwargs
-    ) -> None:
-        super().__init__(parent, **kwargs)
+    def __init__(self, parent: QWidget | None = None, masked: bool = False) -> None:
+        super().__init__(parent)
+        self._masked = masked
 
-        if masked:
+        if self._masked:
             self.setEchoMode(QLineEdit.EchoMode.Password)
-            self.enterEvent = self.customEnterEvent
-            self.leaveEvent = self.customLeaveEvent
 
-    def customEnterEvent(self, _: QEnterEvent) -> None:
-        self.setEchoMode(QLineEdit.EchoMode.Normal)
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if self._masked and event.button() == Qt.MouseButton.LeftButton:
+            self.setEchoMode(QLineEdit.EchoMode.Normal)
+        super().mousePressEvent(event)
 
-    def customLeaveEvent(self, _: QEvent) -> None:
-        self.setEchoMode(QLineEdit.EchoMode.Password)
+    @override
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._masked:
+            self.setEchoMode(QLineEdit.EchoMode.Password)
+        super().mouseReleaseEvent(event)

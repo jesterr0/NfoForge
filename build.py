@@ -1,10 +1,10 @@
 import os
+from pathlib import Path
 import platform
 import re
 import shutil
-import sys
-from pathlib import Path
 from subprocess import run
+import sys
 
 from stdlib_list import stdlib_list
 
@@ -30,7 +30,7 @@ def get_std_lib() -> list:
 
 def modify_spec_file(spec_file_path: Path, hiddenimports: list):
     # open the spec file and read the contents
-    with open(spec_file_path, "r") as spec_file:
+    with open(spec_file_path) as spec_file:
         spec_content = spec_file.read()
 
     # find the hiddenimports list in the spec file
@@ -47,7 +47,7 @@ def modify_spec_file(spec_file_path: Path, hiddenimports: list):
 
 def modify_spec_file_for_dual_exe(spec_file_path: Path):
     """Modify the PyInstaller spec file to create two executables from a single bundle."""
-    with open(spec_file_path, "r") as spec_file:
+    with open(spec_file_path) as spec_file:
         spec_content = spec_file.read()
 
     # regex pattern to match multi-line EXE definitions
@@ -86,8 +86,8 @@ def modify_spec_file_for_dual_exe(spec_file_path: Path):
 
 
 def get_site_packages() -> Path:
-    output = run(
-        ["uv", "pip", "show", "babelfish"],
+    output = run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
+        ["uv", "pip", "show", "babelfish"],  # noqa: S607 - "uv" resolved via PATH by design
         check=True,
         capture_output=True,
         text=True,
@@ -104,7 +104,7 @@ def run_doc_stuff(project_root: Path) -> Path:
     print("Generating document snippets")
     docs_scripts_dir = project_root / "docs_scripts"
     for py_file in docs_scripts_dir.glob("*.py"):
-        build_doc_snippets = run(("uv", "run", str(py_file)))
+        build_doc_snippets = run(("uv", "run", str(py_file)))  # noqa: S603 - fixed argv, no shell, maintainer-run build script
         if build_doc_snippets.returncode != 0:
             raise AttributeError("Failed to build documentation for build")
 
@@ -114,7 +114,9 @@ def run_doc_stuff(project_root: Path) -> Path:
     if out.exists():
         shutil.rmtree(out)
     out.mkdir()
-    build_doc = run(("uv", "run", "mkdocs", "build", "--clean", "--site-dir", str(out)))
+    build_doc = run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
+        ("uv", "run", "mkdocs", "build", "--clean", "--site-dir", str(out))
+    )
     if build_doc.returncode != 0:
         raise AttributeError("Failed to build documentation for build")
     return out
@@ -125,16 +127,20 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     project_root = Path(__file__).parent
     os.chdir(project_root)
 
-    # build fresh docs
-    run_doc_stuff(project_root)
-
-    # ensure we're in a virtual env, if we are, install dependencies using Poetry
+    # ensure we're in a virtual env, if we are, install build and documentation extras
     if sys.prefix == sys.base_prefix:
         raise Exception("You must activate your virtual environment first")
     else:
-        check_packages = run(["uv", "sync", "--inexact"], check=True, text=True)
+        check_packages = run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
+            ["uv", "sync", "--locked", "--extra", "build", "--extra", "docs"],  # noqa: S607 - "uv" resolved via PATH by design
+            check=True,
+            text=True,
+        )
         if check_packages.returncode != 0:
             raise Exception("Failed to sync packages with UV")
+
+    # build fresh docs after the documentation extra is available
+    run_doc_stuff(project_root)
 
     # pyinstaller build folder
     pyinstaller_folder = project_root / folder_name
@@ -159,8 +165,8 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     os.chdir(pyinstaller_folder)
 
     # run PyInstaller makespec to generate the spec file
-    run(
-        [
+    run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
+        [  # noqa: S607 - "uv" resolved via PATH by design
             "uv",
             "run",
             "pyi-makespec",
@@ -190,8 +196,8 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     modify_spec_file_for_dual_exe(spec_file_path)
 
     # run pyinstaller
-    build_job = run(
-        ["uv", "run", "pyinstaller", "--noconfirm", str(spec_file_path)],
+    build_job = run(  # noqa: S603 - fixed argv, no shell, maintainer-run build script
+        ["uv", "run", "pyinstaller", "--noconfirm", str(spec_file_path)],  # noqa: S607 - "uv" resolved via PATH by design
     )
 
     # ensure the output of the executable

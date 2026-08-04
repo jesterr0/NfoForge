@@ -1,17 +1,27 @@
 from datetime import datetime
+from enum import Enum
+import os
 from pathlib import Path
 import re
-from typing import Type
+from tempfile import mkstemp
+from typing import Any, TypeAlias
+from urllib.parse import urlparse
 
 import niquests
 from pymediainfo import MediaInfo
 import regex
+from tenacity import Retrying, retry_if_exception, stop_after_attempt
+from tenacity.wait import wait_exponential
 
-from src.backend.trackers.utils import TRACKER_HEADERS, tracker_string_replace_map
-from src.backend.trackers.utils import looks_like_torrent
+from src.backend.trackers.utils import (
+    TRACKER_HEADERS,
+    looks_like_torrent,
+    tracker_string_replace_map,
+)
+from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
 from src.enums.trackers.darkpeers import (
@@ -45,8 +55,7 @@ from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
 
-
-CategoryEnums = (
+CategoryEnums: TypeAlias = (
     ReelFlixCategory
     | AitherCategory
     | HunoCategory
@@ -56,7 +65,7 @@ CategoryEnums = (
     | UploadCXCategory
     | OnlyEncodesCategory
 )
-ResolutionEnums = (
+ResolutionEnums: TypeAlias = (
     ReelFlixResolution
     | AitherResolution
     | HunoResolution
@@ -66,7 +75,7 @@ ResolutionEnums = (
     | UploadCXResolution
     | OnlyEncodesResolution
 )
-TypeEnums = (
+TypeEnums: TypeAlias = (
     ReelFlixType
     | AitherType
     | HunoType
@@ -85,10 +94,10 @@ class Unit3dBaseUploader:
         "tracker_name",
         "upload_url",
         "base_url",
-        "media_mode",
+        "media_type",
         "api_key",
         "torrent_file",
-        "file_input",
+        "input_path",
         "mediainfo_obj",
         "cat_enum",
         "res_enum",
@@ -102,23 +111,22 @@ class Unit3dBaseUploader:
         self,
         tracker_name: TrackerSelection,
         base_url: str,
-        media_mode: MediaMode,
+        media_type: MediaType,
         api_key: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         mediainfo_obj: MediaInfo,
-        cat_enum: Type[CategoryEnums],
-        res_enum: Type[ResolutionEnums],
-        type_enum: Type[TypeEnums],
+        cat_enum: type[Enum],
+        res_enum: type[Enum],
+        type_enum: type[Enum],
         timeout: int = 60,
     ) -> None:
         self.tracker_name = tracker_name
-        self.base_url = cleanse_base_url(base_url)
-        self.upload_url = f"{self.base_url}/api/torrents/upload"
-        self.media_mode = media_mode
+        self.upload_url = f"{cleanse_base_url(base_url)}/api/torrents/upload"
+        self.media_type = media_type
         self.api_key = api_key
         self.torrent_file = torrent_file
-        self.file_input = file_input
+        self.input_path = input_path
         self.mediainfo_obj = mediainfo_obj
         self.timeout = timeout
 
@@ -145,14 +153,222 @@ class Unit3dBaseUploader:
         free: bool | None = False,
         double_up: bool | None = False,
         sticky: bool | None = False,
+        season_number: int | None = None,
+        episode_number: int | None = None,
+        season_pack: bool = False,
     ) -> bool | None:
         params = {"api_token": self.api_key}
-        upload_payload = {
+        upload_payload = self._build_upload_payload(
+            tracker_title=tracker_title,
+            imdb_id=imdb_id,
+            tmdb_id=tmdb_id,
+            tvdb_id=tvdb_id,
+            mal_id=mal_id,
+            nfo=nfo,
+            internal=internal,
+            anonymous=anonymous,
+            personal_release=personal_release,
+            stream_optimized=stream_optimized,
+            opt_in_to_mod_queue=opt_in_to_mod_queue,
+            draft_queue_opt_in=draft_queue_opt_in,
+            featured=featured,
+            free=free,
+            double_up=double_up,
+            sticky=sticky,
+            season_number=season_number,
+            episode_number=episode_number,
+            season_pack=season_pack,
+        )
+
+        LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
+
+        try:
+            with self.torrent_file.open(mode="rb") as open_torrent:
+                with niquests.post(
+                    url=self.upload_url,
+                    files={"torrent": open_torrent},
+                    params=params,
+                    data=upload_payload,
+                    headers=TRACKER_HEADERS,
+                    timeout=self.timeout,
+                ) as response:
+                    response_json = response.json()
+                    # {'success': True, 'data': 'https://baseurl/torrent/download/45835.keydata', 'message': 'Torrent uploaded successfully.'}
+                    message = response_json.get("message")
+                    context = response_json.get("data")
+                    if (
+                        response_json.get("success") is True
+                        and isinstance(message, str)
+                        and "successfully" in message
+                    ):
+                        if not isinstance(context, str) or not context:
+                            raise TrackerError(
+                                "Tracker did not return a torrent download URL",
+                                retryable=False,
+                                server_accepted=True,
+                                phase="download",
+                            )
+                        download_url = context
+                    else:
+                        error_msg = f"Message='{message}' Context='{context}'"
+                        status_code = getattr(response, "status_code", None)
+                        # 408/429 mean the request was rejected before it
+                        # could be processed. A 5xx means the tracker
+                        # received and answered the upload -- it may have
+                        # recorded the torrent before failing, so that must
+                        # route to the user instead of an automatic retry.
+                        retryable = isinstance(status_code, int) and (
+                            status_code == 408
+                            or status_code == 429
+                            or status_code >= 500
+                        )
+                        server_accepted = (
+                            isinstance(status_code, int) and status_code >= 500
+                        )
+                        raise TrackerError(
+                            error_msg,
+                            retryable=retryable,
+                            server_accepted=server_accepted,
+                            status_code=(
+                                status_code if isinstance(status_code, int) else None
+                            ),
+                        )
+
+            # The source torrent must be closed before replacing it on Windows.
+            self._download_uploaded_torrent_with_retry(download_url)
+            return True
+        except TrackerError as error:
+            requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=error.retryable,
+                server_accepted=error.server_accepted,
+                phase=error.phase,
+                status_code=error.status_code,
+            ) from error
+        except niquests.exceptions.RequestException as error:
+            requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                requests_exc_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
+
+    def _download_uploaded_torrent(self, download_url: str) -> Path:
+        """Stream the tracker-generated torrent to its final path atomically."""
+        # By the time this method runs, the tracker has already accepted the
+        # upload (`upload()` only calls it after a successful response), so
+        # every error raised here must carry `server_accepted=True,
+        # phase="download"` -- exactly like the two sibling raises below --
+        # or the UI's duplicate-upload safeguard never engages and a retry
+        # re-POSTs the whole upload to a tracker that already has it.
+        parsed_download_url = urlparse(download_url)
+        if parsed_download_url.scheme not in ("https", "http"):
+            raise TrackerError(
+                f"{self.tracker_name} returned a download URL with an "
+                "unsupported scheme",
+                retryable=False,
+                server_accepted=True,
+                phase="download",
+            )
+        # `upload_url` is derived from the same `base_url` the tracker was
+        # configured with, so its host is what a legitimate download URL
+        # should share. Refuse a response pointing somewhere else.
+        expected_host = urlparse(self.upload_url).hostname
+        if expected_host and parsed_download_url.hostname != expected_host:
+            raise TrackerError(
+                f"{self.tracker_name} returned a download URL for an "
+                f"unexpected host ({parsed_download_url.hostname!r}, "
+                f"expected {expected_host!r})",
+                retryable=False,
+                server_accepted=True,
+                phase="download",
+            )
+
+        destination = self.torrent_file
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        file_descriptor, temporary_name = mkstemp(
+            prefix=f".{destination.name}.", suffix=".part", dir=destination.parent
+        )
+        temporary_path = Path(temporary_name)
+        try:
+            with os.fdopen(file_descriptor, "wb") as torrent_file:
+                with niquests.get(
+                    download_url,
+                    headers=TRACKER_HEADERS,
+                    timeout=self.timeout,
+                    stream=True,
+                ) as response:
+                    response.raise_for_status()
+                    response_headers = dict(response.headers)
+                    for chunk in response.iter_content(chunk_size=64 * 1024):
+                        if chunk:
+                            torrent_file.write(chunk)
+
+            content = temporary_path.read_bytes()
+            if not looks_like_torrent(content, response_headers):
+                raise TrackerError(
+                    "Downloaded file is not a valid torrent",
+                    retryable=True,
+                    server_accepted=True,
+                    phase="download",
+                )
+            temporary_path.replace(destination)
+            return destination
+        except (niquests.exceptions.RequestException, OSError) as error:
+            raise TrackerError(
+                f"Failed to download torrent from {self.tracker_name}: {error}",
+                retryable=True,
+                server_accepted=True,
+                phase="download",
+            ) from error
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    def _download_uploaded_torrent_with_retry(self, download_url: str) -> Path:
+        """Retry artifact download without POSTing the upload again."""
+        return Retrying(
+            retry=retry_if_exception(
+                lambda error: isinstance(error, TrackerError)
+                and bool(getattr(error, "server_accepted", False))
+                and bool(getattr(error, "retryable", False))
+            ),
+            stop=stop_after_attempt(RETRY_ATTEMPTS),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+            reraise=True,
+        )(lambda: self._download_uploaded_torrent(download_url))
+
+    def _build_upload_payload(
+        self,
+        tracker_title: str | None,
+        imdb_id: str | None = None,
+        tmdb_id: str | None = None,
+        tvdb_id: str | None = None,
+        mal_id: str | None = None,
+        nfo: str | None = None,
+        internal: bool = False,
+        anonymous: bool = False,
+        personal_release: bool | None = True,
+        stream_optimized: bool = False,
+        opt_in_to_mod_queue: bool | None = False,
+        draft_queue_opt_in: bool | None = False,
+        featured: bool | None = False,
+        free: bool | None = False,
+        double_up: bool | None = False,
+        sticky: bool | None = False,
+        season_number: int | None = None,
+        episode_number: int | None = None,
+        season_pack: bool = False,
+    ) -> dict[str, Any]:
+        upload_payload: dict[str, Any] = {
             "name": tracker_title
             if tracker_title
-            else self.generate_release_title(self.file_input.stem),
+            else self.generate_release_title(self.input_path.stem),
             "description": nfo,
-            "mediainfo": MinimalMediaInfo(self.file_input).get_full_mi_str(
+            "mediainfo": MinimalMediaInfo(self.input_path).get_full_mi_str(
                 cleansed=True
             ),
             # 'bdinfo': bd_dump,
@@ -176,10 +392,18 @@ class Unit3dBaseUploader:
             upload_payload["imdb"] = int(imdb_id.replace("t", ""))
         if tmdb_id:
             upload_payload["tmdb"] = tmdb_id
-        if self.media_mode is MediaMode.SERIES and tvdb_id:
+        if self.media_type is MediaType.SERIES and tvdb_id:
             upload_payload["tvdb"] = tvdb_id
         if mal_id:
             upload_payload["mal"] = mal_id
+
+        if self.media_type is MediaType.SERIES:
+            if season_number is not None:
+                upload_payload["season_number"] = season_number
+            if not season_pack and episode_number is not None:
+                upload_payload["episode_number"] = episode_number
+            if season_pack:
+                upload_payload["season_pack"] = 1
 
         # some trackers have different keys for different features, we'll handle that here
         if self.tracker_name in (TrackerSelection.AITHER, TrackerSelection.REELFLIX):
@@ -201,127 +425,26 @@ class Unit3dBaseUploader:
         if sticky is not None:
             upload_payload["sticky"] = int(sticky)
 
-        LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
-
-        open_torrent = self.torrent_file.open(mode="rb")
-        upload_success = False
-        site_download_link = None
-        try:
-            with niquests.post(
-                url=self.upload_url,
-                files={"torrent": open_torrent},
-                params=params,
-                data=upload_payload,
-                headers=TRACKER_HEADERS,
-                timeout=self.timeout,
-            ) as response:
-                response_json = response.json()
-                # {'success': True, 'data': 'https://baseurl/torrent/download/45835.keydata', 'message': 'Torrent uploaded successfully.'}
-                message = response_json.get("message")
-                context = response_json.get("data")
-                if response_json.get("success") is True and "successfully" in message:
-                    upload_success = True
-                    site_download_link = context
-                else:
-                    error_msg = f"Message='{message}' Context='{context}'"
-                    raise TrackerError(error_msg)
-        except (niquests.exceptions.RequestException, TrackerError) as error:
-            requests_exc_error_msg = f"Failed to upload to {self.tracker_name}: {error}"
-            LOG.error(LOG.LOG_SOURCE.BE, requests_exc_error_msg)
-            raise TrackerError(requests_exc_error_msg)
-        finally:
-            open_torrent.close()
-
-        # replace torrent file with torrent from unit3d tracker
-        self._replace_generated_torrent_from_site(
-            upload_success=upload_success, site_download_link=site_download_link
-        )
-
-        return upload_success
-
-    def _replace_generated_torrent_from_site(
-        self, upload_success: bool, site_download_link: str
-    ) -> None:
-        """Download the full link returned in `data` and atomically replace the local .torrent."""
-        if (
-            not upload_success
-            or not site_download_link
-            or not isinstance(site_download_link, str)
-        ):
-            return
-
-        if not site_download_link.startswith("http"):
-            LOG.debug(
-                LOG.LOG_SOURCE.BE,
-                f"{self.tracker_name}: Ignoring non-http download link: {site_download_link}",
-            )
-            return
-
-        try:
-            with niquests.get(
-                site_download_link, headers=TRACKER_HEADERS, timeout=self.timeout
-            ) as dl_resp:
-                if not dl_resp.ok:
-                    LOG.warning(
-                        LOG.LOG_SOURCE.BE,
-                        f"{self.tracker_name}: Failed to download site .torrent: HTTP "
-                        f"{dl_resp.status_code} from {site_download_link}",
-                    )
-                    return
-
-                if not dl_resp.content or not dl_resp.headers:
-                    LOG.warning(
-                        LOG.LOG_SOURCE.BE,
-                        f"{self.tracker_name}: Failed to detect content and/or headers in response",
-                    )
-                    return
-
-                if not looks_like_torrent(dl_resp.content, dl_resp.headers):
-                    LOG.warning(
-                        LOG.LOG_SOURCE.BE,
-                        f"{self.tracker_name}: Download did not return a .torrent from {site_download_link} "
-                        f"(type: {dl_resp.headers.get('Content-Type')})",
-                    )
-                    return
-
-                # write atomically: write to temp then replace
-                tmp_path = self.torrent_file.with_name(
-                    self.torrent_file.name + "_dl.tmp"
-                )
-                try:
-                    tmp_path.write_bytes(dl_resp.content)
-                    tmp_path.replace(self.torrent_file)
-                    LOG.info(
-                        LOG.LOG_SOURCE.BE,
-                        f"{self.tracker_name}: Replaced local torrent with site-generated torrent "
-                        f"from {site_download_link}",
-                    )
-                except Exception as e:
-                    LOG.warning(
-                        LOG.LOG_SOURCE.BE,
-                        f"{self.tracker_name}: Failed to write replaced torrent file: {e}",
-                    )
-                    try:
-                        if tmp_path.exists():
-                            tmp_path.unlink()
-                    except Exception:
-                        pass
-        except niquests.exceptions.RequestException as e:
-            LOG.warning(
-                LOG.LOG_SOURCE.BE,
-                f"{self.tracker_name}: Error fetching site .torrent: {e}",
-            )
+        return upload_payload
 
     def _get_category_id(self) -> str:
-        return self.cat_enum(self.cat_enum.MOVIE).value
+        category_name = "TV" if self.media_type is MediaType.SERIES else "MOVIE"
+        category = getattr(self.cat_enum, category_name, None)
+        if not category:
+            raise TrackerError(
+                f"{self.tracker_name} does not support {self.media_type} uploads"
+            )
+        return str(self.cat_enum(category).value)
 
     def _get_type_id(self) -> str:
-        title_lowered = str(self.file_input.stem).lower()
+        title_lowered = str(self.input_path.stem).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # remux
         if "remux" in title_lowered:
-            return self.type_enum.REMUX.value
+            remux_value = getattr(self.type_enum, "REMUX", None)
+            if remux_value is not None:
+                return str(remux_value.value)
 
         # disc
         if regex.search(
@@ -338,24 +461,47 @@ class Unit3dBaseUploader:
             ),
             title_lowered,
         ):
-            return self.type_enum.DISC.value
+            disc_value = getattr(self.type_enum, "DISC", None)
+            if disc_value is not None:
+                return str(disc_value.value)
 
         # web
         if "web" in title_lowered:
-            if re.match(r"web.?dl", title_lowered):
+            if re.search(r"\bweb[._ -]?dl\b", title_lowered):
                 webdl_value = getattr(self.type_enum, "WEBDL", None)
                 if webdl_value:
-                    return webdl_value.value
-            elif re.match(r"web.?rip", title_lowered):
+                    return str(webdl_value.value)
+            elif re.search(r"\bweb[._ -]?rip\b", title_lowered):
                 webrip_value = getattr(self.type_enum, "WEBRIP", None)
                 if webrip_value:
-                    return webrip_value.value
+                    return str(webrip_value.value)
+            elif re.search(
+                r"\b(?:480|576|720|1080|2160|4320)[pi][._ -]?web\b"
+                r"|\bweb[._ -]?(?:480|576|720|1080|2160|4320)[pi]\b"
+                r"|\bweb[._ -]?(?:[xh][._ -]?26[45]|hevc|avc)\b",
+                title_lowered,
+            ) and not ("hdtv" in title_lowered or "hd-tv" in title_lowered):
+                # bare "WEB" (no -DL/-Rip suffix) is a common scene/P2P source
+                # tag for episodic web releases (e.g. "S01E01.1080p.WEB.H264").
+                # Treat it the same as WEB-DL rather than falling through to
+                # the codec-driven ENCODE branch below -- but only when "web"
+                # sits in the release-tag region: immediately adjacent to a
+                # resolution token (RES.WEB / WEB.RES) or immediately followed
+                # by a codec token (WEB.CODEC). This keeps an incidental "web"
+                # elsewhere in the filename -- e.g. a show title like
+                # "Spider.Web.S01E01.1080p.x264-GRP" -- from being misread as
+                # a source tag; that case falls through to the ENCODE branch
+                # below. Also guarded against an explicit HDTV marker so a
+                # real HDTV release can't be overridden.
+                webdl_value = getattr(self.type_enum, "WEBDL", None)
+                if webdl_value:
+                    return str(webdl_value.value)
 
         # hdtv
         if "hdtv" in title_lowered or "hd-tv" in title_lowered:
             hdtv_value = getattr(self.type_enum, "HDTV", None)
             if hdtv_value:
-                return hdtv_value.value
+                return str(hdtv_value.value)
 
         # encodes
         if any(
@@ -369,7 +515,7 @@ class Unit3dBaseUploader:
         ):
             encode_value = getattr(self.type_enum, "ENCODE", None)
             if encode_value:
-                return encode_value.value
+                return str(encode_value.value)
 
         raise TrackerError(f"Failed to determine 'Type ID' for {self.tracker_name}")
 
@@ -378,23 +524,25 @@ class Unit3dBaseUploader:
             resolution = self.res_enum(
                 VideoResolutionAnalyzer(self.mediainfo_obj).get_resolution()
             ).value
-            return resolution
+            return str(resolution)
         except ValueError:
-            title_lowered = self.file_input.stem.lower()
+            title_lowered = self.input_path.stem.lower()
             res_map = {
-                "4320p": self.res_enum.RES_4320P,
-                "2160p": self.res_enum.RES_2160P,
-                "1080p": self.res_enum.RES_1080P,
-                "1080i": self.res_enum.RES_1080I,
-                "720p": self.res_enum.RES_720P,
-                "576p": self.res_enum.RES_576P,
-                "576i": self.res_enum.RES_576I,
-                "480p": self.res_enum.RES_480P,
-                "480i": self.res_enum.RES_480I,
+                "4320p": "RES_4320P",
+                "2160p": "RES_2160P",
+                "1080p": "RES_1080P",
+                "1080i": "RES_1080I",
+                "720p": "RES_720P",
+                "576p": "RES_576P",
+                "576i": "RES_576I",
+                "480p": "RES_480P",
+                "480i": "RES_480I",
             }
-            for res, enum in res_map.items():
+            for res, enum_name in res_map.items():
                 if res in title_lowered:
-                    return enum.value
+                    resolution_value = getattr(self.res_enum, enum_name, None)
+                    if resolution_value is not None:
+                        return str(resolution_value.value)
 
         raise TrackerError(
             f"Failed to determine 'Resolution ID' for {self.tracker_name}"
@@ -438,10 +586,10 @@ class Unit3dBaseSearch:
         self.timeout = timeout
 
     def search(self, file_name: str) -> list[TrackerSearchResult]:
-        params = {
+        params: dict[str, str] = {
             "api_token": self.api_key,
             "file_name": file_name,
-            "perPage": 50,
+            "perPage": "50",
         }
 
         results = None
@@ -456,11 +604,15 @@ class Unit3dBaseSearch:
                 params=params,
                 timeout=self.timeout,
             ) as response:
-                if response.ok and response.status_code == 200:
-                    response_json = response.json()
-                    results = self._convert_response(response_json)
+                if response.status_code != 200:
+                    raise TrackerError(
+                        f"Error searching {self.tracker_name}: "
+                        f"HTTP {response.status_code} ({response.reason})"
+                    )
+                response_json = response.json()
+                results = self._convert_response(response_json)
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(error_message)
+            raise TrackerError(str(error_message)) from error_message
 
         results = results if results else []
         LOG.info(
@@ -472,8 +624,10 @@ class Unit3dBaseSearch:
         )
         return results
 
-    def _convert_response(self, data: dict | None) -> list[TrackerSearchResult]:
-        results = []
+    def _convert_response(
+        self, data: dict[str, Any] | None
+    ) -> list[TrackerSearchResult]:
+        results: list[TrackerSearchResult] = []
         if data:
             for item in data.get("data", []):
                 if item:

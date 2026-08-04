@@ -1,6 +1,7 @@
 import asyncio
-import xml.etree.ElementTree as ET
 from pathlib import Path
+import xml.etree.ElementTree as ET
+
 from pymediainfo import MediaInfo
 
 
@@ -29,7 +30,10 @@ class MediaInfoProcessor:
     async def get_xml_str(self, file_path: Path) -> str | None:
         xml_parse = MediaInfo.parse(file_path, output="OLDXML")
         if isinstance(xml_parse, str):
-            xml_root = ET.fromstring(xml_parse)
+            # lint reason: developer-only script parsing MediaInfo output for
+            # local files the developer already has filesystem access to; not
+            # untrusted network input
+            xml_root = ET.fromstring(xml_parse)  # noqa: S314
             minified_xml = ET.tostring(xml_root, encoding="unicode", method="xml")
             return minified_xml
 

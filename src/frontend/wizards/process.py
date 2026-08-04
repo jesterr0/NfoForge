@@ -1,12 +1,13 @@
 import asyncio
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
 import traceback
-from typing import Any, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
-from PySide6.QtCore import QEventLoop, QObject, QThread, Signal, Slot
-from PySide6.QtGui import QTextCursor, Qt
+from PySide6.QtCore import QEventLoop, QObject, QThread, QTimer, Signal, Slot
+from PySide6.QtGui import Qt, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -19,16 +20,20 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
-from pymediainfo import MediaInfo
 
 from src.backend.process import ProcessBackEnd
+from src.backend.upload_retry import (
+    UploadFailure,
+    UploadFailurePhase,
+    UploadRetryAction,
+)
 from src.backend.utils.file_utilities import open_explorer
-from src.config.config import Config
+from src.config.config import ConfigManager
+from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
-from src.enums.media_mode import MediaMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import UploadProcessMode
-from src.exceptions import ProcessError
+from src.exceptions import ProcessCancelled, ProcessError
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.custom_widgets.overview_dialog import OverviewDialog
 from src.frontend.custom_widgets.prompt_token_editor_dialog import (
@@ -37,10 +42,10 @@ from src.frontend.custom_widgets.prompt_token_editor_dialog import (
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import ImageUploadFromTo
-from src.payloads.media_search import MediaSearchPayload
+from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.payloads.image_hosts import ImagePayloadBase
 from src.payloads.tracker_search_result import TrackerSearchResult
+from src.utils.secret_redaction import scrub_secrets
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -71,16 +76,14 @@ class DupeWorker(BaseWorker):
     def __init__(
         self,
         backend: ProcessBackEnd,
-        file_input: Path,
-        processing_queue: list[str],
-        media_search_payload: MediaSearchPayload,
+        processing_queue: list[TrackerSelection],
+        context: ProcessingContext,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.backend = backend
-        self.file_input = file_input
+        self.context = context
         self.processing_queue = processing_queue
-        self.media_search_payload = media_search_payload
 
     def run(self) -> None:
         async_loop = asyncio.new_event_loop()
@@ -88,9 +91,9 @@ class DupeWorker(BaseWorker):
         try:
             dupes = async_loop.run_until_complete(
                 self.backend.dupe_checks(
-                    file_input=self.file_input,
                     processing_queue=self.processing_queue,
-                    media_search_payload=self.media_search_payload,
+                    media_input_payload=self.context.media_input,
+                    media_search_payload=self.context.media_search,
                 )
             )
             self.results.emit(dupes)
@@ -100,65 +103,109 @@ class DupeWorker(BaseWorker):
             async_loop.close()
 
 
+class _TokenPromptWaiter(QObject):
+    """Bound-method receiver for ``prompt_tokens_response``.
+
+    PySide routes a queued connection to a plain Python closure through an
+    internal receiver whose thread affinity is pinned by the *first*
+    connection made in the process. On a second (or later) worker QThread
+    that pins the delivery to the wrong thread and the signal is silently
+    dropped. A fresh QObject instance per call carries its own thread
+    affinity, so real bound ``@Slot`` methods on it keep being delivered.
+    """
+
+    def __init__(self, worker: "ProcessWorker", loop: QEventLoop) -> None:
+        super().__init__()
+        self._worker = worker
+        self._loop = loop
+
+    @Slot(object)
+    def on_response(self, response: dict[str, str] | None) -> None:
+        self._worker._prompt_tokens_response = response
+        self._loop.quit()
+
+
+class _OverviewPromptWaiter(QObject):
+    """Bound-method receiver for ``overview_prompt_response``. See
+    ``_TokenPromptWaiter`` for why a closure slot is not used here."""
+
+    def __init__(self, worker: "ProcessWorker", loop: QEventLoop) -> None:
+        super().__init__()
+        self._worker = worker
+        self._loop = loop
+
+    @Slot(object)
+    def on_response(
+        self, response: dict[TrackerSelection, dict[str, str | None]] | None
+    ) -> None:
+        self._worker._overview_prompt = response
+        self._loop.quit()
+
+
+class _UploadRetryWaiter(QObject):
+    """Bound-method receiver for ``upload_retry_ack`` / ``upload_retry_response``.
+    See ``_TokenPromptWaiter`` for why a closure slot is not used here."""
+
+    def __init__(self, watchdog: QTimer, loop: QEventLoop) -> None:
+        super().__init__()
+        self._watchdog = watchdog
+        self._loop = loop
+        self.response: UploadRetryAction | None = None
+
+    @Slot()
+    def on_ack(self) -> None:
+        self._watchdog.stop()
+
+    @Slot(object)
+    def on_response(self, action: UploadRetryAction) -> None:
+        self.response = action
+        self._loop.quit()
+
+
 class ProcessWorker(BaseWorker):
     queued_status_update = Signal(str, str)
-    progress_signal = Signal(int)
+    progress_signal = Signal(float)
     prompt_tokens_signal = Signal(list)
     overview_signal = Signal(object)
+    upload_retry_signal = Signal(object)
+    job_cancelled = Signal()
+
+    RETRY_PROMPT_ACK_TIMEOUT_MS = 5000
 
     def __init__(
         self,
         backend: ProcessBackEnd,
-        media_input: Path,
-        jinja_engine: Jinja2TemplateEngine,
-        source_file: Path | None,
         tracker_data: dict[str, Any],
-        mediainfo_obj: MediaInfo,
-        source_file_mi_obj: MediaInfo | None,
-        media_mode: MediaMode,
-        media_search_payload: MediaSearchPayload,
-        releasers_name: str,
-        encode_file_dir: Path | None,
+        context: ProcessingContext,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.backend = backend
-        self.media_input = media_input
-        self.jinja_engine = jinja_engine
-        self.source_file = source_file
         self.tracker_data = tracker_data
-        self.mediainfo_obj = mediainfo_obj
-        self.source_file_mi_obj = source_file_mi_obj
-        self.media_mode = media_mode
-        self.media_search_payload = media_search_payload
-        self.releasers_name = releasers_name
-        self.encode_file_dir = encode_file_dir
+        self.context = context
 
-        self._prompt_tokens_response = None
-        self._overview_prompt = None
+        self._prompt_tokens_response: dict[str, str] | None = None
+        self._overview_prompt: dict[TrackerSelection, dict[str, str | None]] | None = (
+            None
+        )
 
     def run(self) -> None:
         try:
             self.backend.process_trackers(
-                media_input=self.media_input,
-                jinja_engine=self.jinja_engine,
-                source_file=self.source_file,
                 process_dict=self.tracker_data,
                 queued_status_update=self._queued_status_update_cb,
                 queued_text_update=self._queued_text_update_cb,
                 queued_text_update_replace_last_line=self._queued_text_update_replace_last_line_cb,
                 progress_bar_cb=self._progress_cb,
                 caught_error=self.caught_error,
-                mediainfo_obj=self.mediainfo_obj,
-                source_file_mi_obj=self.source_file_mi_obj,
-                media_mode=self.media_mode,
-                media_search_payload=self.media_search_payload,
-                releasers_name=self.releasers_name,
-                encode_file_dir=self.encode_file_dir,
+                context=self.context,
                 token_prompt_cb=self.token_prompt_and_wait_cb,
                 overview_cb=self.overview_prompt_and_wait_cb,
+                upload_retry_cb=self.upload_retry_and_wait_cb,
             )
             self.job_finished.emit()
+        except ProcessCancelled:
+            self.job_cancelled.emit()
         except Exception as e:
             self.job_failed.emit(
                 f"Failed to process trackers: {e}", traceback.format_exc()
@@ -169,61 +216,82 @@ class ProcessWorker(BaseWorker):
             self.queued_status_update.emit(tracker, status)
 
     def _progress_cb(self, progress: float) -> None:
-        if progress:
+        if progress is not None:
             self.progress_signal.emit(progress)
 
     def token_prompt_and_wait_cb(
         self, tokens: Sequence[str] | None
     ) -> dict[str, str] | None:
         if not tokens:
-            return
+            return None
 
         self._prompt_tokens_response = None
         self.prompt_tokens_signal.emit(tokens)
         # start event loop
         loop = QEventLoop()
-
-        @Slot(object)
-        def on_response(
-            response: dict[TrackerSelection, dict[str | None, str]] | None,
-        ) -> None:
-            self._prompt_tokens_response = response
-            loop.quit()
+        waiter = _TokenPromptWaiter(self, loop)
 
         # wait for response
-        GSigs().prompt_tokens_response.connect(on_response)
-        loop.exec_()
-        GSigs().prompt_tokens_response.disconnect(on_response)
+        GSigs().prompt_tokens_response.connect(waiter.on_response)
+        try:
+            loop.exec_()
+        finally:
+            GSigs().prompt_tokens_response.disconnect(waiter.on_response)
 
         # return response
         return self._prompt_tokens_response
 
     def overview_prompt_and_wait_cb(
-        self, data: dict[TrackerSelection, dict[str | None, str]] | None
-    ) -> dict[TrackerSelection, dict[str | None, str]] | None:
+        self, data: dict[TrackerSelection, dict[str, str | None]] | None
+    ) -> dict[TrackerSelection, dict[str, str | None]] | None:
         if not data:
-            return
+            return None
 
         self._overview_prompt = None
         self.overview_signal.emit(data)
 
         # start loop
         loop = QEventLoop()
-
-        @Slot(object)
-        def on_response(
-            response: dict[TrackerSelection, dict[str | None, str]] | None,
-        ) -> None:
-            self._overview_prompt = response
-            loop.quit()
+        waiter = _OverviewPromptWaiter(self, loop)
 
         # wait for response
-        GSigs().overview_prompt_response.connect(on_response)
-        loop.exec_()
-        GSigs().overview_prompt_response.disconnect(on_response)
+        GSigs().overview_prompt_response.connect(waiter.on_response)
+        try:
+            loop.exec_()
+        finally:
+            GSigs().overview_prompt_response.disconnect(waiter.on_response)
 
         # return response
         return self._overview_prompt
+
+    def upload_retry_and_wait_cb(self, failure: UploadFailure) -> UploadRetryAction:
+        """Ask the frontend what to do with a failed tracker upload."""
+        loop = QEventLoop()
+
+        # The GUI may be gone: if the slot is never invoked nothing would ever
+        # reply and this loop would block forever. Bound the wait until the GUI
+        # acknowledges receipt, then let the user take as long as they need.
+        watchdog = QTimer()
+        watchdog.setSingleShot(True)
+        watchdog.timeout.connect(loop.quit)
+
+        waiter = _UploadRetryWaiter(watchdog, loop)
+
+        # Connect before emitting so the response can never arrive first, and
+        # always disconnect so a raise inside the loop cannot leak a connection
+        # onto the global signal singleton.
+        GSigs().upload_retry_ack.connect(waiter.on_ack)
+        GSigs().upload_retry_response.connect(waiter.on_response)
+        try:
+            watchdog.start(self.RETRY_PROMPT_ACK_TIMEOUT_MS)
+            self.upload_retry_signal.emit(failure)
+            loop.exec_()
+        finally:
+            watchdog.stop()
+            GSigs().upload_retry_response.disconnect(waiter.on_response)
+            GSigs().upload_retry_ack.disconnect(waiter.on_ack)
+
+        return waiter.response or UploadRetryAction.CANCEL
 
 
 class ProcessPage(BaseWizardPage):
@@ -232,8 +300,10 @@ class ProcessPage(BaseWizardPage):
         "light": {"box_color": "#e6e6e6"},
     }
 
-    def __init__(self, config: Config, parent: "MainWindow") -> None:
-        super().__init__(config, parent)
+    def __init__(
+        self, config: ConfigManager, context: ProcessingContext, parent: "MainWindow"
+    ) -> None:
+        super().__init__(config, context, parent)
         self.setObjectName("processPage")
         self.setTitle("Process")
 
@@ -284,61 +354,62 @@ class ProcessPage(BaseWizardPage):
 
     @Slot()
     def process_jobs(self) -> None:
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=False
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Media Files Unavailable",
+                f"Processing cannot start because its input paths are no longer "
+                f"valid:\n\n{error}",
+            )
+            return
+
         # get paths and other things from the media input payload
-        detected_input, mediainfo_obj, encode_file_dir = self._handle_files()
+        detected_input = self.context.media_input.require_input_path()
+        LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
 
         # get tracker data and check for existing torrent files
-        if not self.config.media_input_payload.working_dir:
-            raise FileNotFoundError("Failed to detect MediaInputPayload.working_dir")
-        tracker_data = self._gather_tracker_data(
-            self.config.media_input_payload.working_dir, detected_input
-        )
+        tracker_data = self._gather_tracker_data(detected_input)
         if not tracker_data:
             raise AttributeError("Could not determine tracker data")
 
         GSigs().wizard_set_disabled.emit(True)
         self.tracker_process_tree.setDisabled(True)
 
-        if self.processing_mode == UploadProcessMode.DUPE_CHECK:
+        if self.processing_mode is UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
                 backend=self.backend,
-                file_input=detected_input,
-                processing_queue=list(tracker_data.keys()),
-                media_search_payload=self.config.media_search_payload,
+                processing_queue=[TrackerSelection(x) for x in tracker_data.keys()],
+                context=self.context,
                 parent=self,
             )
             self.dupe_worker.results.connect(self._on_dupe_results)
             self.dupe_worker.job_failed.connect(self._on_dupes_failed)
-            # self.dupe_worker.queued_text_update.connect(self._on_text_update)
-            # self.dupe_worker.queued_text_update_replace_last_line.connect(
-            #     self._on_text_update_replace_last_line
-            # )
             self._on_text_update(
                 '<h3 style="margin: 0; padding: 0;">📋 Checking for dupes:</h3>',
             )
             self.dupe_worker.start()
 
-        elif self.processing_mode == UploadProcessMode.UPLOAD:
+        elif self.processing_mode is UploadProcessMode.UPLOAD:
             if self.save_config:
                 self.save_config = False
                 self._update_last_used_host()
 
+            if not self.context.media_search.media_type:
+                raise AttributeError("Failed to determine MediaType")
+
             self.process_worker = ProcessWorker(
                 backend=self.backend,
-                media_input=detected_input,
-                jinja_engine=self.config.jinja_engine,
-                source_file=self.config.media_input_payload.source_file,
                 tracker_data=tracker_data,
-                mediainfo_obj=mediainfo_obj,
-                source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
-                media_mode=self.config.cfg_payload.media_mode,
-                media_search_payload=self.config.media_search_payload,
-                releasers_name=self.config.cfg_payload.releasers_name,
-                encode_file_dir=encode_file_dir,
+                context=self.context,
                 parent=self,
             )
             self.process_worker.caught_error.connect(self._log_caught_error)
             self.process_worker.job_finished.connect(self._on_finished)
+            self.process_worker.job_cancelled.connect(self._on_cancelled)
             self.process_worker.queued_status_update.connect(self._on_status_update)
             self.process_worker.progress_signal.connect(self._on_progress_update)
             self.process_worker.job_failed.connect(self._on_failed)
@@ -350,6 +421,9 @@ class ProcessPage(BaseWizardPage):
                 self._on_prompt_tokens_signal
             )
             self.process_worker.overview_signal.connect(self._on_overview_signal)
+            self.process_worker.upload_retry_signal.connect(
+                self._on_upload_retry_signal
+            )
             self.process_worker.start()
 
     @Slot(object)
@@ -428,11 +502,111 @@ class ProcessPage(BaseWizardPage):
         self._job_ended()
         GSigs().wizard_process_btn_set_hidden.emit()
 
+    @Slot()
+    def _on_cancelled(self) -> None:
+        self._job_ended()
+        self._on_text_update(
+            "<br /><span style='font-weight: bold;'>Remaining processing cancelled. "
+            "Trackers that already completed were not rolled back; restart the "
+            "wizard to upload the remaining ones.</span>"
+        )
+        # Without this the process button restarts from the first tracker and
+        # re-uploads the ones that already succeeded.
+        GSigs().wizard_process_btn_set_hidden.emit()
+
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
-        self._on_text_update(f"<br /><p>{e}</p>")
-        LOG.error(LOG.LOG_SOURCE.FE, trace_back)
+        self._on_text_update(f"<br /><p>{scrub_secrets(e)}</p>")
+        LOG.error(LOG.LOG_SOURCE.FE, scrub_secrets(trace_back))
+
+    @Slot(object)
+    def _on_upload_retry_signal(self, failure: UploadFailure) -> None:
+        """Present a retry/skip/cancel choice while the worker waits."""
+        action = UploadRetryAction.CANCEL
+        # Tell the worker its request was received, so it stops the ack
+        # watchdog and waits indefinitely for the user's actual answer.
+        GSigs().upload_retry_ack.emit()
+        try:
+            dialog = QMessageBox(self)
+            dialog.setIcon(QMessageBox.Icon.Warning)
+            dialog.setWindowTitle(f"Upload failed: {failure.tracker}")
+            dialog.setText(
+                f"{failure.tracker} failed during {failure.phase.name.lower().replace('_', ' ')}."
+            )
+            details = (
+                f"Attempts: {failure.attempt} "
+                f"({failure.automatic_attempts} automatic attempts)\n\n"
+                f"{scrub_secrets(failure.message)}"
+            )
+            if failure.torrent_path:
+                details += f"\n\nOutput: {failure.torrent_path.parent}"
+            if failure.phase is UploadFailurePhase.DOWNLOAD:
+                details += (
+                    "\n\nThe upload succeeded. Only downloading the tracker's "
+                    "copy of the torrent failed, so the local torrent file was "
+                    "kept. Re-uploading would create a duplicate."
+                )
+            elif failure.phase is UploadFailurePhase.INJECTION:
+                details += (
+                    "\n\nThe upload succeeded. Only adding the torrent to your "
+                    "client failed, so retrying is safe."
+                )
+            elif failure.server_accepted:
+                details += (
+                    "\n\nThe tracker may already have accepted this upload. "
+                    "Retrying could create a duplicate."
+                )
+            elif not failure.retryable:
+                details += (
+                    "\n\nThis does not look like a temporary failure; verify the "
+                    "tracker settings before retrying."
+                )
+            dialog.setInformativeText(details)
+
+            if failure.phase is UploadFailurePhase.DOWNLOAD:
+                # The upload itself succeeded; only fetching the tracker's copy
+                # of the torrent failed. Re-uploading would duplicate it.
+                retry_button = None
+                skip_button = dialog.addButton(
+                    "Keep upload, continue", QMessageBox.ButtonRole.AcceptRole
+                )
+                dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+                dialog.setDefaultButton(skip_button)
+            else:
+                retry_label = (
+                    "Re-upload (may duplicate)" if failure.server_accepted else "Retry"
+                )
+                retry_button = dialog.addButton(
+                    retry_label, QMessageBox.ButtonRole.AcceptRole
+                )
+                skip_button = dialog.addButton(
+                    "Skip tracker", QMessageBox.ButtonRole.DestructiveRole
+                )
+                dialog.addButton("Cancel remaining", QMessageBox.ButtonRole.RejectRole)
+                # Never default to the action that can create a duplicate.
+                dialog.setDefaultButton(
+                    skip_button if failure.server_accepted else retry_button
+                )
+            dialog.exec()
+
+            clicked = dialog.clickedButton()
+            if retry_button is not None and clicked is retry_button:
+                action = UploadRetryAction.RETRY
+            elif clicked is skip_button:
+                action = UploadRetryAction.SKIP
+        except Exception as e:
+            # Presenting the dialog failed (e.g. the page was torn down while
+            # the prompt was up). Fall back to CANCEL below instead of leaving
+            # the exception unhandled.
+            LOG.error(
+                LOG.LOG_SOURCE.FE,
+                f"Failed to present upload retry prompt: {e}\n{traceback.format_exc()}",
+            )
+        finally:
+            # The worker thread is blocked on this response. Releasing it from a
+            # finally keeps a dialog failure from hanging the whole run.
+            GSigs().upload_retry_response.emit(action)
 
     def _job_ended(self) -> None:
         self.dupe_worker = None
@@ -455,8 +629,9 @@ class ProcessPage(BaseWizardPage):
         cursor = self.text_widget.textCursor()
         cursor.movePosition(cursor.MoveOperation.End)
         if txt:
-            cursor.insertHtml(txt)
-            LOG.info(LOG.LOG_SOURCE.FE, f"Process log: {txt}")
+            safe_txt = scrub_secrets(txt)
+            cursor.insertHtml(safe_txt)
+            LOG.info(LOG.LOG_SOURCE.FE, f"Process log: {safe_txt}")
         if not txt:
             cursor.insertHtml("<br />")
         self.text_widget.setTextCursor(cursor)
@@ -520,24 +695,24 @@ class ProcessPage(BaseWizardPage):
         prompt_tokens = None
         prompt = PromptTokenEditorDialog(
             items=tokens,
-            warn_missing=self.config.cfg_payload.prompt_token_editor_warn_on_missing,
+            warn_missing=self.config.settings.widgets.prompt_token_editor_warn_on_missing,
             parent=self,
         )
         if prompt.exec() == QDialog.DialogCode.Accepted:
             if (
                 prompt.warn_on_missing.isChecked()
-                != self.config.cfg_payload.prompt_token_editor_warn_on_missing
+                != self.config.settings.widgets.prompt_token_editor_warn_on_missing
             ):
-                self.config.cfg_payload.prompt_token_editor_warn_on_missing = (
+                self.config.settings.widgets.prompt_token_editor_warn_on_missing = (
                     prompt.warn_on_missing.isChecked()
                 )
-                self.config.save_config()
+                self.config.save()
             prompt_tokens = prompt.get_results()
         GSigs().prompt_tokens_response.emit(prompt_tokens)
 
     @Slot(object)
     def _on_overview_signal(
-        self, data: dict[TrackerSelection, dict[str | None, str]]
+        self, data: dict[TrackerSelection, dict[str, str | None]]
     ) -> None:
         result = data
         prompt = OverviewDialog(data, self)
@@ -546,43 +721,56 @@ class ProcessPage(BaseWizardPage):
         GSigs().overview_prompt_response.emit(result)
 
     def _update_last_used_host(self) -> None:
-        start_data = deepcopy(self.config.cfg_payload.last_used_img_host)
-        for _, (
-            _,
-            (_, (tracker, img_dest)),
-        ), _ in self.tracker_process_tree.get_item_values():
+        start_data = deepcopy(self.config.settings.trackers.last_used_image_host)
+        for row in self.tracker_process_tree.get_item_values():
+            _, (_, (_, (tracker, img_dest))), _ = cast(
+                tuple[
+                    str,
+                    tuple[
+                        str,
+                        tuple[
+                            ImageUploadFromTo,
+                            tuple[TrackerSelection, ImageHost | ImageSource],
+                        ],
+                    ],
+                    str,
+                ],
+                row,
+            )
             try:
-                self.config.cfg_payload.last_used_img_host[
+                self.config.settings.trackers.last_used_image_host[
                     TrackerSelection(tracker)
                 ] = ImageHost(img_dest)
             except ValueError:
-                self.config.cfg_payload.last_used_img_host[
+                self.config.settings.trackers.last_used_image_host[
                     TrackerSelection(tracker)
                 ] = ImageSource(img_dest)
-        if self.config.cfg_payload.last_used_img_host != start_data:
-            self.config.save_config()
+        if self.config.settings.trackers.last_used_image_host != start_data:
+            self.config.save()
 
     def add_tracker_items(self) -> None:
         # sort the trackers in the users desired order before displaying them
-        if self.config.shared_data.selected_trackers:
+        if self.context.shared_data.selected_trackers:
             upload_type = ImageSource.IMAGES
-            enabled_img_hosts = {ImageHost.DISABLED: False}
+            enabled_img_hosts: dict[
+                ImageHost | ImageSource, bool | ImagePayloadBase | list[ImageUploadData]
+            ] = {ImageHost.DISABLED: False}
 
             # if url data is detected add that to the potential options
-            if self.config.shared_data.url_data:
+            if self.context.shared_data.url_data:
                 upload_type = ImageSource.URLS
                 enabled_img_hosts = enabled_img_hosts | {
-                    upload_type: self.config.shared_data.url_data
+                    upload_type: self.context.shared_data.url_data
                 }
 
             # if we have any image data, filter all image hosts that are enabled and have all required values filled
             if (
-                self.config.shared_data.loaded_images
-                or self.config.shared_data.url_data
+                self.context.shared_data.loaded_images
+                or self.context.shared_data.url_data
             ):
                 enabled_img_hosts = enabled_img_hosts | {
                     key: value
-                    for key, value in self.config.image_host_map.items()
+                    for key, value in self.config.settings.image_hosts.by_selection().items()
                     if value.enabled
                     and all(
                         getattr(value, field.name)
@@ -594,8 +782,8 @@ class ProcessPage(BaseWizardPage):
             ordered_trackers = [
                 x
                 for x in sorted(
-                    self.config.shared_data.selected_trackers,
-                    key=lambda tracker: self.config.cfg_payload.tracker_order.index(
+                    self.context.shared_data.selected_trackers,
+                    key=lambda tracker: self.config.settings.trackers.order.index(
                         tracker
                     ),
                 )
@@ -623,7 +811,9 @@ class ProcessPage(BaseWizardPage):
                         )
                     ],
                 )
-                last_used_host = self.config.cfg_payload.last_used_img_host.get(tracker)
+                last_used_host = self.config.settings.trackers.last_used_image_host.get(
+                    tracker
+                )
                 if combo_box and last_used_host:
                     get_last = combo_box.findText(
                         str(last_used_host), flags=Qt.MatchFlag.MatchContains
@@ -635,120 +825,28 @@ class ProcessPage(BaseWizardPage):
     def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
         self.save_config = True
 
-    def get_inputs(self) -> tuple[Path, Path | None, MediaInfo, Path | None]:
-        payload = self.config.media_input_payload
-        media_in = payload.encode_file
-        if not media_in:
-            raise FileNotFoundError("Failed to detect encode input")
-        renamed_out = payload.renamed_file
-        media_info_obj = payload.encode_file_mi_obj
-        encode_file_dir = payload.encode_file_dir
-        if not media_info_obj:
-            raise AttributeError("Failed to read media info for encode input")
-        return (
-            Path(media_in),
-            Path(renamed_out) if renamed_out else None,
-            media_info_obj,
-            Path(encode_file_dir) if encode_file_dir else None,
-        )
+    def _gather_tracker_data(self, detected_input: Path) -> dict[str, Any] | None:
+        process_dir = self.context.media_input.working_dir
+        if not process_dir:
+            raise ValueError("Failed to detect MediaInputPayload.working_dir")
 
-    def _handle_files(self) -> tuple[Path, MediaInfo, Path | None]:
-        # get paths and other things from the media input payload
-        og_input, renamed_input, mediainfo_obj, encode_file_dir = self.get_inputs()
-
-        detected_input = renamed_input if renamed_input else og_input
-        LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
-
-        # handle rename if we're uploading
-        if self.processing_mode == UploadProcessMode.UPLOAD:
-            # grab table bg color based on theme
-            table_element_bg = self.get_theme_colors()
-
-            # file rename first (if needed)
-            if renamed_input and (str(og_input) != str(renamed_input)):
-                self._on_text_update(f"""\
-                    <br /><h3 style="margin: 0; padding: 0;">📼 Renaming input file:</h3>
-                    <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
-                    <tr>
-                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-                        <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
-                    </tr>
-                    <tr>
-                        <td style="border: 1px solid #bbb; padding: 6px;">{og_input.stem}</td>
-                        <td style="border: 1px solid #bbb; padding: 6px;">{renamed_input.stem}</td>
-                    </tr>
-                    </table>""")
-                try:
-                    # only rename if source and destination are different and source exists
-                    if og_input != renamed_input and og_input.exists():
-                        detected_input = self.backend.rename_file(
-                            f_in=og_input, f_out=renamed_input
-                        )
-                        if not detected_input.exists():
-                            detected_input_error = (
-                                "Cannot continue, the detected input does not exist"
-                            )
-                            LOG.debug(LOG.LOG_SOURCE.FE, detected_input_error)
-                            raise ProcessError(detected_input_error)
-                        # update payload to reflect new file name
-                        self.config.media_input_payload.encode_file = detected_input
-                        og_input = detected_input
-                    else:
-                        detected_input = renamed_input
-                        self.config.media_input_payload.encode_file = detected_input
-                        og_input = detected_input
-                except Exception as e:
-                    LOG.error(
-                        LOG.LOG_SOURCE.FE,
-                        f"Failed to rename file: {e}\n{traceback.format_exc()}",
-                    )
-                    raise
-
-            # directory rename (if needed)
-            if encode_file_dir:
-                # The new folder name should be detected_input.stem
-                new_folder = encode_file_dir.parent / detected_input.stem
-                if encode_file_dir != new_folder:
-                    try:
-                        self._on_text_update(f"""\
-                            <br /><h3 style="margin: 0; padding: 0;">📂 Renaming parent folder:</h3>
-                            <table style="border-collapse: collapse; width: 100%; margin-top: 8px;">
-                            <tr>
-                                <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Original</th>
-                                <th style="background: {table_element_bg}; border: 1px solid #bbb; padding: 6px; border-radius: 4px 4px 0 0;">Renamed</th>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #bbb; padding: 6px;">{encode_file_dir.stem}</td>
-                                <td style="border: 1px solid #bbb; padding: 6px;">{new_folder.stem}</td>
-                            </tr>
-                            </table>""")
-                        encode_file_dir.rename(new_folder)
-                        # update payload to reflect new folder name
-                        self.config.media_input_payload.encode_file_dir = new_folder
-                        encode_file_dir = new_folder
-                        # update encode_file path to point to the file inside the new folder
-                        old_file = self.config.media_input_payload.encode_file
-                        if old_file:
-                            new_file = new_folder / Path(old_file).name
-                            self.config.media_input_payload.encode_file = new_file
-                            detected_input = new_file
-                    except Exception as e:
-                        LOG.error(
-                            LOG.LOG_SOURCE.FE,
-                            f"Failed to rename parent folder: {e}\n{traceback.format_exc()}",
-                        )
-                        raise
-
-        return detected_input, mediainfo_obj, encode_file_dir
-
-    def _gather_tracker_data(
-        self, process_dir: Path, detected_input: Path
-    ) -> dict[str, Any] | None:
-        tracker_data = {}
-        for tracker, (
-            combo_text,
-            (image_host_data, _),
-        ), _ in self.tracker_process_tree.get_item_values():
+        # build data
+        tracker_data: dict[str, dict[str, Path | str | ImageUploadFromTo]] = {}
+        for row in self.tracker_process_tree.get_item_values():
+            tracker, (combo_text, (image_host_data, _)), _ = cast(
+                tuple[
+                    str,
+                    tuple[
+                        str,
+                        tuple[
+                            ImageUploadFromTo,
+                            tuple[TrackerSelection, ImageHost | ImageSource],
+                        ],
+                    ],
+                    str,
+                ],
+                row,
+            )
             process_dir_out = process_dir / tracker.lower()
             process_dir_out.mkdir(parents=True, exist_ok=True)
             torrent_out = Path(process_dir_out / f"{detected_input.stem}.torrent")
@@ -771,7 +869,7 @@ class ProcessPage(BaseWizardPage):
                             dir=str(process_dir_out) if process_dir_out else "",
                         )
                         if not new_torrent_out:
-                            return
+                            return None
                         torrent_out = Path(new_torrent_out)
             tracker_data[tracker] = {
                 "path": torrent_out,
@@ -786,10 +884,10 @@ class ProcessPage(BaseWizardPage):
 
         return tracker_data
 
-    def get_theme_colors(self):
-        app = QApplication.instance()
+    def get_theme_colors(self) -> str:
+        app = cast(QApplication | None, QApplication.instance())
         if app:
-            color_scheme = app.styleHints().colorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            color_scheme = app.styleHints().colorScheme()
             scheme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
             return self.THEMES[scheme]["box_color"]
         return "#e6e6e6"
@@ -797,22 +895,10 @@ class ProcessPage(BaseWizardPage):
     @Slot()
     def _open_temp_output(self) -> None:
         if (
-            self.config.media_input_payload.working_dir
-            and self.config.media_input_payload.working_dir.exists()
+            self.context.media_input.working_dir
+            and self.context.media_input.working_dir.exists()
         ):
-            open_explorer(self.config.media_input_payload.working_dir)
+            open_explorer(self.context.media_input.working_dir)
 
     def initializePage(self) -> None:
         self.add_tracker_items()
-
-    @Slot()
-    def reset_page(self) -> None:
-        self.save_config = False
-        self.processing_mode = UploadProcessMode.DUPE_CHECK
-        self.dupe_worker = None
-        self.process_worker = None
-        self.tracker_process_tree.clear()
-        self.text_widget.clear()
-        self.progress_bar.reset()
-        self.progress_bar.hide()
-        self.open_temp_output_btn.hide()

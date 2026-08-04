@@ -1,19 +1,23 @@
-import pickle
-import re
 from datetime import datetime
 from pathlib import Path
+import re
+from typing import Any
 
 import niquests
+from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
+from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.media_type import MediaType
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.torrentleech import TLCategories
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
-
-# TODO: implement full tv support
+from src.utils.secret_redaction import scrub_mapping
 
 
 def tl_upload(
@@ -22,7 +26,10 @@ def tl_upload(
     tracker_title: str | None,
     torrent_file: Path,
     mediainfo_obj: MediaInfo,
+    media_type: MediaType,
+    is_pack: bool,
     timeout: int,
+    is_anime: bool = False,
 ) -> bool | None:
     uploader = TLUploader(announce_key=announce_key, timeout=timeout)
     return uploader.upload(
@@ -30,11 +37,16 @@ def tl_upload(
         tracker_title=tracker_title,
         torrent_file=torrent_file,
         mediainfo_obj=mediainfo_obj,
+        media_type=media_type,
+        is_pack=is_pack,
+        is_anime=is_anime,
     )
 
 
 class TLUploader:
-    UPLOAD_URL: str = "https://www.torrentleech.org/torrents/upload/apiupload"
+    UPLOAD_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}torrents/upload/apiupload"
+    )
 
     def __init__(
         self,
@@ -50,15 +62,24 @@ class TLUploader:
         tracker_title: str | None,
         torrent_file: Path,
         mediainfo_obj: MediaInfo,
+        media_type: MediaType,
+        is_pack: bool,
+        is_anime: bool = False,
     ) -> bool | None:
         files = self._get_files(nfo, torrent_file)
         get_resolution = VideoResolutionAnalyzer(mediainfo_obj).get_resolution()
-        data = self._get_data(torrent_file.stem, get_resolution)
+        data = self._get_data(
+            torrent_file.stem,
+            get_resolution,
+            media_type,
+            is_pack,
+            is_anime,
+        )
         if tracker_title:
             data["name"] = self.generate_release_title(tracker_title)
 
         LOG.info(LOG.LOG_SOURCE.BE, "Uploading torrent to TorrentLeech")
-        LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {data}")
+        LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {scrub_mapping(data)}")
 
         try:
             request = niquests.post(
@@ -78,45 +99,88 @@ class TLUploader:
                     f"{request.status_code} ({request.reason} - {request.text})"
                 )
                 LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
-                raise TrackerError(upload_error_msg)
+                status_code = request.status_code
+                # 408/429 mean the request was rejected before it could be
+                # processed. A 5xx means TorrentLeech received and answered
+                # the upload -- it may have recorded the torrent before
+                # failing, so that must route to the user instead of an
+                # automatic retry.
+                retryable = isinstance(status_code, int) and (
+                    status_code == 408 or status_code == 429 or status_code >= 500
+                )
+                server_accepted = isinstance(status_code, int) and status_code >= 500
+                raise TrackerError(
+                    upload_error_msg,
+                    retryable=retryable,
+                    server_accepted=server_accepted,
+                    status_code=status_code if isinstance(status_code, int) else None,
+                )
         except niquests.exceptions.RequestException as e:
             request_error_msg = f"There was an error uploading (niquests): {e}"
             LOG.error(LOG.LOG_SOURCE.BE, request_error_msg)
-            raise TrackerError(request_error_msg)
+            retryable, server_accepted = classify_upload_post_error(e)
+            raise TrackerError(
+                request_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from e
 
-    def _get_files(self, nfo: str, torrent_file: Path) -> dict:
+    def _get_files(self, nfo: str, torrent_file: Path) -> MultiPartFilesAltType:
         with open(torrent_file, "rb") as t_file:
             return {"nfo": nfo, "torrent": (str(torrent_file), t_file.read())}
 
-    def _get_data(self, title: str, resolution: str) -> dict:
+    def _get_data(
+        self,
+        title: str,
+        resolution: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+        is_anime: bool = False,
+    ) -> dict[str, str | int]:
         return {
             "announcekey": self.announce_key,
-            "category": self._detect_category(title, resolution),
+            "category": self._detect_category(
+                title, resolution, media_type, is_pack, is_anime
+            ),
         }
 
     @staticmethod
-    def _detect_category(title: str, resolution: str) -> int:
-        # TODO: This will still need some TLC. We need a cleaner way to determine whats what
-        # and pass it to all trackers
+    def _detect_category(
+        title: str,
+        resolution: str,
+        media_type: MediaType,
+        is_pack: bool = False,
+        is_anime: bool = False,
+    ) -> int:
+        if is_anime:
+            return int(TLCategories.ANIME.value)
+
         title_lowered = title.lower()
+        if media_type is MediaType.SERIES:
+            if is_pack:
+                return int(TLCategories.TV_BOX_SETS.value)
+            if resolution in {"720p", "1080p", "1080i", "2160p", "4320p"}:
+                return int(TLCategories.TV_EPISODES_HD.value)
+            return int(TLCategories.TV_EPISODES.value)
+
         if "bluray" in title_lowered or "blu-ray" in title_lowered:
             if resolution in {"720p", "1080p"}:
-                return TLCategories.MOVIE_BLURAY_RIP.value
+                return int(TLCategories.MOVIE_BLURAY_RIP.value)
             elif resolution == "2160p":
-                return TLCategories.MOVIE_4K.value
+                return int(TLCategories.MOVIE_4K.value)
             else:
                 raise TrackerError(
                     "Resolution must be one of '720p', '1080p' or '2160p'"
                 )
         # TODO: will need to add check if it's a movie for SERIES
         elif "webrip" in title_lowered or "webdl" in title_lowered:
-            return TLCategories.MOVIE_WEB_RIP.value
+            return int(TLCategories.MOVIE_WEB_RIP.value)
         elif "dvd" in title_lowered:
             if "rip" in title_lowered:
-                return TLCategories.MOVIE_DVD_RIP.value
-            return TLCategories.MOVIE_DVD.value
+                return int(TLCategories.MOVIE_DVD_RIP.value)
+            return int(TLCategories.MOVIE_DVD.value)
         elif "hdtv" in title_lowered:
-            return TLCategories.MOVIE_HD_RIP.value
+            return int(TLCategories.MOVIE_HD_RIP.value)
         else:
             raise TrackerError("Failed to determine proper TorrentLeech category")
 
@@ -139,9 +203,18 @@ class TLUploader:
 
 
 class TLSearch:
-    LOGIN_URL: str = "https://www.torrentleech.org/user/account/login/"
-    SEARCH_URL: str = "https://www.torrentleech.org/torrents/browse/list/exact/1/query/{movie_title}/orderby/added/order/desc"
-    TORRENT_URL: str = "https://www.torrentleech.me/torrent/{torrent_id}"
+    LOGIN_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}user/account/login/"
+    )
+    SEARCH_URL: str = (
+        f"{TrackerSelection.TORRENT_LEECH.get_root_url()}torrents/browse/list/exact/1/query/"
+        "{media_title}/orderby/added/order/desc"
+    )
+    # TORRENT_URL needs to be .me
+    TORRENT_URL: str = (
+        TrackerSelection.TORRENT_LEECH.get_root_url().replace(".org", ".me")
+        + "torrent/{torrent_id}"
+    )
 
     def __init__(
         self,
@@ -153,7 +226,7 @@ class TLSearch:
     ) -> None:
         self.username = username
         self.password = password
-        self.cookie_path = cookie_dir / "tl_cookie.pkl"
+        self.cookie_path = cookie_dir / "tl_cookie.json"
         self.alt_2_fa_token = alt_2_fa_token
         self.timeout = timeout
 
@@ -180,8 +253,8 @@ class TLSearch:
     def _search_movie(self, file_input: str) -> list[TrackerSearchResult] | None:
         """
         Example output:
-        [{'fid': '241265476', 'filename': 'Chaos.Theory.2007.REPACK.BluRay.1080p.DD.5.1.x264-BHDStudio.torrent',
-        'name': 'Chaos Theory 2007 REPACK BluRay 1080p DD 5 1 x264-BHDStudio', 'addedTimestamp': '2024-04-22 00:13:12',
+        [{'fid': '241265476', 'filename': 'Some.File.2007.REPACK.BluRay.1080p.DD.5.1.x264-SomeGROUP.torrent',
+        'name': 'Some File 2007 REPACK BluRay 1080p DD 5 1 x264-SomeGROUP', 'addedTimestamp': '2024-04-22 00:13:12',
         'categoryID': 14, 'size': 5297940903, 'completed': 49, 'seeders': 23, 'leechers': 0, 'numComments': 0, 'tags':
         ['comedy', 'Drama', 'Romance'], 'new': False, 'imdbID': 'tt0460745', 'rating': 6.9, 'genres': 'Comedy, Drama,
         Romance', 'tvmazeID': '', 'igdbID': '', 'download_multiplier': 1, 'uploader': 'jlw4049'}]
@@ -189,7 +262,7 @@ class TLSearch:
         We convert the above with the sort_results method to a different format to be parsed in the UI
         """
         response = self._session.get(
-            self.SEARCH_URL.format(movie_title=file_input), timeout=self.timeout
+            self.SEARCH_URL.format(media_title=file_input), timeout=self.timeout
         )
         if response.ok and response.status_code == 200:
             results = response.json()["torrentList"]
@@ -197,14 +270,15 @@ class TLSearch:
             return search_results
         else:
             raise TrackerError(
-                f"Error searching for media. Status code: {response.status_code} Message: {response.content}"
+                f"Error searching for media. Status code: {response.status_code} "
+                f"Message: {(response.content or b'').decode(errors='replace')}"
             )
 
     def _sort_results(
-        self, results_list: list[dict | None]
+        self, results_list: list[dict[str, Any] | None]
     ) -> list[TrackerSearchResult]:
         """Convert TL Torznab output to easily parse in the UI"""
-        results = []
+        results: list[TrackerSearchResult] = []
         for release in results_list:
             if release:
                 result = TrackerSearchResult(
@@ -281,7 +355,9 @@ class TLSearch:
                 )
 
         response = self._session.get(self.LOGIN_URL, timeout=self.timeout)
-        csrf_token = response.cookies.get("csrf_token")  # pyright: ignore[reportAttributeAccessIssue]
+        # below isn't properly typed in niquests
+        cookies: dict[Any, Any] = response.cookies  # type: ignore
+        csrf_token = cookies.get("csrf_token")
 
         data = {
             "username": self.username,
@@ -294,7 +370,10 @@ class TLSearch:
 
         response = self._session.post(self.LOGIN_URL, data=data, timeout=self.timeout)
         if not response.ok:
-            login_error_message = f"Failed to login to TorrentLeech. Status code: {response.status_code} Message: {response.content}"
+            login_error_message = (
+                f"Failed to login to TorrentLeech. Status code: {response.status_code} "
+                f"Message: {(response.content or b'').decode(errors='replace')}"
+            )
             LOG.error(LOG.LOG_SOURCE.BE, login_error_message)
             raise TrackerError(login_error_message)
 
@@ -307,22 +386,19 @@ class TLSearch:
     def _validate_session(self) -> bool | None:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
-            with self._session.get(self.LOGIN_URL) as response:
+            with self._session.get(self.LOGIN_URL, timeout=self.timeout) as response:
                 if response.text and "loggedin" in response.text:
                     return True
         except niquests.RequestException:
             return False
+        return False
 
     def _save_cookies(self) -> None:
-        with open(self.cookie_path, "wb") as file:
-            pickle.dump(self._session.cookies, file)
+        save_cookies(self._session.cookies, self.cookie_path)
         LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech cookies saved: {self.cookie_path}")
 
     def _load_cookies(self) -> bool:
-        if self.cookie_path.exists():
-            with open(self.cookie_path, "rb") as file:
-                cookies = pickle.load(file)
-                self._session.cookies = cookies
+        if load_cookies(self._session.cookies, self.cookie_path):
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"TorrentLeech cookies loaded from {self.cookie_path}",

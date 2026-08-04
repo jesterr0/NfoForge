@@ -1,8 +1,9 @@
 from enum import auto as auto_enum
-from typing_extensions import override
-from src.enums import CaseInsensitiveEnum
 
 from PySide6.QtGui import Qt
+from typing_extensions import override
+
+from src.enums import CaseInsensitiveEnum
 
 
 class NfoForgeTheme(CaseInsensitiveEnum):

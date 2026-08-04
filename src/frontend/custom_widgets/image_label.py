@@ -1,47 +1,53 @@
 from PySide6.QtCore import QPointF
-from PySide6.QtGui import QImage, QPainter, QTransform
+from PySide6.QtGui import QImage, QPainter, QPaintEvent, QTransform
 from PySide6.QtWidgets import QApplication, QWidget
 
 
 class ImageLabel(QWidget):
     """Custom widget for displaying images with scaling."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         """Initialize the ImageLabel widget."""
         super().__init__(parent)
         self._image: QImage | None = None
 
-    def setImage(self, image: QImage):
+    def setImage(self, image: QImage) -> None:
         """Set the image to be displayed."""
         self._image = image
         self.update()
 
-    def clearImage(self):
+    def clearImage(self) -> None:
         """Clear the currently displayed image."""
         self._image = None
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent) -> None:
         """Handle the paint event to draw the image."""
         if self._image is None or self._image.isNull():
             return
 
         # Calculate the scaling factor to fit the image within the widget
-        painter = QPainter(self)
-        width = self.width()
-        height = self.height()
-        imageWidth = self._image.width()
-        imageHeight = self._image.height()
-        r1 = width / imageWidth
-        r2 = height / imageHeight
-        r = min(r1, r2)
-        x = (width - imageWidth * r) / 2
-        y = (height - imageHeight * r) / 2
+        painter = QPainter()
+        if not painter.begin(self):
+            return
 
-        # Transform and draw the image
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.setTransform(QTransform().translate(x, y).scale(r, r))
-        painter.drawImage(QPointF(0, 0), self._image)
+        try:
+            width = self.width()
+            height = self.height()
+            imageWidth = self._image.width()
+            imageHeight = self._image.height()
+            r1 = width / imageWidth
+            r2 = height / imageHeight
+            r = min(r1, r2)
+            x = (width - imageWidth * r) / 2
+            y = (height - imageHeight * r) / 2
+
+            # Transform and draw the image
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.setTransform(QTransform().translate(x, y).scale(r, r))
+            painter.drawImage(QPointF(0, 0), self._image)
+        finally:
+            painter.end()
 
 
 if __name__ == "__main__":

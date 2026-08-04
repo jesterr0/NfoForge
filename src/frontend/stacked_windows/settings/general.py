@@ -1,8 +1,8 @@
 from pathlib import Path
 import shutil
+from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QSize, QTimer, Qt, Slot
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, Slot
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -25,23 +25,32 @@ from src.backend.utils.file_utilities import (
     get_dir_size,
     open_explorer,
 )
+from src.config.config import ConfigManager
 from src.enums.logging_settings import LogLevel
-from src.enums.media_mode import MediaMode
-from src.enums.profile import Profile
 from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
+from src.exceptions import ConfigSchemaError
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.custom_widgets.ext_filter_widget import ExtFilterWidget
+from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.logger.nfo_forge_logger import LOG
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
+
 
 class GeneralSettings(BaseSettings):
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self,
+        config: ConfigManager,
+        main_window: "MainWindow",
+        parent: "Settings",
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("generalSettings")
 
@@ -76,7 +85,7 @@ class GeneralSettings(BaseSettings):
         )
         self.ui_scale_factor_spinbox.setToolTip(scale_factor_lbl.toolTip())
         self.ui_scale_factor_spinbox.lineEdit().setReadOnly(True)
-        self.ui_scale_factor_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.ui_scale_factor_spinbox)
         self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
         GSigs().scale_factor_changed.connect(self.sync_scale_factor_spinbox)
 
@@ -87,81 +96,6 @@ class GeneralSettings(BaseSettings):
         )
         self.theme_combo.activated.connect(self._change_theme)
 
-        profile_lbl = QLabel("Profile", self)
-        profile_lbl.setToolTip("Sets workflow profile")
-        self.profile_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        self.profile_combo.activated.connect(self._change_profile)
-
-        plugin_wizard_page_lbl = QLabel("Choose Wizard Input Page", self)
-        plugin_wizard_page_lbl.setToolTip(
-            "Choose which wizard input page plugin will be used"
-        )
-        self.plugin_wizard_page_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        plugin_wizard_page_layout = create_form_layout(
-            plugin_wizard_page_lbl, self.plugin_wizard_page_combo, (12, 0, 0, 0)
-        )
-
-        plugin_wizard_token_replacer_lbl = QLabel("Choose Token Replacer", self)
-        plugin_wizard_token_replacer_lbl.setToolTip(
-            "Choose which Token Replacer plugin will be used"
-        )
-        self.plugin_token_replacer_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        plugin_token_replacer_layout = create_form_layout(
-            plugin_wizard_token_replacer_lbl,
-            self.plugin_token_replacer_combo,
-            (12, 0, 0, 0),
-        )
-
-        plugin_pre_upload_lbl = QLabel("Pre Upload Processing", self)
-        plugin_pre_upload_lbl.setToolTip(
-            "Choose which pre upload processing plugin will be used"
-        )
-        self.plugin_pre_upload_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        pre_upload_processing_layout = create_form_layout(
-            plugin_pre_upload_lbl,
-            self.plugin_pre_upload_combo,
-            (12, 0, 0, 0),
-        )
-
-        self._plugin_widgets = (
-            plugin_wizard_page_lbl,
-            self.plugin_wizard_page_combo,
-            plugin_wizard_token_replacer_lbl,
-            self.plugin_token_replacer_combo,
-            plugin_pre_upload_lbl,
-            self.plugin_pre_upload_combo,
-        )
-
-        media_mode_lbl = QLabel("Media Mode", self)
-        media_mode_lbl.setToolTip(
-            "Sets media processing mode (locked to 'Movies' until support is added)"
-        )
-        self.media_mode_combo = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-        # TODO: remove when TV support is added and modify tooltip
-        self.media_mode_combo.setDisabled(True)
-
-        self.source_ext_filter = ExtFilterWidget(
-            label_text="Filter Source Media Extensions (Basic 'Input')",
-            tool_tip="Modify allowed source extensions (Basic 'Input')",
-            parent=self,
-        )
-
-        self.encode_ext_filter = ExtFilterWidget(
-            label_text="Filter Encode Media Extensions (Advanced 'Encode')",
-            tool_tip="Filter Encode Media Extensions (Advanced 'Encode')",
-            parent=self,
-        )
-
         releasers_name_lbl = QLabel("Releasers Name")
         releasers_name_lbl.setToolTip("Sets the releaser's name. As displayed in NFOs")
         self.releasers_name_entry = QLineEdit(self)
@@ -170,7 +104,7 @@ class GeneralSettings(BaseSettings):
         global_timeout_lbl.setToolTip("Sets global timeout for network requests")
         self.global_timeout_spinbox = QSpinBox(self)
         self.global_timeout_spinbox.setRange(2, 120)
-        self.global_timeout_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.global_timeout_spinbox)
 
         tmdb_language_lbl = QLabel("TMDB Language", self)
         tmdb_language_lbl.setToolTip(
@@ -181,20 +115,25 @@ class GeneralSettings(BaseSettings):
         )
         self.tmdb_language_combo.activated.connect(self._handle_language_selection)
 
-        prompt_overview = QLabel("Prompt for Overview", self)
-        prompt_overview.setToolTip(
+        tmdb_api_key_lbl = QLabel("TMDB API Key", self)
+        tmdb_api_key_lbl.setToolTip(
+            "Optional. Leave blank to use the key bundled with NfoForge.\n"
+            "Supply your own TMDB v3 API key to make requests under your own "
+            "account instead."
+        )
+        self.tmdb_api_key_entry = MaskedQLineEdit(parent=self, masked=True)
+        self.tmdb_api_key_entry.setPlaceholderText("Using bundled key")
+
+        self.enable_prompt_overview = QCheckBox("Prompt for Overview", self)
+        self.enable_prompt_overview.setToolTip(
             "If enabled during processing an editable overview will pop up allowing the user to make final edits"
         )
-        self.enable_prompt_overview = QCheckBox(self)
-        self.enable_prompt_overview.setToolTip(prompt_overview.toolTip())
 
-        enable_mkbrr = QLabel("Enable mkbrr", self)
-        enable_mkbrr.setToolTip(
+        self.enable_mkbrr = QCheckBox("Enable mkbrr", self)
+        self.enable_mkbrr.setToolTip(
             "If mkbrr is detected torrent generation will be "
             "completed by mkbrr\n(will fall back to torf if failure is detected)"
         )
-        self.enable_mkbrr = QCheckBox(self)
-        self.enable_mkbrr.setToolTip(enable_mkbrr.toolTip())
         check_mkbrr = QToolButton(self)
         QTAThemeSwap().register(check_mkbrr, "ph.eye-light", icon_size=QSize(20, 20))
         check_mkbrr.setToolTip("Navigate to Dependencies settings tab")
@@ -219,7 +158,7 @@ class GeneralSettings(BaseSettings):
 
         self.max_log_files_spinbox = QSpinBox(self)
         self.max_log_files_spinbox.setRange(10, 500)
-        self.max_log_files_spinbox.wheelEvent = self._disable_scrollwheel_spinbox
+        self._disable_scrollwheel_spinbox(self.max_log_files_spinbox)
 
         open_logs_lbl = QLabel("View Logs", self)
         self.open_log_directory = QToolButton(self)
@@ -292,13 +231,6 @@ class GeneralSettings(BaseSettings):
             create_form_layout(scale_factor_lbl, self.ui_scale_factor_spinbox)
         )
         self.add_layout(create_form_layout(theme_lbl, self.theme_combo))
-        self.add_layout(create_form_layout(profile_lbl, self.profile_combo))
-        self.add_layout(plugin_wizard_page_layout)
-        self.add_layout(plugin_token_replacer_layout)
-        self.add_layout(pre_upload_processing_layout)
-        self.add_layout(create_form_layout(media_mode_lbl, self.media_mode_combo))
-        self.add_widget(self.source_ext_filter)
-        self.add_widget(self.encode_ext_filter)
         self.add_layout(
             create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
@@ -307,11 +239,10 @@ class GeneralSettings(BaseSettings):
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(tmdb_language_lbl, self.tmdb_language_combo))
+        self.add_layout(create_form_layout(tmdb_api_key_lbl, self.tmdb_api_key_entry))
         self.add_widget(build_h_line((10, 1, 10, 1)))
-        self.add_layout(
-            create_form_layout(prompt_overview, self.enable_prompt_overview)
-        )
-        self.add_layout(create_form_layout(enable_mkbrr, mkbrr_widget))
+        self.add_layout(create_form_layout(self.enable_prompt_overview))
+        self.add_layout(create_form_layout(mkbrr_widget))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
@@ -327,26 +258,16 @@ class GeneralSettings(BaseSettings):
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
-        payload = self.config.cfg_payload
+        payload = self.config.settings.general
         self.load_selected_configs()
         self.ui_suffix.setText(payload.ui_suffix.strip())
         self.ui_scale_factor_spinbox.setValue(int(payload.ui_scale_factor * 100))
-        self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.nfo_forge_theme)
+        self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.theme)
         self._change_theme()
-        self.load_combo_box(self.profile_combo, Profile, payload.profile)
-        self._change_profile()
-        self.load_combo_box(self.media_mode_combo, MediaMode, payload.media_mode)
-        self._load_filter_widget(
-            user_settings=payload.source_media_ext_filter,
-            filter_widget=self.source_ext_filter,
-        )
-        self._load_filter_widget(
-            user_settings=payload.encode_media_ext_filter,
-            filter_widget=self.encode_ext_filter,
-        )
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
         self._load_tmdb_language_combo(payload.tmdb_language)
+        self.tmdb_api_key_entry.setText(self.config.settings.api_keys.tmdb_api_key)
         self.enable_prompt_overview.setChecked(payload.enable_prompt_overview)
         self.enable_mkbrr.setChecked(payload.enable_mkbrr)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
@@ -357,19 +278,19 @@ class GeneralSettings(BaseSettings):
 
     def load_selected_configs(self) -> None:
         self.selected_config.clear()
-        for config_file in self.config.USER_CONFIG_DIR.glob("*.toml"):
+        for config_file in self.config.paths.user_configs.glob("*.toml"):
             self.selected_config.addItem(config_file.stem)
 
-        if self.config.program_conf.current_config:
+        if self.config.program.current_config:
             current_index = self.selected_config.findText(
-                self.config.program_conf.current_config
+                self.config.program.current_config
             )
             if current_index >= 0:
                 self.selected_config.setCurrentIndex(current_index)
 
     def delete_config(self) -> None:
         config_to_remove = self.selected_config.currentText()
-        user_configs = [item for item in self.config.USER_CONFIG_DIR.glob("*.toml")]
+        user_configs = [item for item in self.config.paths.user_configs.glob("*.toml")]
         if len(user_configs) > 1:
             last_config = None
             for config_file in user_configs:
@@ -379,7 +300,7 @@ class GeneralSettings(BaseSettings):
                 else:
                     last_config = config_file.stem
 
-            self.config.program_conf.current_config = last_config
+            self.config.program.current_config = last_config
             self.load_selected_configs()
             self._swap_config()
         else:
@@ -387,8 +308,18 @@ class GeneralSettings(BaseSettings):
 
     @Slot(int)
     def _swap_config(self, _: int | None = None) -> None:
-        self.config.program_conf.current_config = self.selected_config.currentText()
-        self.config.load_config(self.selected_config.currentText())
+        previous = self.config.program.current_config
+        target = self.selected_config.currentText()
+        try:
+            self.config.load_profile(target)
+        except ConfigSchemaError as error:
+            self.selected_config.setCurrentText(previous or "")
+            QMessageBox.critical(
+                self,
+                "Incompatible Config",
+                (f"{error}\n\nReverted to the previous config: {previous}"),
+            )
+            return
         self.settings_window.re_load_settings.emit()
 
     @Slot()
@@ -404,24 +335,6 @@ class GeneralSettings(BaseSettings):
     def _reset_del_btn(self) -> None:
         self.del_button_timer.stop()
         self.del_config_btn.setText("Delete")
-
-    def _load_filter_widget(
-        self,
-        user_settings: list[str] | None,
-        filter_widget: ExtFilterWidget,
-        defaults: bool = False,
-    ) -> None:
-        accepted_files = []
-        if user_settings and not defaults:
-            for item in self.config.ACCEPTED_EXTENSIONS:
-                if item in user_settings:
-                    accepted_files.append((item, True))
-                else:
-                    accepted_files.append((item, False))
-        else:
-            for item in self.config.ACCEPTED_EXTENSIONS:
-                accepted_files.append((item, True))
-        filter_widget.update_items(accepted_files)
 
     def _load_tmdb_language_combo(self, current_language: str) -> None:
         """Load TMDB language options into the combo box and set current selection."""
@@ -521,12 +434,14 @@ class GeneralSettings(BaseSettings):
         For what ever reason ```QApplication.instance()``` doesn't type hint correctly so we
         can ignore these errors for now.
         """
-        app = QApplication.instance()
+        app = cast(QApplication | None, QApplication.instance())
+        if app is None:
+            return
         get_theme = NfoForgeTheme(self.theme_combo.currentData()).theme()
         if get_theme:
-            app.styleHints().setColorScheme(get_theme)  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            app.styleHints().setColorScheme(get_theme)
         else:
-            app.styleHints().unsetColorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            app.styleHints().unsetColorScheme()
 
     @Slot(int)
     def _on_scale_factor_changed(self, value: int) -> None:
@@ -542,37 +457,27 @@ class GeneralSettings(BaseSettings):
         self.ui_scale_factor_spinbox.setValue(int(scale_factor * 100))
         self.ui_scale_factor_spinbox.valueChanged.connect(self._on_scale_factor_changed)
 
-    @Slot(int)
-    def _change_profile(self, _: int | None = None) -> None:
-        if self.profile_combo.currentData() == Profile.PLUGIN:
-            for widget in self._plugin_widgets:
-                widget.show()
-                self._load_plugin_combos()
-        else:
-            for widget in self._plugin_widgets:
-                widget.hide()
-
     @Slot()
     def _handle_working_dir_click(self) -> None:
         wd = QFileDialog.getExistingDirectory(
             parent=self,
             caption="Select Directory",
-            dir=str(self.config.cfg_payload.working_dir)
-            if self.config.cfg_payload.working_dir
+            dir=str(self.config.settings.general.working_dir)
+            if self.config.settings.general.working_dir
             else "",
         )
         if wd:
-            wd = Path(wd)
-            self.working_dir_entry.setText(str(wd))
-            self.config.cfg_payload.working_dir = wd
+            working_dir = Path(wd)
+            self.working_dir_entry.setText(str(working_dir))
+            self.config.settings.general.working_dir = working_dir
 
     @Slot()
     def _handle_open_working_dir_click(self) -> None:
-        open_explorer(self.config.cfg_payload.working_dir)
+        open_explorer(self.config.settings.general.working_dir)
 
     @Slot()
     def _handle_working_dir_clean_up_click(self) -> None:
-        total_size = get_dir_size(self.config.cfg_payload.working_dir)
+        total_size = get_dir_size(self.config.settings.general.working_dir)
 
         msg = (
             "Would you like to clean up the working directory now?\n\n"
@@ -588,160 +493,77 @@ class GeneralSettings(BaseSettings):
             )
             is QMessageBox.StandardButton.Yes
         ):
-            for item in self.config.cfg_payload.working_dir.iterdir():
+            for item in self.config.settings.general.working_dir.iterdir():
                 if item.is_dir():
                     shutil.rmtree(item)
                 else:
                     item.unlink()
 
     @Slot()
-    def _swap_dep_tab(self):
+    def _swap_dep_tab(self) -> None:
         GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
-
-    def _load_plugin_combos(self) -> None:
-        if self.plugin_wizard_page_combo.count() == 0:
-            if self.config.loaded_plugins:
-                for plugin in self.config.loaded_plugins.values():
-                    plugin_name = plugin.name
-
-                    if plugin.wizard:
-                        self.plugin_wizard_page_combo.addItem(plugin_name, plugin_name)
-
-                    if plugin.token_replacer is not None:
-                        if plugin.token_replacer is False:
-                            self.plugin_token_replacer_combo.addItem(plugin_name, None)
-                        else:
-                            self.plugin_token_replacer_combo.addItem(
-                                plugin_name, plugin_name
-                            )
-
-                    if plugin.pre_upload is not None:
-                        if plugin.pre_upload is False:
-                            self.plugin_pre_upload_combo.addItem(plugin_name, None)
-                        else:
-                            self.plugin_pre_upload_combo.addItem(
-                                plugin_name, plugin_name
-                            )
-
-        self._apply_plugin_combos_settings()
-
-    def _apply_plugin_combos_settings(self) -> None:
-        wizard_plugin = None
-        if self.config.cfg_payload.wizard_page:
-            wizard_plugin = self.plugin_wizard_page_combo.findText(
-                self.config.cfg_payload.wizard_page
-            )
-        self.plugin_wizard_page_combo.setCurrentIndex(
-            wizard_plugin if wizard_plugin and wizard_plugin > 0 else 0
-        )
-
-        url_plugin = None
-        if self.config.cfg_payload.token_replacer:
-            url_plugin = self.plugin_token_replacer_combo.findText(
-                self.config.cfg_payload.token_replacer
-            )
-        self.plugin_token_replacer_combo.setCurrentIndex(
-            url_plugin if url_plugin and url_plugin > 0 else 0
-        )
-
-        pre_upload_plugin = None
-        if self.config.cfg_payload.pre_upload:
-            pre_upload_plugin = self.plugin_pre_upload_combo.findText(
-                self.config.cfg_payload.pre_upload
-            )
-        self.plugin_pre_upload_combo.setCurrentIndex(
-            pre_upload_plugin if pre_upload_plugin and pre_upload_plugin > 0 else 0
-        )
 
     @Slot()
     def _save_settings(self) -> None:
-        self.config.program_conf.current_config = self.selected_config.currentText()
-        self.config.cfg_payload.ui_suffix = self.ui_suffix.text().strip()
-        self.config.cfg_payload.ui_scale_factor = (
+        self.config.program.current_config = self.selected_config.currentText()
+        self.config.settings.general.ui_suffix = self.ui_suffix.text().strip()
+        self.config.settings.general.ui_scale_factor = (
             self.ui_scale_factor_spinbox.value() / 100.0
         )
-        self.config.cfg_payload.nfo_forge_theme = NfoForgeTheme(
+        self.config.settings.general.theme = NfoForgeTheme(
             self.theme_combo.currentData()
         )
-        self.config.cfg_payload.profile = Profile(self.profile_combo.currentData())
-        if self.profile_combo.currentData() == Profile.PLUGIN:
-            self.config.cfg_payload.wizard_page = (
-                self.plugin_wizard_page_combo.currentData()
-            )
-            self.config.cfg_payload.token_replacer = (
-                self.plugin_token_replacer_combo.currentData()
-            )
-            self.config.cfg_payload.pre_upload = (
-                self.plugin_pre_upload_combo.currentData()
-            )
-        else:
-            self.config.cfg_payload.wizard_page = ""
-            self.config.cfg_payload.token_replacer = ""
-            self.config.cfg_payload.pre_upload = ""
-        self.config.cfg_payload.media_mode = MediaMode(
-            self.media_mode_combo.currentData()
-        )
-        self.config.cfg_payload.source_media_ext_filter = (
-            self.source_ext_filter.get_accepted_items()
-        )
-        self.config.cfg_payload.encode_media_ext_filter = (
-            self.encode_ext_filter.get_accepted_items()
-        )
-        self.config.cfg_payload.releasers_name = (
+        self.config.settings.general.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
-        self.config.cfg_payload.tmdb_language = self.tmdb_language_combo.currentData()
-        self.config.cfg_payload.timeout = self.global_timeout_spinbox.value()
-        self.config.cfg_payload.enable_prompt_overview = (
+        self.config.settings.general.tmdb_language = (
+            self.tmdb_language_combo.currentData()
+        )
+        self.config.settings.api_keys.tmdb_api_key = (
+            self.tmdb_api_key_entry.text().strip()
+        )
+        self.config.settings.general.timeout = self.global_timeout_spinbox.value()
+        self.config.settings.general.enable_prompt_overview = (
             self.enable_prompt_overview.isChecked()
         )
-        self.config.cfg_payload.enable_mkbrr = self.enable_mkbrr.isChecked()
-        self.config.cfg_payload.log_level = LogLevel(self.log_level_combo.currentData())
-        LOG.set_log_level(self.config.cfg_payload.log_level)
-        self.config.cfg_payload.log_total = self.max_log_files_spinbox.value()
-        self.config.cfg_payload.working_dir = Path(self.working_dir_entry.text())
+        self.config.settings.general.enable_mkbrr = self.enable_mkbrr.isChecked()
+        self.config.settings.general.log_level = LogLevel(
+            self.log_level_combo.currentData()
+        )
+        LOG.set_log_level(self.config.settings.general.log_level)
+        self.config.settings.general.log_total = self.max_log_files_spinbox.value()
+        self.config.settings.general.working_dir = Path(self.working_dir_entry.text())
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
         self.selected_config.setCurrentIndex(0)
         self.ui_suffix.clear()
         self.ui_scale_factor_spinbox.setValue(
-            int(self.config.cfg_payload_defaults.ui_scale_factor * 100)
+            int(self.config.defaults.general.ui_scale_factor * 100)
         )
-        self.theme_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.nfo_forge_theme.value - 1
-        )
-        self.profile_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.profile.value - 1
-        )
-        self._change_profile()
-        self.plugin_wizard_page_combo.clear()
-        self.plugin_token_replacer_combo.clear()
-        self.media_mode_combo.setCurrentIndex(
-            self.config.cfg_payload_defaults.media_mode.value - 1
-        )
-        self._load_filter_widget(
-            user_settings=None, filter_widget=self.source_ext_filter, defaults=True
-        )
-        self._load_filter_widget(
-            user_settings=None, filter_widget=self.encode_ext_filter, defaults=True
-        )
+        self.theme_combo.setCurrentIndex(self.config.defaults.general.theme.value - 1)
         self.releasers_name_entry.clear()
-        # Set TMDB language to default
+        # set TMDB language to default
         for i in range(self.tmdb_language_combo.count()):
             if (
                 self.tmdb_language_combo.itemData(i)
-                == self.config.cfg_payload_defaults.tmdb_language
+                == self.config.defaults.general.tmdb_language
             ):
                 self.tmdb_language_combo.setCurrentIndex(i)
                 break
-        self.global_timeout_spinbox.setValue(self.config.cfg_payload_defaults.timeout)
+        self.tmdb_api_key_entry.clear()
+        self.global_timeout_spinbox.setValue(self.config.defaults.general.timeout)
         self.enable_prompt_overview.setChecked(
-            self.config.cfg_payload.enable_prompt_overview
+            self.config.settings.general.enable_prompt_overview
         )
-        self.enable_mkbrr.setChecked(self.config.cfg_payload_defaults.enable_mkbrr)
-        self.working_dir_entry.setText(str(self.config.default_working_dir()))
+        self.enable_mkbrr.setChecked(self.config.defaults.general.enable_mkbrr)
+        self.working_dir_entry.setText(str(self.config.defaults.general.working_dir))
 
-    @staticmethod
-    def _disable_scrollwheel_spinbox(event: QWheelEvent) -> None:
-        event.ignore()
+    def _disable_scrollwheel_spinbox(self, spinbox: QSpinBox) -> None:
+        spinbox.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if isinstance(watched, QSpinBox) and event.type() is QEvent.Type.Wheel:
+            event.ignore()
+            return True
+        return bool(super().eventFilter(watched, event))

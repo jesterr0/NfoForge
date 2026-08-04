@@ -1,7 +1,6 @@
 from collections.abc import Callable
 import math
 from pathlib import Path
-import platform
 import re
 import shutil
 import subprocess
@@ -9,10 +8,28 @@ from typing import Any
 
 from torf import Torrent
 
+from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
 from src.exceptions import MkbrrTorrentError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.trackers import TrackerInfo
 from src.version import __version__, program_name
+
+INDEX_SIDECAR_SUFFIXES = frozenset({".lwi", ".ffindex"})
+INDEX_SIDECAR_GLOBS = ("*.lwi", "*.ffindex", "*.LWI", "*.FFINDEX")
+
+
+def _validate_torrent_contents(torrent: Torrent) -> None:
+    """Ensure private media indexes never become torrent payload files."""
+    index_files = [
+        str(file)
+        for file in torrent.files
+        if Path(str(file)).suffix.casefold() in INDEX_SIDECAR_SUFFIXES
+    ]
+    if index_files:
+        raise ValueError(
+            "Generated torrent contains excluded index sidecar(s): "
+            + ", ".join(index_files)
+        )
 
 
 def generate_torrent(
@@ -29,8 +46,10 @@ def generate_torrent(
         comment=tracker_info.comments if tracker_info.comments else None,
         piece_size_max=max_piece_size,
         created_by=f"{program_name} v{__version__}",
+        exclude_globs=INDEX_SIDECAR_GLOBS,
     )
     torrent.generate(callback=cb, interval=0)
+    _validate_torrent_contents(torrent)
     return torrent
 
 
@@ -81,6 +100,10 @@ def mkbrr_generate_torrent(
     max_piece_size: int | None,
     cb: Callable[[int], None],
 ) -> Torrent | None:
+    announce_url = tracker_info.announce_url
+    if not announce_url:
+        raise ValueError("Cannot create a torrent without a tracker announce URL")
+
     cmd_line = [
         str(mkbrr_path),
         "create",
@@ -89,7 +112,7 @@ def mkbrr_generate_torrent(
         str(output_path),
         "--private",
         "--tracker",
-        tracker_info.announce_url,
+        announce_url,
     ]
     if max_piece_size:
         cmd_line.extend(
@@ -99,18 +122,18 @@ def mkbrr_generate_torrent(
         cmd_line.extend(("--source", tracker_info.source))
     if tracker_info.comments:
         cmd_line.extend(("--comment", tracker_info.comments))
+    for pattern in INDEX_SIDECAR_GLOBS:
+        cmd_line.extend(("--exclude", pattern))
 
     LOG.debug(LOG.LOG_SOURCE.BE, f"mkbrr command: {' '.join(cmd_line)}")
 
-    with subprocess.Popen(
+    with subprocess.Popen(  # noqa: S603 - list argv, no shell; mkbrr path is the configured binary
         cmd_line,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-        if platform.system() == "Windows"
-        else 0,
+        creationflags=get_subprocess_creation_flags(new_process_group=True),
     ) as job:
         try:
             result = None
@@ -131,11 +154,13 @@ def mkbrr_generate_torrent(
             job.wait()
             return_code = job.returncode
             if result is True and return_code == 0:
-                return Torrent.read(output_path)
+                torrent = Torrent.read(output_path)
+                _validate_torrent_contents(torrent)
+                return torrent
             else:
                 raise MkbrrTorrentError(f"{result} (code: {return_code})")
         except Exception as e:
             LOG.error(LOG.LOG_SOURCE.BE, f"Error while running mkbrr command ({e}).")
             raise MkbrrTorrentError(
                 f"Failed to generate torrent: Unhandled exception {e}"
-            )
+            ) from e

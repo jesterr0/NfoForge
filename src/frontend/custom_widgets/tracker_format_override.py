@@ -1,24 +1,25 @@
-from PySide6.QtCore import Signal, Slot, Qt
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QLabel,
+    QLineEdit,
     QSizePolicy,
     QVBoxLayout,
-    QLineEdit,
     QWidget,
-    QCheckBox,
 )
 
-from src.backend.token_replacer import ColonReplace
+from src.enums.token_replacer import ColonReplace
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.replacement_list_widget import (
     LoadedReplacementListWidget,
 )
+from src.frontend.utils import build_h_line
 
 
 class TrackerFormatOverride(QWidget):
     setting_changed = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.enabled_checkbox = QCheckBox("Enable Override", self)
@@ -71,11 +72,12 @@ class TrackerFormatOverride(QWidget):
         self.over_ride_inner_layout.setContentsMargins(6, 0, 0, 0)
         self.over_ride_inner_layout.addWidget(title_colon_replace_lbl)
         self.over_ride_inner_layout.addWidget(self.title_colon_replace)
+        self.over_ride_inner_layout.addWidget(build_h_line((6, 1, 6, 1)))
         self.over_ride_inner_layout.addWidget(over_ride_format_title_lbl)
         self.over_ride_inner_layout.addWidget(self.over_ride_format_title)
 
         self.over_rider_inner_nested_layout = QVBoxLayout()
-        self.over_rider_inner_nested_layout.setContentsMargins(6, 0, 0, 0)
+        self.over_rider_inner_nested_layout.setContentsMargins(20, 0, 0, 0)
         self.over_rider_inner_nested_layout.addWidget(
             over_ride_format_file_name_token_example_lbl
         )
@@ -114,7 +116,7 @@ class TrackerFormatOverride(QWidget):
         self.setting_changed.emit()
 
     @Slot(list)
-    def _rules_changed(self, _data: list) -> None:
+    def _rules_changed(self, _data: list[object]) -> None:
         self.setting_changed.emit()
 
     def set_colon_replace(self, item: str) -> None:

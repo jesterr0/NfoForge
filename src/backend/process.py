@@ -1,27 +1,37 @@
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from html import escape
 from pathlib import Path
 import shutil
 import traceback
-from typing import Any, Sequence
+from typing import Any, cast
 
 from PySide6.QtCore import SignalInstance
-from pymediainfo import MediaInfo
+from tenacity import Retrying, retry_if_exception, stop_after_attempt
+from tenacity.wait import wait_exponential
 from torf import Torrent
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.backend.image_host_uploading.chevereto_v3 import CheveretoV3Uploader
 from src.backend.image_host_uploading.chevereto_v4 import CheveretoV4Uploader
 from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.image_host_uploading.img_downloader import ImageDownloader
-from src.backend.image_host_uploading.img_uploader import ImageUploader
+from src.backend.image_host_uploading.img_uploader import (
+    ImageUploader,
+    assert_all_images_uploaded,
+)
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
-from src.backend.image_host_uploading.ptpimg import PTPIMGUploader
 from src.backend.template_selector import TemplateSelectorBackEnd
-from src.backend.token_replacer import TokenReplacer, UnfilledTokenRemoval
+from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenSelection
 from src.backend.torrent_clients.deluge import DelugeClient
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
+from src.backend.torrent_clients.qbittorrent.save_path import (
+    resolve_qbittorrent_save_path,
+)
 from src.backend.torrent_clients.rtorrent import RTorrentClient
 from src.backend.torrent_clients.transmission import TransmissionClient
 from src.backend.torrents import (
@@ -57,10 +67,19 @@ from src.backend.trackers import (
     ulcx_uploader,
 )
 from src.backend.trackers.beyondhd import BHDUploader
+from src.backend.trackers.health import ensure_tracker_health
+from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.torrentleech import TLUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseUploader
+from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
+from src.backend.upload_retry import (
+    RETRY_ATTEMPTS,
+    UploadFailure,
+    UploadFailurePhase,
+    UploadRetryAction,
+)
+from src.backend.utils.anime import is_anime_release
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
     format_image_data_to_comparison,
@@ -69,27 +88,40 @@ from src.backend.utils.images import (
     get_parity_images_to_str,
 )
 from src.backend.utils.token_utils import get_prompt_tokens
-from src.config.config import Config
-from src.enums.media_mode import MediaMode
+from src.config.config import ConfigManager
+from src.config.tv_tokens import get_tvr_title_token
+from src.context.processing_context import ProcessingContext
+from src.enums.image_host import ImageHost, ImageSource
+from src.enums.media_type import MediaType
+from src.enums.multi_episode_style import MultiEpisodeStyle
+from src.enums.token_replacer import UnfilledTokenRemoval
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import ImageHostError, TrackerError
-from src.logger.nfo_forge_logger import LOG
-from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import (
-    ImageHost,
-    ImageSource,
-    ImageUploadData,
-    ImageUploadFromTo,
+from src.exceptions import (
+    ImageHostError,
+    PluginExecutionError,
+    ProcessCancelled,
+    TrackerError,
 )
+from src.logger.nfo_forge_logger import LOG
+from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.series import SeriesReleaseInfo, build_series_release_info
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
+from src.plugins.api import (
+    PreUploadDecision,
+    PreUploadRequest,
+    TokenReplaceRequest,
+    UploadReporter,
+)
+from src.utils.secret_redaction import scrub_secrets
 
 
 class ProcessBackEnd:
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: ConfigManager) -> None:
         self.config = config
         self.template_selector_be = TemplateSelectorBackEnd()
         self.template_selector_be.load_templates()
@@ -107,72 +139,94 @@ class ProcessBackEnd:
 
     async def dupe_checks(
         self,
-        file_input: Path,
-        processing_queue: list[str],
+        processing_queue: list[TrackerSelection],
+        media_input_payload: MediaInputPayload,
         media_search_payload: MediaSearchPayload,
-    ) -> dict[str, tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]]:
+    ) -> dict[
+        TrackerSelection, tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]
+    ]:
         # TODO: test this when we add disc & tv support, as this will likely require different
         # checks to accurately obtain dupes
         tasks = []
-        for tracker_name in processing_queue:
-            tracker_sel = TrackerSelection(tracker_name)
+        release_info = build_series_release_info(media_input_payload)
+        for tracker_sel in processing_queue:
+            if release_info.is_series and tracker_sel in UNSUPPORTED_SERIES_TRACKERS:
+                tasks.append(
+                    self._unsupported_series_tracker_dupe(
+                        tracker_sel=tracker_sel,
+                    )
+                )
+                continue
+            file_input = media_input_payload.require_first_file()
+            search_input = release_info.search_path or file_input
             if tracker_sel is TrackerSelection.MORE_THAN_TV:
                 tasks.append(
                     self._dupe_mtv(
-                        tracker_name=tracker_name,
-                        file_input=file_input,
+                        tracker_sel=tracker_sel,
+                        # file_input prioritizes folder name > file since the api doesn't
+                        # support directly looking for files
+                        file_input=search_input,
                         media_search_payload=media_search_payload,
                     )
                 )
             elif tracker_sel is TrackerSelection.TORRENT_LEECH:
                 tasks.append(
-                    self._dupe_tl(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_tl(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.BEYOND_HD:
                 tasks.append(
-                    self._dupe_bhd(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_bhd(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.PASS_THE_POPCORN:
                 tasks.append(
-                    self._dupe_ptp(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_ptp(
+                        tracker_sel=tracker_sel,
+                        # file_input prioritizes folder name > file since the api doesn't
+                        # support directly looking for files
+                        file_input=search_input,
+                        media_search_payload=media_search_payload,
+                    )
                 )
             elif tracker_sel is TrackerSelection.REELFLIX:
                 tasks.append(
-                    self._dupe_rf(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_rf(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.AITHER:
                 tasks.append(
-                    self._dupe_aither(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_aither(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.HUNO:
                 tasks.append(
-                    self._dupe_huno(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_huno(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.LST:
                 tasks.append(
-                    self._dupe_lst(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_lst(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.DARK_PEERS:
                 tasks.append(
-                    self._dupe_dp(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_dp(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.SHARE_ISLAND:
                 tasks.append(
-                    self._dupe_shri(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_shri(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.UPLOAD_CX:
                 tasks.append(
-                    self._dupe_ulcx(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_ulcx(tracker_sel=tracker_sel, file_input=search_input)
                 )
             elif tracker_sel is TrackerSelection.ONLY_ENCODES:
                 tasks.append(
-                    self._dupe_oe(tracker_name=tracker_name, file_input=file_input)
+                    self._dupe_oe(tracker_sel=tracker_sel, file_input=search_input)
                 )
 
         async_results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        dupes = {}
-        for tracker_sel, item in zip(processing_queue, async_results):
+        dupes: dict[
+            TrackerSelection,
+            tuple[TrackerSelection, bool, list[TrackerSearchResult] | str],
+        ] = {}
+        for tracker_sel, item in zip(processing_queue, async_results, strict=False):
             if isinstance(item, tuple) and len(item) == 3:
                 dupes[TrackerSelection(tracker_sel)] = item
             elif isinstance(item, Exception):
@@ -188,48 +242,54 @@ class ProcessBackEnd:
 
         return dupes
 
+    async def _unsupported_series_tracker_dupe(
+        self, tracker_sel: TrackerSelection
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        return tracker_sel, False, f"{tracker_sel} does not support series uploads yet"
+
     async def _dupe_mtv(
         self,
-        tracker_name: str,
+        tracker_sel: TrackerSelection,
         file_input: Path,
         media_search_payload: MediaSearchPayload,
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.mtv_tracker.api_key
+        api_key = self.config.settings.trackers.more_than_tv.api_key
         if not api_key:
-            return TrackerSelection(tracker_name), False, "MTV API key missing"
+            return tracker_sel, False, "MTV API key missing"
         try:
-            title = file_input.stem
             imdb_id = media_search_payload.imdb_id
             tmdb_id = media_search_payload.tmdb_id
-            if not title or not imdb_id or not tmdb_id:
+            tvdb_id = media_search_payload.tvdb_id
+            if not file_input or not imdb_id or (not tmdb_id and not tvdb_id):
                 return (
-                    TrackerSelection(tracker_name),
+                    tracker_sel,
                     False,
                     "Required MTV search parameters missing",
                 )
             mtv_search = MTVSearch(
                 api_key,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             ).search(
-                title=title,
+                title=file_input.stem,  # must not have an extension
                 imdb_id=imdb_id,
                 tmdb_id=tmdb_id,
+                tvdb_id=tvdb_id,
             )
             if mtv_search:
-                return TrackerSelection(tracker_name), True, mtv_search
+                return tracker_sel, True, mtv_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_tl(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        username = self.config.cfg_payload.tl_tracker.username
-        password = self.config.cfg_payload.tl_tracker.password
+        username = self.config.settings.trackers.torrent_leech.username
+        password = self.config.settings.trackers.torrent_leech.password
         if not username or not password:
             return (
-                TrackerSelection(tracker_name),
+                tracker_sel,
                 False,
                 "TL username or password missing",
             )
@@ -237,25 +297,25 @@ class ProcessBackEnd:
             tl_search = TLSearch(
                 username=username,
                 password=password,
-                cookie_dir=self.config.TRACKER_COOKIE_PATH,
-                alt_2_fa_token=self.config.cfg_payload.tl_tracker.alt_2_fa_token,
-                timeout=self.config.cfg_payload.timeout,
+                cookie_dir=self.config.paths.tracker_cookies,
+                alt_2_fa_token=self.config.settings.trackers.torrent_leech.alt_2_fa_token,
+                timeout=self.config.settings.general.timeout,
             ).search(file_input)
             if tl_search:
-                return TrackerSelection(tracker_name), True, tl_search
+                return tracker_sel, True, tl_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_bhd(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.bhd_tracker.api_key
-        rss_key = self.config.cfg_payload.bhd_tracker.rss_key
+        api_key = self.config.settings.trackers.beyond_hd.api_key
+        rss_key = self.config.settings.trackers.beyond_hd.rss_key
         if not api_key or not rss_key:
             return (
-                TrackerSelection(tracker_name),
+                tracker_sel,
                 False,
                 "BHD API key or RSS key missing",
             )
@@ -263,26 +323,29 @@ class ProcessBackEnd:
             bhd_search = BHDSearch(
                 api_key=api_key,
                 rss_key=rss_key,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             ).search(file_input)
             if bhd_search:
-                return TrackerSelection(tracker_name), True, bhd_search
+                return tracker_sel, True, bhd_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_ptp(
-        self, tracker_name: str, file_input: Path
+        self,
+        tracker_sel: TrackerSelection,
+        file_input: Path,
+        media_search_payload: MediaSearchPayload,
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_user = self.config.cfg_payload.ptp_tracker.api_user
-        api_key = self.config.cfg_payload.ptp_tracker.api_key
-        title = self.config.media_search_payload.title
-        year = self.config.media_search_payload.year
-        imdb_id = self.config.media_search_payload.imdb_id
+        api_user = self.config.settings.trackers.pass_the_popcorn.api_user
+        api_key = self.config.settings.trackers.pass_the_popcorn.api_key
+        title = media_search_payload.title
+        year = media_search_payload.year
+        imdb_id = media_search_payload.imdb_id
         if not api_user or not api_key or not title or year is None or not imdb_id:
             return (
-                TrackerSelection(tracker_name),
+                tracker_sel,
                 False,
                 "PTP API user/key or search parameters missing",
             )
@@ -290,191 +353,395 @@ class ProcessBackEnd:
             ptp_search = PTPSearch(
                 api_user=api_user,
                 api_key=api_key,
-                timeout=self.config.cfg_payload.timeout,
+                timeout=self.config.settings.general.timeout,
             ).search(
                 movie_title=title,
                 movie_year=year,
-                file_name=file_input.stem,
+                file_name=file_input.stem if file_input.is_dir() else file_input.name,
                 imdb_id=imdb_id,
             )
             if ptp_search:
-                return TrackerSelection(tracker_name), True, ptp_search
+                return tracker_sel, True, ptp_search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
 
     async def _dupe_rf(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.rf_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "ReelFlix API key missing"
-        try:
-            rf_search = ReelFlixSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if rf_search:
-                return TrackerSelection(tracker_name), True, rf_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            ReelFlixSearch,
+            {"api_key": self.config.settings.trackers.reelflix.api_key},
+        )
 
     async def _dupe_aither(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.aither_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "Aither API key missing"
-        try:
-            aither_search = AitherSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if aither_search:
-                return TrackerSelection(tracker_name), True, aither_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            AitherSearch,
+            {"api_key": self.config.settings.trackers.aither.api_key},
+        )
 
     async def _dupe_huno(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.huno_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "Huno API key missing"
-        try:
-            huno_search = HunoSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if huno_search:
-                return TrackerSelection(tracker_name), True, huno_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            HunoSearch,
+            {"api_key": self.config.settings.trackers.huno.api_key},
+        )
 
     async def _dupe_lst(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.lst_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "LST API key missing"
-        try:
-            lst_search = LSTSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if lst_search:
-                return TrackerSelection(tracker_name), True, lst_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            LSTSearch,
+            {"api_key": self.config.settings.trackers.lst.api_key},
+        )
 
     async def _dupe_dp(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.darkpeers_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "DarkPeers API key missing"
-        try:
-            dp_search = DarkPeersSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if dp_search:
-                return TrackerSelection(tracker_name), True, dp_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            DarkPeersSearch,
+            {"api_key": self.config.settings.trackers.dark_peers.api_key},
+        )
 
     async def _dupe_shri(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.shareisland_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "ShareIsland API key missing"
-        try:
-            shri_search = ShareIslandSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if shri_search:
-                return TrackerSelection(tracker_name), True, shri_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            ShareIslandSearch,
+            {"api_key": self.config.settings.trackers.share_island.api_key},
+        )
 
     async def _dupe_ulcx(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.ulcx_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "UploadCX API key missing"
-        try:
-            shri_search = UploadCXSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if shri_search:
-                return TrackerSelection(tracker_name), True, shri_search
-            else:
-                return TrackerSelection(tracker_name), True, []
-        except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            UploadCXSearch,
+            {"api_key": self.config.settings.trackers.upload_cx.api_key},
+        )
 
     async def _dupe_oe(
-        self, tracker_name: str, file_input: Path
+        self, tracker_sel: TrackerSelection, file_input: Path
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.cfg_payload.ulcx_tracker.api_key
-        if not api_key:
-            return TrackerSelection(tracker_name), False, "OnlyEncodes API key missing"
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            OnlyEncodesSearch,
+            {"api_key": self.config.settings.trackers.only_encodes.api_key},
+        )
+
+    async def _aither_dupe_check(
+        self,
+        tracker_sel: TrackerSelection,
+        file_input: Path,
+        search_cls: type[Unit3dBaseSearch],
+        kwargs: dict[str, Any],
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        """Used solely for UNIT3D trackers."""
         try:
-            shri_search = OnlyEncodesSearch(
-                api_key=api_key,
-            ).search(file_name=file_input.name)
-            if shri_search:
-                return TrackerSelection(tracker_name), True, shri_search
+            # check to ensure we have data
+            for k, v in kwargs.items():
+                if not v:
+                    return tracker_sel, False, f"{tracker_sel} key '{k}' is missing"
+            # execute the search
+            search = search_cls(**kwargs).search(file_name=file_input.name)
+            if search:
+                return tracker_sel, True, search
             else:
-                return TrackerSelection(tracker_name), True, []
+                return tracker_sel, True, []
         except Exception as e:
-            return TrackerSelection(tracker_name), False, str(e)
+            return tracker_sel, False, str(e)
+
+    @staticmethod
+    def _upload_error_phase(error: Exception) -> UploadFailurePhase:
+        phase = getattr(error, "phase", None)
+        if phase == "health_check":
+            return UploadFailurePhase.HEALTH_CHECK
+        if phase == "download":
+            return UploadFailurePhase.DOWNLOAD
+        if phase == "injection":
+            return UploadFailurePhase.INJECTION
+        return UploadFailurePhase.UPLOAD
+
+    @staticmethod
+    def _is_automatic_upload_retryable(error: BaseException) -> bool:
+        """Return whether retrying the upload request is safe enough to automate.
+
+        Trackers annotate their own failures; an un-annotated error is treated
+        as unsafe rather than guessed at from its message text.
+        """
+        if getattr(error, "server_accepted", False):
+            # The POST may already have succeeded. Retrying the whole upload can
+            # create a duplicate; only an explicit user decision may continue.
+            return False
+
+        retryable = getattr(error, "retryable", None)
+        if retryable is not None:
+            return bool(retryable)
+
+        status_code = getattr(error, "status_code", None)
+        if isinstance(status_code, int):
+            # 408/429 mean the request was rejected before it could be
+            # processed. A 5xx means the tracker received and answered the
+            # request -- it may have recorded the upload before failing, so
+            # it must not be retried automatically.
+            return status_code == 408 or status_code == 429
+
+        return False
+
+    def _upload_tracker_with_retry(
+        self,
+        *,
+        tracker: TrackerSelection,
+        torrent_path: Path,
+        tracker_health_cache: dict[TrackerSelection, bool],
+        upload_request: Callable[[], Path | bool | str | None],
+        queued_status_update: Callable[[str, str], None],
+        queued_text_update: Callable[[str], None],
+        caught_error: SignalInstance,
+        upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
+    ) -> tuple[Path | bool | str | None, bool]:
+        """Run one tracker upload with bounded automatic and user retries."""
+        total_attempts = 0
+        manual_retries = 0
+
+        while True:
+
+            def upload_once() -> Path | bool | str:
+                nonlocal total_attempts
+                total_attempts += 1
+                if total_attempts > 1:
+                    # A previous health result may have become stale while the
+                    # user waited or the automatic backoff elapsed.
+                    tracker_health_cache.pop(tracker, None)
+                ensure_tracker_health(
+                    tracker=tracker,
+                    timeout=self.config.settings.general.timeout,
+                    cache=tracker_health_cache,
+                    # `_upload_tracker_with_retry` already retries this call, so
+                    # a nested budget here would multiply the wait before the
+                    # user can intervene.
+                    attempts=1,
+                )
+                result = upload_request()
+                if not result:
+                    raise TrackerError(
+                        f"{tracker} did not report a successful upload",
+                        retryable=False,
+                    )
+                return result
+
+            def before_sleep(retry_state: object) -> None:
+                # Retrying's concrete state exposes the attempt number, but the
+                # callback is intentionally kept duck-typed for static checks.
+                # It reports the attempt that just failed, so the attempt about
+                # to start is one higher.
+                failed_attempt = getattr(retry_state, "attempt_number", total_attempts)
+                next_attempt = failed_attempt + 1
+                tracker_health_cache.pop(tracker, None)
+                queued_status_update(
+                    str(tracker),
+                    f"↻ Retrying upload ({next_attempt}/{RETRY_ATTEMPTS})",
+                )
+                queued_text_update(
+                    f"<br /><span>Temporary upload failure for <b>{tracker}</b>; "
+                    f"retrying ({next_attempt}/{RETRY_ATTEMPTS})</span>"
+                )
+
+            try:
+                retrying = Retrying(
+                    retry=retry_if_exception(self._is_automatic_upload_retryable),
+                    stop=stop_after_attempt(RETRY_ATTEMPTS),
+                    wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+                    before_sleep=before_sleep,
+                    reraise=True,
+                )
+                return retrying(upload_once), False
+            except ProcessCancelled:
+                raise
+            except Exception as error:
+                retryable = self._is_automatic_upload_retryable(error)
+                safe_message = scrub_secrets(str(error))
+                failure = UploadFailure(
+                    tracker=tracker,
+                    phase=self._upload_error_phase(error),
+                    message=safe_message,
+                    attempt=total_attempts,
+                    automatic_attempts=RETRY_ATTEMPTS,
+                    retryable=retryable,
+                    server_accepted=bool(getattr(error, "server_accepted", False)),
+                    torrent_path=torrent_path,
+                )
+                queued_status_update(str(tracker), "⚠️ Failed - awaiting action")
+                queued_text_update(
+                    f'<br /><span style="font-weight: bold; color: red;">'
+                    f"Upload failed for {tracker}: {safe_message}</span>"
+                )
+                caught_error.emit(
+                    f"Upload Error: {scrub_secrets(traceback.format_exc())}"
+                )
+
+                if upload_retry_cb is None:
+                    return None, False
+
+                action = upload_retry_cb(failure)
+                if action is UploadRetryAction.RETRY:
+                    manual_retries += 1
+                    queued_status_update(
+                        str(tracker),
+                        f"↻ Retrying upload (manual attempt {manual_retries})",
+                    )
+                    continue
+                if action is UploadRetryAction.CANCEL:
+                    queued_status_update(str(tracker), "⏹ Cancelled")
+                    raise ProcessCancelled from error
+                if failure.phase is UploadFailurePhase.DOWNLOAD:
+                    # The upload POST already succeeded; only fetching the
+                    # tracker's copy of the torrent failed, and the user
+                    # chose to keep the release as-is. Report this
+                    # distinctly from a genuine skip so nobody reads this as
+                    # "never uploaded" and re-uploads by hand.
+                    queued_status_update(
+                        str(tracker), "⚠️ Uploaded - tracker torrent not downloaded"
+                    )
+                    queued_text_update(
+                        f"<br /><span>Upload succeeded for <b>{tracker}</b>; kept "
+                        "after the tracker's torrent copy could not be "
+                        "downloaded</span>"
+                    )
+                else:
+                    queued_status_update(str(tracker), "⏭ Skipped")
+                    queued_text_update(
+                        "<br /><span>Skipped upload after user decision</span>"
+                    )
+                return None, True
+
+    def _inject_with_user_retry(
+        self,
+        *,
+        tracker: TrackerSelection,
+        tracker_name: str,
+        torrent_path: Path,
+        file_input: Path,
+        queued_text_update: Callable[[str], None],
+        queued_status_update: Callable[[str, str], None],
+        caught_error: SignalInstance,
+        upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
+        qbittorrent_save_path: str | None = None,
+    ) -> bool:
+        """Inject a torrent, letting the user retry on failure.
+
+        The torrent is already on the tracker at this point, so retrying an
+        injection cannot create a duplicate upload.
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                self._handle_injection(
+                    queued_text_update=queued_text_update,
+                    tracker_name=tracker_name,
+                    torrent_path=torrent_path,
+                    file_input=file_input,
+                    qbittorrent_save_path=qbittorrent_save_path,
+                )
+                return True
+            except Exception as error:
+                caught_error.emit(
+                    f"Injection Error: {scrub_secrets(traceback.format_exc())}"
+                )
+                # rTorrent embeds credentials as userinfo in its host URI, and
+                # `RTorrentClient.inject_torrent` has no exception handling of
+                # its own, so an `xmlrpc.client.ProtocolError` carrying the
+                # full netloc can reach here; scrub once and reuse everywhere
+                # below instead of interpolating the raw error.
+                safe_message = scrub_secrets(str(error))
+                if upload_retry_cb is None:
+                    queued_status_update(
+                        tracker_name, f"❌ Failed to inject torrent ({safe_message})"
+                    )
+                    return False
+
+                failure = UploadFailure(
+                    tracker=tracker,
+                    phase=UploadFailurePhase.INJECTION,
+                    message=safe_message,
+                    attempt=attempt,
+                    automatic_attempts=0,
+                    retryable=True,
+                    server_accepted=False,
+                    torrent_path=torrent_path,
+                )
+                queued_status_update(
+                    tracker_name, "⚠️ Injection failed - awaiting action"
+                )
+                action = upload_retry_cb(failure)
+                if action is UploadRetryAction.RETRY:
+                    queued_status_update(
+                        tracker_name, f"↻ Retrying injection (attempt {attempt + 1})"
+                    )
+                    continue
+                if action is UploadRetryAction.CANCEL:
+                    queued_status_update(tracker_name, "⏹ Cancelled")
+                    raise ProcessCancelled from error
+                queued_status_update(
+                    tracker_name, f"❌ Failed to inject torrent ({safe_message})"
+                )
+                return False
 
     def process_trackers(
         self,
-        media_input: Path,
-        jinja_engine: Jinja2TemplateEngine,
-        source_file: Path | None,
         process_dict: dict[str, Any],
         queued_status_update: Callable[[str, str], None],
         queued_text_update: Callable[[str], None],
         queued_text_update_replace_last_line: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
         caught_error: SignalInstance,
-        mediainfo_obj: MediaInfo,
-        source_file_mi_obj: MediaInfo | None,
-        media_mode: MediaMode,
-        media_search_payload: MediaSearchPayload,
-        releasers_name: str,
-        encode_file_dir: Path | None = None,
+        context: ProcessingContext,
         token_prompt_cb: Callable[[Sequence[str] | None], dict[str, str] | None]
         | None = None,
         overview_cb: Callable[
-            [dict[TrackerSelection, dict[str | None, str]] | None],
-            dict[TrackerSelection, dict[str | None, str]] | None,
+            [dict[TrackerSelection, dict[str, str | None]] | None],
+            dict[TrackerSelection, dict[str, str | None]] | None,
         ]
         | None = None,
+        upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None = None,
     ) -> None:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
 
+        qbittorrent_save_path = None
+        if self.config.settings.torrent_clients.qbittorrent.enabled:
+            qbittorrent_save_path = resolve_qbittorrent_save_path(
+                self.config.settings,
+                context,
+            )
+
         # handle image uploading
         images = self.handle_images_for_trackers(
-            process_dict, queued_text_update, progress_bar_cb
+            context, process_dict, queued_text_update, progress_bar_cb
         )
 
         self.progress_bar_cb = progress_bar_cb
         base_torrent_file: Path | None = None
+        tracker_health_cache: dict[TrackerSelection, bool] = {}
 
         # determine maximum piece size for the current tracker(s)
         max_piece_size = self.determine_max_piece_size(process_dict)
@@ -484,8 +751,9 @@ class ProcessBackEnd:
             )
             queued_text_update(f"<br /><span>{max_piece_size} (bytes)</span>")
 
-        # use encode_file_dir as the source for torrent if set, else use media_input
-        torrent_source = encode_file_dir if encode_file_dir else media_input
+        # get media input - use context instead of config
+        media_input = context.media_input.require_input_path()
+        release_info = build_series_release_info(context.media_input)
 
         # process
         queued_text_update(
@@ -493,14 +761,14 @@ class ProcessBackEnd:
         )
 
         # base user tokens, this will be filled with prompt tokens as well if needed
-        base_usr_tokens = {}
+        base_usr_tokens: dict[str, str] = {}
 
         # find all prompt tokens
         if token_prompt_cb:
-            all_prompt_tokens = []
+            all_prompt_tokens: list[str] = []
             for tracker_name in process_dict.keys():
                 cur_tracker = TrackerSelection(tracker_name)
-                tracker_info = self.config.tracker_map[cur_tracker]
+                tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
                 nfo_template = self.template_selector_be.read_template(
                     name=tracker_info.nfo_template
                 )
@@ -516,17 +784,18 @@ class ProcessBackEnd:
                     base_usr_tokens.update(response)
 
         # generate tracker titles first, then NFOs
-        tracker_release_data = {}
+        tracker_release_data: dict[TrackerSelection, dict[str, str | None]] = {}
         queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
         for tracker_name in process_dict.keys():
             cur_tracker = TrackerSelection(tracker_name)
-            tracker_info = self.config.tracker_map[cur_tracker]
+            tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
             # generate tracker title first
             tracker_title = None
             generated_tracker_title = self.generate_tracker_title(
-                file_name=media_input,
                 tracker_info=tracker_info,
+                context=context,
+                release_info=release_info,
             )
             if generated_tracker_title:
                 tracker_title = self.tracker_title_formatting(
@@ -537,10 +806,11 @@ class ProcessBackEnd:
                 name=tracker_info.nfo_template
             )
             user_tokens = base_usr_tokens | {
-                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+                k: v for k, (v, _) in self.config.settings.user_tokens.tokens.items()
             }
             nfo = ""
             tracker_images = None
+            format_images_to_str: str | None = None
             formatted_screens = None
             comparison_screens = None
             even_screens = None
@@ -562,7 +832,7 @@ class ProcessBackEnd:
                     format_images_to_str,
                     getattr(tracker_info, "image_width", 350),
                 )
-                if self.config.shared_data.is_comparison_images:
+                if context.shared_data.is_comparison_images:
                     comparison_screens = format_image_data_to_comparison(tracker_images)
                     even_screens = get_parity_images(data=tracker_images)
                     odd_screens = get_parity_images(data=tracker_images, even=False)
@@ -571,66 +841,70 @@ class ProcessBackEnd:
                         data=tracker_images, even=False
                     )
             if nfo_template:
-                nfo = TokenReplacer(
-                    media_input=media_input,
-                    jinja_engine=jinja_engine,
-                    source_file=source_file,
+                nfo_output = TokenReplacer(
+                    media_input_obj=context.media_input,
+                    jinja_engine=context.jinja_engine,
                     token_string=nfo_template,
-                    media_search_obj=media_search_payload,
-                    source_file_mi_obj=source_file_mi_obj,
-                    media_info_obj=mediainfo_obj,
+                    media_search_obj=context.media_search,
                     unfilled_token_mode=UnfilledTokenRemoval.KEEP,
-                    releasers_name=releasers_name,
+                    releasers_name=self.config.settings.general.releasers_name,
                     screen_shots=formatted_screens,
                     screen_shots_comparison=comparison_screens,
                     screen_shots_even_obj=even_screens,
                     screen_shots_odd_obj=odd_screens,
                     screen_shots_even_str=even_screens_str,
                     screen_shots_odd_str=odd_screens_str,
-                    release_notes=self.config.shared_data.release_notes,
-                    edition_override=self.config.shared_data.dynamic_data.get(
+                    release_notes=context.shared_data.release_notes,
+                    edition_override=context.shared_data.dynamic_data.get(
                         "edition_override"
                     ),
-                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                    frame_size_override=context.shared_data.dynamic_data.get(
                         "frame_size_override"
                     ),
-                    override_tokens=self.config.shared_data.dynamic_data.get(
+                    override_tokens=context.shared_data.dynamic_data.get(
                         "override_tokens"
                     ),
                     user_tokens=user_tokens,
-                    movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+                    title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                    video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+                    **self._release_info_token_kwargs(
+                        release_info,
+                        self.config.settings.series.multi_episode_style,
+                    ),
                 ).get_output()
-                if not isinstance(nfo, str):
+                if not isinstance(nfo_output, str):
                     raise ValueError("NFO should be a string")
+                nfo = nfo_output
 
             # run token replacer plugin if available
-            token_replacer_plugin = self.config.cfg_payload.token_replacer
-            if token_replacer_plugin:
-                nfo_plugin = self.config.loaded_plugins[
-                    token_replacer_plugin
-                ].token_replacer
-                if nfo_plugin and callable(nfo_plugin):
-                    LOG.info(
-                        LOG.LOG_SOURCE.BE,
-                        f"Running token replacer plugin for tracker: {tracker_name}",
-                    )
-                    replace_tokens = nfo_plugin(
-                        config=self.config,
-                        input_str=nfo,
-                        tracker_s=(cur_tracker,),
-                        tracker_images=tracker_images
-                        if cur_tracker in images
-                        else None,
-                        format_images_to_str=formatted_screens,
-                        formatted_screens=formatted_screens,
-                    )
-                    nfo = replace_tokens if replace_tokens else nfo
+            if self.config.settings.general.enable_plugins:
+                token_replacer_plugin = self.config.settings.plugins.token_replacer
+                if token_replacer_plugin:
+                    record = self.config.plugin_manager.get(token_replacer_plugin)
+                    if record and record.definition.token_replacer is not None:
+                        LOG.info(
+                            LOG.LOG_SOURCE.BE,
+                            f"Running token replacer plugin for tracker: {tracker_name}",
+                        )
+                        nfo = self.config.plugin_manager.replace_tokens(
+                            token_replacer_plugin,
+                            TokenReplaceRequest(
+                                config=self.config,
+                                context=context,
+                                text=nfo,
+                                trackers=(cur_tracker,),
+                                tracker_images=(
+                                    tracker_images if cur_tracker in images else None
+                                ),
+                                formatted_screens=formatted_screens,
+                                preview=False,
+                            ),
+                        )
 
             tracker_release_data[cur_tracker] = {"title": tracker_title, "nfo": nfo}
 
         # update nfos with user updates from front end if enabled
-        if self.config.cfg_payload.enable_prompt_overview and overview_cb:
+        if self.config.settings.general.enable_prompt_overview and overview_cb:
             confirm_overview = overview_cb(tracker_release_data)
             if confirm_overview:
                 nfo_updates = [
@@ -660,11 +934,11 @@ class ProcessBackEnd:
 
             # get tracker object and tracker info
             cur_tracker = TrackerSelection(tracker_name)
-            tracker_info = self.config.tracker_map[cur_tracker]
+            tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
             # get tracker title and nfo data
             cur_tracker_release_data = tracker_release_data.get(cur_tracker, {})
-            cur_tracker_title = cur_tracker_release_data.get("title", "")
+            cur_tracker_title = cur_tracker_release_data.get("title") or ""
 
             # get just the torrent path (there is other data that we currently aren't using)
             # >>> {'path': WindowsPath('path.torrent'), 'image_host': 'URLs',
@@ -679,18 +953,18 @@ class ProcessBackEnd:
             if idx == 0:
                 # try mkbrr first if enabled, fallback to torf if not available or on error
                 try:
-                    if self.config.cfg_payload.enable_mkbrr and (
-                        self.config.cfg_payload.mkbrr
-                        and self.config.cfg_payload.mkbrr.exists()
+                    if self.config.settings.general.enable_mkbrr and (
+                        self.config.settings.dependencies.mkbrr
+                        and self.config.settings.dependencies.mkbrr.exists()
                     ):
                         queued_text_update(
                             '<br /><span>Generating torrent with <span style="font-weight: bold;">'
                             "mkbrr</span></span>"
                         )
                         torrent = mkbrr_generate_torrent(
-                            mkbrr_path=self.config.cfg_payload.mkbrr,
+                            mkbrr_path=self.config.settings.dependencies.mkbrr,
                             tracker_info=tracker_info,
-                            path=torrent_source,
+                            path=media_input,
                             output_path=torrent_path,
                             max_piece_size=max_piece_size,
                             cb=self.mkbrr_torrent_gen_cb,
@@ -701,8 +975,8 @@ class ProcessBackEnd:
                 except Exception as mkbrr_error:
                     # only show error if mkbrr was available but failed
                     if (
-                        self.config.cfg_payload.enable_mkbrr
-                        and self.config.cfg_payload.mkbrr
+                        self.config.settings.general.enable_mkbrr
+                        and self.config.settings.dependencies.mkbrr
                     ):
                         queued_text_update(
                             f'<br /><span style="color: red;">mkbrr failed: {mkbrr_error} '
@@ -715,7 +989,7 @@ class ProcessBackEnd:
                     )
                     torrent = generate_torrent(
                         tracker_info=tracker_info,
-                        path=torrent_source,
+                        path=media_input,
                         max_piece_size=max_piece_size,
                         cb=self.torrent_gen_cb,
                     )
@@ -734,7 +1008,7 @@ class ProcessBackEnd:
                 )
                 _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
 
-            nfo = cur_tracker_release_data.get("nfo", "")
+            nfo = cur_tracker_release_data.get("nfo") or ""
             if nfo:
                 with open(
                     torrent_path.with_suffix(".nfo"), "w", encoding="utf-8"
@@ -742,78 +1016,110 @@ class ProcessBackEnd:
                     log_out.write(nfo)
 
             # pre upload plugin
-            pre_upload_processing = None
-            pre_upload_plugin = self.config.cfg_payload.pre_upload
-            if pre_upload_plugin:
-                get_pre_upload_plugin = self.config.loaded_plugins[
-                    pre_upload_plugin
-                ].pre_upload
-                if get_pre_upload_plugin and callable(get_pre_upload_plugin):
-                    pre_upload_processing = get_pre_upload_plugin(
-                        config=self.config,
-                        tracker=cur_tracker,
-                        torrent_file=torrent_path,
-                        media_file=media_input,
-                        mi_obj=mediainfo_obj,
-                        source_path=torrent_source,
-                        upload_text_cb=queued_text_update,
-                        upload_text_replace_last_line_cb=queued_text_update_replace_last_line,
-                        progress_cb=self.progress_bar_cb,
-                    )
+            pre_upload_decision, pre_upload_error = self._run_pre_upload_plugin(
+                cur_tracker=cur_tracker,
+                context=context,
+                torrent_path=torrent_path,
+                queued_text_update=queued_text_update,
+                queued_text_update_replace_last_line=(
+                    queued_text_update_replace_last_line
+                ),
+            )
+            if pre_upload_error:
+                # One tracker's plugin failure must not cancel the rest of the
+                # queue, so this continues rather than propagating.
+                LOG.error(
+                    LOG.LOG_SOURCE.BE,
+                    f"Pre-upload plugin failed for {cur_tracker}: {pre_upload_error}",
+                )
+                queued_status_update(tracker_name, "❌ Failed")
+                continue
 
             # upload
-            if tracker_info.upload_enabled and pre_upload_processing is not False:
-                queued_text_update("<br /><span>Uploading release</span>")
+            if (
+                tracker_info.upload_enabled
+                and pre_upload_decision is not PreUploadDecision.SKIP
+            ):
                 execute_upload = None
+                skipped_upload = False
                 try:
-                    execute_upload = self.upload(
-                        tracker=cur_tracker,
-                        torrent_file=torrent_path,
-                        file_input=Path(media_input),
-                        mediainfo_obj=mediainfo_obj,
-                        media_mode=media_mode,
-                        media_search_payload=media_search_payload,
-                        nfo=nfo,
-                        tracker_title=cur_tracker_title,
+                    queued_text_update(
+                        "<br /><span>Checking tracker availability and uploading "
+                        "release</span>"
                     )
+                    execute_upload, skipped_upload = self._upload_tracker_with_retry(
+                        tracker=cur_tracker,
+                        torrent_path=torrent_path,
+                        tracker_health_cache=tracker_health_cache,
+                        upload_request=lambda cur_tracker=cur_tracker,
+                        torrent_path=torrent_path,
+                        nfo=nfo,
+                        cur_tracker_title=cur_tracker_title,
+                        context=context,
+                        release_info=release_info: self.upload(
+                            tracker=cur_tracker,
+                            torrent_file=torrent_path,
+                            nfo=nfo,
+                            tracker_title=cur_tracker_title,
+                            context=context,
+                            release_info=release_info,
+                        ),
+                        queued_status_update=queued_status_update,
+                        queued_text_update=queued_text_update,
+                        caught_error=caught_error,
+                        upload_retry_cb=upload_retry_cb,
+                    )
+
+                    if execute_upload:
+                        queued_text_update(
+                            "<br /><span>Successfully uploaded release</span>"
+                        )
+                        # handle injection
+                        if self._inject_with_user_retry(
+                            tracker=cur_tracker,
+                            tracker_name=tracker_name,
+                            torrent_path=torrent_path,
+                            file_input=media_input,
+                            queued_text_update=queued_text_update,
+                            queued_status_update=queued_status_update,
+                            caught_error=caught_error,
+                            upload_retry_cb=upload_retry_cb,
+                            qbittorrent_save_path=qbittorrent_save_path,
+                        ):
+                            queued_status_update(tracker_name, "✅ Complete")
+                    else:
+                        # `_upload_tracker_with_retry` already reported the
+                        # skip (with phase-appropriate status/text) when it
+                        # returned; nothing further to say here.
+                        if not skipped_upload:
+                            queued_text_update(
+                                '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
+                                "check logs for information</span>"
+                            )
+                            queued_status_update(tracker_name, "❌ Failed")
+                except ProcessCancelled:
+                    for remaining_tracker in list(process_dict)[idx:]:
+                        queued_status_update(remaining_tracker, "⏹ Cancelled")
+                    self.disconnect_from_clients()
+                    raise
                 except Exception as upload_error:
                     queued_text_update(
                         '<br /><br /><p style="font-weight: bold; color: red;">Failed to upload '
                         f"release, check logs for information ({upload_error})</p>",
                     )
-                    caught_error.emit(f"Upload Error: {traceback.format_exc()}")
-                    queued_status_update(tracker_name, "❌ Failed")
-
-                if execute_upload:
-                    queued_text_update(
-                        "<br /><span>Successfully uploaded release</span>"
-                    )
-                    # handle injection
-                    try:
-                        self._handle_injection(
-                            queued_text_update=queued_text_update,
-                            tracker_name=tracker_name,
-                            torrent_path=torrent_path,
-                            file_input=media_input,
-                        )
-                        queued_status_update(tracker_name, "✅ Complete")
-                    except Exception as e:
-                        queued_status_update(
-                            tracker_name, f"❌ Failed to inject torrent ({e})"
-                        )
-                        caught_error.emit(f"Injection Error: {traceback.format_exc()}")
-                else:
-                    queued_text_update(
-                        '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
-                        "check logs for information</span>"
+                    caught_error.emit(
+                        f"Upload Error: {scrub_secrets(traceback.format_exc())}"
                     )
                     queued_status_update(tracker_name, "❌ Failed")
-            elif not tracker_info.upload_enabled and pre_upload_processing is None:
+            elif not tracker_info.upload_enabled and pre_upload_decision is None:
                 queued_text_update(
                     "<br /><span>Skipping upload & injection, upload is disabled</span>"
                 )
                 queued_status_update(tracker_name, "✅ Complete")
-            elif tracker_info.upload_enabled and pre_upload_processing is False:
+            elif (
+                tracker_info.upload_enabled
+                and pre_upload_decision is PreUploadDecision.SKIP
+            ):
                 queued_text_update(
                     "<br /><span>Skipping upload & injection, upload is disabled via plugin</span>"
                 )
@@ -827,8 +1133,54 @@ class ProcessBackEnd:
         # disconnect from clients and reset related variables after use
         self.disconnect_from_clients()
 
+    def _run_pre_upload_plugin(
+        self,
+        cur_tracker: TrackerSelection,
+        context: ProcessingContext,
+        torrent_path: Path,
+        queued_text_update: Callable[[str], None],
+        queued_text_update_replace_last_line: Callable[[str], None],
+    ) -> tuple[PreUploadDecision | None, str | None]:
+        """Run the configured pre-upload plugin for one tracker.
+
+        Returns ``(decision, None)`` on success or when no plugin applies, and
+        ``(None, message)`` when the plugin failed. Returning the failure
+        rather than raising is what keeps one tracker's plugin from cancelling
+        the rest of the queue, and it is what makes that property testable.
+        """
+        if not self.config.settings.general.enable_plugins:
+            return None, None
+
+        pre_upload_plugin = self.config.settings.plugins.pre_upload
+        if not pre_upload_plugin:
+            return None, None
+
+        record = self.config.plugin_manager.get(pre_upload_plugin)
+        if not record or record.definition.pre_upload is None:
+            return None, None
+
+        try:
+            decision = self.config.plugin_manager.run_pre_upload(
+                pre_upload_plugin,
+                PreUploadRequest(
+                    config=self.config,
+                    context=context,
+                    tracker=cur_tracker,
+                    torrent_file=torrent_path,
+                    reporter=UploadReporter(
+                        append_text=queued_text_update,
+                        replace_last_line=queued_text_update_replace_last_line,
+                        set_progress=self.progress_bar_cb or (lambda _value: None),
+                    ),
+                ),
+            )
+        except PluginExecutionError as error:
+            return None, str(error)
+        return decision, None
+
     def handle_images_for_trackers(
         self,
+        context: ProcessingContext,
         process_dict: dict[str, Any],
         queued_text_update: Callable[[str], None],
         progress_bar_cb: Callable[[float], None],
@@ -840,6 +1192,7 @@ class ProcessBackEnd:
         and uploads them to the specified image hosts.
 
         Args:
+            context (ProcessingContext): The processing context containing state data.
             process_dict (dict[str, Any]): A dictionary containing tracker-specific data,
                 including image hosting information.
             queued_text_update (Callable[[str], None]): A callback function to update the UI
@@ -853,20 +1206,24 @@ class ProcessBackEnd:
         """
         to_image_hosts: set[ImageHost] = set()
         to_url = False
-        tracker_to_host_map = {}
-        img_from = None
-        files_to_upload = None
+        tracker_to_host_map: dict[TrackerSelection, ImageHost | ImageSource] = {}
+        img_from: ImageSource | None = None
+        files_to_upload: Sequence[Path] | None = None
 
-        url_data = {}
+        url_data: dict[TrackerSelection, dict[int, ImageUploadData]] = {}
 
         # build tracker_to_host_map and determine where the images are from/to
-        for tracker, data in process_dict.items():
+        for tracker_name, data in process_dict.items():
             image_host_data = data["image_host_data"]
 
             if isinstance(image_host_data, ImageUploadFromTo):
                 if not img_from:
                     img_from = image_host_data.img_from
                 img_to = image_host_data.img_to
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"Image destination for {tracker_name}: {img_to!r} (from {image_host_data.img_from!r})",
+                )
 
                 # track the image host to be used for each tracker
                 if isinstance(img_to, ImageHost) and img_to is not ImageHost.DISABLED:
@@ -874,7 +1231,15 @@ class ProcessBackEnd:
                 elif not to_url and img_to is ImageSource.URLS:
                     to_url = True
 
-                tracker_to_host_map[TrackerSelection(tracker)] = img_to
+                tracker_to_host_map[TrackerSelection(tracker_name)] = img_to
+            else:
+                # the tracker cannot be mapped to a destination at all, so it will
+                # reach the NFO stage with no images and no other explanation
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No usable image host data for {tracker_name}, expected ImageUploadFromTo "
+                    f"and got {type(image_host_data).__name__}: {image_host_data!r}",
+                )
 
         # handle image host uploads
         if to_image_hosts or to_url:
@@ -884,27 +1249,35 @@ class ProcessBackEnd:
         if to_image_hosts:
             if img_from is ImageSource.URLS:
                 queued_text_update(
-                    f"<br />Attempting to download {len(self.config.shared_data.url_data)} user-provided URL(s)",
+                    f"<br />Attempting to download {len(context.shared_data.url_data)} user-provided URL(s)",
                 )
 
-                if not self.config.media_input_payload.working_dir:
+                if not context.media_input.working_dir:
                     raise FileNotFoundError("Working directory was not found")
-                img_output_path = (
-                    self.config.media_input_payload.working_dir / "dl_imgs"
-                )
+                img_output_path = context.media_input.working_dir / "dl_imgs"
                 img_downloader = ImageDownloader(
-                    self.config.shared_data.url_data,
+                    context.shared_data.url_data,
                     img_output_path,
                     progress_bar_cb,
                 )
                 files_to_upload = img_downloader.download_images()
-                self.config.shared_data.loaded_images = files_to_upload
+                context.shared_data.loaded_images = files_to_upload
 
                 queued_text_update(
                     f"<br />Successfully downloaded {len(files_to_upload)} user-provided URL(s)",
                 )
             else:
-                files_to_upload = self.config.shared_data.loaded_images
+                files_to_upload = context.shared_data.loaded_images
+
+            if not files_to_upload:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"No images available to upload to {len(to_image_hosts)} image host(s), "
+                    "every tracker will be processed without images",
+                )
+                queued_text_update(
+                    "<br />No images available to upload, continuing without images"
+                )
 
             if files_to_upload:
                 # optimize images if enabled
@@ -913,11 +1286,11 @@ class ProcessBackEnd:
                 # if we don't have user generated images and optimize download/url images is enabled or images
                 # are downloaded from URLs
                 if (
-                    self.config.shared_data.generated_images
-                    and self.config.cfg_payload.optimize_generated_images
+                    context.shared_data.generated_images
+                    and self.config.settings.screenshots.optimize_generated_images
                 ) or (
-                    not self.config.shared_data.generated_images
-                    and self.config.cfg_payload.optimize_dl_url_images
+                    not context.shared_data.generated_images
+                    and self.config.settings.screenshots.optimize_downloaded_images
                     or img_from is ImageSource.URLS
                 ):
                     queued_text_update(
@@ -947,25 +1320,58 @@ class ProcessBackEnd:
                 )
                 async_loop.close()
 
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"Upload results returned for image host(s): {sorted(str(h) for h in upload_results)}",
+                )
+
                 # map the uploaded image hosts to the appropriate trackers
                 for tracker, img_host in tracker_to_host_map.items():
                     if img_host in upload_results:
-                        url_data[tracker] = upload_results[img_host]
+                        tracker_results = upload_results[img_host]
+                        assert_all_images_uploaded(str(tracker), tracker_results)
+                        url_data[tracker] = tracker_results
+                    else:
+                        LOG.debug(
+                            LOG.LOG_SOURCE.BE,
+                            f"No uploaded images for {tracker}, its destination {img_host!r} "
+                            "was not part of this upload",
+                        )
 
         # using URLs as is
         if to_url:
             url_host_count = 0
             for tracker, img_host in tracker_to_host_map.items():
                 if img_host is ImageSource.URLS:
-                    url_data[tracker] = {
+                    tracker_url_data = {
                         i: img_data
-                        for i, img_data in enumerate(self.config.shared_data.url_data)
+                        for i, img_data in enumerate(context.shared_data.url_data)
                     }
+                    assert_all_images_uploaded(str(tracker), tracker_url_data)
+                    url_data[tracker] = tracker_url_data
                     url_host_count += 1
 
             queued_text_update(
-                f"<br />Using {len(self.config.shared_data.url_data)} URLs for {url_host_count} tracker(s)",
+                f"<br />Using {len(context.shared_data.url_data)} URLs for {url_host_count} tracker(s)",
             )
+
+        # trackers missing here reach the NFO stage with no images, which is a
+        # supported outcome but an easy one to mistake for a failure, so say so
+        without_images = [
+            str(TrackerSelection(tracker_name))
+            for tracker_name in process_dict
+            if TrackerSelection(tracker_name) not in url_data
+        ]
+        if without_images:
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                f"Tracker(s) with no images: {', '.join(without_images)}",
+            )
+        LOG.debug(
+            LOG.LOG_SOURCE.BE,
+            "Image handling resolved "
+            f"{ {str(tracker): len(imgs) for tracker, imgs in url_data.items()} }",
+        )
 
         return url_data
 
@@ -976,21 +1382,21 @@ class ProcessBackEnd:
 
         def img_optimizer_job_done_callback(
             _png_path: Path, completed: int, total: int
-        ):
+        ) -> None:
             progress_bar_cb(completed / total * 100)
 
         image_optimizer = MultiProcessImageOptimizer(
             on_job_done=img_optimizer_job_done_callback,
-            cpu_fraction=self.config.cfg_payload.optimize_dl_url_images_percentage,
+            cpu_fraction=self.config.settings.screenshots.optimize_downloaded_images_percentage,
         )
         img_opt_output_dir = files_to_upload[0].parent / "optimized"
         try:
             optimized_files = image_optimizer.process_jobs(
                 files_to_upload, img_opt_output_dir
             )
-        except:
+        except Exception:
             # clean up extra images if failed
-            shutil.rmtree(img_opt_output_dir)
+            shutil.rmtree(img_opt_output_dir, ignore_errors=True)
             raise
         return optimized_files
 
@@ -1012,13 +1418,13 @@ class ProcessBackEnd:
             dict[ImageHost, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
         """
 
-        def progress_callback(_job: str, _ind: float, overall: float):
+        def progress_callback(_job: str, _ind: float, overall: float) -> None:
             progress_bar_cb(overall)
 
         image_uploader = ImageUploader(progress_signal=progress_callback)
 
-        jobs = {}
-        host_to_job = {}
+        jobs: dict[str, ImageHost] = {}
+        host_to_job: dict[ImageHost, str] = {}
 
         # register image hosts and their corresponding uploaders
         self._register_image_hosts(
@@ -1038,8 +1444,8 @@ class ProcessBackEnd:
         to_image_hosts: set[ImageHost],
         filepaths: Sequence[Path],
         image_uploader: ImageUploader,
-        jobs: dict,
-        host_to_job: dict,
+        jobs: dict[str, ImageHost],
+        host_to_job: dict[ImageHost, str],
     ) -> None:
         """
         Registers image hosts and associates them with upload jobs.
@@ -1058,7 +1464,9 @@ class ProcessBackEnd:
             uploader = self._get_uploader_for_host(img_host)
             image_uploader.register_uploader(str(img_host), uploader)
 
-            job_id = image_uploader.add_job(str(img_host), filepaths)
+            job_id = image_uploader.add_job(
+                str(img_host), ImageUploadRequest(filepaths=filepaths)
+            )
             jobs[job_id] = img_host
             host_to_job[img_host] = job_id
 
@@ -1083,8 +1491,6 @@ class ProcessBackEnd:
             return ImageBoxUploader()
         elif img_host is ImageHost.IMAGE_BB:
             return self._create_imgbb_uploader()
-        elif img_host is ImageHost.PTPIMG:
-            return self._create_ptpimg_uploader()
         else:
             raise ImageHostError(f"Unsupported image host: {img_host}")
 
@@ -1098,7 +1504,7 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If required credentials are missing.
         """
-        chv4_payload = self.config.cfg_payload.chevereto_v4
+        chv4_payload = self.config.settings.image_hosts.chevereto_v4
         if not chv4_payload.api_key or not chv4_payload.base_url:
             raise ImageHostError("Missing 'API Key' or 'Base URL' for CheveretoV4.")
         return CheveretoV4Uploader(
@@ -1115,7 +1521,7 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If required credentials are missing.
         """
-        chv3_payload = self.config.cfg_payload.chevereto_v3
+        chv3_payload = self.config.settings.image_hosts.chevereto_v3
         if (
             not chv3_payload.base_url
             or not chv3_payload.user
@@ -1138,28 +1544,15 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If required credentials are missing.
         """
-        imgbb_payload = self.config.cfg_payload.image_bb
+        imgbb_payload = self.config.settings.image_hosts.image_bb
         if not imgbb_payload.api_key or not imgbb_payload.base_url:
             raise ImageHostError("Missing 'API Key' for ImageBB.")
         return ImageBBUploader(api_key=imgbb_payload.api_key)
 
-    def _create_ptpimg_uploader(self) -> PTPIMGUploader:
-        """
-        Creates an uploader instance for PTPIMG.
-
-        Returns:
-            PTPIMGUploader: The uploader instance.
-
-        Raises:
-            ImageHostError: If required credentials are missing.
-        """
-        ptpimg_payload = self.config.cfg_payload.ptpimg
-        if not ptpimg_payload.api_key or not ptpimg_payload.base_url:
-            raise ImageHostError("Missing 'API Key' for PTPIMG.")
-        return PTPIMGUploader(api_key=ptpimg_payload.api_key)
-
     def _map_uploaded_urls(
-        self, host_to_job: dict, results: dict[str, dict[int, ImageUploadData]]
+        self,
+        host_to_job: dict[ImageHost, str],
+        results: dict[str, dict[int, ImageUploadData]],
     ) -> dict[ImageHost, dict[int, ImageUploadData]]:
         """
         Maps uploaded URLs to their respective image hosts.
@@ -1187,7 +1580,7 @@ class ProcessBackEnd:
         """
         piece_sizes = set()
         for tracker in process_dict.keys():
-            max_piece_size = self.config.tracker_map[
+            max_piece_size = self.config.settings.trackers.by_selection()[
                 TrackerSelection(tracker)
             ].max_piece_size
             if max_piece_size > 0:
@@ -1202,36 +1595,48 @@ class ProcessBackEnd:
         self,
         tracker: TrackerSelection,
         torrent_file: Path,
-        file_input: Path,
-        mediainfo_obj: MediaInfo,
-        media_mode: MediaMode,
-        media_search_payload: MediaSearchPayload,
         nfo: str,
         tracker_title: str,
+        context: ProcessingContext,
+        release_info: SeriesReleaseInfo,
     ) -> Path | bool | str | None:
+        first_file = context.media_input.require_first_file()
+        mediainfo_obj = context.media_input.require_mediainfo(first_file)
+        media_search_obj = context.media_search
+        media_type = context.media_input.require_media_type()
+        if media_type is MediaType.SERIES and tracker in UNSUPPORTED_SERIES_TRACKERS:
+            raise TrackerError(f"{tracker} does not support series uploads yet")
+        input_path = first_file
+        if media_type is not MediaType.SERIES:
+            input_path = context.media_input.require_input_path()
+
         if tracker is TrackerSelection.MORE_THAN_TV:
-            tracker_payload = self.config.cfg_payload.mtv_tracker
+            tracker_payload = self.config.settings.trackers.more_than_tv
             if not tracker_payload.username or not tracker_payload.password:
                 raise TrackerError("Username and password is required for MoreThanTV")
-            return mtv_uploader(
-                username=tracker_payload.username,
-                password=tracker_payload.password,
-                totp=tracker_payload.totp,
-                nfo=nfo,
-                group_desc=tracker_payload.group_description,
-                torrent_file=Path(torrent_file),
-                file_input=file_input,
-                tracker_title=tracker_title,
-                mediainfo_obj=mediainfo_obj,
-                genre_ids=media_search_payload.genres,
-                media_mode=media_mode,
-                anonymous=bool(tracker_payload.anonymous),
-                source_origin=tracker_payload.source_origin,
-                cookie_dir=self.config.TRACKER_COOKIE_PATH,
-                timeout=self.config.cfg_payload.timeout,
+            return cast(
+                Path | bool | str | None,
+                mtv_uploader(
+                    username=tracker_payload.username,
+                    password=tracker_payload.password,
+                    totp=tracker_payload.totp,
+                    nfo=nfo,
+                    group_desc=tracker_payload.group_description,
+                    torrent_file=torrent_file,
+                    input_path=input_path,
+                    tracker_title=tracker_title,
+                    mediainfo_obj=mediainfo_obj,
+                    genre_ids=media_search_obj.genres,
+                    media_type=media_type,
+                    is_pack=release_info.is_pack,
+                    anonymous=bool(tracker_payload.anonymous),
+                    source_origin=tracker_payload.source_origin,
+                    cookie_dir=self.config.paths.tracker_cookies,
+                    timeout=self.config.settings.general.timeout,
+                ),
             )
         elif tracker is TrackerSelection.TORRENT_LEECH:
-            announce_key = self.config.cfg_payload.tl_tracker.torrent_passkey
+            announce_key = self.config.settings.trackers.torrent_leech.torrent_passkey
             if not announce_key:
                 raise TrackerError("Missing announce key for TorrentLeech")
             return tl_upload(
@@ -1240,284 +1645,367 @@ class ProcessBackEnd:
                 tracker_title=tracker_title,
                 torrent_file=torrent_file,
                 mediainfo_obj=mediainfo_obj,
-                timeout=self.config.cfg_payload.timeout,
+                media_type=media_type,
+                is_pack=release_info.is_pack,
+                is_anime=is_anime_release(context.media_input, media_search_obj),
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.BEYOND_HD:
-            tracker_payload = self.config.cfg_payload.bhd_tracker
-            if not tracker_payload.api_key:
+            bhd_payload = self.config.settings.trackers.beyond_hd
+            if not bhd_payload.api_key:
                 raise TrackerError("Missing API key for BeyondHD")
 
-            # Get edition from shared data
-            edition = self.config.shared_data.dynamic_data.get("edition_override")
+            # get edition from shared data
+            edition = context.shared_data.dynamic_data.get("edition_override")
 
-            # Get localization from override tokens
-            override_tokens = self.config.shared_data.dynamic_data.get(
+            # get localization from override tokens
+            override_tokens = context.shared_data.dynamic_data.get(
                 "override_tokens", {}
             )
             localization = override_tokens.get("localization")
 
             return bhd_uploader(
-                api_key=tracker_payload.api_key,
+                api_key=bhd_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
-                media_mode=media_mode,
-                imdb_id=media_search_payload.imdb_id,
-                tmdb_id=media_search_payload.tmdb_id,
+                media_type=media_type,
+                imdb_id=media_search_obj.imdb_id,
+                tmdb_id=media_search_obj.tmdb_id,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                live_release=tracker_payload.live_release,
-                anonymous=bool(tracker_payload.anonymous),
-                promo=tracker_payload.promo,
-                timeout=self.config.cfg_payload.timeout,
+                is_pack=release_info.is_pack,
+                is_special=release_info.is_special,
+                internal=bool(bhd_payload.internal),
+                live_release=bhd_payload.live_release,
+                anonymous=bool(bhd_payload.anonymous),
+                promo=bhd_payload.promo,
+                timeout=self.config.settings.general.timeout,
                 edition=edition,
                 localization=localization,
-                add_localization_to_custom_edition=tracker_payload.add_localization_to_custom_edition,
-                stream_optimized=tracker_payload.stream_optimized,
+                add_localization_to_custom_edition=bhd_payload.add_localization_to_custom_edition,
+                stream_optimized=bhd_payload.stream_optimized,
             )
         elif tracker is TrackerSelection.PASS_THE_POPCORN:
-            tracker_payload = self.config.cfg_payload.ptp_tracker
+            ptp_payload = self.config.settings.trackers.pass_the_popcorn
             if (
-                not tracker_payload.api_user
-                or not tracker_payload.api_key
-                or not tracker_payload.username
-                or not tracker_payload.password
-                or not tracker_payload.announce_url
+                not ptp_payload.api_user
+                or not ptp_payload.api_key
+                or not ptp_payload.username
+                or not ptp_payload.password
+                or not ptp_payload.announce_url
             ):
                 raise TrackerError(
-                    "TorrentLeech requires API user, API key, username, password, and announce URL"
+                    "PassThePopcorn requires API user, API key, username, password, and announce URL"
                 )
             return ptp_uploader(
-                api_user=tracker_payload.api_user,
-                api_key=tracker_payload.api_key,
-                username=tracker_payload.username,
-                password=tracker_payload.password,
-                announce_url=tracker_payload.announce_url,
+                api_user=ptp_payload.api_user,
+                api_key=ptp_payload.api_key,
+                username=ptp_payload.username,
+                password=ptp_payload.password,
+                announce_url=ptp_payload.announce_url,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 nfo=nfo,
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                ptp_img_api_key=self.config.cfg_payload.ptp_tracker.api_key,
-                cookie_dir=self.config.TRACKER_COOKIE_PATH,
-                totp=tracker_payload.totp,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                cookie_dir=self.config.paths.tracker_cookies,
+                totp=ptp_payload.totp,
+                timeout=self.config.settings.general.timeout,
             )
         # Unit3d trackers
         elif tracker is TrackerSelection.REELFLIX:
-            tracker_payload = self.config.cfg_payload.rf_tracker
-            if not tracker_payload.api_key:
+            rf_payload = self.config.settings.trackers.reelflix
+            if not rf_payload.api_key:
                 raise TrackerError("Missing API key for ReelFliX")
             return rf_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=rf_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
-                personal_release=bool(tracker_payload.personal_release),
-                stream_optimized=bool(tracker_payload.stream_optimized),
-                opt_in_to_mod_queue=bool(tracker_payload.opt_in_to_mod_queue),
-                featured=bool(tracker_payload.featured),
-                free=bool(tracker_payload.free),
-                double_up=bool(tracker_payload.double_up),
-                sticky=bool(tracker_payload.sticky),
+                internal=bool(rf_payload.internal),
+                anonymous=bool(rf_payload.anonymous),
+                personal_release=bool(rf_payload.personal_release),
+                stream_optimized=bool(rf_payload.stream_optimized),
+                opt_in_to_mod_queue=bool(rf_payload.opt_in_to_mod_queue),
+                featured=bool(rf_payload.featured),
+                free=bool(rf_payload.free),
+                double_up=bool(rf_payload.double_up),
+                sticky=bool(rf_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
             )
         elif tracker is TrackerSelection.AITHER:
-            tracker_payload = self.config.cfg_payload.aither_tracker
-            if not tracker_payload.api_key:
+            aither_payload = self.config.settings.trackers.aither
+            if not aither_payload.api_key:
                 raise TrackerError("Missing API key for Aither")
             return aither_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=aither_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
-                personal_release=bool(tracker_payload.personal_release),
-                stream_optimized=bool(tracker_payload.stream_optimized),
-                opt_in_to_mod_queue=bool(tracker_payload.opt_in_to_mod_queue),
-                featured=bool(tracker_payload.featured),
-                free=bool(tracker_payload.free),
-                double_up=bool(tracker_payload.double_up),
-                sticky=bool(tracker_payload.sticky),
+                internal=bool(aither_payload.internal),
+                anonymous=bool(aither_payload.anonymous),
+                personal_release=bool(aither_payload.personal_release),
+                stream_optimized=bool(aither_payload.stream_optimized),
+                opt_in_to_mod_queue=bool(aither_payload.opt_in_to_mod_queue),
+                featured=bool(aither_payload.featured),
+                free=bool(aither_payload.free),
+                double_up=bool(aither_payload.double_up),
+                sticky=bool(aither_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.HUNO:
-            tracker_payload = self.config.cfg_payload.huno_tracker
-            if not tracker_payload.api_key:
+            huno_payload = self.config.settings.trackers.huno
+            if not huno_payload.api_key:
                 raise TrackerError("Missing API key for HUNO")
             return huno_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=huno_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
-                stream_optimized=bool(tracker_payload.stream_optimized),
+                internal=bool(huno_payload.internal),
+                anonymous=bool(huno_payload.anonymous),
+                stream_optimized=bool(huno_payload.stream_optimized),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.LST:
-            tracker_payload = self.config.cfg_payload.lst_tracker
-            if not tracker_payload.api_key:
+            lst_payload = self.config.settings.trackers.lst
+            if not lst_payload.api_key:
                 raise TrackerError("Missing API key for LST")
             return lst_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=lst_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
-                personal_release=bool(tracker_payload.personal_release),
-                opt_in_to_mod_queue=bool(tracker_payload.mod_queue_opt_in),
-                draft_queue_opt_in=bool(tracker_payload.draft_queue_opt_in),
-                featured=bool(tracker_payload.featured),
-                free=bool(tracker_payload.free),
-                double_up=bool(tracker_payload.double_up),
-                sticky=bool(tracker_payload.sticky),
+                internal=bool(lst_payload.internal),
+                anonymous=bool(lst_payload.anonymous),
+                personal_release=bool(lst_payload.personal_release),
+                opt_in_to_mod_queue=bool(lst_payload.mod_queue_opt_in),
+                draft_queue_opt_in=bool(lst_payload.draft_queue_opt_in),
+                featured=bool(lst_payload.featured),
+                free=bool(lst_payload.free),
+                double_up=bool(lst_payload.double_up),
+                sticky=bool(lst_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.DARK_PEERS:
-            tracker_payload = self.config.cfg_payload.darkpeers_tracker
-            if not tracker_payload.api_key:
+            dp_payload = self.config.settings.trackers.dark_peers
+            if not dp_payload.api_key:
                 raise TrackerError("Missing API key for DarkPeers")
             return dp_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=dp_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
+                internal=bool(dp_payload.internal),
+                anonymous=bool(dp_payload.anonymous),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.SHARE_ISLAND:
-            tracker_payload = self.config.cfg_payload.shareisland_tracker
-            if not tracker_payload.api_key:
+            shri_payload = self.config.settings.trackers.share_island
+            if not shri_payload.api_key:
                 raise TrackerError("Missing API key for ShareIsland")
             return shri_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=shri_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
-                personal_release=bool(tracker_payload.personal_release),
-                opt_in_to_mod_queue=bool(tracker_payload.opt_in_to_mod_queue),
+                internal=bool(shri_payload.internal),
+                anonymous=bool(shri_payload.anonymous),
+                personal_release=bool(shri_payload.personal_release),
+                opt_in_to_mod_queue=bool(shri_payload.opt_in_to_mod_queue),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.UPLOAD_CX:
-            tracker_payload = self.config.cfg_payload.ulcx_tracker
-            if not tracker_payload.api_key:
+            ulcx_payload = self.config.settings.trackers.upload_cx
+            if not ulcx_payload.api_key:
                 raise TrackerError("Missing API key for UploadCX")
             return ulcx_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=ulcx_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
-                personal_release=bool(tracker_payload.personal_release),
+                internal=bool(ulcx_payload.internal),
+                anonymous=bool(ulcx_payload.anonymous),
+                personal_release=bool(ulcx_payload.personal_release),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.ONLY_ENCODES:
-            tracker_payload = self.config.cfg_payload.oe_tracker
-            if not tracker_payload.api_key:
+            oe_payload = self.config.settings.trackers.only_encodes
+            if not oe_payload.api_key:
                 raise TrackerError("Missing API key for OnlyEncodes")
             return oe_uploader(
-                media_mode=media_mode,
-                api_key=tracker_payload.api_key,
+                media_type=media_type,
+                api_key=oe_payload.api_key,
                 torrent_file=torrent_file,
-                file_input=file_input,
+                input_path=input_path,
                 tracker_title=tracker_title,
                 nfo=nfo,
-                internal=bool(tracker_payload.internal),
-                anonymous=bool(tracker_payload.anonymous),
-                personal_release=bool(tracker_payload.personal_release),
+                internal=bool(oe_payload.internal),
+                anonymous=bool(oe_payload.anonymous),
+                personal_release=bool(oe_payload.personal_release),
                 mediainfo_obj=mediainfo_obj,
-                media_search_payload=media_search_payload,
-                timeout=self.config.cfg_payload.timeout,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
 
     def generate_tracker_title(
         self,
-        file_name: Path,
         tracker_info: TrackerInfo,
+        context: ProcessingContext,
+        release_info: SeriesReleaseInfo,
     ) -> str | None:
-        token_string = (
-            tracker_info.mvr_title_token_override
-            if tracker_info.mvr_title_token_override
-            else self.config.cfg_payload.mvr_title_token
-        )
-        colon_replace = (
-            tracker_info.mvr_title_colon_replace
-            if tracker_info.mvr_title_colon_replace
-            else self.config.cfg_payload.mvr_colon_replace_title
-        )
-        override_title_rules = (
-            tracker_info.mvr_title_replace_map
-            if tracker_info.mvr_title_replace_map
-            else None
-        )
+        if release_info.is_series:
+            default_title = get_tvr_title_token(
+                self.config.settings.series,
+                release_info.episode_format,
+            )
+            series_override = tracker_info.tvr_title_overrides.get(
+                release_info.episode_format
+            )
+            override_enabled = bool(series_override and series_override.enabled)
+            token_string = (
+                series_override.token
+                if (
+                    override_enabled
+                    and series_override is not None
+                    and series_override.token
+                )
+                else default_title
+            )
+            colon_replace = (
+                series_override.colon_replace
+                if override_enabled and series_override is not None
+                else self.config.settings.series.title_colon_replace
+            )
+            override_title_rules = (
+                series_override.replace_map
+                if (
+                    override_enabled
+                    and series_override is not None
+                    and series_override.replace_map
+                )
+                else None
+            )
+        else:
+            token_string = (
+                tracker_info.mvr_title_token_override
+                if (
+                    tracker_info.mvr_title_token_override
+                    and tracker_info.mvr_title_override_enabled
+                )
+                else self.config.settings.movie.title_token
+            )
+            colon_replace = (
+                tracker_info.mvr_title_colon_replace
+                if (
+                    tracker_info.mvr_title_colon_replace
+                    and tracker_info.mvr_title_override_enabled
+                )
+                else self.config.settings.movie.title_colon_replace
+            )
+            override_title_rules = (
+                tracker_info.mvr_title_replace_map
+                if (
+                    tracker_info.mvr_title_replace_map
+                    and tracker_info.mvr_title_override_enabled
+                )
+                else None
+            )
         user_tokens = {
             k: v
-            for k, (v, t) in self.config.cfg_payload.user_tokens.items()
+            for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
         format_str = TokenReplacer(
-            media_input=file_name,
-            jinja_engine=None,
-            source_file=None,
+            media_input_obj=context.media_input,
             token_string=token_string,
             colon_replace=colon_replace,
-            media_search_obj=self.config.media_search_payload,
-            media_info_obj=self.config.media_input_payload.encode_file_mi_obj,
+            media_search_obj=context.media_search,
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            edition_override=self.config.shared_data.dynamic_data.get(
-                "edition_override"
-            ),
-            frame_size_override=self.config.shared_data.dynamic_data.get(
+            edition_override=context.shared_data.dynamic_data.get("edition_override"),
+            frame_size_override=context.shared_data.dynamic_data.get(
                 "frame_size_override"
             ),
-            override_tokens=self.config.shared_data.dynamic_data.get("override_tokens"),
-            movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
+            override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
+            title_clean_rules=self.config.settings.global_management.title_clean_rules,
             user_tokens=user_tokens,
             override_title_rules=override_title_rules,
-            mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+            flat_filters=context.flat_filters,
+            **self._release_info_token_kwargs(
+                release_info,
+                self.config.settings.series.multi_episode_style,
+            ),
         )
         output = format_str.get_output()
         return output if output else None
+
+    @staticmethod
+    def _release_info_token_kwargs(
+        release_info: SeriesReleaseInfo,
+        multi_episode_style: MultiEpisodeStyle,
+    ) -> dict[str, Any]:
+        return {
+            "season_number": release_info.season,
+            "season_end": release_info.season_end,
+            "episode_number": (
+                release_info.episode_start if not release_info.is_pack else None
+            ),
+            "episode_format": release_info.episode_format,
+            "multi_episode_style": multi_episode_style,
+        }
 
     def tracker_title_formatting(self, tracker: TrackerSelection, title: str) -> str:
         """Apply tracker specific formatting if it has any, else return the title as it is."""
@@ -1562,15 +2050,27 @@ class ProcessBackEnd:
         tracker_name: str,
         torrent_path: Path,
         file_input: Path,
+        qbittorrent_save_path: str | None = None,
     ) -> None:
-        for client, client_settings in self.config.client_map.items():
+        for (
+            client,
+            client_settings,
+        ) in self.config.settings.torrent_clients.by_selection().items():
             if client_settings.enabled:
                 inj_success, inj_msg = False, "Failed"
                 queued_text_update(
                     f"<br />Injecting torrent [Tracker: {tracker_name} | Client: {client}]",
                 )
                 if client is TorrentClientSelection.QBITTORRENT:
-                    inj_success, inj_msg = self.qbittorrent_inject(torrent_path)
+                    if qbittorrent_save_path:
+                        queued_text_update(
+                            "<br />qBittorrent save location: "
+                            f"{escape(qbittorrent_save_path)}"
+                        )
+                    inj_success, inj_msg = self.qbittorrent_inject(
+                        torrent_path,
+                        qbittorrent_save_path,
+                    )
                 elif client is TorrentClientSelection.DELUGE:
                     inj_success, inj_msg = self.deluge_inject(torrent_path)
                 elif client is TorrentClientSelection.RTORRENT:
@@ -1594,18 +2094,26 @@ class ProcessBackEnd:
                     f"<br />{'Completed' if inj_success else 'Failed'}, status: {inj_msg}",
                 )
 
-    def qbittorrent_inject(self, torrent_path: Path) -> tuple[bool, str]:
+    def qbittorrent_inject(
+        self,
+        torrent_path: Path,
+        save_path: str | None = None,
+    ) -> tuple[bool, str]:
         if not self.qbit_client:
             self.qbit_client = QBittorrentClient(
-                self.config.cfg_payload.qbittorrent, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.qbittorrent,
+                self.config.settings.general.timeout,
             )
-            self.qbit_client.login()
-        return self.qbit_client.inject_torrent(torrent_path)
+            login_success, login_message = self.qbit_client.login()
+            if not login_success:
+                return False, login_message
+        return self.qbit_client.inject_torrent(torrent_path, save_path)
 
     def deluge_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.deluge_client:
             self.deluge_client = DelugeClient(
-                self.config.cfg_payload.deluge, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.deluge,
+                self.config.settings.general.timeout,
             )
             self.deluge_client.login()
         return self.deluge_client.inject_torrent(torrent_path)
@@ -1613,20 +2121,22 @@ class ProcessBackEnd:
     def rtorrent_inject(self, torrent_path: Path, file_path: Path) -> tuple[bool, str]:
         if not self.rtorrent_client:
             self.rtorrent_client = RTorrentClient(
-                self.config.cfg_payload.rtorrent, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.rtorrent,
+                self.config.settings.general.timeout,
             )
         return self.rtorrent_client.inject_torrent(torrent_path, file_path, True)
 
     def transmission_inject(self, torrent_path: Path) -> tuple[bool, str]:
         if not self.transmission_client:
             self.transmission_client = TransmissionClient(
-                self.config.cfg_payload.transmission, self.config.cfg_payload.timeout
+                self.config.settings.torrent_clients.transmission,
+                self.config.settings.general.timeout,
             )
         return self.transmission_client.inject_torrent(torrent_path)
 
     def watch_folder_inject(
         self, torrent_path: Path, tracker_name: str, client_path: Path
-    ) -> tuple[Path, str] | None:
+    ) -> tuple[bool, str] | None:
         moved_file = Path(
             shutil.copy(
                 torrent_path,
@@ -1639,7 +2149,8 @@ class ProcessBackEnd:
         )
         self.watch_folder_counter += 1
         if moved_file.exists():
-            return moved_file, f"File copied to watch folder ({moved_file.name})"
+            return True, f"File copied to watch folder ({moved_file.name})"
+        return None
 
     def disconnect_from_clients(self) -> None:
         for client in (
@@ -1652,7 +2163,3 @@ class ProcessBackEnd:
                 client.logout()
             client = None
         self.watch_folder_counter = 0
-
-    @staticmethod
-    def rename_file(f_in: Path, f_out: Path) -> Path:
-        return f_in.rename(f_out)

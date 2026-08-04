@@ -4,7 +4,7 @@ from pymediainfo import MediaInfo
 from typing_extensions import override
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.onlyencodes import (
     OnlyEncodesCategory,
@@ -16,10 +16,10 @@ from src.payloads.media_search import MediaSearchPayload
 
 
 def oe_uploader(
-    media_mode: MediaMode,
+    media_type: MediaType,
     api_key: str,
     torrent_file: Path,
-    file_input: Path,
+    input_path: Path,
     tracker_title: str | None,
     nfo: str,
     internal: bool,
@@ -28,14 +28,15 @@ def oe_uploader(
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+    season_pack: bool = False,
 ) -> bool | None:
-    torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = OnlyEncodesUploader(
-        media_mode=media_mode,
+        media_type=media_type,
         api_key=api_key,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
     )
@@ -49,6 +50,9 @@ def oe_uploader(
         internal=internal,
         anonymous=anonymous,
         personal_release=personal_release,
+        season_number=season_number,
+        episode_number=episode_number,
+        season_pack=season_pack,
     )
     return upload
 
@@ -60,20 +64,20 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
 
     def __init__(
         self,
-        media_mode: MediaMode,
+        media_type: MediaType,
         api_key: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.ONLY_ENCODES,
-            base_url="https://onlyencodes.cc",
-            media_mode=media_mode,
+            base_url=TrackerSelection.ONLY_ENCODES.get_root_url(),
+            media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
-            file_input=file_input,
+            input_path=input_path,
             mediainfo_obj=mediainfo_obj,
             cat_enum=OnlyEncodesCategory,
             res_enum=OnlyEncodesResolution,
@@ -91,7 +95,7 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
             pass
 
         # fallback by checking the file name for known codecs
-        lowered_file_input = self.file_input.stem.lower()
+        lowered_file_input = self.input_path.stem.lower()
         for codec, enum in [
             ("x265", OnlyEncodesType.ENCODE_X265),
             ("av1", OnlyEncodesType.ENCODE_AV1),
@@ -111,7 +115,7 @@ class OnlyEncodesSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.ONLY_ENCODES,
-            base_url="https://onlyencodes.cc",
+            base_url=TrackerSelection.ONLY_ENCODES.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

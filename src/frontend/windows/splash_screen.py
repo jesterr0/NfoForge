@@ -1,27 +1,42 @@
 from pathlib import Path
 import traceback
-from typing import Type
 
-from PySide6.QtCore import QThread, Signal, SignalInstance, Slot
-from PySide6.QtGui import QPixmap, Qt
+from PySide6.QtCore import (
+    QEvent,
+    QObject,
+    QSize,
+    QThread,
+    Signal,
+    SignalInstance,
+    Slot,
+)
+from PySide6.QtGui import (
+    QCursor,
+    QGuiApplication,
+    QKeyEvent,
+    QKeySequence,
+    QPixmap,
+    QShortcut,
+    QShowEvent,
+    Qt,
+)
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
+    QSpacerItem,
     QVBoxLayout,
     QWidget,
 )
+import qtawesome as qta
 
 from src.backend.utils.working_dir import RUNTIME_DIR
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.wizards.media_input_advanced import MediaInputAdvanced
-from src.frontend.wizards.media_input_basic import MediaInputBasic
-from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.plugins.loader import PluginLoader
-from src.plugins.plugin_payload import PluginPayload
 from src.version import __version__
 
 message_box_frame_style = """\
@@ -100,7 +115,7 @@ config_push_button_style = """
                 background-color: #fb641a;
                 border: none;
                 border-radius: 3px;
-                padding: 6px 12px;
+                padding: 3px;
                 font-size: 11px;
                 font-weight: 500;
             }
@@ -115,10 +130,13 @@ config_push_button_style = """
 
 class SplashScreenLoader(QThread):
     error_message = Signal(str)
-    success = Signal()
+    success = Signal(str)
 
     def __init__(
-        self, config: Config, update_splash_msg: SignalInstance, parent=None
+        self,
+        config: ConfigManager,
+        update_splash_msg: SignalInstance,
+        parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.config = config
@@ -126,81 +144,76 @@ class SplashScreenLoader(QThread):
 
     def run(self) -> None:
         try:
-            self.init_plugins()
-            self.success.emit()
+            warning = self.init_plugins()
+            self.success.emit(warning or "")
+        except SystemExit as error:
+            self.error_message.emit(
+                f"Plugin exited during startup: {error}\n{traceback.format_exc()}"
+            )
         except Exception as error:
             self.error_message.emit(
                 f"Unhandled error: {error}\n{traceback.format_exc()}"
             )
 
-    def init_plugins(self) -> Type[BaseWizardPage] | None:
-        # built in plugins
-        self._update_built_in_plugins()
+    def init_plugins(self) -> str | None:
+        if not self.config.settings.general.enable_plugins:
+            self.update_splash_msg.emit("External plugins disabled")
+            return None
 
-        # load user plugins
-        plugin_loader = PluginLoader(self.update_splash_msg)
-        plugins = plugin_loader.load_plugins()
-        self.config.loaded_plugins.update(plugins)
-        self._update_jinja2_engine_with_plugins()
+        plugin_loader = PluginLoader(
+            self.config.plugin_manager, self.update_splash_msg.emit
+        )
+        report = plugin_loader.load_plugins()
 
-        # check if we have missing keys and remove them from the running config
-        plugins = self.config.loaded_plugins.keys()
-        if self.config.cfg_payload.wizard_page not in plugins:
-            self.config.cfg_payload.wizard_page = None
-        if self.config.cfg_payload.token_replacer not in plugins:
-            self.config.cfg_payload.token_replacer = None
-        self.config.save_config()
-
-    def _update_built_in_plugins(self) -> None:
-        built_in_plugins = {
-            "Basic (built in, external plugin slot disabled)": PluginPayload(
-                name="Basic (built in, external plugin slot disabled)",
-                wizard=MediaInputBasic,
-            ),
-            "Advanced (built in, external plugin slot disabled)": PluginPayload(
-                name="Advanced (built in, external plugin slot disabled)",
-                wizard=MediaInputAdvanced,
-            ),
-            "Default Token Replacer (built in, external plugin slot disabled)": PluginPayload(
-                name="Token Replacer (built in, external plugin slot disabled)",
-                token_replacer=False,
-            ),
-            "Default Pre Upload (built in, external plugin slot disabled)": PluginPayload(
-                name="Default Pre Upload (built in, external plugin slot disabled)",
-                pre_upload=False,
-            ),
-        }
-        self.config.loaded_plugins.update(built_in_plugins)
-
-    def _update_jinja2_engine_with_plugins(self) -> None:
-        for plugin in self.config.loaded_plugins.values():
-            jinja2_filters = getattr(plugin, "jinja2_filters", None)
-            jinja2_functions = getattr(plugin, "jinja2_functions", None)
-            if jinja2_filters:
-                for name, func in jinja2_filters.items():
-                    self.config.jinja_engine.add_filter(name, func)
-
-            if jinja2_functions:
-                for name, func in jinja2_functions.items():
-                    self.config.jinja_engine.add_global(name, func, False)
+        unavailable = sorted(
+            plugin_id
+            for plugin_id in (
+                self.config.settings.plugins.wizard_page,
+                self.config.settings.plugins.token_replacer,
+                self.config.settings.plugins.pre_upload,
+                self.config.settings.plugins.metadata_transformer,
+            )
+            if plugin_id and plugin_id not in self.config.plugin_manager.plugin_ids
+        )
+        warnings: list[str] = []
+        if report.failures:
+            failures = "\n".join(f"- {failure}" for failure in report.failures)
+            warnings.append(
+                "The following plugins could not be loaded and were skipped:\n\n"
+                f"{failures}"
+            )
+        if unavailable:
+            warnings.append(
+                "Configured plugins are currently unavailable; built-in behavior "
+                "will be used without changing your saved selection:\n\n"
+                + "\n".join(f"- {plugin_id}" for plugin_id in unavailable)
+            )
+        if warnings:
+            return (
+                "\n\n".join(warnings) + "\n\n"
+                "See the application log for full error details."
+            )
+        return None
 
 
 class SplashScreen(QWidget):
     update_message_box = Signal(str)
     config_selected = Signal(str)
+    # parent listens for us to call this to exit the application cleanly
+    exit_app = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.resize(426, 240)
+        self._set_open_screen()
         self.setCursor(Qt.CursorShape.BusyCursor)
-
-        self.update_message_box.connect(self.updateMessageBox)
 
         # config selector widgets (initially hidden)
         self.config_selector_frame: QFrame | None = None
         self.config_combo: CustomComboBox | None = None
         self.config_cont_btn: QPushButton | None = None
+        self._continue_shortcuts: list[QShortcut] = []
 
         # this must be defined first to fill the background
         pixmap = QPixmap(RUNTIME_DIR / "images" / "nfoforge_splash_screen_4.png")
@@ -237,12 +250,23 @@ class SplashScreen(QWidget):
         self.frame_layout.addWidget(self.mini_progress_bar, stretch=1)
 
         self.main_layout = QVBoxLayout(self)
+        self.main_layout.setSpacing(0)
         self.main_layout.setContentsMargins(2, 2, 2, 2)
+        self.main_layout.addSpacerItem(
+            QSpacerItem(
+                1, 1, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+            )
+        )
+        self._create_config_selector_widgets()
         self.main_layout.addWidget(
-            self.message_box, stretch=1, alignment=Qt.AlignmentFlag.AlignBottom
+            self.message_box, alignment=Qt.AlignmentFlag.AlignBottom
         )
 
-    def showEvent(self, event) -> None:
+        # best effort to ensure window is brought to the front of all other windows
+        self.raise_()
+        self.activateWindow()
+
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self.splash_img.setFixedSize(self.size())
 
@@ -250,7 +274,11 @@ class SplashScreen(QWidget):
     def updateMessageBox(self, msg: str) -> None:
         self.message_label.setText(msg)
 
-    def show_config_selector(self, config_names: list[str] | None) -> None:
+    def show_config_selector(
+        self,
+        config_names: list[str] | None,
+        selected_config: str | None = None,
+    ) -> None:
         """Show config selector dropdown with available configs"""
         if not config_names:
             return
@@ -267,10 +295,20 @@ class SplashScreen(QWidget):
         if self.config_combo:
             self.config_combo.clear()
             self.config_combo.addItems(config_names)
+            if selected_config:
+                selected_index = self.config_combo.findText(
+                    selected_config, Qt.MatchFlag.MatchExactly
+                )
+                if selected_index >= 0:
+                    self.config_combo.setCurrentIndex(selected_index)
 
         # show the config selector
         if self.config_selector_frame:
             self.config_selector_frame.show()
+        if self.config_combo:
+            self.config_combo.setFocus(Qt.FocusReason.OtherFocusReason)
+        for shortcut in self._continue_shortcuts:
+            shortcut.setEnabled(True)
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _create_config_selector_widgets(self) -> None:
@@ -300,35 +338,96 @@ class SplashScreen(QWidget):
         )
         self.config_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         self.config_combo.view().setCursor(Qt.CursorShape.PointingHandCursor)
+        self.config_combo.installEventFilter(self)
+        line_edit = self.config_combo.lineEdit()
+        if line_edit is not None:
+            line_edit.installEventFilter(self)
 
-        self.config_cont_btn = QPushButton("Continue", self)
+        self.config_cont_btn = QPushButton(self)
+        self.config_cont_btn.setIcon(qta.icon("ph.check-bold", color="#D3D3D3"))
+        self.config_cont_btn.setIconSize(QSize(20, 20))
         self.config_cont_btn.setStyleSheet(config_push_button_style)
+        self.config_cont_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.config_cont_btn.setToolTip("Continue with selected configuration")
         self.config_cont_btn.clicked.connect(self._on_continue_clicked)
 
-        config_lbl = QLabel(
-            '<span style="color: #D3D3D3; font-size: medium;">Config:</span>', self
-        )
+        self._continue_shortcuts = [
+            QShortcut(QKeySequence("Return"), self),
+            QShortcut(QKeySequence("Enter"), self),
+        ]
+        for shortcut in self._continue_shortcuts:
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.setEnabled(False)
+            shortcut.activated.connect(self._on_continue_clicked)
+
+        self.cancel_btn = QPushButton(self)
+        self.cancel_btn.setIcon(qta.icon("ph.x-bold", color="#D3D3D3"))
+        self.cancel_btn.setIconSize(QSize(20, 20))
+        self.cancel_btn.setStyleSheet(config_push_button_style)
+        self.cancel_btn.setToolTip("Close application")
+        self.cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        # exits the app when clicked
+        self.cancel_btn.clicked.connect(self.exit_app.emit)
 
         config_layout = QHBoxLayout(self.config_selector_frame)
         config_layout.setContentsMargins(4, 4, 4, 4)
-        config_layout.addWidget(config_lbl)
         config_layout.addWidget(self.config_combo, stretch=1)
         config_layout.addWidget(self.config_cont_btn)
+        config_layout.addWidget(self.cancel_btn)
 
         # add to main layout (insert above message box)
-        self.main_layout.insertWidget(0, self.config_selector_frame)
+        self.main_layout.insertWidget(
+            0,
+            self.config_selector_frame,
+            stretch=1,
+            alignment=Qt.AlignmentFlag.AlignBottom,
+        )
         self.config_selector_frame.hide()
 
     @Slot()
     def _on_continue_clicked(self) -> None:
-        """Handle continue button click"""
+        """Handle continue button click."""
         if self.config_combo and self.config_combo.currentText():
             selected_config = self.config_combo.currentText()
 
             # hide config selector and show loading state
             if self.config_selector_frame:
                 self.config_selector_frame.hide()
+            for shortcut in self._continue_shortcuts:
+                shortcut.setEnabled(False)
             self.mini_progress_bar.show()
             self.setCursor(Qt.CursorShape.BusyCursor)
 
             self.config_selected.emit(selected_config)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Allow Enter to continue while focus is inside the config selector."""
+        combo = self.config_combo
+        line_edit = combo.lineEdit() if combo is not None else None
+        if (
+            combo is not None
+            and (watched is combo or watched is line_edit)
+            and isinstance(event, QKeyEvent)
+            and event.type() == QEvent.Type.KeyPress
+            and event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+            and combo.currentText()
+        ):
+            self._on_continue_clicked()
+            return True
+        return super().eventFilter(watched, event)
+
+    def _set_open_screen(self) -> None:
+        """Open on active display based on mouse location and then primary screen."""
+        # Connected first, deliberately: a guard below must never be able to
+        # skip it. This connection is what drives every splash message.
+        self.update_message_box.connect(self.updateMessageBox)
+
+        active_screen = (
+            QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
+        )
+        if active_screen is None:
+            # Headless, or displays are mid-reconfiguration. Leave the window
+            # where Qt put it rather than failing construction.
+            return
+
+        self.move(active_screen.availableGeometry().center() - self.rect().center())

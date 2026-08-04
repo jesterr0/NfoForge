@@ -17,7 +17,9 @@ from src.frontend.utils import build_h_line, set_top_parent_geometry
 
 
 class MultiPromptDialog(QDialog):
-    def __init__(self, title: str, prompts: Sequence[str], parent=None):
+    def __init__(
+        self, title: str, prompts: Sequence[str], parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)

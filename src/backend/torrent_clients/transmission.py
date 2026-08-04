@@ -1,14 +1,15 @@
-from transmission_rpc import (
-    from_url as TransmissionClientFromUrl,
-    TransmissionError,
-    TransmissionAuthError,
-    TransmissionConnectError,
-    TransmissionTimeoutError,
-)
 from pathlib import Path
 
+from transmission_rpc import (
+    TransmissionAuthError,
+    TransmissionConnectError,
+    TransmissionError,
+    TransmissionTimeoutError,
+    from_url as TransmissionClientFromUrl,
+)
+
 from src.exceptions import TrackerClientError
-from src.payloads.clients import TorrentClient
+from src.payloads.clients import TransmissionConfig
 
 
 class TransmissionClient:
@@ -18,10 +19,13 @@ class TransmissionClient:
     Note: Automatically logs in.
     """
 
-    def __init__(self, config: TorrentClient, timeout: int = 10) -> None:
+    def __init__(self, config: TransmissionConfig, timeout: int = 10) -> None:
         self.config = config
         self.transmission_config = config
         self.timeout = timeout
+
+        if not self.transmission_config.host:
+            raise TrackerClientError("Hostname must be defined")
 
         try:
             self.client = TransmissionClientFromUrl(
@@ -30,21 +34,23 @@ class TransmissionClient:
         except TransmissionAuthError as credential_error:
             raise TrackerClientError(
                 f"Username and/or password is incorrect: {credential_error}"
-            )
+            ) from credential_error
         except TransmissionTimeoutError as timeout_error:
             raise TrackerClientError(
                 f"Timed out while trying to connect to Transmission: {timeout_error}"
-            )
+            ) from timeout_error
         except TransmissionConnectError as daemon_error:
-            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
+            raise TrackerClientError(
+                f"Transmission daemon error: {daemon_error}"
+            ) from daemon_error
         except TransmissionError as communication_error:
             raise TrackerClientError(
                 f"Failed to communicate with Transmission: {communication_error}"
-            )
+            ) from communication_error
         except Exception as e:
             raise TrackerClientError(
                 f"Unexpected Error initializing Transmission client: {e}"
-            )
+            ) from e
 
     def test(self) -> tuple[bool, str]:
         if self.client.session_stats():
@@ -69,22 +75,23 @@ class TransmissionClient:
         except TransmissionTimeoutError as timeout_error:
             raise TrackerClientError(
                 f"Timed out while trying to connect to Transmission: {timeout_error}"
-            )
+            ) from timeout_error
         except TransmissionConnectError as daemon_error:
-            raise TrackerClientError(f"Transmission daemon error: {daemon_error}")
+            raise TrackerClientError(
+                f"Transmission daemon error: {daemon_error}"
+            ) from daemon_error
         except TransmissionError as communication_error:
             raise TrackerClientError(
                 f"Failed to communicate with Transmission: {communication_error}"
-            )
+            ) from communication_error
         except Exception as e:
             raise TrackerClientError(
                 f"Unexpected Error initializing Transmission client: {e}"
-            )
+            ) from e
 
     def _get_label(self) -> tuple[str] | None:
-        label = self.transmission_config.specific_params.get("label", "").strip()
+        label = self.transmission_config.label.strip()
         return (label,) if label else None
 
     def _get_save_directory(self) -> str | None:
-        path = self.transmission_config.specific_params.get("path", "").strip()
-        return path if path else None
+        return self.transmission_config.path.strip() or None

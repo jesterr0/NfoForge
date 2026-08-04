@@ -1,21 +1,24 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader
 
 
 class Jinja2TemplateEngine:
     __slots__ = ("environment", "_resettable_globals")
 
-    def __init__(self, template_dir: str | None = None, **env_options) -> None:
+    def __init__(self, template_dir: str | None = None, **env_options: Any) -> None:
         """
         Initialize the Jinja2 template engine.
 
         :param template_dir: Directory containing templates (optional).
         :param env_options: Options to configure the Jinja2 Environment.
         """
-        self._resettable_globals = []
-        self.environment = Environment(
+        self._resettable_globals: list[str] = []
+        # lint reason: this engine renders plain-text NFO release descriptions,
+        # not HTML; autoescape would corrupt the output by HTML-escaping
+        # ordinary characters (&, ', ", etc.) that belong in the NFO verbatim
+        self.environment = Environment(  # noqa: S701
             loader=FileSystemLoader(template_dir) if template_dir else None,
             **env_options,
         )
@@ -38,11 +41,11 @@ class Jinja2TemplateEngine:
                 self.environment.globals.pop(name, None)
                 self._resettable_globals.remove(name)
 
-    def add_filter(self, name: str, func) -> None:
+    def add_filter(self, name: str, func: Callable[..., Any]) -> None:
         """Add a custom filter to the environment."""
         self.environment.filters[name] = func
 
-    def render_from_str(self, data: str, context: dict) -> str:
+    def render_from_str(self, data: str, context: Mapping[str, Any]) -> str:
         """
         Render a template from string.
 
@@ -50,9 +53,9 @@ class Jinja2TemplateEngine:
         :param context: Context dictionary to render the template.
         """
         template = self.environment.from_string(data)
-        return template.render(context)
+        return str(template.render(context))
 
-    def render_from_env(self, template_name: str, context: dict) -> str:
+    def render_from_env(self, template_name: str, context: Mapping[str, Any]) -> str:
         """
         Render a template from the Environment.
 
@@ -61,18 +64,4 @@ class Jinja2TemplateEngine:
         :return: Rendered template as a string.
         """
         template = self.environment.get_template(template_name)
-        return template.render(context)
-
-    def render_custom_template(
-        self, template_str: str, context: dict, **custom_options
-    ) -> str:
-        """
-        Render a one-off custom template with specific settings.
-
-        :param template_str: Template string to render.
-        :param context: Context dictionary to render the template.
-        :param custom_options: Jinja2 template options (e.g., trim_blocks, lstrip_blocks).
-        :return: Rendered template as a string.
-        """
-        custom_template = Template(template_str, **custom_options)
-        return custom_template.render(context)
+        return str(template.render(context))

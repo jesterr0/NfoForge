@@ -8,8 +8,8 @@ Tests cover:
 
 from unittest.mock import Mock
 
-import pytest
 from pymediainfo import MediaInfo, Track
+import pytest
 
 from src.backend.utils.resolution import (
     CommercialResolutionInfer,

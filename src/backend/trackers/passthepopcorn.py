@@ -1,16 +1,25 @@
+import asyncio
 from pathlib import Path
-import pickle
 import re
+from tempfile import TemporaryDirectory
+import time
+from typing import Any
 
 from guessit import guessit
-from imdb.Movie import Movie
 import niquests
+from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 import pyotp
 import regex
 
+from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
+from src.backend.image_host_uploading.img_box import ImageBoxUploader
+from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.enums.media_type import MediaType
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.passthepopcorn import (
     PTPCodec,
     PTPContainer,
@@ -23,6 +32,8 @@ from src.frontend.utils import ask_thread_safe_prompt
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
+from src.plugins.api import MetadataMediaKind
+from src.utils.secret_redaction import scrub_secrets
 
 
 def ptp_uploader(
@@ -32,17 +43,15 @@ def ptp_uploader(
     password: str,
     announce_url: str,
     torrent_file: Path,
-    file_input: Path,
+    input_path: Path,
     nfo: str,
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
-    ptp_img_api_key: str | None,
     cookie_dir: Path,
     totp: str | None = None,
     timeout: int = 60,
 ) -> bool | None:
     torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = PTPUploader(
         username=username,
         password=password,
@@ -67,17 +76,32 @@ def ptp_uploader(
         auth_token=auth_token,
         media_search_payload=media_search_payload,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         nfo=nfo,
-        ptp_img_api_key=ptp_img_api_key,
         group_id=group_id,
     )
 
 
 class PTPUploader:
-    URL = "https://passthepopcorn.me/torrents.php"
-    UPLOAD_URL = "https://passthepopcorn.me/upload.php"
-    LOGIN_URL = "https://passthepopcorn.me/ajax.php?action=login"
+    _MAX_2FA_ATTEMPTS = 3
+    _2FA_BACKOFF_SECONDS = 0.5
+
+    __slots__ = (
+        "username",
+        "password",
+        "mediainfo_obj",
+        "announce_url",
+        "cookie_path",
+        "totp",
+        "timeout",
+        "_session",
+    )
+
+    URL = f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}torrents.php"
+    UPLOAD_URL = f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}upload.php"
+    LOGIN_URL = (
+        f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}ajax.php?action=login"
+    )
 
     FLAT_SUB_LANGUAGE_MAP = {
         "Arabic": 22,
@@ -231,7 +255,7 @@ class PTPUploader:
         self.password = password
         self.mediainfo_obj = mediainfo_obj
         self.announce_url = announce_url
-        self.cookie_path = cookie_dir / "ptp_cookie.pkl"
+        self.cookie_path = cookie_dir / "ptp_cookie.json"
         self.totp = totp
         self.timeout = timeout
 
@@ -242,32 +266,24 @@ class PTPUploader:
         auth_token: str,
         media_search_payload: MediaSearchPayload,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         nfo: str,
-        ptp_img_api_key: str | None,
         group_id: str | None = None,
     ) -> bool | None:
-        if not media_search_payload.imdb_data:
-            raise TrackerError("Missing IMDb data")
         if not media_search_payload.tmdb_data:
             raise TrackerError("Missing TMDB data")
-        if not ptp_img_api_key:
-            raise TrackerError("Missing PTPIMG API key")
-
         data = {
             "submit": "true",
             "remaster_year": "",
-            "remaster_title": self._remaster_title(
-                media_search_payload.imdb_data, file_input
-            ),
-            "type": self._get_type(media_search_payload.imdb_data),
+            "remaster_title": self._remaster_title(input_path),
+            "type": self._get_type(media_search_payload),
             "codec": "Other",  # sending the codec as Other to fill with other_codec
-            "other_codec": self._get_codec(file_input),
+            "other_codec": self._get_codec(input_path),
             "resolution": self._resolution(),
             "container": "Other",  # sending container as Other to fill with other_container
-            "other_container": self._get_container(file_input),
+            "other_container": self._get_container(input_path),
             "source": "Other",  # sending the source as Other to fill with other_source
-            "other_source": self._source(file_input),
+            "other_source": self._source(input_path),
             "release_desc": nfo,
             "nfo_text": "",  # appears to do nothing at all
             "subtitles[]": self._subtitles(),
@@ -277,122 +293,140 @@ class PTPUploader:
 
         # determine url
         if group_id:
-            url = f"https://passthepopcorn.me/upload.php?groupid={group_id}"
+            url = f"{self.UPLOAD_URL}?groupid={group_id}"
             data["groupid"] = group_id
         else:
-            url = "https://passthepopcorn.me/upload.php"
-            get_poster = media_search_payload.imdb_data.get("full-size cover url")
-            if not get_poster:
-                get_poster = (
-                    f"https://image.tmdb.org/t/p/original{media_search_payload.tmdb_data.get('poster_path')}"
-                    if media_search_payload.tmdb_data.get("poster_path")
-                    else None
-                )
+            url = self.UPLOAD_URL
+            get_poster = media_search_payload.poster_url
             if not get_poster or not isinstance(get_poster, str):
                 raise TrackerError(
                     "Couldn't automatically detect a poster for PassThePopcorn"
                 )
-            ptp_url = self._ptp_img_upload(get_poster, ptp_img_api_key)
+            image_box_url = self._upload_poster_to_imgbox(get_poster)
 
-            tags = ""
-            get_tags = media_search_payload.imdb_data.get("genres")
-            if get_tags:
-                tags = ", ".join((str(x).lower() for x in get_tags))
-            if not get_tags:
+            tags = ", ".join(
+                genre.lower() for genre in media_search_payload.genre_names
+            )
+            if not tags:
                 tags = ", ".join(
                     str(x.name).lower() for x in media_search_payload.genres
                 )
 
             new_group_data = {
-                "title": media_search_payload.imdb_data.get(
-                    "title", media_search_payload.tmdb_data.get("title", "")
-                ),
-                "year": media_search_payload.imdb_data.get(
-                    "year", media_search_payload.tmdb_data.get("year", "")
-                ),
-                "image": ptp_url,
+                "title": media_search_payload.title or "",
+                "year": media_search_payload.year or "",
+                "image": image_box_url,
                 "tags": tags,
-                "album_desc": media_search_payload.imdb_data.get(
-                    "plot outline", media_search_payload.tmdb_data.get("overview", "")
-                ),
+                "album_desc": media_search_payload.plot or "",
                 # "trailer": "", # TODO: detect eventually?
             }
             data.update(new_group_data)
 
-        LOG.debug(LOG.LOG_SOURCE.BE, f"PassThePopcorn payload: {data}")
-
-        # upload the torrent
-        with self._session as response:
-            files = {}
-            with open(torrent_file, "rb") as t_file:
-                files.update(
-                    {
-                        "file_input": (
-                            "placeholder.torrent",
-                            t_file.read(),
-                            "application/x-bittorent",
-                        )
-                    }
-                )
-            upload = response.post(
-                url=url, headers=TRACKER_HEADERS, data=data, files=files
+        # upload the torrent. `self._session` is reused across `login()` and
+        # `upload()`, so it must not be closed here -- only its `post()`
+        # response is used, and the session itself stays open for the
+        # lifetime of the PTPUploader instance.
+        files: MultiPartFilesAltType = {}
+        with open(torrent_file, "rb") as t_file:
+            files.update(
+                {
+                    "file_input": (
+                        "placeholder.torrent",
+                        t_file.read(),
+                        "application/x-bittorent",
+                    )
+                }
             )
-
-            # if the response contains our announce URL, then we are on the upload page and the upload wasn't successful.
-            if upload.text and upload.text.find(self.announce_url) != -1:
-                error_message = ""
-                match = re.search(
-                    r"""<div class="alert alert--error.*?>(.+?)</div>""", upload.text
-                )
-                if match:
-                    error_message = f" {match.group(1)} "
-                raise TrackerError(
-                    f"Upload to PTP failed:{error_message}({upload.status_code})"
-                )
-
-            # URL format in case of successful upload: https://passthepopcorn.me/torrents.php?id=9329&torrentid=91868
-            check_for_success = (
-                re.match(
-                    r".*?passthepopcorn\.me/torrents\.php\?id=(\d+)&torrentid=(\d+)",
-                    upload.url,
-                )
-                if upload.url
-                else None
-            )
-            if not check_for_success:
-                raise TrackerError(
-                    f"Upload to PTP failed: result URL {upload.url} ({upload.status_code}) is not the expected one."
-                )
-            else:
-                return True
-
-    def _ptp_img_upload(self, image_url: str, ptp_img_api_key: str) -> str:
-        payload = {
-            "format": "json",
-            "api_key": ptp_img_api_key,
-            "link-upload": image_url,
-        }
-        headers = {"referer": "https://ptpimg.me/index.php"}
-        url = "https://ptpimg.me/upload.php"
-
-        response = niquests.post(url, headers=headers, data=payload)
         try:
-            response_json = response.json()
-            ptpimg_code = response_json[0]["code"]
-            ptpimg_ext = response_json[0]["ext"]
-            img_url = f"https://ptpimg.me/{ptpimg_code}.{ptpimg_ext}"
-            return img_url
-        except Exception as e:
-            raise TrackerError(f"Failed to re host image to ptpimg host: {e}")
+            upload = self._session.post(
+                url=url,
+                headers=TRACKER_HEADERS,
+                data=data,
+                files=files,
+                timeout=self.timeout,
+            )
+        except niquests.exceptions.RequestException as error:
+            upload_error_msg = f"Upload to PTP failed: {error}"
+            LOG.error(LOG.LOG_SOURCE.BE, upload_error_msg)
+            retryable, server_accepted = classify_upload_post_error(error)
+            raise TrackerError(
+                upload_error_msg,
+                retryable=retryable,
+                server_accepted=server_accepted,
+            ) from error
 
-    def _upload_images_to_ptp(self, urls: list[str], ptp_img_api_key: str) -> list[str]:
-        images = []
-        for img in urls:
-            if "ptpimg.me" not in img:
-                images.append(self._ptp_img_upload(img, ptp_img_api_key))
-            else:
-                images.append(img)
-        return images
+        extracted_error = self._extract_upload_error(upload.text)
+        LOG.debug(
+            LOG.LOG_SOURCE.BE,
+            "PassThePopcorn upload response: "
+            f"status={upload.status_code}, "
+            f"url={scrub_secrets(str(upload.url))}, "
+            f"error={extracted_error or 'none'}",
+        )
+
+        # if the response contains our announce URL, then we are on the upload page and the upload wasn't successful.
+        if upload.text and upload.text.find(self.announce_url) != -1:
+            raise TrackerError(
+                f"Upload to PTP failed: {extracted_error or 'unknown error'} "
+                f"({upload.status_code})"
+            )
+
+        # URL format in case of successful upload: https://passthepopcorn.me/torrents.php?id=9329&torrentid=91868
+        check_for_success = (
+            re.match(
+                r".*?passthepopcorn\.me/torrents\.php\?id=(\d+)&torrentid=(\d+)",
+                upload.url,
+            )
+            if upload.url
+            else None
+        )
+        if not check_for_success:
+            raise TrackerError(
+                f"Upload to PTP failed: result URL {upload.url} ({upload.status_code}) is not the expected one."
+            )
+        else:
+            return True
+
+    @staticmethod
+    def _extract_upload_error(body: str | None) -> str | None:
+        if not body:
+            return None
+        match = re.search(
+            r"""<div class="alert alert--error.*?>(.+?)</div>""",
+            body,
+            flags=re.DOTALL,
+        )
+        if not match:
+            return None
+        error_text = re.sub(r"<[^>]+>", " ", match.group(1))
+        error_text = re.sub(r"\s+", " ", error_text).strip()
+        return scrub_secrets(error_text)[:500] or None
+
+    def _upload_poster_to_imgbox(self, image_url: str) -> str:
+        """Download a new-group poster and host it on ImageBox for PTP."""
+        try:
+            response = niquests.get(image_url, timeout=self.timeout)
+            response.raise_for_status()
+            poster_content = response.content
+            if poster_content is None:
+                raise TrackerError("Poster download returned no content")
+            with TemporaryDirectory(prefix="nfoforge-ptp-") as directory:
+                poster_path = Path(directory) / "poster.jpg"
+                poster_path.write_bytes(poster_content)
+                uploaded = asyncio.run(
+                    ImageBoxUploader().upload(
+                        ImageUploadRequest(filepaths=(poster_path,))
+                    )
+                )
+        except Exception as error:
+            raise TrackerError(
+                f"Failed to host PassThePopcorn poster on ImageBox: {error}"
+            ) from error
+
+        image_data = uploaded.get(0)
+        if not image_data or not image_data.url:
+            raise TrackerError("ImageBox did not return a URL for the PTP poster")
+        return image_data.url
 
     def _extract_image_urls(self, url_data: str) -> list[str]:
         get_raw_url_images = re.findall(r"\[url=(.+?)\]", url_data)
@@ -405,32 +439,19 @@ class PTPUploader:
 
         raise TrackerError("Cannot detect image URLs")
 
-    def _remaster_title(self, imdb_data: Movie, file_input: Path) -> str:
+    def _remaster_title(self, input_path: Path) -> str:
         remaster_title = set()
-        title_lowered = file_input.stem.lower()
-
-        # collections
-        # Masters of Cinema, The Criterion Collection, Warner Archive Collection
-        try:
-            distributors = {str(x).upper() for x in imdb_data["distributors"]}
-            if {"WARNER ARCHIVE", "WARNER ARCHIVE COLLECTION", "WAC"} & distributors:
-                remaster_title.add("Warner Archive Collection")
-            elif {"CRITERION", "CRITERION COLLECTION", "CC"} & distributors:
-                remaster_title.add("The Criterion Collection")
-            elif {"MASTERS OF CINEMA", "MOC"} & distributors:
-                remaster_title.add("Masters of Cinema")
-        except Exception as e:
-            LOG.debug(LOG.LOG_SOURCE.BE, f"Failed to get distributor data: {e}")
+        title_lowered = input_path.stem.lower()
 
         # editions
-        def collect_editions(source, key: str) -> list:
+        def collect_editions(source: dict[str, Any], key: str) -> list[Any]:
             """Helper function to collect edition data from a source."""
             values = source.get(key, [])
             return values if isinstance(values, list) else [values]
 
         # ensure we have unique editions
         edition_set = set()
-        guess_name = guessit(file_input.name)
+        guess_name = guessit(input_path.name)
 
         # collect editions from `guess_name`
         edition_set.update(collect_editions(guess_name, "edition"))
@@ -519,28 +540,30 @@ class PTPUploader:
             output = " / ".join(sorted(remaster_title))
         return output
 
-    def _get_type(self, imdb_data: Movie) -> str:
-        ptp_type = PTPType.FEATURE_FILM
-        imdb_type = imdb_data.get("kind")
-        if imdb_type:
-            if imdb_type in ("movie", "tv movie"):
-                duration = int(self.mediainfo_obj.general_tracks[0].duration) // 60000
-                if duration >= 45 or duration == 0:
-                    ptp_type = PTPType.FEATURE_FILM
-                else:
-                    ptp_type = PTPType.SHORT_FILM
-            elif imdb_type == "short":
-                ptp_type = PTPType.SHORT_FILM
-            elif imdb_type == "tv mini series":
-                ptp_type = PTPType.MINI_SERIES
-            elif imdb_type == "comedy":
-                ptp_type = PTPType.STAND_UP_COMEDY
-            elif imdb_type == "concert":
-                ptp_type = PTPType.LIVE_PERFORMANCE
-        return ptp_type.value
+    def _get_type(self, media_search_payload: MediaSearchPayload) -> str:
+        media_kind = media_search_payload.media_kind
+        provider_type_map = {
+            MetadataMediaKind.SHORT: PTPType.SHORT_FILM,
+            MetadataMediaKind.MINI_SERIES: PTPType.MINI_SERIES,
+            MetadataMediaKind.STAND_UP_COMEDY: PTPType.STAND_UP_COMEDY,
+            MetadataMediaKind.LIVE_PERFORMANCE: PTPType.LIVE_PERFORMANCE,
+        }
+        if media_kind in provider_type_map:
+            return str(provider_type_map[media_kind].value)
 
-    def _get_codec(self, file_input: Path) -> str:
-        title_lowered = str(file_input.stem).lower()
+        if media_search_payload.media_type is MediaType.SERIES:
+            return str(PTPType.MINI_SERIES.value)
+
+        duration = 0
+        try:
+            duration = int(self.mediainfo_obj.general_tracks[0].duration) // 60000
+        except (AttributeError, IndexError, TypeError, ValueError):
+            pass
+        ptp_type = PTPType.SHORT_FILM if 0 < duration < 45 else PTPType.FEATURE_FILM
+        return str(ptp_type.value)
+
+    def _get_codec(self, input_path: Path) -> str:
+        title_lowered = str(input_path.stem).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # disc
@@ -558,32 +581,32 @@ class PTPUploader:
             ),
             title_lowered,
         ):
-            input_file_size = file_input.stat().st_size
+            input_file_size = input_path.stat().st_size
             if input_file_size <= 26_843_545_600:
-                return PTPCodec.BD25.value
+                return str(PTPCodec.BD25.value)
             elif input_file_size <= 53_687_091_200:
                 if "1080i" in title_lowered or "1080p" in title_lowered:
-                    return PTPCodec.BD50.value
+                    return str(PTPCodec.BD50.value)
                 elif "2160p" in title_lowered:
-                    return PTPCodec.BD50.value
+                    return str(PTPCodec.BD50.value)
             elif input_file_size <= 70_866_960_384:
-                return PTPCodec.BD66.value
+                return str(PTPCodec.BD66.value)
             elif input_file_size <= 107_374_182_400:
-                return PTPCodec.BD100.value
+                return str(PTPCodec.BD100.value)
 
         # dvd5/dvd9
         elif "dvd5" in title_lowered_strip_periods:
-            return PTPCodec.DVD5.value
+            return str(PTPCodec.DVD5.value)
         elif "dvd9" in title_lowered_strip_periods:
-            return PTPCodec.DVD9.value
+            return str(PTPCodec.DVD9.value)
 
         # encodes
         elif self.mediainfo_obj.video_tracks[0].format == "AVC":
-            return PTPCodec.H264.value
+            return str(PTPCodec.H264.value)
         elif self.mediainfo_obj.video_tracks[0].format == "HEVC":
-            return PTPCodec.H265.value
+            return str(PTPCodec.H265.value)
 
-        return PTPCodec.AUTO_DETECT.value
+        return str(PTPCodec.AUTO_DETECT.value)
 
     def _resolution(self) -> str:
         try:
@@ -592,36 +615,36 @@ class PTPUploader:
             ).value
         except ValueError:
             resolution = PTPResolution.OTHER.value
-        return resolution
+        return str(resolution)
 
-    def _get_container(self, file_input: Path) -> str:
-        extension = file_input.suffix
+    def _get_container(self, input_path: Path) -> str:
+        extension = input_path.suffix
         if extension == ".mkv":
-            return PTPContainer.MKV.value
+            return str(PTPContainer.MKV.value)
         elif extension == ".mp4":
-            return PTPContainer.MP4.value
+            return str(PTPContainer.MP4.value)
         elif extension in (".mpeg", ".mpg"):
-            return PTPContainer.MPG.value
-        return PTPContainer.AUTO_DETECT.value
+            return str(PTPContainer.MPG.value)
+        return str(PTPContainer.AUTO_DETECT.value)
 
-    def _source(self, file_input: Path) -> str:
-        title_lowered = str(file_input.stem).lower()
+    def _source(self, input_path: Path) -> str:
+        title_lowered = str(input_path.stem).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
         if "bluray" in title_lowered:
-            return PTPSource.BLU_RAY.value
+            return str(PTPSource.BLU_RAY.value)
         elif "hddvd" in title_lowered:
-            return PTPSource.HD_DVD.value
+            return str(PTPSource.HD_DVD.value)
         elif "dvd" in title_lowered:
-            return PTPSource.DVD.value
+            return str(PTPSource.DVD.value)
         elif "hdtv" in title_lowered:
-            return PTPSource.HDTV.value
+            return str(PTPSource.HDTV.value)
         elif "web" in title_lowered:
-            return PTPSource.WEB.value
-        return PTPSource.OTHER.value
+            return str(PTPSource.WEB.value)
+        return str(PTPSource.OTHER.value)
 
-    def _subtitles(self):
-        subs = set()
+    def _subtitles(self) -> list[int]:
+        subs: set[int] = set()
         for text_track in self.mediainfo_obj.text_tracks:
             language = text_track.language
             if text_track.forced == "Yes" and language == "en":
@@ -681,7 +704,10 @@ class PTPUploader:
         }
         try:
             with self._session.post(
-                self.LOGIN_URL, data=data, headers=TRACKER_HEADERS
+                self.LOGIN_URL,
+                data=data,
+                headers=TRACKER_HEADERS,
+                timeout=self.timeout,
             ) as response:
                 if response.ok and response.status_code == 200:
                     token = None
@@ -694,28 +720,50 @@ class PTPUploader:
                             raise TrackerError(
                                 "Missing TOTP and you have TFA enabled, cannot continue"
                             )
-                        # loop until we get a valid token or user cancels
-                        while not token:
-                            tofa_response = self._handle_2fa(data, self.totp)
-                            response_json = tofa_response.json()
+                        tried_totp = False
+                        for attempt in range(self._MAX_2FA_ATTEMPTS):
+                            tofa_response, tried_totp = self._handle_2fa(
+                                data, self.totp, tried_totp
+                            )
+                            response_json: dict[str, Any] = {}
+                            if tofa_response.status_code == 200:
+                                try:
+                                    parsed_response = tofa_response.json()
+                                except (TypeError, ValueError):
+                                    parsed_response = None
+                                if isinstance(parsed_response, dict):
+                                    response_json = parsed_response
                             token = response_json.get("AntiCsrfToken")
-                            if not token:
-                                LOG.error(
-                                    LOG.LOG_SOURCE.BE,
-                                    "2FA failed: Invalid code or token not received. Retrying...",
-                                )
+                            if token:
+                                break
+                            LOG.error(
+                                LOG.LOG_SOURCE.BE,
+                                "2FA failed: Invalid code or token not received.",
+                            )
+                            if attempt < self._MAX_2FA_ATTEMPTS - 1:
+                                time.sleep(self._2FA_BACKOFF_SECONDS * (2**attempt))
+                        if not token:
+                            raise TrackerError(
+                                "PassThePopcorn 2FA failed after "
+                                f"{self._MAX_2FA_ATTEMPTS} attempts"
+                            )
                     if token:
                         self._save_cookies()
-                        return token
+                        return str(token)
         except niquests.RequestException as e:
-            raise TrackerError(f"Server error: {e}")
+            raise TrackerError(f"Server error: {e}") from e
+        except TrackerError:
+            raise
         except Exception as unhandled_exception:
-            raise TrackerError(f"Unhandled exception: {unhandled_exception}")
+            raise TrackerError(
+                f"Unhandled exception: {unhandled_exception}"
+            ) from unhandled_exception
+        return None
 
     def _validate_session(self) -> str | None:
         """Perform a lightweight request to validate the session, if valid the required token is returned."""
         try:
-            with self._session.get(self.UPLOAD_URL) as response:
+            with self._session.get(self.UPLOAD_URL, timeout=self.timeout) as response:
                 if (
                     response.text
                     and response.text.find("""<a href="login.php?act=recover">""") != -1
@@ -739,22 +787,19 @@ class PTPUploader:
                     else None
                 )
                 if find_token:
-                    return find_token.group(1)
+                    return str(find_token.group(1))
         except niquests.RequestException:
             return None
+        return None
 
     def _save_cookies(self) -> None:
-        with open(self.cookie_path, "wb") as file:
-            pickle.dump(self._session.cookies, file)
+        save_cookies(self._session.cookies, self.cookie_path)
         LOG.debug(
             LOG.LOG_SOURCE.BE, f"PassThePopcorn cookies saved: {self.cookie_path}"
         )
 
     def _load_cookies(self) -> bool:
-        if self.cookie_path.exists():
-            with open(self.cookie_path, "rb") as file:
-                cookies = pickle.load(file)
-                self._session.cookies = cookies
+        if load_cookies(self._session.cookies, self.cookie_path):
             LOG.debug(
                 LOG.LOG_SOURCE.BE,
                 f"PassThePopcorn cookies loaded from {self.cookie_path}",
@@ -763,42 +808,44 @@ class PTPUploader:
         LOG.debug(LOG.LOG_SOURCE.BE, "PassThePopcorn cookies not found")
         return False
 
-    def _handle_2fa(self, data: dict[str, str], totp: str) -> niquests.Response:
-        tried_totp = False
-        while True:
-            if not tried_totp and totp:
-                data["TfaCode"] = pyotp.TOTP(totp).now()
-                tried_totp = True
-            else:
-                got_code, code = ask_thread_safe_prompt(
-                    "2FA", "Enter your 2FA code for PassThePopcorn:"
-                )
-                if not got_code or not code:
-                    raise TrackerError("2FA cancelled or no code entered")
-                data["TfaCode"] = code
-            data["TfaType"] = "normal"
-            headers = {
-                "User-Agent": TRACKER_HEADERS["User-Agent"],
-                "Content-Type": "application/x-www-form-urlencoded",
-            }
-            response = self._session.post(
-                self.LOGIN_URL,
-                data=data,
-                headers=headers,
+    def _handle_2fa(
+        self, data: dict[str, str], totp: str, tried_totp: bool
+    ) -> tuple[niquests.Response, bool]:
+        if not tried_totp and totp:
+            data["TfaCode"] = pyotp.TOTP(totp).now()
+            tried_totp = True
+        else:
+            got_code, code = ask_thread_safe_prompt(
+                "2FA", "Enter your 2FA code for PassThePopcorn:"
             )
-            if response.status_code == 200:
-                return response
-            else:
-                LOG.error(
-                    LOG.LOG_SOURCE.BE,
-                    f"2FA failed: {response.reason} ({response.status_code})",
-                )
+            if not got_code or not code:
+                raise TrackerError("2FA cancelled or no code entered")
+            data["TfaCode"] = code
+        data["TfaType"] = "normal"
+        headers = {
+            "User-Agent": TRACKER_HEADERS["User-Agent"],
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+        response = self._session.post(
+            self.LOGIN_URL,
+            data=data,
+            headers=headers,
+            timeout=self.timeout,
+        )
+        if response.status_code != 200:
+            LOG.error(
+                LOG.LOG_SOURCE.BE,
+                f"2FA failed: {response.reason} ({response.status_code})",
+            )
+        return response, tried_totp
 
 
 class PTPSearch:
     """Search PassThePopcorn"""
 
-    URL = "https://passthepopcorn.me/torrents.php"
+    __slots__ = ("api_user", "api_key", "timeout")
+
+    URL = f"{TrackerSelection.PASS_THE_POPCORN.get_root_url()}torrents.php"
 
     def __init__(self, api_user: str, api_key: str, timeout: int = 60) -> None:
         self.api_user = api_user
@@ -812,17 +859,17 @@ class PTPSearch:
         file_name: str,
         imdb_id: str | None = None,
     ) -> list[TrackerSearchResult]:
-        results = []
+        results: list[TrackerSearchResult] = []
 
         headers = {
             "ApiUser": self.api_user,
             "ApiKey": self.api_key,
             "User-Agent": TRACKER_HEADERS["User-Agent"],
         }
-        params = {
+        params: dict[str, str] = {
             "searchstr": movie_title,
-            "year": movie_year,
-            "noredirect": 1,
+            "year": str(movie_year),
+            "noredirect": "1",
             "action": "advanced",
         }
         if imdb_id:
@@ -838,39 +885,45 @@ class PTPSearch:
             response = niquests.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
-            if response.ok and response.status_code == 200:
-                response_json = response.json()
-                movies: list[dict] = response_json.get("Movies", [])
-                for torrent in movies:
-                    for movie_file in torrent.get("Torrents", []):
-                        for item in movie_file.get("FileList", []):
-                            path_name = item.get("Path", "")
-                            if path_name == file_name:
-                                group_id = torrent.get("GroupId")
-                                movie_id = movie_file.get("Id")
-                                link = (
-                                    f"{self.URL}?id={group_id}&torrentid={movie_id}"
-                                    if group_id and movie_id
-                                    else None
-                                )
-                                result = TrackerSearchResult(
-                                    name=path_name,
-                                    url=link,
-                                    release_size=item.get("Size"),
-                                    created_at=torrent.get("LastUploadTime"),
-                                    seeders=torrent.get("TotalSeeders"),
-                                    leechers=torrent.get("TotalLeechers"),
-                                    grabs=torrent.get("TotalSnatched"),
-                                    files=len(movie_file.get("FileList", [])),
-                                    imdb_id=f"tt{torrent.get('ImdbId')}"
-                                    if torrent.get("ImdbId")
-                                    else None,
-                                )
-                                results.append(result)
+            if response.status_code != 200:
+                raise TrackerError(
+                    "Error searching PassThePopcorn: "
+                    f"HTTP {response.status_code} ({response.reason})"
+                )
+            response_json = response.json()
+            movies = response_json.get("Movies", [])
+            if not isinstance(movies, list):
+                return results
+            for torrent in movies:
+                for movie_file in torrent.get("Torrents", []):
+                    for item in movie_file.get("FileList", []):
+                        path_name = item.get("Path", "")
+                        if path_name == file_name:
+                            group_id = torrent.get("GroupId")
+                            movie_id = movie_file.get("Id")
+                            link = (
+                                f"{self.URL}?id={group_id}&torrentid={movie_id}"
+                                if group_id and movie_id
+                                else None
+                            )
+                            result = TrackerSearchResult(
+                                name=path_name,
+                                url=link,
+                                release_size=item.get("Size"),
+                                created_at=torrent.get("LastUploadTime"),
+                                seeders=torrent.get("TotalSeeders"),
+                                leechers=torrent.get("TotalLeechers"),
+                                grabs=torrent.get("TotalSnatched"),
+                                files=len(movie_file.get("FileList", [])),
+                                imdb_id=f"tt{torrent.get('ImdbId')}"
+                                if torrent.get("ImdbId")
+                                else None,
+                            )
+                            results.append(result)
 
             return results
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(error_message)
+            raise TrackerError(str(error_message)) from error_message
 
     def get_group_id(self, imdb_id: str) -> str | None:
         params = {
@@ -889,6 +942,8 @@ class PTPSearch:
             if response.ok and response.status_code == 200:
                 response_json = response.json()
                 if response_json.get("Page", "") == "Details":
-                    return response_json.get("GroupId")
+                    group_id = response_json.get("GroupId")
+                    return str(group_id) if group_id is not None else None
         except niquests.exceptions.RequestException as error_message:
-            raise TrackerError(error_message)
+            raise TrackerError(str(error_message)) from error_message
+        return None

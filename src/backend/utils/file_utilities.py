@@ -1,13 +1,13 @@
+from collections.abc import Iterable
 from datetime import datetime
 from os import PathLike
 from pathlib import Path
 from platform import system
 from subprocess import run
-from typing import Iterable
 
 
 def find_largest_file_in_directory(
-    directory: PathLike[str], extensions: Iterable, recursive: bool = False
+    directory: PathLike[str], extensions: Iterable[str], recursive: bool = False
 ) -> Path | None:
     largest_file = None
     largest_size = 0
@@ -36,15 +36,16 @@ def open_explorer(path: Path) -> None:
         cur_platform = system()
         # windows
         if cur_platform == "Windows":
+            # we're not importing this at the top as this won't be available on any other platform
             from os import startfile
 
-            startfile(str(path))
+            startfile(str(path))  # noqa: S606 - opens a local, app-derived directory in the OS file browser, no shell involved
         # mac
         elif cur_platform == "Darwin":
-            run(["open", str(path.as_posix())])
+            run(["open", str(path.as_posix())])  # noqa: S603, S607 - list argv, no shell; "open" is the OS-provided launcher
         # Linux and others
         else:
-            run(["xdg-open", str(path.as_posix())])
+            run(["xdg-open", str(path.as_posix())])  # noqa: S603, S607 - list argv, no shell; "xdg-open" is the OS-provided launcher
 
 
 def file_bytes_to_str(size: float) -> str:

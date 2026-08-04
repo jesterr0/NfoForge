@@ -1,9 +1,20 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
+from dataclasses import dataclass, field
+
+from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
+
+
+@dataclass(slots=True)
+class TitleOverridePayload:
+    enabled: bool = False
+    colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH
+    token: str = ""
+    replace_map: list[tuple[str, str]] | None = None
 
 
 @dataclass(slots=True)
@@ -25,16 +36,21 @@ class TrackerInfo:
     column_space: int = 1
     row_space: int = 1
 
-    # title token override
+    # movie title token override
     mvr_title_override_enabled: bool = False
     mvr_title_colon_replace: ColonReplace = ColonReplace.REPLACE_WITH_DASH
     mvr_title_token_override: str = ""
     mvr_title_replace_map: list[tuple[str, str]] | None = None
 
+    # series title token overrides (per EpisodeFormat)
+    tvr_title_overrides: dict[EpisodeFormat, TitleOverridePayload] = field(
+        default_factory=dict
+    )
+
 
 @dataclass(slots=True)
 class MoreThanTVInfo(TrackerInfo):
-    anonymous: int = 0
+    anonymous: bool = False
     api_key: str | None = None
     username: str | None = None
     password: str | None = None
@@ -53,17 +69,17 @@ class TorrentLeechInfo(TrackerInfo):
     alt_2_fa_token: str | None = None
 
     # override url type
-    url_type = URLType.HTML
+    url_type: URLType = URLType.HTML
 
 
 @dataclass(slots=True)
 class BeyondHDInfo(TrackerInfo):
-    anonymous: int = 0
+    anonymous: bool = False
     api_key: str | None = None
     rss_key: str | None = None
     promo: BHDPromo = BHDPromo.NO_PROMO
     live_release: BHDLiveRelease = BHDLiveRelease.LIVE
-    internal: int = 0
+    internal: bool = False
     image_width: int = 350
     add_localization_to_custom_edition: bool = False
     stream_optimized: bool = False
@@ -81,95 +97,95 @@ class PassThePopcornInfo(TrackerInfo):
 @dataclass(slots=True)
 class ReelFlixInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    stream_optimized: int = 0
-    opt_in_to_mod_queue: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    stream_optimized: bool = False
+    opt_in_to_mod_queue: bool = False
     image_width: int = 350
 
     # below is only available to staff and internal users
-    featured: int = 0
-    free: int = 0
-    double_up: int = 0
-    sticky: int = 0
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
 
 
 @dataclass(slots=True)
 class AitherInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    stream_optimized: int = 0
-    opt_in_to_mod_queue: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    stream_optimized: bool = False
+    opt_in_to_mod_queue: bool = False
     image_width: int = 350
 
     # below is only available to staff and internal users
-    featured: int = 0
-    free: int = 0
-    double_up: int = 0
-    sticky: int = 0
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
 
 
 @dataclass(slots=True)
 class HunoInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    stream_optimized: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    stream_optimized: bool = False
     image_width: int = 350
 
 
 @dataclass(slots=True)
 class LSTInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    mod_queue_opt_in: int = 0
-    draft_queue_opt_in: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    mod_queue_opt_in: bool = False
+    draft_queue_opt_in: bool = False
     image_width: int = 500
 
     # below is only available to staff and internal users
-    featured: int = 0
-    free: int = 0
-    double_up: int = 0
-    sticky: int = 0
+    featured: bool = False
+    free: bool = False
+    double_up: bool = False
+    sticky: bool = False
 
 
 @dataclass(slots=True)
 class DarkPeersInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
     image_width: int = 500
 
 
 @dataclass(slots=True)
 class ShareIslandInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
-    opt_in_to_mod_queue: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    opt_in_to_mod_queue: bool = False
     image_width: int = 500
 
 
 @dataclass(slots=True)
 class UploadCXInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
     image_width: int = 500
 
 
 @dataclass(slots=True)
 class OnlyEncodesInfo(TrackerInfo):
     api_key: str | None = None
-    anonymous: int = 0
-    internal: int = 0
-    personal_release: int = 0
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
     image_width: int = 500

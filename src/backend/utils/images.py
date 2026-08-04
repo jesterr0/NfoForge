@@ -1,7 +1,6 @@
 from pathlib import Path
 import re
 import shutil
-from typing import Tuple, Union
 
 from pymediainfo import MediaInfo
 
@@ -10,7 +9,6 @@ from src.enums.url_type import URLType
 from src.exceptions import MediaFrameCountError, URLFormattingError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import CropValues, ImageUploadData
-
 
 # def calculate_start_time(total_frames: int, start_percentage: int, fps: float) -> str:
 #     start_frame = int(total_frames * start_percentage / 100)
@@ -82,7 +80,7 @@ def get_frame_rate(mi_obj: MediaInfo) -> float:
 
 def create_directories(
     output_dir: Path, sync_dir: bool = False
-) -> Union[Tuple[Path, Path], Tuple[Path, Path, Path]]:
+) -> tuple[Path, Path] | tuple[Path, Path, Path]:
     """
     Creates 2 directories and returns them in a tuple if sync_dir = False
     Creates 3 directories and returns them in a tuple if sync_dir = True
@@ -156,7 +154,9 @@ def vapoursynth_to_ffmpeg_crop(
     return f"crop={cropped_width}:{cropped_height}:{x}:{y}"
 
 
-def ffmpeg_crop_to_crop_values(ffmpeg_crop: str, source_width: int, source_height: int):
+def ffmpeg_crop_to_crop_values(
+    ffmpeg_crop: str, source_width: int, source_height: int
+) -> CropValues:
     """
     Converts an FFmpeg crop string (crop=width:height:x:y) to CropValues (top, bottom, left, right).
 
@@ -179,7 +179,7 @@ def ffmpeg_crop_to_crop_values(ffmpeg_crop: str, source_width: int, source_heigh
     return CropValues(top=top, bottom=bottom, left=left, right=right)
 
 
-def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int | None:
+def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int:
     """
     Takes source height and compares it to pixels returning the first option
     that it falls under.
@@ -197,8 +197,7 @@ def determine_sub_size(height: int, h720: int, h1080: int, h2160: int) -> int | 
         return h720
     elif height <= 1080:
         return h1080
-    elif height <= 2160:
-        return h2160
+    return h2160
 
 
 def extract_images_from_str(

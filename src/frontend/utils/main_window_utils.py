@@ -1,6 +1,8 @@
-import traceback
 from collections.abc import Callable
-from PySide6.QtCore import Signal, QThread
+import traceback
+from typing import Any
+
+from PySide6.QtCore import QObject, QThread, Signal
 
 from src.logger.nfo_forge_logger import LOG
 
@@ -15,7 +17,10 @@ class MainWindowWorker(QThread):
     job_failed = Signal(str)
 
     def __init__(
-        self, func: Callable, func_args: tuple | None = None, parent=None
+        self,
+        func: Callable[..., str | None],
+        func_args: tuple[Any, ...] | None = None,
+        parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.func = func

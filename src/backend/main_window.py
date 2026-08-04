@@ -1,7 +1,8 @@
 from os import getpid
+
 from psutil import (
-    Process as PProcess,
     NoSuchProcess as PNoSuchProcess,
+    Process as PProcess,
     TimeoutExpired as PTimeOutExpired,
 )
 

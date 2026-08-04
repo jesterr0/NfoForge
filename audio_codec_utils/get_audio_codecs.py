@@ -1,6 +1,7 @@
 import csv
-from pymediainfo import MediaInfo
 from pathlib import Path
+
+from pymediainfo import MediaInfo
 
 
 def get_audio_codec_info(file_path):
@@ -9,7 +10,7 @@ def get_audio_codec_info(file_path):
     except OSError as os_err:
         print(f"OSError: {os_err}. Skipping file: {file_path}")
         return []
-    except Exception as e:
+    except Exception:
         print(f"Error parsing file: {file_path}. Skipping...")
         return []
 

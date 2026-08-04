@@ -11,15 +11,18 @@
 
 ### Format
 
-For multi-line strings **both** [FileTokens](introduction.md) and [NfoTokens](introduction.md) are available for use in NfoForge. Also, multi-line tokens **must** use **two** sets of brackets, e.g., `{{ movie_title }}`.
+For multi-line strings **both** [FileTokens](introduction.md) and
+[NfoTokens](introduction.md) are available for use in NfoForge. Also, multi-line tokens
+**must** use **two** sets of brackets, e.g., `{{ title_exact }}`.
 
 <!-- prettier-ignore -->
 !!! tip
-    Whitespace inside the tokens is not required *(is ignored)*, but by convention, your tokens should have a space before the text inside the token. e.g., `{{ movie_title }}` instead of `{{movie_title}}`.
+    Whitespace inside the tokens is not required *(is ignored)*, but by convention, your tokens should have a space before the text inside the token. e.g., `{{ title }}` instead of `{{title}}`.
 
 ### Usage
 
-This part of NfoForge's formatter utilizes [Jinja](https://jinja.palletsprojects.com/en/stable/).
+This part of NfoForge's formatter utilizes
+[Jinja](https://jinja.palletsprojects.com/en/stable/).
 
 <!-- prettier-ignore -->
 !!! question "What is Jinja?"
@@ -29,10 +32,10 @@ This part of NfoForge's formatter utilizes [Jinja](https://jinja.palletsprojects
 
 ```jinja {.scrollable-code-block}
 Info
-Title                   : {{ movie_title }} {{ release_year_parentheses }}
+Title                   : {{ title_exact }} {{ release_year_parentheses }}
 Format Profile          : {{ format_profile }}
 Resolution              : {{ resolution }}
-Average Bitrate         : {{ mi_video_bit_rate }}
+Average Bitrate         : {{ video_bit_rate }}
 {% if releasers_name %}
 Encoder                 : {{ releasers_name }}
 {% endif %}
@@ -115,15 +118,19 @@ Shared with [url=https://github.com/jesterr0/NfoForge]NfoForge v0.8.2[/url]
 
 ### Additional Information
 
-You can use if statements, loops, etc. A quick look at [Jinja's documentation](https://jinja.palletsprojects.com/en/stable/templates/) can help you understand these features if you aren't familiar.
+You can use if statements, loops, etc. A quick look at
+[Jinja's documentation](https://jinja.palletsprojects.com/en/stable/templates/) can help
+you understand these features if you aren't familiar.
 
 **Conditional Example:**
 
-Suppose you have filled in a movie, but you're unsure if there will be an **edition**. You can add this in an if statement and only display **Edition** if it's available or detected.
+Suppose you have filled in a movie, but you're unsure if there will be an **edition**.
+You can add this in an if statement and only display **Edition** if it's available or
+detected.
 
 ```jinja
 Info
-Title                   : {{ movie_title }} {{ release_year_parentheses }}
+Title                   : {{ title_exact }} {{ release_year_parentheses }}
 {% if edition %}
 Edition                 : {{ edition }}
 {% else %}
@@ -143,14 +150,57 @@ Title                   : Big Buck Bunny (2008)
 Edition                 : Extended Cut
 ```
 
+**Media type and anime conditionals:**
+
+`{{ media_type }}` renders `Movie` or `Series`, and `{{ is_anime }}` renders `Anime` or
+nothing at all. Both let one template serve every release.
+
+```jinja
+Info
+Title                   : {{ title_exact }} {{ release_year_parentheses }}
+{% if media_type == "Series" %}
+Season                  : {{ season_number }}
+Episodes                : {{ total_episodes }}
+{% else %}
+Runtime                 : {{ duration_short }}
+{% endif %}
+{% if is_anime %}
+Absolute episode        : {{ episode_number_absolute }}
+{% endif %}
+```
+
+<!-- prettier-ignore -->
+!!! info
+    The comparison is case sensitive: `media_type == "series"` never matches. `{{ is_anime }}` renders an empty string when the release is not anime, which Jinja treats as false, so `{% if is_anime %}` works on its own.
+
+**Audio codec and Atmos:**
+
+`{{ audio_codec_no_atmos }}` is the codec with the Atmos tag removed, and `{{ atmos }}`
+is the tag on its own. Together they rebuild `{{ audio_codec }}`, with the tag always
+rendered as `Atmos`.
+
+```jinja
+Audio                   : {{ audio_codec_no_atmos }} {{ audio_channel_s }}{% if atmos %} + {{ atmos }}{% endif %}
+```
+
+**Output:**
+
+```text
+Audio                   : TrueHD 7.1 + Atmos
+```
+
 ### Jinja Filters
 
-While I can't go over all of what jinja [supports](https://jinja.palletsprojects.com/en/stable/templates/#list-of-builtin-filters) _(it would take forever and they have very clean documentation)_, I figured I could go over a quick useful example called the **replace** filter. This works identically to Pythons built in string function replace.
+While I can't go over all of what jinja
+[supports](https://jinja.palletsprojects.com/en/stable/templates/#list-of-builtin-filters)
+_(it would take forever and they have very clean documentation)_, I figured I could go
+over a quick useful example called the **replace** filter. This works identically to
+Pythons built in string function replace.
 
 **Example:**
 
 ```jinja
-{{ mi_audio_bitrate_formatted }}
+{{ audio_bitrate_formatted }}
 ```
 
 **Output:**
@@ -164,7 +214,7 @@ Let's say you want to swap `/` for `'`.
 **In:**
 
 ```jinja
-{{ mi_audio_bitrate_formatted|replace("/", "'") }}
+{{ audio_bitrate_formatted|replace("/", "'") }}
 ```
 
 **Out:**
@@ -178,7 +228,7 @@ You can also chain multiple filters together.
 **In:**
 
 ```jinja
-{{ mi_audio_bitrate_formatted|replace("/", "'")|replace(" ", "") }}
+{{ audio_bitrate_formatted|replace("/", "'")|replace(" ", "") }}
 ```
 
 **Out:**
@@ -189,18 +239,25 @@ You can also chain multiple filters together.
 
 ### Sandbox
 
-In NfoForge, open **Settings → Templates** to build templates and use the sandbox feature. Once you have created a new template, you can click the icon to preview your filled template.
+In NfoForge, open **Settings → Templates** to build templates and use the sandbox
+feature. Once you have created a new template, you can click the icon to preview your
+filled template.
 
-![Token Example Pre](../../images/tokens/jinja-preview-pre.png){ width=100%, style="max-width: 500px;" }
+![Token Example Pre](../../images/tokens/jinja-preview-pre.png){ width=100%,
+style="max-width: 500px;" }
 
-Open a file to test out the sandbox (this brings up the search widget to parse the file's details).
+Open a file to test out the sandbox (this brings up the search widget to parse the
+file's details).
 
-![Token Example Search](../../images/tokens/jinja-sandbox-in.png){ width=100%, style="max-width: 500px;" }
+![Token Example Search](../../images/tokens/jinja-sandbox-in.png){ width=100%,
+style="max-width: 500px;" }
 
 <!-- prettier-ignore -->
 !!! tip
     As long as you stay in the settings window, the file is cached and won't have to be reloaded for each change to your template when modifying or testing things out.
 
-You will see the filled template. Here, you can deselect the preview button to make changes to the template and test things out as many times as you'd like.
+You will see the filled template. Here, you can deselect the preview button to make
+changes to the template and test things out as many times as you'd like.
 
-![Token Example Post](../../images/tokens/jinja-preview-post.png){ width=100%, style="max-width: 500px;" }
+![Token Example Post](../../images/tokens/jinja-preview-post.png){ width=100%,
+style="max-width: 500px;" }

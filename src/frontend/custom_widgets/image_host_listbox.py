@@ -1,29 +1,31 @@
-from typing_extensions import override
+from typing import Any
+
+from PySide6.QtCore import QPoint, Qt, Signal, Slot
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
-    QFrame,
-    QLayout,
-    QVBoxLayout,
-    QWidget,
-    QLabel,
     QFormLayout,
+    QFrame,
+    QLabel,
+    QLayout,
+    QMenu,
     QTreeWidget,
     QTreeWidgetItem,
-    QMenu,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QAction
+from typing_extensions import override
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.enums.image_host import ImageHost
-from src.payloads.image_hosts import ImagePayloadBase
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
+from src.payloads.image_hosts import ImagePayloadBase
 
 
 class ImageHostEditBase(QWidget):
     load_data = Signal()
     save_data = Signal()
 
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -52,7 +54,7 @@ class ImageHostEditBase(QWidget):
         self.main_layout.addLayout(layout)
         return layout
 
-    def add_widget_to_layout(self, widget: QWidget, **kwargs) -> None:
+    def add_widget_to_layout(self, widget: QWidget, **kwargs: Any) -> None:
         self.main_layout.addWidget(widget, **kwargs)
 
     def add_layout_to_layout(self, layout: QLayout) -> None:
@@ -70,7 +72,7 @@ class ImageHostEditBase(QWidget):
 
 
 class CheveretoV3Edit(ImageHostEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.username_lbl = QLabel("Username", self)
@@ -84,16 +86,22 @@ class CheveretoV3Edit(ImageHostEditBase):
 
     @override
     def load_settings(self) -> None:
-        host = self.config.cfg_payload.chevereto_v3
+        host = self.config.settings.image_hosts.chevereto_v3
         self.base_url.setText(host.base_url if host.base_url else "")
         self.username.setText(host.user if host.user else "")
         self.password.setText(host.password if host.password else "")
 
     @override
     def save_settings(self) -> None:
-        self.config.cfg_payload.chevereto_v3.base_url = self.base_url.text().strip()
-        self.config.cfg_payload.chevereto_v3.user = self.username.text().strip()
-        self.config.cfg_payload.chevereto_v3.password = self.password.text().strip()
+        self.config.settings.image_hosts.chevereto_v3.base_url = (
+            self.base_url.text().strip()
+        )
+        self.config.settings.image_hosts.chevereto_v3.user = (
+            self.username.text().strip()
+        )
+        self.config.settings.image_hosts.chevereto_v3.password = (
+            self.password.text().strip()
+        )
 
     @override
     def validate_data(self) -> None:
@@ -107,7 +115,7 @@ class CheveretoV3Edit(ImageHostEditBase):
 
 
 class CheveretoV4Edit(ImageHostEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.api_key_lbl = QLabel("API Key", self)
@@ -118,14 +126,18 @@ class CheveretoV4Edit(ImageHostEditBase):
 
     @override
     def load_settings(self) -> None:
-        host = self.config.cfg_payload.chevereto_v4
+        host = self.config.settings.image_hosts.chevereto_v4
         self.base_url.setText(host.base_url if host.base_url else "")
         self.api_key.setText(host.api_key if host.api_key else "")
 
     @override
     def save_settings(self) -> None:
-        self.config.cfg_payload.chevereto_v4.base_url = self.base_url.text().strip()
-        self.config.cfg_payload.chevereto_v4.api_key = self.api_key.text().strip()
+        self.config.settings.image_hosts.chevereto_v4.base_url = (
+            self.base_url.text().strip()
+        )
+        self.config.settings.image_hosts.chevereto_v4.api_key = (
+            self.api_key.text().strip()
+        )
 
     @override
     def validate_data(self) -> None:
@@ -135,7 +147,7 @@ class CheveretoV4Edit(ImageHostEditBase):
 
 
 class ImageBBEdit(ImageHostEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.base_url.setDisabled(True)
@@ -147,14 +159,16 @@ class ImageBBEdit(ImageHostEditBase):
 
     @override
     def load_settings(self) -> None:
-        host = self.config.cfg_payload.image_bb
+        host = self.config.settings.image_hosts.image_bb
         self.base_url.setText(host.base_url if host.base_url else "")
         self.api_key.setText(host.api_key if host.api_key else "")
 
     @override
     def save_settings(self) -> None:
-        self.config.cfg_payload.image_bb.base_url = self.base_url.text().strip()
-        self.config.cfg_payload.image_bb.api_key = self.api_key.text().strip()
+        self.config.settings.image_hosts.image_bb.base_url = (
+            self.base_url.text().strip()
+        )
+        self.config.settings.image_hosts.image_bb.api_key = self.api_key.text().strip()
 
     @override
     def validate_data(self) -> None:
@@ -164,19 +178,21 @@ class ImageBBEdit(ImageHostEditBase):
 
 
 class ImageBoxEdit(ImageHostEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(config, parent)
 
         self.base_url.setDisabled(True)
 
     @override
     def load_settings(self) -> None:
-        host = self.config.cfg_payload.image_box
+        host = self.config.settings.image_hosts.image_box
         self.base_url.setText(host.base_url if host.base_url else "")
 
     @override
     def save_settings(self) -> None:
-        self.config.cfg_payload.image_box.base_url = self.base_url.text().strip()
+        self.config.settings.image_hosts.image_box.base_url = (
+            self.base_url.text().strip()
+        )
 
     @override
     def validate_data(self) -> None:
@@ -184,47 +200,8 @@ class ImageBoxEdit(ImageHostEditBase):
             raise AttributeError("Missing required input for host ImageBox")
 
 
-class PTPIMGEdit(ImageHostEditBase):
-    def __init__(self, config: Config, parent=None) -> None:
-        super().__init__(config, parent)
-
-        self.base_url.setDisabled(True)
-
-        tooltip = (
-            "<p>To find your PTPImg API key, login to https://ptpimg.me, "
-            'open the page source (i.e. "View-> Developer-> View source" '
-            "menu in Chrome), find the string api_key and copy the "
-            "hexadecimal string from the value attribute. Your API "
-            "key should look like 43fe0fee-f935-4084-8a38-3e632b0be68c.</p>"
-        )
-
-        self.api_key_lbl = QLabel("API Key", self)
-        self.api_key_lbl.setToolTip(tooltip)
-        self.api_key = MaskedQLineEdit(parent=self, masked=True)
-        self.api_key.setToolTip(tooltip)
-
-        self.add_pair_to_layout(self.api_key_lbl, self.api_key)
-
-    @override
-    def load_settings(self) -> None:
-        host = self.config.cfg_payload.ptpimg
-        self.base_url.setText(host.base_url if host.base_url else "")
-        self.api_key.setText(host.api_key if host.api_key else "")
-
-    @override
-    def save_settings(self) -> None:
-        self.config.cfg_payload.ptpimg.base_url = self.base_url.text().strip()
-        self.config.cfg_payload.ptpimg.api_key = self.api_key.text().strip()
-
-    @override
-    def validate_data(self) -> None:
-        for item in (self.base_url, self.api_key):
-            if not item.text().strip():
-                raise AttributeError("Missing required input for host PTPIMG")
-
-
 class ImageHostListBox(QWidget):
-    def __init__(self, config: Config, parent=None) -> None:
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.config = config
@@ -269,8 +246,10 @@ class ImageHostListBox(QWidget):
 
         self.tree.blockSignals(False)
 
-    def add_child_widget(self, parent_item, image_host: ImageHost) -> None:
-        image_widget = None
+    def add_child_widget(
+        self, parent_item: QTreeWidgetItem, image_host: ImageHost
+    ) -> None:
+        image_widget: ImageHostEditBase | None = None
         if image_host is ImageHost.CHEVERETO_V3:
             image_widget = CheveretoV3Edit(self.config, self)
         elif image_host is ImageHost.CHEVERETO_V4:
@@ -279,9 +258,6 @@ class ImageHostListBox(QWidget):
             image_widget = ImageBoxEdit(self.config, self)
         elif image_host is ImageHost.IMAGE_BB:
             image_widget = ImageBBEdit(self.config, self)
-        elif image_host is ImageHost.PTPIMG:
-            image_widget = PTPIMGEdit(self.config, self)
-
         if image_widget:
             image_widget.load_data.emit()
             child_item = QTreeWidgetItem(parent_item)
@@ -291,6 +267,8 @@ class ImageHostListBox(QWidget):
         """If host is checked, we'll call the `validate_data()` method"""
         for i in range(self.tree.topLevelItemCount()):
             parent = self.tree.topLevelItem(i)
+            if not parent:
+                return None
             if parent.checkState(0) == Qt.CheckState.Checked:
                 for j in range(parent.childCount()):
                     child = parent.child(j)
@@ -298,7 +276,7 @@ class ImageHostListBox(QWidget):
                     if image_edit and isinstance(image_edit, ImageHostEditBase):
                         image_edit.validate_data()
 
-    def _open_context_menu(self, position) -> None:
+    def _open_context_menu(self, position: QPoint) -> None:
         """Opens the right-click context menu for expanding and collapsing all trackers"""
         menu = QMenu()
 
@@ -317,17 +295,21 @@ class ImageHostListBox(QWidget):
         """Expand all parent items in the QTreeWidget"""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            item.setExpanded(True)
+            if item:
+                item.setExpanded(True)
 
     def collapse_all_items(self) -> None:
         """Collapse all parent items in the QTreeWidget"""
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            item.setExpanded(False)
+            if item:
+                item.setExpanded(False)
 
     @Slot(object, int)
     def _toggle_tracker(self, item: QTreeWidgetItem, column: int) -> None:
-        image_host_attributes = self.config.image_host_map[ImageHost(item.text(column))]
+        image_host_attributes = self.config.settings.image_hosts.by_selection()[
+            ImageHost(item.text(column))
+        ]
         image_host_attributes.enabled = (
             True if item.checkState(column) == Qt.CheckState.Checked else False
         )
@@ -335,6 +317,8 @@ class ImageHostListBox(QWidget):
     def save_host_info(self) -> None:
         for i in range(self.tree.topLevelItemCount()):
             parent = self.tree.topLevelItem(i)
+            if not parent:
+                return None
             for j in range(parent.childCount()):
                 child = parent.child(j)
                 image_edit = self.tree.itemWidget(child, 0)

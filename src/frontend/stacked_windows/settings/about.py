@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING, cast
+
 from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtGui import QGuiApplication, QPixmap
 from PySide6.QtWidgets import (
@@ -9,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
@@ -16,6 +19,9 @@ from src.frontend.utils import build_h_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.version import __version__
 
+if TYPE_CHECKING:
+    from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
 
 about_txt = f"""\
 <h2 style="text-align: center;">NfoForge v{__version__}</h2>
@@ -23,7 +29,7 @@ about_txt = f"""\
 <h3>Key Features</h3>
 <ul>
     <li>Token system for advanced media file renaming.</li>
-    <li>Integration with TMDB and IMDb for title parsing.</li>
+    <li>TMDB title metadata with optional external metadata-transformer plugins.</li>
     <li>Flexible Jinja-based template system for .NFO file generation.</li>
     <li>Screenshot generation and upload, including comparisons.</li>
     <li>Output file organization, saving .torrent and .NFO files to disk.</li>
@@ -39,7 +45,6 @@ about_txt = f"""\
 <ul>
     <li>aiohttp</li>
     <li>beautifulsoup4</li>
-    <li>cinemagoer</li>
     <li>deluge-web-client</li>
     <li>Guessit</li>
     <li>iso639-lang</li>
@@ -67,7 +72,12 @@ about_txt = f"""\
 class AboutTab(BaseSettings):
     ATTRIBUTION_SIZE = (88, 56)
 
-    def __init__(self, config, main_window, parent) -> None:
+    def __init__(
+        self,
+        config: ConfigManager,
+        main_window: "MainWindow",
+        parent: "Settings",
+    ) -> None:
         super().__init__(config=config, main_window=main_window, parent=parent)
         self.setObjectName("aboutTab")
 
@@ -197,12 +207,10 @@ class AboutTab(BaseSettings):
         )
 
         # connect to color scheme change signal to change images based on dark/light mode
-        app = QApplication.instance()
-        QApplication.instance().styleHints().colorSchemeChanged.connect(  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
-            self._update_tvdb_image
-        )
-        # set the initial image
-        self._update_tvdb_image(app.styleHints().colorScheme())  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+        app = cast(QApplication | None, QApplication.instance())
+        if app is not None:
+            app.styleHints().colorSchemeChanged.connect(self._update_tvdb_image)
+            self._update_tvdb_image(app.styleHints().colorScheme())
 
         self.add_widget(self.about_lbl)
         self.add_layout(tvdb_frame_layout)
@@ -233,7 +241,7 @@ class AboutTab(BaseSettings):
         return layout
 
     @Slot(Qt.ColorScheme)
-    def _update_tvdb_image(self, color_scheme: Qt.ColorScheme):
+    def _update_tvdb_image(self, color_scheme: Qt.ColorScheme) -> None:
         """Updates the image based on the color scheme."""
         if color_scheme == Qt.ColorScheme.Dark:
             tvdb_icon = QPixmap(str(RUNTIME_DIR / "images" / "tvdb_dark.png")).scaled(

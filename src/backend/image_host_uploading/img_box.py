@@ -1,9 +1,13 @@
 import asyncio
-from collections.abc import Sequence, Callable, Awaitable
+from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
+
 from pyimgbox import Gallery as ImgBoxGallery, Submission
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.packages.custom_types import ImageUploadData
 
 
@@ -11,7 +15,7 @@ async def _img_box_upload_batch(
     gallery: ImgBoxGallery,
     filepaths: Sequence[Path],
     start_index: int,
-    cb: Callable[[int], Awaitable] | None = None,
+    cb: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData]:
     """
     Uploads a batch of images to ImgBox.
@@ -35,7 +39,7 @@ async def _img_box_upload_batch(
 
     async def upload_single_image(
         gallery: ImgBoxGallery,
-        cb: Callable[[int], Awaitable] | None,
+        cb: Callable[[int], Awaitable[None]] | None,
         filepath: Path,
         index: int,
         retries: int = 3,
@@ -80,7 +84,7 @@ async def image_box_upload(
     adult: bool = False,
     comments_enabled: bool = False,
     batch_size: int = 4,
-    progress_callback: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     """
     Uploads images to a gallery in batches and returns the upload results.
@@ -128,25 +132,18 @@ class ImageBoxUploader(BaseImageHostUploader):
 
     __slots__ = ()
 
-    async def upload(
-        self,
-        filepaths: Sequence[Path],
-        title: str | None = None,
-        thumb_width: int = 350,
-        square_thumbs: bool = False,
-        adult: bool = False,
-        comments_enabled: bool = False,
-        batch_size: int = 4,
-        progress_callback: Callable[[int], Awaitable] | None = None,
-    ) -> dict[int, ImageUploadData] | None:
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
         """Upload images to ImageBox."""
-        return await image_box_upload(
-            filepaths=filepaths,
-            title=title,
-            thumb_width=thumb_width,
-            square_thumbs=square_thumbs,
-            adult=adult,
-            comments_enabled=comments_enabled,
-            batch_size=batch_size,
-            progress_callback=progress_callback,
+        return (
+            await image_box_upload(
+                filepaths=request.filepaths,
+                title=request.title,
+                thumb_width=request.thumb_width,
+                square_thumbs=request.square_thumbs,
+                adult=request.adult,
+                comments_enabled=request.comments_enabled,
+                batch_size=request.batch_size,
+                progress_callback=request.progress_callback,
+            )
+            or {}
         )

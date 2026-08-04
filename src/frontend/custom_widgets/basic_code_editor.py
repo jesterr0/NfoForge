@@ -1,16 +1,15 @@
 import re
 import sys
-from typing import NamedTuple, Pattern
+from typing import Any, NamedTuple, cast
 
 from PySide6.QtCore import QEvent, QObject, QRect, QSize, Qt, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QFont,
-    QFontDatabase,
     QKeyEvent,
     QKeySequence,
-    QPaintEvent,
     QPainter,
+    QPaintEvent,
     QResizeEvent,
     QShortcut,
     QSyntaxHighlighter,
@@ -33,19 +32,19 @@ from PySide6.QtWidgets import (
 )
 
 from src.frontend.utils import set_top_parent_geometry
+from src.frontend.utils.fonts import monospace_font
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
-
 
 HighlightKeywords = NamedTuple(
     "HighlightKeywords",
-    (("pattern", Pattern), ("color", str), ("first_occurrence_only", bool)),
+    (("pattern", re.Pattern[str]), ("color", str), ("first_occurrence_only", bool)),
 )
 
 
 class CustomHighlighter(QSyntaxHighlighter):
-    def __init__(self, parent: QTextDocument | None = None):
-        super().__init__(parent)  # pyright: ignore [reportCallIssue, reportArgumentType]
-        self.patterns_colors = []
+    def __init__(self, parent: QTextDocument) -> None:
+        super().__init__(parent)
+        self.patterns_colors: list[HighlightKeywords] = []
 
     def set_patterns(self, patterns_colors: list[HighlightKeywords]) -> None:
         self.patterns_colors = patterns_colors
@@ -93,7 +92,7 @@ class CustomHighlighter(QSyntaxHighlighter):
 
 
 class LineNumberArea(QWidget):
-    def __init__(self, editor) -> None:
+    def __init__(self, editor: "CodeEditor") -> None:
         QWidget.__init__(self, editor)
         self._code_editor = editor
 
@@ -124,8 +123,8 @@ class CodeEditor(QPlainTextEdit):
         pop_out_expansion: bool = False,
         pop_out_name: str = "Editor",
         pop_out_geometry: QRect | None = None,
-        parent=None,
-        **kwargs,
+        parent: QWidget | None = None,
+        **kwargs: Any,
     ) -> None:
         super().__init__(parent, **kwargs)
         self.setFrameShape(QFrame.Shape.Box)
@@ -184,11 +183,8 @@ class CodeEditor(QPlainTextEdit):
             self.expand_icon.hide()
             self.installEventFilter(self)
 
-    def set_monospace_font(self):
-        if "Fira Mono" in QFontDatabase().families():
-            self.setFont(QFont("Fira Mono"))
-        else:
-            self.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+    def set_monospace_font(self) -> None:
+        self.setFont(monospace_font())
 
     def highlight_keywords(self, patterns_colors: list[HighlightKeywords]) -> None:
         self.highlighter.set_patterns(patterns_colors)
@@ -203,7 +199,7 @@ class CodeEditor(QPlainTextEdit):
         )
 
         # calculate the width based on the number of digits
-        space = 3 + self.fontMetrics().horizontalAdvance("9") * digits
+        space = 3 + int(self.fontMetrics().horizontalAdvance("9")) * digits
         return space
 
     def resizeEvent(self, e: QResizeEvent) -> None:
@@ -222,42 +218,48 @@ class CodeEditor(QPlainTextEdit):
                 self.line_number_area.update()
         return super().event(e)
 
-    def get_theme_colors(self):
-        app = QApplication.instance()
+    def get_theme_colors(self) -> tuple[str, str]:
+        app = cast(QApplication | None, QApplication.instance())
         if app:
-            color_scheme = app.styleHints().colorScheme()  # pyright: ignore [reportAttributeAccessIssue, reportOptionalMemberAccess]
+            color_scheme = app.styleHints().colorScheme()
             scheme = "dark" if color_scheme == Qt.ColorScheme.Dark else "light"
             return self.THEMES[scheme]["box_color"], self.THEMES[scheme]["font_color"]
         return "#e6e6e6", "#A9A9A9"
 
     def lineNumberAreaPaintEvent(self, event: QPaintEvent) -> None:
-        painter = QPainter(self.line_number_area)
-        painter.fillRect(self.line_number_area.rect(), QColor(self.box_color))
-        block = self.firstVisibleBlock()
-        block_number = block.blockNumber()
-        offset = self.contentOffset()
-        top = self.blockBoundingGeometry(block).translated(offset).top()
+        painter = QPainter()
+        if not painter.begin(self.line_number_area):
+            return
 
-        while block.isValid() and top <= event.rect().bottom():
-            if block.isVisible():
-                number = str(block_number + 1)
-                painter.setPen(QColor(self.font_color))
-                painter.drawText(
-                    QRect(
-                        0,
-                        int(top),
-                        self.line_number_area.width(),
-                        self.fontMetrics().height(),
-                    ),
-                    Qt.AlignmentFlag.AlignRight,
-                    number,
-                )
-            block = block.next()
-            top += self.blockBoundingRect(block).height()
-            block_number += 1
+        try:
+            painter.fillRect(self.line_number_area.rect(), QColor(self.box_color))
+            block = self.firstVisibleBlock()
+            block_number = block.blockNumber()
+            offset = self.contentOffset()
+            top = self.blockBoundingGeometry(block).translated(offset).top()
+
+            while block.isValid() and top <= event.rect().bottom():
+                if block.isVisible():
+                    number = str(block_number + 1)
+                    painter.setPen(QColor(self.font_color))
+                    painter.drawText(
+                        QRect(
+                            0,
+                            int(top),
+                            self.line_number_area.width(),
+                            self.fontMetrics().height(),
+                        ),
+                        Qt.AlignmentFlag.AlignRight,
+                        number,
+                    )
+                block = block.next()
+                top += self.blockBoundingRect(block).height()
+                block_number += 1
+        finally:
+            painter.end()
 
     @Slot(int)
-    def update_line_number_area_width(self, _newBlockCount) -> None:
+    def update_line_number_area_width(self, _new_block_count: int) -> None:
         self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
 
     @Slot(QRect, int)
@@ -273,10 +275,10 @@ class CodeEditor(QPlainTextEdit):
 
     @Slot()
     def highlight_current_line(self) -> None:
-        extra_selections = []
+        extra_selections: list[QTextEdit.ExtraSelection] = []
 
         if not self.isReadOnly():
-            selection = QTextEdit.ExtraSelection()
+            selection = cast(Any, QTextEdit.ExtraSelection())
 
             line_color = QColor(self.box_color)
             selection.format.setBackground(line_color)  # pyright: ignore [reportAttributeAccessIssue]
@@ -380,9 +382,9 @@ class CodeEditor(QPlainTextEdit):
                 self.expand_icon.show()
             elif event.type() == QEvent.Type.Leave:
                 self.expand_icon.hide()
-        return super().eventFilter(obj, event)
+        return bool(super().eventFilter(obj, event))
 
-    def expand_editor_popup(self):
+    def expand_editor_popup(self) -> None:
         # build dialog
         dlg = QDialog(self)
         dlg.setWindowFlags(dlg.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)

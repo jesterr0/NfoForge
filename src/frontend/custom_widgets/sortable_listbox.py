@@ -18,7 +18,7 @@ from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 class SortableListBox(QWidget):
     item_moved = Signal()
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("sortableListBox")
 

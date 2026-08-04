@@ -4,7 +4,8 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
 
 ## Run From Release
 
-1. Download the latest [release](https://github.com/jesterr0/NfoForge/releases) for your operating system.
+1. Download the latest [release](https://github.com/jesterr0/NfoForge/releases) for your
+   operating system.
 2. Extract the contents of the release.
 3. Execute **NfoForge**.
 
@@ -23,10 +24,10 @@ Run from [Release](#run-from-release) or [Run From Source](#run-from-source).
     uv python install 3.12
     ```
 
-3. Create a virtual environment and install dependencies.
+3. Create a virtual environment and install the locked runtime dependencies.
 
     ```sh
-    uv pip install -r pyproject.toml
+    uv sync --locked
     ```
 
 4. Start the application.

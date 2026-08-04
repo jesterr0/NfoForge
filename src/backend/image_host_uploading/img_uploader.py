@@ -1,10 +1,31 @@
 import asyncio
+from collections.abc import Callable, Mapping
+from dataclasses import replace
 import uuid
-from collections.abc import Sequence, Callable
-from pathlib import Path
 
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
+from src.exceptions import ImageUploadError
 from src.packages.custom_types import ImageUploadData
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+
+
+def assert_all_images_uploaded(
+    tracker: str, images: Mapping[int, ImageUploadData]
+) -> None:
+    """Raise if any requested upload produced no URL.
+
+    PassThePopcorn's poster path already checks for this shape; the general
+    path did not, so a partially failed batch reached the tracker looking
+    like a complete set.
+    """
+    failed = sorted(index for index, item in images.items() if not item.url)
+    if failed:
+        raise ImageUploadError(
+            f"{len(failed)} of {len(images)} image uploads failed for "
+            f"{tracker} (positions: {', '.join(str(index) for index in failed)})"
+        )
 
 
 class ImageUploader:
@@ -18,9 +39,12 @@ class ImageUploader:
         self.progress_signal = progress_signal
         self.delete_job_as_completed = delete_job_as_completed
         self._lock = asyncio.Lock()
-        self._jobs = {}  # stores (uploader, filepaths)
-        self._progress_trackers = {}
-        self._uploaders = {}
+        self._jobs: dict[
+            str,
+            tuple[BaseImageHostUploader, ImageUploadRequest],
+        ] = {}
+        self._progress_trackers: dict[str, dict[str, int]] = {}
+        self._uploaders: dict[str, BaseImageHostUploader] = {}
 
     def register_uploader(
         self, host_name: str, uploader: BaseImageHostUploader
@@ -29,22 +53,23 @@ class ImageUploader:
         self._uploaders[host_name] = uploader
 
     def add_job(
-        self, host_name: str, filepaths: Sequence[Path], *args, **kwargs
+        self,
+        host_name: str,
+        request: ImageUploadRequest,
     ) -> str:
         """Queue an upload job for a specific image host."""
         if host_name not in self._uploaders:
             raise ValueError(f"No uploader registered for host: {host_name}")
 
         job_id = str(uuid.uuid4())
-        total_files = len(filepaths)
+        total_files = len(request.filepaths)
 
         self._progress_trackers[job_id] = {
             "total": total_files,
             "remaining": total_files,
         }
 
-        # store uploader + filepaths (delayed execution)
-        self._jobs[job_id] = (self._uploaders[host_name], filepaths, args, kwargs)
+        self._jobs[job_id] = (self._uploaders[host_name], request)
 
         return job_id
 
@@ -80,25 +105,29 @@ class ImageUploader:
 
     async def start_jobs(self) -> dict[str, dict[int, ImageUploadData]]:
         """Starts all registered jobs and collects results."""
-        results = {}
+        results: dict[str, dict[int, ImageUploadData]] = {}
 
         tasks = [
-            self._run_job(job_id, uploader, filepaths, args, kwargs, results)
-            for job_id, (uploader, filepaths, args, kwargs) in self._jobs.items()
+            self._run_job(job_id, uploader, request, results)
+            for job_id, (uploader, request) in self._jobs.items()
         ]
 
         await asyncio.gather(*tasks)
         return results
 
     async def _run_job(
-        self, job_id: str, uploader, filepaths, args, kwargs, results: dict
-    ):
+        self,
+        job_id: str,
+        uploader: BaseImageHostUploader,
+        request: ImageUploadRequest,
+        results: dict[str, dict[int, ImageUploadData]],
+    ) -> None:
         """Runs a single job and stores its results."""
 
         async def progress_callback(_idx: int) -> None:
             await self.upload_progress(job_id)
 
         upload_results = await uploader.upload(
-            filepaths, progress_callback=progress_callback, *args, **kwargs
+            replace(request, progress_callback=progress_callback)
         )
         results[job_id] = upload_results

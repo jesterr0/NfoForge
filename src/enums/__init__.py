@@ -1,12 +1,15 @@
 from enum import Enum, StrEnum
+from typing import Self, TypeVar
+
+EnumType = TypeVar("EnumType", bound=Enum)
 
 
-def _missing_func(cls, value):
+def _missing_func(cls: type[EnumType], value: object) -> EnumType | None:
     """Helper function to check member/value for a match."""
     if value is None:
-        return
+        return None
 
-    value_str = str(value).lower() if isinstance(value, str) else value
+    value_str = value.lower() if isinstance(value, str) else None
 
     for member in cls:
         member_name = member.name.lower()
@@ -28,15 +31,17 @@ def _missing_func(cls, value):
         elif member_value == value:
             return member
 
+    return None
+
 
 class CaseInsensitiveEnum(Enum):
     """Case insensitive Enum that will attempt to match on both the value and member."""
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: object) -> Self | None:
         """Override this method to ignore case sensitivity"""
         missing = _missing_func(cls, value)
-        if missing:
+        if missing is not None:
             return missing
         raise ValueError(f"No {cls.__name__} member with value '{value}'")
 
@@ -45,9 +50,9 @@ class CaseInsensitiveStrEnum(StrEnum):
     """Case insensitive StrEnum that will attempt to match on both the value and member."""
 
     @classmethod
-    def _missing_(cls, value):
+    def _missing_(cls, value: object) -> Self | None:
         """Override this method to ignore case sensitivity"""
         missing = _missing_func(cls, value)
-        if missing:
+        if missing is not None:
             return missing
         raise ValueError(f"No {cls.__name__} member with value '{value}'")

@@ -1,6 +1,7 @@
 # Using the Wizard
 
-For this guide, we'll be using the movie [Big Buck Bunny (2008)](https://www.imdb.com/title/tt1254207/).
+For this guide, we'll be using the movie
+[Big Buck Bunny (2008)](https://www.imdb.com/title/tt1254207/).
 
 ```text {.scrollable-code-block}
 --8<-- "docs/snippets/bbb_mediainfo.txt"
@@ -8,9 +9,11 @@ For this guide, we'll be using the movie [Big Buck Bunny (2008)](https://www.imd
 
 ### Input Page
 
-![Basic Input](../../images/wizard/basic_input.png){ width=100%, style="max-width: 500px;" }
+![Basic Input](../../images/wizard/basic_input.png){ width=100%, style="max-width:
+500px;" }
 
-Open a file or folder to start processing files. Drag and drop is also supported in the entry bar.
+Open a file or folder to start processing files. Drag and drop is also supported in the
+entry bar.
 
 1. Open file.
 2. Open folder.
@@ -19,11 +22,29 @@ Once you've opened the path, you can simply select **Next**.
 
 ### Media Search Page
 
-![Media Search](../../images/wizard/media_search.png){ width=100%, style="max-width: 500px;" }
+![Media Search](../../images/wizard/media_search.png){ width=100%, style="max-width:
+500px;" }
 
-The page will immediately parse the file (or attempt to, if the name is somewhat structured) and return some results. If you find no results, refine the search below and try again. Once you have found the appropriate title, simply select it in the top window and press **Select Title** to continue to the next page.
+The page will immediately parse the file (or attempt to, if the name is somewhat
+structured) and return some results. If you find no results, refine the search below and
+try again. Once you have found the appropriate title, simply select it in the top window
+and press **Select Title** to continue to the next page.
 
-This will parse TMDB, IMDb, TVDb, and Anilist to return metadata for the selected title.
+NfoForge uses TMDB as its primary metadata source, then enriches series and anime
+results with TVDB and AniList where applicable. If an optional metadata transformer
+plugin is selected in **Settings -> Plugins**, its returned payload updates the
+corresponding TMDB values; a transformer failure only produces a warning and processing
+continues with TMDB.
+
+NfoForge ships with a bundled TMDB API key, so search works out of the box with no setup
+required. If you'd rather use your own account, add a personal key at **Settings ->
+General -> TMDB API Key**; leave it blank to keep using the bundled key. You can
+generate a free key from your
+[TMDB account settings](https://www.themoviedb.org/settings/api).
+
+IMDb, TMDB, and TVDB IDs can be entered manually. A TMDB lookup is still required
+because it supplies the base metadata. If TVDB is unavailable for a series, the wizard
+lets you retry or continue with the IDs and TMDB metadata you supplied.
 
 ### Rename Page
 
@@ -31,9 +52,13 @@ This will parse TMDB, IMDb, TVDb, and Anilist to return metadata for the selecte
 
 <!-- prettier-ignore -->
 !!! info
-    As long as you have **Rename Movie** ticked in **Settings -> Movie** you will see this page. It is enabled by default.
+    As long as you have **Rename Movies/Series** ticked in **Settings -> Movies/Series Management** you will see this page. It is enabled by default.
 
-You'll notice that the **TokenReplacer** has already used a combination of the filename, metadata, and MediaInfo to give you a clean/proper output: `Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`. This supports numerous overrides and selections, but those will be covered later in the guide. For now, you can simply click **Next** to continue.
+You'll notice that the **TokenReplacer** has already used a combination of the filename,
+metadata, and MediaInfo to give you a clean/proper output:
+`Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`. This supports numerous overrides and
+selections, but those will be covered later in the guide. For now, you can simply click
+**Next** to continue.
 
 ### Images Page
 
@@ -41,16 +66,23 @@ You'll notice that the **TokenReplacer** has already used a combination of the f
 
 <!-- prettier-ignore -->
 !!! info
-    As long as you have **Enable Screenshots** ticked in **Settings 🠮 Screenshots** you will see this page. It is enabled by default.
+    As long as you have **Enable Screenshots** ticked in **Settings -> Screenshots** you will see this page. It is enabled by default.
 
 1. Allows you to open images (.png/.jpeg) that have already been generated.
 2. Allows you to paste in any type of URLs.
 
-Generally, you should just click **Generate** and allow NfoForge to generate images based on the current settings. This requires **FFMPEG** by default for **Basic** images. Depending on your device speed, storage speed, and configuration, this could take a few seconds to several minutes. Once it's done, you'll be greeted with the **Image Viewer**.
+Generally, you should just click **Generate** and allow NfoForge to generate images
+based on the current settings. This requires **FFMPEG** by default for **Basic** images.
+Depending on your device speed, storage speed, and configuration, this could take a few
+seconds to several minutes. Once it's done, you'll be greeted with the **Image Viewer**.
 
-![Image Viewer](../../images/wizard/image_viewer.png){ width=100%, style="max-width: 500px;" }
+![Image Viewer](../../images/wizard/image_viewer.png){ width=100%, style="max-width:
+500px;" }
 
-You can directly view the generated images and select the images you want to use for your upload. The left arrows navigate between images, and the arrows on the right select or deselect images. Once you have selected your desired images, you can select the check mark to close the window.
+You can directly view the generated images and select the images you want to use for
+your upload. The left arrows navigate between images, and the arrows on the right select
+or deselect images. Once you have selected your desired images, you can select the check
+mark to close the window.
 
 ![Images 2](../../images/wizard/images_2.png){ width=100%, style="max-width: 500px;" }
 
@@ -60,23 +92,27 @@ Select **Next** to continue.
 
 ![Trackers](../../images/wizard/trackers.png){ width=100%, style="max-width: 500px;" }
 
-This page gives you a final chance to configure trackers and select which trackers you'd like to upload this release to. For this example, I'm going to use **MoreThanTV** with upload disabled (you can toggle this by expanding the tracker).
+This page gives you a final chance to configure trackers and select which trackers you'd
+like to upload this release to. For this example, I'm going to use **MoreThanTV** with
+upload disabled (you can toggle this by expanding the tracker).
 
 Select **Next** to continue.
 
-### Release Notes Page
+### Pre-upload Page
 
-![Release Notes](../../images/wizard/release_notes.png){ width=100%, style="max-width: 500px;" }
+The Pre-upload page combines the smaller final review steps so you can check template
+assignments, release notes, and torrent-client options without moving through several
+separate wizard pages.
 
-This page allows you to create, save, or select a custom release note to inject into the NFO. It will replace the token **{{ release_notes }}** if it exists in the template.
+#### NFO Templates
 
-Select **Next** to continue.
-
-### Template Page
+Every selected tracker must have an assigned NFO template. Existing assignments are
+shown directly on the page. Select **Configure Templates** to open the full template
+editor.
 
 ![Templates](../../images/wizard/templates.png){ width=100%, style="max-width: 500px;" }
 
-This page is quite advanced. However, for this example, we will go over basic usage. By default, there won't be any templates; you must create one to continue.
+By default, there won't be any templates; you must create one to continue.
 
 <!--prettier-ignore-start -->
 
@@ -91,39 +127,89 @@ This page is quite advanced. However, for this example, we will go over basic us
 
 <!--prettier-ignore-end -->
 
-Select **Next** to continue.
+Close the editor after saving the template and assigning it to the desired trackers. The
+assignment summary on Pre-upload updates automatically.
+
+#### Release Notes
+
+Enable **Release Notes** to create, save, or select a note to inject into the NFO. It
+replaces the **{{ release_notes }}** token when that token exists in the assigned
+template. Leave the section disabled to omit release notes.
+
+#### qBittorrent
+
+This section appears only when qBittorrent injection is enabled. It shows the
+destination qBittorrent will use for the current release and lets you replace it for
+this processing run.
+
+The persistent qBittorrent setting offers three modes:
+
+- **Client default** leaves the destination to qBittorrent and its category settings.
+- **Source location** uses the selected file or folder's parent directory. For a single
+  file such as `\\plex_server\movies\Cleaner (2025)\Cleaner.2025.mkv`, the resulting
+  save location is `\\plex_server\movies\Cleaner (2025)`.
+- **Template** renders a full path with existing FileTokens, for example
+  `\\plex_server\movies\{title_exact} {release_year_parentheses}`.
+
+An edited value on Pre-upload overrides the configured mode for that run and applies to
+every tracker torrent injected into qBittorrent. Use **Reset to Configured Default** to
+discard the override.
+
+<!-- prettier-ignore -->
+!!! warning
+    The path is interpreted by qBittorrent, not necessarily by the computer
+    running NfoForge. A remote host, container, or Windows service must be able
+    to access the path. When NfoForge supplies a path, qBittorrent automatic
+    torrent management is disabled so category rules do not relocate it.
+
+Select **Next** after the page reports no blocking configuration problems.
 
 ### Process Page
 
 ![Process](../../images/wizard/process.png){ width=100%, style="max-width: 500px;" }
 
-This is the final page where all the processing takes place. If you configured an image host, you'll see it in the drop-down menu.
+This is the final page where all the processing takes place. If you configured an image
+host, you'll see it in the drop-down menu.
 
 Select the host and click **Process (Dupe Check)**.
 
-![Process](../../images/wizard/process_dupe.png){ width=100%, style="max-width: 500px;" }
+![Process](../../images/wizard/process_dupe.png){ width=100%, style="max-width: 500px;"
+}
 
-You'll notice that there is one duplicate release found. You can review this and decide if there is a duplicate for your release. If not, simply click **Process (Generate and Upload)** to continue.
+You'll notice that there is one duplicate release found. You can review this and decide
+if there is a duplicate for your release. If not, simply click **Process (Generate and
+Upload)** to continue.
 
 #### Overview and Edit
 
-![Overview](../../images/wizard/overview-and-edit.png){ width=100%, style="max-width: 500px;" }
+![Overview](../../images/wizard/overview-and-edit.png){ width=100%, style="max-width:
+500px;" }
 
-- If enabled _(Settings 🠮 General 🠮 Prompt for Overview)_ this window will appear.
+- If enabled _(Settings -> General -> Prompt for Overview)_ this window will appear.
 - You can edit the final formatted NFO.
 - You can also edit the tracker title _(if available)_.
 
-After reviewing, press OK to apply your changes. If you close the window or press Cancel, your previous data will be used. Processing will continue automatically after you close this window.
+After reviewing, press OK to apply your changes. If you close the window or press
+Cancel, your previous data will be used. Processing will continue automatically after
+you close this window.
 
-**Note:** Some trackers require specific formatting to the tracker title. This will be applied during upload regardless of edits in this window.
+**Note:** Some trackers require specific formatting to the tracker title. This will be
+applied during upload regardless of edits in this window.
 
-![Process](../../images/wizard/process_processing.png){ width=100%, style="max-width: 500px;" }
+![Process](../../images/wizard/process_processing.png){ width=100%, style="max-width:
+500px;" }
 
-During processing, you'll notice everything is disabled other than the log window, so you can scroll up and down. After things are complete, you'll see an output similar to this.
+During processing, you'll notice everything is disabled other than the log window, so
+you can scroll up and down. After things are complete, you'll see an output similar to
+this.
 
-![Process Complete](../../images/wizard/process_complete.png){ width=100%, style="max-width: 500px;" }
+![Process Complete](../../images/wizard/process_complete.png){ width=100%,
+style="max-width: 500px;" }
 
-Notice the status ✅ Complete and no errors in the log. Your torrent should be uploaded to the selected tracker (if you chose to upload). Any generated torrents/NFO files can be found in the path displayed in the log window. You can view the created NFO for each tracker you selected.
+Notice the status ✅ Complete and no errors in the log. Your torrent should be uploaded
+to the selected tracker (if you chose to upload). Any generated torrents/NFO files can
+be found in the path displayed in the log window. You can view the created NFO for each
+tracker you selected.
 
 **Example from this guide**
 

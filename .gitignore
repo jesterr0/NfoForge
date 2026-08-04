@@ -7,6 +7,8 @@ scraps/
 .vscode/
 config.toml
 custom-pyinstaller/
+dev_scripts/
+.env
 *.exe
 *.csv
 runtime/apps/
@@ -22,9 +24,12 @@ beyondhd-parser/
 plugins/*
 !plugins/jinja2_plugin_example/
 !plugins/jinja2_plugin_example/**
+!plugins/metadata_plugin_example/
+!plugins/metadata_plugin_example/**
 plugins/**/__pycache__/*
 !src/plugins/
 *.spec
 docs/_build
 Makefile
 make.bat
+node_modules

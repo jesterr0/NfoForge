@@ -3,17 +3,17 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
-from src.enums.media_mode import MediaMode
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.payloads.media_search import MediaSearchPayload
 
 
 def huno_uploader(
-    media_mode: MediaMode,
+    media_type: MediaType,
     api_key: str,
     torrent_file: Path,
-    file_input: Path,
+    input_path: Path,
     tracker_title: str | None,
     nfo: str,
     internal: bool,
@@ -22,14 +22,15 @@ def huno_uploader(
     mediainfo_obj: MediaInfo,
     media_search_payload: MediaSearchPayload,
     timeout: int = 60,
+    season_number: int | None = None,
+    episode_number: int | None = None,
+    season_pack: bool = False,
 ) -> bool | None:
-    torrent_file = Path(torrent_file)
-    file_input = Path(file_input)
     uploader = HunoUploader(
-        media_mode=media_mode,
+        media_type=media_type,
         api_key=api_key,
         torrent_file=torrent_file,
-        file_input=file_input,
+        input_path=input_path,
         mediainfo_obj=mediainfo_obj,
         timeout=timeout,
     )
@@ -49,6 +50,9 @@ def huno_uploader(
         free=None,
         double_up=None,
         sticky=None,
+        season_number=season_number,
+        episode_number=episode_number,
+        season_pack=season_pack,
     )
     return upload
 
@@ -60,20 +64,20 @@ class HunoUploader(Unit3dBaseUploader):
 
     def __init__(
         self,
-        media_mode: MediaMode,
+        media_type: MediaType,
         api_key: str,
         torrent_file: Path,
-        file_input: Path,
+        input_path: Path,
         mediainfo_obj: MediaInfo,
         timeout: int = 60,
     ) -> None:
         super().__init__(
             tracker_name=TrackerSelection.HUNO,
-            base_url="https://hawke.uno",
-            media_mode=media_mode,
+            base_url=TrackerSelection.HUNO.get_root_url(),
+            media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
-            file_input=file_input,
+            input_path=input_path,
             mediainfo_obj=mediainfo_obj,
             cat_enum=HunoCategory,
             res_enum=HunoResolution,
@@ -90,7 +94,7 @@ class HunoSearch(Unit3dBaseSearch):
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
             tracker_name=TrackerSelection.HUNO,
-            base_url="https://hawke.uno",
+            base_url=TrackerSelection.HUNO.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

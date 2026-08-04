@@ -1,9 +1,11 @@
+from collections.abc import Mapping
 import platform
 
 import flatbencode as bencode
 from niquests.structures import CaseInsensitiveDict
 
 from src.enums.tracker_selection import TrackerSelection
+from src.logger.nfo_forge_logger import LOG
 from src.version import __version__, program_name
 
 TRACKER_HEADERS = {
@@ -94,14 +96,15 @@ def format_image_tag(
 
 
 def looks_like_torrent(
-    content: bytes, headers: dict | CaseInsensitiveDict | None = None
+    content: bytes,
+    headers: Mapping[str, str] | CaseInsensitiveDict[str] | None = None,
 ) -> bool:
     """Return True if response content (and optional headers) look like a .torrent."""
     if not content:
         return False
 
     # fast header check
-    ctype = (headers or {}).get("Content-Type", "").lower()
+    ctype = str((headers or {}).get("Content-Type", "")).lower()
     if "application/x-bittorrent" in ctype:
         return True
 
@@ -109,9 +112,14 @@ def looks_like_torrent(
     try:
         bencode.decode(content)
         return True
-    except Exception:
-        # not valid bencode — fall back to heuristics
-        pass
+    except Exception as error:
+        # not valid bencode — expected for most non-torrent responses, so
+        # fall back to heuristics; logged at debug level since this is a
+        # routine, not exceptional, path
+        LOG.debug(
+            LOG.LOG_SOURCE.BE,
+            f"Content is not valid bencode, falling back to heuristics: {error}",
+        )
 
     # heuristic checks (preferred over just searching for 'd8:announce')
     if content.startswith(b"d") and b"announce" in content[:500]:

@@ -5,11 +5,13 @@
     Flat strings are defined by a **single line** of text.  
     *e.g. `Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264`.*
 
-NfoForge will automatically use the formatter in **flat** mode for paths (files and folders).
+NfoForge will automatically use the formatter in **flat** mode for paths (files and
+folders).
 
 ### Format
 
-[FileTokens](introduction.md) are only available in **flat** mode when used directly in NfoForge. You'll notice that flat tokens have a single set of brackets, e.g., `{movie_title}`.
+[FileTokens](introduction.md) are only available in **flat** mode when used directly in
+NfoForge. You'll notice that flat tokens have a single set of brackets, e.g., `{title}`.
 
 ### Usage
 
@@ -22,7 +24,7 @@ A token string is simply a combination of tokens and text.
 **Example of a token string:**
 
 ```text
-{movie_clean_title} {release_year} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
+{title_clean} {release_year} {edition} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}
 ```
 
 **When filled:**
@@ -31,19 +33,24 @@ A token string is simply a combination of tokens and text.
 Movie Name 2025 Directors Cut REPACK UHD BluRay 2160p TrueHD Atmos 7.1 DV HDR HEVC
 ```
 
-The output will vary based on the file that is opened. If you are familiar with Radarr/Sonarr, this works very similarly.
+The output will vary based on the file that is opened. If you are familiar with
+Radarr/Sonarr, this works very similarly.
 
 ### Optional Text
 
-You can use tokens with an optional syntax to only add text **if** the token is filled by the formatter. This is done with the syntax `:opt=*:`, where you replace the asterisk with whatever text you want.
+You can use tokens with an optional syntax to only add text **if** the token is filled
+by the formatter. This is done with the syntax `:opt=*:`, where you replace the asterisk
+with whatever text you want.
 
 **Example of a token string with opt syntax:**
 
 ```text
-{movie_clean_title} {:opt=(:release_year:opt=):} {edition} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}
+{title_clean} {:opt=(:release_year:opt=):} {edition} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}
 ```
 
-Note the token `{:opt=(:release_year:opt=):}`. We're using `:opt=(:` and `:opt=):` to wrap the year with parentheses. This allows for many use cases and enables a high degree of customization.
+Note the token `{:opt=(:release_year:opt=):}`. We're using `:opt=(:` and `:opt=):` to
+wrap the year with parentheses. This allows for many use cases and enables a high degree
+of customization.
 
 **When filled with opt syntax:**
 
@@ -51,16 +58,23 @@ Note the token `{:opt=(:release_year:opt=):}`. We're using `:opt=(:` and `:opt=)
 Movie Name (2025) Directors Cut REPACK UHD BluRay 2160p TrueHD Atmos 7.1 DV HDR HEVC
 ```
 
-You can see this in action in real time inside **NfoForge** under **Settings → Movie**.
+You can see this in action in real time inside **NfoForge** under **Settings -> Movies
+Management**.
 
-![Token Example](../../images/tokens/token-example.png){ width=100%, style="max-width: 500px;" }
+![Token Example](../../images/tokens/token-example.png){ width=100%, style="max-width:
+500px;" }
 
 ### Filters
 
-You can apply several filters to filled tokens to fine-tune your output. Each example below defines a string and shows the result before and after applying a filter. Filters are simple to use:
+You can apply several filters to filled tokens to fine-tune your output. Each example
+below defines a string and shows the result before and after applying a filter. Filters
+are simple to use:
 
-- Define a filter using the `|` character inside the brackets, immediately after the token name: `{token|filter}`.
-- You can still use **opt** for optional text, but filters are only applied to the token value itself. The filter must be placed before **opt**. For example: `{:opt=x:token|filter:opt=x:}`.
+- Define a filter using the `|` character inside the brackets, immediately after the
+  token name: `{token|filter}`.
+- You can still use **opt** for optional text, but filters are only applied to the token
+  value itself. The filter must be placed before **opt**. For example:
+  `{:opt=x:token|filter:opt=x:}`.
 
 <!-- prettier-ignore -->
 !!! info
@@ -150,7 +164,8 @@ hi 00042
 hi tommy
 ```
 
-You can use single or double quotes for the arguments, and any character (including commas, spaces, or quotes) can be replaced. For example:
+You can use single or double quotes for the arguments, and any character (including
+commas, spaces, or quotes) can be replaced. For example:
 
 ```text
 {:opt=hi :example_token|replace(',', '-')}
@@ -159,7 +174,8 @@ You can use single or double quotes for the arguments, and any character (includ
 
 ### Chained Filters
 
-You can chain multiple filters together by separating them with `|`. Filters are applied in order from left to right.
+You can chain multiple filters together by separating them with `|`. Filters are applied
+in order from left to right.
 
 {example_token} = tom
 

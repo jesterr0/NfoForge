@@ -2,13 +2,46 @@ from os import PathLike
 from pathlib import Path
 
 from src.backend.utils.working_dir import RUNTIME_DIR
+from src.enums.media_type import MediaType
 
-DEFAULT_TEMPLATE = """\
+DEF_MV_TEMPLATE = """\
 Info
-Title:                  : {{ movie_title }} {{ release_year_parentheses }}
+Title:                  : {{ title_exact }} {{ release_year_parentheses }}
+Source:                 : {{ source_file_no_ext }}
 Format Profile          : {{ format_profile }}
 Resolution              : {{ resolution }}
-Average Bitrate         : {{ mi_video_bit_rate }}
+Average Bitrate         : {{ video_bit_rate }}
+{% if releasers_name %}
+Encoder                 : {{ releasers_name }}
+{% endif %}
+
+{% if screen_shots %}
+{{ screen_shots }}
+{% endif %}
+
+{% if release_notes %}
+Release Notes:
+{{ release_notes }}
+{% endif %}
+
+{% if media_info_short %}
+MediaInfo
+{{ media_info_short }}
+{% endif %}
+
+{{ shared_with_bbcode }}"""
+
+DEF_SERIES_TEMPLATE = """\
+Info
+Title:                  : {{ title_exact }} {{ release_year_parentheses }}
+Season                  : {{ season_number }}
+Episode                 : {{ episode_number }}
+Episode Title           : {{ episode_title_exact }}
+Air Date                : {{ air_date }}
+Source                  : {{ source_file_no_ext }}
+Format Profile          : {{ format_profile }}
+Resolution              : {{ resolution }}
+Average Bitrate         : {{ video_bit_rate }}
 {% if releasers_name %}
 Encoder                 : {{ releasers_name }}
 {% endif %}
@@ -33,12 +66,12 @@ MediaInfo
 class TemplateSelectorBackEnd:
     __slots__ = ("template_dir", "templates")
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.template_dir = RUNTIME_DIR / "templates"
         self.template_dir.mkdir(exist_ok=True, parents=True)
-        self.templates = {}
+        self.templates: dict[str, Path] = {}
 
-    def load_templates(self) -> dict[str, str]:
+    def load_templates(self) -> dict[str, Path]:
         self.templates.clear()
         for item in self.template_dir.iterdir():
             if item.is_file() and item.suffix == ".txt":
@@ -71,12 +104,18 @@ class TemplateSelectorBackEnd:
             _path = tuple(self.templates.values())[idx]
 
         if _path:
-            with open(_path, "r", encoding="utf-8") as template:
+            with open(_path, encoding="utf-8") as template:
                 return template.read()
+        return None
 
-    def create_template(self, path: PathLike[str] | str) -> Path:
+    def create_template(self, path: PathLike[str] | str, media_type: MediaType) -> Path:
         with open(path, "w", encoding="utf-8") as new_template:
-            new_template.write(self.get_default_template())
+            # determine correct template based on media type selection from frontend
+            new_template.write(
+                DEF_MV_TEMPLATE
+                if media_type is MediaType.MOVIE
+                else DEF_SERIES_TEMPLATE
+            )
         self.load_templates()
         return Path(path)
 
@@ -87,6 +126,3 @@ class TemplateSelectorBackEnd:
     def delete_template(self, path: PathLike[str] | str) -> None:
         Path(path).unlink()
         self.load_templates()
-
-    def get_default_template(self) -> str:
-        return DEFAULT_TEMPLATE

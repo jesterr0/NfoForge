@@ -1,7 +1,15 @@
 from collections.abc import Sequence
 import re
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QTimer, Qt, Signal, Slot
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QModelIndex,
+    QPersistentModelIndex,
+    Qt,
+    QTimer,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication,
@@ -12,8 +20,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QMessageBox,
     QPushButton,
-    QStyleOptionViewItem,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -25,32 +33,38 @@ from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 
 
 class ComboBoxDelegate(QStyledItemDelegate):
-    def __init__(self, items: Sequence[str], parent=None):
+    def __init__(self, items: Sequence[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.items = items
 
-    def createEditor(  # pyright: ignore[reportIncompatibleMethodOverride]
+    def createEditor(
         self,
         parent: QWidget,
         _option: QStyleOptionViewItem,
-        _index: QModelIndex,
+        _index: QModelIndex | QPersistentModelIndex,
     ) -> QComboBox:
         combo = QComboBox(parent)
         combo.addItems(self.items)
         return combo
 
-    def setEditorData(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, editor: QComboBox, index: QModelIndex
+    def setEditorData(
+        self, editor: QWidget, index: QModelIndex | QPersistentModelIndex
     ) -> None:
+        if not isinstance(editor, QComboBox):
+            return
         value = index.model().data(index, Qt.ItemDataRole.EditRole)
-        idx = editor.findText(value)
+        idx = editor.findText(str(value))
         if idx >= 0:
             editor.setCurrentIndex(idx)
 
-    def setModelData(  # pyright: ignore[reportIncompatibleMethodOverride]
-        self, editor: QComboBox, model: QAbstractItemModel, index: QModelIndex
+    def setModelData(
+        self,
+        editor: QWidget,
+        model: QAbstractItemModel,
+        index: QModelIndex | QPersistentModelIndex,
     ) -> None:
-        model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
+        if isinstance(editor, QComboBox):
+            model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
 
 
 class CustomTokenEditor(QWidget):
@@ -62,18 +76,18 @@ class CustomTokenEditor(QWidget):
     def __init__(
         self,
         token_types: Sequence[str],
-        token_prefix: str = "usr_",
+        token_prefix: str = "usr_",  # noqa: S107 - default prefix for user-defined NFO tokens, not a credential
         hide_save_btn: bool = False,
         hide_expand_editor: bool = False,
-        parent=None,
-    ):
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("customTokenEditor")
 
         self.token_types = token_types
         self.token_prefix = token_prefix
 
-        self.value_map = {}
+        self.value_map: dict[str, str] = {}
         self._updating = False
         self._delete_timer: QTimer | None = None
         self._delete_confirm_row: int | None = None
@@ -172,7 +186,7 @@ class CustomTokenEditor(QWidget):
             row = self.table.currentRow()
             name_item = self.table.item(row, 0)
             name = name_item.text() if name_item else None
-            self.value_edit.setPlainText(self.value_map.get(name, ""))
+            self.value_edit.setPlainText(self.value_map.get(name or "", ""))
         else:
             self.value_edit.clear()
 
@@ -245,9 +259,9 @@ class CustomTokenEditor(QWidget):
         data = self.save_all()
         self.save_changes_now.emit(data)
 
-    def save_all(self) -> dict[str, tuple[str, str]] | None:
+    def save_all(self) -> dict[str, tuple[str, TokenSelection]] | None:
         """Save all tokens returning the output, if None is returned there was an error."""
-        tokens = {}
+        tokens: dict[str, tuple[str, TokenSelection]] = {}
         for row in range(self.table.rowCount()):
             name_item = self.table.item(row, 0)
             type_item = self.table.item(row, 1)
@@ -267,18 +281,18 @@ class CustomTokenEditor(QWidget):
                         f"output. {TokenSelection.FILE_TOKEN} should be a single line. This must be "
                         "corrected to continue saving.",
                     )
-                    return
+                    return None
                 value = lines[0] if line_len == 1 else ""
                 if not value:
                     continue
-            tokens[name] = (value, ttype)
+            tokens[name] = (value, TokenSelection(ttype))
         self.tokens = tokens
         return tokens
 
-    def get_tokens(self) -> dict[str, tuple[str, str]]:
+    def get_tokens(self) -> dict[str, tuple[str, TokenSelection]]:
         return dict(self.tokens)
 
-    def load_tokens(self, tokens: dict[str, tuple[str, str]]) -> None:
+    def load_tokens(self, tokens: dict[str, tuple[str, TokenSelection]]) -> None:
         """
         Load tokens into the table. tokens: {token_name: (value, token_type)}
         """
@@ -287,7 +301,7 @@ class CustomTokenEditor(QWidget):
         for i, (name, (value, ttype)) in enumerate(tokens.items()):
             self.table.insertRow(i)
             name_item = QTableWidgetItem(name)
-            type_item = QTableWidgetItem(ttype)
+            type_item = QTableWidgetItem(str(ttype))
             self.table.setItem(i, 0, name_item)
             self.table.setItem(i, 1, type_item)
             self.value_map[name] = value
@@ -339,13 +353,13 @@ if __name__ == "__main__":
     import sys
 
     blah = {
-        "usr_new_token": ("123", "FileToken"),
+        "usr_new_token": ("123", TokenSelection.FILE_TOKEN),
         "usr_blah": (
             "123 Howdy! This is the new custom token setup :)\n\nMulti line support as needed too!",
-            "NfoToken",
+            TokenSelection.NFO_TOKEN,
         ),
-        "usr_yay": ("more random data", "NfoToken"),
-        "usr_nah": ("random data", "FileToken"),
+        "usr_yay": ("more random data", TokenSelection.NFO_TOKEN),
+        "usr_nah": ("random data", TokenSelection.FILE_TOKEN),
     }
 
     app = QApplication(sys.argv)

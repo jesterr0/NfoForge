@@ -1,9 +1,11 @@
+from collections.abc import Callable
 from os import PathLike
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Qt, Signal, Slot
-from PySide6.QtGui import QAction
+from jinja2.exceptions import TemplateSyntaxError
+from PySide6.QtCore import QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QAction, QCloseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -11,25 +13,26 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QLabel,
+    QMenu,
     QMessageBox,
-    QSizePolicy,
-    QSpacerItem,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
-from guessit import guessit
-from jinja2.exceptions import TemplateSyntaxError
-from qtpy.QtWidgets import QMenu
 
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
-from src.backend.tokens import TokenType, Tokens
+from src.backend.tokens import Tokens, TokenType
 from src.backend.utils.token_utils import get_prompt_tokens
-from src.config.config import Config
+from src.backend.utils.token_validation import (
+    build_unknown_token_pattern,
+    find_unknown_tokens,
+)
+from src.config.config import ConfigManager
+from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
-from src.frontend.custom_widgets.basic_code_editor import CodeEditor
+from src.frontend.custom_widgets.basic_code_editor import CodeEditor, HighlightKeywords
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.menu_button import CustomButtonMenu
 from src.frontend.custom_widgets.prompt_token_editor_dialog import (
@@ -37,13 +40,37 @@ from src.frontend.custom_widgets.prompt_token_editor_dialog import (
 )
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
-from src.frontend.wizards.media_input_basic import MediaInputBasic
-from src.frontend.wizards.media_search import MediaSearch
+from src.frontend.wizards.sandbox_wizard import SandboxMainWindow
+from src.logger.nfo_forge_logger import LOG
+from src.payloads.series import build_series_release_info
+from src.plugins.api import TokenReplaceRequest
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
+
+
+def saved_status_message(unknown_count: int) -> str:
+    """The status tip shown after a template is saved.
+
+    The count is advisory: the save has already happened by the time this is
+    shown, and an unrecognized token never prevents one.
+    """
+    if not unknown_count:
+        return "Saved template"
+    noun = "token" if unknown_count == 1 else "tokens"
+    return f"Saved template - {unknown_count} unrecognized {noun}"
+
+
+class TokenTableWindow(QWidget):
+    def __init__(
+        self, parent: QWidget, on_close: Callable[[QCloseEvent], None]
+    ) -> None:
+        super().__init__(parent, Qt.WindowType.Window)
+        self._on_close = on_close
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self._on_close(event)
 
 
 class TemplateSelector(QWidget):
@@ -52,10 +79,11 @@ class TemplateSelector(QWidget):
 
     def __init__(
         self,
-        config: Config,
+        config: ConfigManager,
+        context: ProcessingContext,
         sandbox: bool,
         main_window: "MainWindow",
-        parent=None,
+        parent: QWidget | None = None,
         toggle_prompt_tokens: QCheckBox | None = None,
     ) -> None:
         """
@@ -63,6 +91,7 @@ class TemplateSelector(QWidget):
 
         Args:
             config: Configuration object
+            context: Processing context containing media data
             sandbox: Whether this is running in sandbox mode
             main_window: Reference to main window
             parent: Parent widget
@@ -72,6 +101,7 @@ class TemplateSelector(QWidget):
         super().__init__(parent)
 
         self.config = config
+        self.context = context
         self.sandbox = sandbox
         self.toggle_prompt_tokens = toggle_prompt_tokens
         self.main_window = main_window
@@ -82,7 +112,14 @@ class TemplateSelector(QWidget):
         self.templates = self.backend.templates
         self.template_index_map = self.create_template_index_map()
         self.old_text: str | None = None
+        self._static_highlights: list[HighlightKeywords] = []
+        self._warning_color: str = ""
+        self.unknown_tokens: set[str] = set()
+        self._unknown_token_timer = QTimer(self, singleShot=True, interval=400)
+        self._unknown_token_timer.timeout.connect(self._refresh_unknown_tokens)
         self.cached_sandbox_prompt_tokens: dict[str, str] | None = None
+        self._del_timer = QTimer(self, singleShot=True, interval=3000)
+        self._del_timer.timeout.connect(self._del_timer_done)
 
         self.token_btn = QToolButton(self)
         QTAThemeSwap().register(
@@ -94,10 +131,23 @@ class TemplateSelector(QWidget):
 
         self.template_combo: QComboBox = CustomComboBox(True)
         self.template_combo.currentIndexChanged.connect(self.selection_changed)
+
         self.new_btn = QToolButton(self)
         QTAThemeSwap().register(
             self.new_btn, "ph.plus-circle-light", icon_size=QSize(24, 24)
         )
+        self.new_btn.setToolTip("Create a new template")
+        self.new_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+
+        # menu to control template type
+        self.template_new_menu = QMenu(self.new_btn)
+        _new_mv_action = self.template_new_menu.addAction("New Movie Template")
+        _new_mv_action.triggered.connect(self.new_mv_template)
+        _new_series_action = self.template_new_menu.addAction("New Series Template")
+        _new_series_action.triggered.connect(self.new_series_template)
+
+        # set above menu to button
+        self.new_btn.setMenu(self.template_new_menu)
 
         self.popup_button = CustomButtonMenu(parent=self)
         QTAThemeSwap().register(
@@ -105,9 +155,6 @@ class TemplateSelector(QWidget):
         )
         self.popup_button.setText("Trackers")
         self.popup_button.item_changed.connect(self._tracker_toggled)
-
-        self.new_btn.setToolTip("Create a new template")
-        self.new_btn.clicked.connect(self.new_template)
 
         self.save_btn = QToolButton(self)
         QTAThemeSwap().register(
@@ -190,6 +237,7 @@ class TemplateSelector(QWidget):
             line_numbers=True, wrap_text=False, mono_font=True, parent=self
         )
         self.text_edit.save_contents.connect(self.save_template)
+        self.text_edit.textChanged.connect(self._unknown_token_timer.start)
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addLayout(self.template_control_layout)
@@ -205,6 +253,53 @@ class TemplateSelector(QWidget):
     def get_selected_template_name(self) -> str:
         return self.template_combo.currentText()
 
+    def set_syntax_highlights(
+        self, patterns: list[HighlightKeywords], warning_color: str
+    ) -> None:
+        """Set the editor's static highlight patterns.
+
+        Stored rather than passed straight through, because the unknown-token
+        highlight is appended to this list on every recompute and would
+        otherwise be lost whenever a caller reapplies the static patterns.
+
+        Every color, including `warning_color`, comes from the caller -- the
+        same as the three static delimiter colors, which arrive already
+        baked into `patterns`. This widget holds no config knowledge about
+        colors of its own.
+        """
+        self._static_highlights = list(patterns)
+        self._warning_color = warning_color
+        self._apply_highlights()
+
+    @Slot()
+    def _refresh_unknown_tokens(self) -> None:
+        """Recompute the unknown-token set and reapply the highlights.
+
+        Advisory only: this never blocks an edit, a save, or a preview. While
+        the preview is showing, the editor holds rendered output rather than
+        template source, so the check is skipped.
+        """
+        if self.preview_btn.isChecked():
+            return
+
+        self.unknown_tokens = find_unknown_tokens(
+            self.text_edit.toPlainText(),
+            self.context.jinja_engine.environment,
+        )
+        self._apply_highlights()
+
+    def _apply_highlights(self) -> None:
+        patterns = list(self._static_highlights)
+        unknown_pattern = build_unknown_token_pattern(self.unknown_tokens)
+        if unknown_pattern is not None and self._warning_color:
+            # Appended last so it overrides the variable color on the same
+            # span: the highlighter applies patterns in order and later
+            # `setFormat` calls overwrite earlier ones.
+            patterns.append(
+                HighlightKeywords(unknown_pattern, self._warning_color, False)
+            )
+        self.text_edit.highlight_keywords(patterns)
+
     def create_template_index_map(self) -> dict[str, int]:
         return {name: i for i, name in enumerate(self.backend.templates.keys())}
 
@@ -217,7 +312,7 @@ class TemplateSelector(QWidget):
         self._update_tracker_toggles()
         # INFO: if we wanted to load last used template or a default template we could do it here
         # self.template_combo.setCurrentIndex(
-        #     self.template_index_map[self.config.cfg_payload.nfo_template]
+        #     self.template_index_map[self.config.settings.nfo_template]
         # )
 
     def _update_tracker_toggles(self) -> None:
@@ -229,7 +324,7 @@ class TemplateSelector(QWidget):
                 if selected_template
                 else False,
             )
-            for tracker, tracker_settings in self.config.tracker_map.items()
+            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
         ]
         self.popup_button.update_items(trackers)
         if not selected_template:
@@ -249,17 +344,21 @@ class TemplateSelector(QWidget):
     def _tracker_toggled(self, data: tuple[str, bool]) -> None:
         tracker, toggled = data
         if toggled:
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 TrackerSelection(tracker)
             ].nfo_template = self.template_combo.currentText()
         else:
-            self.config.tracker_map[TrackerSelection(tracker)].nfo_template = ""
-        self.config.save_config()
+            self.config.settings.trackers.by_selection()[
+                TrackerSelection(tracker)
+            ].nfo_template = ""
+        self.config.save()
 
     @Slot()
     def show_tokens(self) -> None:
         if self.token_btn.isChecked():
-            self.token_table_window = QWidget(self, Qt.WindowType.Window)
+            self.token_table_window = TokenTableWindow(
+                self, self.close_token_table_window
+            )
             self.token_table_window.setWindowTitle("Tokens")
             self.token_table_window.setMinimumSize(600, 400)
             self.token_table_window.setWindowFlag(
@@ -273,13 +372,12 @@ class TemplateSelector(QWidget):
                 )
             )
             self.token_table_window.setLayout(layout)
-            self.token_table_window.closeEvent = self.close_token_table_window
             self.token_table_window.show()
         elif not self.token_btn.isChecked() and self.token_table_window:
             self.token_table_window.close()
             self.token_table_window = None
 
-    def close_token_table_window(self, event) -> None:
+    def close_token_table_window(self, event: QCloseEvent) -> None:
         if self.token_table_window:
             self.token_btn.setChecked(False)
             event.accept()
@@ -295,19 +393,28 @@ class TemplateSelector(QWidget):
         self.old_text = None
         self.read_template()
         self._update_tracker_toggles()
+        self._del_timer_stop()
+
+    @Slot(bool)
+    def new_mv_template(self, _checked: bool) -> None:
+        self.new_template(MediaType.MOVIE)
+
+    @Slot(bool)
+    def new_series_template(self, _checked: bool) -> None:
+        self.new_template(MediaType.SERIES)
 
     @Slot()
-    def new_template(self) -> None:
+    def new_template(self, media_type: MediaType) -> None:
         template, _ = QFileDialog.getSaveFileName(
             parent=self,
-            caption="Choose template name",
+            caption=f"Choose {media_type.lower()} template name",
             filter="*.txt",
             dir=str(self.backend.template_dir),
         )
         if template:
             if not template.endswith(".txt"):
                 template += ".txt"
-            new = self.backend.create_template(template)
+            new = self.backend.create_template(template, media_type)
             self.load_templates()
             index = self.template_index_map.get(new.stem, -1)
             self.template_combo.setCurrentIndex(index)
@@ -325,19 +432,41 @@ class TemplateSelector(QWidget):
                 self.template_combo.currentText()
             ]
             self.backend.save_template(selected_template, self.text_edit.toPlainText())
-            GSigs().main_window_update_status_tip.emit("Saved template", 3000)
+            self._refresh_unknown_tokens()
+            GSigs().main_window_update_status_tip.emit(
+                saved_status_message(len(self.unknown_tokens)), 3000
+            )
 
     @Slot()
     def delete_template(self) -> None:
         if self.template_combo.currentIndex() == -1:
             return
 
-        selected_template = self.backend.templates[self.template_combo.currentText()]
-        if not self._template_in_use(selected_template):
-            return
-        self.backend.delete_template(selected_template)
-        self.load_templates()
-        self.template_combo.setCurrentIndex(0)
+        if self._del_timer.isActive():
+            self._del_timer.stop()
+            self._del_timer_done()
+            selected_template = self.backend.templates[
+                self.template_combo.currentText()
+            ]
+            if not self._template_in_use(selected_template):
+                return
+            self.backend.delete_template(selected_template)
+            self.load_templates()
+            self.template_combo.setCurrentIndex(0)
+        else:
+            self._del_timer.start()
+            self.del_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+            self.del_btn.setText("Confirm?")
+
+    def _del_timer_stop(self) -> None:
+        if self._del_timer.isActive():
+            self._del_timer.stop()
+            self._del_timer_done()
+
+    @Slot()
+    def _del_timer_done(self) -> None:
+        self.del_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.del_btn.setText("")
 
     def template_edited(self) -> bool:
         get_template = self.backend.read_template(
@@ -351,7 +480,7 @@ class TemplateSelector(QWidget):
     def _template_in_use(self, selected_template: PathLike[str]) -> bool:
         toggled_trackers = [
             str(tracker)
-            for tracker, tracker_settings in self.config.tracker_map.items()
+            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
             if tracker_settings.nfo_template == Path(selected_template).stem
         ]
 
@@ -370,10 +499,10 @@ class TemplateSelector(QWidget):
             return False
 
         for detected_tracker in toggled_trackers:
-            self.config.tracker_map[
+            self.config.settings.trackers.by_selection()[
                 TrackerSelection(detected_tracker)
             ].nfo_template = ""
-        self.config.save_config()
+        self.config.save()
 
         return True
 
@@ -386,23 +515,26 @@ class TemplateSelector(QWidget):
         if self.preview_btn.isChecked():
             if self.sandbox:
                 if (
-                    not self.config.media_input_payload.encode_file
-                    or not self.config.media_search_payload.title
+                    not self.context.media_input.input_path
+                    or not self.context.media_search.title
                 ):
-                    self.sandbox_input = SandBoxInput(self.config, self)
-                    if self.sandbox_input.exec() == QDialog.DialogCode.Rejected:
+                    self.sandbox_wizard = SandboxMainWindow(
+                        self.config, self.context, self
+                    )
+                    if self.sandbox_wizard.exec() == QDialog.DialogCode.Rejected:
                         self.preview_btn.setChecked(False)
                         self.text_edit.setReadOnly(False)
                         return
 
-            if not self.config.media_input_payload.encode_file:
-                raise FileNotFoundError("No input file to check template")
+            if not self.context.media_input.input_path:
+                self.preview_btn.setChecked(False)
+                raise FileNotFoundError("No input path to check template")
 
-            if not self.reset_sandbox_cache.isVisible():
+            if self.sandbox and not self.reset_sandbox_cache.isVisible():
                 self.reset_sandbox_cache.show()
 
             user_tokens = {
-                k: v for k, (v, _) in self.config.cfg_payload.user_tokens.items()
+                k: v for k, (v, _) in self.config.settings.user_tokens.tokens.items()
             }
 
             self.text_edit.setReadOnly(True)
@@ -439,18 +571,16 @@ class TemplateSelector(QWidget):
                     }
                 prompt = PromptTokenEditorDialog(
                     items=tokens_dict,
-                    warn_missing=self.config.cfg_payload.prompt_token_editor_warn_on_missing,
+                    warn_missing=self.config.settings.widgets.prompt_token_editor_warn_on_missing,
                     parent=self,
                 )
                 if prompt.exec() == QDialog.DialogCode.Accepted:
                     if (
                         prompt.warn_on_missing.isChecked()
-                        != self.config.cfg_payload.prompt_token_editor_warn_on_missing
+                        != self.config.settings.widgets.prompt_token_editor_warn_on_missing
                     ):
-                        self.config.cfg_payload.prompt_token_editor_warn_on_missing = (
-                            prompt.warn_on_missing.isChecked()
-                        )
-                        self.config.save_config()
+                        self.config.settings.widgets.prompt_token_editor_warn_on_missing = prompt.warn_on_missing.isChecked()
+                        self.config.save()
                     prompt_results = prompt.get_results()
                     self.cached_sandbox_prompt_tokens = prompt_results
                     if prompt_results:
@@ -463,28 +593,33 @@ class TemplateSelector(QWidget):
 
             nfo = ""
             try:
+                release_info = build_series_release_info(self.context.media_input)
                 token_replacer = TokenReplacer(
-                    media_input=self.config.media_input_payload.encode_file,
-                    jinja_engine=self.config.jinja_engine,
-                    source_file=self.config.media_input_payload.source_file,
+                    media_input_obj=self.context.media_input,
+                    jinja_engine=self.context.jinja_engine,
                     token_string=self.old_text,
-                    media_search_obj=self.config.media_search_payload,
-                    media_info_obj=self.config.media_input_payload.encode_file_mi_obj,
-                    source_file_mi_obj=self.config.media_input_payload.source_file_mi_obj,
-                    releasers_name=self.config.cfg_payload.releasers_name,
+                    media_search_obj=self.context.media_search,
+                    season_number=release_info.season,
+                    season_end=release_info.season_end,
+                    episode_number=(
+                        release_info.episode_start if not release_info.is_pack else None
+                    ),
+                    episode_format=release_info.episode_format,
+                    multi_episode_style=self.config.settings.series.multi_episode_style,
+                    releasers_name=self.config.settings.general.releasers_name,
                     dummy_screen_shots=False
-                    if self.config.shared_data.url_data
-                    or self.config.shared_data.loaded_images
+                    if self.context.shared_data.url_data
+                    or self.context.shared_data.loaded_images
                     else True,
-                    release_notes=self.config.shared_data.release_notes,
-                    edition_override=self.config.shared_data.dynamic_data.get(
+                    release_notes=self.context.shared_data.release_notes,
+                    edition_override=self.context.shared_data.dynamic_data.get(
                         "edition_override"
                     ),
-                    frame_size_override=self.config.shared_data.dynamic_data.get(
+                    frame_size_override=self.context.shared_data.dynamic_data.get(
                         "frame_size_override"
                     ),
-                    movie_clean_title_rules=self.config.cfg_payload.mvr_clean_title_rules,
-                    mi_video_dynamic_range=self.config.cfg_payload.mvr_mi_video_dynamic_range,
+                    title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                    video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
                     user_tokens=user_tokens,
                 )
                 output = token_replacer.get_output()
@@ -506,32 +641,67 @@ class TemplateSelector(QWidget):
                 self.text_edit.setReadOnly(False)
                 raise
 
-            try:
-                token_replacer_plugin = self.config.cfg_payload.token_replacer
-                if token_replacer_plugin:
-                    plugin = self.config.loaded_plugins[
-                        token_replacer_plugin
-                    ].token_replacer
-                    if plugin and callable(plugin):
-                        selected_template = self.template_combo.currentText()
-                        tracker_s = [
-                            tracker
-                            for tracker, tracker_settings in self.config.tracker_map.items()
-                            if tracker_settings.nfo_template == selected_template
-                        ]
-                        replace_tokens = plugin(
-                            config=self.config, input_str=nfo, tracker_s=tracker_s
-                        )
-                        nfo = replace_tokens if replace_tokens else nfo
-            except Exception:
-                # we attempt to execute the plugin, but since some data is filled in process step
-                # it might not be available.
-                pass
-
-            self.text_edit.setPlainText(nfo)
+            self.text_edit.setPlainText(self._apply_token_replacer_plugin(nfo))
         else:
             self.text_edit.setReadOnly(False)
             self.text_edit.setPlainText(self.old_text if self.old_text else "")
+
+    def _apply_token_replacer_plugin(self, nfo: str) -> str:
+        """Fill the token replacer plugin's tokens for the preview.
+
+        Returns the NFO unchanged when no plugin applies, when the template does
+        not belong to exactly one tracker, or when the plugin fails. A preview is
+        not a run: a plugin that cannot render here must not stop the user
+        editing, so a failure is reported and the host's own output kept.
+        """
+        if not self.config.settings.general.enable_plugins:
+            return nfo
+        token_replacer_plugin = self.config.settings.plugins.token_replacer
+        if not token_replacer_plugin:
+            return nfo
+        record = self.config.plugin_manager.get(token_replacer_plugin)
+        if record is None or record.definition.token_replacer is None:
+            return nfo
+
+        selected_template = self.template_combo.currentText()
+        tracker_s = [
+            tracker
+            for tracker, tracker_settings in self.config.settings.trackers.by_selection().items()
+            if tracker_settings.nfo_template == selected_template
+        ]
+        # processing always calls the plugin for exactly one tracker, so a template
+        # shared by several (or wired to none) has no format to render as: leave
+        # its tokens alone rather than guess one
+        if len(tracker_s) != 1:
+            return nfo
+
+        try:
+            return self.config.plugin_manager.replace_tokens(
+                token_replacer_plugin,
+                TokenReplaceRequest(
+                    config=self.config,
+                    context=self.context,
+                    text=nfo,
+                    trackers=tracker_s,
+                    tracker_images=None,
+                    formatted_screens=None,
+                    preview=True,
+                ),
+            )
+        except Exception as plugin_error:
+            # reported rather than swallowed: leaving the tokens raw without a word
+            # is what makes a working template look broken
+            LOG.warning(
+                LOG.LOG_SOURCE.FE,
+                f"Token replacer plugin failed during preview: {plugin_error}",
+            )
+            QMessageBox.warning(
+                self,
+                "Plugin Preview",
+                "The token replacer plugin could not fill its tokens in this "
+                f"preview, so they are left as they are.\n\n{plugin_error}",
+            )
+            return nfo
 
     @Slot()
     def maximize_template(self) -> None:
@@ -584,108 +754,21 @@ class TemplateSelector(QWidget):
     def _get_file_tokens(self) -> list[TokenType]:
         user_tokens = [
             TokenType(f"{{{k}}}", "User Token")
-            for k in self.config.cfg_payload.user_tokens.keys()
+            for k in self.config.settings.user_tokens.tokens.keys()
         ]
         return sorted(Tokens().get_token_objects()) + user_tokens
 
     @Slot(bool)
-    def _clear_sandbox_input_prompt_tokens_cache(self, _) -> None:
+    def _clear_sandbox_input_prompt_tokens_cache(self, _: bool) -> None:
         self.reset_sandbox_preview_cache(True)
 
-    def reset_sandbox_preview_cache(self, reset_tokens: bool = False):
+    def reset_sandbox_preview_cache(self, reset_tokens: bool = False) -> None:
         if self.preview_btn.isChecked():
             self.preview_btn.setChecked(False)
             self.preview_template()
-
-        self.config.media_input_payload.encode_file = None
-        self.config.media_search_payload.title = None
+        self.context.media_input.reset()
+        self.context.media_search.reset()
         if reset_tokens:
             self.cached_sandbox_prompt_tokens = None
         self.reset_sandbox_cache.hide()
-
-
-class SandBoxInput(QDialog):
-    def __init__(self, config: Config, parent=None) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Sandbox Input")
-        set_top_parent_geometry(self)
-
-        self.config = config
-        self._wizard_next_count = 0
-
-        GSigs().main_window_set_disabled.connect(self._set_disabled)
-        GSigs().main_window_update_status_tip.connect(self._update_fake_status_bar)
-        GSigs().main_window_clear_status_tip.connect(self._clear_fake_status_bar)
-
-        self.sandbox_lbl = QLabel("Input", self)
-
-        self.media_input = MediaInputBasic(
-            self.config, self, on_finished_cb=self._handle_next
-        )
-        self.media_input.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.media_input.file_loaded.connect(self._update_media_search)
-        self.media_input.file_tree.setMaximumHeight(130)
-
-        self.media_search_lbl = QLabel("Search", self)
-
-        self.media_search = MediaSearch(
-            self.config, self, on_finished_cb=self._handle_next
-        )
-        self.media_search.main_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.accept_btn = QToolButton(self)
-        self.accept_btn.setText("Accept")
-        self.accept_btn.clicked.connect(self._accept)
-
-        self.fake_status_bar = QLabel(self)
-
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.addWidget(self.sandbox_lbl)
-        self.main_layout.addWidget(self.media_input)
-        self.main_layout.addWidget(self.media_search_lbl)
-        self.main_layout.addWidget(self.media_search, stretch=5)
-        self.main_layout.addWidget(
-            self.accept_btn, alignment=Qt.AlignmentFlag.AlignRight
-        )
-        self.main_layout.addSpacerItem(
-            QSpacerItem(
-                1, 20, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
-            )
-        )
-        self.main_layout.addWidget(self.fake_status_bar)
-
-    @Slot(str)
-    def _update_media_search(self, file_path: str) -> None:
-        guess = guessit(Path(file_path).name)
-        guessed_title = guess.get("title", "")
-        year = guess.get("year", "")
-        if year:
-            guessed_title = f"{guessed_title} {year}"
-
-        self.media_search.search_entry.setText(guessed_title)
-        self.media_search._search_tmdb_api()
-
-    @Slot()
-    def _accept(self) -> None:
-        self.media_input.validatePage()
-
-    @Slot()
-    def _handle_next(self) -> None:
-        if self._wizard_next_count == 0:
-            self.media_search.validatePage()
-            self._wizard_next_count += 1
-        else:
-            # closes the dialogue
-            self.accept()
-
-    @Slot(bool)
-    def _set_disabled(self, disable: bool) -> None:
-        self.setDisabled(disable)
-
-    @Slot(str, int)
-    def _update_fake_status_bar(self, msg: str, _timer: int) -> None:
-        self.fake_status_bar.setText(msg)
-
-    @Slot()
-    def _clear_fake_status_bar(self) -> None:
-        self.fake_status_bar.clear()
+        self._del_timer_stop()

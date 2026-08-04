@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Type
+from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.config.config import Config
+from src.config.config import ConfigManager
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 
 if TYPE_CHECKING:
-    from src.frontend.windows.main_window import MainWindow
     from src.frontend.stacked_windows.settings.settings import Settings
+    from src.frontend.windows.main_window import MainWindow
 
 
 class BaseSettings(QWidget):
@@ -33,7 +33,7 @@ class BaseSettings(QWidget):
     REQUIRED_CHILD_METHODS = ("apply_defaults",)
 
     def __init__(
-        self, config: Config, main_window: "MainWindow", parent: "Settings"
+        self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
     ) -> None:
         super().__init__(parent)
         self._custom_abstract_method_check()
@@ -76,7 +76,9 @@ class BaseSettings(QWidget):
                     f"You must implement the {method} method for {self.__class__.__name__}"
                 )
 
-    def add_widget(self, widget: QWidget, add_stretch: bool = False, **kwargs) -> None:
+    def add_widget(
+        self, widget: QWidget, add_stretch: bool = False, **kwargs: Any
+    ) -> None:
         """Adds widget to parent layout, removing and adding the spacer item to the bottom
 
         add_stretch should be applied to the last item added to the layout"""
@@ -84,7 +86,9 @@ class BaseSettings(QWidget):
         if add_stretch:
             self.inner_layout.addStretch()
 
-    def add_layout(self, layout: QLayout, add_stretch: bool = False, **kwargs) -> None:
+    def add_layout(
+        self, layout: QLayout, add_stretch: bool = False, **kwargs: Any
+    ) -> None:
         """Adds layout to parent layout
 
         add_stretch should be applied to the last item added to the layout"""
@@ -117,7 +121,7 @@ class BaseSettings(QWidget):
 
     @staticmethod
     def load_combo_box(
-        widget: CustomComboBox, enum: Type[Enum], saved_data: Enum
+        widget: CustomComboBox, enum: type[Enum], saved_data: Enum
     ) -> None:
         """Clears CustomComboBox and reloads it with fresh data, setting the default value if available"""
         widget.clear()

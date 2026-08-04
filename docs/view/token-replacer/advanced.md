@@ -10,8 +10,10 @@ In NfoForge, open **Settings → User Tokens** to manage user tokens.
 
 To add a new token, select **Add**.
 
-- **Double click** the cell in the **Token** column that you just created to modify the token name.
-- **Double click** the cell in the **Type** column that you just created to select the desired token type.
+- **Double click** the cell in the **Token** column that you just created to modify the
+  token name.
+- **Double click** the cell in the **Type** column that you just created to select the
+  desired token type.
 
 <!-- prettier-ignore -->
 !!! question "What is the difference between FileTokens and NfoTokens?"
@@ -22,37 +24,47 @@ Below are two newly created tokens.
 
 #### User NfoToken
 
-![User Tokens NfoToken](../../images/tokens/user-tokens-nfo.png){ width=100%, style="max-width: 500px;" }
+![User Tokens NfoToken](../../images/tokens/user-tokens-nfo.png){ width=100%,
+style="max-width: 500px;" }
 
 #### User FileToken
 
-![User Tokens FileToken](../../images/tokens/user-tokens-ft.png){ width=100%, style="max-width: 500px;" }
+![User Tokens FileToken](../../images/tokens/user-tokens-ft.png){ width=100%,
+style="max-width: 500px;" }
 
 #### Example Usage
 
 Below is an **NFO** template using our two example tokens.
 
-![User Tokens Example](../../images/tokens/user-tokens-example.png){ width=100%, style="max-width: 500px;" }
+![User Tokens Example](../../images/tokens/user-tokens-example.png){ width=100%,
+style="max-width: 500px;" }
 
 Output
 
-![User Tokens Example](../../images/tokens/user-tokens-example-2.png){ width=100%, style="max-width: 500px;" }
+![User Tokens Example](../../images/tokens/user-tokens-example-2.png){ width=100%,
+style="max-width: 500px;" }
 
 Example of **file path** token.
 
-![User Tokens Example](../../images/tokens/user-tokens-example-3.png){ width=100%, style="max-width: 500px;" }
+![User Tokens Example](../../images/tokens/user-tokens-example-3.png){ width=100%,
+style="max-width: 500px;" }
 
 ### Global Tokens
 
-These tokens are meant to be used in NFO templates. Each global token is prefixed with `nf_`.
+These tokens are meant to be used in NFO templates. Each global token is prefixed with
+`nf_`.
 
 #### Token Objects
 
-All token objects resets to empty on **Start Over** or wizard reset. These tokens are updated dynamically throughout the flow of the program. Having this data available can be very powerful for advanced users.
+All token objects resets to empty on **Start Over** or wizard reset. These tokens are
+updated dynamically throughout the flow of the program. Having this data available can
+be very powerful for advanced users.
 
 ###### {{ nf_shared_data }}
 
-This token gives the user access to the **SharedPayload** dataclass. The field **dynamic_data** is specifically designed for **plugins** and numerous other functions that get filled throughout the workflow.
+This token gives the user access to the **SharedPayload** dataclass. The field
+**dynamic_data** is specifically designed for **plugins** and numerous other functions
+that get filled throughout the workflow.
 
 ```python
 @dataclass(slots=True)
@@ -82,8 +94,8 @@ This token gives the user access to the **MediaSearchPayload** dataclass.
 ```python
 @dataclass(slots=True)
 class MediaSearchPayload:
+    media_type: MediaType | None = None
     imdb_id: str | None = None
-    imdb_data: Movie | None = None
     tmdb_id: str | None = None
     tmdb_data: dict | None = None
     tvdb_id: str | None = None
@@ -95,10 +107,15 @@ class MediaSearchPayload:
     year: int | None = None
     original_title: str | None = None
     genres: list[TMDBGenreIDsMovies | TMDBGenreIDsSeries] = field(default_factory=list)
+    plot: str | None = None
+    poster_url: str | None = None
+    genre_names: tuple[str, ...] = ()
+    media_kind: MetadataMediaKind | None = None
+    plugin_data: dict[str, Any] = field(default_factory=dict)
 
     def reset(self) -> None:
+        self.media_type = None
         self.imdb_id = None
-        self.imdb_data = None
         self.tmdb_id = None
         self.tmdb_data = None
         self.tvdb_id = None
@@ -110,6 +127,11 @@ class MediaSearchPayload:
         self.year = None
         self.original_title = None
         self.genres.clear()
+        self.plot = None
+        self.poster_url = None
+        self.genre_names = ()
+        self.media_kind = None
+        self.plugin_data.clear()
 ```
 
 ###### {{ nf_media_input_payload }}
@@ -119,43 +141,58 @@ This token gives the user access to the **MediaInputPayload** dataclass.
 ```python
 @dataclass(slots=True)
 class MediaInputPayload:
-    script_file: Path | None = None
-    source_file: Path | None = None
-    source_file_mi_obj: MediaInfo | None = None
-    encode_file: Path | None = None
-    encode_file_mi_obj: MediaInfo | None = None
-    encode_file_dir: Path | None = None
-    renamed_file: Path | None = None
+    input_path: Path | None = None
+    media_type: MediaType | None = None
     working_dir: Path | None = None
+    file_list: list[Path] = field(default_factory=list)
+    file_list_mediainfo: dict[Path, MediaInfo] = field(default_factory=dict)
+    comparison_pair: ComparisonPair | None = None
+    series_episode_map: dict[Path, dict] | None = None
+    series_episode_format: EpisodeFormat = EpisodeFormat.STANDARD
 
-    def reset(self) -> None:
-        self.script_file = None
-        self.source_file = None
-        self.source_file_mi_obj = None
-        self.encode_file = None
-        self.encode_file_mi_obj = None
-        self.encode_file_dir = None
-        self.renamed_file = None
-        self.working_dir = None
+    def has_basic_data(self) -> bool:
+        ...
+
+    def require_input_path(self) -> Path:
+        ...
+
+    def require_media_type(self) -> MediaType:
+        ...
+
+    def require_working_dir(self) -> Path:
+        ...
+
+    def require_existing_media_paths(self, *, include_comparison: bool) -> None:
+        ...
+
+    def get_first_file(self, raise_error: bool = False) -> Path | None:
+        ...
+
+    def require_first_file(self) -> Path:
+        ...
+
+    def get_mediainfo(self, fp: Path) -> MediaInfo | None:
+        ...
+
+    def require_mediainfo(self, fp: Path) -> MediaInfo:
+        ...
+
+    def reset(self, input_path: Path | None = None) -> None:
+        ...
 ```
 
 ###### Example Usage
 
-Displaying the object directly in the template.
+The payload now exposes the selected input path, the discovered file list, and cached
+MediaInfo objects keyed by file path.
 
-```text
-{{ nf_media_input_payload }}
-```
-
-```text
-MediaInputPayload(script_file=None, source_file=None, source_file_mi_obj=None, encode_file=WindowsPath('C:/Users/user/Desktop/sample/example/Big.Buck.Bunny.2008.BluRay.1080p.MP2.2.0.x264.mp4'), encode_file_mi_obj=<pymediainfo.MediaInfo object at 0x00000210F6087B90>, encode_file_dir=None, renamed_file=None, working_dir=WindowsPath('C:/Users/user/AppData/Local/nfoforge/Big.Buck.Bunny.2008.BluRay_08.04.2025_02.21.24'))
-```
-
-You can use the object above in a template. This is a [PyMediaInfo object](https://github.com/sbraz/pymediainfo) utilizing the method `to_data()`.
+You can pull the first discovered file and its MediaInfo from the payload in a template.
 
 ```jinja
-{% if nf_media_input_payload.encode_file_mi_obj %}
-{{ nf_media_input_payload.encode_file_mi_obj.to_data() }}
+{% set first_file = nf_media_input_payload.require_first_file() %}
+{% set media_info = nf_media_input_payload.get_mediainfo(first_file) %}
+{% if media_info %}
+{{ media_info.to_data() }}
 {% endif %}
 ```
 
@@ -163,11 +200,15 @@ You can use the object above in a template. This is a [PyMediaInfo object](https
 --8<-- "docs/snippets/bbb_pymediainfo.txt"
 ```
 
-To display the **duration** of the loaded object, first check that the object exists. Then, set a variable named `general_track` to the first general track, and access the first value in its `other_duration` list:
+To display the **duration** of the loaded object, first check that the object exists.
+Then, set a variable named `general_track` to the first general track, and access the
+first value in its `other_duration` list:
 
 ```jinja
-{% if nf_media_input_payload.encode_file_mi_obj %}
-{% set general_track = nf_media_input_payload.encode_file_mi_obj.general_tracks[0] %}
+{% set first_file = nf_media_input_payload.require_first_file() %}
+{% set media_info = nf_media_input_payload.get_mediainfo(first_file) %}
+{% if media_info %}
+{% set general_track = media_info.general_tracks[0] %}
 {{ general_track.other_duration[0] }}
 {% endif %}
 ```

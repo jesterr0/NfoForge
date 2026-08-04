@@ -1,157 +1,241 @@
-from collections.abc import Callable, Sequence
-import importlib
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
+from importlib import machinery, metadata, util
 from pathlib import Path
 import sys
+import traceback
 from typing import Any
 
-from PySide6.QtCore import SignalInstance
-from pymediainfo import MediaInfo
+import tomlkit
 
 from src.backend.utils.working_dir import CURRENT_DIR
-from src.config.config import Config
-from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import PluginError
 from src.logger.nfo_forge_logger import LOG
-from src.plugins.plugin_payload import PluginPayload
-from src.plugins.plugin_wizard_base import WizardPluginBase
+from src.plugins.api import PluginDefinition, PluginRecord
+from src.plugins.manager import PluginManager
+
+LOCAL_MANIFEST = "nfoforge-plugin.toml"
+ENTRY_POINT_GROUP = "nfoforge.plugins"
+
+
+@dataclass(frozen=True, slots=True)
+class PluginLoadFailure:
+    source: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"{self.source}: {self.reason}"
+
+
+@dataclass(frozen=True, slots=True)
+class PluginLoadReport:
+    loaded: tuple[PluginRecord, ...]
+    failures: tuple[PluginLoadFailure, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _LocalCandidate:
+    plugin_id: str
+    root: Path
+    module: str
+    object_name: str
 
 
 class PluginLoader:
-    def __init__(self, update_splash_msg: SignalInstance) -> None:
-        self.update_splash_msg = update_splash_msg
-        self.plugins: dict[str, PluginPayload] = {}
-        self.plugin_dir = CURRENT_DIR / "plugins"
-        self.plugin_dir.mkdir(exist_ok=True, parents=True)
+    """Discover local and installed plugins and register valid definitions."""
 
-    def load_plugins(self) -> dict[str, PluginPayload]:
-        """Load all plugin packages."""
-        # get plugins in current directory or ONE level down
-        directories = tuple(p for p in self.plugin_dir.glob("*") if p.is_dir()) + tuple(
-            p for p in self.plugin_dir.glob("*/*") if p.is_dir()
-        )
-        for item in directories:
-            if (
-                item.is_dir()
-                and item.name.startswith("plugin_")
-                or item.name.startswith("plugin-")
-            ):
-                sys.path.append(str(item.parent))
-                self._handle_dir(item)
-        if self.plugins:
-            LOG.debug(LOG.LOG_SOURCE.FE, f"Detected plugins: {self.plugins}")
-        return self.plugins
-
-    def _handle_dir(self, item_dir: Path) -> None:
-        """Handle the plugin directory and load as a package."""
-        package_name = item_dir.stem
-
-        # ensure plugin folder has an __init__.py to treat it as a package
-        init_file = item_dir / "__init__.py"
-        init_file_pyd = item_dir / "__init__.pyd"
-        if not init_file.exists() and not init_file_pyd.exists():
-            raise PluginError("You must have a properly structured __init__ file")
-
-        # load plugin_payload
-        try:
-            main_module = self._load_package_module(package_name)
-            plugin_payload = main_module.plugin_payload
-            self._check_plugin(plugin_payload)
-            self.plugins[plugin_payload.name] = plugin_payload
-            LOG.debug(LOG.LOG_SOURCE.FE, f"Plugin loaded: {plugin_payload.name}")
-        except AttributeError:
-            raise PluginError(f"Failed to load plugin package: {package_name}")
-
-    def _load_package_module(self, package_name: str):
-        """Dynamically import the main module within a plugin package."""
-        # import the module as a package submodule
-        module = importlib.import_module(package_name)
-        sys.modules[package_name] = module
-        return module
-
-    def _check_plugin(self, plugin_payload: Any) -> None:
-        if not isinstance(plugin_payload, PluginPayload):
-            raise PluginError("Plugin isn't an instance of PluginPayload")
-
-        if not plugin_payload.name:
-            raise PluginError("PluginPayload requires the 'name' field to be filled")
-
-        if plugin_payload.wizard and not issubclass(
-            plugin_payload.wizard, WizardPluginBase
-        ):
-            raise PluginError(
-                "'PluginPayload.wizard' should be a subclass of 'WizardPluginBase'"
-            )
-
-        if plugin_payload.jinja2_filters:
-            if not isinstance(plugin_payload.jinja2_filters, dict):
-                raise PluginError(
-                    "'PluginPayload.jinja2_filters' should be a dictionary of {str: Callable}"
-                )
-
-        if plugin_payload.jinja2_functions:
-            if not isinstance(plugin_payload.jinja2_functions, dict):
-                raise PluginError(
-                    "'PluginPayload.jinja2_functions' should be a dictionary of {str: Callable}"
-                )
-
-        self._validate_plugin_functions(
-            plugin_payload,
-            {
-                "token_replacer": {
-                    "config": Config,
-                    "input_str": str,
-                    "tracker_s": Sequence[TrackerSelection],
-                },
-                "pre_upload": {
-                    "config": Config,
-                    "tracker": TrackerSelection,
-                    "torrent_file": Path,
-                    "media_file": Path,
-                    "mi_obj": MediaInfo,
-                    "source_path": Path,
-                    "upload_text_cb": Callable[[str], None],
-                    "upload_text_replace_last_line_cb": Callable[[str], None],
-                    "progress_cb": Callable[[float], None],
-                },
-            },
-        )
-
-    def _validate_plugin_functions(
-        self, plugin_payload: PluginPayload, functions: dict
+    def __init__(
+        self,
+        manager: PluginManager,
+        update_status: Callable[[str], None] | None = None,
+        plugin_dir: Path | None = None,
     ) -> None:
-        for func_name, expected_kwargs in functions.items():
-            func = getattr(plugin_payload, func_name, None)
-            if func:
-                self._check_callable_kwargs(
-                    plugin_payload_var=func,
-                    plugin_name=func_name,
-                    expected_kwargs=expected_kwargs,
+        self.manager = manager
+        self.update_status = update_status
+        self.plugin_dir = plugin_dir or CURRENT_DIR / "plugins"
+        self.failures: list[PluginLoadFailure] = []
+
+    def load_plugins(self) -> PluginLoadReport:
+        """Discover, validate, and register every available plugin.
+
+        Local plugin directories are scanned first, sorted by casefolded
+        directory name, followed by installed `nfoforge.plugins` entry points,
+        sorted by name. Registration is first-come-first-served: `PluginManager
+        .register` rejects a second registration under an already-used plugin
+        ID, so on an ID collision the plugin registered first wins and the
+        later one fails with a duplicate-ID error, recorded as a load failure
+        rather than applied silently. Because local directories are scanned
+        before entry points, a local plugin always wins a collision against an
+        installed package sharing its ID. This precedence is deliberate, not
+        incidental: local plugins are the recommended installation method (see
+        `docs/view/plugins/plugin-system.md`), so an installed package must not
+        be able to silently shadow one.
+        """
+
+        self.failures.clear()
+        self.manager.clear_load_issues()
+        try:
+            self.plugin_dir.mkdir(exist_ok=True, parents=True)
+        except OSError as error:
+            self._record_failure(str(self.plugin_dir), error)
+            return PluginLoadReport(self.manager.records, tuple(self.failures))
+
+        for root in sorted(
+            (item for item in self.plugin_dir.iterdir() if item.is_dir()),
+            key=lambda item: item.name.casefold(),
+        ):
+            manifest = root / LOCAL_MANIFEST
+            if not manifest.is_file():
+                continue
+            try:
+                candidate = self._read_local_manifest(root, manifest)
+                self._notify(f"Loading plugin: {candidate.plugin_id}")
+                definition = self._load_local_definition(candidate)
+                self.manager.register(
+                    candidate.plugin_id, definition, str(candidate.root)
                 )
+            except SystemExit as error:
+                self._record_failure(
+                    str(root), PluginError(f"Plugin exited during import: {error}")
+                )
+            except Exception as error:
+                self._record_failure(str(root), error)
+
+        for entry_point in self._entry_points():
+            try:
+                self._notify(f"Loading plugin: {entry_point.name}")
+                definition = entry_point.load()
+                if not isinstance(definition, PluginDefinition):
+                    raise PluginError(
+                        "Entry point must resolve to a PluginDefinition object"
+                    )
+                self.manager.register(
+                    entry_point.name,
+                    definition,
+                    f"entry point {entry_point.value}",
+                )
+            except SystemExit as error:
+                self._record_failure(
+                    f"entry point {entry_point.name}",
+                    PluginError(f"Plugin exited during import: {error}"),
+                )
+            except Exception as error:
+                self._record_failure(f"entry point {entry_point.name}", error)
+
+        if self.manager.records:
+            loaded = ", ".join(record.plugin_id for record in self.manager.records)
+            LOG.debug(LOG.LOG_SOURCE.FE, f"Detected plugins: {loaded}")
+        return PluginLoadReport(self.manager.records, tuple(self.failures))
 
     @staticmethod
-    def _check_callable_kwargs(
-        plugin_payload_var: Any,
-        plugin_name: str,
-        expected_kwargs: dict[str, Any],
-    ) -> None:
-        if not callable(plugin_payload_var):
-            raise PluginError(
-                f"'PluginPayload.{plugin_name}' should be a callable function"
-            )
+    def _read_local_manifest(root: Path, manifest: Path) -> _LocalCandidate:
+        try:
+            document = tomlkit.parse(manifest.read_text(encoding="utf-8"))
+        except Exception as error:
+            raise PluginError(f"Invalid {LOCAL_MANIFEST}: {error}") from error
 
-        # check that the function accepts **kwargs
-        func_code = getattr(plugin_payload_var, "__code__", None)
-        if not func_code or "kwargs" not in func_code.co_varnames:
+        raw_version = document.get("schema_version")
+        raw_id = document.get("id")
+        raw_module = document.get("module")
+        raw_object = document.get("object", "plugin")
+        if not isinstance(raw_version, int) or isinstance(raw_version, bool):
+            raise PluginError("Manifest schema_version must be 1")
+        schema_version = raw_version
+        if schema_version != 1:
             raise PluginError(
-                f"'{plugin_name}' must accept '**kwargs' to be compatible with the loader."
+                f"Unsupported manifest schema version {schema_version}; expected 1"
             )
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            raise PluginError("Manifest requires a non-empty string id")
+        if not isinstance(raw_module, str) or not raw_module.strip():
+            raise PluginError("Manifest requires a non-empty string module")
+        if not isinstance(raw_object, str) or not raw_object.strip():
+            raise PluginError("Manifest object must be a non-empty string")
+        module = raw_module.strip()
+        object_name = raw_object.strip()
+        if not module.isidentifier():
+            raise PluginError(
+                "Manifest module must be a top-level Python module or package name"
+            )
+        if not object_name.isidentifier():
+            raise PluginError("Manifest object must be a valid Python identifier")
+        return _LocalCandidate(
+            plugin_id=raw_id.strip(),
+            root=root,
+            module=module,
+            object_name=object_name,
+        )
 
-        # validate expected kwargs
-        annotations = getattr(plugin_payload_var, "__annotations__", {})
-        for key, expected_type in expected_kwargs.items():
-            actual_type = annotations.get(key)
-            if actual_type and actual_type != expected_type:
+    @staticmethod
+    def _load_local_definition(candidate: _LocalCandidate) -> PluginDefinition:
+        existing = sys.modules.get(candidate.module)
+        if existing is not None:
+            module_file = getattr(existing, "__file__", None)
+            if module_file is None or not PluginLoader._is_below(
+                Path(module_file), candidate.root
+            ):
                 raise PluginError(
-                    f"Type for kwarg '{key}' in '{plugin_name}' is incorrect. "
-                    f"Expected: {expected_type}, Found: {actual_type}"
+                    f"Module name '{candidate.module}' is already loaded from "
+                    "a different location"
                 )
+            module = existing
+        else:
+            spec = machinery.PathFinder.find_spec(
+                candidate.module, [str(candidate.root)]
+            )
+            if spec is None or spec.loader is None or spec.origin is None:
+                raise PluginError(
+                    f"Could not find local plugin module '{candidate.module}'"
+                )
+            if not PluginLoader._is_below(Path(spec.origin), candidate.root):
+                raise PluginError(
+                    f"Plugin module '{candidate.module}' resolved outside its root"
+                )
+
+            module = util.module_from_spec(spec)
+            sys.modules[candidate.module] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(candidate.module, None)
+                raise
+
+        definition: Any = getattr(module, candidate.object_name, None)
+        if not isinstance(definition, PluginDefinition):
+            raise PluginError(
+                f"'{candidate.module}:{candidate.object_name}' must export a "
+                "PluginDefinition"
+            )
+        return definition
+
+    @staticmethod
+    def _entry_points() -> Iterable[metadata.EntryPoint]:
+        return tuple(
+            sorted(
+                metadata.entry_points(group=ENTRY_POINT_GROUP),
+                key=lambda item: item.name,
+            )
+        )
+
+    @staticmethod
+    def _is_below(path: Path, root: Path) -> bool:
+        try:
+            path.resolve().relative_to(root.resolve())
+        except ValueError:
+            return False
+        return True
+
+    def _notify(self, message: str) -> None:
+        if self.update_status is not None:
+            self.update_status(message)
+
+    def _record_failure(self, source: str, error: Exception) -> None:
+        failure = PluginLoadFailure(source, str(error) or type(error).__name__)
+        self.failures.append(failure)
+        self.manager.record_load_issue(failure.source, failure.reason)
+        LOG.error(
+            LOG.LOG_SOURCE.FE,
+            f"Failed to load plugin '{source}':\n{traceback.format_exc()}",
+        )

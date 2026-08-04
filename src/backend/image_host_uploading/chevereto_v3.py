@@ -7,7 +7,10 @@ import re
 
 import aiohttp
 
-from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.exceptions import ImageUploadError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
@@ -61,7 +64,7 @@ async def _login_to_chevereto_v3(
         if not get_login_page:
             raise ImageUploadError("Failed to login (could not determine html text)")
 
-        auth_code = (
+        auth_code = str(
             get_login_page.split("PF.obj.config.auth_token = ")[1]
             .split(";")[0]
             .replace('"', "")
@@ -106,7 +109,7 @@ async def _create_album(
         album_id = album_json["album"]["id_encoded"]
         if not album_id:
             raise ImageUploadError("Failed to determine album id")
-        return album_id
+        return str(album_id)
 
 
 async def _upload_image(
@@ -115,7 +118,7 @@ async def _upload_image(
     auth_code: str,
     album_id: str,
     img: Path,
-    cb: Callable[[int], Awaitable] | None,
+    cb: Callable[[int], Awaitable[None]] | None,
     idx: int,
     retries: int = 3,
 ) -> ImageUploadData:
@@ -168,7 +171,7 @@ async def _upload_images(
     album_id: str,
     filepaths: Sequence[PathLike[str] | Path | str],
     batch_size: int,
-    cb: Callable[[int], Awaitable] | None,
+    cb: Callable[[int], Awaitable[None]] | None,
 ) -> dict[int, ImageUploadData]:
     tasks = [
         asyncio.create_task(
@@ -192,7 +195,7 @@ async def chevereto_v3_upload(
     filepaths: Sequence[Path],
     batch_size: int = 4,
     album_name: str | None = None,
-    progress_callback: Callable[[int], Awaitable] | None = None,
+    progress_callback: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData]:
     base_url = _clean_url(base_url)
     filepaths = sorted(filepaths)
@@ -233,20 +236,17 @@ class CheveretoV3Uploader(BaseImageHostUploader):
         self.user = user
         self.password = password
 
-    async def upload(
-        self,
-        filepaths: Sequence[Path],
-        batch_size: int = 4,
-        album_name: str | None = None,
-        progress_callback: Callable[[int], Awaitable] | None = None,
-    ) -> dict[int, ImageUploadData] | None:
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
         """Upload images to Chevereto V3."""
-        return await chevereto_v3_upload(
-            base_url=self.base_url,
-            user=self.user,
-            password=self.password,
-            filepaths=filepaths,
-            batch_size=batch_size,
-            album_name=album_name,
-            progress_callback=progress_callback,
+        return (
+            await chevereto_v3_upload(
+                base_url=self.base_url,
+                user=self.user,
+                password=self.password,
+                filepaths=request.filepaths,
+                batch_size=request.batch_size,
+                album_name=request.album_name,
+                progress_callback=request.progress_callback,
+            )
+            or {}
         )

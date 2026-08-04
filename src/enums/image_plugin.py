@@ -1,6 +1,8 @@
 from enum import auto as auto_enum
-from src.enums import CaseInsensitiveEnum
+
 from typing_extensions import override
+
+from src.enums import CaseInsensitiveEnum
 
 
 class ImagePlugin(CaseInsensitiveEnum):

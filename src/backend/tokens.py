@@ -1,11 +1,10 @@
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, make_dataclass
-from typing import Any, NamedTuple, Type
+from typing import Any, NamedTuple
 
 from src.enums import CaseInsensitiveStrEnum
 
-
-MOVIE_CLEAN_TITLE_REPLACE_DEFAULTS = [
+TITLE_CLEAN_REPLACE_DEF = [
     (r"", r"[unidecode]"),
     (r"&", r"and"),
     (r"'", r"[remove]"),
@@ -40,10 +39,10 @@ class NfoToken(TokenType):
 
 
 class TokenSelection(CaseInsensitiveStrEnum):
-    FILE_TOKEN = "FileToken"
-    NFO_TOKEN = "NfoToken"
+    FILE_TOKEN = "FileToken"  # noqa: S105 - enum value naming a token category, not a credential
+    NFO_TOKEN = "NfoToken"  # noqa: S105 - enum value naming a token category, not a credential
 
-    def get_token_obj(self) -> Type[TokenType]:
+    def get_token_obj(self) -> type[TokenType]:
         if self == TokenSelection.FILE_TOKEN:
             return FileToken
         elif self == TokenSelection.NFO_TOKEN:
@@ -59,116 +58,129 @@ class Tokens:
     FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
     HYBRID = FileToken("{hybrid}", "HYBRID")
     LOCALIZATION = FileToken("{localization}", "Subbed/Dubbed")
-    MI_AUDIO_BITRATE = FileToken("{mi_audio_bitrate}", "Audio bitrate (640000)")
-    MI_AUDIO_BITRATE_FORMATTED = FileToken(
-        "{mi_audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
+    AUDIO_BITRATE = FileToken("{audio_bitrate}", "Audio bitrate (640000)")
+    AUDIO_BITRATE_FORMATTED = FileToken(
+        "{audio_bitrate_formatted}", "Audio bitrate formatted (640 kb/s)"
     )
-    MI_AUDIO_CHANNEL_S = FileToken("{mi_audio_channel_s}", "Audio channels (5.1)")
-    MI_AUDIO_CHANNEL_S_I = FileToken("{mi_audio_channel_s_i}", "Audio channels (6)")
-    MI_AUDIO_CHANNEL_S_LAYOUT = FileToken(
-        "{mi_audio_channel_s_layout}", "Audio channel layout (L R C LFE Ls Rs Lb Rb)"
+    AUDIO_CHANNEL_S = FileToken("{audio_channel_s}", "Audio channels (5.1)")
+    AUDIO_CHANNEL_S_I = FileToken("{audio_channel_s_i}", "Audio channels (6)")
+    AUDIO_CHANNEL_S_LAYOUT = FileToken(
+        "{audio_channel_s_layout}", "Audio channel layout (L R C LFE Ls Rs Lb Rb)"
     )
-    MI_AUDIO_CODEC = FileToken("{mi_audio_codec}", "Audio codec")
-    MI_AUDIO_COMMERCIAL_NAME = FileToken(
-        "{mi_audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
+    AUDIO_CODEC = FileToken("{audio_codec}", "Audio codec")
+    AUDIO_CODEC_NO_ATMOS = FileToken(
+        "{audio_codec_no_atmos}", "Audio codec with Atmos removed (TrueHD)"
     )
-    MI_AUDIO_COMPRESSION = FileToken(
-        "{mi_audio_compression}", "Audio compression (Lossy)"
+    ATMOS = FileToken("{atmos}", "Returns 'Atmos' if Atmos was detected")
+    AUDIO_COMMERCIAL_NAME = FileToken(
+        "{audio_commercial_name}", "Audio commercial name (Dolby Digital Plus)"
     )
-    MI_AUDIO_FORMAT_INFO = FileToken(
-        "{mi_audio_format_info}", "Audio format info (Enhanced AC-3)"
+    AUDIO_COMPRESSION = FileToken("{audio_compression}", "Audio compression (Lossy)")
+    AUDIO_FORMAT_INFO = FileToken(
+        "{audio_format_info}", "Audio format info (Enhanced AC-3)"
     )
-    MI_AUDIO_LANGUAGE_1_FULL = FileToken(
-        "{mi_audio_language_1_full}", "Audio language (first track 'English')"
+    AUDIO_LANGUAGE_1_FULL = FileToken(
+        "{audio_language_1_full}", "Audio language (first track 'English')"
     )
-    MI_AUDIO_LANGUAGE_1_ISO_639_1 = FileToken(
-        "{mi_audio_language_1_iso_639_1}", "Audio language (first track 'EN')"
+    AUDIO_LANGUAGE_1_ISO_639_1 = FileToken(
+        "{audio_language_1_iso_639_1}", "Audio language (first track 'EN')"
     )
-    MI_AUDIO_LANGUAGE_1_ISO_639_2 = FileToken(
-        "{mi_audio_language_1_iso_639_2}", "Audio language (first track 'ENG')"
+    AUDIO_LANGUAGE_1_ISO_639_2 = FileToken(
+        "{audio_language_1_iso_639_2}", "Audio language (first track 'ENG')"
     )
-    MI_AUDIO_LANGUAGE_2_ISO_639_1 = FileToken(
-        "{mi_audio_language_2_iso_639_1}", "Audio language (first two tracks EN+ES)"
+    AUDIO_LANGUAGE_2_ISO_639_1 = FileToken(
+        "{audio_language_2_iso_639_1}", "Audio language (first two tracks EN+ES)"
     )
-    MI_AUDIO_LANGUAGE_2_ISO_639_2 = FileToken(
-        "{mi_audio_language_2_iso_639_2}", "Audio languages (first two tracks ENG+SPA)"
+    AUDIO_LANGUAGE_2_ISO_639_2 = FileToken(
+        "{audio_language_2_iso_639_2}", "Audio languages (first two tracks ENG+SPA)"
     )
-    MI_AUDIO_LANGUAGE_ALL_ISO_639_1 = FileToken(
-        "{mi_audio_language_all_iso_639_1}",
+    AUDIO_LANGUAGE_ALL_ISO_639_1 = FileToken(
+        "{audio_language_all_iso_639_1}",
         "All audio languages (all tracks EN+ES+etc..)",
     )
-    MI_AUDIO_LANGUAGE_ALL_ISO_639_2 = FileToken(
-        "{mi_audio_language_all_iso_639_2}",
+    AUDIO_LANGUAGE_ALL_ISO_639_2 = FileToken(
+        "{audio_language_all_iso_639_2}",
         "All audio languages (all tracks ENG+SPA+etc..)",
     )
-    MI_AUDIO_LANGUAGE_ALL_FULL = FileToken(
-        "{mi_audio_language_all_full}",
+    AUDIO_LANGUAGE_ALL_FULL = FileToken(
+        "{audio_language_all_full}",
         "All audio languages (all tracks English Spanish..)",
     )
-    MI_AUDIO_LANGUAGE_DUAL = FileToken(
-        "{mi_audio_language_dual}",
+    AUDIO_LANGUAGE_DUAL = FileToken(
+        "{audio_language_dual}",
         "Audio language ('Dual Audio' will be returned if there are 2 or more tracks with unique languages)",
     )
-    MI_AUDIO_LANGUAGE_MULTI = FileToken(
-        "{mi_audio_language_multi}",
+    AUDIO_LANGUAGE_MULTI = FileToken(
+        "{audio_language_multi}",
         "Audio languages ('Multi' will be returned if there are 3 or more tracks with unique languages)",
     )
-    MI_AUDIO_SAMPLE_RATE = FileToken(
-        "{mi_audio_sample_rate}", "Audio sample rate (48.0 kHz)"
+    AUDIO_SAMPLE_RATE = FileToken("{audio_sample_rate}", "Audio sample rate (48.0 kHz)")
+    VIDEO_3D = FileToken("{video_3d}", "Video 3D")
+    VIDEO_BIT_DEPTH_SPACE = FileToken(
+        "{video_bit_depth_space}", "Video bit depth (8 Bit)"
     )
-    MI_VIDEO_3D = FileToken("{mi_video_3d}", "Video 3D")
-    MI_VIDEO_BIT_DEPTH_SPACE = FileToken(
-        "{mi_video_bit_depth_space}", "Video bit depth (8 Bit)"
+    VIDEO_BIT_DEPTH_DASH = FileToken(
+        "{video_bit_depth_dash}", "Video bit depth (8-Bit)"
     )
-    MI_VIDEO_BIT_DEPTH_DASH = FileToken(
-        "{mi_video_bit_depth_dash}", "Video bit depth (8-Bit)"
+    VIDEO_CODEC = FileToken("{video_codec}", "Video codec")
+    VIDEO_DYNAMIC_RANGE = FileToken(
+        "{video_dynamic_range}", "Video dynamic range (HDR/SDR)"
     )
-    MI_VIDEO_CODEC = FileToken("{mi_video_codec}", "Video codec")
-    MI_VIDEO_DYNAMIC_RANGE = FileToken(
-        "{mi_video_dynamic_range}", "Video dynamic range (HDR/SDR)"
-    )
-    MI_VIDEO_DYNAMIC_RANGE_TYPE = FileToken(
-        "{mi_video_dynamic_range_type}",
+    VIDEO_DYNAMIC_RANGE_TYPE = FileToken(
+        "{video_dynamic_range_type}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ)",
     )
-    MI_VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR = FileToken(
-        "{mi_video_dynamic_range_type_inc_sdr}",
+    VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR = FileToken(
+        "{video_dynamic_range_type_inc_sdr}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR)",
     )
-    MI_VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080 = FileToken(
-        "{mi_video_dynamic_range_type_inc_sdr_over_1080}",
+    VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080 = FileToken(
+        "{video_dynamic_range_type_inc_sdr_over_1080}",
         "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
     )
-    MI_VIDEO_FORMAT = FileToken(
-        "{mi_video_format}", "Video format (AVC/HEVC/MPEG Video)"
+    VIDEO_FORMAT = FileToken("{video_format}", "Video format (AVC/HEVC/MPEG Video)")
+    FILE_VIDEO_HEIGHT = FileToken("{video_height}", "Video height (1040)")
+    VIDEO_LANGUAGE_FULL = FileToken("{video_language_full}", "Video language (English)")
+    VIDEO_LANGUAGE_ISO_639_1 = FileToken(
+        "{video_language_iso_639_1}", "Video language (EN)"
     )
-    MI_VIDEO_HEIGHT = FileToken("{mi_video_height}", "Video height (1040)")
-    MI_VIDEO_LANGUAGE_FULL = FileToken(
-        "{mi_video_language_full}", "Video language (English)"
+    VIDEO_LANGUAGE_ISO_639_2 = FileToken(
+        "{video_language_iso_639_2}", "Video language (ENG)"
     )
-    MI_VIDEO_LANGUAGE_ISO_639_1 = FileToken(
-        "{mi_video_language_iso_639_1}", "Video language (EN)"
+    FILE_VIDEO_WIDTH = FileToken("{video_width}", "Video width (1920)")
+    TITLE = FileToken(
+        "{title}", "Title parsed from media databases with minimal formatting"
     )
-    MI_VIDEO_LANGUAGE_ISO_639_2 = FileToken(
-        "{mi_video_language_iso_639_2}", "Video language (ENG)"
+    TITLE_CLEAN = FileToken("{title_clean}", "Clean title parsed from media databases")
+    TITLE_EXACT = FileToken(
+        "{title_exact}",
+        "Title parsed from media databases with no modifications",
     )
-    MI_VIDEO_WIDTH = FileToken("{mi_video_width}", "Video width (1920)")
-    MOVIE_TITLE = FileToken(
-        "{movie_title}", "Movie's title parsed from TMDB/IMDb with minimal formatting"
+    IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
+    ORIGINAL_TITLE = FileToken("{original_title}", "Original title")
+    ORIGINAL_TITLE_FALLBACK_TITLE = FileToken(
+        "{original_title_fallback_title}",
+        "Original title (fallback to {title})",
     )
-    MOVIE_CLEAN_TITLE = FileToken(
-        "{movie_clean_title}", "Movie's clean title parsed from TMDB/IMDb"
+    ORIGINAL_TITLE_FALLBACK_TITLE_CLEAN = FileToken(
+        "{original_title_fallback_title_clean}",
+        "Original title (fallback to {title_clean})",
     )
-    MOVIE_EXACT_TITLE = FileToken(
-        "{movie_exact_title}",
-        "Movie's title parsed from TMDB/IMDb with no modifications",
-    )
-    MOVIE_IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
-    MOVIE_TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
-    MOVIE_TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
-    MOVIE_MAL_ID = FileToken("{mal_id}", "MAL ID")
+    TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
+    TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
+    MAL_ID = FileToken("{mal_id}", "MAL ID")
     ORIGINAL_FILENAME = FileToken("{original_filename}", "Original filename")
+    ORIGINAL_LANGUAGE = FileToken("{original_language}", "Original language (English)")
+    ORIGINAL_LANGUAGE_ISO_639_1 = FileToken(
+        "{original_language_iso_639_1}",
+        "Original language (EN)",
+    )
+    ORIGINAL_LANGUAGE_ISO_639_2 = FileToken(
+        "{original_language_iso_639_2}",
+        "Original language (ENG)",
+    )
     RELEASE_GROUP = FileToken("{release_group}", "Release group")
+    RELEASE_DATE = FileToken("{release_date}", "Release date (movies - UTC)")
     RELEASERS_NAME = FileToken("{releasers_name}", "Releaser's name (Anonymous)")
     RELEASE_YEAR = FileToken("{release_year}", "Release year")
     RELEASE_YEAR_PARENTHESES = FileToken(
@@ -178,8 +190,33 @@ class Tokens:
     RESOLUTION = FileToken("{resolution}", "Resolution (1080p)")
     REMUX = FileToken("{remux}", "REMUX")
     SOURCE = FileToken("{source}", "Source media (BluRay/DVD)")
+    # series exclusive FileTokens
+    AIR_DATE = FileToken("{air_date}", "Air date (series first aired - UTC)")
+    SEASON_NUMBER = FileToken("{season_number}", "Season number (1, 2, 3, etc.)")
+    EPISODE_AIR_DATE = FileToken("{episode_air_date}", "Episode air date (UTC)")
+    EPISODE_NUMBER = FileToken("{episode_number}", "Episode number (1, 2, 3, etc.)")
+    EPISODE_NUMBER_ABSOLUTE = FileToken(
+        "{episode_number_absolute}", "Absolute episode number (1, 2, 3, etc.)"
+    )
+    END_EPISODE_NUMBER = FileToken(
+        "{end_episode_number}",
+        "End episode number for a multi-episode file (blank for single episodes).",
+    )
+    EPISODE_TITLE = FileToken(
+        "{episode_title}",
+        "Episode title parsed from media databases with minimal formatting",
+    )
+    EPISODE_TITLE_CLEAN = FileToken(
+        "{episode_title_clean}", "Clean title parsed from media databases"
+    )
+    EPISODE_TITLE_EXACT = FileToken(
+        "{episode_title_exact}",
+        "Title parsed from media databases with no modifications",
+    )
 
     # NFO Tokens
+    MEDIA_TYPE = NfoToken("{media_type}", "Media type (Movie/Series)")
+    IS_ANIME = NfoToken("{is_anime}", "Returns 'Anime' if the release is anime")
     CHAPTER_TYPE = NfoToken(
         "{chapter_type}", "Chapter type (Named / Numbered (1 - 10) / Tagged)"
     )
@@ -187,9 +224,6 @@ class Tokens:
     MEDIA_FILE = NfoToken("{media_file}", "Media filename with extension")
     MEDIA_FILE_NO_EXT = NfoToken(
         "{media_file_no_ext}", "Media filename without extension"
-    )
-    MOVIE_FULL_TITLE = NfoToken(
-        "{movie_full_title}", "Movie's full title with no formatting removed"
     )
     SOURCE_FILE = NfoToken("{source_file}", "Source filename with extension")
     SOURCE_FILE_NO_EXT = NfoToken(
@@ -199,11 +233,11 @@ class Tokens:
     MEDIA_INFO_SHORT = NfoToken(
         "{media_info_short}", "Shortened Mediainfo output with filepath cleansed"
     )
-    MI_VIDEO_BIT_RATE = NfoToken(
-        "{mi_video_bit_rate}", "Average video bit-rate in kbps (9975 kbps)"
+    VIDEO_BIT_RATE = NfoToken(
+        "{video_bit_rate}", "Average video bit-rate in kbps (9975 kbps)"
     )
-    MI_VIDEO_BIT_RATE_NUM_ONLY = NfoToken(
-        "{mi_video_bit_rate_num_only}",
+    VIDEO_BIT_RATE_NUM_ONLY = NfoToken(
+        "{video_bit_rate_num_only}",
         "Average video bit-rate in kbps, numbers only (9975)",
     )
     RELEASE_NOTES = NfoToken(
@@ -250,6 +284,19 @@ class Tokens:
     PROPER = NfoToken("{proper}", "Returns 'PROPER' if proper was detected")
     PROPER_N = NfoToken("{proper_n}", "Proper and proper number if exists (PROPER2)")
     PROPER_REASON = NfoToken("{proper_reason}", "Reason for PROPER if provided")
+    # series exclusive NfoToken
+    EPISODE_MEDIAINFO = NfoToken(
+        "{episode_mediainfo}", "Synopsis of all episodes mediainfo"
+    )
+    EPISODE_METADATA = NfoToken(
+        "{episode_metadata}", "Synopsis of all episodes metadata"
+    )
+    EPISODE_METADATA_MEDIAINFO = NfoToken(
+        "{episode_metadata_mediainfo}",
+        "Synopsis of all episodes metadata + mediainfo",
+    )
+    TOTAL_SEASONS = NfoToken("{total_seasons}", "Total seasons in series")
+    TOTAL_EPISODES = NfoToken("{total_episodes}", "Total episodes in the series")
 
     # nfo forge specific tokens
     PROGRAM_INFO = NfoToken("{program_info}", "NfoForge vx.x.x")
@@ -263,7 +310,7 @@ class Tokens:
 
     @classmethod
     def get_token_objects(
-        cls, token_type: Iterable[TokenType] | Type[TokenType] | None = None
+        cls, token_type: Iterable[TokenType] | type[TokenType] | None = None
     ) -> set[TokenType]:
         """Returns a set of token objects based on the specified token type"""
         token_types = [FileToken, NfoToken] if token_type is None else [token_type]
@@ -278,14 +325,14 @@ class Tokens:
 
     @staticmethod
     def get_tokens(
-        token_type: Iterable[TokenType] | Type[TokenType] | None = None,
+        token_type: Iterable[TokenType] | type[TokenType] | None = None,
     ) -> set[str]:
         """Returns a set of tokens without the brackets based on the specified token type"""
         return {token.token[1:-1] for token in Tokens.get_token_objects(token_type)}
 
     @staticmethod
     def generate_token_dataclass(
-        token_type: Iterable[TokenType] | Type[TokenType] | None = None,
+        token_type: Iterable[TokenType] | type[TokenType] | None = None,
     ) -> Any:
         """This dynamically creates a data class for the tokens above"""
         fields = [

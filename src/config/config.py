@@ -1,1900 +1,378 @@
+from collections.abc import MutableMapping
+from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+import shutil
+from typing import Any
 
-from platformdirs import user_data_dir as pd_user_data_dir
 import tomlkit
-from tomlkit import TOMLDocument
+from tomlkit.exceptions import ParseError
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.config.codec import TomlConfigCodec
 from src.config.dependencies import FindDependencies
-from src.enums.cropping import Cropping
-from src.enums.image_host import ImageHost, ImageSource
-from src.enums.image_plugin import ImagePlugin
-from src.enums.indexer import Indexer
-from src.enums.logging_settings import LogLevel
-from src.enums.media_mode import MediaMode
-from src.enums.profile import Profile
-from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.subtitles import SubtitleAlignment
-from src.enums.theme import NfoForgeTheme
-from src.enums.token_replacer import ColonReplace
-from src.enums.torrent_client import TorrentClientSelection
-from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
-from src.enums.trackers.morethantv import MTVSourceOrigin
-from src.enums.url_type import URLType
-from src.exceptions import ConfigError
-from src.nf_jinja2 import Jinja2TemplateEngine
-from src.payloads.clients import TorrentClient
-from src.payloads.config import ConfigPayload, ProgramConfigPayload
-from src.payloads.image_hosts import (
-    CheveretoV3Payload,
-    CheveretoV4Payload,
-    ImageBBPayload,
-    ImageBoxPayload,
-    ImagePayloadBase,
-    PTPIMGPayload,
-)
-from src.payloads.media_inputs import MediaInputPayload
-from src.payloads.media_search import MediaSearchPayload
-from src.payloads.shared_data import SharedPayload
-from src.payloads.trackers import (
-    AitherInfo,
-    BeyondHDInfo,
-    DarkPeersInfo,
-    HunoInfo,
-    LSTInfo,
-    MoreThanTVInfo,
-    OnlyEncodesInfo,
-    PassThePopcornInfo,
-    ReelFlixInfo,
-    ShareIslandInfo,
-    TorrentLeechInfo,
-    TrackerInfo,
-)
-from src.payloads.watch_folder import WatchFolder
-
-if TYPE_CHECKING:
-    from src.plugins.plugin_payload import PluginPayload
+from src.config.migrations import document_version, migrate_document
+from src.config.models import AppConfig, ProgramConfig
+from src.config.operations import TypedTomlOperations
+from src.config.paths import ConfigPaths
+from src.config.persistence import atomic_write_text
+from src.exceptions import ConfigError, ConfigSchemaError
+from src.logger.nfo_forge_logger import LOG
+from src.plugins.manager import PluginManager
 
 
-# TODO: add cryptography
-
-
-class Config:
+class ConfigManager(TypedTomlOperations):
     """
     Parse config file and create a payload object to be used throughout
     the program as needed as well as store other payloads that might need shared
     """
 
-    DEV_MODE: bool = False
-
-    ACCEPTED_EXTENSIONS = (".mkv", ".mp4")
-
-    QBIT_SPECIFIC = ("category", "super_seeding")
-
-    DELUGE_SPECIFIC = ("label", "path")
-
-    RTORRENT_SPECIFIC = ("label", "path")
-
-    TRANSMISSION_SPECIFIC = ("label", "path")
-
-    CONFIG_DEFAULT = RUNTIME_DIR / "config" / "defaults" / "default_config.toml"
-    PROGRAM_CONF_DEFAULT = (
-        RUNTIME_DIR / "config" / "defaults" / "default_program_conf.toml"
-    )
-
-    CONF_PATH = RUNTIME_DIR / "config" / "program" / "conf.toml"
-
-    USER_CONFIG_DIR = RUNTIME_DIR / "config" / "user"
-
-    TRACKER_COOKIE_PATH = RUNTIME_DIR / "cookies"
-
-    def __init__(self, config_file: str | None):
+    def __init__(
+        self,
+        config_file: str | None,
+        paths: ConfigPaths | None = None,
+    ):
+        self.paths = paths or ConfigPaths()
+        self.codec = TomlConfigCodec()
+        self._program_snapshot: str | None = None
+        self._config_snapshot: str | None = None
+        self._active_profile_path: Path | None = None
+        self._program_conf_toml_data: MutableMapping[str, Any]
+        self._toml_data: MutableMapping[str, Any]
+        self._default_document: MutableMapping[str, Any]
+        self._migration_error: str | None = None
         # load various directories as needed
-        self.TRACKER_COOKIE_PATH.mkdir(exist_ok=True, parents=True)
+        self.paths.tracker_cookies.mkdir(exist_ok=True, parents=True)
 
-        # keep track of plugins
-        self.loaded_plugins: dict[str, "PluginPayload"] = {}
+        self.plugin_manager = PluginManager()
 
         # load program config
-        self.program_conf = ProgramConfigPayload()
-        self._program_conf_toml_data = None
-        self.load_program_conf(config_file)
+        self.program = ProgramConfig()
+        self.load_program(config_file)
 
         # variables that are assigned during init
-        self.cfg_payload: ConfigPayload = None
-        self.cfg_payload_defaults: ConfigPayload = None
-        self._toml_data = None
-        self.load_config(config_file)
-
-        # keep track of last data used to prevent un-needed writes when saving the config(s)
-        self._program_conf_data_last = None
-        self._config_data_last = None
-
-        # used for misc shared data, this will be the only payload
-        # that we won't use slots on. So it can be used for ANYTHING else.
-        self.shared_data = SharedPayload()
-
-        # additional payloads
-        self.media_search_payload = MediaSearchPayload()
-        self.media_input_payload = MediaInputPayload()
-
-        # maps
-        self.tracker_map = self._tracker_map()
-        self.tracker_map_defaults = self._tracker_map(defaults=True)
-        self.client_map = self._client_map()
-        self.image_host_map = self._image_host_map()
+        self.settings: AppConfig
+        self.defaults: AppConfig
+        self.load_profile(config_file)
 
         # dependencies
         self._init_dependencies()
 
         # call save just in case some data is not up to date
-        self.save_config()
+        self.save()
 
-        # jinja engine
-        self.jinja_engine = Jinja2TemplateEngine(**self._jinja_env_settings())
-
-        # expose payloads for use in the engine
-        self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
-        self.jinja_engine.add_global(
-            "nf_media_search_payload", self.media_search_payload, True
-        )
-        self.jinja_engine.add_global(
-            "nf_media_input_payload", self.media_input_payload, True
-        )
-
-    def reset_config(self) -> None:
-        """Reset the configuration payloads to their default values."""
-        self.shared_data.reset()
-
-        self.media_search_payload.reset()
-        self.media_input_payload.reset()
-
-        self.jinja_engine.reset_added_globals()
-
-        # re-expose payloads for use in the engine
-        self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
-        self.jinja_engine.add_global(
-            "nf_media_search_payload", self.media_search_payload, True
-        )
-        self.jinja_engine.add_global(
-            "nf_media_input_payload", self.media_input_payload, True
-        )
-
-    def load_program_conf(self, config_file: str | None) -> None:
+    def load_program(self, config_file: str | None) -> None:
         """
         Loads program config, this will be small and only control very
         unique settings that doesn't belong in the main config.
         """
-        self.CONF_PATH.parent.mkdir(exist_ok=True, parents=True)
-        if self.CONF_PATH.exists():
-            with open(self.CONF_PATH, "r") as toml_file:
-                self._program_conf_toml_data = self.check_toml_updates(
-                    tomlkit.parse(toml_file.read()),
-                    tomlkit.parse(self.PROGRAM_CONF_DEFAULT.read_text()),
-                )
-                if config_file:
-                    self._program_conf_toml_data["current_config"] = config_file
-                self._program_conf_data_last = self._program_conf_toml_data
-                self.update_conf_payload()
-            self.save_program_conf()
+        _, default_document = self._read_toml(
+            self.paths.default_program, "default program configuration"
+        )
+        if self.paths.program.exists():
+            _, loaded = self._read_toml(self.paths.program, "program configuration")
+            self._program_conf_toml_data = self.codec.merge_defaults(
+                loaded, default_document
+            )
         else:
-            with open(self.CONF_PATH, "w") as toml_file:
-                toml_file.write(self.PROGRAM_CONF_DEFAULT.read_text())
-            self.load_program_conf(config_file)
+            self._program_conf_toml_data = default_document
+        if config_file:
+            self._program_conf_toml_data["current_config"] = config_file
+        self.decode_program()
+        self.save_program()
 
-    def update_conf_payload(self) -> None:
+    def decode_program(self) -> None:
         data = self._program_conf_toml_data
-        self.program_conf.current_config = data.get("current_config", "config")
-        self.program_conf.main_window_position = data.get("main_window_position")
+        self.program.current_config = data.get("current_config", "config")
+        self.program.main_window_position = data.get("main_window_position")
+        self.program.suppress_template_token_prompt = bool(
+            data.get("suppress_template_token_prompt", False)
+        )
 
-    def save_program_conf(self) -> None:
+    def save_program(self) -> None:
         """Converts config payload object to TOML and writes to a file"""
         try:
             # update the toml object
             self._program_conf_toml_data["current_config"] = (
-                self.program_conf.current_config
-                if self.program_conf.current_config
-                else ""
+                self.program.current_config if self.program.current_config else ""
             )
             self._program_conf_toml_data["main_window_position"] = (
-                self.program_conf.main_window_position
-                if self.program_conf.main_window_position
+                self.program.main_window_position
+                if self.program.main_window_position
                 else ""
             )
+            self._program_conf_toml_data["suppress_template_token_prompt"] = (
+                self.program.suppress_template_token_prompt
+            )
 
-            # if last data does not equal current data, we'll write the changes to file while also updating
-            # the last data variable with the latest data
-            if self._program_conf_data_last or (
-                self._program_conf_data_last != self._program_conf_toml_data
-            ):
-                with open(self.CONF_PATH, "w") as toml_file:
-                    self._program_conf_data_last = self._program_conf_toml_data
-                    toml_file.write(tomlkit.dumps(self._program_conf_toml_data))
+            serialized = self.codec.dumps(self._program_conf_toml_data)
+            if serialized != self._program_snapshot:
+                atomic_write_text(self.paths.program, serialized)
+                self._program_snapshot = serialized
 
         except Exception as e:
-            raise ConfigError(f"Error saving program conf file: {str(e)}")
+            raise ConfigError(f"Error saving program conf file: {str(e)}") from e
 
-    def load_config(self, config_file: str | None = None):
+    def load_profile(self, config_file: str | None = None) -> None:
         """Loads config file, if missing automatically creates one from the example template."""
         if config_file:
-            config_path = config_path = self.USER_CONFIG_DIR / str(
-                config_file + ".toml"
-            )
+            config_path = self.paths.user_configs / str(config_file + ".toml")
         else:
-            if not self.program_conf.current_config:
+            if not self.program.current_config:
                 raise ConfigError("Failure to load current config")
-            config_path = self.USER_CONFIG_DIR / str(
-                self.program_conf.current_config + ".toml"
+            config_path = self.paths.user_configs / str(
+                self.program.current_config + ".toml"
             )
 
         # read default toml file
-        default_toml = self.CONFIG_DEFAULT.read_text()
+        default_toml, self._default_document = self._read_toml(
+            self.paths.default_config, "default configuration"
+        )
+        self.codec.validate_schema(self._default_document)
+        self.codec.validate_types(self._default_document, self._default_document)
 
         # update default config if not updated
-        if not self.cfg_payload_defaults:
-            default_toml_data = tomlkit.parse(default_toml)
-            self.update_config_payload(default_toml_data, build_defaults=True)
+        if not hasattr(self, "defaults"):
+            self.decode(self._default_document, build_defaults=True)
 
         if config_path.exists():
-            with open(config_path, "r") as toml_file:
-                self._toml_data = self.check_toml_updates(
-                    tomlkit.parse(toml_file.read()),
-                    tomlkit.parse(default_toml),
-                )
-                self._config_data_last = self._toml_data
-                self.update_config_payload(self._toml_data)
-            self.save_config(config_path)
-        else:
-            config_path.parent.mkdir(exist_ok=True, parents=True)
-            with open(config_path, "w") as toml_file:
-                toml_file.write(default_toml)
-            self.load_config()
-
-    def check_toml_updates(
-        self, base_toml: tomlkit.items.Table, new_toml: tomlkit.items.Table
-    ) -> tomlkit.items.Table:
-        """Recursively updates base_toml with key-value pairs from new_toml"""
-        for key, value in new_toml.items():
-            if key not in base_toml:
-                base_toml[key] = value
-            elif isinstance(value, tomlkit.items.Table):
-                if not isinstance(base_toml.get(key), tomlkit.items.Table):
-                    base_toml[key] = value
-                else:
-                    self.check_toml_updates(base_toml[key], value)
-            else:
-                # If the key exists and is not a table, leave the base_toml's value unchanged.
-                continue
-        return base_toml
-
-    def save_config(self, save_path: Path | None = None) -> None:
-        """Converts config payload object to TOML and writes to a file"""
-        try:
-            # update program conf
-            self.save_program_conf()
-
-            # Update the toml object
-            # general
-            general_data = self._toml_data["general"]
-            general_data["ui_suffix"] = self.cfg_payload.ui_suffix
-            general_data["ui_scale_factor"] = self.cfg_payload.ui_scale_factor
-            general_data["nfo_forge_theme"] = NfoForgeTheme(
-                self.cfg_payload.nfo_forge_theme
-            ).value
-            general_data["profile"] = Profile(self.cfg_payload.profile).value
-            general_data["media_mode"] = MediaMode(self.cfg_payload.media_mode).value
-            general_data["source_media_ext_filter"] = (
-                self.cfg_payload.source_media_ext_filter
-            )
-            general_data["encode_media_ext_filter"] = (
-                self.cfg_payload.encode_media_ext_filter
-            )
-            general_data["releasers_name"] = self.cfg_payload.releasers_name
-            general_data["tmdb_language"] = self.cfg_payload.tmdb_language
-            general_data["timeout"] = self.cfg_payload.timeout
-            general_data["enable_prompt_overview"] = (
-                self.cfg_payload.enable_prompt_overview
-            )
-            general_data["enable_mkbrr"] = self.cfg_payload.enable_mkbrr
-            general_data["log_level"] = LogLevel(self.cfg_payload.log_level).value
-            general_data["log_total"] = self.cfg_payload.log_total
-            general_data["working_dir"] = str(self.cfg_payload.working_dir)
-
-            # dependencies
-            dependencies_data = self._toml_data["dependencies"]
-            dependencies_data["ffmpeg"] = self.resolve_dependency(
-                self.cfg_payload.ffmpeg
-            )
-            dependencies_data["frame_forge"] = self.resolve_dependency(
-                self.cfg_payload.frame_forge
-            )
-            dependencies_data["mkbrr"] = self.resolve_dependency(self.cfg_payload.mkbrr)
-
-            # api keys
-            api_keys_data = self._toml_data["api_keys"]
-            api_keys_data["tmdb_api_key"] = self.cfg_payload.tmdb_api_key
-
-            # trackers
-            tracker_data = self._toml_data["tracker"]
-
-            # tracker settings
-            tracker_settings = tracker_data["settings"]
-            tracker_settings["tracker_order"] = [
-                str(x) for x in self.cfg_payload.tracker_order
-            ]
-            last_used_img_host = tomlkit.inline_table()
-            for tracker, image_host in self.cfg_payload.last_used_img_host.items():
-                last_used_img_host[str(tracker)] = str(image_host)
-            tracker_settings["last_used_img_host"] = last_used_img_host
-
-            # more_than_tv tracker
-            if "more_than_tv" not in tracker_data:
-                tracker_data["more_than_tv"] = tomlkit.table()
-            mtv_data = tracker_data["more_than_tv"]
-            mtv_data["upload_enabled"] = self.cfg_payload.mtv_tracker.upload_enabled
-            mtv_data["announce_url"] = self.cfg_payload.mtv_tracker.announce_url
-            mtv_data["enabled"] = self.cfg_payload.mtv_tracker.enabled
-            mtv_data["source"] = self.cfg_payload.mtv_tracker.source
-            mtv_data["comments"] = self.cfg_payload.mtv_tracker.comments
-            mtv_data["nfo_template"] = self.cfg_payload.mtv_tracker.nfo_template
-            mtv_data["max_piece_size"] = self.cfg_payload.mtv_tracker.max_piece_size
-            mtv_data["url_type"] = URLType(self.cfg_payload.mtv_tracker.url_type).value
-            mtv_data["column_s"] = self.cfg_payload.mtv_tracker.column_s
-            mtv_data["column_space"] = self.cfg_payload.mtv_tracker.column_space
-            mtv_data["row_space"] = self.cfg_payload.mtv_tracker.row_space
-            mtv_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.mtv_tracker.mvr_title_override_enabled
-            )
-            mtv_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.mtv_tracker.mvr_title_colon_replace
-            ).value
-            mtv_data["mvr_title_token_override"] = (
-                self.cfg_payload.mtv_tracker.mvr_title_token_override
-            )
-            mtv_data["mvr_title_replace_map"] = (
-                self.cfg_payload.mtv_tracker.mvr_title_replace_map
-            )
-            mtv_data["anonymous"] = self.cfg_payload.mtv_tracker.anonymous
-            mtv_data["api_key"] = self.cfg_payload.mtv_tracker.api_key
-            mtv_data["username"] = self.cfg_payload.mtv_tracker.username
-            mtv_data["password"] = self.cfg_payload.mtv_tracker.password
-            mtv_data["totp"] = self.cfg_payload.mtv_tracker.totp
-            mtv_data["group_description"] = (
-                self.cfg_payload.mtv_tracker.group_description
-            )
-            mtv_data["additional_tags"] = self.cfg_payload.mtv_tracker.additional_tags
-            mtv_data["source_origin"] = MTVSourceOrigin(
-                self.cfg_payload.mtv_tracker.source_origin
-            ).value
-            mtv_data["image_width"] = self.cfg_payload.mtv_tracker.image_width
-
-            # torrent_leech tracker
-            if "torrent_leech" not in tracker_data:
-                tracker_data["torrent_leech"] = tomlkit.table()
-            tl_data = tracker_data["torrent_leech"]
-            tl_data["upload_enabled"] = self.cfg_payload.tl_tracker.upload_enabled
-            tl_data["announce_url"] = self.cfg_payload.tl_tracker.announce_url
-            tl_data["enabled"] = self.cfg_payload.tl_tracker.enabled
-            tl_data["source"] = self.cfg_payload.tl_tracker.source
-            tl_data["comments"] = self.cfg_payload.tl_tracker.comments
-            tl_data["nfo_template"] = self.cfg_payload.tl_tracker.nfo_template
-            tl_data["max_piece_size"] = self.cfg_payload.tl_tracker.max_piece_size
-            tl_data["url_type"] = URLType(self.cfg_payload.tl_tracker.url_type).value
-            tl_data["column_s"] = self.cfg_payload.tl_tracker.column_s
-            tl_data["column_space"] = self.cfg_payload.tl_tracker.column_space
-            tl_data["row_space"] = self.cfg_payload.tl_tracker.row_space
-            tl_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.tl_tracker.mvr_title_override_enabled
-            )
-            tl_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.tl_tracker.mvr_title_colon_replace
-            ).value
-            tl_data["mvr_title_token_override"] = (
-                self.cfg_payload.tl_tracker.mvr_title_token_override
-            )
-            tl_data["mvr_title_replace_map"] = (
-                self.cfg_payload.tl_tracker.mvr_title_replace_map
-            )
-            tl_data["username"] = self.cfg_payload.tl_tracker.username
-            tl_data["password"] = self.cfg_payload.tl_tracker.password
-            tl_data["torrent_passkey"] = self.cfg_payload.tl_tracker.torrent_passkey
-            tl_data["alt_2_fa_token"] = self.cfg_payload.tl_tracker.alt_2_fa_token
-
-            # BeyondHD tracker
-            if "beyond_hd" not in tracker_data:
-                tracker_data["beyond_hd"] = tomlkit.table()
-            bhd_data = tracker_data["beyond_hd"]
-            bhd_data["upload_enabled"] = self.cfg_payload.bhd_tracker.upload_enabled
-            bhd_data["announce_url"] = self.cfg_payload.bhd_tracker.announce_url
-            bhd_data["enabled"] = self.cfg_payload.bhd_tracker.enabled
-            bhd_data["source"] = self.cfg_payload.bhd_tracker.source
-            bhd_data["comments"] = self.cfg_payload.bhd_tracker.comments
-            bhd_data["nfo_template"] = self.cfg_payload.bhd_tracker.nfo_template
-            bhd_data["max_piece_size"] = self.cfg_payload.bhd_tracker.max_piece_size
-            bhd_data["url_type"] = URLType(self.cfg_payload.bhd_tracker.url_type).value
-            bhd_data["column_s"] = self.cfg_payload.bhd_tracker.column_s
-            bhd_data["column_space"] = self.cfg_payload.bhd_tracker.column_space
-            bhd_data["row_space"] = self.cfg_payload.bhd_tracker.row_space
-            bhd_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.bhd_tracker.mvr_title_override_enabled
-            )
-            bhd_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.bhd_tracker.mvr_title_colon_replace
-            ).value
-            bhd_data["mvr_title_token_override"] = (
-                self.cfg_payload.bhd_tracker.mvr_title_token_override
-            )
-            bhd_data["mvr_title_replace_map"] = (
-                self.cfg_payload.bhd_tracker.mvr_title_replace_map
-            )
-            bhd_data["anonymous"] = self.cfg_payload.bhd_tracker.anonymous
-            bhd_data["api_key"] = self.cfg_payload.bhd_tracker.api_key
-            bhd_data["rss_key"] = self.cfg_payload.bhd_tracker.rss_key
-            bhd_data["promo"] = BHDPromo(self.cfg_payload.bhd_tracker.promo).value
-            bhd_data["live_release"] = BHDLiveRelease(
-                self.cfg_payload.bhd_tracker.live_release
-            ).value
-            bhd_data["internal"] = self.cfg_payload.bhd_tracker.internal
-            bhd_data["image_width"] = self.cfg_payload.bhd_tracker.image_width
-            bhd_data["add_localization_to_custom_edition"] = (
-                self.cfg_payload.bhd_tracker.add_localization_to_custom_edition
-            )
-            bhd_data["stream_optimized"] = (
-                self.cfg_payload.bhd_tracker.stream_optimized
+            loaded_text, loaded_document = self._read_toml(
+                config_path, "user configuration"
             )
 
-            # PassThePopcorn tracker
-            if "pass_the_popcorn" not in tracker_data:
-                tracker_data["pass_the_popcorn"] = tomlkit.table()
-            ptp_data = tracker_data["pass_the_popcorn"]
-            ptp_data["upload_enabled"] = self.cfg_payload.ptp_tracker.upload_enabled
-            ptp_data["announce_url"] = self.cfg_payload.ptp_tracker.announce_url
-            ptp_data["enabled"] = self.cfg_payload.ptp_tracker.enabled
-            ptp_data["source"] = self.cfg_payload.ptp_tracker.source
-            ptp_data["comments"] = self.cfg_payload.ptp_tracker.comments
-            ptp_data["nfo_template"] = self.cfg_payload.ptp_tracker.nfo_template
-            ptp_data["max_piece_size"] = self.cfg_payload.ptp_tracker.max_piece_size
-            ptp_data["url_type"] = URLType(self.cfg_payload.ptp_tracker.url_type).value
-            ptp_data["column_s"] = self.cfg_payload.ptp_tracker.column_s
-            ptp_data["column_space"] = self.cfg_payload.ptp_tracker.column_space
-            ptp_data["row_space"] = self.cfg_payload.ptp_tracker.row_space
-            ptp_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.ptp_tracker.mvr_title_override_enabled
-            )
-            ptp_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.ptp_tracker.mvr_title_colon_replace
-            ).value
-            ptp_data["mvr_title_token_override"] = (
-                self.cfg_payload.ptp_tracker.mvr_title_token_override
-            )
-            ptp_data["mvr_title_replace_map"] = (
-                self.cfg_payload.ptp_tracker.mvr_title_replace_map
-            )
-            ptp_data["api_user"] = self.cfg_payload.ptp_tracker.api_user
-            ptp_data["api_key"] = self.cfg_payload.ptp_tracker.api_key
-            ptp_data["username"] = self.cfg_payload.ptp_tracker.username
-            ptp_data["password"] = self.cfg_payload.ptp_tracker.password
-            ptp_data["totp"] = self.cfg_payload.ptp_tracker.totp
+            try:
+                loaded_version: int | None = document_version(loaded_document)
+            except (TypeError, ValueError):
+                # A malformed `schema_version` (e.g. the string "two") is not
+                # migratable. Leave it for `validate_schema` below, which
+                # reports it as a `ConfigSchemaError` rather than letting a
+                # bare ValueError escape to the global excepthook.
+                loaded_version = None
 
-            # ReelFliX tracker
-            if "reelflix" not in tracker_data:
-                tracker_data["reelflix"] = tomlkit.table()
-            rf_data = tracker_data["reelflix"]
-            rf_data["upload_enabled"] = self.cfg_payload.rf_tracker.upload_enabled
-            rf_data["announce_url"] = self.cfg_payload.rf_tracker.announce_url
-            rf_data["enabled"] = self.cfg_payload.rf_tracker.enabled
-            rf_data["source"] = self.cfg_payload.rf_tracker.source
-            rf_data["comments"] = self.cfg_payload.rf_tracker.comments
-            rf_data["nfo_template"] = self.cfg_payload.rf_tracker.nfo_template
-            rf_data["max_piece_size"] = self.cfg_payload.rf_tracker.max_piece_size
-            rf_data["url_type"] = URLType(self.cfg_payload.rf_tracker.url_type).value
-            rf_data["column_s"] = self.cfg_payload.rf_tracker.column_s
-            rf_data["column_space"] = self.cfg_payload.rf_tracker.column_space
-            rf_data["row_space"] = self.cfg_payload.rf_tracker.row_space
-            rf_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.rf_tracker.mvr_title_override_enabled
-            )
-            rf_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.rf_tracker.mvr_title_colon_replace
-            ).value
-            rf_data["mvr_title_token_override"] = (
-                self.cfg_payload.rf_tracker.mvr_title_token_override
-            )
-            rf_data["mvr_title_replace_map"] = (
-                self.cfg_payload.rf_tracker.mvr_title_replace_map
-            )
-            rf_data["api_key"] = self.cfg_payload.rf_tracker.api_key
-            rf_data["anonymous"] = self.cfg_payload.rf_tracker.anonymous
-            rf_data["internal"] = self.cfg_payload.rf_tracker.internal
-            rf_data["personal_release"] = self.cfg_payload.rf_tracker.personal_release
-            rf_data["stream_optimized"] = self.cfg_payload.rf_tracker.stream_optimized
-            rf_data["opt_in_to_mod_queue"] = (
-                self.cfg_payload.rf_tracker.opt_in_to_mod_queue
-            )
-            rf_data["featured"] = self.cfg_payload.rf_tracker.featured
-            rf_data["free"] = self.cfg_payload.rf_tracker.free
-            rf_data["double_up"] = self.cfg_payload.rf_tracker.double_up
-            rf_data["sticky"] = self.cfg_payload.rf_tracker.sticky
-            rf_data["image_width"] = self.cfg_payload.rf_tracker.image_width
-
-            # Aither tracker
-            if "aither" not in tracker_data:
-                tracker_data["aither"] = tomlkit.table()
-            aither_data = tracker_data["aither"]
-            aither_data["upload_enabled"] = (
-                self.cfg_payload.aither_tracker.upload_enabled
-            )
-            aither_data["announce_url"] = self.cfg_payload.aither_tracker.announce_url
-            aither_data["enabled"] = self.cfg_payload.aither_tracker.enabled
-            aither_data["source"] = self.cfg_payload.aither_tracker.source
-            aither_data["comments"] = self.cfg_payload.aither_tracker.comments
-            aither_data["nfo_template"] = self.cfg_payload.aither_tracker.nfo_template
-            aither_data["max_piece_size"] = (
-                self.cfg_payload.aither_tracker.max_piece_size
-            )
-            aither_data["url_type"] = URLType(
-                self.cfg_payload.aither_tracker.url_type
-            ).value
-            aither_data["column_s"] = self.cfg_payload.aither_tracker.column_s
-            aither_data["column_space"] = self.cfg_payload.aither_tracker.column_space
-            aither_data["row_space"] = self.cfg_payload.aither_tracker.row_space
-            aither_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.aither_tracker.mvr_title_override_enabled
-            )
-            aither_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.aither_tracker.mvr_title_colon_replace
-            ).value
-            aither_data["mvr_title_token_override"] = (
-                self.cfg_payload.aither_tracker.mvr_title_token_override
-            )
-            aither_data["mvr_title_replace_map"] = (
-                self.cfg_payload.aither_tracker.mvr_title_replace_map
-            )
-            aither_data["api_key"] = self.cfg_payload.aither_tracker.api_key
-            aither_data["anonymous"] = self.cfg_payload.aither_tracker.anonymous
-            aither_data["internal"] = self.cfg_payload.aither_tracker.internal
-            aither_data["personal_release"] = (
-                self.cfg_payload.aither_tracker.personal_release
-            )
-            aither_data["stream_optimized"] = (
-                self.cfg_payload.aither_tracker.stream_optimized
-            )
-            aither_data["opt_in_to_mod_queue"] = (
-                self.cfg_payload.aither_tracker.opt_in_to_mod_queue
-            )
-            aither_data["featured"] = self.cfg_payload.aither_tracker.featured
-            aither_data["free"] = self.cfg_payload.aither_tracker.free
-            aither_data["double_up"] = self.cfg_payload.aither_tracker.double_up
-            aither_data["sticky"] = self.cfg_payload.aither_tracker.sticky
-            aither_data["image_width"] = self.cfg_payload.aither_tracker.image_width
-
-            # HUNO tracker
-            if "huno" not in tracker_data:
-                tracker_data["huno"] = tomlkit.table()
-            huno_data = tracker_data["huno"]
-            huno_data["upload_enabled"] = self.cfg_payload.huno_tracker.upload_enabled
-            huno_data["announce_url"] = self.cfg_payload.huno_tracker.announce_url
-            huno_data["enabled"] = self.cfg_payload.huno_tracker.enabled
-            huno_data["source"] = self.cfg_payload.huno_tracker.source
-            huno_data["comments"] = self.cfg_payload.huno_tracker.comments
-            huno_data["nfo_template"] = self.cfg_payload.huno_tracker.nfo_template
-            huno_data["max_piece_size"] = self.cfg_payload.huno_tracker.max_piece_size
-            huno_data["url_type"] = URLType(
-                self.cfg_payload.huno_tracker.url_type
-            ).value
-            huno_data["column_s"] = self.cfg_payload.huno_tracker.column_s
-            huno_data["column_space"] = self.cfg_payload.huno_tracker.column_space
-            huno_data["row_space"] = self.cfg_payload.huno_tracker.row_space
-            huno_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.huno_tracker.mvr_title_override_enabled
-            )
-            huno_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.huno_tracker.mvr_title_colon_replace
-            ).value
-            huno_data["mvr_title_token_override"] = (
-                self.cfg_payload.huno_tracker.mvr_title_token_override
-            )
-            huno_data["mvr_title_replace_map"] = (
-                self.cfg_payload.huno_tracker.mvr_title_replace_map
-            )
-            huno_data["api_key"] = self.cfg_payload.huno_tracker.api_key
-            huno_data["anonymous"] = self.cfg_payload.huno_tracker.anonymous
-            huno_data["internal"] = self.cfg_payload.huno_tracker.internal
-            huno_data["stream_optimized"] = (
-                self.cfg_payload.huno_tracker.stream_optimized
-            )
-            huno_data["image_width"] = self.cfg_payload.huno_tracker.image_width
-
-            # LST tracker
-            if "lst" not in tracker_data:
-                tracker_data["lst"] = tomlkit.table()
-            lst_data = tracker_data["lst"]
-            lst_data["upload_enabled"] = self.cfg_payload.lst_tracker.upload_enabled
-            lst_data["announce_url"] = self.cfg_payload.lst_tracker.announce_url
-            lst_data["enabled"] = self.cfg_payload.lst_tracker.enabled
-            lst_data["source"] = self.cfg_payload.lst_tracker.source
-            lst_data["comments"] = self.cfg_payload.lst_tracker.comments
-            lst_data["nfo_template"] = self.cfg_payload.lst_tracker.nfo_template
-            lst_data["max_piece_size"] = self.cfg_payload.lst_tracker.max_piece_size
-            lst_data["url_type"] = URLType(self.cfg_payload.lst_tracker.url_type).value
-            lst_data["column_s"] = self.cfg_payload.lst_tracker.column_s
-            lst_data["column_space"] = self.cfg_payload.lst_tracker.column_space
-            lst_data["row_space"] = self.cfg_payload.lst_tracker.row_space
-            lst_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.lst_tracker.mvr_title_override_enabled
-            )
-            lst_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.lst_tracker.mvr_title_colon_replace
-            ).value
-            lst_data["mvr_title_token_override"] = (
-                self.cfg_payload.lst_tracker.mvr_title_token_override
-            )
-            lst_data["mvr_title_replace_map"] = (
-                self.cfg_payload.lst_tracker.mvr_title_replace_map
-            )
-            lst_data["api_key"] = self.cfg_payload.lst_tracker.api_key
-            lst_data["anonymous"] = self.cfg_payload.lst_tracker.anonymous
-            lst_data["internal"] = self.cfg_payload.lst_tracker.internal
-            lst_data["personal_release"] = self.cfg_payload.lst_tracker.personal_release
-            lst_data["mod_queue_opt_in"] = self.cfg_payload.lst_tracker.mod_queue_opt_in
-            lst_data["draft_queue_opt_in"] = (
-                self.cfg_payload.lst_tracker.draft_queue_opt_in
-            )
-            lst_data["featured"] = self.cfg_payload.lst_tracker.featured
-            lst_data["free"] = self.cfg_payload.lst_tracker.free
-            lst_data["double_up"] = self.cfg_payload.lst_tracker.double_up
-            lst_data["sticky"] = self.cfg_payload.lst_tracker.sticky
-            lst_data["image_width"] = self.cfg_payload.lst_tracker.image_width
-
-            # DarkPeers tracker
-            if "dark_peers" not in tracker_data:
-                tracker_data["dark_peers"] = tomlkit.table()
-            dark_peers_data = tracker_data["dark_peers"]
-            dark_peers_data["upload_enabled"] = (
-                self.cfg_payload.darkpeers_tracker.upload_enabled
-            )
-            dark_peers_data["announce_url"] = (
-                self.cfg_payload.darkpeers_tracker.announce_url
-            )
-            dark_peers_data["enabled"] = self.cfg_payload.darkpeers_tracker.enabled
-            dark_peers_data["source"] = self.cfg_payload.darkpeers_tracker.source
-            dark_peers_data["comments"] = self.cfg_payload.darkpeers_tracker.comments
-            dark_peers_data["nfo_template"] = (
-                self.cfg_payload.darkpeers_tracker.nfo_template
-            )
-            dark_peers_data["max_piece_size"] = (
-                self.cfg_payload.darkpeers_tracker.max_piece_size
-            )
-            dark_peers_data["url_type"] = URLType(
-                self.cfg_payload.darkpeers_tracker.url_type
-            ).value
-            dark_peers_data["column_s"] = self.cfg_payload.darkpeers_tracker.column_s
-            dark_peers_data["column_space"] = (
-                self.cfg_payload.darkpeers_tracker.column_space
-            )
-            dark_peers_data["row_space"] = self.cfg_payload.darkpeers_tracker.row_space
-            dark_peers_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.darkpeers_tracker.mvr_title_override_enabled
-            )
-            dark_peers_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.darkpeers_tracker.mvr_title_colon_replace
-            ).value
-            dark_peers_data["mvr_title_token_override"] = (
-                self.cfg_payload.darkpeers_tracker.mvr_title_token_override
-            )
-            dark_peers_data["mvr_title_replace_map"] = (
-                self.cfg_payload.darkpeers_tracker.mvr_title_replace_map
-            )
-            dark_peers_data["api_key"] = self.cfg_payload.darkpeers_tracker.api_key
-            dark_peers_data["anonymous"] = self.cfg_payload.darkpeers_tracker.anonymous
-            dark_peers_data["internal"] = self.cfg_payload.darkpeers_tracker.internal
-            dark_peers_data["personal_release"] = (
-                self.cfg_payload.darkpeers_tracker.personal_release
-            )
-            dark_peers_data["image_width"] = (
-                self.cfg_payload.darkpeers_tracker.image_width
-            )
-
-            # ShareIsland tracker
-            if "shareisland" not in tracker_data:
-                tracker_data["shareisland"] = tomlkit.table()
-            shareisland_data = tracker_data["shareisland"]
-            shareisland_data["upload_enabled"] = (
-                self.cfg_payload.shareisland_tracker.upload_enabled
-            )
-            shareisland_data["announce_url"] = (
-                self.cfg_payload.shareisland_tracker.announce_url
-            )
-            shareisland_data["enabled"] = self.cfg_payload.shareisland_tracker.enabled
-            shareisland_data["source"] = self.cfg_payload.shareisland_tracker.source
-            shareisland_data["comments"] = self.cfg_payload.shareisland_tracker.comments
-            shareisland_data["nfo_template"] = (
-                self.cfg_payload.shareisland_tracker.nfo_template
-            )
-            shareisland_data["max_piece_size"] = (
-                self.cfg_payload.shareisland_tracker.max_piece_size
-            )
-            shareisland_data["url_type"] = URLType(
-                self.cfg_payload.shareisland_tracker.url_type
-            ).value
-            shareisland_data["column_s"] = self.cfg_payload.shareisland_tracker.column_s
-            shareisland_data["column_space"] = (
-                self.cfg_payload.shareisland_tracker.column_space
-            )
-            shareisland_data["row_space"] = (
-                self.cfg_payload.shareisland_tracker.row_space
-            )
-            shareisland_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.shareisland_tracker.mvr_title_override_enabled
-            )
-            shareisland_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.shareisland_tracker.mvr_title_colon_replace
-            ).value
-            shareisland_data["mvr_title_token_override"] = (
-                self.cfg_payload.shareisland_tracker.mvr_title_token_override
-            )
-            shareisland_data["mvr_title_replace_map"] = (
-                self.cfg_payload.shareisland_tracker.mvr_title_replace_map
-            )
-            shareisland_data["api_key"] = self.cfg_payload.shareisland_tracker.api_key
-            shareisland_data["anonymous"] = (
-                self.cfg_payload.shareisland_tracker.anonymous
-            )
-            shareisland_data["internal"] = self.cfg_payload.shareisland_tracker.internal
-            shareisland_data["personal_release"] = (
-                self.cfg_payload.shareisland_tracker.personal_release
-            )
-            shareisland_data["opt_in_to_mod_queue"] = (
-                self.cfg_payload.shareisland_tracker.opt_in_to_mod_queue
-            )
-            shareisland_data["image_width"] = (
-                self.cfg_payload.shareisland_tracker.image_width
-            )
-
-            # UploadCX tracker
-            if "uploadcx" not in tracker_data:
-                tracker_data["uploadcx"] = tomlkit.table()
-            uploadcx_data = tracker_data["uploadcx"]
-            uploadcx_data["upload_enabled"] = (
-                self.cfg_payload.ulcx_tracker.upload_enabled
-            )
-            uploadcx_data["announce_url"] = self.cfg_payload.ulcx_tracker.announce_url
-            uploadcx_data["enabled"] = self.cfg_payload.ulcx_tracker.enabled
-            uploadcx_data["source"] = self.cfg_payload.ulcx_tracker.source
-            uploadcx_data["comments"] = self.cfg_payload.ulcx_tracker.comments
-            uploadcx_data["nfo_template"] = self.cfg_payload.ulcx_tracker.nfo_template
-            uploadcx_data["max_piece_size"] = (
-                self.cfg_payload.ulcx_tracker.max_piece_size
-            )
-            uploadcx_data["url_type"] = URLType(
-                self.cfg_payload.ulcx_tracker.url_type
-            ).value
-            uploadcx_data["column_s"] = self.cfg_payload.ulcx_tracker.column_s
-            uploadcx_data["column_space"] = self.cfg_payload.ulcx_tracker.column_space
-            uploadcx_data["row_space"] = self.cfg_payload.ulcx_tracker.row_space
-            uploadcx_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.ulcx_tracker.mvr_title_override_enabled
-            )
-            uploadcx_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.ulcx_tracker.mvr_title_colon_replace
-            ).value
-            uploadcx_data["mvr_title_token_override"] = (
-                self.cfg_payload.ulcx_tracker.mvr_title_token_override
-            )
-            uploadcx_data["mvr_title_replace_map"] = (
-                self.cfg_payload.ulcx_tracker.mvr_title_replace_map
-            )
-            uploadcx_data["api_key"] = self.cfg_payload.ulcx_tracker.api_key
-            uploadcx_data["anonymous"] = self.cfg_payload.ulcx_tracker.anonymous
-            uploadcx_data["internal"] = self.cfg_payload.ulcx_tracker.internal
-            uploadcx_data["personal_release"] = (
-                self.cfg_payload.ulcx_tracker.personal_release
-            )
-            uploadcx_data["image_width"] = self.cfg_payload.ulcx_tracker.image_width
-
-            # OnlyEncodes tracker
-            if "only_encodes" not in tracker_data:
-                tracker_data["only_encodes"] = tomlkit.table()
-            oe_data = tracker_data["only_encodes"]
-            oe_data["upload_enabled"] = self.cfg_payload.oe_tracker.upload_enabled
-            oe_data["announce_url"] = self.cfg_payload.oe_tracker.announce_url
-            oe_data["enabled"] = self.cfg_payload.oe_tracker.enabled
-            oe_data["source"] = self.cfg_payload.oe_tracker.source
-            oe_data["comments"] = self.cfg_payload.oe_tracker.comments
-            oe_data["nfo_template"] = self.cfg_payload.oe_tracker.nfo_template
-            oe_data["max_piece_size"] = self.cfg_payload.oe_tracker.max_piece_size
-            oe_data["url_type"] = URLType(self.cfg_payload.oe_tracker.url_type).value
-            oe_data["column_s"] = self.cfg_payload.oe_tracker.column_s
-            oe_data["column_space"] = self.cfg_payload.oe_tracker.column_space
-            oe_data["row_space"] = self.cfg_payload.oe_tracker.row_space
-            oe_data["mvr_title_override_enabled"] = (
-                self.cfg_payload.oe_tracker.mvr_title_override_enabled
-            )
-            oe_data["mvr_title_colon_replace"] = ColonReplace(
-                self.cfg_payload.oe_tracker.mvr_title_colon_replace
-            ).value
-            oe_data["mvr_title_token_override"] = (
-                self.cfg_payload.oe_tracker.mvr_title_token_override
-            )
-            oe_data["mvr_title_replace_map"] = (
-                self.cfg_payload.oe_tracker.mvr_title_replace_map
-            )
-            oe_data["api_key"] = self.cfg_payload.oe_tracker.api_key
-            oe_data["anonymous"] = self.cfg_payload.oe_tracker.anonymous
-            oe_data["internal"] = self.cfg_payload.oe_tracker.internal
-            oe_data["personal_release"] = self.cfg_payload.oe_tracker.personal_release
-            oe_data["image_width"] = self.cfg_payload.oe_tracker.image_width
-
-            # torrent client
-            torrent_client_data = self._toml_data["torrent_client"]
-
-            # qbittorrent
-            if "qbittorrent" not in torrent_client_data:
-                qbittorrent_data = tomlkit.table()
-            qbittorrent_data = torrent_client_data["qbittorrent"]
-            qbittorrent_data["enabled"] = self.cfg_payload.qbittorrent.enabled
-            qbittorrent_data["host"] = self.cfg_payload.qbittorrent.host
-            qbittorrent_data["port"] = self.cfg_payload.qbittorrent.port
-            qbittorrent_data["user"] = self.cfg_payload.qbittorrent.user
-            qbittorrent_data["password"] = self.cfg_payload.qbittorrent.password
-            qbittorrent_data["specific_params"] = (
-                self.cfg_payload.qbittorrent.specific_params
-            )
-
-            # deluge
-            if "deluge" not in torrent_client_data:
-                deluge_data = tomlkit.table()
-            deluge_data = torrent_client_data["deluge"]
-            deluge_data["enabled"] = self.cfg_payload.deluge.enabled
-            deluge_data["host"] = self.cfg_payload.deluge.host
-            deluge_data["port"] = self.cfg_payload.deluge.port
-            deluge_data["user"] = self.cfg_payload.deluge.user
-            deluge_data["password"] = self.cfg_payload.deluge.password
-            deluge_data["specific_params"] = self.cfg_payload.deluge.specific_params
-
-            # rtorrent
-            if "rtorrent" not in torrent_client_data:
-                rtorrent_data = tomlkit.table()
-            rtorrent_data = torrent_client_data["rtorrent"]
-            rtorrent_data["enabled"] = self.cfg_payload.rtorrent.enabled
-            rtorrent_data["host"] = self.cfg_payload.rtorrent.host
-            rtorrent_data["port"] = self.cfg_payload.rtorrent.port
-            rtorrent_data["user"] = self.cfg_payload.rtorrent.user
-            rtorrent_data["password"] = self.cfg_payload.rtorrent.password
-            rtorrent_data["specific_params"] = self.cfg_payload.rtorrent.specific_params
-
-            # transmission
-            if "transmission" not in torrent_client_data:
-                transmission_data = tomlkit.table()
-            transmission_data = torrent_client_data["transmission"]
-            transmission_data["enabled"] = self.cfg_payload.transmission.enabled
-            transmission_data["host"] = self.cfg_payload.transmission.host
-            transmission_data["port"] = self.cfg_payload.transmission.port
-            transmission_data["user"] = self.cfg_payload.transmission.user
-            transmission_data["password"] = self.cfg_payload.transmission.password
-            transmission_data["specific_params"] = (
-                self.cfg_payload.transmission.specific_params
-            )
-
-            # watch folder
-            if "watch_folder" not in self._toml_data:
-                watch_folder_data = tomlkit.table()
-            watch_folder_data = self._toml_data["watch_folder"]
-            watch_folder_data["enabled"] = self.cfg_payload.watch_folder.enabled
-            watch_folder_data["path"] = (
-                str(self.cfg_payload.watch_folder.path)
-                if self.cfg_payload.watch_folder.path
-                else ""
-            )
-
-            # movie rename
-            movie_rename = self._toml_data["movie_rename"]
-            movie_rename["mvr_enabled"] = self.cfg_payload.mvr_enabled
-            movie_rename["mvr_replace_illegal_chars"] = (
-                self.cfg_payload.mvr_replace_illegal_chars
-            )
-            movie_rename["mvr_colon_replace_filename"] = ColonReplace(
-                self.cfg_payload.mvr_colon_replace_filename
-            ).value
-            movie_rename["mvr_colon_replace_title"] = ColonReplace(
-                self.cfg_payload.mvr_colon_replace_title
-            ).value
-            movie_rename["mvr_parse_filename_attributes"] = (
-                self.cfg_payload.mvr_parse_filename_attributes
-            )
-            movie_rename["mvr_token"] = self.cfg_payload.mvr_token
-            movie_rename["mvr_title_token"] = self.cfg_payload.mvr_title_token
-            movie_rename["mvr_clean_title_rules"] = (
-                self.cfg_payload.mvr_clean_title_rules
-            )
-            movie_rename["mvr_clean_title_rules_modified"] = (
-                self.cfg_payload.mvr_clean_title_rules_modified
-            )
-            movie_rename["mvr_release_group"] = self.cfg_payload.mvr_release_group
-            movie_rename["mvr_mi_video_dynamic_range"] = (
-                self.cfg_payload.mvr_mi_video_dynamic_range
-            )
-
-            # user tokens
-            user_token_data = self._toml_data["user_tokens"]
-            user_token_data["tokens"] = self.cfg_payload.user_tokens
-
-            # screenshots
-            screen_shot_data = self._toml_data["screenshots"]
-            screen_shot_data["crop_mode"] = Cropping(self.cfg_payload.crop_mode).value
-            screen_shot_data["screenshots_enabled"] = (
-                self.cfg_payload.screenshots_enabled
-            )
-            screen_shot_data["screen_shot_count"] = self.cfg_payload.screen_shot_count
-            screen_shot_data["min_required_selected_screens"] = (
-                self.cfg_payload.min_required_selected_screens
-            )
-            screen_shot_data["max_required_selected_screens"] = (
-                self.cfg_payload.max_required_selected_screens
-            )
-            screen_shot_data["ss_mode"] = ScreenShotMode(self.cfg_payload.ss_mode).value
-            screen_shot_data["sub_size_height_720"] = (
-                self.cfg_payload.sub_size_height_720
-            )
-            screen_shot_data["sub_size_height_1080"] = (
-                self.cfg_payload.sub_size_height_1080
-            )
-            screen_shot_data["sub_size_height_2160"] = (
-                self.cfg_payload.sub_size_height_2160
-            )
-            screen_shot_data["subtitle_alignment"] = SubtitleAlignment(
-                self.cfg_payload.subtitle_alignment
-            ).value
-            screen_shot_data["subtitle_color"] = self.cfg_payload.subtitle_color
-            screen_shot_data["subtitle_outline_color"] = (
-                self.cfg_payload.subtitle_outline_color
-            )
-            screen_shot_data["trim_start"] = self.cfg_payload.trim_start
-            screen_shot_data["trim_end"] = self.cfg_payload.trim_end
-            screen_shot_data["comparison_subtitles"] = (
-                self.cfg_payload.comparison_subtitles
-            )
-            screen_shot_data["comparison_subtitle_source_name"] = (
-                self.cfg_payload.comparison_subtitle_source_name
-            )
-            screen_shot_data["comparison_subtitle_encode_name"] = (
-                self.cfg_payload.comparison_subtitle_encode_name
-            )
-            screen_shot_data["optimize_generated_images"] = (
-                self.cfg_payload.optimize_generated_images
-            )
-            screen_shot_data["optimize_dl_url_images"] = (
-                self.cfg_payload.optimize_dl_url_images
-            )
-            screen_shot_data["optimize_dl_url_images_percentage"] = (
-                self.cfg_payload.optimize_dl_url_images_percentage
-            )
-            screen_shot_data["indexer"] = Indexer(self.cfg_payload.indexer).value
-            screen_shot_data["image_plugin"] = ImagePlugin(
-                self.cfg_payload.image_plugin
-            ).value
-
-            # image hosts
-            image_hosts = self._toml_data["image_hosts"]
-
-            # chevereto_v3
-            if "chevereto_v3" not in image_hosts:
-                chevereto_v3_data = tomlkit.table()
-            chevereto_v3_data = image_hosts["chevereto_v3"]
-            chevereto_v3_data["enabled"] = self.cfg_payload.chevereto_v3.enabled
-            chevereto_v3_data["base_url"] = self.cfg_payload.chevereto_v3.base_url
-            chevereto_v3_data["user"] = self.cfg_payload.chevereto_v3.user
-            chevereto_v3_data["password"] = self.cfg_payload.chevereto_v3.password
-
-            # chevereto_v4
-            if "chevereto_v4" not in image_hosts:
-                chevereto_v4_data = tomlkit.table()
-            chevereto_v4_data = image_hosts["chevereto_v4"]
-            chevereto_v4_data["enabled"] = self.cfg_payload.chevereto_v4.enabled
-            chevereto_v4_data["base_url"] = self.cfg_payload.chevereto_v4.base_url
-            chevereto_v4_data["api_key"] = self.cfg_payload.chevereto_v4.api_key
-
-            # image bb
-            if "image_bb" not in image_hosts:
-                img_bb_data = tomlkit.table()
-            img_bb_data = image_hosts["image_bb"]
-            img_bb_data["enabled"] = self.cfg_payload.image_bb.enabled
-            img_bb_data["base_url"] = self.cfg_payload.image_bb.base_url
-            img_bb_data["api_key"] = self.cfg_payload.image_bb.api_key
-
-            # image box
-            if "image_box" not in image_hosts:
-                img_box_data = tomlkit.table()
-            img_box_data = image_hosts["image_box"]
-            img_box_data["enabled"] = self.cfg_payload.image_box.enabled
-            img_box_data["base_url"] = self.cfg_payload.image_box.base_url
-
-            # ptpimg
-            if "ptpimg" not in image_hosts:
-                ptpimg_data = tomlkit.table()
-            ptpimg_data = image_hosts["ptpimg"]
-            ptpimg_data["enabled"] = self.cfg_payload.ptpimg.enabled
-            ptpimg_data["base_url"] = self.cfg_payload.ptpimg.base_url
-            ptpimg_data["api_key"] = self.cfg_payload.ptpimg.api_key
-
-            # urls
-            urls_settings = self._toml_data["urls"]
-            urls_settings["alt"] = self.cfg_payload.urls_alt
-            urls_settings["columns"] = self.cfg_payload.urls_columns
-            urls_settings["vertical"] = self.cfg_payload.urls_vertical
-            urls_settings["horizontal"] = self.cfg_payload.urls_horizontal
-            urls_settings["mode"] = self.cfg_payload.urls_mode
-            urls_settings["type"] = URLType(self.cfg_payload.urls_type).value
-            urls_settings["image_width"] = self.cfg_payload.urls_image_width
-            urls_settings["urls_manual"] = self.cfg_payload.urls_manual
-
-            # plugins
-            plugins_settings = self._toml_data["plugins"]
-            plugins_settings["wizard_page"] = (
-                self.cfg_payload.wizard_page if self.cfg_payload.wizard_page else ""
-            )
-            plugins_settings["token_replacer"] = (
-                self.cfg_payload.token_replacer
-                if self.cfg_payload.token_replacer
-                else ""
-            )
-            plugins_settings["pre_upload"] = (
-                self.cfg_payload.pre_upload if self.cfg_payload.pre_upload else ""
-            )
-
-            # template settings
-            template_settings = self._toml_data["template_settings"]
-            template_settings["block_syntax_color"] = (
-                self.cfg_payload.block_syntax_color
-            )
-            template_settings["variable_syntax_color"] = (
-                self.cfg_payload.variable_syntax_color
-            )
-            template_settings["comment_syntax_color"] = (
-                self.cfg_payload.comment_syntax_color
-            )
-            template_settings["trim_blocks"] = int(self.cfg_payload.trim_blocks)
-            template_settings["lstrip_blocks"] = int(self.cfg_payload.lstrip_blocks)
-            template_settings["newline_sequence"] = self.cfg_payload.newline_sequence
-            template_settings["keep_trailing_newline"] = int(
-                self.cfg_payload.keep_trailing_newline
-            )
-
-            # sandbox template setting
-            template_settings["enable_sandbox_prompt_tokens"] = (
-                self.cfg_payload.enable_sandbox_prompt_tokens
-            )
-
-            # release notes
-            release_notes = self._toml_data["release_notes"]
-            release_notes["enable_release_notes"] = (
-                self.cfg_payload.enable_release_notes
-            )
-            release_notes["last_used_release_note"] = (
-                self.cfg_payload.last_used_release_note
-            )
-            release_notes["notes"] = self.cfg_payload.release_notes
-
-            # widget settings
-            widget_settings = self._toml_data["widget_settings"]
-            widget_settings["prompt_token_editor_warn_on_missing"] = (
-                self.cfg_payload.prompt_token_editor_warn_on_missing
-            )
-
-            # if last data does not equal current data, we'll write the changes to file while also updating
-            # the last data variable with the latest data
             if (
-                self._config_data_last
-                or (self._config_data_last != self._toml_data)
-                and not save_path
+                loaded_version is not None
+                and loaded_version < self.codec.SCHEMA_VERSION
             ):
-                if not save_path and self.program_conf.current_config:
-                    save_path = self.USER_CONFIG_DIR / str(
-                        self.program_conf.current_config + ".toml"
+                self._migration_error = None
+                migrated_document = self._try_migrate_profile(
+                    loaded_document, default_toml
+                )
+                if migrated_document is not None:
+                    self.archive_profile(config_path)
+                    loaded_text = self.codec.dumps(migrated_document)
+                    atomic_write_text(config_path, loaded_text)
+                    # re-parse so downstream merge/validate/decode operate on
+                    # a real TOML document, consistent with the normal
+                    # (non-migration) load path
+                    loaded_document = tomlkit.parse(loaded_text)
+                else:
+                    reason = self._migration_error or (
+                        "the document could not be mapped to the current schema"
+                    )
+                    raise ConfigSchemaError(
+                        f"Could not migrate configuration schema_version "
+                        f"{loaded_version}: {reason}",
+                        config_path=config_path,
                     )
 
-                if not save_path:
-                    raise ConfigError("Failed to determine save path")
+            self._config_snapshot = loaded_text
+            try:
+                # Assigned atomically: only if the full validate/merge/decode
+                # sequence succeeds. This is intentional -- if validation
+                # fails at any step (schema, `validate_types`, or `decode`),
+                # `self._toml_data` must NOT be reassigned, so it stays
+                # consistent with `self.settings`, which is likewise only
+                # ever updated on a fully successful `decode`. A failed
+                # reload therefore leaves the previously-loaded profile's
+                # state intact instead of mixing the new (invalid) document
+                # with the old settings.
+                self._toml_data = self._validate_document(loaded_document, default_toml)
+            except ConfigSchemaError as error:
+                if not error.config_path:
+                    error.config_path = config_path
+                raise
+            # only update the active profile name once loading has fully
+            # succeeded -- otherwise a profile that fails schema validation
+            # (raising `ConfigSchemaError` above) would get persisted as
+            # `current_config` even though it was never actually loaded.
+            # This must happen *before* `self.save` below: `save()` calls
+            # `save_program()`, which writes `self.program.current_config`
+            # to disk, so the assignment has to land first or the on-disk
+            # program-conf file keeps the stale profile name until some
+            # later, unrelated save.
+            if config_file:
+                self.program.current_config = config_file
+            self.save(config_path)
+        else:
+            atomic_write_text(config_path, default_toml)
+            self._toml_data = tomlkit.parse(default_toml)
+            self.decode(self._toml_data)
+            self._config_snapshot = default_toml
+            if config_file:
+                self.program.current_config = config_file
+        self._active_profile_path = config_path
 
-                with open(save_path, "w") as toml_file:
-                    self._config_data_last = self._toml_data
-                    toml_file.write(tomlkit.dumps(self._toml_data))
-
-        except Exception as e:
-            raise ConfigError(f"Error saving config file: {str(e)}")
-
-    def update_config_payload(
-        self, toml_data: TOMLDocument, build_defaults: bool = False
-    ) -> None:
-        """Assigns config payload attributes from a given toml document"""
-        try:
-            # general
-            general_data = toml_data["general"]
-            nfo_forge_theme = NfoForgeTheme(general_data.get("nfo_forge_theme", 1))
-            profile = Profile(general_data.get("profile", 1))
-            media_mode = MediaMode(general_data.get("media_mode", 1))
-
-            # dependencies
-            dependencies_data = toml_data["dependencies"]
-            ffmpeg = (
-                Path(dependencies_data["ffmpeg"])
-                if dependencies_data["ffmpeg"]
-                else None
-            )
-            ffprobe = (
-                Path(dependencies_data["ffprobe"])
-                if dependencies_data["ffprobe"]
-                else None
-            )
-            frame_forge = (
-                Path(dependencies_data["frame_forge"])
-                if dependencies_data["frame_forge"]
-                else None
-            )
-            mkbrr = (
-                Path(dependencies_data["mkbrr"]) if dependencies_data["mkbrr"] else None
-            )
-
-            # api keys
-            api_keys_data = toml_data["api_keys"]
-
-            # trackers
-            tracker_data = toml_data["tracker"]
-
-            # tracker settings
-            tracker_settings = tracker_data["settings"]
-
-            # tracker order
-            tracker_order = [
-                TrackerSelection(x)
-                for x in tracker_settings.get("tracker_order", [])
-                if x in TrackerSelection._value2member_map_
-            ]
-            tracker_order.extend(e for e in TrackerSelection if e not in tracker_order)
-            last_used_img_host = {}
-            for tracker, image_dest in tracker_settings["last_used_img_host"].items():
-                try:
-                    last_used_img_host[TrackerSelection(tracker)] = ImageHost(
-                        image_dest
-                    )
-                except ValueError:
-                    last_used_img_host[TrackerSelection(tracker)] = ImageSource(
-                        image_dest
-                    )
-
-            # tracker data
-            mtv_tracker_data = tracker_data["more_than_tv"]
-            mtv_tracker = MoreThanTVInfo(
-                upload_enabled=mtv_tracker_data["upload_enabled"],
-                announce_url=mtv_tracker_data["announce_url"],
-                enabled=mtv_tracker_data["enabled"],
-                source=mtv_tracker_data["source"],
-                comments=mtv_tracker_data["comments"],
-                nfo_template=mtv_tracker_data["nfo_template"],
-                max_piece_size=mtv_tracker_data["max_piece_size"],
-                url_type=URLType(mtv_tracker_data["url_type"]),
-                column_s=mtv_tracker_data["column_s"],
-                column_space=mtv_tracker_data["column_space"],
-                row_space=mtv_tracker_data["row_space"],
-                mvr_title_override_enabled=mtv_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    mtv_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=mtv_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=mtv_tracker_data["mvr_title_replace_map"],
-                anonymous=mtv_tracker_data["anonymous"],
-                api_key=mtv_tracker_data["api_key"],
-                username=mtv_tracker_data["username"],
-                password=mtv_tracker_data["password"],
-                totp=mtv_tracker_data["totp"],
-                group_description=mtv_tracker_data["group_description"],
-                additional_tags=mtv_tracker_data["additional_tags"],
-                source_origin=MTVSourceOrigin(mtv_tracker_data["source_origin"]),
-                image_width=mtv_tracker_data["image_width"],
-            )
-
-            tl_tracker_data = tracker_data["torrent_leech"]
-            tl_tracker = TorrentLeechInfo(
-                upload_enabled=tl_tracker_data["upload_enabled"],
-                announce_url=tl_tracker_data["announce_url"],
-                enabled=tl_tracker_data["enabled"],
-                source=tl_tracker_data["source"],
-                comments=tl_tracker_data["comments"],
-                nfo_template=tl_tracker_data["nfo_template"],
-                max_piece_size=tl_tracker_data["max_piece_size"],
-                url_type=URLType(tl_tracker_data["url_type"]),
-                column_s=tl_tracker_data["column_s"],
-                column_space=tl_tracker_data["column_space"],
-                row_space=tl_tracker_data["row_space"],
-                mvr_title_override_enabled=tl_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    tl_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=tl_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=tl_tracker_data["mvr_title_replace_map"],
-                username=tl_tracker_data["username"],
-                password=tl_tracker_data["password"],
-                torrent_passkey=tl_tracker_data["torrent_passkey"],
-                alt_2_fa_token=tl_tracker_data["alt_2_fa_token"],
-            )
-
-            bhd_tracker_data = tracker_data["beyond_hd"]
-            bhd_tracker = BeyondHDInfo(
-                upload_enabled=bhd_tracker_data["upload_enabled"],
-                announce_url=bhd_tracker_data["announce_url"],
-                enabled=bhd_tracker_data["enabled"],
-                source=bhd_tracker_data["source"],
-                comments=bhd_tracker_data["comments"],
-                nfo_template=bhd_tracker_data["nfo_template"],
-                max_piece_size=bhd_tracker_data["max_piece_size"],
-                url_type=URLType(bhd_tracker_data["url_type"]),
-                column_s=bhd_tracker_data["column_s"],
-                column_space=bhd_tracker_data["column_space"],
-                row_space=bhd_tracker_data["row_space"],
-                mvr_title_override_enabled=bhd_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    bhd_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=bhd_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=bhd_tracker_data["mvr_title_replace_map"],
-                anonymous=bhd_tracker_data["anonymous"],
-                api_key=bhd_tracker_data["api_key"],
-                rss_key=bhd_tracker_data["rss_key"],
-                promo=BHDPromo(bhd_tracker_data["promo"]),
-                live_release=BHDLiveRelease(bhd_tracker_data["live_release"]),
-                internal=bhd_tracker_data["internal"],
-                image_width=bhd_tracker_data["image_width"],
-                add_localization_to_custom_edition=bhd_tracker_data.get(
-                    "add_localization_to_custom_edition", False
-                ),
-                stream_optimized=bhd_tracker_data.get("stream_optimized", False),
-            )
-
-            ptp_tracker_data = tracker_data["pass_the_popcorn"]
-            ptp_tracker = PassThePopcornInfo(
-                upload_enabled=ptp_tracker_data["upload_enabled"],
-                announce_url=ptp_tracker_data["announce_url"],
-                enabled=ptp_tracker_data["enabled"],
-                source=ptp_tracker_data["source"],
-                comments=ptp_tracker_data["comments"],
-                nfo_template=ptp_tracker_data["nfo_template"],
-                max_piece_size=ptp_tracker_data["max_piece_size"],
-                url_type=URLType(ptp_tracker_data["url_type"]),
-                column_s=ptp_tracker_data["column_s"],
-                column_space=ptp_tracker_data["column_space"],
-                row_space=ptp_tracker_data["row_space"],
-                mvr_title_override_enabled=ptp_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    ptp_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=ptp_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=ptp_tracker_data["mvr_title_replace_map"],
-                api_user=ptp_tracker_data["api_user"],
-                api_key=ptp_tracker_data["api_key"],
-                username=ptp_tracker_data["username"],
-                password=ptp_tracker_data["password"],
-                totp=ptp_tracker_data["totp"],
-            )
-
-            rf_tracker_data = tracker_data["reelflix"]
-            rf_tracker = ReelFlixInfo(
-                upload_enabled=rf_tracker_data["upload_enabled"],
-                announce_url=rf_tracker_data["announce_url"],
-                enabled=rf_tracker_data["enabled"],
-                source=rf_tracker_data["source"],
-                comments=rf_tracker_data["comments"],
-                nfo_template=rf_tracker_data["nfo_template"],
-                max_piece_size=rf_tracker_data["max_piece_size"],
-                url_type=URLType(rf_tracker_data["url_type"]),
-                column_s=rf_tracker_data["column_s"],
-                column_space=rf_tracker_data["column_space"],
-                row_space=rf_tracker_data["row_space"],
-                mvr_title_override_enabled=rf_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    rf_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=rf_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=rf_tracker_data["mvr_title_replace_map"],
-                api_key=rf_tracker_data["api_key"],
-                anonymous=rf_tracker_data["anonymous"],
-                internal=rf_tracker_data["internal"],
-                personal_release=rf_tracker_data["personal_release"],
-                stream_optimized=rf_tracker_data["stream_optimized"],
-                opt_in_to_mod_queue=rf_tracker_data["opt_in_to_mod_queue"],
-                featured=rf_tracker_data["featured"],
-                free=rf_tracker_data["free"],
-                double_up=rf_tracker_data["double_up"],
-                sticky=rf_tracker_data["sticky"],
-                image_width=rf_tracker_data["image_width"],
-            )
-
-            aither_tracker_data = tracker_data["aither"]
-            aither_tracker = AitherInfo(
-                upload_enabled=aither_tracker_data["upload_enabled"],
-                announce_url=aither_tracker_data["announce_url"],
-                enabled=aither_tracker_data["enabled"],
-                source=aither_tracker_data["source"],
-                comments=aither_tracker_data["comments"],
-                nfo_template=aither_tracker_data["nfo_template"],
-                max_piece_size=aither_tracker_data["max_piece_size"],
-                url_type=URLType(aither_tracker_data["url_type"]),
-                column_s=aither_tracker_data["column_s"],
-                column_space=aither_tracker_data["column_space"],
-                row_space=aither_tracker_data["row_space"],
-                mvr_title_override_enabled=aither_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    aither_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=aither_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=aither_tracker_data["mvr_title_replace_map"],
-                api_key=aither_tracker_data["api_key"],
-                anonymous=aither_tracker_data["anonymous"],
-                internal=aither_tracker_data["internal"],
-                personal_release=aither_tracker_data["personal_release"],
-                stream_optimized=aither_tracker_data["stream_optimized"],
-                opt_in_to_mod_queue=aither_tracker_data["opt_in_to_mod_queue"],
-                featured=aither_tracker_data["featured"],
-                free=aither_tracker_data["free"],
-                double_up=aither_tracker_data["double_up"],
-                sticky=aither_tracker_data["sticky"],
-                image_width=aither_tracker_data["image_width"],
-            )
-
-            huno_tracker_data = tracker_data["huno"]
-            huno_tracker = HunoInfo(
-                upload_enabled=huno_tracker_data["upload_enabled"],
-                announce_url=huno_tracker_data["announce_url"],
-                enabled=huno_tracker_data["enabled"],
-                source=huno_tracker_data["source"],
-                comments=huno_tracker_data["comments"],
-                nfo_template=huno_tracker_data["nfo_template"],
-                max_piece_size=huno_tracker_data["max_piece_size"],
-                url_type=URLType(huno_tracker_data["url_type"]),
-                column_s=huno_tracker_data["column_s"],
-                column_space=huno_tracker_data["column_space"],
-                row_space=huno_tracker_data["row_space"],
-                mvr_title_override_enabled=huno_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    huno_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=huno_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=huno_tracker_data["mvr_title_replace_map"],
-                api_key=huno_tracker_data["api_key"],
-                anonymous=huno_tracker_data["anonymous"],
-                internal=huno_tracker_data["internal"],
-                stream_optimized=huno_tracker_data["stream_optimized"],
-                image_width=huno_tracker_data["image_width"],
-            )
-
-            lst_tracker_data = tracker_data["lst"]
-            lst_tracker = LSTInfo(
-                upload_enabled=lst_tracker_data["upload_enabled"],
-                announce_url=lst_tracker_data["announce_url"],
-                enabled=lst_tracker_data["enabled"],
-                source=lst_tracker_data["source"],
-                comments=lst_tracker_data["comments"],
-                nfo_template=lst_tracker_data["nfo_template"],
-                max_piece_size=lst_tracker_data["max_piece_size"],
-                url_type=URLType(lst_tracker_data["url_type"]),
-                column_s=lst_tracker_data["column_s"],
-                column_space=lst_tracker_data["column_space"],
-                row_space=lst_tracker_data["row_space"],
-                mvr_title_override_enabled=lst_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    lst_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=lst_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=lst_tracker_data["mvr_title_replace_map"],
-                api_key=lst_tracker_data["api_key"],
-                anonymous=lst_tracker_data["anonymous"],
-                internal=lst_tracker_data["internal"],
-                personal_release=lst_tracker_data["personal_release"],
-                mod_queue_opt_in=lst_tracker_data["mod_queue_opt_in"],
-                draft_queue_opt_in=lst_tracker_data["draft_queue_opt_in"],
-                featured=lst_tracker_data["featured"],
-                free=lst_tracker_data["free"],
-                double_up=lst_tracker_data["double_up"],
-                sticky=lst_tracker_data["sticky"],
-                image_width=lst_tracker_data["image_width"],
-            )
-
-            darkpeers_tracker_data = tracker_data["dark_peers"]
-            darkpeers_tracker = DarkPeersInfo(
-                upload_enabled=darkpeers_tracker_data["upload_enabled"],
-                announce_url=darkpeers_tracker_data["announce_url"],
-                enabled=darkpeers_tracker_data["enabled"],
-                source=darkpeers_tracker_data["source"],
-                comments=darkpeers_tracker_data["comments"],
-                nfo_template=darkpeers_tracker_data["nfo_template"],
-                max_piece_size=darkpeers_tracker_data["max_piece_size"],
-                url_type=URLType(darkpeers_tracker_data["url_type"]),
-                column_s=darkpeers_tracker_data["column_s"],
-                column_space=darkpeers_tracker_data["column_space"],
-                row_space=darkpeers_tracker_data["row_space"],
-                mvr_title_override_enabled=darkpeers_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    darkpeers_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=darkpeers_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=darkpeers_tracker_data["mvr_title_replace_map"],
-                api_key=darkpeers_tracker_data["api_key"],
-                anonymous=darkpeers_tracker_data["anonymous"],
-                internal=darkpeers_tracker_data["internal"],
-                personal_release=darkpeers_tracker_data["personal_release"],
-                image_width=darkpeers_tracker_data["image_width"],
-            )
-
-            shri_tracker_data = tracker_data["shareisland"]
-            shri_tracker = ShareIslandInfo(
-                upload_enabled=shri_tracker_data["upload_enabled"],
-                announce_url=shri_tracker_data["announce_url"],
-                enabled=shri_tracker_data["enabled"],
-                source=shri_tracker_data["source"],
-                comments=shri_tracker_data["comments"],
-                nfo_template=shri_tracker_data["nfo_template"],
-                max_piece_size=shri_tracker_data["max_piece_size"],
-                url_type=URLType(shri_tracker_data["url_type"]),
-                column_s=shri_tracker_data["column_s"],
-                column_space=shri_tracker_data["column_space"],
-                row_space=shri_tracker_data["row_space"],
-                mvr_title_override_enabled=shri_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    shri_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=shri_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=shri_tracker_data["mvr_title_replace_map"],
-                api_key=shri_tracker_data["api_key"],
-                anonymous=shri_tracker_data["anonymous"],
-                internal=shri_tracker_data["internal"],
-                personal_release=shri_tracker_data["personal_release"],
-                opt_in_to_mod_queue=shri_tracker_data["opt_in_to_mod_queue"],
-                image_width=shri_tracker_data["image_width"],
-            )
-
-            ulcx_tracker_data = tracker_data["uploadcx"]
-            ulcx_tracker = ShareIslandInfo(
-                upload_enabled=ulcx_tracker_data["upload_enabled"],
-                announce_url=ulcx_tracker_data["announce_url"],
-                enabled=ulcx_tracker_data["enabled"],
-                source=ulcx_tracker_data["source"],
-                comments=ulcx_tracker_data["comments"],
-                nfo_template=ulcx_tracker_data["nfo_template"],
-                max_piece_size=ulcx_tracker_data["max_piece_size"],
-                url_type=URLType(ulcx_tracker_data["url_type"]),
-                column_s=ulcx_tracker_data["column_s"],
-                column_space=ulcx_tracker_data["column_space"],
-                row_space=ulcx_tracker_data["row_space"],
-                mvr_title_override_enabled=ulcx_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    ulcx_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=ulcx_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=ulcx_tracker_data["mvr_title_replace_map"],
-                api_key=ulcx_tracker_data["api_key"],
-                anonymous=ulcx_tracker_data["anonymous"],
-                internal=ulcx_tracker_data["internal"],
-                personal_release=ulcx_tracker_data["personal_release"],
-                image_width=ulcx_tracker_data["image_width"],
-            )
-
-            oe_tracker_data = tracker_data["only_encodes"]
-            oe_tracker = OnlyEncodesInfo(
-                upload_enabled=oe_tracker_data["upload_enabled"],
-                announce_url=oe_tracker_data["announce_url"],
-                enabled=oe_tracker_data["enabled"],
-                source=oe_tracker_data["source"],
-                comments=oe_tracker_data["comments"],
-                nfo_template=oe_tracker_data["nfo_template"],
-                max_piece_size=oe_tracker_data["max_piece_size"],
-                url_type=URLType(oe_tracker_data["url_type"]),
-                column_s=oe_tracker_data["column_s"],
-                column_space=oe_tracker_data["column_space"],
-                row_space=oe_tracker_data["row_space"],
-                mvr_title_override_enabled=oe_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    oe_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=oe_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=oe_tracker_data["mvr_title_replace_map"],
-                api_key=oe_tracker_data["api_key"],
-                anonymous=oe_tracker_data["anonymous"],
-                internal=oe_tracker_data["internal"],
-                personal_release=oe_tracker_data["personal_release"],
-                image_width=oe_tracker_data["image_width"],
-            )
-
-            # torrent clients
-            torrent_client_data = toml_data["torrent_client"]
-
-            # qbittorrent
-            qbittorrent = TorrentClient(**torrent_client_data["qbittorrent"])
-            for qbit_specific in self.QBIT_SPECIFIC:
-                if qbit_specific not in qbittorrent.specific_params:
-                    default_val = (
-                        self.cfg_payload_defaults.qbittorrent.specific_params.get(
-                            qbit_specific, ""
-                        )
-                        if self.cfg_payload_defaults
-                        else ""
-                    )
-                    qbittorrent.specific_params[qbit_specific] = default_val
-
-            # deluge
-            deluge = TorrentClient(**torrent_client_data["deluge"])
-            for deluge_specific in self.DELUGE_SPECIFIC:
-                if not deluge.specific_params.get(deluge_specific):
-                    deluge.specific_params[deluge_specific] = ""
-
-            # rtorrent
-            rtorrent = TorrentClient(**torrent_client_data["rtorrent"])
-            for rtorrent_specific in self.RTORRENT_SPECIFIC:
-                if not rtorrent.specific_params.get(rtorrent_specific):
-                    rtorrent.specific_params[rtorrent_specific] = ""
-
-            # transmission
-            transmission = TorrentClient(**torrent_client_data["transmission"])
-            for transmission_specific in self.TRANSMISSION_SPECIFIC:
-                if not transmission.specific_params.get(transmission_specific):
-                    transmission.specific_params[transmission_specific] = ""
-
-            # watch folder
-            watch_folder = WatchFolder(**toml_data["watch_folder"])
-
-            # movie rename
-            movie_rename = toml_data["movie_rename"]
-
-            # user token data
-            user_token_data = toml_data["user_tokens"]
-
-            # screenshots
-            screen_shot_data = toml_data["screenshots"]
-
-            # image hosts
-            image_hosts = toml_data["image_hosts"]
-
-            # hosts
-            chevereto_v3 = CheveretoV3Payload(**image_hosts["chevereto_v3"])
-            chevereto_v4 = CheveretoV4Payload(**image_hosts["chevereto_v4"])
-            image_bb = ImageBBPayload(**image_hosts["image_bb"])
-            image_box = ImageBoxPayload(**image_hosts["image_box"])
-            ptpimg = PTPIMGPayload(**image_hosts["ptpimg"])
-
-            # urls
-            urls_settings = toml_data["urls"]
-
-            # plugins
-            plugins_settings = toml_data["plugins"]
-
-            # template settings
-            template_settings = toml_data["template_settings"]
-
-            # release notes
-            release_notes = toml_data["release_notes"]
-
-            # widget settings
-            widget_settings = toml_data["widget_settings"]
-
-            # build payload
-            config_payload = ConfigPayload(
-                ui_suffix=general_data.get("ui_suffix", ""),
-                ui_scale_factor=general_data.get("ui_scale_factor", 1.0),
-                nfo_forge_theme=nfo_forge_theme,
-                profile=profile,
-                media_mode=media_mode,
-                source_media_ext_filter=general_data.get(
-                    "source_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
-                ),
-                encode_media_ext_filter=general_data.get(
-                    "encode_media_ext_filter", list(self.ACCEPTED_EXTENSIONS)
-                ),
-                releasers_name=general_data.get("releasers_name", ""),
-                tmdb_language=general_data.get("tmdb_language", "en-US"),
-                timeout=general_data.get("timeout", 60),
-                enable_prompt_overview=general_data.get("enable_prompt_overview", True),
-                enable_mkbrr=general_data.get("enable_mkbrr", True),
-                log_level=LogLevel(general_data.get("log_level", 20)),
-                log_total=general_data.get("log_total", 50),
-                working_dir=Path(general_data["working_dir"])
-                if general_data.get("working_dir")
-                else self.default_working_dir(ensure_exists=True),
-                ffmpeg=ffmpeg,
-                ffprobe=ffprobe,
-                frame_forge=frame_forge,
-                mkbrr=mkbrr,
-                tmdb_api_key=api_keys_data.get("tmdb_api_key", ""),
-                tracker_order=tracker_order,
-                last_used_img_host=last_used_img_host,
-                mtv_tracker=mtv_tracker,
-                tl_tracker=tl_tracker,
-                bhd_tracker=bhd_tracker,
-                ptp_tracker=ptp_tracker,
-                rf_tracker=rf_tracker,
-                aither_tracker=aither_tracker,
-                huno_tracker=huno_tracker,
-                lst_tracker=lst_tracker,
-                darkpeers_tracker=darkpeers_tracker,
-                shareisland_tracker=shri_tracker,
-                ulcx_tracker=ulcx_tracker,
-                oe_tracker=oe_tracker,
-                qbittorrent=qbittorrent,
-                deluge=deluge,
-                rtorrent=rtorrent,
-                transmission=transmission,
-                watch_folder=watch_folder,
-                mvr_enabled=movie_rename.get("mvr_enabled", False),
-                mvr_replace_illegal_chars=movie_rename.get(
-                    "mvr_replace_illegal_chars", True
-                ),
-                mvr_colon_replace_filename=ColonReplace(
-                    movie_rename.get("mvr_colon_replace_filename", 3)
-                ),
-                mvr_colon_replace_title=ColonReplace(
-                    movie_rename.get("mvr_colon_replace_title", 3)
-                ),
-                mvr_parse_filename_attributes=movie_rename[
-                    "mvr_parse_filename_attributes"
-                ],
-                mvr_clean_title_rules=movie_rename["mvr_clean_title_rules"],
-                mvr_clean_title_rules_modified=movie_rename[
-                    "mvr_clean_title_rules_modified"
-                ],
-                mvr_token=movie_rename.get("mvr_token"),
-                mvr_title_token=movie_rename.get("mvr_title_token"),
-                mvr_release_group=movie_rename.get("mvr_release_group", ""),
-                mvr_mi_video_dynamic_range=movie_rename.get(
-                    "mvr_mi_video_dynamic_range",
-                    {
-                        "resolutions": {"720p": False, "1080p": False, "2160p": True},
-                        "hdr_types": {
-                            "SDR": True,
-                            "PQ": False,
-                            "HLG": False,
-                            "HDR10": True,
-                            "HDR10+": True,
-                            "DV": True,
-                            "DV + HDR10": True,
-                            "DV + HDR10+": True,
-                        },
-                        "custom_strings": {
-                            "SDR": "SDR",
-                            "PQ": "",
-                            "HLG": "",
-                            "HDR10": "HDR",
-                            "HDR10+": "HDR10Plus",
-                            "DV": "DV",
-                            "DV HDR10": "DV HDR",
-                            "DV HDR10+": "DV HDR10Plus",
-                        },
-                    },
-                ),
-                user_tokens=user_token_data.get("tokens", {}),
-                crop_mode=Cropping(screen_shot_data.get("crop_mode", 2)),
-                screenshots_enabled=screen_shot_data.get("screenshots_enabled", False),
-                screen_shot_count=screen_shot_data.get("screen_shot_count", 20),
-                min_required_selected_screens=screen_shot_data.get(
-                    "min_required_selected_screens", 0
-                ),
-                max_required_selected_screens=screen_shot_data.get(
-                    "max_required_selected_screens", 0
-                ),
-                ss_mode=ScreenShotMode(screen_shot_data.get("ss_mode", 1)),
-                sub_size_height_720=screen_shot_data.get("sub_size_height_720", 12),
-                sub_size_height_1080=screen_shot_data.get("sub_size_height_1080", 16),
-                sub_size_height_2160=screen_shot_data.get("sub_size_height_2160", 32),
-                subtitle_alignment=SubtitleAlignment(
-                    screen_shot_data.get("subtitle_alignment", 7)
-                ),
-                subtitle_color=screen_shot_data.get("subtitle_color", "#f5c70a"),
-                subtitle_outline_color=screen_shot_data.get(
-                    "subtitle_outline_color", "#000000"
-                ),
-                trim_start=screen_shot_data.get("trim_start", 20),
-                trim_end=screen_shot_data.get("trim_end", 20),
-                comparison_subtitles=screen_shot_data.get("comparison_subtitles", True),
-                comparison_subtitle_source_name=screen_shot_data.get(
-                    "comparison_subtitle_source_name", "Source"
-                ),
-                comparison_subtitle_encode_name=screen_shot_data.get(
-                    "comparison_subtitle_encode_name", "Encode"
-                ),
-                optimize_generated_images=screen_shot_data.get(
-                    "optimize_generated_images", True
-                ),
-                optimize_dl_url_images=screen_shot_data.get(
-                    "optimize_dl_url_images", True
-                ),
-                optimize_dl_url_images_percentage=screen_shot_data.get(
-                    "optimize_dl_url_images_percentage", 0.25
-                ),
-                indexer=Indexer(screen_shot_data.get("indexer", 1)),
-                image_plugin=ImagePlugin(screen_shot_data.get("image_plugin", 1)),
-                chevereto_v3=chevereto_v3,
-                chevereto_v4=chevereto_v4,
-                image_bb=image_bb,
-                image_box=image_box,
-                ptpimg=ptpimg,
-                urls_alt=urls_settings.get("alt", ""),
-                urls_columns=urls_settings.get("columns", 1),
-                urls_vertical=urls_settings.get("vertical", 1),
-                urls_horizontal=urls_settings.get("horizontal", 1),
-                urls_mode=urls_settings.get("mode", 0),
-                urls_type=URLType(urls_settings.get("type", 1)),
-                urls_image_width=urls_settings.get("image_width", 0),
-                urls_manual=urls_settings.get("urls_manual", 0),
-                wizard_page=plugins_settings.get("wizard_page"),
-                token_replacer=plugins_settings.get("token_replacer"),
-                pre_upload=plugins_settings.get("pre_upload"),
-                block_syntax_color=template_settings.get(
-                    "block_syntax_color", "#A4036F"
-                ),
-                variable_syntax_color=template_settings.get(
-                    "variable_syntax_color", "#048BA8"
-                ),
-                comment_syntax_color=template_settings.get(
-                    "comment_syntax_color", "#16DB93"
-                ),
-                trim_blocks=bool(template_settings.get("trim_blocks", 1)),
-                lstrip_blocks=bool(template_settings.get("lstrip_blocks", 1)),
-                newline_sequence=template_settings.get("newline_sequence", "\\n"),
-                keep_trailing_newline=bool(
-                    template_settings.get("keep_trailing_newline", 0)
-                ),
-                enable_sandbox_prompt_tokens=template_settings.get(
-                    "enable_sandbox_prompt_tokens", True
-                ),
-                enable_release_notes=release_notes.get("enable_release_notes", False),
-                last_used_release_note=release_notes.get("last_used_release_note", ""),
-                release_notes=release_notes.get("notes", {}),
-                prompt_token_editor_warn_on_missing=widget_settings.get(
-                    "prompt_token_editor_warn_on_missing", True
-                ),
-            )
-
-            # check where to store the built payload
-            if build_defaults:
-                self.cfg_payload_defaults = config_payload
-            else:
-                self.cfg_payload = config_payload
-
-        except Exception as e:
-            raise ConfigError(f"Error parsing config file: {str(e)}")
-
-    def _tracker_map(
-        self, defaults: bool = False
-    ) -> dict[TrackerSelection, TrackerInfo]:
-        """
-        As more trackers are added, this needs to be updated with each one. This is the default map
-        that is ordered based on the saved config or the TrackerSelection enum class if no saved
-        config exists.
-        """
-        return {
-            TrackerSelection.MORE_THAN_TV: self.cfg_payload.mtv_tracker
-            if not defaults
-            else self.cfg_payload_defaults.mtv_tracker,
-            TrackerSelection.TORRENT_LEECH: self.cfg_payload.tl_tracker
-            if not defaults
-            else self.cfg_payload_defaults.tl_tracker,
-            TrackerSelection.BEYOND_HD: self.cfg_payload.bhd_tracker
-            if not defaults
-            else self.cfg_payload_defaults.bhd_tracker,
-            TrackerSelection.PASS_THE_POPCORN: self.cfg_payload.ptp_tracker
-            if not defaults
-            else self.cfg_payload_defaults.ptp_tracker,
-            TrackerSelection.REELFLIX: self.cfg_payload.rf_tracker
-            if not defaults
-            else self.cfg_payload_defaults.rf_tracker,
-            TrackerSelection.AITHER: self.cfg_payload.aither_tracker
-            if not defaults
-            else self.cfg_payload_defaults.aither_tracker,
-            TrackerSelection.HUNO: self.cfg_payload.huno_tracker
-            if not defaults
-            else self.cfg_payload_defaults.huno_tracker,
-            TrackerSelection.LST: self.cfg_payload.lst_tracker
-            if not defaults
-            else self.cfg_payload_defaults.lst_tracker,
-            TrackerSelection.DARK_PEERS: self.cfg_payload.darkpeers_tracker
-            if not defaults
-            else self.cfg_payload_defaults.darkpeers_tracker,
-            TrackerSelection.SHARE_ISLAND: self.cfg_payload.shareisland_tracker
-            if not defaults
-            else self.cfg_payload_defaults.shareisland_tracker,
-            TrackerSelection.UPLOAD_CX: self.cfg_payload.ulcx_tracker
-            if not defaults
-            else self.cfg_payload_defaults.ulcx_tracker,
-            TrackerSelection.ONLY_ENCODES: self.cfg_payload.oe_tracker
-            if not defaults
-            else self.cfg_payload_defaults.oe_tracker,
-        }
-
-    def _client_map(self) -> dict[TorrentClientSelection, TorrentClient | WatchFolder]:
-        """Map all of the torrent clients to their Enum for easy usage through out the program"""
-        return {
-            TorrentClientSelection.QBITTORRENT: self.cfg_payload.qbittorrent,
-            TorrentClientSelection.DELUGE: self.cfg_payload.deluge,
-            TorrentClientSelection.RTORRENT: self.cfg_payload.rtorrent,
-            TorrentClientSelection.TRANSMISSION: self.cfg_payload.transmission,
-            TorrentClientSelection.WATCH_FOLDER: self.cfg_payload.watch_folder,
-        }
-
-    def _image_host_map(
+    def _validate_document(
         self,
-    ) -> dict[ImageHost, ImagePayloadBase]:
-        """Map all of the image hosts to their enum/payloads for easy usage through out the program"""
-        return {
-            ImageHost.CHEVERETO_V3: self.cfg_payload.chevereto_v3,
-            ImageHost.CHEVERETO_V4: self.cfg_payload.chevereto_v4,
-            ImageHost.IMAGE_BB: self.cfg_payload.image_bb,
-            ImageHost.IMAGE_BOX: self.cfg_payload.image_box,
-            ImageHost.PTPIMG: self.cfg_payload.ptpimg,
-        }
+        document: MutableMapping[str, Any],
+        default_toml: str,
+        dry_run: bool = False,
+    ) -> MutableMapping[str, Any]:
+        """Run the validate/merge/decode sequence `load_profile` applies to
+        a loaded profile: schema check, merge defaults (against a fresh
+        parse of ``default_toml``), coerce legacy int 0/1 flags to bool where
+        the default is a bool, per-key type validation against
+        ``self._default_document``, then `decode` (which also runs
+        `validate_settings`).
+
+        Shared by `load_profile` (the real load, ``dry_run=False``) and
+        `_try_migrate_profile`'s trial validation (``dry_run=True``, never
+        persisted) so the two paths cannot drift apart if this sequence ever
+        changes.
+
+        Returns the defaults-merged document. Raises whatever the
+        underlying steps raise (e.g. `ConfigSchemaError`, `ConfigError`) on
+        failure.
+        """
+        self.codec.validate_schema(document)
+        merged = self.codec.merge_defaults(document, tomlkit.parse(default_toml))
+        # Normalize legacy integer 0/1 tracker flags to bool where the default
+        # declares a bool, before per-key type validation. This self-heals both
+        # a config the app previously wrote as a real bool (default now bool ->
+        # no-op) and one still holding the old integer representation from a
+        # hand-edited or earlier profile.
+        self.codec.coerce_bool_flags(merged, self._default_document)
+        self.codec.validate_types(merged, self._default_document)
+        self.decode(merged, dry_run=dry_run)
+        return merged
+
+    def _try_migrate_profile(
+        self,
+        loaded_document: MutableMapping[str, Any],
+        default_toml: str,
+    ) -> MutableMapping[str, Any] | None:
+        """Attempt to migrate an older profile up to the current schema.
+
+        `migrate_document` applies every intermediate hop, so a profile
+        several versions behind is carried through each shape in turn rather
+        than being rejected.
+
+        Returns the migrated document on success -- but only after proving it
+        actually validates, by running it through the exact same validation
+        `load_profile` applies to a normal, already-current-schema config:
+        schema check, merge defaults, per-key type validation, and a decode
+        (which also runs `validate_settings`). That trial run happens on an
+        in-memory copy only (`decode(..., dry_run=True)`), never on the
+        document that gets persisted, so a migration that maps structurally
+        but produces an invalid document can't destroy the original file.
+
+        Returns ``None`` if migration is not possible (some section could
+        not be mapped), the migrated document fails validation, or anything
+        raised, in which case the caller must leave the original
+        document/file untouched and fall through to the normal
+        `ConfigSchemaError` path so the existing archive+regenerate flow can
+        take over.
+        """
+        try:
+            migrated_document, unmapped = migrate_document(
+                loaded_document, self._default_document
+            )
+        except Exception as error:
+            self._migration_error = f"{type(error).__name__}: {error}"
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Configuration migration failed: {self._migration_error}",
+            )
+            return None
+        if unmapped:
+            self._migration_error = "unmapped sections: " + ", ".join(
+                sorted(set(unmapped))
+            )
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Configuration migration failed: {self._migration_error}",
+            )
+            return None
+
+        try:
+            trial_document = tomlkit.parse(self.codec.dumps(migrated_document))
+            self._validate_document(trial_document, default_toml, dry_run=True)
+        except Exception as error:
+            self._migration_error = f"{type(error).__name__}: {error}"
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Configuration migration validation failed: {self._migration_error}",
+            )
+            return None
+
+        return migrated_document
+
+    def save_as(self, save_path: Path) -> None:
+        """Save the current settings under a new profile name."""
+        self.program.current_config = save_path.stem
+        self.save(save_path)
+        self.save_program()
+
+    @staticmethod
+    def _read_toml(
+        path: Path, description: str
+    ) -> tuple[str, MutableMapping[str, Any]]:
+        """Read and parse a UTF-8 TOML document with a user-facing error."""
+        try:
+            text = path.read_text(encoding="utf-8")
+            return text, tomlkit.parse(text)
+        except (OSError, UnicodeError, ParseError) as error:
+            raise ConfigError(
+                f"Error reading {description} '{path}': {error}"
+            ) from error
+
+    @staticmethod
+    def _backup_path(config_path: Path) -> Path:
+        backup_dir = config_path.parent / "old_configs"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"{config_path.stem}_{timestamp}{config_path.suffix}"
+        counter = 1
+        while backup_path.exists():
+            backup_path = backup_dir / (
+                f"{config_path.stem}_{timestamp}_{counter}{config_path.suffix}"
+            )
+            counter += 1
+        return backup_path
+
+    @classmethod
+    def archive_profile(cls, config_path: Path) -> Path:
+        """Copy a profile into ``old_configs`` before a lossy rewrite."""
+        if not config_path.exists():
+            raise ConfigError(f"Cannot archive missing config file: {config_path}")
+        backup_path = cls._backup_path(config_path)
+        try:
+            shutil.copy2(config_path, backup_path)
+        except OSError as error:
+            raise ConfigError(f"Could not archive config file: {error}") from error
+        return backup_path
+
+    @classmethod
+    def replace_profile_with_default(
+        cls,
+        config_path: Path,
+        paths: ConfigPaths | None = None,
+    ) -> Path:
+        """Archive an incompatible profile and replace it with the default config."""
+        config_paths = paths or ConfigPaths()
+        if not config_path.exists():
+            atomic_write_text(
+                config_path,
+                config_paths.default_config.read_text(encoding="utf-8"),
+            )
+            return config_path
+
+        backup_path = cls._backup_path(config_path)
+        config_path.replace(backup_path)
+        atomic_write_text(
+            config_path,
+            config_paths.default_config.read_text(encoding="utf-8"),
+        )
+        return backup_path
 
     def _init_dependencies(self) -> None:
         """Initialize dependencies and updates the config if needed"""
-        FindDependencies().update_dependencies(self)
-
-    def _jinja_env_settings(self) -> dict:
-        env_settings = {
-            "trim_blocks": self.cfg_payload.trim_blocks,
-            "lstrip_blocks": self.cfg_payload.lstrip_blocks,
-            "keep_trailing_newline": self.cfg_payload.keep_trailing_newline,
-        }
-        return env_settings
-
-    @staticmethod
-    def resolve_dependency(path_attr: Path | None) -> str:
-        """Ensure that we're returning a toml safe string to save the paths"""
-        if path_attr:
-            return str(Path(path_attr))
-        else:
-            return ""
-
-    @staticmethod
-    def default_working_dir(ensure_exists: bool = False) -> Path:
-        wd = Path(pd_user_data_dir(appname="nfoforge", appauthor=False))
-        if ensure_exists:
-            wd.mkdir(parents=True, exist_ok=True)
-        return wd
-
-    # TODO: all these methods can be re activated when self.shared_data is needed IF they are needed
-    # def set_shared_data(self, key, value):
-    #     self.shared_data[key] = value
-
-    # def get_shared_data(self, key):
-    #     return self.shared_data.get(key)
-
-    # # TODO: handle message box on FE
-    # def save_config_data(self):
-    # try:
-    #     self.config.save_config()
-    # except ConfigError as e:
-    #     QMessageBox.critical(self, "Error", str(e))
+        FindDependencies().update_dependencies(self.settings.dependencies)

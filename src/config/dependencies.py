@@ -1,10 +1,14 @@
 from os import PathLike
 from pathlib import Path
 import shutil
+from typing import TYPE_CHECKING
 
 from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.dependencies import Dependencies
+
+if TYPE_CHECKING:
+    from src.config.models import DependencySettings
 
 # determine os exe
 OS_EXE = get_executable_string_by_os()
@@ -13,9 +17,9 @@ OS_EXE = get_executable_string_by_os()
 class FindDependencies:
     """A utility class for finding and verifying dependencies required by a program"""
 
-    def update_dependencies(self, config) -> None:
+    def update_dependencies(self, dependencies: "DependencySettings") -> None:
         for dependency in Dependencies:
-            current_path = getattr(config.cfg_payload, dependency.name.lower())
+            current_path = getattr(dependencies, dependency.name.lower())
             if current_path and Path(current_path).exists():
                 continue
 
@@ -25,7 +29,7 @@ class FindDependencies:
                 dep_map["app_folder"], dep_map["executable"], current_path
             )
             if find_dep:
-                setattr(config.cfg_payload, dep_map["cfg_var"], find_dep)
+                setattr(dependencies, dep_map["cfg_var"], find_dep)
 
     def _find_dependency(
         self, app_folder_name: str, executable: str, user_defined: PathLike[str] | None

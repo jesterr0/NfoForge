@@ -1,12 +1,14 @@
-from PySide6.QtWidgets import QListWidget, QListWidgetItem, QFrame
-from PySide6.QtGui import QIcon, QFontDatabase, QFont
-from PySide6.QtCore import QSize, Qt
-
 from pathlib import Path
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QIcon
+from PySide6.QtWidgets import QFrame, QListWidget, QListWidgetItem, QWidget
+
+from src.frontend.utils.fonts import monospace_font
 
 
 class ThumbnailListWidget(QListWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setViewMode(QListWidget.ViewMode.IconMode)
         self.setIconSize(QSize(250, 250))
@@ -17,12 +19,9 @@ class ThumbnailListWidget(QListWidget):
         self.setFrameShape(QFrame.Shape.Box)
         self.setFrameShadow(QFrame.Shadow.Sunken)
 
-    def add_thumbnail(self, image_path: Path):
+    def add_thumbnail(self, image_path: Path) -> None:
         item = QListWidgetItem(QIcon(str(image_path)), "")
         self.addItem(item)
 
     def enable_mono_text(self) -> None:
-        if "Fira Mono" in QFontDatabase().families():
-            self.setFont(QFont("Fira Mono"))
-        else:
-            self.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self.setFont(monospace_font())

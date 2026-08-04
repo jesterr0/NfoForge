@@ -1,11 +1,10 @@
+schema_version = 4
+
 [general]
 ui_suffix = ""
 ui_scale_factor = 1.0
 nfo_forge_theme = 1
-profile = 1
-media_mode = 1
-source_media_ext_filter = [".mkv", ".mp4"]
-encode_media_ext_filter = [".mkv", ".mp4"]
+enable_plugins = false
 releasers_name = ""
 tmdb_language = "en-US"
 timeout = 60
@@ -44,7 +43,7 @@ mvr_title_override_enabled = true
 mvr_title_colon_replace = 3
 mvr_title_token_override = ""
 mvr_title_replace_map = [['''\s''', "."]]
-anonymous = 0
+anonymous = false
 api_key = ""
 username = ""
 password = ""
@@ -91,13 +90,15 @@ mvr_title_override_enabled = false
 mvr_title_token_override = ""
 mvr_title_replace_map = []
 mvr_title_colon_replace = 3
-anonymous = 0
+anonymous = false
 api_key = ""
 rss_key = ""
 promo = 0
 live_release = 1
-internal = 0
+internal = false
 image_width = 350
+add_localization_to_custom_edition = false
+stream_optimized = false
 
 [tracker.pass_the_popcorn]
 upload_enabled = true
@@ -138,15 +139,15 @@ mvr_title_token_override = ""
 mvr_title_replace_map = []
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-stream_optimized = 0
-opt_in_to_mod_queue = 0
-featured = 0
-free = 0
-double_up = 0
-sticky = 0
+anonymous = false
+internal = false
+personal_release = false
+stream_optimized = false
+opt_in_to_mod_queue = false
+featured = false
+free = false
+double_up = false
+sticky = false
 image_width = 350
 
 [tracker.aither]
@@ -162,7 +163,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -175,15 +176,15 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-stream_optimized = 0
-opt_in_to_mod_queue = 0
-featured = 0
-free = 0
-double_up = 0
-sticky = 0
+anonymous = false
+internal = false
+personal_release = false
+stream_optimized = false
+opt_in_to_mod_queue = false
+featured = false
+free = false
+double_up = false
+sticky = false
 image_width = 350
 
 [tracker.huno]
@@ -199,7 +200,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {mi_video_codec} {mi_video_dynamic_range} {mi_audio_codec} {mi_audio_channel_s} {mi_audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
+mvr_title_token_override = "{title_clean} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {video_codec} {video_dynamic_range} {audio_codec} {audio_channel_s} {audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -212,9 +213,9 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-stream_optimized = 0
+anonymous = false
+internal = false
+stream_optimized = false
 image_width = 350
 
 [tracker.lst]
@@ -230,7 +231,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -243,15 +244,15 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-mod_queue_opt_in = 0
-draft_queue_opt_in = 0
-featured = 0
-free = 0
-double_up = 0
-sticky = 0
+anonymous = false
+internal = false
+personal_release = false
+mod_queue_opt_in = false
+draft_queue_opt_in = false
+featured = false
+free = false
+double_up = false
+sticky = false
 image_width = 500
 
 [tracker.dark_peers]
@@ -267,7 +268,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -280,9 +281,9 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
+anonymous = false
+internal = false
+personal_release = false
 image_width = 500
 
 [tracker.shareisland]
@@ -298,7 +299,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {mi_audio_language_all_full|upper|replace(' ',' - ')} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {audio_language_all_full|upper|replace(' ',' - ')} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -311,10 +312,10 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
-opt_in_to_mod_queue = 0
+anonymous = false
+internal = false
+personal_release = false
+opt_in_to_mod_queue = false
 image_width = 350
 
 [tracker.uploadcx]
@@ -330,7 +331,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -343,9 +344,9 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
+anonymous = false
+internal = false
+personal_release = false
 image_width = 500
 
 [tracker.only_encodes]
@@ -361,7 +362,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{movie_clean_title} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {mi_audio_codec} {mi_audio_channel_s} {mi_video_dynamic_range_type_inc_sdr_over_1080} {mi_video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -374,23 +375,29 @@ mvr_title_replace_map = [
 ]
 mvr_title_colon_replace = 3
 api_key = ""
-anonymous = 0
-internal = 0
-personal_release = 0
+anonymous = false
+internal = false
+personal_release = false
 image_width = 500
 
 [torrent_client]
 
 [torrent_client.qbittorrent]
 enabled = false
+# Loopback default -- fine for a local client. If this is pointed at a
+# remote host, use "https://" or the WebUI password will be sent in
+# cleartext.
 host = "http://127.0.0.1"
 port = 0
 user = ""
 password = ""
-specific_params = { "category" = "", "super_seeding" = false }
+specific_params = { "category" = "", "super_seeding" = false, "save_path_mode" = "Client default", "save_path_template" = "" }
 
 [torrent_client.deluge]
 enabled = false
+# Loopback default -- fine for a local client. If this is pointed at a
+# remote host, use "https://" or the WebUI password will be sent in
+# cleartext.
 host = "http://127.0.0.1"
 port = 0
 user = ""
@@ -403,10 +410,13 @@ host = "https://<user>:<password>@www.url.com/plugins/httprpc/action.php"
 port = 0
 user = ""
 password = ""
-specific_params = { "label" = "", "path" = "" }
+specific_params = { "label" = "", "path" = "", "verify_tls" = true, "ca_bundle" = "" }
 
 [torrent_client.transmission]
 enabled = false
+# Loopback default -- fine for a local client. The user/password below are
+# embedded in this URI; if it is pointed at a remote host, use "https://"
+# or those credentials will be sent in cleartext.
 host = "http://<user>:<password>@127.0.0.1/transmission/rpc"
 port = 0
 user = ""
@@ -417,15 +427,35 @@ specific_params = { "label" = "", "path" = "" }
 enabled = false
 path = ""
 
-[movie_rename]
+[movie_management]
 mvr_enabled = true
 mvr_replace_illegal_chars = true
 mvr_colon_replace_filename = 3
 mvr_colon_replace_title = 3
 mvr_parse_filename_attributes = true
-mvr_token = "{movie_clean_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
-mvr_title_token = "{movie_clean_title} {release_year} {re_release} {source} {resolution} {mi_audio_codec} {mi_audio_channel_s} {mi_video_codec}{:opt=-:release_group}"
-mvr_clean_title_rules = [
+mvr_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+mvr_title_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+# TODO: move to global at the top?
+mvr_release_group = ""
+
+[series_management]
+tvr_enabled = true
+tvr_replace_illegal_chars = true
+tvr_colon_replace_filename = 3
+tvr_colon_replace_title = 3
+tvr_parse_filename_attributes = true
+tvr_standard_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_daily_episode_token = "{title_clean} {episode_air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_anime_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_season_folder_token = "{title_clean} S{season_number|zfill(2)} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_multi_episode_style = 4
+tvr_standard_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_daily_title_token = "{title_clean} {episode_air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_anime_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_release_group = ""
+
+[global_management]
+title_clean_rules = [
     [
         "",
         "[unidecode]",
@@ -447,15 +477,14 @@ mvr_clean_title_rules = [
         "[space]",
     ],
 ]
-mvr_clean_title_rules_modified = false
-mvr_release_group = ""
+title_clean_rules_modified = false
 
-[movie_rename.mvr_mi_video_dynamic_range.resolutions]
+[global_management.video_dynamic_range.resolutions]
 720p = false
 1080p = false
 2160p = true
 
-[movie_rename.mvr_mi_video_dynamic_range.hdr_types]
+[global_management.video_dynamic_range.hdr_types]
 SDR = true
 PQ = false
 HLG = false
@@ -465,7 +494,7 @@ DV = true
 "DV HDR10" = true
 "DV HDR10+" = true
 
-[movie_rename.mvr_mi_video_dynamic_range.custom_strings]
+[global_management.video_dynamic_range.custom_strings]
 SDR = "SDR"
 PQ = ""
 HLG = ""
@@ -521,11 +550,6 @@ api_key = ""
 enabled = false
 base_url = "https://imgbox.com/"
 
-[image_hosts.ptpimg]
-enabled = false
-base_url = "https://ptpimg.me/"
-api_key = ""
-
 [urls]
 alt = ""
 columns = 1
@@ -540,14 +564,16 @@ urls_manual = 0
 wizard_page = ""
 token_replacer = ""
 pre_upload = ""
+metadata_transformer = ""
 
 [template_settings]
 block_syntax_color = "#A4036F"
 variable_syntax_color = "#048BA8"
 comment_syntax_color = "#16DB93"
+warning_syntax_color = "#E1401D"
 trim_blocks = 1
 lstrip_blocks = 1
-newline_sequence = '\\n'
+newline_sequence = "\n"
 keep_trailing_newline = 0
 enable_sandbox_prompt_tokens = true
 

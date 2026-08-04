@@ -1,5 +1,7 @@
+from typing import Any
+
 from PySide6.QtGui import Qt
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog, QWidget
 from typing_extensions import override
 
 
@@ -27,13 +29,15 @@ class PluginPromptDialog(QDialog):
           after acceptance, or remain None if cancelled.
     """
 
-    def __init__(self, parent=None, *args, **kwargs):
+    def __init__(
+        self, parent: QWidget | None = None, *args: Any, **kwargs: Any
+    ) -> None:
         super().__init__(parent, *args, **kwargs)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self.setObjectName("multiPromptDialog")
         self.apply_top_parent_geometry()
 
-        self.results = None
+        self.results: Any = None
 
     def apply_top_parent_geometry(self) -> None:
         """Applies the top most parents geometry, override this and pass if you want to avoid this."""
@@ -43,7 +47,7 @@ class PluginPromptDialog(QDialog):
         set_top_parent_geometry(self)
 
     @override
-    def accept(self):
+    def accept(self) -> None:
         """
         Subclasses should override this method to fill `self.results`
         with the dialog's output before calling `super().accept()`.
