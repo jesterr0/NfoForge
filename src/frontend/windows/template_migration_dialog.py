@@ -151,7 +151,11 @@ class TemplateMigrationDialog(QDialog):
                         encoding="utf-8", newline=""
                     ) as template_file:
                         original = template_file.read()
-                except (OSError, UnicodeDecodeError):
+                except (OSError, UnicodeDecodeError) as error:
+                    LOG.warning(
+                        LOG.LOG_SOURCE.FE,
+                        f"Skipping unreadable template {report.path}: {error}",
+                    )
                     continue
                 diff = build_diff(
                     report.path, original, rewrite_template_text(original)

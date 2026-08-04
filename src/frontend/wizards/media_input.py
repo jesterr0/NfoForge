@@ -59,7 +59,6 @@ class MediaInput(BaseWizardPage):
         self.backend = MediaInputBackEnd(self.progress_signal)
         self.worker: GeneralWorker | None = None
         self._loading_completed = False
-        self._files_being_processed: tuple[Path, ...] = ()
         self._progress_connected = False
 
         self.media_input_entry: QLineEdit = DNDLineEdit(
@@ -290,8 +289,6 @@ class MediaInput(BaseWizardPage):
             if comparison_pair.media not in files_to_process:
                 files_to_process.append(comparison_pair.media)
 
-        self._files_being_processed = tuple(files_to_process)
-
         self.worker = GeneralWorker(
             func=self.backend.get_media_info_files, files=files_to_process, parent=self
         )
@@ -333,7 +330,6 @@ class MediaInput(BaseWizardPage):
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()
         self._disconnect_progress_signal()
-        self._files_being_processed = ()
         # if finished has a cb, utilize that instead of emit (for sandbox)
         if self._on_finished_cb:
             self._on_finished_cb()
@@ -348,7 +344,6 @@ class MediaInput(BaseWizardPage):
         """Restore the page after a MediaInfo worker failure."""
 
         self._loading_completed = False
-        self._files_being_processed = ()
         self._disconnect_progress_signal()
         GSigs().main_window_set_disabled.emit(False)
         GSigs().main_window_clear_status_tip.emit()

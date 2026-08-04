@@ -15,7 +15,7 @@ class Jinja2TemplateEngine:
         :param env_options: Options to configure the Jinja2 Environment.
         """
         self._resettable_globals: list[str] = []
-        # noqa reason: this engine renders plain-text NFO release descriptions,
+        # lint reason: this engine renders plain-text NFO release descriptions,
         # not HTML; autoescape would corrupt the output by HTML-escaping
         # ordinary characters (&, ', ", etc.) that belong in the NFO verbatim
         self.environment = Environment(  # noqa: S701

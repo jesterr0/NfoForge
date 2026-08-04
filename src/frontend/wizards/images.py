@@ -634,6 +634,12 @@ class ImagesPage(BaseWizardPage):
                 "Failed to execute image worker, missing one or more required inputs "
                 f"({self.media_file=}, {self.image_dir=}, {self.config.settings.dependencies.ffmpeg=})"
             )
+        if self.queued_worker is not None:
+            # Safe: the only caller, `_execute_image_generation`, already
+            # returned early if the previous worker's `isRunning()` was True,
+            # and nothing between that check and here re-enters the event
+            # loop, so the previous worker is guaranteed finished.
+            self.queued_worker.deleteLater()
         self.queued_worker = QueuedWorker(
             backend=self.backend,
             ss_mode=ss_mode,

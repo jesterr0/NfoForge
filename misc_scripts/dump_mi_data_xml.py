@@ -30,7 +30,7 @@ class MediaInfoProcessor:
     async def get_xml_str(self, file_path: Path) -> str | None:
         xml_parse = MediaInfo.parse(file_path, output="OLDXML")
         if isinstance(xml_parse, str):
-            # noqa reason: developer-only script parsing MediaInfo output for
+            # lint reason: developer-only script parsing MediaInfo output for
             # local files the developer already has filesystem access to; not
             # untrusted network input
             xml_root = ET.fromstring(xml_parse)  # noqa: S314

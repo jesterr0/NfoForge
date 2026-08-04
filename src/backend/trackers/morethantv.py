@@ -763,7 +763,7 @@ class MTVSearch:
         results: list[TrackerSearchResult] = []
         if not xml_str:
             return results
-        # noqa reason: torznab XML fetched over HTTPS from the user's own
+        # lint reason: torznab XML fetched over HTTPS from the user's own
         # configured tracker with their API key; stdlib ElementTree already
         # blocks external entity resolution (patched since Python 3.7.1), so
         # the residual risk is an entity-expansion memory bomb from a

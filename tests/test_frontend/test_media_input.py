@@ -14,7 +14,6 @@ def test_media_info_failure_reports_missing_files_and_restores_page(
 ) -> None:
     page = MediaInput(config=None, context=ProcessingContext(), parent=None)  # type: ignore[arg-type]
     expected = (Path("one.mkv"), Path("two.mkv"))
-    page._files_being_processed = expected
     page._loading_completed = True
     page._progress_connected = False
     messages: list[str] = []
@@ -32,7 +31,6 @@ def test_media_info_failure_reports_missing_files_and_restores_page(
     )
 
     assert page._loading_completed is False
-    assert page._files_being_processed == ()
     assert len(messages) == 1
     assert "two.mkv" in messages[0]
     assert "unreadable stream" in messages[0]
@@ -43,7 +41,6 @@ def test_media_info_empty_result_does_not_raise_or_leave_ui_busy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     page = MediaInput(config=None, context=ProcessingContext(), parent=None)  # type: ignore[arg-type]
-    page._files_being_processed = (Path("missing.mkv"),)
     messages: list[str] = []
     monkeypatch.setattr(
         QMessageBox,

@@ -205,6 +205,8 @@ class Unit3dBaseUploader:
                             raise TrackerError(
                                 "Tracker did not return a torrent download URL",
                                 retryable=False,
+                                server_accepted=True,
+                                phase="download",
                             )
                         download_url = context
                     else:

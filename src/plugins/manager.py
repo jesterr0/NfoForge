@@ -53,7 +53,7 @@ class PluginManager:
     """Validate, register, query, and invoke external plugins."""
 
     def __init__(self) -> None:
-        # noqa reason: only used below to read the built-in filter/global
+        # lint reason: only used below to read the built-in filter/global
         # names so plugins can't shadow them; nothing is ever rendered
         # through this environment, so autoescape is irrelevant here
         jinja_environment = Environment()  # noqa: S701

@@ -1695,7 +1695,7 @@ class ProcessBackEnd:
                 or not ptp_payload.announce_url
             ):
                 raise TrackerError(
-                    "TorrentLeech requires API user, API key, username, password, and announce URL"
+                    "PassThePopcorn requires API user, API key, username, password, and announce URL"
                 )
             return ptp_uploader(
                 api_user=ptp_payload.api_user,

@@ -158,6 +158,46 @@ def test_unit3d_upload_redownloads_tracker_torrent_before_success(
     )
 
 
+@pytest.mark.parametrize(
+    "response_payload",
+    [
+        {"success": True, "message": "Torrent uploaded successfully."},
+        {"success": True, "message": "Torrent uploaded successfully.", "data": ""},
+        {"success": True, "message": "Torrent uploaded successfully.", "data": 12345},
+    ],
+)
+@patch.object(Unit3dBaseUploader, "_build_upload_payload", return_value={})
+@patch("src.backend.trackers.unit3d_base.niquests.post")
+def test_unit3d_upload_flags_missing_download_url_as_already_accepted(
+    post: MagicMock,
+    _build_payload: MagicMock,
+    response_payload: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    torrent_file = tmp_path / "release.torrent"
+    torrent_file.write_bytes(b"generated torrent")
+    response = MagicMock()
+    response.json.return_value = response_payload
+    post.return_value.__enter__.return_value = response
+    uploader = _uploader(torrent_file)
+
+    with pytest.raises(
+        TrackerError, match="did not return a torrent download URL"
+    ) as exc_info:
+        uploader.upload(tracker_title="Example")
+
+    # The tracker already confirmed the upload (`success` and "successfully"
+    # in its message) before this raise fires, so it must be flagged the same
+    # way as the sibling raises in `_download_uploaded_torrent`: server_accepted
+    # so a retry is never silently re-POSTed as a duplicate upload, and
+    # phase="download" so the UI hides the "re-upload" button entirely instead
+    # of inviting one. Not automatically retried: the tracker's response won't
+    # gain a download URL on a second identical request.
+    assert exc_info.value.retryable is False
+    assert exc_info.value.server_accepted is True
+    assert exc_info.value.phase == "download"
+
+
 def test_unit3d_download_retry_does_not_repeat_upload_post(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

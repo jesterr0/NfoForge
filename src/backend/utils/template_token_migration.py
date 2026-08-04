@@ -20,6 +20,7 @@ import re
 import shutil
 
 from src.config.persistence import atomic_write_text
+from src.logger.nfo_forge_logger import LOG
 
 # Mirrors `_TOKEN_RENAME_MAP` and `_MI_PREFIX_RE` in `src/config/migrations.py`,
 # expressed as bare identifiers because Jinja references names, not `{token}`
@@ -240,7 +241,11 @@ def scan_template_dir(template_dir: Path) -> list[TemplateTokenReport]:
     for path in sorted(template_dir.glob(f"*{_TEMPLATE_SUFFIX}")):
         try:
             text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as error:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Skipping unreadable template {path}: {error}",
+            )
             continue
         renamed, removed = scan_template_text(text)
         report = TemplateTokenReport(path=path, renamed=renamed, removed=removed)
@@ -312,7 +317,11 @@ def migrate_templates(
             continue
         try:
             backup_path = migrate_template_file(report.path)
-        except (OSError, UnicodeDecodeError):
+        except (OSError, UnicodeDecodeError) as error:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Skipping template that could not be migrated {report.path}: {error}",
+            )
             continue
         migrated.append((report.path, backup_path))
     return migrated

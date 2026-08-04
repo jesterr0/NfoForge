@@ -246,7 +246,7 @@ class MediaSearch(BaseWizardPage):
             api_key=self.config.settings.api_keys.tmdb_api_key,
         )
 
-        # listen for settings changes to update language
+        # listen for settings changes to update the language and TMDB API key
         GSigs().settings_close.connect(self._update_backend_settings)
 
         self.search_worker: GeneralWorker | None = None
