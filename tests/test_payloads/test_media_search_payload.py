@@ -117,3 +117,38 @@ def test_reset_clears_canonical_and_plugin_metadata() -> None:
     assert payload.genre_names == ()
     assert payload.media_kind is None
     assert payload.plugin_data == {}
+
+
+def test_populate_from_tmdb_normalizes_superscript_titles() -> None:
+    """`populate_from_tmdb` re-reads raw TMDB JSON, so it must normalize too.
+
+    Both the search list and the wizard apply `normalize_super_sub` before
+    this runs, and this overwrote `title`/`original_title` straight from
+    `tmdb_data`, so the un-normalized API string was what actually got used
+    downstream in filenames and NFO output.
+    """
+    payload = MediaSearchPayload(
+        media_type=MediaType.MOVIE,
+        tmdb_data={
+            "title": "Spider-Man\u00b2",
+            "original_title": "Ara\u00f1ita\u00b2",
+        },
+    )
+
+    payload.populate_from_tmdb()
+
+    assert payload.title == "Spider-Man 2"
+    assert payload.original_title == "Ara\u00f1ita 2"
+
+
+def test_populate_from_tmdb_normalizes_a_name_fallback_title() -> None:
+    """Series use `name`/`original_name`; the same normalization applies."""
+    payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        tmdb_data={"name": "Cosmos\u00b3", "original_name": "Kosmos\u2083"},
+    )
+
+    payload.populate_from_tmdb()
+
+    assert payload.title == "Cosmos 3"
+    assert payload.original_title == "Kosmos 3"

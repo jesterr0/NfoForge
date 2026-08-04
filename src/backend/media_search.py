@@ -11,7 +11,6 @@ from rapidfuzz import fuzz
 from unidecode import unidecode
 
 from src.backend.utils.guessit_helpers import get_guessit_title
-from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
@@ -19,6 +18,7 @@ from src.enums.tvdb_season_type import TVDBSeasonType
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.logger.nfo_forge_logger import LOG
 from src.utils.secret_redaction import scrub_secrets
+from src.utils.super_sub import normalize_super_sub
 
 
 class MediaSearchBackEnd:

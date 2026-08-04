@@ -5,6 +5,7 @@ from typing import Any
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.plugins.api import MetadataMediaKind
+from src.utils.super_sub import normalize_super_sub
 
 
 @dataclass(slots=True)
@@ -33,19 +34,35 @@ class MediaSearchPayload:
 
         tmdb_data = self.tmdb_data or {}
 
-        self.title = self._first_string(
-            tmdb_data.get("title"), tmdb_data.get("name"), self.title
+        self.title = self._normalized_title(
+            self._first_string(
+                tmdb_data.get("title"), tmdb_data.get("name"), self.title
+            )
         )
-        self.original_title = self._first_string(
-            tmdb_data.get("original_title"),
-            tmdb_data.get("original_name"),
-            self.original_title,
+        self.original_title = self._normalized_title(
+            self._first_string(
+                tmdb_data.get("original_title"),
+                tmdb_data.get("original_name"),
+                self.original_title,
+            )
         )
         self.year = self._tmdb_year(tmdb_data) or self.year
         self.plot = self._first_string(tmdb_data.get("overview"))
         self.poster_url = self._tmdb_poster_url(tmdb_data)
         self.genre_names = self._tmdb_genre_names(tmdb_data)
         self.media_kind = None
+
+    @staticmethod
+    def _normalized_title(value: str | None) -> str | None:
+        """Fold TMDB's superscript/subscript digits down to plain digits.
+
+        Callers normalize the title they hand in, but this method rebuilds
+        both title fields from `tmdb_data`, so it has to normalize as well
+        or the raw API string silently wins and reaches filenames and NFO
+        output.
+        """
+
+        return normalize_super_sub(value) if value else value
 
     def validate(self) -> None:
         """Validate fields plugins can alter before accepting transformed data."""

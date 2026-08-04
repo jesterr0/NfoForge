@@ -34,7 +34,6 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.media_search import MediaSearchBackEnd
-from src.backend.utils.super_sub import normalize_super_sub
 from src.backend.utils.title_inference import MediaTitleInferer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
@@ -57,6 +56,7 @@ from src.plugins.api import (
     MetadataTransformContext,
     MetadataTransformRequest,
 )
+from src.utils.super_sub import normalize_super_sub
 
 
 class _MediaSearchBackend(Protocol):
