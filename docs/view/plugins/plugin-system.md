@@ -72,9 +72,10 @@ shadow one.
 
 ## Capabilities and failures
 
-Wizard pages, token replacers, pre-upload processors, post-upload processors, and
-metadata transformers are single-select capabilities. Jinja filters/functions and flat
-token filters from every valid plugin are combined while external plugins are enabled.
+Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata
+transformers, and image host uploaders are single-select capabilities. Jinja
+filters/functions and flat token filters from every valid plugin are combined while
+external plugins are enabled.
 
 ### Post-upload processors
 
@@ -99,6 +100,42 @@ budget is exhausted) -- `SKIPPED` is reserved for a pre-upload plugin's own deci
 
 A post-upload processor that raises is logged and otherwise ignored: the tracker's
 already-reported status is never changed by a broken notifier.
+
+### Image host uploaders
+
+An image host uploader plugin contributes a custom upload destination for screenshots,
+without waiting on a built-in host to be added to NfoForge. Set `image_host_uploader` on
+`PluginDefinition` to an instance of `BaseImageHostUploader`
+(`src.backend.image_host_uploading.base_image_host`) -- the same abstract base every
+built-in host implements:
+
+```python
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
+from src.packages.custom_types import ImageUploadData
+
+class MyHostUploader(BaseImageHostUploader):
+    async def upload(
+        self, request: ImageUploadRequest
+    ) -> dict[int, ImageUploadData]:
+        ...
+
+plugin = PluginDefinition(
+    display_name="My Image Host",
+    version="1.0.0",
+    image_host_uploader=MyHostUploader(),
+)
+```
+
+Unlike built-in hosts, a plugin-provided host has no entry in **Settings -> Image
+Hosts** -- there is nothing there to enable, and no base URL or API key for NfoForge to
+store, since the plugin manages its own credentials and configuration. Its
+availability is entirely governed by the **Settings -> Plugins** selection: once
+configured there (and external plugins are enabled), it appears as **Plugin** in the
+per-tracker image host choice during the upload wizard, the same way every other host
+does.
 
 Jinja filters apply to NFO templates using Jinja syntax. Flat token filters apply to the
 `{token|filter}` syntax used by filename templates, tracker-title templates, and
