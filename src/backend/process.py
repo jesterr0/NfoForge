@@ -132,6 +132,8 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
 from src.plugins.api import (
+    PostUploadOutcome,
+    PostUploadRequest,
     PreUploadDecision,
     PreUploadRequest,
     TokenReplaceRequest,
@@ -788,7 +790,7 @@ class ProcessBackEnd:
         caught_error: SignalInstance,
         upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
         qbittorrent_save_path: str | None = None,
-    ) -> bool:
+    ) -> tuple[bool, str | None]:
         """Inject a torrent, letting the user retry on failure.
 
         The torrent is already on the tracker at this point, so retrying an
@@ -805,7 +807,7 @@ class ProcessBackEnd:
                     file_input=file_input,
                     qbittorrent_save_path=qbittorrent_save_path,
                 )
-                return True
+                return True, None
             except Exception as error:
                 caught_error.emit(
                     f"Injection Error: {scrub_secrets(traceback.format_exc())}"
@@ -820,7 +822,7 @@ class ProcessBackEnd:
                     queued_status_update(
                         tracker_name, f"❌ Failed to inject torrent ({safe_message})"
                     )
-                    return False
+                    return False, safe_message
 
                 failure = UploadFailure(
                     tracker=tracker,
@@ -847,7 +849,7 @@ class ProcessBackEnd:
                 queued_status_update(
                     tracker_name, f"❌ Failed to inject torrent ({safe_message})"
                 )
-                return False
+                return False, safe_message
 
     def process_trackers(
         self,
@@ -1219,28 +1221,67 @@ class ProcessBackEnd:
                             "<br /><span>Successfully uploaded release</span>"
                         )
                         # handle injection
-                        if self._inject_with_user_retry(
-                            tracker=cur_tracker,
-                            tracker_name=tracker_name,
-                            torrent_path=torrent_path,
-                            file_input=media_input,
-                            queued_text_update=queued_text_update,
-                            queued_status_update=queued_status_update,
-                            caught_error=caught_error,
-                            upload_retry_cb=upload_retry_cb,
-                            qbittorrent_save_path=qbittorrent_save_path,
-                        ):
+                        injection_succeeded, injection_error = (
+                            self._inject_with_user_retry(
+                                tracker=cur_tracker,
+                                tracker_name=tracker_name,
+                                torrent_path=torrent_path,
+                                file_input=media_input,
+                                queued_text_update=queued_text_update,
+                                queued_status_update=queued_status_update,
+                                caught_error=caught_error,
+                                upload_retry_cb=upload_retry_cb,
+                                qbittorrent_save_path=qbittorrent_save_path,
+                            )
+                        )
+                        if injection_succeeded:
                             queued_status_update(tracker_name, "✅ Complete")
+                            self._run_post_upload_plugin(
+                                cur_tracker=cur_tracker,
+                                context=context,
+                                torrent_path=torrent_path,
+                                outcome=PostUploadOutcome.SUCCESS,
+                                queued_text_update=queued_text_update,
+                                queued_text_update_replace_last_line=(
+                                    queued_text_update_replace_last_line
+                                ),
+                            )
+                        else:
+                            self._run_post_upload_plugin(
+                                cur_tracker=cur_tracker,
+                                context=context,
+                                torrent_path=torrent_path,
+                                outcome=PostUploadOutcome.INJECTION_FAILED,
+                                queued_text_update=queued_text_update,
+                                queued_text_update_replace_last_line=(
+                                    queued_text_update_replace_last_line
+                                ),
+                                error=injection_error,
+                            )
                     else:
                         # `_upload_tracker_with_retry` already reported the
                         # skip (with phase-appropriate status/text) when it
-                        # returned; nothing further to say here.
+                        # returned; nothing further to say here. A mid-retry
+                        # user skip is deliberately not a post-upload
+                        # `SKIPPED` outcome -- that value is reserved for a
+                        # pre_upload plugin's decision, below.
                         if not skipped_upload:
                             queued_text_update(
                                 '<br /><span style="font-weight: bold; color: red;">Failed to upload release, '
                                 "check logs for information</span>"
                             )
                             queued_status_update(tracker_name, "❌ Failed")
+                            self._run_post_upload_plugin(
+                                cur_tracker=cur_tracker,
+                                context=context,
+                                torrent_path=torrent_path,
+                                outcome=PostUploadOutcome.UPLOAD_FAILED,
+                                queued_text_update=queued_text_update,
+                                queued_text_update_replace_last_line=(
+                                    queued_text_update_replace_last_line
+                                ),
+                                error="Failed to upload release; check logs for information",
+                            )
                 except ProcessCancelled:
                     for remaining_tracker in list(process_dict)[idx:]:
                         queued_status_update(remaining_tracker, "⏹ Cancelled")
@@ -1255,6 +1296,17 @@ class ProcessBackEnd:
                         f"Upload Error: {scrub_secrets(traceback.format_exc())}"
                     )
                     queued_status_update(tracker_name, "❌ Failed")
+                    self._run_post_upload_plugin(
+                        cur_tracker=cur_tracker,
+                        context=context,
+                        torrent_path=torrent_path,
+                        outcome=PostUploadOutcome.UPLOAD_FAILED,
+                        queued_text_update=queued_text_update,
+                        queued_text_update_replace_last_line=(
+                            queued_text_update_replace_last_line
+                        ),
+                        error=scrub_secrets(str(upload_error)),
+                    )
             elif not tracker_info.upload_enabled and pre_upload_decision is None:
                 queued_text_update(
                     "<br /><span>Skipping upload & injection, upload is disabled</span>"
@@ -1268,6 +1320,16 @@ class ProcessBackEnd:
                     "<br /><span>Skipping upload & injection, upload is disabled via plugin</span>"
                 )
                 queued_status_update(tracker_name, "✅ Complete")
+                self._run_post_upload_plugin(
+                    cur_tracker=cur_tracker,
+                    context=context,
+                    torrent_path=torrent_path,
+                    outcome=PostUploadOutcome.SKIPPED,
+                    queued_text_update=queued_text_update,
+                    queued_text_update_replace_last_line=(
+                        queued_text_update_replace_last_line
+                    ),
+                )
 
             nfo_generated_str = "NFO & " if nfo else ""
             queued_text_update(
@@ -1321,6 +1383,57 @@ class ProcessBackEnd:
         except PluginExecutionError as error:
             return None, str(error)
         return decision, None
+
+    def _run_post_upload_plugin(
+        self,
+        cur_tracker: TrackerSelection,
+        context: ProcessingContext,
+        torrent_path: Path,
+        outcome: PostUploadOutcome,
+        queued_text_update: Callable[[str], None],
+        queued_text_update_replace_last_line: Callable[[str], None],
+        error: str | None = None,
+    ) -> None:
+        """Run the configured post-upload plugin for one tracker, if any.
+
+        Never raises and never changes tracker status: the tracker's work is
+        already finished by the time this runs, so a broken notifier plugin
+        must not retroactively flip an already-reported outcome. Failures
+        are logged only.
+        """
+        if not self.config.settings.general.enable_plugins:
+            return
+
+        post_upload_plugin = self.config.settings.plugins.post_upload
+        if not post_upload_plugin:
+            return
+
+        record = self.config.plugin_manager.get(post_upload_plugin)
+        if not record or record.definition.post_upload is None:
+            return
+
+        try:
+            self.config.plugin_manager.run_post_upload(
+                post_upload_plugin,
+                PostUploadRequest(
+                    config=self.config,
+                    context=context,
+                    tracker=cur_tracker,
+                    torrent_file=torrent_path,
+                    reporter=UploadReporter(
+                        append_text=queued_text_update,
+                        replace_last_line=queued_text_update_replace_last_line,
+                        set_progress=self.progress_bar_cb or (lambda _value: None),
+                    ),
+                    outcome=outcome,
+                    error=error,
+                ),
+            )
+        except PluginExecutionError as plugin_error:
+            LOG.error(
+                LOG.LOG_SOURCE.BE,
+                f"Post-upload plugin failed for {cur_tracker}: {plugin_error}",
+            )
 
     def handle_images_for_trackers(
         self,
