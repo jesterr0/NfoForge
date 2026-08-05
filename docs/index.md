@@ -69,6 +69,9 @@ tracker-specific series paths are still limited; see
 - Chevereto v3/v4
 - ImageBox
 - ImageBB
+- OnlyImage
+- Pixhost
+- Lensdump
 
 ## Requirements
 
