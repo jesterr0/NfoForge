@@ -11,6 +11,7 @@ class ImageHost(CaseInsensitiveEnum):
     ONLY_IMAGE = "OnlyImage"
     PIXHOST = "Pixhost"
     LENSDUMP = "Lensdump"
+    PLUGIN = "Plugin"
 
     # used outside of the UI
     DISABLED = "Disabled"

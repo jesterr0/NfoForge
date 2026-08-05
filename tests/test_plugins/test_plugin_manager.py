@@ -7,8 +7,13 @@ import time
 
 import pytest
 
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
 from src.enums.tracker_selection import TrackerSelection
-from src.exceptions import PluginExecutionError
+from src.exceptions import PluginError, PluginExecutionError
+from src.packages.custom_types import ImageUploadData
 from src.payloads.media_search import MediaSearchPayload
 from src.plugins.api import (
     MetadataInputContext,
@@ -221,4 +226,42 @@ def test_run_post_upload_wraps_a_raising_processor_in_plugin_execution_error() -
         manager.run_post_upload(
             "test.explode",
             _post_upload_request(outcome=PostUploadOutcome.UPLOAD_FAILED),
+        )
+
+
+class _StubImageHostUploader(BaseImageHostUploader):
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
+        return {}
+
+
+def test_registering_an_image_host_uploader_only_plugin_succeeds() -> None:
+    manager = PluginManager()
+    uploader = _StubImageHostUploader()
+
+    record = manager.register(
+        "test.imghost",
+        PluginDefinition(
+            display_name="test.imghost",
+            version="1.0.0",
+            image_host_uploader=uploader,
+        ),
+        "test",
+    )
+
+    assert record.definition.image_host_uploader is uploader
+    assert manager.definitions_with("image_host_uploader") == (record,)
+
+
+def test_a_non_base_image_host_uploader_value_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="BaseImageHostUploader"):
+        manager.register(
+            "test.badimghost",
+            PluginDefinition(
+                display_name="test.badimghost",
+                version="1.0.0",
+                image_host_uploader="not an uploader",  # type: ignore[arg-type]
+            ),
+            "test",
         )

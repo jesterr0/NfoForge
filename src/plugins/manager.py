@@ -322,6 +322,7 @@ class PluginManager:
             definition.pre_upload,
             definition.post_upload,
             definition.metadata_transformer,
+            definition.image_host_uploader,
             definition.jinja2_filters,
             definition.jinja2_functions,
             definition.flat_filters,
@@ -336,6 +337,16 @@ class PluginManager:
                 definition.wizard_page, BaseWizardPage
             ):
                 raise PluginError("wizard_page must be a BaseWizardPage subclass")
+
+        if definition.image_host_uploader is not None:
+            from src.backend.image_host_uploading.base_image_host import (
+                BaseImageHostUploader,
+            )
+
+            if not isinstance(definition.image_host_uploader, BaseImageHostUploader):
+                raise PluginError(
+                    "image_host_uploader must be a BaseImageHostUploader instance"
+                )
 
         for name in (
             "token_replacer",

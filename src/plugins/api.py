@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
     from src.config.config import ConfigManager
     from src.context.processing_context import ProcessingContext
     from src.enums.media_type import MediaType
@@ -153,6 +154,7 @@ class PluginDefinition:
     pre_upload: PreUploadProcessor | None = None
     post_upload: PostUploadProcessor | None = None
     metadata_transformer: MetadataTransformer | None = None
+    image_host_uploader: BaseImageHostUploader | None = None
     jinja2_filters: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     jinja2_functions: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     flat_filters: Mapping[str, FlatFilter] = field(default_factory=dict)
