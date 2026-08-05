@@ -28,6 +28,7 @@ _CAPABILITY_LABELS = {
     "wizard_page": "Wizard input",
     "token_replacer": "Token replacement",
     "pre_upload": "Pre-upload",
+    "post_upload": "Post-upload",
     "metadata_transformer": "Metadata transformation",
     "jinja2_filters": "Jinja filters",
     "jinja2_functions": "Jinja functions",
@@ -59,6 +60,7 @@ class PluginsSettings(BaseSettings):
         self.plugin_wizard_page_combo = self._create_combo()
         self.plugin_token_replacer_combo = self._create_combo()
         self.plugin_pre_upload_combo = self._create_combo()
+        self.plugin_post_upload_combo = self._create_combo()
         self.plugin_metadata_transformer_combo = self._create_combo()
 
         selectors = (
@@ -76,6 +78,11 @@ class PluginsSettings(BaseSettings):
                 "Pre-upload Processor",
                 "Choose an optional plugin to run before tracker uploads.",
                 self.plugin_pre_upload_combo,
+            ),
+            (
+                "Post-upload Processor",
+                "Choose an optional plugin to run after tracker uploads finish.",
+                self.plugin_post_upload_combo,
             ),
             (
                 "Metadata Transformer",
@@ -155,6 +162,12 @@ class PluginsSettings(BaseSettings):
                 "Default Pre-upload Processing",
                 self.plugin_pre_upload_combo,
                 selections.pre_upload,
+            ),
+            (
+                "post_upload",
+                "Default Post-upload Processing",
+                self.plugin_post_upload_combo,
+                selections.post_upload,
             ),
             (
                 "metadata_transformer",
@@ -252,6 +265,7 @@ class PluginsSettings(BaseSettings):
             ("wizard_page", "Wizard input"),
             ("token_replacer", "Token replacement"),
             ("pre_upload", "Pre-upload"),
+            ("post_upload", "Post-upload"),
             ("metadata_transformer", "Metadata transformation"),
         ):
             plugin_id = getattr(settings, attribute)
@@ -280,6 +294,9 @@ class PluginsSettings(BaseSettings):
         )
         self.config.settings.plugins.pre_upload = (
             self.plugin_pre_upload_combo.currentData()
+        )
+        self.config.settings.plugins.post_upload = (
+            self.plugin_post_upload_combo.currentData()
         )
         self.config.settings.plugins.metadata_transformer = (
             self.plugin_metadata_transformer_combo.currentData()
