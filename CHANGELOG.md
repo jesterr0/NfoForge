@@ -23,6 +23,9 @@
   tracker's upload and torrent-client injection finish (or fail), reporting one of four
   outcomes (success, upload failed, injection failed, skipped) with a scrubbed error
   message when applicable.
+- Added optional image host uploader plugins. A plugin can contribute a custom
+  screenshot upload destination, selectable per tracker as **Plugin** alongside the
+  built-in hosts, without needing its own entry in Settings -> Image Hosts.
 
 ### Changed
 
