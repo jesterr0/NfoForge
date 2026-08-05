@@ -61,6 +61,9 @@ from src.payloads.image_hosts import (
     CheveretoV4Payload,
     ImageBBPayload,
     ImageBoxPayload,
+    LensdumpPayload,
+    OnlyImagePayload,
+    PixhostPayload,
 )
 from src.payloads.trackers import (
     AitherInfo,
@@ -1245,6 +1248,23 @@ class TypedTomlOperations:
             img_box_data["enabled"] = self.settings.image_hosts.image_box.enabled
             img_box_data["base_url"] = self.settings.image_hosts.image_box.base_url
 
+            # only image
+            only_image_data = self._ensure_toml_table(image_hosts, "only_image")
+            only_image_data["enabled"] = self.settings.image_hosts.only_image.enabled
+            only_image_data["base_url"] = self.settings.image_hosts.only_image.base_url
+            only_image_data["api_key"] = self.settings.image_hosts.only_image.api_key
+
+            # pixhost
+            pixhost_data = self._ensure_toml_table(image_hosts, "pixhost")
+            pixhost_data["enabled"] = self.settings.image_hosts.pixhost.enabled
+            pixhost_data["base_url"] = self.settings.image_hosts.pixhost.base_url
+
+            # lensdump
+            lensdump_data = self._ensure_toml_table(image_hosts, "lensdump")
+            lensdump_data["enabled"] = self.settings.image_hosts.lensdump.enabled
+            lensdump_data["base_url"] = self.settings.image_hosts.lensdump.base_url
+            lensdump_data["api_key"] = self.settings.image_hosts.lensdump.api_key
+
             # urls
             urls_settings = self._toml_table(self._toml_data, "urls")
             urls_settings["alt"] = self.settings.urls.alt
@@ -2106,6 +2126,9 @@ class TypedTomlOperations:
             chevereto_v4 = CheveretoV4Payload(**image_hosts["chevereto_v4"])
             image_bb = ImageBBPayload(**image_hosts["image_bb"])
             image_box = ImageBoxPayload(**image_hosts["image_box"])
+            only_image = OnlyImagePayload(**image_hosts["only_image"])
+            pixhost = PixhostPayload(**image_hosts["pixhost"])
+            lensdump = LensdumpPayload(**image_hosts["lensdump"])
 
             # urls
             urls_settings = self._toml_mapping(toml_data, "urls")
@@ -2305,6 +2328,9 @@ class TypedTomlOperations:
                     chevereto_v4=chevereto_v4,
                     image_bb=image_bb,
                     image_box=image_box,
+                    only_image=only_image,
+                    pixhost=pixhost,
+                    lensdump=lensdump,
                 ),
                 urls=UrlSettings(
                     alt=str(urls_settings["alt"]),

@@ -24,6 +24,9 @@ from src.backend.image_host_uploading.img_uploader import (
     assert_all_images_uploaded,
 )
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
+from src.backend.image_host_uploading.lensdump import LensdumpUploader
+from src.backend.image_host_uploading.onlyimage import OnlyImageUploader
+from src.backend.image_host_uploading.pixhost import PixhostUploader
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenSelection
@@ -1627,6 +1630,12 @@ class ProcessBackEnd:
             return ImageBoxUploader()
         elif img_host is ImageHost.IMAGE_BB:
             return self._create_imgbb_uploader()
+        elif img_host is ImageHost.ONLY_IMAGE:
+            return self._create_onlyimage_uploader()
+        elif img_host is ImageHost.PIXHOST:
+            return PixhostUploader()
+        elif img_host is ImageHost.LENSDUMP:
+            return self._create_lensdump_uploader()
         else:
             raise ImageHostError(f"Unsupported image host: {img_host}")
 
@@ -1684,6 +1693,36 @@ class ProcessBackEnd:
         if not imgbb_payload.api_key or not imgbb_payload.base_url:
             raise ImageHostError("Missing 'API Key' for ImageBB.")
         return ImageBBUploader(api_key=imgbb_payload.api_key)
+
+    def _create_onlyimage_uploader(self) -> OnlyImageUploader:
+        """
+        Creates an uploader instance for OnlyImage.
+
+        Returns:
+            OnlyImageUploader: The uploader instance.
+
+        Raises:
+            ImageHostError: If required credentials are missing.
+        """
+        only_image_payload = self.config.settings.image_hosts.only_image
+        if not only_image_payload.api_key:
+            raise ImageHostError("Missing 'API Key' for OnlyImage.")
+        return OnlyImageUploader(api_key=only_image_payload.api_key)
+
+    def _create_lensdump_uploader(self) -> LensdumpUploader:
+        """
+        Creates an uploader instance for Lensdump.
+
+        Returns:
+            LensdumpUploader: The uploader instance.
+
+        Raises:
+            ImageHostError: If required credentials are missing.
+        """
+        lensdump_payload = self.config.settings.image_hosts.lensdump
+        if not lensdump_payload.api_key:
+            raise ImageHostError("Missing 'API Key' for Lensdump.")
+        return LensdumpUploader(api_key=lensdump_payload.api_key)
 
     def _map_uploaded_urls(
         self,

@@ -8,6 +8,9 @@ class ImageHost(CaseInsensitiveEnum):
     CHEVERETO_V4 = "Chevereto v4"
     IMAGE_BOX = "ImageBox"
     IMAGE_BB = "ImageBB"
+    ONLY_IMAGE = "OnlyImage"
+    PIXHOST = "Pixhost"
+    LENSDUMP = "Lensdump"
 
     # used outside of the UI
     DISABLED = "Disabled"

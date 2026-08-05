@@ -200,6 +200,91 @@ class ImageBoxEdit(ImageHostEditBase):
             raise AttributeError("Missing required input for host ImageBox")
 
 
+class OnlyImageEdit(ImageHostEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        self.base_url.setDisabled(True)
+
+        self.api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        self.add_pair_to_layout(self.api_key_lbl, self.api_key)
+
+    @override
+    def load_settings(self) -> None:
+        host = self.config.settings.image_hosts.only_image
+        self.base_url.setText(host.base_url if host.base_url else "")
+        self.api_key.setText(host.api_key if host.api_key else "")
+
+    @override
+    def save_settings(self) -> None:
+        self.config.settings.image_hosts.only_image.base_url = (
+            self.base_url.text().strip()
+        )
+        self.config.settings.image_hosts.only_image.api_key = (
+            self.api_key.text().strip()
+        )
+
+    @override
+    def validate_data(self) -> None:
+        for item in (self.base_url, self.api_key):
+            if not item.text().strip():
+                raise AttributeError("Missing required input for host OnlyImage")
+
+
+class LensdumpEdit(ImageHostEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        self.base_url.setDisabled(True)
+
+        self.api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        self.add_pair_to_layout(self.api_key_lbl, self.api_key)
+
+    @override
+    def load_settings(self) -> None:
+        host = self.config.settings.image_hosts.lensdump
+        self.base_url.setText(host.base_url if host.base_url else "")
+        self.api_key.setText(host.api_key if host.api_key else "")
+
+    @override
+    def save_settings(self) -> None:
+        self.config.settings.image_hosts.lensdump.base_url = (
+            self.base_url.text().strip()
+        )
+        self.config.settings.image_hosts.lensdump.api_key = self.api_key.text().strip()
+
+    @override
+    def validate_data(self) -> None:
+        for item in (self.base_url, self.api_key):
+            if not item.text().strip():
+                raise AttributeError("Missing required input for host Lensdump")
+
+
+class PixhostEdit(ImageHostEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        self.base_url.setDisabled(True)
+
+    @override
+    def load_settings(self) -> None:
+        host = self.config.settings.image_hosts.pixhost
+        self.base_url.setText(host.base_url if host.base_url else "")
+
+    @override
+    def save_settings(self) -> None:
+        self.config.settings.image_hosts.pixhost.base_url = self.base_url.text().strip()
+
+    @override
+    def validate_data(self) -> None:
+        if not self.base_url.text().strip():
+            raise AttributeError("Missing required input for host Pixhost")
+
+
 class ImageHostListBox(QWidget):
     def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -258,6 +343,12 @@ class ImageHostListBox(QWidget):
             image_widget = ImageBoxEdit(self.config, self)
         elif image_host is ImageHost.IMAGE_BB:
             image_widget = ImageBBEdit(self.config, self)
+        elif image_host is ImageHost.ONLY_IMAGE:
+            image_widget = OnlyImageEdit(self.config, self)
+        elif image_host is ImageHost.PIXHOST:
+            image_widget = PixhostEdit(self.config, self)
+        elif image_host is ImageHost.LENSDUMP:
+            image_widget = LensdumpEdit(self.config, self)
         if image_widget:
             image_widget.load_data.emit()
             child_item = QTreeWidgetItem(parent_item)

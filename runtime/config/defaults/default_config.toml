@@ -683,6 +683,20 @@ api_key = ""
 enabled = false
 base_url = "https://imgbox.com/"
 
+[image_hosts.only_image]
+enabled = false
+base_url = "https://onlyimage.org/"
+api_key = ""
+
+[image_hosts.pixhost]
+enabled = false
+base_url = "https://pixhost.to/"
+
+[image_hosts.lensdump]
+enabled = false
+base_url = "https://lensdump.com/"
+api_key = ""
+
 [urls]
 alt = ""
 columns = 1
