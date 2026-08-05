@@ -19,6 +19,10 @@ from PySide6.QtWidgets import (
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
+from src.backend.trackers.title_format_policy import (
+    TRACKER_TITLE_FORMAT_POLICY,
+    TitleFormatPolicy,
+)
 from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_FILE_NAME_1,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
@@ -67,11 +71,6 @@ class FormatWidgets(TypedDict):
 class SeriesManagementSettings(BaseSettings):
     """Series specific settings"""
 
-    # Trackers that support series uploads but not the per-format title
-    # override feature. Movie-only trackers can't receive series at all and are
-    # excluded separately via UNSUPPORTED_SERIES_TRACKERS, so none are listed
-    # here today.
-    TRACKERS_OVERRIDE_NOT_SUPPORTED: tuple[TrackerSelection, ...] = ()
     _FORMAT_ORDER = SUPPORTED_TVR_FORMATS
 
     def __init__(
@@ -274,10 +273,7 @@ class SeriesManagementSettings(BaseSettings):
         tracker_stacked = ResizableStackedWidget(container)
 
         for tracker in self.config.settings.trackers.by_selection().keys():
-            if (
-                tracker in UNSUPPORTED_SERIES_TRACKERS
-                or tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED
-            ):
+            if tracker in UNSUPPORTED_SERIES_TRACKERS:
                 continue
             tfo = TrackerFormatOverride(container)
             tfo.setting_changed.connect(
@@ -494,8 +490,25 @@ class SeriesManagementSettings(BaseSettings):
                 self._update_qline_cursor_0(w["title_token"], title_tok)
 
             for idx, tracker in enumerate(w["tracker_override_map"].keys()):
-                tracker_info = self.config.settings.trackers.by_selection()[tracker]
                 tfo = w["tracker_override_map"][tracker]
+                if (
+                    TRACKER_TITLE_FORMAT_POLICY[tracker]
+                    is TitleFormatPolicy.UNSUPPORTED
+                ):
+                    # No tracker enforces a specific *series* title format
+                    # today (unlike the movie side), so only the "doesn't
+                    # support an override at all" case is locked here.
+                    tfo.set_locked(
+                        f"{tracker} does not support a custom title format.",
+                        override_enabled=False,
+                        token="",
+                        colon_replace=str(TitleOverridePayload().colon_replace),
+                        replace_map=None,
+                    )
+                    if idx == 0:
+                        self._update_tracker_override_example(fmt, tfo)
+                    continue
+                tracker_info = self.config.settings.trackers.by_selection()[tracker]
                 override = (tracker_info.tvr_title_overrides or {}).get(
                     fmt, TitleOverridePayload()
                 )
@@ -566,6 +579,11 @@ class SeriesManagementSettings(BaseSettings):
             )
 
             for tracker, tfo in w["tracker_override_map"].items():
+                if (
+                    TRACKER_TITLE_FORMAT_POLICY[tracker]
+                    is TitleFormatPolicy.UNSUPPORTED
+                ):
+                    continue
                 existing = self.config.settings.trackers.by_selection()[
                     tracker
                 ].tvr_title_overrides

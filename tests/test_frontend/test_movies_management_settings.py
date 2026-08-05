@@ -57,7 +57,9 @@ def _make_movies_management_settings(
 
     fake_settings_window = QWidget()
     widget = MoviesManagementSettings(
-        config=manager, main_window=None, parent=fake_settings_window
+        config=manager,
+        main_window=None,  # type: ignore[reportArgumentType]
+        parent=fake_settings_window,  # type: ignore[reportArgumentType]
     )
     # `_load_saved_settings` (run during __init__) defers unblocking the
     # tracker override widgets' signals via `QTimer.singleShot(1, ...)`.
@@ -68,12 +70,14 @@ def _make_movies_management_settings(
     return widget, manager
 
 
-def test_reelflix_offered_but_ptp_excluded_from_movie_overrides(
+def test_reelflix_offered_and_ptp_shown_locked_in_movie_overrides(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ReelFliX is a movie tracker and must be offered as a movie title
-    override target. PassThePopcorn supports movies but not the override
-    feature (strict naming), so it must be excluded."""
+    """ReelFliX is a FREE movie tracker and must be offered as a fully
+    editable title override target. PassThePopcorn supports movies but not
+    the override feature at all (UNSUPPORTED) -- it still gets a widget (for
+    UI consistency with locked/REQUIRED trackers) but disabled, not hidden
+    from the dropdown."""
     widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
 
     override_trackers = set(widget.tracker_override_map.keys())
@@ -82,8 +86,15 @@ def test_reelflix_offered_but_ptp_excluded_from_movie_overrides(
 
     assert TrackerSelection.REELFLIX in override_trackers
     assert TrackerSelection.REELFLIX in combo_trackers
-    assert TrackerSelection.PASS_THE_POPCORN not in override_trackers
-    assert TrackerSelection.PASS_THE_POPCORN not in combo_trackers
+    assert widget.tracker_override_map[
+        TrackerSelection.REELFLIX
+    ].enabled_checkbox.isEnabled()
+
+    assert TrackerSelection.PASS_THE_POPCORN in override_trackers
+    assert TrackerSelection.PASS_THE_POPCORN in combo_trackers
+    ptp_widget = widget.tracker_override_map[TrackerSelection.PASS_THE_POPCORN]
+    assert not ptp_widget.enabled_checkbox.isEnabled()
+    assert not ptp_widget.over_ride_format_title.isEnabled()
 
 
 def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(

@@ -86,6 +86,10 @@ from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.health import ensure_tracker_health
 from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.morethantv import MTVUploader
+from src.backend.trackers.title_format_policy import (
+    TitleFormatPolicy,
+    title_format_policy,
+)
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
@@ -932,6 +936,7 @@ class ProcessBackEnd:
             # generate tracker title first
             tracker_title = None
             generated_tracker_title = self.generate_tracker_title(
+                tracker=cur_tracker,
                 tracker_info=tracker_info,
                 context=context,
                 release_info=release_info,
@@ -2209,17 +2214,37 @@ class ProcessBackEnd:
 
     def generate_tracker_title(
         self,
+        tracker: TrackerSelection,
         tracker_info: TrackerInfo,
         context: ProcessingContext,
         release_info: SeriesReleaseInfo,
     ) -> str | None:
+        # Some trackers enforce their own title format (rejected/miscategorized
+        # uploads otherwise) or don't support an override at all. For those,
+        # the live, user-editable `tracker_info` is not trusted here -- a
+        # REQUIRED tracker always sources from the packaged default instead
+        # (so a user disabling/blanking the override in Settings can't defeat
+        # it), and an UNSUPPORTED tracker sources from nothing at all, falling
+        # through to the global template. See title_format_policy.py.
+        policy = title_format_policy(tracker)
+        if policy is TitleFormatPolicy.REQUIRED:
+            override_source: TrackerInfo | None = (
+                self.config.defaults.trackers.by_selection()[tracker]
+            )
+        elif policy is TitleFormatPolicy.UNSUPPORTED:
+            override_source = None
+        else:
+            override_source = tracker_info
+
         if release_info.is_series:
             default_title = get_tvr_title_token(
                 self.config.settings.series,
                 release_info.episode_format,
             )
-            series_override = tracker_info.tvr_title_overrides.get(
-                release_info.episode_format
+            series_override = (
+                override_source.tvr_title_overrides.get(release_info.episode_format)
+                if override_source is not None
+                else None
             )
             override_enabled = bool(series_override and series_override.enabled)
             token_string = (
@@ -2247,26 +2272,29 @@ class ProcessBackEnd:
             )
         else:
             token_string = (
-                tracker_info.mvr_title_token_override
+                override_source.mvr_title_token_override
                 if (
-                    tracker_info.mvr_title_token_override
-                    and tracker_info.mvr_title_override_enabled
+                    override_source is not None
+                    and override_source.mvr_title_token_override
+                    and override_source.mvr_title_override_enabled
                 )
                 else self.config.settings.movie.title_token
             )
             colon_replace = (
-                tracker_info.mvr_title_colon_replace
+                override_source.mvr_title_colon_replace
                 if (
-                    tracker_info.mvr_title_colon_replace
-                    and tracker_info.mvr_title_override_enabled
+                    override_source is not None
+                    and override_source.mvr_title_colon_replace
+                    and override_source.mvr_title_override_enabled
                 )
                 else self.config.settings.movie.title_colon_replace
             )
             override_title_rules = (
-                tracker_info.mvr_title_replace_map
+                override_source.mvr_title_replace_map
                 if (
-                    tracker_info.mvr_title_replace_map
-                    and tracker_info.mvr_title_override_enabled
+                    override_source is not None
+                    and override_source.mvr_title_replace_map
+                    and override_source.mvr_title_override_enabled
                 )
                 else None
             )

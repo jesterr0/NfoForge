@@ -15,6 +15,8 @@
   - OnlyImage
   - Pixhost
   - Lensdump
+- Added tracker format policy for titles:
+  - MTV, TL, Aither, Huno, LST, DarkPeers, ShareIsland, UploadCX, and OnlyEncodes
 
 ### Fixed
 
