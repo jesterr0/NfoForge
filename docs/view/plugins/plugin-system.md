@@ -72,9 +72,33 @@ shadow one.
 
 ## Capabilities and failures
 
-Wizard pages, token replacers, pre-upload processors, and metadata transformers are
-single-select capabilities. Jinja filters/functions and flat token filters from every
-valid plugin are combined while external plugins are enabled.
+Wizard pages, token replacers, pre-upload processors, post-upload processors, and
+metadata transformers are single-select capabilities. Jinja filters/functions and flat
+token filters from every valid plugin are combined while external plugins are enabled.
+
+### Post-upload processors
+
+A post-upload processor runs once per tracker, after that tracker's upload and torrent-
+client injection have both finished (or failed). Unlike a pre-upload processor, it makes
+no decision -- the tracker's work is already done -- so it receives a `PostUploadRequest`
+and returns nothing.
+
+`PostUploadRequest.outcome` is one of four `PostUploadOutcome` values:
+
+- `SUCCESS` -- the upload succeeded and injection succeeded, or injection was not needed
+- `UPLOAD_FAILED` -- the upload itself failed
+- `INJECTION_FAILED` -- the upload succeeded but torrent-client injection failed
+- `SKIPPED` -- a pre-upload plugin returned `PreUploadDecision.SKIP` for this tracker
+
+`PostUploadRequest.error` carries a scrubbed failure message for `UPLOAD_FAILED` and
+`INJECTION_FAILED`, and is `None` otherwise.
+
+The hook does not fire when a tracker is simply disabled in Settings, and does not fire
+for a user-chosen mid-retry skip (declining a retry prompt after an automatic-retry
+budget is exhausted) -- `SKIPPED` is reserved for a pre-upload plugin's own decision.
+
+A post-upload processor that raises is logged and otherwise ignored: the tracker's
+already-reported status is never changed by a broken notifier.
 
 Jinja filters apply to NFO templates using Jinja syntax. Flat token filters apply to the
 `{token|filter}` syntax used by filename templates, tracker-title templates, and
