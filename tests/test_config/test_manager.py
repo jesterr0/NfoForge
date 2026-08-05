@@ -1279,3 +1279,42 @@ def test_metadata_transformer_is_written_on_save(
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
     assert plugin_settings["metadata_transformer"] == "example.provider"
+
+
+def test_post_upload_backfills_when_a_profile_lacks_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    plugin_settings = cast(MutableMapping[str, Any], document["plugins"])
+    del plugin_settings["post_upload"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")
+
+    assert manager.settings.plugins.post_upload is None
+
+
+def test_post_upload_is_written_on_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.plugins.post_upload = "example.notifier"
+    manager.save()
+
+    profile = paths.user_configs / "test.toml"
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
+    assert plugin_settings["post_upload"] == "example.notifier"

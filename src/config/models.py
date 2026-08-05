@@ -384,6 +384,7 @@ class PluginSettings:
     wizard_page: str | None
     token_replacer: str | None
     pre_upload: str | None
+    post_upload: str | None
     metadata_transformer: str | None
 
 

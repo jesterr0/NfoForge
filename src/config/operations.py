@@ -1293,6 +1293,11 @@ class TypedTomlOperations:
                 if self.settings.plugins.pre_upload
                 else ""
             )
+            plugins_settings["post_upload"] = (
+                self.settings.plugins.post_upload
+                if self.settings.plugins.post_upload
+                else ""
+            )
             plugins_settings["metadata_transformer"] = (
                 self.settings.plugins.metadata_transformer
                 if self.settings.plugins.metadata_transformer
@@ -2346,6 +2351,7 @@ class TypedTomlOperations:
                     wizard_page=str(plugins_settings["wizard_page"]) or None,
                     token_replacer=str(plugins_settings["token_replacer"]) or None,
                     pre_upload=str(plugins_settings["pre_upload"]) or None,
+                    post_upload=str(plugins_settings["post_upload"]) or None,
                     metadata_transformer=str(plugins_settings["metadata_transformer"])
                     or None,
                 ),

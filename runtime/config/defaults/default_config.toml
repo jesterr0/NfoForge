@@ -711,6 +711,7 @@ urls_manual = 0
 wizard_page = ""
 token_replacer = ""
 pre_upload = ""
+post_upload = ""
 metadata_transformer = ""
 
 [template_settings]
