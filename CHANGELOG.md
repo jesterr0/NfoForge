@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Support for HDB
+
+### Fixed
+
+- Disc detection bug in all UNIT3D trackers, PTP, and BHD
+
 ## [1.0.0] - 2026-08-04
 
 ### Added

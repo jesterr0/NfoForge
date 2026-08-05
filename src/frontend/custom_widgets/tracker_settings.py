@@ -26,6 +26,7 @@ from src.frontend.custom_widgets.tracker_management import (
     AitherTrackerEdit,
     BHDTrackerEdit,
     DarkPeersEdit,
+    HDBTrackerEdit,
     HunoTrackerEdit,
     LSTTrackerEdit,
     MTVTrackerEdit,
@@ -53,6 +54,7 @@ TRACKER_EDITOR_TYPES: Mapping[TrackerSelection, TrackerEditorType] = {
     TrackerSelection.SHARE_ISLAND: ShareIslandEdit,
     TrackerSelection.UPLOAD_CX: UploadCXEdit,
     TrackerSelection.ONLY_ENCODES: OnlyEncodesEdit,
+    TrackerSelection.HDB: HDBTrackerEdit,
 }
 
 

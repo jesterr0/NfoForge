@@ -34,6 +34,7 @@ from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
     DarkPeersInfo,
+    HDBInfo,
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
@@ -122,6 +123,7 @@ class TrackerSettings:
     share_island: ShareIslandInfo
     upload_cx: UploadCXInfo
     only_encodes: OnlyEncodesInfo
+    hdb: HDBInfo
 
     def by_selection(self) -> dict[TrackerSelection, TrackerInfo]:
         return {
@@ -137,6 +139,7 @@ class TrackerSettings:
             TrackerSelection.SHARE_ISLAND: self.share_island,
             TrackerSelection.UPLOAD_CX: self.upload_cx,
             TrackerSelection.ONLY_ENCODES: self.only_encodes,
+            TrackerSelection.HDB: self.hdb,
         }
 
 

@@ -62,6 +62,7 @@ from src.payloads.series import SeriesReleaseInfo, build_series_release_info
         (TrackerSelection.SHARE_ISLAND, True),
         (TrackerSelection.UPLOAD_CX, True),
         (TrackerSelection.ONLY_ENCODES, True),
+        (TrackerSelection.HDB, True),
         (TrackerSelection.PASS_THE_POPCORN, False),
         (TrackerSelection.REELFLIX, False),
     ],

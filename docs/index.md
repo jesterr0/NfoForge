@@ -47,6 +47,7 @@ tracker-specific series paths are still limited; see
 - ShareIsland
 - OnlyEncodes
 - UploadCX
+- HDBits
 
 <!-- prettier-ignore -->
 !!! info

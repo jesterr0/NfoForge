@@ -1334,3 +1334,86 @@ class OnlyEncodesEdit(TrackerEditBase):
             self.config.settings.trackers.only_encodes.column_s = col_s
             self.config.settings.trackers.only_encodes.column_space = col_space
             self.config.settings.trackers.only_encodes.row_space = row_space
+
+
+class HDBTrackerEdit(TrackerEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        username_lbl = QLabel("Username", self)
+        self.username = MaskedQLineEdit(parent=self)
+
+        passkey_lbl = QLabel("Passkey", self)
+        self.passkey = MaskedQLineEdit(parent=self, masked=True)
+
+        session_cookie_lbl = QLabel("Session Cookie", self)
+        session_cookie_lbl.setToolTip(
+            "HDBits' upload page requires a logged-in browser session -- there "
+            "is no automated login (HDBits can serve a captcha). Log in to "
+            "HDBits in your browser, copy the page's Cookie request header "
+            "(devtools -> Network), and paste it here as "
+            "'name=value; name2=value2'. If uploads start failing with a "
+            "session error, this has likely expired and needs to be re-pasted."
+        )
+        self.session_cookie = MaskedQLineEdit(parent=self, masked=True)
+        self.session_cookie.setToolTip(session_cookie_lbl.toolTip())
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(100, 2000)
+        self._disable_scrollwheel_spinbox(self.image_width)
+
+        self.add_pair_to_layout(username_lbl, self.username)
+        self.add_pair_to_layout(passkey_lbl, self.passkey)
+        self.add_pair_to_layout(session_cookie_lbl, self.session_cookie)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.settings.trackers.hdb
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.username.setText(tracker_data.username if tracker_data.username else "")
+        self.passkey.setText(tracker_data.passkey if tracker_data.passkey else "")
+        self.session_cookie.setText(
+            tracker_data.session_cookie if tracker_data.session_cookie else ""
+        )
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.settings.trackers.hdb.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.settings.trackers.hdb.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.settings.trackers.hdb.comments = self.comments.text().strip()
+        self.config.settings.trackers.hdb.source = self.source.text().strip()
+        self.config.settings.trackers.hdb.username = self.username.text().strip()
+        self.config.settings.trackers.hdb.passkey = self.passkey.text().strip()
+        self.config.settings.trackers.hdb.session_cookie = (
+            self.session_cookie.text().strip()
+        )
+        self.config.settings.trackers.hdb.internal = self.internal.isChecked()
+        self.config.settings.trackers.hdb.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.settings.trackers.hdb.column_s = col_s
+            self.config.settings.trackers.hdb.column_space = col_space
+            self.config.settings.trackers.hdb.row_space = row_space

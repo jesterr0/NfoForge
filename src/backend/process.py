@@ -44,6 +44,7 @@ from src.backend.trackers import (
     AitherSearch,
     BHDSearch,
     DarkPeersSearch,
+    HDBSearch,
     HunoSearch,
     LSTSearch,
     MTVSearch,
@@ -56,6 +57,7 @@ from src.backend.trackers import (
     aither_uploader,
     bhd_uploader,
     dp_uploader,
+    hdb_uploader,
     huno_uploader,
     lst_uploader,
     mtv_uploader,
@@ -67,6 +69,7 @@ from src.backend.trackers import (
     ulcx_uploader,
 )
 from src.backend.trackers.beyondhd import BHDUploader
+from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.health import ensure_tracker_health
 from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.morethantv import MTVUploader
@@ -218,6 +221,15 @@ class ProcessBackEnd:
             elif tracker_sel is TrackerSelection.ONLY_ENCODES:
                 tasks.append(
                     self._dupe_oe(tracker_sel=tracker_sel, file_input=search_input)
+                )
+            elif tracker_sel is TrackerSelection.HDB:
+                tasks.append(
+                    self._dupe_hdb(
+                        tracker_sel=tracker_sel,
+                        file_input=search_input,
+                        media_input_payload=media_input_payload,
+                        media_search_payload=media_search_payload,
+                    )
                 )
 
         async_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -446,6 +458,44 @@ class ProcessBackEnd:
             OnlyEncodesSearch,
             {"api_key": self.config.settings.trackers.only_encodes.api_key},
         )
+
+    async def _dupe_hdb(
+        self,
+        tracker_sel: TrackerSelection,
+        file_input: Path,
+        media_input_payload: MediaInputPayload,
+        media_search_payload: MediaSearchPayload,
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        username = self.config.settings.trackers.hdb.username
+        passkey = self.config.settings.trackers.hdb.passkey
+        if not username or not passkey:
+            return (
+                tracker_sel,
+                False,
+                "HDB username or passkey missing",
+            )
+        try:
+            first_file = media_input_payload.require_first_file()
+            mediainfo_obj = media_input_payload.require_mediainfo(first_file)
+            media_type = media_input_payload.require_media_type()
+            hdb_search = HDBSearch(
+                username=username,
+                passkey=passkey,
+                timeout=self.config.settings.general.timeout,
+            ).search(
+                input_path=file_input,
+                media_type=media_type,
+                mediainfo_obj=mediainfo_obj,
+                imdb_id=media_search_payload.imdb_id,
+                tvdb_id=media_search_payload.tvdb_id,
+                genre_names=media_search_payload.genre_names,
+            )
+            if hdb_search:
+                return tracker_sel, True, hdb_search
+            else:
+                return tracker_sel, True, []
+        except Exception as e:
+            return tracker_sel, False, str(e)
 
     async def _aither_dupe_check(
         self,
@@ -1896,6 +1946,34 @@ class ProcessBackEnd:
                 episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
             )
+        elif tracker is TrackerSelection.HDB:
+            hdb_payload = self.config.settings.trackers.hdb
+            if not hdb_payload.username or not hdb_payload.passkey:
+                raise TrackerError("Missing username or passkey for HDBits")
+            if not hdb_payload.session_cookie:
+                raise TrackerError(
+                    "Missing HDBits session cookie. Paste your logged-in "
+                    "session cookie in HDBits tracker settings."
+                )
+            return hdb_uploader(
+                username=hdb_payload.username,
+                passkey=hdb_payload.passkey,
+                session_cookie=hdb_payload.session_cookie,
+                torrent_file=torrent_file,
+                input_path=input_path,
+                media_type=media_type,
+                mediainfo_obj=mediainfo_obj,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                imdb_id=media_search_obj.imdb_id,
+                tvdb_id=media_search_obj.tvdb_id,
+                genre_names=media_search_obj.genre_names,
+                internal=bool(hdb_payload.internal),
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
+                timeout=self.config.settings.general.timeout,
+            )
 
     def generate_tracker_title(
         self,
@@ -2015,6 +2093,8 @@ class ProcessBackEnd:
             return TLUploader.generate_release_title(title)
         elif tracker is TrackerSelection.BEYOND_HD:
             return BHDUploader.generate_release_title(title)
+        elif tracker is TrackerSelection.HDB:
+            return HDBUploader.generate_release_title(title)
         # Unit3d trackers
         elif tracker in {
             TrackerSelection.REELFLIX,

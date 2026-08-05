@@ -9,11 +9,11 @@ from urllib.parse import urlparse
 
 import niquests
 from pymediainfo import MediaInfo
-import regex
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_exponential
 
 from src.backend.trackers.utils import (
+    DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
     tracker_string_replace_map,
@@ -447,20 +447,7 @@ class Unit3dBaseUploader:
                 return str(remux_value.value)
 
         # disc
-        if regex.search(
-            (
-                r"^(?!.*\b((?<!HD[._ -]|HD)DVD|BDRip|720p|MKV|XviD"
-                r"|WMV|d3g|(BD)?REMUX|^(?=.*1080p)(?=.*HEVC)|[xh][-_. ]"
-                r"?26[45]|German.*[DM]L|((?<=\d{4}).*German.*([DM]L)?)"
-                r"(?=.*\b(AVC|HEVC|VC[-_. ]?1|MVC|MPEG[-_. ]?2)\b))\b)(((?=.*\b(Blu[-_. ]?ray"
-                r"|BD|HD[-_. ]?DVD)\b)(?=.*\b(AVC|HEVC|VC[-_. ]?1|MVC|"
-                r"MPEG[-_. ]?2|BDMV|ISO)\b))|^((?=.*\b(((?=.*\b((.*_)?COMPLETE.*"
-                r"|Dis[ck])\b)(?=.*(Blu[-_. ]?ray|HD[-_. ]?DVD)))|3D[-_. ]?BD|"
-                r"BR[-_. ]?DISK|Full[-_. ]?Blu[-_. ]?ray|^((?=.*((BD|UHD)[-_. ]?(25"
-                r"|50|66|100|ISO)))))))).*"
-            ),
-            title_lowered,
-        ):
+        if DISC_TITLE_REGEX.search(title_lowered):
             disc_value = getattr(self.type_enum, "DISC", None)
             if disc_value is not None:
                 return str(disc_value.value)

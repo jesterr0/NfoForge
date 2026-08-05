@@ -19,6 +19,7 @@ class TrackerSelection(CaseInsensitiveEnum):
     SHARE_ISLAND = "ShareIsland"
     UPLOAD_CX = "UploadCX"
     ONLY_ENCODES = "OnlyEncodes"
+    HDB = "HDBits"
 
     @override
     def __str__(self) -> str:
@@ -44,5 +45,6 @@ TRACKER_ROOT_URLS: Mapping[TrackerSelection, str] = MappingProxyType(
         TrackerSelection.SHARE_ISLAND: "https://shareisland.org/",
         TrackerSelection.UPLOAD_CX: "https://upload.cx/",
         TrackerSelection.ONLY_ENCODES: "https://onlyencodes.cc/",
+        TrackerSelection.HDB: "https://hdbits.org/",
     }
 )
