@@ -29,7 +29,11 @@ from src.backend.utils.media_info_utils import (
     calculate_avg_bitrate,
     calculate_avg_video_bit_rate,
 )
-from src.backend.utils.rename_normalizations import EDITION_INFO, is_imax
+from src.backend.utils.rename_normalizations import (
+    CUT_EDITION_NAMES,
+    EDITION_INFO,
+    is_imax,
+)
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
@@ -628,6 +632,9 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.EDITION.token:
             return self._edition(token_data)
 
+        elif token_data.bracket_token == Tokens.CUT.token:
+            return self._cut(token_data)
+
         elif token_data.bracket_token == Tokens.FRAME_SIZE.token:
             return self._frame_size(token_data)
 
@@ -1142,6 +1149,67 @@ class TokenReplacer:
 
         return self._optional_user_input(
             " ".join(str(item) for item in normalized_edition_set), token_data
+        )
+
+    def _cut(self, token_data: TokenData) -> str:
+        """Subset of {edition} covering only "Cut"-classified entries (see
+        CUT_EDITION_NAMES) -- e.g. Director's Cut/Extended/Unrated, which stay
+        in a title that must follow Aither's naming guide, unlike
+        marketing-style Editions (Criterion, Deluxe, Special, ...).
+        """
+        if self.edition_override:
+            for rename_normalize in EDITION_INFO:
+                if rename_normalize.normalized not in CUT_EDITION_NAMES:
+                    continue
+                for regex_str in rename_normalize.re_gex:
+                    if re.search(regex_str, self.edition_override, flags=re.I):
+                        return self._optional_user_input(
+                            rename_normalize.normalized, token_data
+                        )
+            return self._optional_user_input("", token_data)
+
+        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
+            """Helper function to collect edition data from a source."""
+            values = source.get(key, [])
+            return values if isinstance(values, list) else [values]
+
+        # ensure we have unique cuts
+        normalized_cut_set: set[str] = set()
+
+        # search the entire filename for cut patterns
+        filename = self.media_input.stem.lower()
+        for rename_normalize in EDITION_INFO:
+            if rename_normalize.normalized not in CUT_EDITION_NAMES:
+                continue
+            for regex_str in rename_normalize.re_gex:
+                if re.search(regex_str, filename, flags=re.I):
+                    normalized_cut_set.add(rename_normalize.normalized)
+                    break  # only add once per cut type
+
+        # also process any editions from guess_name['edition'] -- unlike
+        # _edition(), an item that doesn't match a known Cut (including one
+        # that matches a known, non-Cut Edition, or nothing at all) is
+        # dropped rather than carried through unnormalized: an unrecognized
+        # string can't be confidently called a Cut, and the guide's own
+        # default for an omitted Cut is "assumed Theatrical."
+        edition_set = set(collect_editions(self.guess_name, "edition"))
+        for item in edition_set:
+            if is_imax(item):
+                continue
+            matched = False
+            for rename_normalize in EDITION_INFO:
+                if rename_normalize.normalized not in CUT_EDITION_NAMES:
+                    continue
+                for regex_str in rename_normalize.re_gex:
+                    if re.search(regex_str, str(item), flags=re.I):
+                        normalized_cut_set.add(rename_normalize.normalized)
+                        matched = True
+                        break
+                if matched:
+                    break
+
+        return self._optional_user_input(
+            " ".join(str(item) for item in normalized_cut_set), token_data
         )
 
     def _frame_size(self, token_data: TokenData) -> str:

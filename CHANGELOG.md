@@ -17,6 +17,12 @@
   - Lensdump
 - Added tracker format policy for titles:
   - MTV, TL, Aither, Huno, LST, DarkPeers, ShareIsland, UploadCX, and OnlyEncodes
+- New **file token**s:
+  - `{cut}`: subset of `{edition}` providing only **cut** editions
+
+### Changed
+
+- Aither title format now uses `{cut}` instead of `{edition}`
 
 ### Fixed
 
