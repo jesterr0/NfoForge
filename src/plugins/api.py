@@ -14,7 +14,9 @@ if TYPE_CHECKING:
     from src.enums.tracker_selection import TrackerSelection
     from src.frontend.wizards.wizard_base_page import BaseWizardPage
     from src.packages.custom_types import ImageUploadData
+    from src.payloads.media_inputs import MediaInputPayload
     from src.payloads.media_search import MediaSearchPayload
+    from src.payloads.tracker_search_result import TrackerSearchResult
 
 
 PLUGIN_API_VERSION = 2
@@ -142,6 +144,23 @@ class FlatFilter(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class DuplicateCheckRequest:
+    """Inputs supplied to a duplicate-checker plugin, once per tracker."""
+
+    config: ConfigManager
+    tracker: TrackerSelection
+    media_input: MediaInputPayload
+    media_search: MediaSearchPayload
+    timeout: int
+
+
+class DuplicateChecker(Protocol):
+    def __call__(
+        self, request: DuplicateCheckRequest, /
+    ) -> Sequence[TrackerSearchResult]: ...
+
+
+@dataclass(frozen=True, slots=True)
 class PluginDefinition:
     """The single typed object exported by an NfoForge plugin."""
 
@@ -155,6 +174,7 @@ class PluginDefinition:
     post_upload: PostUploadProcessor | None = None
     metadata_transformer: MetadataTransformer | None = None
     image_host_uploader: BaseImageHostUploader | None = None
+    duplicate_checker: DuplicateChecker | None = None
     jinja2_filters: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     jinja2_functions: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     flat_filters: Mapping[str, FlatFilter] = field(default_factory=dict)

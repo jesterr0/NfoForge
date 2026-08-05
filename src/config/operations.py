@@ -1308,6 +1308,11 @@ class TypedTomlOperations:
                 if self.settings.plugins.image_host_uploader
                 else ""
             )
+            plugins_settings["duplicate_checker"] = (
+                self.settings.plugins.duplicate_checker
+                if self.settings.plugins.duplicate_checker
+                else ""
+            )
 
             # template settings
             template_settings = self._toml_table(self._toml_data, "template_settings")
@@ -2360,6 +2365,8 @@ class TypedTomlOperations:
                     metadata_transformer=str(plugins_settings["metadata_transformer"])
                     or None,
                     image_host_uploader=str(plugins_settings["image_host_uploader"])
+                    or None,
+                    duplicate_checker=str(plugins_settings["duplicate_checker"])
                     or None,
                 ),
                 templates=TemplateSettings(

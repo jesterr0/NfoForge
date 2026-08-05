@@ -387,6 +387,7 @@ class PluginSettings:
     post_upload: str | None
     metadata_transformer: str | None
     image_host_uploader: str | None
+    duplicate_checker: str | None
 
 
 @dataclass(slots=True)

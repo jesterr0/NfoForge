@@ -31,6 +31,7 @@ _CAPABILITY_LABELS = {
     "post_upload": "Post-upload",
     "metadata_transformer": "Metadata transformation",
     "image_host_uploader": "Image host uploader",
+    "duplicate_checker": "Duplicate checker",
     "jinja2_filters": "Jinja filters",
     "jinja2_functions": "Jinja functions",
     "flat_filters": "Flat filters",
@@ -64,6 +65,7 @@ class PluginsSettings(BaseSettings):
         self.plugin_post_upload_combo = self._create_combo()
         self.plugin_metadata_transformer_combo = self._create_combo()
         self.plugin_image_host_uploader_combo = self._create_combo()
+        self.plugin_duplicate_checker_combo = self._create_combo()
 
         selectors = (
             (
@@ -96,6 +98,12 @@ class PluginsSettings(BaseSettings):
                 "Choose an optional plugin to upload screenshots to a custom image "
                 'host, selectable per tracker as "Plugin".',
                 self.plugin_image_host_uploader_combo,
+            ),
+            (
+                "Duplicate Checker",
+                "Choose an optional plugin to supplement built-in dupe checking "
+                "with an additional source, per tracker.",
+                self.plugin_duplicate_checker_combo,
             ),
         )
         self._selection_widgets = tuple(combo for _, _, combo in selectors)
@@ -188,6 +196,12 @@ class PluginsSettings(BaseSettings):
                 "Default Image Host Uploader",
                 self.plugin_image_host_uploader_combo,
                 selections.image_host_uploader,
+            ),
+            (
+                "duplicate_checker",
+                "Default Duplicate Checker",
+                self.plugin_duplicate_checker_combo,
+                selections.duplicate_checker,
             ),
         )
         for capability, default_text, combo, plugin_id in capability_combos:
@@ -282,6 +296,7 @@ class PluginsSettings(BaseSettings):
             ("post_upload", "Post-upload"),
             ("metadata_transformer", "Metadata transformation"),
             ("image_host_uploader", "Image host uploader"),
+            ("duplicate_checker", "Duplicate checker"),
         ):
             plugin_id = getattr(settings, attribute)
             if plugin_id:
@@ -318,6 +333,9 @@ class PluginsSettings(BaseSettings):
         )
         self.config.settings.plugins.image_host_uploader = (
             self.plugin_image_host_uploader_combo.currentData()
+        )
+        self.config.settings.plugins.duplicate_checker = (
+            self.plugin_duplicate_checker_combo.currentData()
         )
         self.updated_settings_applied.emit()
 

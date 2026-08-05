@@ -66,6 +66,7 @@ def _make_plugin_settings(
     manager.settings.plugins.metadata_transformer = "missing.metadata"
     manager.settings.plugins.post_upload = "missing.notifier"
     manager.settings.plugins.image_host_uploader = "missing.imghost"
+    manager.settings.plugins.duplicate_checker = "missing.dupechecker"
 
     widget = PluginsSettings(
         config=manager,
@@ -85,6 +86,7 @@ def test_plugin_settings_preserve_selections_while_disabled(
     assert widget.plugin_metadata_transformer_combo.currentData() == "missing.metadata"
     assert widget.plugin_post_upload_combo.currentData() == "missing.notifier"
     assert widget.plugin_image_host_uploader_combo.currentData() == "missing.imghost"
+    assert widget.plugin_duplicate_checker_combo.currentData() == "missing.dupechecker"
 
     widget.enable_plugins.setChecked(True)
     widget._save_settings()
@@ -94,6 +96,7 @@ def test_plugin_settings_preserve_selections_while_disabled(
     assert manager.settings.plugins.metadata_transformer == "missing.metadata"
     assert manager.settings.plugins.post_upload == "missing.notifier"
     assert manager.settings.plugins.image_host_uploader == "missing.imghost"
+    assert manager.settings.plugins.duplicate_checker == "missing.dupechecker"
 
 
 def test_plugin_status_lists_loaded_failed_and_missing_plugins(
@@ -115,6 +118,7 @@ def test_plugin_status_lists_loaded_failed_and_missing_plugins(
     assert rows["missing.metadata"] == "Configured but unavailable"
     assert rows["missing.notifier"] == "Configured but unavailable"
     assert rows["missing.imghost"] == "Configured but unavailable"
+    assert rows["missing.dupechecker"] == "Configured but unavailable"
 
 
 def test_plugin_status_explains_that_disabled_plugins_were_not_loaded(

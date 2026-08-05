@@ -73,9 +73,9 @@ shadow one.
 ## Capabilities and failures
 
 Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata
-transformers, and image host uploaders are single-select capabilities. Jinja
-filters/functions and flat token filters from every valid plugin are combined while
-external plugins are enabled.
+transformers, image host uploaders, and duplicate checkers are single-select
+capabilities. Jinja filters/functions and flat token filters from every valid plugin
+are combined while external plugins are enabled.
 
 ### Post-upload processors
 
@@ -136,6 +136,25 @@ availability is entirely governed by the **Settings -> Plugins** selection: once
 configured there (and external plugins are enabled), it appears as **Plugin** in the
 per-tracker image host choice during the upload wizard, the same way every other host
 does.
+
+### Duplicate checkers
+
+A duplicate checker runs once per tracker, during the upload wizard's dupe-check phase
+-- before tracker titles, NFOs, or torrents exist, and before any upload happens. It
+supplements NfoForge's built-in per-tracker duplicate search (e.g. with a private
+cross-tracker database) rather than replacing or gating it: nothing today auto-skips a
+tracker because a duplicate was found, and this capability does not change that. Set
+`duplicate_checker` on `PluginDefinition` to a callable receiving a
+`DuplicateCheckRequest` (`config`, `tracker`, `media_input`, `media_search`, `timeout`)
+and returning a sequence of `TrackerSearchResult` -- always a sequence, never a bare
+string; a plugin that fails should raise, not return an error value.
+
+Results are only merged into a tracker's dupe log when the built-in check for that
+tracker *succeeded* (including "succeeded with zero hits"); if the built-in check
+itself failed (missing credentials, network error, an unsupported series tracker) the
+plugin's contribution for that tracker is not merged. A duplicate checker that raises,
+returns the wrong type, or runs past `timeout` is logged and treated as "nothing extra
+found" -- it never fails the dupe-check phase for other trackers.
 
 Jinja filters apply to NFO templates using Jinja syntax. Flat token filters apply to the
 `{token|filter}` syntax used by filename templates, tracker-title templates, and

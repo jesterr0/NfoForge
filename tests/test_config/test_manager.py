@@ -1357,3 +1357,42 @@ def test_image_host_uploader_is_written_on_save(
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
     assert plugin_settings["image_host_uploader"] == "example.imghost"
+
+
+def test_duplicate_checker_backfills_when_a_profile_lacks_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    plugin_settings = cast(MutableMapping[str, Any], document["plugins"])
+    del plugin_settings["duplicate_checker"]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager.load_profile("test")
+
+    assert manager.settings.plugins.duplicate_checker is None
+
+
+def test_duplicate_checker_is_written_on_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    manager = ConfigManager("test", paths)
+
+    manager.settings.plugins.duplicate_checker = "example.dupechecker"
+    manager.save()
+
+    profile = paths.user_configs / "test.toml"
+    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
+    assert plugin_settings["duplicate_checker"] == "example.dupechecker"

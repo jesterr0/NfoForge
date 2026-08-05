@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
 import re
@@ -12,6 +12,7 @@ from jinja2 import Environment
 from src.exceptions import PluginError, PluginExecutionError
 from src.plugins.api import (
     PLUGIN_API_VERSION,
+    DuplicateCheckRequest,
     FlatFilter,
     MetadataTransformer,
     MetadataTransformRequest,
@@ -25,6 +26,7 @@ from src.plugins.api import (
 
 if TYPE_CHECKING:
     from src.payloads.media_search import MediaSearchPayload
+    from src.payloads.tracker_search_result import TrackerSearchResult
 
 
 _PLUGIN_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
@@ -47,6 +49,15 @@ class _TransformOutcome:
     """
 
     value: MediaSearchPayload | None = None
+    error: BaseException | None = None
+
+
+@dataclass(slots=True)
+class _CheckerOutcome:
+    """Mutable holder a duplicate-checker worker writes and the caller reads
+    after `join`. Not frozen for the same reason as `_TransformOutcome`."""
+
+    value: Sequence[TrackerSearchResult] | None = None
     error: BaseException | None = None
 
 
@@ -184,6 +195,63 @@ class PluginManager:
             processor(request)
         except Exception as error:
             raise PluginExecutionError(plugin_id, "post_upload", error) from error
+
+    def run_duplicate_checker(
+        self, plugin_id: str, request: DuplicateCheckRequest
+    ) -> Sequence[TrackerSearchResult]:
+        """Run a duplicate-checker plugin on a bounded daemon thread.
+
+        Uses the same timeout-safety technique as `_run_transformer_with_timeout`
+        (see its docstring): the caller (`ProcessBackEnd._run_duplicate_checker_plugin`)
+        awaits this synchronous, bounded call via `asyncio.to_thread`, which is only
+        safe because this method itself never blocks longer than `request.timeout` --
+        a plain `asyncio.to_thread` around an unbounded call would use the default
+        non-daemon `ThreadPoolExecutor` and could block interpreter exit on a hung
+        plugin.
+        """
+        record = self._require_capability(plugin_id, "duplicate_checker")
+        checker = record.definition.duplicate_checker
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert checker is not None  # noqa: S101
+        outcome = _CheckerOutcome()
+
+        def _run() -> None:
+            try:
+                outcome.value = checker(request)
+            except BaseException as error:
+                outcome.error = error
+
+        worker = threading.Thread(
+            target=_run,
+            name=f"plugin-dupecheck-{plugin_id}",
+            daemon=True,
+        )
+        worker.start()
+        worker.join(request.timeout)
+        if worker.is_alive():
+            raise PluginExecutionError(
+                plugin_id,
+                "duplicate_checker",
+                TimeoutError(f"timed out after {request.timeout}s and was abandoned"),
+            )
+        if outcome.error is not None:
+            raise PluginExecutionError(
+                plugin_id, "duplicate_checker", outcome.error
+            ) from outcome.error
+        if (
+            outcome.value is None
+            or not isinstance(outcome.value, Sequence)
+            or isinstance(outcome.value, str | bytes)
+        ):
+            raise PluginExecutionError(
+                plugin_id,
+                "duplicate_checker",
+                TypeError(
+                    "duplicate checker must return a sequence of TrackerSearchResult"
+                ),
+            )
+        return outcome.value
 
     def transform_metadata(
         self, plugin_id: str, request: MetadataTransformRequest
@@ -323,6 +391,7 @@ class PluginManager:
             definition.post_upload,
             definition.metadata_transformer,
             definition.image_host_uploader,
+            definition.duplicate_checker,
             definition.jinja2_filters,
             definition.jinja2_functions,
             definition.flat_filters,
@@ -353,6 +422,7 @@ class PluginManager:
             "pre_upload",
             "post_upload",
             "metadata_transformer",
+            "duplicate_checker",
         ):
             value = getattr(definition, name)
             if value is not None and not callable(value):

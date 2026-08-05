@@ -14,8 +14,12 @@ from src.backend.image_host_uploading.base_image_host import (
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import PluginError, PluginExecutionError
 from src.packages.custom_types import ImageUploadData
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.tracker_search_result import TrackerSearchResult
 from src.plugins.api import (
+    DuplicateChecker,
+    DuplicateCheckRequest,
     MetadataInputContext,
     MetadataTransformContext,
     MetadataTransformer,
@@ -265,3 +269,127 @@ def test_a_non_base_image_host_uploader_value_is_rejected() -> None:
             ),
             "test",
         )
+
+
+def _dupe_definition(
+    *, plugin_id: str, duplicate_checker: DuplicateChecker
+) -> PluginDefinition:
+    return PluginDefinition(
+        display_name=plugin_id,
+        version="1.0.0",
+        duplicate_checker=duplicate_checker,
+    )
+
+
+def _dupe_request(*, timeout: int = 5) -> DuplicateCheckRequest:
+    return DuplicateCheckRequest(
+        config=None,  # type: ignore[arg-type]
+        tracker=TrackerSelection.AITHER,
+        media_input=MediaInputPayload(),
+        media_search=MediaSearchPayload(title="TMDb title"),
+        timeout=timeout,
+    )
+
+
+def test_run_duplicate_checker_returns_the_processors_results() -> None:
+    manager = PluginManager()
+    hit = TrackerSearchResult(name="Existing.Release-GROUP")
+
+    def finds_one(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        return [hit]
+
+    manager.register(
+        "test.dupechecker",
+        _dupe_definition(plugin_id="test.dupechecker", duplicate_checker=finds_one),
+        "test",
+    )
+
+    result = manager.run_duplicate_checker("test.dupechecker", _dupe_request())
+
+    assert list(result) == [hit]
+
+
+def test_run_duplicate_checker_wraps_a_raising_processor_in_plugin_execution_error() -> (
+    None
+):
+    manager = PluginManager()
+
+    def explodes(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        raise RuntimeError("search backend unreachable")
+
+    manager.register(
+        "test.explode",
+        _dupe_definition(plugin_id="test.explode", duplicate_checker=explodes),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="search backend unreachable"):
+        manager.run_duplicate_checker("test.explode", _dupe_request())
+
+
+def test_run_duplicate_checker_rejects_a_non_sequence_return() -> None:
+    manager = PluginManager()
+
+    def returns_wrong_type(request: DuplicateCheckRequest) -> object:
+        return {"not": "a sequence"}
+
+    manager.register(
+        "test.badreturn",
+        _dupe_definition(
+            plugin_id="test.badreturn",
+            duplicate_checker=returns_wrong_type,  # type: ignore[arg-type]
+        ),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="sequence"):
+        manager.run_duplicate_checker("test.badreturn", _dupe_request())
+
+
+def test_a_blocking_duplicate_checker_is_abandoned_at_the_timeout() -> None:
+    manager = PluginManager()
+
+    def hangs(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        time.sleep(30)
+        raise AssertionError("should never be reached")
+
+    manager.register(
+        "test.hang.dupe",
+        _dupe_definition(plugin_id="test.hang.dupe", duplicate_checker=hangs),
+        "test",
+    )
+
+    started = time.monotonic()
+    with pytest.raises(PluginExecutionError, match="timed out"):
+        manager.run_duplicate_checker("test.hang.dupe", _dupe_request(timeout=1))
+
+    assert time.monotonic() - started < 10
+
+
+def test_the_abandoned_duplicate_checker_thread_does_not_block_interpreter_exit() -> (
+    None
+):
+    """Same daemon-thread guarantee as the metadata-transformer timeout path --
+    see `PluginManager._run_transformer_with_timeout`'s docstring."""
+    manager = PluginManager()
+
+    def hangs(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        time.sleep(30)
+        raise AssertionError("should never be reached")
+
+    manager.register(
+        "test.hang.dupe.daemon",
+        _dupe_definition(plugin_id="test.hang.dupe.daemon", duplicate_checker=hangs),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="timed out"):
+        manager.run_duplicate_checker("test.hang.dupe.daemon", _dupe_request(timeout=1))
+
+    hung_threads = [
+        thread
+        for thread in threading.enumerate()
+        if "test.hang.dupe.daemon" in thread.name
+    ]
+    assert hung_threads
+    assert all(thread.daemon for thread in hung_threads)

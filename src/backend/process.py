@@ -132,6 +132,7 @@ from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
 from src.plugins.api import (
+    DuplicateCheckRequest,
     PostUploadOutcome,
     PostUploadRequest,
     PreUploadDecision,
@@ -297,7 +298,69 @@ class ProcessBackEnd:
             else:
                 dupes[tracker_sel] = (tracker_sel, False, f"Unexpected result: {item}")
 
+        plugin_id = self.config.settings.plugins.duplicate_checker
+        if self.config.settings.general.enable_plugins and plugin_id:
+            mergeable = [
+                tracker_sel
+                for tracker_sel, (_, success, data) in dupes.items()
+                if success and isinstance(data, list)
+            ]
+            if mergeable:
+                extra_results = await asyncio.gather(
+                    *(
+                        self._run_duplicate_checker_plugin(
+                            tracker_sel, media_input_payload, media_search_payload
+                        )
+                        for tracker_sel in mergeable
+                    )
+                )
+                for tracker_sel, extra in zip(mergeable, extra_results, strict=True):
+                    if not extra:
+                        continue
+                    _, success, data = dupes[tracker_sel]
+                    if isinstance(data, list):
+                        dupes[tracker_sel] = (tracker_sel, success, data + extra)
+
         return dupes
+
+    async def _run_duplicate_checker_plugin(
+        self,
+        tracker_sel: TrackerSelection,
+        media_input_payload: MediaInputPayload,
+        media_search_payload: MediaSearchPayload,
+    ) -> list[TrackerSearchResult]:
+        """Run the configured duplicate-checker plugin for one tracker.
+
+        Never raises: a broken or slow plugin must not affect the built-in
+        dupe-check results already gathered for any tracker. Failures and
+        timeouts are logged and treated as "nothing extra found".
+        """
+        plugin_id = self.config.settings.plugins.duplicate_checker
+        if not plugin_id:
+            return []
+        record = self.config.plugin_manager.get(plugin_id)
+        if not record or record.definition.duplicate_checker is None:
+            return []
+        timeout = self.config.settings.general.timeout
+        try:
+            result = await asyncio.to_thread(
+                self.config.plugin_manager.run_duplicate_checker,
+                plugin_id,
+                DuplicateCheckRequest(
+                    config=self.config,
+                    tracker=tracker_sel,
+                    media_input=media_input_payload,
+                    media_search=media_search_payload,
+                    timeout=timeout,
+                ),
+            )
+        except PluginExecutionError as error:
+            LOG.error(
+                LOG.LOG_SOURCE.BE,
+                f"Duplicate-checker plugin failed for {tracker_sel}: {error}",
+            )
+            return []
+        return list(result)
 
     async def _unsupported_series_tracker_dupe(
         self, tracker_sel: TrackerSelection
