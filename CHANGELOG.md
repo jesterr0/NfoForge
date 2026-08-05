@@ -19,6 +19,10 @@
   - MTV, TL, Aither, Huno, LST, DarkPeers, ShareIsland, UploadCX, and OnlyEncodes
 - New **file token**s:
   - `{cut}`: subset of `{edition}` providing only **cut** editions
+- Added optional post-upload plugins. Processors run once per tracker after that
+  tracker's upload and torrent-client injection finish (or fail), reporting one of four
+  outcomes (success, upload failed, injection failed, skipped) with a scrubbed error
+  message when applicable.
 
 ### Changed
 
