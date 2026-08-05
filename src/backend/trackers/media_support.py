@@ -22,6 +22,7 @@ TRACKER_SUPPORTED_MEDIA: dict[TrackerSelection, frozenset[MediaType]] = {
     TrackerSelection.SHARE_ISLAND: _MOVIE_AND_SERIES,
     TrackerSelection.UPLOAD_CX: _MOVIE_AND_SERIES,
     TrackerSelection.ONLY_ENCODES: _MOVIE_AND_SERIES,
+    TrackerSelection.HDB: _MOVIE_AND_SERIES,
 }
 
 

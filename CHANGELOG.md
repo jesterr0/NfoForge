@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Support for HDB
+
 ## [1.0.0] - 2026-08-04
 
 ### Added

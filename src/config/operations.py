@@ -66,6 +66,7 @@ from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
     DarkPeersInfo,
+    HDBInfo,
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
@@ -704,6 +705,37 @@ class TypedTomlOperations:
             )
             oe_data["image_width"] = self.settings.trackers.only_encodes.image_width
 
+            # HDBits tracker
+            hdb_data = self._ensure_toml_table(tracker_data, "hdb")
+            hdb_data["upload_enabled"] = self.settings.trackers.hdb.upload_enabled
+            hdb_data["announce_url"] = self.settings.trackers.hdb.announce_url
+            hdb_data["enabled"] = self.settings.trackers.hdb.enabled
+            hdb_data["source"] = self.settings.trackers.hdb.source
+            hdb_data["comments"] = self.settings.trackers.hdb.comments
+            hdb_data["nfo_template"] = self.settings.trackers.hdb.nfo_template
+            hdb_data["max_piece_size"] = self.settings.trackers.hdb.max_piece_size
+            hdb_data["url_type"] = URLType(self.settings.trackers.hdb.url_type).value
+            hdb_data["column_s"] = self.settings.trackers.hdb.column_s
+            hdb_data["column_space"] = self.settings.trackers.hdb.column_space
+            hdb_data["row_space"] = self.settings.trackers.hdb.row_space
+            hdb_data["mvr_title_override_enabled"] = (
+                self.settings.trackers.hdb.mvr_title_override_enabled
+            )
+            hdb_data["mvr_title_colon_replace"] = ColonReplace(
+                self.settings.trackers.hdb.mvr_title_colon_replace
+            ).value
+            hdb_data["mvr_title_token_override"] = (
+                self.settings.trackers.hdb.mvr_title_token_override
+            )
+            hdb_data["mvr_title_replace_map"] = (
+                self.settings.trackers.hdb.mvr_title_replace_map
+            )
+            hdb_data["username"] = self.settings.trackers.hdb.username
+            hdb_data["passkey"] = self.settings.trackers.hdb.passkey
+            hdb_data["session_cookie"] = self.settings.trackers.hdb.session_cookie
+            hdb_data["internal"] = self.settings.trackers.hdb.internal
+            hdb_data["image_width"] = self.settings.trackers.hdb.image_width
+
             for tracker_key, tracker_info in (
                 ("more_than_tv", self.settings.trackers.more_than_tv),
                 ("torrent_leech", self.settings.trackers.torrent_leech),
@@ -717,6 +749,7 @@ class TypedTomlOperations:
                 ("shareisland", self.settings.trackers.share_island),
                 ("uploadcx", self.settings.trackers.upload_cx),
                 ("only_encodes", self.settings.trackers.only_encodes),
+                ("hdb", self.settings.trackers.hdb),
             ):
                 self._ensure_toml_table(tracker_data, tracker_key)[
                     "tvr_title_overrides"
@@ -1568,6 +1601,35 @@ class TypedTomlOperations:
                 image_width=oe_tracker_data["image_width"],
             )
 
+            hdb_tracker_data = tracker_data["hdb"]
+            hdb_tracker = HDBInfo(
+                upload_enabled=hdb_tracker_data["upload_enabled"],
+                announce_url=hdb_tracker_data["announce_url"],
+                enabled=hdb_tracker_data["enabled"],
+                source=hdb_tracker_data["source"],
+                comments=hdb_tracker_data["comments"],
+                nfo_template=hdb_tracker_data["nfo_template"],
+                max_piece_size=hdb_tracker_data["max_piece_size"],
+                url_type=URLType(hdb_tracker_data["url_type"]),
+                column_s=hdb_tracker_data["column_s"],
+                column_space=hdb_tracker_data["column_space"],
+                row_space=hdb_tracker_data["row_space"],
+                mvr_title_override_enabled=hdb_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    hdb_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=hdb_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=hdb_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(hdb_tracker_data),
+                username=hdb_tracker_data["username"],
+                passkey=hdb_tracker_data["passkey"],
+                session_cookie=hdb_tracker_data["session_cookie"],
+                internal=hdb_tracker_data["internal"],
+                image_width=hdb_tracker_data["image_width"],
+            )
+
             # torrent clients
             torrent_client_data = self._toml_mapping(toml_data, "torrent_client")
 
@@ -1735,6 +1797,7 @@ class TypedTomlOperations:
                     share_island=shri_tracker,
                     upload_cx=ulcx_tracker,
                     only_encodes=oe_tracker,
+                    hdb=hdb_tracker,
                 ),
                 torrent_clients=TorrentClientSettings(
                     qbittorrent=qbittorrent,

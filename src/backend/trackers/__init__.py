@@ -5,6 +5,7 @@ from src.backend.trackers.darkpeers import (
     DarkPeersUploader,
     dp_uploader,
 )
+from src.backend.trackers.hdb import HDBSearch, HDBUploader, hdb_uploader
 from src.backend.trackers.huno import HunoSearch, HunoUploader, huno_uploader
 from src.backend.trackers.lst import LSTSearch, LSTUploader, lst_uploader
 from src.backend.trackers.morethantv import MTVSearch, MTVUploader, mtv_uploader
@@ -76,4 +77,7 @@ __all__ = (
     "OnlyEncodesSearch",
     "OnlyEncodesUploader",
     "oe_uploader",
+    "HDBSearch",
+    "HDBUploader",
+    "hdb_uploader",
 )
