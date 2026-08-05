@@ -48,6 +48,11 @@ tracker-specific series paths are still limited; see
 - OnlyEncodes
 - UploadCX
 - HDBits
+- Blutopia
+- SeedPool
+- UTP
+- Yu-Scene
+- FearNoPeer
 
 <!-- prettier-ignore -->
 !!! info

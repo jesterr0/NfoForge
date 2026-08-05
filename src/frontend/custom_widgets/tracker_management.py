@@ -1417,3 +1417,371 @@ class HDBTrackerEdit(TrackerEditBase):
             self.config.settings.trackers.hdb.column_s = col_s
             self.config.settings.trackers.hdb.column_space = col_space
             self.config.settings.trackers.hdb.row_space = row_space
+
+
+class BlutopiaEdit(TrackerEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        opt_in_mod_queue_lbl = QLabel("Opt-in Mod Queue", self)
+        self.opt_in_mod_queue = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self._disable_scrollwheel_spinbox(self.image_width)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(opt_in_mod_queue_lbl, self.opt_in_mod_queue)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.settings.trackers.blutopia
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.opt_in_mod_queue.setChecked(bool(tracker_data.opt_in_to_mod_queue))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.settings.trackers.blutopia.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.settings.trackers.blutopia.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.settings.trackers.blutopia.comments = self.comments.text().strip()
+        self.config.settings.trackers.blutopia.source = self.source.text().strip()
+        self.config.settings.trackers.blutopia.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.blutopia.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.blutopia.internal = self.internal.isChecked()
+        self.config.settings.trackers.blutopia.personal_release = (
+            self.personal_release.isChecked()
+        )
+        self.config.settings.trackers.blutopia.opt_in_to_mod_queue = (
+            self.opt_in_mod_queue.isChecked()
+        )
+        self.config.settings.trackers.blutopia.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.settings.trackers.blutopia.column_s = col_s
+            self.config.settings.trackers.blutopia.column_space = col_space
+            self.config.settings.trackers.blutopia.row_space = row_space
+
+
+class SeedPoolEdit(TrackerEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self._disable_scrollwheel_spinbox(self.image_width)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.settings.trackers.seedpool
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.settings.trackers.seedpool.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.settings.trackers.seedpool.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.settings.trackers.seedpool.comments = self.comments.text().strip()
+        self.config.settings.trackers.seedpool.source = self.source.text().strip()
+        self.config.settings.trackers.seedpool.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.seedpool.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.seedpool.internal = self.internal.isChecked()
+        self.config.settings.trackers.seedpool.personal_release = (
+            self.personal_release.isChecked()
+        )
+        self.config.settings.trackers.seedpool.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.settings.trackers.seedpool.column_s = col_s
+            self.config.settings.trackers.seedpool.column_space = col_space
+            self.config.settings.trackers.seedpool.row_space = row_space
+
+
+class UTPEdit(TrackerEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self._disable_scrollwheel_spinbox(self.image_width)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.settings.trackers.utp
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.settings.trackers.utp.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.settings.trackers.utp.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.settings.trackers.utp.comments = self.comments.text().strip()
+        self.config.settings.trackers.utp.source = self.source.text().strip()
+        self.config.settings.trackers.utp.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.utp.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.utp.internal = self.internal.isChecked()
+        self.config.settings.trackers.utp.personal_release = (
+            self.personal_release.isChecked()
+        )
+        self.config.settings.trackers.utp.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.settings.trackers.utp.column_s = col_s
+            self.config.settings.trackers.utp.column_space = col_space
+            self.config.settings.trackers.utp.row_space = row_space
+
+
+class YuSceneEdit(TrackerEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self._disable_scrollwheel_spinbox(self.image_width)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.settings.trackers.yuscene
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.settings.trackers.yuscene.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.settings.trackers.yuscene.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.settings.trackers.yuscene.comments = self.comments.text().strip()
+        self.config.settings.trackers.yuscene.source = self.source.text().strip()
+        self.config.settings.trackers.yuscene.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.yuscene.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.yuscene.internal = self.internal.isChecked()
+        self.config.settings.trackers.yuscene.personal_release = (
+            self.personal_release.isChecked()
+        )
+        self.config.settings.trackers.yuscene.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.settings.trackers.yuscene.column_s = col_s
+            self.config.settings.trackers.yuscene.column_space = col_space
+            self.config.settings.trackers.yuscene.row_space = row_space
+
+
+class FearNoPeerEdit(TrackerEditBase):
+    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
+        super().__init__(config, parent)
+
+        api_key_lbl = QLabel("API Key", self)
+        self.api_key = MaskedQLineEdit(parent=self, masked=True)
+
+        anonymous_lbl = QLabel("Anonymous", self)
+        self.anonymous = QCheckBox(self)
+
+        internal_lbl = QLabel("Internal", self)
+        self.internal = QCheckBox(self)
+
+        personal_release_lbl = QLabel("Personal Release", self)
+        self.personal_release = QCheckBox(self)
+
+        image_width_lbl = QLabel("Image Width", self)
+        self.image_width = QSpinBox(self)
+        self.image_width.setRange(300, 2000)
+        self._disable_scrollwheel_spinbox(self.image_width)
+
+        self.add_pair_to_layout(api_key_lbl, self.api_key)
+        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
+        self.add_pair_to_layout(internal_lbl, self.internal)
+        self.add_pair_to_layout(personal_release_lbl, self.personal_release)
+        self.add_pair_to_layout(image_width_lbl, self.image_width)
+        self.add_screen_shot_settings()
+
+    def load_settings(self) -> None:
+        tracker_data = self.config.settings.trackers.fearnopeer
+        self.upload_enabled.setChecked(tracker_data.upload_enabled)
+        self.announce_url.setText(
+            tracker_data.announce_url if tracker_data.announce_url else ""
+        )
+        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
+        self.source.setText(tracker_data.source if tracker_data.source else "")
+        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
+        self.anonymous.setChecked(bool(tracker_data.anonymous))
+        self.internal.setChecked(bool(tracker_data.internal))
+        self.personal_release.setChecked(bool(tracker_data.personal_release))
+        self.image_width.setValue(tracker_data.image_width)
+        if self.screen_shot_settings:
+            self.screen_shot_settings.load_settings(
+                url_type=URLType(tracker_data.url_type),
+                columns=tracker_data.column_s,
+                col_space=tracker_data.column_space,
+                row_space=tracker_data.row_space,
+            )
+
+    def save_settings(self) -> None:
+        self.config.settings.trackers.fearnopeer.upload_enabled = (
+            self.upload_enabled.isChecked()
+        )
+        self.config.settings.trackers.fearnopeer.announce_url = (
+            self.announce_url.text().strip()
+        )
+        self.config.settings.trackers.fearnopeer.comments = self.comments.text().strip()
+        self.config.settings.trackers.fearnopeer.source = self.source.text().strip()
+        self.config.settings.trackers.fearnopeer.api_key = self.api_key.text().strip()
+        self.config.settings.trackers.fearnopeer.anonymous = self.anonymous.isChecked()
+        self.config.settings.trackers.fearnopeer.internal = self.internal.isChecked()
+        self.config.settings.trackers.fearnopeer.personal_release = (
+            self.personal_release.isChecked()
+        )
+        self.config.settings.trackers.fearnopeer.image_width = self.image_width.value()
+        if self.screen_shot_settings:
+            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
+            self.config.settings.trackers.fearnopeer.column_s = col_s
+            self.config.settings.trackers.fearnopeer.column_space = col_space
+            self.config.settings.trackers.fearnopeer.row_space = row_space

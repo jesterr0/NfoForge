@@ -23,6 +23,11 @@ TRACKER_SUPPORTED_MEDIA: dict[TrackerSelection, frozenset[MediaType]] = {
     TrackerSelection.UPLOAD_CX: _MOVIE_AND_SERIES,
     TrackerSelection.ONLY_ENCODES: _MOVIE_AND_SERIES,
     TrackerSelection.HDB: _MOVIE_AND_SERIES,
+    TrackerSelection.BLUTOPIA: _MOVIE_AND_SERIES,
+    TrackerSelection.SEEDPOOL: _MOVIE_AND_SERIES,
+    TrackerSelection.UTOPIA: _MOVIE_AND_SERIES,
+    TrackerSelection.YU_SCENE: _MOVIE_AND_SERIES,
+    TrackerSelection.FEAR_NO_PEER: _MOVIE_AND_SERIES,
 }
 
 

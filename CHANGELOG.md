@@ -5,6 +5,11 @@
 ### Added
 
 - Support for HDB
+- Support for Blutopia
+- Support for SeedPool
+- Support for UTP
+- Support for Yu-Scene
+- Support for FearNoPeer
 
 ### Fixed
 

@@ -33,7 +33,9 @@ from src.payloads.image_hosts import (
 from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
+    BlutopiaInfo,
     DarkPeersInfo,
+    FearNoPeerInfo,
     HDBInfo,
     HunoInfo,
     LSTInfo,
@@ -41,10 +43,13 @@ from src.payloads.trackers import (
     OnlyEncodesInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
+    SeedPoolInfo,
     ShareIslandInfo,
     TorrentLeechInfo,
     TrackerInfo,
     UploadCXInfo,
+    UTPInfo,
+    YuSceneInfo,
 )
 from src.payloads.watch_folder import WatchFolder
 
@@ -124,6 +129,11 @@ class TrackerSettings:
     upload_cx: UploadCXInfo
     only_encodes: OnlyEncodesInfo
     hdb: HDBInfo
+    blutopia: BlutopiaInfo
+    seedpool: SeedPoolInfo
+    utp: UTPInfo
+    yuscene: YuSceneInfo
+    fearnopeer: FearNoPeerInfo
 
     def by_selection(self) -> dict[TrackerSelection, TrackerInfo]:
         return {
@@ -140,6 +150,11 @@ class TrackerSettings:
             TrackerSelection.UPLOAD_CX: self.upload_cx,
             TrackerSelection.ONLY_ENCODES: self.only_encodes,
             TrackerSelection.HDB: self.hdb,
+            TrackerSelection.BLUTOPIA: self.blutopia,
+            TrackerSelection.SEEDPOOL: self.seedpool,
+            TrackerSelection.UTOPIA: self.utp,
+            TrackerSelection.YU_SCENE: self.yuscene,
+            TrackerSelection.FEAR_NO_PEER: self.fearnopeer,
         }
 
 

@@ -5,15 +5,11 @@ from pymediainfo import MediaInfo
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
-from src.enums.trackers.darkpeers import (
-    DarkPeersCategory,
-    DarkPeersResolution,
-    DarkPeersType,
-)
+from src.enums.trackers.utp import UTPCategory, UTPResolution, UTPType
 from src.payloads.media_search import MediaSearchPayload
 
 
-def dp_uploader(
+def utp_uploader(
     media_type: MediaType,
     api_key: str,
     torrent_file: Path,
@@ -30,7 +26,7 @@ def dp_uploader(
     episode_number: int | None = None,
     season_pack: bool = False,
 ) -> bool | None:
-    uploader = DarkPeersUploader(
+    uploader = UTPUploader(
         media_type=media_type,
         api_key=api_key,
         torrent_file=torrent_file,
@@ -55,8 +51,8 @@ def dp_uploader(
     return upload
 
 
-class DarkPeersUploader(Unit3dBaseUploader):
-    """Upload torrents to DarkPeers"""
+class UTPUploader(Unit3dBaseUploader):
+    """Upload torrents to UTP"""
 
     __slots__ = ()
 
@@ -70,29 +66,29 @@ class DarkPeersUploader(Unit3dBaseUploader):
         timeout: int = 60,
     ) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.DARK_PEERS,
-            base_url=TrackerSelection.DARK_PEERS.get_root_url(),
+            tracker_name=TrackerSelection.UTOPIA,
+            base_url=TrackerSelection.UTOPIA.get_root_url(),
             media_type=media_type,
             api_key=api_key,
             torrent_file=torrent_file,
             input_path=input_path,
             mediainfo_obj=mediainfo_obj,
-            cat_enum=DarkPeersCategory,
-            res_enum=DarkPeersResolution,
-            type_enum=DarkPeersType,
+            cat_enum=UTPCategory,
+            res_enum=UTPResolution,
+            type_enum=UTPType,
             timeout=timeout,
         )
 
 
-class DarkPeersSearch(Unit3dBaseSearch):
-    """Search DarkPeers"""
+class UTPSearch(Unit3dBaseSearch):
+    """Search UTP"""
 
     __slots__ = ()
 
     def __init__(self, api_key: str, timeout: int = 60) -> None:
         super().__init__(
-            tracker_name=TrackerSelection.DARK_PEERS,
-            base_url=TrackerSelection.DARK_PEERS.get_root_url(),
+            tracker_name=TrackerSelection.UTOPIA,
+            base_url=TrackerSelection.UTOPIA.get_root_url(),
             api_key=api_key,
             timeout=timeout,
         )

@@ -24,10 +24,20 @@ from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.aither import AitherCategory, AitherResolution, AitherType
+from src.enums.trackers.blutopia import (
+    BlutopiaCategory,
+    BlutopiaResolution,
+    BlutopiaType,
+)
 from src.enums.trackers.darkpeers import (
     DarkPeersCategory,
     DarkPeersResolution,
     DarkPeersType,
+)
+from src.enums.trackers.fearnopeer import (
+    FearNoPeerCategory,
+    FearNoPeerResolution,
+    FearNoPeerType,
 )
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.enums.trackers.lst import LSTCategory, LSTResolution, LSTType
@@ -41,6 +51,11 @@ from src.enums.trackers.reelflix import (
     ReelFlixResolution,
     ReelFlixType,
 )
+from src.enums.trackers.seedpool import (
+    SeedPoolCategory,
+    SeedPoolResolution,
+    SeedPoolType,
+)
 from src.enums.trackers.shareisland import (
     ShareIslandCategory,
     ShareIslandResolution,
@@ -50,6 +65,12 @@ from src.enums.trackers.uploadcx import (
     UploadCXCategory,
     UploadCXResolution,
     UploadCXType,
+)
+from src.enums.trackers.utp import UTPCategory, UTPResolution, UTPType
+from src.enums.trackers.yuscene import (
+    YuSceneCategory,
+    YuSceneResolution,
+    YuSceneType,
 )
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
@@ -64,6 +85,11 @@ CategoryEnums: TypeAlias = (
     | ShareIslandCategory
     | UploadCXCategory
     | OnlyEncodesCategory
+    | BlutopiaCategory
+    | SeedPoolCategory
+    | UTPCategory
+    | YuSceneCategory
+    | FearNoPeerCategory
 )
 ResolutionEnums: TypeAlias = (
     ReelFlixResolution
@@ -74,6 +100,11 @@ ResolutionEnums: TypeAlias = (
     | ShareIslandResolution
     | UploadCXResolution
     | OnlyEncodesResolution
+    | BlutopiaResolution
+    | SeedPoolResolution
+    | UTPResolution
+    | YuSceneResolution
+    | FearNoPeerResolution
 )
 TypeEnums: TypeAlias = (
     ReelFlixType
@@ -84,6 +115,11 @@ TypeEnums: TypeAlias = (
     | ShareIslandType
     | UploadCXType
     | OnlyEncodesType
+    | BlutopiaType
+    | SeedPoolType
+    | UTPType
+    | YuSceneType
+    | FearNoPeerType
 )
 
 
@@ -409,7 +445,11 @@ class Unit3dBaseUploader:
         if self.tracker_name in (TrackerSelection.AITHER, TrackerSelection.REELFLIX):
             if opt_in_to_mod_queue is not None:
                 upload_payload["opt_in_to_mod_queue"] = int(opt_in_to_mod_queue)
-        elif self.tracker_name is TrackerSelection.LST:
+        elif self.tracker_name in (
+            TrackerSelection.LST,
+            TrackerSelection.SHARE_ISLAND,
+            TrackerSelection.BLUTOPIA,
+        ):
             if opt_in_to_mod_queue is not None:
                 upload_payload["mod_queue_opt_in"] = int(opt_in_to_mod_queue)
             if draft_queue_opt_in is not None:

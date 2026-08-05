@@ -402,6 +402,117 @@ session_cookie = ""
 internal = false
 image_width = 350
 
+[tracker.blutopia]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "BLU"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+opt_in_to_mod_queue = false
+image_width = 500
+
+[tracker.seedpool]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "SP"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.utp]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "UTP"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.yuscene]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "YUS"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.fearnopeer]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "FNP"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
 [torrent_client]
 
 [torrent_client.qbittorrent]

@@ -98,6 +98,11 @@ _TRACKER_MAP = {
     TrackerSelection.UPLOAD_CX: _basic_bbcode_formatting,
     TrackerSelection.ONLY_ENCODES: _basic_bbcode_formatting,
     TrackerSelection.HDB: _basic_bbcode_formatting,
+    TrackerSelection.BLUTOPIA: _basic_bbcode_formatting,
+    TrackerSelection.SEEDPOOL: _basic_bbcode_formatting,
+    TrackerSelection.UTOPIA: _basic_bbcode_formatting,
+    TrackerSelection.YU_SCENE: _basic_bbcode_formatting,
+    TrackerSelection.FEAR_NO_PEER: _basic_bbcode_formatting,
 }
 
 

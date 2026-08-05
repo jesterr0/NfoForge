@@ -43,7 +43,9 @@ from src.backend.torrents import (
 from src.backend.trackers import (
     AitherSearch,
     BHDSearch,
+    BlutopiaSearch,
     DarkPeersSearch,
+    FearNoPeerSearch,
     HDBSearch,
     HunoSearch,
     LSTSearch,
@@ -51,12 +53,17 @@ from src.backend.trackers import (
     OnlyEncodesSearch,
     PTPSearch,
     ReelFlixSearch,
+    SeedPoolSearch,
     ShareIslandSearch,
     TLSearch,
     UploadCXSearch,
+    UTPSearch,
+    YuSceneSearch,
     aither_uploader,
     bhd_uploader,
+    blu_uploader,
     dp_uploader,
+    fnp_uploader,
     hdb_uploader,
     huno_uploader,
     lst_uploader,
@@ -65,8 +72,11 @@ from src.backend.trackers import (
     ptp_uploader,
     rf_uploader,
     shri_uploader,
+    sp_uploader,
     tl_upload,
     ulcx_uploader,
+    utp_uploader,
+    yus_uploader,
 )
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.hdb import HDBUploader
@@ -229,6 +239,32 @@ class ProcessBackEnd:
                         file_input=search_input,
                         media_input_payload=media_input_payload,
                         media_search_payload=media_search_payload,
+                    )
+                )
+            elif tracker_sel is TrackerSelection.BLUTOPIA:
+                tasks.append(
+                    self._dupe_blutopia(
+                        tracker_sel=tracker_sel, file_input=search_input
+                    )
+                )
+            elif tracker_sel is TrackerSelection.SEEDPOOL:
+                tasks.append(
+                    self._dupe_seedpool(
+                        tracker_sel=tracker_sel, file_input=search_input
+                    )
+                )
+            elif tracker_sel is TrackerSelection.UTOPIA:
+                tasks.append(
+                    self._dupe_utp(tracker_sel=tracker_sel, file_input=search_input)
+                )
+            elif tracker_sel is TrackerSelection.YU_SCENE:
+                tasks.append(
+                    self._dupe_yuscene(tracker_sel=tracker_sel, file_input=search_input)
+                )
+            elif tracker_sel is TrackerSelection.FEAR_NO_PEER:
+                tasks.append(
+                    self._dupe_fearnopeer(
+                        tracker_sel=tracker_sel, file_input=search_input
                     )
                 )
 
@@ -457,6 +493,56 @@ class ProcessBackEnd:
             file_input,
             OnlyEncodesSearch,
             {"api_key": self.config.settings.trackers.only_encodes.api_key},
+        )
+
+    async def _dupe_blutopia(
+        self, tracker_sel: TrackerSelection, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            BlutopiaSearch,
+            {"api_key": self.config.settings.trackers.blutopia.api_key},
+        )
+
+    async def _dupe_seedpool(
+        self, tracker_sel: TrackerSelection, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            SeedPoolSearch,
+            {"api_key": self.config.settings.trackers.seedpool.api_key},
+        )
+
+    async def _dupe_utp(
+        self, tracker_sel: TrackerSelection, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            UTPSearch,
+            {"api_key": self.config.settings.trackers.utp.api_key},
+        )
+
+    async def _dupe_yuscene(
+        self, tracker_sel: TrackerSelection, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            YuSceneSearch,
+            {"api_key": self.config.settings.trackers.yuscene.api_key},
+        )
+
+    async def _dupe_fearnopeer(
+        self, tracker_sel: TrackerSelection, file_input: Path
+    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
+        return await self._aither_dupe_check(
+            tracker_sel,
+            file_input,
+            FearNoPeerSearch,
+            {"api_key": self.config.settings.trackers.fearnopeer.api_key},
         )
 
     async def _dupe_hdb(
@@ -1875,6 +1961,7 @@ class ProcessBackEnd:
                 nfo=nfo,
                 internal=bool(dp_payload.internal),
                 anonymous=bool(dp_payload.anonymous),
+                personal_release=bool(dp_payload.personal_release),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
@@ -1973,6 +2060,112 @@ class ProcessBackEnd:
                 episode_number=release_info.episode_start,
                 season_pack=release_info.is_pack,
                 timeout=self.config.settings.general.timeout,
+            )
+        elif tracker is TrackerSelection.BLUTOPIA:
+            blutopia_payload = self.config.settings.trackers.blutopia
+            if not blutopia_payload.api_key:
+                raise TrackerError("Missing API key for Blutopia")
+            return blu_uploader(
+                media_type=media_type,
+                api_key=blutopia_payload.api_key,
+                torrent_file=torrent_file,
+                input_path=input_path,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(blutopia_payload.internal),
+                anonymous=bool(blutopia_payload.anonymous),
+                personal_release=bool(blutopia_payload.personal_release),
+                opt_in_to_mod_queue=bool(blutopia_payload.opt_in_to_mod_queue),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
+            )
+        elif tracker is TrackerSelection.SEEDPOOL:
+            seedpool_payload = self.config.settings.trackers.seedpool
+            if not seedpool_payload.api_key:
+                raise TrackerError("Missing API key for SeedPool")
+            return sp_uploader(
+                media_type=media_type,
+                api_key=seedpool_payload.api_key,
+                torrent_file=torrent_file,
+                input_path=input_path,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(seedpool_payload.internal),
+                anonymous=bool(seedpool_payload.anonymous),
+                personal_release=bool(seedpool_payload.personal_release),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
+            )
+        elif tracker is TrackerSelection.UTOPIA:
+            utp_payload = self.config.settings.trackers.utp
+            if not utp_payload.api_key:
+                raise TrackerError("Missing API key for UTP")
+            return utp_uploader(
+                media_type=media_type,
+                api_key=utp_payload.api_key,
+                torrent_file=torrent_file,
+                input_path=input_path,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(utp_payload.internal),
+                anonymous=bool(utp_payload.anonymous),
+                personal_release=bool(utp_payload.personal_release),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
+            )
+        elif tracker is TrackerSelection.YU_SCENE:
+            yuscene_payload = self.config.settings.trackers.yuscene
+            if not yuscene_payload.api_key:
+                raise TrackerError("Missing API key for Yu-scene")
+            return yus_uploader(
+                media_type=media_type,
+                api_key=yuscene_payload.api_key,
+                torrent_file=torrent_file,
+                input_path=input_path,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(yuscene_payload.internal),
+                anonymous=bool(yuscene_payload.anonymous),
+                personal_release=bool(yuscene_payload.personal_release),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
+            )
+        elif tracker is TrackerSelection.FEAR_NO_PEER:
+            fearnopeer_payload = self.config.settings.trackers.fearnopeer
+            if not fearnopeer_payload.api_key:
+                raise TrackerError("Missing API key for FearNoPeer")
+            return fnp_uploader(
+                media_type=media_type,
+                api_key=fearnopeer_payload.api_key,
+                torrent_file=torrent_file,
+                input_path=input_path,
+                tracker_title=tracker_title,
+                nfo=nfo,
+                internal=bool(fearnopeer_payload.internal),
+                anonymous=bool(fearnopeer_payload.anonymous),
+                personal_release=bool(fearnopeer_payload.personal_release),
+                mediainfo_obj=mediainfo_obj,
+                media_search_payload=media_search_obj,
+                timeout=self.config.settings.general.timeout,
+                season_number=release_info.season,
+                episode_number=release_info.episode_start,
+                season_pack=release_info.is_pack,
             )
 
     def generate_tracker_title(
@@ -2105,6 +2298,11 @@ class ProcessBackEnd:
             TrackerSelection.SHARE_ISLAND,
             TrackerSelection.UPLOAD_CX,
             TrackerSelection.ONLY_ENCODES,
+            TrackerSelection.BLUTOPIA,
+            TrackerSelection.SEEDPOOL,
+            TrackerSelection.UTOPIA,
+            TrackerSelection.YU_SCENE,
+            TrackerSelection.FEAR_NO_PEER,
         }:
             return Unit3dBaseUploader.generate_release_title(title)
 

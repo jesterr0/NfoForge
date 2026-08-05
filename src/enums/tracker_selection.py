@@ -20,6 +20,11 @@ class TrackerSelection(CaseInsensitiveEnum):
     UPLOAD_CX = "UploadCX"
     ONLY_ENCODES = "OnlyEncodes"
     HDB = "HDBits"
+    BLUTOPIA = "Blutopia"
+    SEEDPOOL = "SeedPool"
+    UTOPIA = "UTP"
+    YU_SCENE = "Yu-scene"
+    FEAR_NO_PEER = "FearNoPeer"
 
     @override
     def __str__(self) -> str:
@@ -46,5 +51,10 @@ TRACKER_ROOT_URLS: Mapping[TrackerSelection, str] = MappingProxyType(
         TrackerSelection.UPLOAD_CX: "https://upload.cx/",
         TrackerSelection.ONLY_ENCODES: "https://onlyencodes.cc/",
         TrackerSelection.HDB: "https://hdbits.org/",
+        TrackerSelection.BLUTOPIA: "https://blutopia.cc/",
+        TrackerSelection.SEEDPOOL: "https://seedpool.org/",
+        TrackerSelection.UTOPIA: "https://utp.to/",
+        TrackerSelection.YU_SCENE: "https://yu-scene.net/",
+        TrackerSelection.FEAR_NO_PEER: "https://fearnopeer.com/",
     }
 )
