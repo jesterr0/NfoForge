@@ -713,6 +713,7 @@ token_replacer = ""
 pre_upload = ""
 post_upload = ""
 metadata_transformer = ""
+image_host_uploader = ""
 
 [template_settings]
 block_syntax_color = "#A4036F"

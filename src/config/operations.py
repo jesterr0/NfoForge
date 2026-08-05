@@ -1303,6 +1303,11 @@ class TypedTomlOperations:
                 if self.settings.plugins.metadata_transformer
                 else ""
             )
+            plugins_settings["image_host_uploader"] = (
+                self.settings.plugins.image_host_uploader
+                if self.settings.plugins.image_host_uploader
+                else ""
+            )
 
             # template settings
             template_settings = self._toml_table(self._toml_data, "template_settings")
@@ -2353,6 +2358,8 @@ class TypedTomlOperations:
                     pre_upload=str(plugins_settings["pre_upload"]) or None,
                     post_upload=str(plugins_settings["post_upload"]) or None,
                     metadata_transformer=str(plugins_settings["metadata_transformer"])
+                    or None,
+                    image_host_uploader=str(plugins_settings["image_host_uploader"])
                     or None,
                 ),
                 templates=TemplateSettings(
