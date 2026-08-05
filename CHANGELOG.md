@@ -28,8 +28,8 @@
   built-in hosts, without needing its own entry in Settings -> Image Hosts.
 - Added optional duplicate-checker plugins. A plugin can supplement the built-in
   per-tracker dupe search with results from an additional source (e.g. a private
-  cross-tracker database); results are merged into the existing dupe-check log and
-  never block or auto-skip an upload.
+  cross-tracker database); results are merged into the existing dupe-check log and never
+  block or auto-skip an upload.
 
 ### Changed
 

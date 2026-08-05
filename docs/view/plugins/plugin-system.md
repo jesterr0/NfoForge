@@ -63,26 +63,25 @@ builds.
 
 ### ID collision precedence
 
-Local plugin directories are loaded before installed entry points. If a local plugin
-and an entry point share the same ID, the local plugin registers first and wins;
-the entry point's registration then fails with a duplicate-ID error and is reported
-as a load failure rather than applied silently. This is deliberate: local plugins are
-the recommended installation method, so an installed package can never silently
-shadow one.
+Local plugin directories are loaded before installed entry points. If a local plugin and
+an entry point share the same ID, the local plugin registers first and wins; the entry
+point's registration then fails with a duplicate-ID error and is reported as a load
+failure rather than applied silently. This is deliberate: local plugins are the
+recommended installation method, so an installed package can never silently shadow one.
 
 ## Capabilities and failures
 
 Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata
 transformers, image host uploaders, and duplicate checkers are single-select
-capabilities. Jinja filters/functions and flat token filters from every valid plugin
-are combined while external plugins are enabled.
+capabilities. Jinja filters/functions and flat token filters from every valid plugin are
+combined while external plugins are enabled.
 
 ### Post-upload processors
 
 A post-upload processor runs once per tracker, after that tracker's upload and torrent-
 client injection have both finished (or failed). Unlike a pre-upload processor, it makes
-no decision -- the tracker's work is already done -- so it receives a `PostUploadRequest`
-and returns nothing.
+no decision -- the tracker's work is already done -- so it receives a
+`PostUploadRequest` and returns nothing.
 
 `PostUploadRequest.outcome` is one of four `PostUploadOutcome` values:
 
@@ -131,11 +130,10 @@ plugin = PluginDefinition(
 
 Unlike built-in hosts, a plugin-provided host has no entry in **Settings -> Image
 Hosts** -- there is nothing there to enable, and no base URL or API key for NfoForge to
-store, since the plugin manages its own credentials and configuration. Its
-availability is entirely governed by the **Settings -> Plugins** selection: once
-configured there (and external plugins are enabled), it appears as **Plugin** in the
-per-tracker image host choice during the upload wizard, the same way every other host
-does.
+store, since the plugin manages its own credentials and configuration. Its availability
+is entirely governed by the **Settings -> Plugins** selection: once configured there
+(and external plugins are enabled), it appears as **Plugin** in the per-tracker image
+host choice during the upload wizard, the same way every other host does.
 
 ### Duplicate checkers
 
@@ -150,11 +148,11 @@ and returning a sequence of `TrackerSearchResult` -- always a sequence, never a 
 string; a plugin that fails should raise, not return an error value.
 
 Results are only merged into a tracker's dupe log when the built-in check for that
-tracker *succeeded* (including "succeeded with zero hits"); if the built-in check
-itself failed (missing credentials, network error, an unsupported series tracker) the
-plugin's contribution for that tracker is not merged. A duplicate checker that raises,
-returns the wrong type, or runs past `timeout` is logged and treated as "nothing extra
-found" -- it never fails the dupe-check phase for other trackers.
+tracker _succeeded_ (including "succeeded with zero hits"); if the built-in check itself
+failed (missing credentials, network error, an unsupported series tracker) the plugin's
+contribution for that tracker is not merged. A duplicate checker that raises, returns
+the wrong type, or runs past `timeout` is logged and treated as "nothing extra found" --
+it never fails the dupe-check phase for other trackers.
 
 Jinja filters apply to NFO templates using Jinja syntax. Flat token filters apply to the
 `{token|filter}` syntax used by filename templates, tracker-title templates, and
