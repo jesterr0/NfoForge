@@ -4,6 +4,7 @@ build/
 dist/
 __pycache__/
 scraps/
+.worktrees/
 .vscode/
 config.toml
 custom-pyinstaller/
