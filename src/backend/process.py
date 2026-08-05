@@ -1754,8 +1754,31 @@ class ProcessBackEnd:
             return PixhostUploader()
         elif img_host is ImageHost.LENSDUMP:
             return self._create_lensdump_uploader()
+        elif img_host is ImageHost.PLUGIN:
+            return self._get_plugin_image_host_uploader()
         else:
             raise ImageHostError(f"Unsupported image host: {img_host}")
+
+    def _get_plugin_image_host_uploader(self) -> BaseImageHostUploader:
+        """Retrieve the plugin configured as the image host uploader.
+
+        Raises:
+            ImageHostError: If plugins are disabled, none is configured, or the
+                configured plugin is not currently loaded.
+        """
+        if not self.config.settings.general.enable_plugins:
+            raise ImageHostError("External plugins are disabled")
+
+        plugin_id = self.config.settings.plugins.image_host_uploader
+        if not plugin_id:
+            raise ImageHostError("No plugin configured for image host uploads")
+
+        record = self.config.plugin_manager.get(plugin_id)
+        if not record or record.definition.image_host_uploader is None:
+            raise ImageHostError(
+                f"Configured image host plugin '{plugin_id}' is not available"
+            )
+        return record.definition.image_host_uploader
 
     def _create_chevereto_v4_uploader(self) -> CheveretoV4Uploader:
         """

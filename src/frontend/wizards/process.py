@@ -778,6 +778,11 @@ class ProcessPage(BaseWizardPage):
                         if field.name != "enabled"
                     )
                 }
+                # a plugin-provided image host has no `ImagePayloadBase` entry in
+                # `by_selection()` (it manages its own config); its availability
+                # here comes entirely from the Settings > Plugins selection instead
+                if self._plugin_image_host_available():
+                    enabled_img_hosts = enabled_img_hosts | {ImageHost.PLUGIN: True}
 
             ordered_trackers = [
                 x
@@ -820,6 +825,21 @@ class ProcessPage(BaseWizardPage):
                     )
                     if get_last != -1:
                         combo_box.setCurrentIndex(get_last)
+
+    def _plugin_image_host_available(self) -> bool:
+        """Whether a loaded plugin currently provides image host uploads.
+
+        There is no separate enable/disable toggle for this in Settings ->
+        Image Hosts: the Settings -> Plugins selection is the single source
+        of truth, same as every other plugin capability.
+        """
+        if not self.config.settings.general.enable_plugins:
+            return False
+        plugin_id = self.config.settings.plugins.image_host_uploader
+        if not plugin_id:
+            return False
+        record = self.config.plugin_manager.get(plugin_id)
+        return bool(record and record.definition.image_host_uploader is not None)
 
     @Slot(QComboBox, int)
     def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
