@@ -65,6 +65,7 @@ def _make_plugin_settings(
     manager.settings.plugins.token_replacer = "example.tokens"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     manager.settings.plugins.metadata_transformer = "missing.metadata"
     manager.settings.plugins.post_upload = "missing.notifier"
+    manager.settings.plugins.image_host_uploader = "missing.imghost"
 
     widget = PluginsSettings(
         config=manager,
@@ -83,6 +84,7 @@ def test_plugin_settings_preserve_selections_while_disabled(
     assert widget.plugin_token_replacer_combo.currentData() == "example.tokens"
     assert widget.plugin_metadata_transformer_combo.currentData() == "missing.metadata"
     assert widget.plugin_post_upload_combo.currentData() == "missing.notifier"
+    assert widget.plugin_image_host_uploader_combo.currentData() == "missing.imghost"
 
     widget.enable_plugins.setChecked(True)
     widget._save_settings()
@@ -91,6 +93,7 @@ def test_plugin_settings_preserve_selections_while_disabled(
     assert manager.settings.plugins.token_replacer == "example.tokens"  # noqa: S105 - plugin capability name used as test fixture data, not a credential
     assert manager.settings.plugins.metadata_transformer == "missing.metadata"
     assert manager.settings.plugins.post_upload == "missing.notifier"
+    assert manager.settings.plugins.image_host_uploader == "missing.imghost"
 
 
 def test_plugin_status_lists_loaded_failed_and_missing_plugins(
@@ -111,6 +114,7 @@ def test_plugin_status_lists_loaded_failed_and_missing_plugins(
     assert rows["broken.plugin"] == "Failed: invalid definition"
     assert rows["missing.metadata"] == "Configured but unavailable"
     assert rows["missing.notifier"] == "Configured but unavailable"
+    assert rows["missing.imghost"] == "Configured but unavailable"
 
 
 def test_plugin_status_explains_that_disabled_plugins_were_not_loaded(
