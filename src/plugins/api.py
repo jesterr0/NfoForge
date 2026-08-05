@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from src.enums.media_type import MediaType
     from src.enums.tracker_selection import TrackerSelection
     from src.frontend.wizards.wizard_base_page import BaseWizardPage
-    from src.packages.custom_types import ImageUploadData
+    from src.packages.custom_types import ImageUploadData, RenameNormalization
     from src.payloads.media_inputs import MediaInputPayload
     from src.payloads.media_search import MediaSearchPayload
     from src.payloads.tracker_search_result import TrackerSearchResult
@@ -161,6 +161,27 @@ class DuplicateChecker(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class CustomEditionContribution:
+    """A plugin-contributed entry recognized by the `{edition}`/`{cut}` tokens.
+
+    Merged with the built-in `EDITION_INFO`/`CUT_EDITION_NAMES` tables
+    (`src.backend.utils.rename_normalizations`) that back those two tokens.
+    `entry.normalized` is the display value the token resolves to when this
+    entry matches; `entry.re_gex` are case-insensitive regexes checked
+    against the filename and guessit's parsed edition field, the same way
+    every built-in entry is. `is_cut` mirrors `CUT_EDITION_NAMES`: `True`
+    keeps this entry in `{cut}` (so it survives on trackers whose title
+    format switched to `{cut}`, e.g. Aither); `False` makes it Edition-only
+    -- it appears in `{edition}` but is omitted from `{cut}`, matching how
+    marketing-style built-in Editions (Criterion, Deluxe, Special, ...)
+    already behave.
+    """
+
+    entry: RenameNormalization
+    is_cut: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class PluginDefinition:
     """The single typed object exported by an NfoForge plugin."""
 
@@ -178,6 +199,7 @@ class PluginDefinition:
     jinja2_filters: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     jinja2_functions: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     flat_filters: Mapping[str, FlatFilter] = field(default_factory=dict)
+    custom_editions: Sequence[CustomEditionContribution] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)

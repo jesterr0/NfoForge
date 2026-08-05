@@ -76,6 +76,8 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             multi_episode_style=multi_episode_style,
             active_file=media_file,
             flat_filters=self.flat_filters,
+            custom_edition_info=self.custom_edition_info,
+            custom_cut_names=self.custom_cut_names,
         )
 
         # get rename output
@@ -128,6 +130,8 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             season_number=season_num,
             season_end=season_end,
             flat_filters=self.flat_filters,
+            custom_edition_info=self.custom_edition_info,
+            custom_cut_names=self.custom_cut_names,
         )
 
         data = self.token_replacer.get_output()

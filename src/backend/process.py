@@ -2521,6 +2521,8 @@ class ProcessBackEnd:
             override_title_rules=override_title_rules,
             video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
             flat_filters=context.flat_filters,
+            custom_edition_info=context.custom_edition_info,
+            custom_cut_names=context.custom_cut_names,
             **self._release_info_token_kwargs(
                 release_info,
                 self.config.settings.series.multi_episode_style,

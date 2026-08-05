@@ -316,6 +316,12 @@ class MoviesManagementSettings(BaseSettings):
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),
+            custom_edition_info=self.config.plugin_manager.custom_edition_info(
+                enabled=self.config.settings.general.enable_plugins
+            ),
+            custom_cut_names=self.config.plugin_manager.custom_cut_names(
+                enabled=self.config.settings.general.enable_plugins
+            ),
         )
         example_txt = qline.text()
         output = format_str.get_output()

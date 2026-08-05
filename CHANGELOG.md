@@ -30,6 +30,9 @@
   per-tracker dupe search with results from an additional source (e.g. a private
   cross-tracker database); results are merged into the existing dupe-check log and never
   block or auto-skip an upload.
+- Added optional custom edition/cut contribution plugins. A plugin can extend the closed
+  `{edition}`/`{cut}` detection table with its own recognized phrases, each flagged as
+  Cut or Edition-only the same way the built-in entries are.
 
 ### Changed
 

@@ -73,8 +73,8 @@ recommended installation method, so an installed package can never silently shad
 
 Wizard pages, token replacers, pre-upload processors, post-upload processors, metadata
 transformers, image host uploaders, and duplicate checkers are single-select
-capabilities. Jinja filters/functions and flat token filters from every valid plugin are
-combined while external plugins are enabled.
+capabilities. Jinja filters/functions, flat token filters, and custom edition/cut
+contributions from every valid plugin are combined while external plugins are enabled.
 
 ### Post-upload processors
 
@@ -153,6 +153,38 @@ failed (missing credentials, network error, an unsupported series tracker) the p
 contribution for that tracker is not merged. A duplicate checker that raises, returns
 the wrong type, or runs past `timeout` is logged and treated as "nothing extra found" --
 it never fails the dupe-check phase for other trackers.
+
+### Custom edition/cut contributions
+
+`{edition}` and `{cut}` are backed by a closed, curated table
+(`EDITION_INFO`/`CUT_EDITION_NAMES` in `src.backend.utils.rename_normalizations`). A
+plugin can extend that table rather than fork it: set `custom_editions` on
+`PluginDefinition` to a sequence of `CustomEditionContribution`, each pairing a
+`RenameNormalization` (`normalized` display value, `re_gex` case-insensitive detection
+patterns) with `is_cut`:
+
+```python
+from src.packages.custom_types import RenameNormalization
+from src.plugins.api import CustomEditionContribution, PluginDefinition
+
+plugin = PluginDefinition(
+    display_name="My Editions",
+    version="1.0.0",
+    custom_editions=(
+        CustomEditionContribution(
+            entry=RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),
+            is_cut=True,
+        ),
+    ),
+)
+```
+
+`is_cut=True` keeps the entry in `{cut}` (so it survives on trackers whose title format
+switched to `{cut}`, e.g. Aither); `False` makes it Edition-only, appearing in
+`{edition}` but omitted from `{cut}`, the same way built-in marketing Editions
+(Criterion, Deluxe, Special, ...) already behave. A contribution's `normalized` name
+must not collide with another plugin's, or with a built-in `EDITION_INFO` entry -- both
+are rejected at registration, same as a duplicate Jinja filter or flat filter name.
 
 Jinja filters apply to NFO templates using Jinja syntax. Flat token filters apply to the
 `{token|filter}` syntax used by filename templates, tracker-title templates, and

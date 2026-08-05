@@ -398,6 +398,12 @@ class SeriesManagementSettings(BaseSettings):
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),
+            custom_edition_info=self.config.plugin_manager.custom_edition_info(
+                enabled=self.config.settings.general.enable_plugins
+            ),
+            custom_cut_names=self.config.plugin_manager.custom_cut_names(
+                enabled=self.config.settings.general.enable_plugins
+            ),
             season_number=1,
             season_end=season_end,
             episode_number=episode_number,

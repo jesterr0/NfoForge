@@ -309,6 +309,8 @@ def _render_save_path_template(
         multi_episode_style=config.series.multi_episode_style,
         preserve_literal_formatting=True,
         flat_filters=context.flat_filters,
+        custom_edition_info=context.custom_edition_info,
+        custom_cut_names=context.custom_cut_names,
     )
     output = renderer.get_output() or ""
     full_output = anchor + output

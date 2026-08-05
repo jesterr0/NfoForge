@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from guessit import guessit
@@ -8,18 +8,32 @@ from src.backend.tokens import FileToken
 from src.config.models import DynamicRangeSettings
 from src.enums.rename import QualitySelection
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from src.packages.custom_types import RenameNormalization
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.plugins.api import FlatFilter
 
 
 class RenameEncodeBackEnd:
-    __slots__ = ("token_replacer", "override_tokens", "flat_filters")
+    __slots__ = (
+        "token_replacer",
+        "override_tokens",
+        "flat_filters",
+        "custom_edition_info",
+        "custom_cut_names",
+    )
 
-    def __init__(self, flat_filters: Mapping[str, FlatFilter] | None = None) -> None:
+    def __init__(
+        self,
+        flat_filters: Mapping[str, FlatFilter] | None = None,
+        custom_edition_info: Sequence[RenameNormalization] | None = None,
+        custom_cut_names: frozenset[str] | None = None,
+    ) -> None:
         self.token_replacer: TokenReplacer | None = None
         self.override_tokens: dict[str, str] = {}
         self.flat_filters = flat_filters or {}
+        self.custom_edition_info = custom_edition_info or ()
+        self.custom_cut_names = custom_cut_names or frozenset()
 
     def media_renamer(
         self,
@@ -45,6 +59,8 @@ class RenameEncodeBackEnd:
             override_tokens=self.override_tokens,
             user_tokens=user_tokens,
             flat_filters=self.flat_filters,
+            custom_edition_info=self.custom_edition_info,
+            custom_cut_names=self.custom_cut_names,
         )
         data = self.token_replacer.get_output()
         if data:

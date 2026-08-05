@@ -9,9 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from jinja2 import Environment
 
+from src.backend.utils.rename_normalizations import EDITION_INFO
 from src.exceptions import PluginError, PluginExecutionError
 from src.plugins.api import (
     PLUGIN_API_VERSION,
+    CustomEditionContribution,
     DuplicateCheckRequest,
     FlatFilter,
     MetadataTransformer,
@@ -25,6 +27,7 @@ from src.plugins.api import (
 )
 
 if TYPE_CHECKING:
+    from src.packages.custom_types import RenameNormalization
     from src.payloads.media_search import MediaSearchPayload
     from src.payloads.tracker_search_result import TrackerSearchResult
 
@@ -73,6 +76,8 @@ class PluginManager:
         self._jinja2_filters: dict[str, Any] = {}
         self._jinja2_functions: dict[str, Any] = {}
         self._flat_filters: dict[str, FlatFilter] = {}
+        self._custom_edition_info: dict[str, RenameNormalization] = {}
+        self._custom_cut_names: set[str] = set()
         self._load_issues: list[PluginLoadIssue] = []
         self._reserved_jinja2_filters = frozenset(jinja_environment.filters)
         self._reserved_jinja2_functions = frozenset(jinja_environment.globals) | {
@@ -91,6 +96,9 @@ class PluginManager:
                 "zfill",
                 "replace",
             )
+        )
+        self._reserved_custom_edition_names = frozenset(
+            item.normalized for item in EDITION_INFO
         )
 
     @property
@@ -124,6 +132,12 @@ class PluginManager:
         self._jinja2_filters.update(definition.jinja2_filters)
         self._jinja2_functions.update(definition.jinja2_functions)
         self._flat_filters.update(definition.flat_filters)
+        for contribution in definition.custom_editions:
+            self._custom_edition_info[contribution.entry.normalized] = (
+                contribution.entry
+            )
+            if contribution.is_cut:
+                self._custom_cut_names.add(contribution.entry.normalized)
         return record
 
     def get(self, plugin_id: str | None) -> PluginRecord | None:
@@ -146,6 +160,12 @@ class PluginManager:
 
     def flat_filters(self, *, enabled: bool) -> dict[str, FlatFilter]:
         return dict(self._flat_filters) if enabled else {}
+
+    def custom_edition_info(self, *, enabled: bool) -> tuple[RenameNormalization, ...]:
+        return tuple(self._custom_edition_info.values()) if enabled else ()
+
+    def custom_cut_names(self, *, enabled: bool) -> frozenset[str]:
+        return frozenset(self._custom_cut_names) if enabled else frozenset()
 
     def replace_tokens(self, plugin_id: str, request: TokenReplaceRequest) -> str:
         record = self._require_capability(plugin_id, "token_replacer")
@@ -395,6 +415,7 @@ class PluginManager:
             definition.jinja2_filters,
             definition.jinja2_functions,
             definition.flat_filters,
+            definition.custom_editions,
         )
         if not any(capabilities):
             raise PluginError("Plugin must provide at least one capability")
@@ -415,6 +436,26 @@ class PluginManager:
             if not isinstance(definition.image_host_uploader, BaseImageHostUploader):
                 raise PluginError(
                     "image_host_uploader must be a BaseImageHostUploader instance"
+                )
+
+        if not isinstance(definition.custom_editions, Sequence) or isinstance(
+            definition.custom_editions, str | bytes
+        ):
+            raise PluginError("custom_editions must be a sequence")
+        for contribution in definition.custom_editions:
+            if not isinstance(contribution, CustomEditionContribution):
+                raise PluginError(
+                    "custom_editions entries must be CustomEditionContribution"
+                )
+            if not contribution.entry.normalized.strip():
+                raise PluginError("custom_editions entry.normalized cannot be empty")
+            if not contribution.entry.re_gex or not all(
+                isinstance(pattern, str) and pattern.strip()
+                for pattern in contribution.entry.re_gex
+            ):
+                raise PluginError(
+                    "custom_editions entry.re_gex must be a non-empty sequence "
+                    "of non-empty strings"
                 )
 
         for name in (
@@ -458,6 +499,14 @@ class PluginManager:
                 "flat filter",
                 definition.flat_filters,
                 set(self._flat_filters) | self._reserved_flat_filters,
+            ),
+            (
+                "custom edition",
+                {
+                    contribution.entry.normalized: None
+                    for contribution in definition.custom_editions
+                },
+                set(self._custom_edition_info) | self._reserved_custom_edition_names,
             ),
         )
         for label, incoming, existing in groups:

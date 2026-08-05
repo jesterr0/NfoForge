@@ -13,11 +13,12 @@ from src.backend.image_host_uploading.base_image_host import (
 )
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import PluginError, PluginExecutionError
-from src.packages.custom_types import ImageUploadData
+from src.packages.custom_types import ImageUploadData, RenameNormalization
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.plugins.api import (
+    CustomEditionContribution,
     DuplicateChecker,
     DuplicateCheckRequest,
     MetadataInputContext,
@@ -393,3 +394,171 @@ def test_the_abandoned_duplicate_checker_thread_does_not_block_interpreter_exit(
     ]
     assert hung_threads
     assert all(thread.daemon for thread in hung_threads)
+
+
+def _fan_edit_contribution(*, is_cut: bool = False) -> CustomEditionContribution:
+    return CustomEditionContribution(
+        entry=RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),
+        is_cut=is_cut,
+    )
+
+
+def test_registering_a_custom_editions_only_plugin_succeeds() -> None:
+    manager = PluginManager()
+    contribution = _fan_edit_contribution(is_cut=True)
+
+    record = manager.register(
+        "test.customedition",
+        PluginDefinition(
+            display_name="test.customedition",
+            version="1.0.0",
+            custom_editions=(contribution,),
+        ),
+        "test",
+    )
+
+    assert record.definition.custom_editions == (contribution,)
+    assert manager.custom_edition_info(enabled=True) == (contribution.entry,)
+    assert manager.custom_cut_names(enabled=True) == frozenset({"Fan Edit"})
+
+
+def test_custom_editions_from_multiple_plugins_are_merged() -> None:
+    manager = PluginManager()
+    manager.register(
+        "test.one",
+        PluginDefinition(
+            display_name="test.one",
+            version="1.0.0",
+            custom_editions=(_fan_edit_contribution(),),
+        ),
+        "test",
+    )
+    other = CustomEditionContribution(
+        entry=RenameNormalization("Studio Cut", (r"studio[\s\.\-_]*cut",)),
+        is_cut=True,
+    )
+    manager.register(
+        "test.two",
+        PluginDefinition(
+            display_name="test.two", version="1.0.0", custom_editions=(other,)
+        ),
+        "test",
+    )
+
+    names = {item.normalized for item in manager.custom_edition_info(enabled=True)}
+    assert names == {"Fan Edit", "Studio Cut"}
+    assert manager.custom_cut_names(enabled=True) == frozenset({"Studio Cut"})
+
+
+def test_custom_edition_info_and_cut_names_are_empty_when_disabled() -> None:
+    manager = PluginManager()
+    manager.register(
+        "test.customedition",
+        PluginDefinition(
+            display_name="test.customedition",
+            version="1.0.0",
+            custom_editions=(_fan_edit_contribution(is_cut=True),),
+        ),
+        "test",
+    )
+
+    assert manager.custom_edition_info(enabled=False) == ()
+    assert manager.custom_cut_names(enabled=False) == frozenset()
+
+
+def test_a_custom_edition_colliding_with_a_built_in_name_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="Directors Cut"):
+        manager.register(
+            "test.collides",
+            PluginDefinition(
+                display_name="test.collides",
+                version="1.0.0",
+                custom_editions=(
+                    CustomEditionContribution(
+                        entry=RenameNormalization(
+                            "Directors Cut", (r"directors[\s\.\-_]*cut",)
+                        ),
+                    ),
+                ),
+            ),
+            "test",
+        )
+
+
+def test_two_plugins_contributing_the_same_custom_name_is_rejected() -> None:
+    manager = PluginManager()
+    manager.register(
+        "test.one",
+        PluginDefinition(
+            display_name="test.one",
+            version="1.0.0",
+            custom_editions=(_fan_edit_contribution(),),
+        ),
+        "test",
+    )
+
+    with pytest.raises(PluginError, match="Fan Edit"):
+        manager.register(
+            "test.two",
+            PluginDefinition(
+                display_name="test.two",
+                version="1.0.0",
+                custom_editions=(_fan_edit_contribution(),),
+            ),
+            "test",
+        )
+
+
+def test_a_custom_edition_with_an_empty_normalized_name_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="normalized"):
+        manager.register(
+            "test.badname",
+            PluginDefinition(
+                display_name="test.badname",
+                version="1.0.0",
+                custom_editions=(
+                    CustomEditionContribution(
+                        entry=RenameNormalization("", (r"pattern",)),
+                    ),
+                ),
+            ),
+            "test",
+        )
+
+
+def test_a_custom_edition_with_no_patterns_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="re_gex"):
+        manager.register(
+            "test.badpattern",
+            PluginDefinition(
+                display_name="test.badpattern",
+                version="1.0.0",
+                custom_editions=(
+                    CustomEditionContribution(
+                        entry=RenameNormalization("Fan Edit", ()),
+                    ),
+                ),
+            ),
+            "test",
+        )
+
+
+def test_a_non_custom_edition_contribution_entry_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="CustomEditionContribution"):
+        manager.register(
+            "test.badtype",
+            PluginDefinition(
+                display_name="test.badtype",
+                version="1.0.0",
+                custom_editions=("not a contribution",),  # type: ignore[arg-type]
+            ),
+            "test",
+        )
