@@ -76,6 +76,32 @@ class PreUploadProcessor(Protocol):
     def __call__(self, request: PreUploadRequest, /) -> PreUploadDecision: ...
 
 
+class PostUploadOutcome(Enum):
+    """What happened to one tracker's upload-and-injection cycle."""
+
+    SUCCESS = "success"
+    UPLOAD_FAILED = "upload_failed"
+    INJECTION_FAILED = "injection_failed"
+    SKIPPED = "skipped"
+
+
+@dataclass(frozen=True, slots=True)
+class PostUploadRequest:
+    """Inputs supplied to a post-upload plugin, once per tracker."""
+
+    config: ConfigManager
+    context: ProcessingContext
+    tracker: TrackerSelection
+    torrent_file: Path
+    reporter: UploadReporter
+    outcome: PostUploadOutcome
+    error: str | None = None
+
+
+class PostUploadProcessor(Protocol):
+    def __call__(self, request: PostUploadRequest, /) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class MetadataInputContext:
     """Immutable media-input facts available to metadata transformers."""
@@ -125,6 +151,7 @@ class PluginDefinition:
     wizard_page: type[BaseWizardPage] | None = None
     token_replacer: TokenReplacer | None = None
     pre_upload: PreUploadProcessor | None = None
+    post_upload: PostUploadProcessor | None = None
     metadata_transformer: MetadataTransformer | None = None
     jinja2_filters: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     jinja2_functions: Mapping[str, Callable[..., Any]] = field(default_factory=dict)

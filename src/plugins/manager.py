@@ -17,6 +17,7 @@ from src.plugins.api import (
     MetadataTransformRequest,
     PluginDefinition,
     PluginRecord,
+    PostUploadRequest,
     PreUploadDecision,
     PreUploadRequest,
     TokenReplaceRequest,
@@ -173,6 +174,17 @@ class PluginManager:
             )
         return result
 
+    def run_post_upload(self, plugin_id: str, request: PostUploadRequest) -> None:
+        record = self._require_capability(plugin_id, "post_upload")
+        processor = record.definition.post_upload
+        # type-narrowing only: `_require_capability` already raised PluginError
+        # above if this attribute were None, so the condition can't be false here
+        assert processor is not None  # noqa: S101
+        try:
+            processor(request)
+        except Exception as error:
+            raise PluginExecutionError(plugin_id, "post_upload", error) from error
+
     def transform_metadata(
         self, plugin_id: str, request: MetadataTransformRequest
     ) -> MediaSearchPayload:
@@ -308,6 +320,7 @@ class PluginManager:
             definition.wizard_page,
             definition.token_replacer,
             definition.pre_upload,
+            definition.post_upload,
             definition.metadata_transformer,
             definition.jinja2_filters,
             definition.jinja2_functions,
@@ -324,7 +337,12 @@ class PluginManager:
             ):
                 raise PluginError("wizard_page must be a BaseWizardPage subclass")
 
-        for name in ("token_replacer", "pre_upload", "metadata_transformer"):
+        for name in (
+            "token_replacer",
+            "pre_upload",
+            "post_upload",
+            "metadata_transformer",
+        ):
             value = getattr(definition, name)
             if value is not None and not callable(value):
                 raise PluginError(f"{name} must be callable")
