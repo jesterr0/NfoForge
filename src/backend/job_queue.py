@@ -138,6 +138,9 @@ class JobQueueRunner:
         status_update: Callable[[str, str], None] | None = None,
         progress_cb: Callable[[float], None] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
+        job_started: Callable[[int, str], None] | None = None,
+        job_finished: Callable[[int, QueuedJobOutcome], None] | None = None,
+        text_replace_last_update: Callable[[str], None] | None = None,
     ) -> None:
         self.backend = backend
         self.config = config
@@ -145,6 +148,15 @@ class JobQueueRunner:
         self._status_update = status_update or (lambda _tracker, _status: None)
         self._progress_cb = progress_cb or (lambda _value: None)
         self._is_cancelled = is_cancelled or (lambda: False)
+        # The queue's own window lists jobs before any of them runs, so it needs
+        # to be told when each one starts and ends rather than reconstructing
+        # that from the text log.
+        self._job_started = job_started or (lambda _index, _name: None)
+        self._job_finished = job_finished or (lambda _index, _outcome: None)
+        # A caller with no way to rewrite its last line falls back to appending,
+        # which is what the queue did for everyone -- leaving both halves of
+        # every "running..." / "done" pair in the log.
+        self._text_replace_last_update = text_replace_last_update or self._text_update
 
     # ----------------------------------------------------------------------
     def run(self, job_paths: list[Path]) -> list[QueuedJobOutcome]:
@@ -160,15 +172,18 @@ class JobQueueRunner:
                 f'<br /><h3 style="margin-bottom: 0;">▶️ Job {index} of '
                 f"{len(job_paths)}</h3>"
             )
-            results.append(self._run_one(path))
+            outcome = self._run_one(path, index)
+            self._job_finished(index, outcome)
+            results.append(outcome)
         return results
 
     # ----------------------------------------------------------------------
-    def _run_one(self, path: Path) -> QueuedJobOutcome:
+    def _run_one(self, path: Path, index: int) -> QueuedJobOutcome:
         try:
             job = load_job(path)
         except JobStoreError as error:
             LOG.error(LOG.LOG_SOURCE.BE, f"Queue could not load '{path}': {error}")
+            self._job_started(index, path.name)
             return QueuedJobOutcome(
                 job_name=path.name,
                 path=path,
@@ -176,6 +191,7 @@ class JobQueueRunner:
                 detail=str(error),
             )
 
+        self._job_started(index, job.name)
         self._text_update(f"<br /><span>Loaded <b>{escape(job.name)}</b></span>")
 
         context = self._restore(job, path)
@@ -369,7 +385,7 @@ class JobQueueRunner:
                 process_dict=tracker_data,
                 queued_status_update=self._status_update,
                 queued_text_update=self._text_update,
-                queued_text_update_replace_last_line=self._text_update,
+                queued_text_update_replace_last_line=self._text_replace_last_update,
                 progress_bar_cb=self._progress_cb,
                 # `process_trackers` types this as a Qt signal because every
                 # other caller has a page to surface errors into; the queue has

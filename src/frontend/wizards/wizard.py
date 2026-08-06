@@ -25,6 +25,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.wizard import WizardPages
 from src.exceptions import ConfigSchemaError
+from src.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
 from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.images import ImagesPage
@@ -186,9 +187,11 @@ class MainWindowWizard(QWizard):
             return
 
         if dialog.queued_listings:
-            GSigs().wizard_run_job_queue.emit(
-                [listing.path for listing in dialog.queued_listings]
-            )
+            JobQueueDialog(
+                job_paths=[listing.path for listing in dialog.queued_listings],
+                config=self.config,
+                parent=self,
+            ).exec()
             return
 
         listing = dialog.selected_listing

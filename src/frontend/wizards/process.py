@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from src.backend.job_queue import JobQueueRunner, QueuedJobOutcome, QueuedJobResult
 from src.backend.jobs import (
     JobAssetError,
     JobCodecError,
@@ -123,53 +122,6 @@ class DupeWorker(BaseWorker):
             self.job_failed.emit(str(e), traceback.format_exc())
         finally:
             async_loop.close()
-
-
-class QueueWorker(BaseWorker):
-    """Drives `JobQueueRunner` off the GUI thread.
-
-    Nothing here waits on a dialog: a queue only accepts prepared jobs, and the
-    runner passes no prompt or retry callbacks, so it runs to completion on its
-    own.
-    """
-
-    results = Signal(object)  # list[QueuedJobOutcome]
-    queued_status_update = Signal(str, str)
-    progress_signal = Signal(float)
-
-    def __init__(
-        self,
-        backend: ProcessBackEnd,
-        config: ConfigManager,
-        job_paths: list[Path],
-        parent: QObject | None = None,
-    ) -> None:
-        super().__init__(parent)
-        self.backend = backend
-        self.config = config
-        self.job_paths = job_paths
-        self._cancelled = False
-
-    def cancel(self) -> None:
-        """Stop before the next job; the one in flight is left to finish."""
-        self._cancelled = True
-
-    def run(self) -> None:
-        try:
-            runner = JobQueueRunner(
-                backend=self.backend,
-                config=self.config,
-                text_update=self._queued_text_update_cb,
-                status_update=lambda tracker, status: self.queued_status_update.emit(
-                    tracker, status
-                ),
-                progress_cb=self.progress_signal.emit,
-                is_cancelled=lambda: self._cancelled,
-            )
-            self.results.emit(runner.run(self.job_paths))
-            self.job_finished.emit()
-        except Exception as e:
-            self.job_failed.emit(f"Job queue failed: {e}", traceback.format_exc())
 
 
 class _TokenPromptWaiter(QObject):
@@ -395,8 +347,6 @@ class ProcessPage(BaseWizardPage):
         self.processing_mode = UploadProcessMode.DUPE_CHECK
         self.dupe_worker: DupeWorker | None = None
         self.process_worker: ProcessWorker | None = None
-        self.queue_worker: QueueWorker | None = None
-        GSigs().wizard_run_job_queue.connect(self._run_job_queue)
 
         # Per-run only, and deliberately not on the payload: this must never
         # reach a job file. It answers which trackers may still be uploaded
@@ -707,57 +657,6 @@ class ProcessPage(BaseWizardPage):
         self.process_worker.upload_retry_signal.connect(self._on_upload_retry_signal)
         self.process_worker.run_outcome_signal.connect(self._on_run_outcome)
         self.process_worker.start()
-
-    @Slot(object)
-    def _run_job_queue(self, job_paths: list[Path]) -> None:
-        """Upload a set of prepared jobs one after another."""
-        if self.queue_worker or self.process_worker:
-            return
-
-        self.tracker_process_tree.clear()
-        self._on_text_update(
-            f'<h3 style="margin: 0; padding: 0;">📚 Running {len(job_paths)} '
-            "queued job(s)</h3>"
-        )
-        GSigs().wizard_set_disabled.emit(True)
-        GSigs().wizard_process_btn_set_hidden.emit()
-        self.save_job_btn.hide()
-        self.prepare_job_btn.hide()
-
-        self.queue_worker = QueueWorker(
-            backend=self.backend,
-            config=self.config,
-            job_paths=job_paths,
-            parent=self,
-        )
-        self.queue_worker.queued_text_update.connect(self._on_text_update)
-        self.queue_worker.progress_signal.connect(self._on_progress_update)
-        self.queue_worker.results.connect(self._on_queue_results)
-        self.queue_worker.job_failed.connect(self._on_failed)
-        self.queue_worker.job_finished.connect(self._on_queue_finished)
-        self.queue_worker.start()
-
-    @Slot(object)
-    def _on_queue_results(self, results: list[QueuedJobOutcome]) -> None:
-        counts: dict[QueuedJobResult, int] = {}
-        lines: list[str] = []
-        for outcome in results:
-            counts[outcome.result] = counts.get(outcome.result, 0) + 1
-            label = outcome.result.name.replace("_", " ").lower()
-            detail = f" — {outcome.detail}" if outcome.detail else ""
-            lines.append(f"<li><b>{outcome.job_name}</b>: {label}{detail}</li>")
-
-        uploaded = counts.get(QueuedJobResult.UPLOADED, 0)
-        self._on_text_update(
-            f'<br /><h3 style="margin-bottom: 0;">📚 Queue finished: '
-            f"{uploaded} of {len(results)} uploaded</h3><ul>" + "".join(lines) + "</ul>"
-        )
-
-    @Slot()
-    def _on_queue_finished(self) -> None:
-        self.queue_worker = None
-        GSigs().wizard_set_disabled.emit(False)
-        self.text_widget.ensureCursorVisible()
 
     @Slot(object, object)
     def _on_run_outcome(
