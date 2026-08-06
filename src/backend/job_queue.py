@@ -408,45 +408,48 @@ class JobQueueRunner:
         """Bring a job's files into line with what actually uploaded.
 
         A job left on disk unchanged after uploading is a job the next queue run
-        uploads all over again, so anything that reached a tracker has to come
-        out of it. What remains is written back as an ordinary job -- structurally
-        indistinguishable from one saved before any upload was attempted -- and
-        when nothing remains, the job is gone.
+        uploads all over again, so a tracker that reached its destination has to
+        come out of it. Exactly one thing earns removal: proof the release
+        landed. Everything else stays -- never attempted, skipped, provably
+        failed, switched off in config, or an upload nobody can account for --
+        because each of those is either still to do or still to judge, and the
+        job folder is where its prepared torrent and NFO live.
 
-        Two cases deliberately change nothing. An upload whose fate is unknown
-        (`MAY_HAVE_UPLOADED`) is exactly the case a human has to judge, and
-        deleting the job would destroy what they need to judge it with. Trackers
-        that were merely switched off in config never uploaded at all, so the
-        job is still entirely ahead of it.
+        Framing this as "remove only what provably landed" rather than "keep
+        only what is safe to retry" is what makes the awkward outcomes fall out
+        correctly. `MAY_HAVE_UPLOADED` is neither retryable nor done, and
+        neither is a tracker whose uploads are disabled in config; a two-way
+        split counts both as finished and deletes their prepared work.
         """
         if not outcome.outcomes:
             # the run never reached the upload stage, so there is nothing to
             # reconcile -- a skipped job is kept for review as it was
             return
 
-        deferrable = outcome.deferrable_trackers()
-        if len(deferrable) == len(outcome.outcomes):
+        landed = {
+            tracker
+            for tracker, tracker_outcome in outcome.outcomes.items()
+            if tracker_outcome
+            in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
+        }
+        if not landed:
+            # nothing reached a tracker, so the job is still exactly itself
             return
 
-        uploaded_any = any(
-            tracker_outcome
-            in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
-            for tracker_outcome in outcome.outcomes.values()
-        )
-
-        if not deferrable:
-            if not uploaded_any:
-                self._text_update(
-                    f"<br /><span>Left <b>{escape(job.name)}</b> alone: none of "
-                    "its trackers can be safely retried and none provably "
-                    "uploaded, so it needs a look</span>"
-                )
-                return
+        retained = set(outcome.outcomes) - landed
+        if not retained:
             try:
                 delete_job(outcome.path)
             except JobStoreError as error:
                 LOG.error(
                     LOG.LOG_SOURCE.BE, f"Could not remove a finished job: {error}"
+                )
+                # the one failure that silently re-uploads everywhere next run,
+                # so it cannot be log-only
+                self._text_update(
+                    f"<br /><span>⚠️ <b>{escape(job.name)}</b> uploaded everywhere "
+                    "but could not be removed, so it is still saved and will "
+                    f"upload again if queued: {escape(str(error))}</span>"
                 )
                 return
             outcome.disposition = JobDisposition.DELETED
@@ -456,21 +459,50 @@ class JobQueueRunner:
             )
             return
 
-        job.context = filter_context_document(job.context, deferrable)
-        job.summary.trackers = [str(tracker) for tracker in sorted(deferrable, key=str)]
         try:
+            job.context = filter_context_document(job.context, retained)
+            job.summary.trackers = [
+                str(tracker) for tracker in sorted(retained, key=str)
+            ]
             write_job_document(job, outcome.path)
-            prune_unreferenced_nfos(outcome.path, job.context)
         except (JobStoreError, OSError) as error:
             LOG.error(LOG.LOG_SOURCE.BE, f"Could not narrow a finished job: {error}")
+            self._text_update(
+                f"<br /><span>⚠️ <b>{escape(job.name)}</b> still lists the trackers "
+                "that already uploaded and will send to them again if queued: "
+                f"{escape(str(error))}</span>"
+            )
             return
 
+        # the write is the commit point: from here the document on disk is
+        # correct, so the disposition is true even if the tidy-up below fails
         outcome.disposition = JobDisposition.NARROWED
-        remaining = ", ".join(str(tracker) for tracker in sorted(deferrable, key=str))
+        try:
+            prune_unreferenced_nfos(outcome.path, job.context)
+        except OSError as error:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Left stale NFOs behind in {outcome.path}: {error}",
+            )
+
+        remaining = ", ".join(str(tracker) for tracker in sorted(retained, key=str))
         self._text_update(
-            f"<br /><span>📝 Kept <b>{escape(job.name)}</b> for {remaining}; the "
-            "trackers that uploaded were removed from it</span>"
+            f"<br /><span>📝 Kept <b>{escape(job.name)}</b> for "
+            f"{escape(remaining)}; the trackers that uploaded were removed from "
+            "it</span>"
         )
+
+        unconfirmed = sorted(
+            str(tracker)
+            for tracker, tracker_outcome in outcome.outcomes.items()
+            if tracker_outcome is TrackerRunOutcome.MAY_HAVE_UPLOADED
+        )
+        if unconfirmed:
+            self._text_update(
+                f"<br /><span>⚠️ Check {escape(', '.join(unconfirmed))} on the "
+                "tracker before running this job again -- the upload could not "
+                "be confirmed either way</span>"
+            )
 
 
 class _LoggingSignal:
