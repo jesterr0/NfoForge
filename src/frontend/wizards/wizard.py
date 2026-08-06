@@ -1,14 +1,31 @@
+from pathlib import Path
 import traceback
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QMessageBox, QPushButton, QWizard
+from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton, QWizard
 
+from src.backend.jobs import (
+    JobCodecError,
+    JobStoreError,
+    MediaFingerprint,
+    SavedJob,
+    base_torrent_path,
+    context_from_dict,
+    load_job,
+    read_job_asset,
+    template_fingerprint,
+)
+from src.backend.template_selector import TemplateSelectorBackEnd
+from src.backend.utils.media_info_utils import clear_full_mi_str_cache
 from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.wizard import WizardPages
+from src.exceptions import ConfigSchemaError
+from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.images import ImagesPage
 from src.frontend.wizards.media_input import MediaInput
@@ -75,8 +92,18 @@ class MainWindowWizard(QWizard):
         self.setButton(QWizard.WizardButton.CustomButton3, self.process_button)
         self.setOption(QWizard.WizardOption.HaveCustomButton3)
 
+        # all three CustomButton slots are already spoken for, so the unused
+        # HelpButton slot carries "Load Job" -- the same re-purposing this
+        # wizard already does by putting "Next" on the CommitButton
+        self.load_job_button = QPushButton("Load Job", self)
+        self.load_job_button.setToolTip("Load a previously saved job and process it")
+        self.load_job_button.clicked.connect(self.open_load_job_dialog)
+        self.setButton(QWizard.WizardButton.HelpButton, self.load_job_button)
+        self.setOption(QWizard.WizardOption.HaveHelpButton)
+
         self.starting_buttons = (
             QWizard.WizardButton.CustomButton1,
+            QWizard.WizardButton.HelpButton,
             QWizard.WizardButton.Stretch,
             QWizard.WizardButton.CommitButton,
         )
@@ -151,6 +178,265 @@ class MainWindowWizard(QWizard):
         self.setButtonLayout(self.starting_buttons)
         self.restart()
 
+    @Slot()
+    def open_load_job_dialog(self) -> None:
+        """Pick saved jobs and either resume one or run several as a queue."""
+        dialog = LoadJobDialog(self.config.program.current_config, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        if dialog.queued_listings:
+            GSigs().wizard_run_job_queue.emit(
+                [listing.path for listing in dialog.queued_listings]
+            )
+            return
+
+        listing = dialog.selected_listing
+        if listing is None:
+            return
+
+        try:
+            job = load_job(listing.path)
+        except JobStoreError as e:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to load job: {e}")
+            QMessageBox.critical(self, "Load Failed", f"Could not load job:\n\n{e}")
+            return
+
+        # The profile has to be switched *before* the context is built: the
+        # Jinja engine, flat filters and plugin contributions are all derived
+        # from the active settings at construction time, so building first
+        # would wire the job up to the outgoing profile.
+        if dialog.switch_profile_requested and not self._switch_config_profile(
+            job.config_profile
+        ):
+            return
+
+        # build and validate the restored context before touching any live
+        # wizard state, so a job that cannot be resumed leaves the current
+        # session exactly as it was
+        context = create_processing_context(
+            self.config.settings,
+            self.config.plugin_manager,
+        )
+        try:
+            # a new run must not inherit MediaInfo cached for a previous job
+            clear_full_mi_str_cache()
+            context_from_dict(
+                job.context,
+                context,
+                lambda name: read_job_asset(listing.path, name),
+            )
+        except JobCodecError as e:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to restore job '{job.name}': {e}")
+            QMessageBox.critical(
+                self, "Load Failed", f"Job '{job.name}' could not be restored:\n\n{e}"
+            )
+            return
+
+        if not self._restored_job_is_usable(job.name, context):
+            return
+
+        self._attach_base_torrent(job, listing.path, context)
+        self._resume_job(context)
+        LOG.info(LOG.LOG_SOURCE.FE, f"Resumed job '{job.name}' at the process page")
+
+    def _switch_config_profile(self, profile: str) -> bool:
+        """Activate `profile`, reporting failure without changing anything.
+
+        Mirrors the error handling in Settings -> General's own config swap: an
+        incompatible profile must leave the previously active one in place
+        rather than half-applying.
+        """
+        if not profile:
+            return True
+        previous = self.config.program.current_config
+        try:
+            self.config.load_profile(profile)
+        except ConfigSchemaError as e:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to switch to config '{profile}': {e}")
+            QMessageBox.critical(
+                self,
+                "Incompatible Config",
+                f"{e}\n\nStayed on the current config: {previous}",
+            )
+            return False
+        LOG.info(LOG.LOG_SOURCE.FE, f"Switched config profile to '{profile}'")
+        # an already-built Settings view would otherwise keep showing the
+        # profile we just navigated away from
+        GSigs().settings_refresh.emit()
+        return True
+
+    def _restored_job_is_usable(
+        self, job_name: str, context: ProcessingContext
+    ) -> bool:
+        """Check a restored job against the filesystem it has to run against.
+
+        MediaInfo comes back from the job file itself, but the media and the
+        screenshots still have to be on disk to upload. The working directory
+        is user-wipeable from Settings, so missing screenshots are a real
+        outcome rather than an edge case.
+        """
+        try:
+            context.media_input.require_existing_media_paths(include_comparison=False)
+        except (FileNotFoundError, RuntimeError) as e:
+            QMessageBox.critical(
+                self,
+                "Media Files Unavailable",
+                f"Job '{job_name}' cannot be loaded because its media is no "
+                f"longer where it was saved:\n\n{e}",
+            )
+            return False
+
+        missing_images = [
+            str(image)
+            for image in (context.shared_data.loaded_images or ())
+            if not image.is_file()
+        ]
+        if missing_images:
+            preview = "\n".join(missing_images[:10])
+            if len(missing_images) > 10:
+                preview += f"\n...and {len(missing_images) - 10} more"
+            if (
+                QMessageBox.question(
+                    self,
+                    "Screenshots Missing",
+                    f"{len(missing_images)} screenshot(s) saved with job "
+                    f"'{job_name}' no longer exist:\n\n{preview}\n\n"
+                    "Load it anyway? Trackers set to upload images will have "
+                    "none to send.",
+                )
+                is not QMessageBox.StandardButton.Yes
+            ):
+                return False
+
+        return self._confirm_profile_can_serve_job(job_name, context)
+
+    def _attach_base_torrent(
+        self, job: SavedJob, directory: Path, context: ProcessingContext
+    ) -> None:
+        """Offer the job's stored torrent for reuse, if the media is unchanged.
+
+        Hashing is the most expensive part of a run, so a job that carries a
+        finished torrent can skip it -- but only while the media is byte-for-byte
+        what it was. Cloning a torrent whose piece hashes no longer match would
+        upload a torrent that simply does not work, so a changed (or missing)
+        file silently falls back to hashing.
+        """
+        stored = base_torrent_path(directory)
+        if stored is None:
+            return
+
+        details = job.context.get("base_torrent")
+        fingerprint = (
+            MediaFingerprint.from_dict(details.get("fingerprint"))
+            if isinstance(details, dict)
+            else None
+        )
+        media = context.media_input.get_first_file()
+        if fingerprint is None or media is None or not fingerprint.matches(media):
+            LOG.info(
+                LOG.LOG_SOURCE.FE,
+                f"Not reusing the torrent saved with job '{job.name}': its media "
+                "has changed since the job was saved",
+            )
+            return
+
+        context.shared_data.base_torrent = stored
+
+    @staticmethod
+    def _stale_template_warnings(
+        context: ProcessingContext, template_selector: TemplateSelectorBackEnd
+    ) -> list[str]:
+        """Name any template that has changed since this job froze its NFOs.
+
+        A prepared job deliberately uploads the NFO it prepared, so an edited
+        template does not change what goes out. That is the intended behavior --
+        this exists only so the difference is visible rather than silent.
+        """
+        warnings: list[str] = []
+        for name, digest in context.shared_data.template_fingerprints.items():
+            current = template_selector.read_template(name=name)
+            if current is None:
+                continue
+            if template_fingerprint(current) != digest:
+                warnings.append(
+                    f"template '{name}' changed since this job was prepared; "
+                    "its saved NFO will be uploaded, not the new template"
+                )
+        return warnings
+
+    def _confirm_profile_can_serve_job(
+        self, job_name: str, context: ProcessingContext
+    ) -> bool:
+        """Warn about trackers the *active* profile can no longer upload to.
+
+        A job stores no settings of its own -- credentials, templates and
+        per-tracker toggles are all read live at resume time -- so anything the
+        active profile has since turned off or renamed would otherwise only
+        surface as a failure partway through the upload.
+        """
+        problems: list[str] = []
+        tracker_map = self.config.settings.trackers.by_selection()
+        template_selector = TemplateSelectorBackEnd()
+        available_templates = set(template_selector.load_templates())
+
+        for tracker in context.shared_data.tracker_image_hosts:
+            tracker_info = tracker_map.get(tracker)
+            if tracker_info is None:
+                problems.append(f"{tracker}: not configured in this config")
+                continue
+            if not tracker_info.upload_enabled:
+                problems.append(f"{tracker}: uploads are disabled in this config")
+            template = tracker_info.nfo_template
+            if template and template not in available_templates:
+                problems.append(
+                    f"{tracker}: NFO template '{template}' no longer exists"
+                )
+
+        problems.extend(self._stale_template_warnings(context, template_selector))
+
+        if not problems:
+            return True
+
+        return (
+            QMessageBox.question(
+                self,
+                "Config Mismatch",
+                f"Job '{job_name}' has trackers this config cannot fully "
+                "serve:\n\n"
+                + "\n".join(problems)
+                + "\n\nNote that NFO templates are shared across all configs, so "
+                "an edited template changes what this job uploads.\n\nLoad it "
+                "anyway?",
+            )
+            is QMessageBox.StandardButton.Yes
+        )
+
+    def _resume_job(self, context: ProcessingContext) -> None:
+        """Rebuild the wizard around a restored context, at the process page.
+
+        Mirrors `reset_wizard`, except the start page is the process page:
+        everything earlier in the flow was already answered when the job was
+        saved, and `setStartId` + `restart()` (QWizard has no `setCurrentId`)
+        also leaves a clean history so Back cannot walk into pages this run
+        never visited.
+        """
+        self.context = context
+        self.currentIdChanged.disconnect()
+        self._remove_all_pages()
+        self._PAGES = self._generate_new_pages()
+        self._insert_plugin_page()
+        self._build_wizard_pages()
+        self._connect_current_id_changed()
+        self._set_disabled(False)
+        self.next_button.setText("Next")
+        self.process_button.setText("Process (Dupe Check)")
+        self.process_button.show()
+        self.setStartId(WizardPages.PROCESS_PAGE.value)
+        self.setButtonLayout(self.ending_buttons)
+        self.restart()
+        GSigs().main_window_update_status_bar_label.emit("Process")
+
     def _build_wizard_pages(self) -> None:
         for idx, page in enumerate(self._PAGES):
             self.setPage(idx + 1, page)
@@ -185,6 +471,7 @@ class MainWindowWizard(QWizard):
         self.next_button.setDisabled(value)
         self.reset_button.setDisabled(value)
         self.process_button.setDisabled(value)
+        self.load_job_button.setDisabled(value)
 
     def end_early(self) -> None:
         self.setButtonLayout(self.early_ending_buttons)

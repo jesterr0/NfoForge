@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from src.backend.main_window import kill_child_processes
 from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
+from src.backend.utils.working_dir import cleanable_items
 from src.config.config import ConfigManager
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.settings_window import SettingsTabs
@@ -218,7 +219,12 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(3500, self.display_temp_directory_size)
 
     def display_temp_directory_size(self) -> None:
-        size = get_dir_size(self.config.settings.general.working_dir)
+        # only what clean up could actually reclaim; saved jobs are kept and
+        # would otherwise inflate a number the user reads as "reclaimable"
+        size = sum(
+            get_dir_size(item) if item.is_dir() else item.stat().st_size
+            for item in cleanable_items(self.config.settings.general.working_dir)
+        )
         if size <= 0:
             return
         GSigs().main_window_update_status_tip.emit(

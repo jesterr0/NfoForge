@@ -42,27 +42,55 @@ def calculate_avg_video_bit_rate(mi_object: MediaInfo | None) -> int | None:
     return mi_bit_rate
 
 
+_FULL_MI_STR_CACHE: dict[Path, str] = {}
+"""Media path -> the plain-text MediaInfo dump trackers are sent.
+
+A resumed job stores this dump alongside its OLDXML precisely so the media
+never has to be parsed again. The text form comes out of libmediainfo's own
+formatter and cannot be rebuilt from a `MediaInfo` object, so unlike everything
+else it has to be carried rather than derived. Keyed by resolved path so the
+many places that construct `MinimalMediaInfo` from a bare path pick it up
+without every one of them having to thread the cached value through.
+"""
+
+
+def cache_full_mi_str(file_input: PathLike[str], text: str) -> None:
+    """Register a previously captured MediaInfo text dump for a media file."""
+    if text and text.strip():
+        _FULL_MI_STR_CACHE[_cache_key(Path(file_input))] = text
+
+
+def clear_full_mi_str_cache() -> None:
+    """Drop every cached dump (a new run must not inherit a stale one)."""
+    _FULL_MI_STR_CACHE.clear()
+
+
+def _cache_key(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return path
+
+
 class MinimalMediaInfo:
     def __init__(self, file_input: PathLike[str]) -> None:
         self.file_input = Path(file_input)
 
     def get_full_mi_str(self, cleansed: bool = False) -> str:
-        if cleansed:
-            return self.cleanse_mi(
-                str(
-                    MediaInfo.parse(
-                        self.file_input,
-                        full=False,
-                        output="",
-                        legacy_stream_display=True,
-                    )
+        cached = _FULL_MI_STR_CACHE.get(_cache_key(self.file_input))
+        mi_str = (
+            cached
+            if cached is not None
+            else str(
+                MediaInfo.parse(
+                    self.file_input,
+                    full=False,
+                    output="",
+                    legacy_stream_display=True,
                 )
             )
-        return str(
-            MediaInfo.parse(
-                self.file_input, full=False, output="", legacy_stream_display=True
-            )
         )
+        return self.cleanse_mi(mi_str) if cleansed else mi_str
 
     def get_minimal_mi_str(self) -> str:
         """Mocks MediaInfo's normal output with stripped down information"""

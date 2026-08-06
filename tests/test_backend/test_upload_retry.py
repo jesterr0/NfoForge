@@ -18,6 +18,7 @@ from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ProcessCancelled, TrackerClientError, TrackerError
+from src.payloads.shared_data import SharedPayload
 from src.plugins.api import PluginDefinition, PostUploadOutcome, PostUploadRequest
 from src.plugins.manager import PluginManager
 
@@ -446,7 +447,8 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
         SimpleNamespace(
             media_input=SimpleNamespace(
                 require_input_path=lambda: tmp_path / "media.mkv"
-            )
+            ),
+            shared_data=SharedPayload(),
         ),
     )
     process_dict = {
@@ -583,7 +585,8 @@ def _run_process_trackers(
         SimpleNamespace(
             media_input=SimpleNamespace(
                 require_input_path=lambda: tmp_path / "media.mkv"
-            )
+            ),
+            shared_data=SharedPayload(),
         ),
     )
     process_dict = {"Aither": {"path": tmp_path / "aither.torrent"}}

@@ -1,0 +1,287 @@
+"""Picker for saved jobs."""
+
+from datetime import datetime
+
+from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QBrush, QPalette
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from src.backend.jobs import JobListing, JobStoreError, delete_job, list_jobs
+from src.config.profiles import unique_working_dirs
+from src.logger.nfo_forge_logger import LOG
+
+_LISTING_ROLE = Qt.ItemDataRole.UserRole
+
+
+class LoadJobDialog(QDialog):
+    """Lists saved jobs and reports which one the user chose to load.
+
+    Jobs from every config profile are listed, because hiding the ones that
+    don't match would leave a user who saved under another profile with no way
+    to find their work. Those rows are shown muted and cannot be opened with
+    plain "Load" -- resuming a job under settings it was not built for would
+    silently upload with the wrong credentials and templates -- so crossing
+    profiles takes the explicit "Switch profile and load" action instead.
+    """
+
+    def __init__(
+        self, active_profile: str | None, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("loadJobDialog")
+        self.setWindowTitle("Load Job")
+        self.resize(860, 400)
+
+        self.active_profile = active_profile or ""
+        self.selected_listing: JobListing | None = None
+        self.switch_profile_requested = False
+        self.queued_listings: list[JobListing] = []
+        """Jobs to run back to back, when the user chose Run Queue."""
+
+        info_lbl = QLabel(
+            f'<h3 style="margin: 0; margin-bottom: 6px;">{self.windowTitle()}</h3>'
+            "<i><span>Pick a saved job to jump straight to processing. Duplicate "
+            "checks still run when you process it.<br />Jobs saved under another "
+            "config are shown greyed out; use <b>Switch profile and load</b> to "
+            "open one.</span></i>",
+            wordWrap=True,
+            parent=self,
+        )
+
+        self.job_tree = QTreeWidget(self)
+        self.job_tree.setFrameShape(QFrame.Shape.Box)
+        self.job_tree.setFrameShadow(QFrame.Shadow.Sunken)
+        self.job_tree.setRootIsDecorated(False)
+        self.job_tree.setColumnCount(7)
+        self.job_tree.setHeaderLabels(
+            ("Name", "Title", "Type", "Trackers", "Config", "State", "Saved")
+        )
+        self.job_tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # multi-select so several prepared jobs can be queued in one go
+        self.job_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
+        self.job_tree.itemDoubleClicked.connect(self._accept_selection)
+        self.job_tree.itemSelectionChanged.connect(self._update_button_state)
+
+        self.empty_lbl = QLabel(
+            "<span>No saved jobs yet. Use <b>Save Job</b> on the process page "
+            "to create one.</span>",
+            wordWrap=True,
+            parent=self,
+        )
+        self.empty_lbl.hide()
+
+        self.delete_btn = QPushButton("Delete", self)
+        self.delete_btn.clicked.connect(self._delete_selected)
+
+        self.switch_btn = QPushButton("Switch profile and load", self)
+        self.switch_btn.setToolTip(
+            "Activate the config this job was saved under, then load it"
+        )
+        self.switch_btn.clicked.connect(self._accept_with_switch)
+
+        self.queue_btn = QPushButton("Run Queue", self)
+        self.queue_btn.setToolTip(
+            "Upload the selected jobs one after another. Only prepared jobs on "
+            "this config can be queued, since a queue has nobody to answer a "
+            "prompt"
+        )
+        self.queue_btn.clicked.connect(self._accept_queue)
+
+        self.button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Open
+            | QDialogButtonBox.StandardButton.Cancel,
+            parent=self,
+        )
+        open_button = self.button_box.button(QDialogButtonBox.StandardButton.Open)
+        if open_button:
+            open_button.setText("Load")
+        self.button_box.accepted.connect(self._accept_selection)
+        self.button_box.rejected.connect(self.reject)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.addWidget(self.delete_btn)
+        bottom_row.addStretch(1)
+        bottom_row.addWidget(self.queue_btn)
+        bottom_row.addWidget(self.switch_btn)
+        bottom_row.addWidget(self.button_box)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.addWidget(info_lbl)
+        main_layout.addWidget(self.empty_lbl)
+        main_layout.addWidget(self.job_tree, stretch=1)
+        main_layout.addLayout(bottom_row)
+
+        self._load_listings()
+
+    def _load_listings(self) -> None:
+        self.job_tree.clear()
+        listings = list_jobs(unique_working_dirs())
+        muted = QBrush(
+            self.palette().color(
+                QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText
+            )
+        )
+
+        for listing in listings:
+            item = QTreeWidgetItem(
+                (
+                    listing.name,
+                    self._title_text(listing),
+                    listing.summary.media_type or "",
+                    ", ".join(listing.summary.trackers),
+                    listing.config_profile or "—",
+                    "Prepared" if listing.prepared else "Needs input",
+                    self._saved_text(listing.created_at),
+                )
+            )
+            item.setData(0, _LISTING_ROLE, listing)
+            if not listing.matches_profile(self.active_profile):
+                # muted rather than disabled: a disabled item cannot be
+                # selected at all, and selecting it is exactly how the user
+                # reaches the switch-and-load action
+                for column in range(self.job_tree.columnCount()):
+                    item.setForeground(column, muted)
+                item.setToolTip(
+                    0,
+                    f"Saved under config '{listing.config_profile}'. "
+                    "Use 'Switch profile and load' to open it.",
+                )
+            self.job_tree.addTopLevelItem(item)
+
+        has_jobs = bool(listings)
+        self.job_tree.setVisible(has_jobs)
+        self.empty_lbl.setVisible(not has_jobs)
+        first_item = self.job_tree.topLevelItem(0)
+        if first_item is not None:
+            self.job_tree.setCurrentItem(first_item)
+        self._update_button_state()
+
+    @staticmethod
+    def _title_text(listing: JobListing) -> str:
+        title = listing.summary.title or listing.summary.input_name or ""
+        year = listing.summary.year
+        return f"{title} ({year})" if title and year else title
+
+    @staticmethod
+    def _saved_text(created_at: str) -> str:
+        """Render the stored UTC timestamp in the user's local time."""
+        try:
+            return (
+                datetime.fromisoformat(created_at)
+                .astimezone()
+                .strftime("%Y-%m-%d %H:%M")
+            )
+        except ValueError:
+            return created_at
+
+    def _current_listing(self) -> JobListing | None:
+        # an empty tree has no current item, so emptiness needs no separate
+        # check here -- and must not be inferred from widget visibility, which
+        # is still false before the dialog is shown
+        item = self.job_tree.currentItem()
+        if item is None:
+            return None
+        listing = item.data(0, _LISTING_ROLE)
+        return listing if isinstance(listing, JobListing) else None
+
+    def _selected_listings(self) -> list[JobListing]:
+        listings: list[JobListing] = []
+        for item in self.job_tree.selectedItems():
+            listing = item.data(0, _LISTING_ROLE)
+            if isinstance(listing, JobListing):
+                listings.append(listing)
+        return listings
+
+    def queueable_listings(self) -> list[JobListing]:
+        """Selected jobs the queue is actually allowed to run.
+
+        Both conditions are load-bearing: a job from another config would upload
+        with the wrong credentials, and an unprepared one would stop at a prompt.
+        """
+        return [
+            listing
+            for listing in self._selected_listings()
+            if listing.prepared and listing.matches_profile(self.active_profile)
+        ]
+
+    @Slot()
+    def _update_button_state(self) -> None:
+        listing = self._current_listing()
+        matches = listing is not None and listing.matches_profile(self.active_profile)
+        selected = self._selected_listings()
+        queueable = self.queueable_listings()
+
+        self.delete_btn.setEnabled(len(selected) == 1)
+        self.switch_btn.setEnabled(
+            len(selected) == 1 and listing is not None and not matches
+        )
+        # every selected job has to be runnable, so a mixed selection cannot
+        # silently drop the ones it would skip
+        self.queue_btn.setEnabled(bool(queueable) and len(queueable) == len(selected))
+        open_button = self.button_box.button(QDialogButtonBox.StandardButton.Open)
+        if open_button:
+            open_button.setEnabled(matches and len(selected) == 1)
+
+    @Slot()
+    def _accept_selection(self) -> None:
+        listing = self._current_listing()
+        if listing is None or not listing.matches_profile(self.active_profile):
+            return
+        self.selected_listing = listing
+        self.switch_profile_requested = False
+        self.accept()
+
+    @Slot()
+    def _accept_queue(self) -> None:
+        queueable = self.queueable_listings()
+        if not queueable or len(queueable) != len(self._selected_listings()):
+            return
+        self.queued_listings = queueable
+        self.selected_listing = None
+        self.accept()
+
+    @Slot()
+    def _accept_with_switch(self) -> None:
+        listing = self._current_listing()
+        if listing is None or listing.matches_profile(self.active_profile):
+            return
+        self.selected_listing = listing
+        self.switch_profile_requested = True
+        self.accept()
+
+    @Slot()
+    def _delete_selected(self) -> None:
+        listing = self._current_listing()
+        if listing is None or len(self._selected_listings()) != 1:
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "Delete Job",
+                f"Delete saved job '{listing.name}'?\n\nThis cannot be undone.",
+            )
+            is not QMessageBox.StandardButton.Yes
+        ):
+            return
+        try:
+            delete_job(listing.path)
+        except JobStoreError as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to delete job: {error}")
+            QMessageBox.critical(
+                self, "Delete Failed", f"Could not delete job:\n\n{error}"
+            )
+            return
+        self._load_listings()

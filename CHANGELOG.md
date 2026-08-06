@@ -19,6 +19,43 @@
   - MTV, TL, Aither, Huno, LST, DarkPeers, ShareIsland, UploadCX, and OnlyEncodes
 - New **file token**s:
   - `{cut}`: subset of `{edition}` providing only **cut** editions
+- Saveable jobs. The process page now offers **Save Job** alongside Process, storing a
+  fully configured upload (media, metadata, screenshots, trackers and their image-host
+  choices) as JSON under `<working directory>/jobs`. **Load Job** on the start page
+  restores one and jumps straight to the process page, ready to upload. Saved jobs keep
+  their own MediaInfo so restoring never re-reads the source file, and duplicate checks
+  still run at process time rather than at save time, so results are never stale.
+  - When a run ends with trackers that were never uploaded -- a tracker that was down
+    and got skipped, or trackers left unprocessed after cancelling -- NfoForge offers to
+    save just those as a new job. Only trackers whose upload provably did not reach the
+    tracker are included, so a deferred job can never re-upload something that already
+    went out.
+  - Jobs record the config profile they were built under. Jobs belonging to other
+    configs are still listed, but greyed out and only openable via **Switch profile and
+    load**, since resuming under a different config would silently use its credentials,
+    templates and per-tracker settings. Loading also warns when the active config has a
+    job's tracker disabled or is missing an NFO template it needs.
+  - Each job is a self-contained folder holding its own screenshots, MediaInfo, NFOs,
+    and a copy of the generated torrent, so a saved job keeps working after the working
+    directory is cleaned up and deleting a job reclaims exactly what it was using.
+    Resuming reuses all of it: screenshots already uploaded are not sent to the image
+    host a second time (while the tracker's image host is unchanged), MediaInfo is
+    served from the stored OLDXML and text dumps rather than re-reading the media, and
+    the torrent is cloned instead of re-hashed when the media is byte-for-byte
+    unchanged.
+  - **Prepare && Save Job** on the process page runs everything except the upload itself
+    -- image uploads, torrent, titles and NFOs -- and saves a job that only needs
+    uploading. Running a prepared job asks nothing: prompt-token answers and any edits
+    made in the overview dialog are saved with it, and its NFOs are uploaded exactly as
+    prepared rather than regenerated. If an NFO template is edited afterwards, loading
+    the job says which one changed, since the saved NFO is what will actually be sent.
+  - A **job queue**: select several prepared jobs on the current config and upload them
+    one after another. Only prepared jobs qualify, since anything else would stop at a
+    prompt there is nobody to answer. A job is skipped and left saved for review when its
+    duplicate check finds something *or* when that check could not complete -- unverified
+    is treated the same as found, since the queue has nobody to ask what the interactive
+    flow asks. A tracker that fails is retried automatically and then passed by without
+    blocking, and no single job failing stops the ones behind it.
 - Plugins:
   - Added optional post-upload plugins. Processors run once per tracker after that
     tracker's upload and torrent-client injection finish (or fail), reporting one of
@@ -38,6 +75,12 @@
 ### Changed
 
 - Aither title format now uses `{cut}` instead of `{edition}`
+- The working directory is now organized into subfolders: generated artifacts
+  (screenshots, torrents, NFOs) go under `processing/` and saved jobs under `jobs/`.
+  Settings -> General **Clean Up** empties everything except `jobs/`, so housekeeping
+  can no longer delete saved work, and its size readout now reports only what it can
+  actually reclaim. Run folders left at the root by earlier versions are still cleaned
+  up, so no manual migration is needed.
 
 ### Fixed
 

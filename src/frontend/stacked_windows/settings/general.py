@@ -25,6 +25,7 @@ from src.backend.utils.file_utilities import (
     get_dir_size,
     open_explorer,
 )
+from src.backend.utils.working_dir import cleanable_items
 from src.config.config import ConfigManager
 from src.enums.logging_settings import LogLevel
 from src.enums.settings_window import SettingsTabs
@@ -477,12 +478,18 @@ class GeneralSettings(BaseSettings):
 
     @Slot()
     def _handle_working_dir_clean_up_click(self) -> None:
-        total_size = get_dir_size(self.config.settings.general.working_dir)
+        working_dir = self.config.settings.general.working_dir
+        removable = cleanable_items(working_dir)
+        total_size = sum(
+            get_dir_size(item) if item.is_dir() else item.stat().st_size
+            for item in removable
+        )
 
         msg = (
             "Would you like to clean up the working directory now?\n\n"
             f"Size: {file_bytes_to_str(total_size)}\n\n"
-            "WARNING: This will remove all data!"
+            "WARNING: This removes all generated data (screenshots, torrents, "
+            "and NFOs).\n\nSaved jobs are kept."
         )
 
         if (
@@ -493,7 +500,7 @@ class GeneralSettings(BaseSettings):
             )
             is QMessageBox.StandardButton.Yes
         ):
-            for item in self.config.settings.general.working_dir.iterdir():
+            for item in removable:
                 if item.is_dir():
                     shutil.rmtree(item)
                 else:

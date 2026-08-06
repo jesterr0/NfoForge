@@ -167,7 +167,11 @@ def test_cancel_hides_the_process_button() -> None:
     fired: list[bool] = []
     handler = lambda: fired.append(True)
     GSigs().wizard_process_btn_set_hidden.connect(handler)
-    stub = SimpleNamespace(_job_ended=MagicMock(), _on_text_update=MagicMock())
+    stub = SimpleNamespace(
+        _job_ended=MagicMock(),
+        _on_text_update=MagicMock(),
+        _offer_deferred_job=MagicMock(),
+    )
     try:
         ProcessPage._on_cancelled(stub)
     finally:
@@ -175,6 +179,7 @@ def test_cancel_hides_the_process_button() -> None:
 
     assert fired == [True]
     stub._job_ended.assert_called_once_with()
+    stub._offer_deferred_job.assert_called_once_with()
 
 
 def test_worker_is_released_when_the_prompt_never_runs() -> None:

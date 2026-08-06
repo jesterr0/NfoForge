@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import fields
 from pathlib import Path
+import shutil
 import traceback
 from typing import TYPE_CHECKING, Any, cast
 
@@ -13,6 +14,8 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
     QLabel,
     QMessageBox,
     QProgressBar,
@@ -21,8 +24,27 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from src.backend.job_queue import JobQueueRunner, QueuedJobOutcome, QueuedJobResult
+from src.backend.jobs import (
+    JobAssetError,
+    JobCodecError,
+    JobStoreError,
+    JobSummary,
+    MediaFingerprint,
+    build_job,
+    capture_mediainfo,
+    capture_nfos,
+    context_to_dict,
+    copy_base_torrent,
+    copy_images,
+    filter_context_document,
+    job_dir,
+    save_job,
+)
 from src.backend.process import ProcessBackEnd
+from src.backend.tracker_run_data import build_tracker_data, image_host_label
 from src.backend.upload_retry import (
+    TrackerRunOutcome,
     UploadFailure,
     UploadFailurePhase,
     UploadRetryAction,
@@ -32,7 +54,7 @@ from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
-from src.enums.upload_process import UploadProcessMode
+from src.enums.upload_process import RunPhase, UploadProcessMode
 from src.exceptions import ProcessCancelled, ProcessError
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.custom_widgets.overview_dialog import OverviewDialog
@@ -103,6 +125,53 @@ class DupeWorker(BaseWorker):
             async_loop.close()
 
 
+class QueueWorker(BaseWorker):
+    """Drives `JobQueueRunner` off the GUI thread.
+
+    Nothing here waits on a dialog: a queue only accepts prepared jobs, and the
+    runner passes no prompt or retry callbacks, so it runs to completion on its
+    own.
+    """
+
+    results = Signal(object)  # list[QueuedJobOutcome]
+    queued_status_update = Signal(str, str)
+    progress_signal = Signal(float)
+
+    def __init__(
+        self,
+        backend: ProcessBackEnd,
+        config: ConfigManager,
+        job_paths: list[Path],
+        parent: QObject | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.backend = backend
+        self.config = config
+        self.job_paths = job_paths
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Stop before the next job; the one in flight is left to finish."""
+        self._cancelled = True
+
+    def run(self) -> None:
+        try:
+            runner = JobQueueRunner(
+                backend=self.backend,
+                config=self.config,
+                text_update=self._queued_text_update_cb,
+                status_update=lambda tracker, status: self.queued_status_update.emit(
+                    tracker, status
+                ),
+                progress_cb=self.progress_signal.emit,
+                is_cancelled=lambda: self._cancelled,
+            )
+            self.results.emit(runner.run(self.job_paths))
+            self.job_finished.emit()
+        except Exception as e:
+            self.job_failed.emit(f"Job queue failed: {e}", traceback.format_exc())
+
+
 class _TokenPromptWaiter(QObject):
     """Bound-method receiver for ``prompt_tokens_response``.
 
@@ -168,6 +237,7 @@ class ProcessWorker(BaseWorker):
     prompt_tokens_signal = Signal(list)
     overview_signal = Signal(object)
     upload_retry_signal = Signal(object)
+    run_outcome_signal = Signal(object, object)  # TrackerSelection, TrackerRunOutcome
     job_cancelled = Signal()
 
     RETRY_PROMPT_ACK_TIMEOUT_MS = 5000
@@ -177,12 +247,14 @@ class ProcessWorker(BaseWorker):
         backend: ProcessBackEnd,
         tracker_data: dict[str, Any],
         context: ProcessingContext,
+        phase: RunPhase = RunPhase.FULL,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.backend = backend
         self.tracker_data = tracker_data
         self.context = context
+        self.phase = phase
 
         self._prompt_tokens_response: dict[str, str] | None = None
         self._overview_prompt: dict[TrackerSelection, dict[str, str | None]] | None = (
@@ -202,6 +274,8 @@ class ProcessWorker(BaseWorker):
                 token_prompt_cb=self.token_prompt_and_wait_cb,
                 overview_cb=self.overview_prompt_and_wait_cb,
                 upload_retry_cb=self.upload_retry_and_wait_cb,
+                run_outcome_cb=self._run_outcome_cb,
+                phase=self.phase,
             )
             self.job_finished.emit()
         except ProcessCancelled:
@@ -210,6 +284,11 @@ class ProcessWorker(BaseWorker):
             self.job_failed.emit(
                 f"Failed to process trackers: {e}", traceback.format_exc()
             )
+
+    def _run_outcome_cb(
+        self, tracker: TrackerSelection, outcome: TrackerRunOutcome
+    ) -> None:
+        self.run_outcome_signal.emit(tracker, outcome)
 
     def _queued_status_update_cb(self, tracker: str, status: str) -> None:
         if tracker and status:
@@ -316,6 +395,14 @@ class ProcessPage(BaseWizardPage):
         self.processing_mode = UploadProcessMode.DUPE_CHECK
         self.dupe_worker: DupeWorker | None = None
         self.process_worker: ProcessWorker | None = None
+        self.queue_worker: QueueWorker | None = None
+        GSigs().wizard_run_job_queue.connect(self._run_job_queue)
+
+        # Per-run only, and deliberately not on the payload: this must never
+        # reach a job file. It answers which trackers may still be uploaded
+        # once a run ends, so the remainder can be deferred into a new job.
+        self._run_outcomes: dict[TrackerSelection, TrackerRunOutcome] = {}
+        self._run_phase = RunPhase.FULL
 
         self.tracker_process_tree = ComboBoxTreeWidget(
             headers=("Tracker", "Image Host", "Status"), parent=self
@@ -342,15 +429,193 @@ class ProcessPage(BaseWizardPage):
         self.open_temp_output_btn.clicked.connect(self._open_temp_output)
         self.open_temp_output_btn.hide()
 
+        self.save_job_btn = QPushButton("Save Job", self)
+        self.save_job_btn.setToolTip(
+            "Saves this configured upload so it can be loaded and processed later"
+        )
+        self.save_job_btn.clicked.connect(self._save_job)
+
+        self.prepare_job_btn = QPushButton("Prepare && Save Job", self)
+        self.prepare_job_btn.setToolTip(
+            "Uploads images and generates the torrent, titles and NFOs now, then "
+            "saves a job that only needs uploading -- it will not ask anything "
+            "when it is run"
+        )
+        self.prepare_job_btn.clicked.connect(self._prepare_job)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch(1)
+        button_row.addWidget(self.save_job_btn)
+        button_row.addWidget(self.prepare_job_btn)
+        button_row.addWidget(self.open_temp_output_btn)
+
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.tracker_process_tree, stretch=3)
         main_layout.addWidget(text_widget_label, alignment=Qt.AlignmentFlag.AlignBottom)
         main_layout.addWidget(self.text_widget, stretch=5)
         main_layout.addWidget(self.progress_bar, stretch=1)
-        main_layout.addWidget(
-            self.open_temp_output_btn, alignment=Qt.AlignmentFlag.AlignRight
-        )
+        main_layout.addLayout(button_row)
         self.setLayout(main_layout)
+
+    @Slot()
+    def _save_job(self, keep_trackers: set[TrackerSelection] | None = None) -> None:
+        """Persist this configured run so it can be processed later.
+
+        Deliberately does not dupe check: results would be stale by the time
+        the job is actually run, so that check stays where it is, immediately
+        before uploading.
+
+        `keep_trackers` narrows the job to a subset, which is how a partially
+        completed run is deferred -- the trackers that already uploaded are
+        left out entirely rather than being marked as done, so the saved job
+        cannot re-upload them.
+        """
+        media_input = self.context.media_input
+        try:
+            # capturing MediaInfo reads every input file, so the comparison
+            # source has to be there too when one is in play
+            media_input.require_existing_media_paths(
+                include_comparison=bool(media_input.comparison_pair)
+            )
+        except (FileNotFoundError, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Media Files Unavailable",
+                f"This job cannot be saved because its input paths are no longer "
+                f"valid:\n\n{error}",
+            )
+            return
+
+        default_name = self._default_job_name()
+        name, accepted = QInputDialog.getText(
+            self, "Save Job", "Job name:", text=default_name
+        )
+        if not accepted:
+            return
+
+        working_dir = self.config.settings.general.working_dir
+        job = build_job(
+            name=name or default_name,
+            summary=self._job_summary(keep_trackers),
+            context={},
+            config_profile=self.config.program.current_config,
+        )
+        directory = job_dir(working_dir, job.job_id, ensure_exists=True)
+
+        try:
+            document = self._build_job_document(directory, keep_trackers)
+            job.context = document
+            job_path = save_job(job, working_dir)
+        except (JobCodecError, JobStoreError, JobAssetError, OSError) as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to save job: {error}")
+            # the directory only holds half-captured assets at this point and
+            # has no job.json, so remove it rather than leaving a stub behind
+            shutil.rmtree(directory, ignore_errors=True)
+            QMessageBox.critical(self, "Save Failed", f"Could not save job:\n\n{error}")
+            return
+
+        self._on_text_update(
+            f"<br /><span>💾 Saved job '{job.name}'. Load it from the start page "
+            "to process it later.</span>"
+        )
+        QMessageBox.information(
+            self,
+            "Job Saved",
+            f"Saved '{job.name}'.\n\nUse 'Load Job' on the start page to come "
+            f"back to it.\n\n{job_path}",
+        )
+
+    def _build_job_document(
+        self, directory: Path, keep_trackers: set[TrackerSelection] | None
+    ) -> dict[str, Any]:
+        """Capture the job's assets, then serialize it pointing at those copies.
+
+        Everything a resumed run needs is copied beside the job so it stops
+        depending on `processing/`, which Clean Up is meant to empty.
+        """
+        media_input = self.context.media_input
+
+        # MediaInfo is captured for every file the payload knows about, which
+        # includes the comparison source when one is in play
+        mediainfo_assets = capture_mediainfo(
+            directory, list(media_input.file_list_mediainfo)
+        )
+
+        # copied even when the images already uploaded and their URLs were
+        # recorded: changing a tracker's image host on resume invalidates those
+        # URLs and needs the local files back
+        copied_images = copy_images(
+            directory,
+            [Path(image) for image in (self.context.shared_data.loaded_images or ())],
+        )
+
+        base_torrent = self._first_generated_torrent()
+        if base_torrent:
+            copy_base_torrent(directory, base_torrent)
+
+        # a prepared job's NFOs are the ones that get uploaded, so they cannot
+        # be left in `processing/` where Clean Up would take them
+        nfo_assets = capture_nfos(
+            directory, self.context.shared_data.tracker_release_data
+        )
+
+        document = context_to_dict(self.context, mediainfo_assets, nfo_assets)
+        if copied_images:
+            document["shared_data"]["loaded_images"] = [
+                str(image) for image in copied_images
+            ]
+        if base_torrent:
+            document["base_torrent"] = {
+                "media": str(media_input.require_first_file()),
+                "fingerprint": MediaFingerprint.of(
+                    media_input.require_first_file()
+                ).to_dict(),
+            }
+        if keep_trackers is not None:
+            document = filter_context_document(document, keep_trackers)
+        return document
+
+    def _first_generated_torrent(self) -> Path | None:
+        """A torrent this run already produced, usable as a clone source.
+
+        Hashing the media is the single most expensive step, so a job that can
+        carry a finished torrent lets a later run skip it entirely.
+        """
+        working_dir = self.context.media_input.working_dir
+        input_path = self.context.media_input.input_path
+        if not working_dir or not input_path:
+            return None
+        for candidate in sorted(working_dir.glob(f"*/{input_path.stem}.torrent")):
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def _default_job_name(self) -> str:
+        """Best available human name for this release."""
+        title = self.context.media_search.title
+        if title:
+            year = self.context.media_search.year
+            return f"{title} ({year})" if year else title
+        input_path = self.context.media_input.input_path
+        return input_path.stem if input_path else "Untitled job"
+
+    def _job_summary(
+        self, keep_trackers: set[TrackerSelection] | None = None
+    ) -> JobSummary:
+        input_path = self.context.media_input.input_path
+        media_type = self.context.media_input.media_type
+        return JobSummary(
+            title=self.context.media_search.title,
+            year=self.context.media_search.year,
+            media_type=str(media_type) if media_type else None,
+            input_name=input_path.name if input_path else None,
+            file_count=len(self.context.media_input.file_list),
+            trackers=[
+                str(tracker)
+                for tracker in self.context.shared_data.tracker_image_hosts
+                if keep_trackers is None or tracker in keep_trackers
+            ],
+        )
 
     @Slot()
     def process_jobs(self) -> None:
@@ -378,6 +643,8 @@ class ProcessPage(BaseWizardPage):
 
         GSigs().wizard_set_disabled.emit(True)
         self.tracker_process_tree.setDisabled(True)
+        self.save_job_btn.setDisabled(True)
+        self.prepare_job_btn.setDisabled(True)
 
         if self.processing_mode is UploadProcessMode.DUPE_CHECK:
             self.dupe_worker = DupeWorker(
@@ -393,38 +660,110 @@ class ProcessPage(BaseWizardPage):
             )
             self.dupe_worker.start()
 
+        elif self.processing_mode is UploadProcessMode.PREPARE:
+            self._start_process_worker(tracker_data, RunPhase.PREPARE)
+
         elif self.processing_mode is UploadProcessMode.UPLOAD:
-            if self.save_config:
-                self.save_config = False
-                self._update_last_used_host()
+            self._start_process_worker(tracker_data, RunPhase.FULL)
 
-            if not self.context.media_search.media_type:
-                raise AttributeError("Failed to determine MediaType")
+    def _start_process_worker(
+        self, tracker_data: dict[str, Any], phase: RunPhase
+    ) -> None:
+        """Run the pipeline, either all the way through or stopping before upload."""
+        if self.save_config:
+            self.save_config = False
+            self._update_last_used_host()
 
-            self.process_worker = ProcessWorker(
-                backend=self.backend,
-                tracker_data=tracker_data,
-                context=self.context,
-                parent=self,
-            )
-            self.process_worker.caught_error.connect(self._log_caught_error)
-            self.process_worker.job_finished.connect(self._on_finished)
-            self.process_worker.job_cancelled.connect(self._on_cancelled)
-            self.process_worker.queued_status_update.connect(self._on_status_update)
-            self.process_worker.progress_signal.connect(self._on_progress_update)
-            self.process_worker.job_failed.connect(self._on_failed)
-            self.process_worker.queued_text_update.connect(self._on_text_update)
-            self.process_worker.queued_text_update_replace_last_line.connect(
-                self._on_text_update_replace_last_line
-            )
-            self.process_worker.prompt_tokens_signal.connect(
-                self._on_prompt_tokens_signal
-            )
-            self.process_worker.overview_signal.connect(self._on_overview_signal)
-            self.process_worker.upload_retry_signal.connect(
-                self._on_upload_retry_signal
-            )
-            self.process_worker.start()
+        if not self.context.media_search.media_type:
+            raise AttributeError("Failed to determine MediaType")
+
+        # every tracker starts unattempted; the run overwrites each as it
+        # resolves, so a run that dies early still leaves an accurate map
+        self._run_outcomes = {
+            TrackerSelection(name): TrackerRunOutcome.NOT_ATTEMPTED
+            for name in tracker_data
+        }
+        self._run_phase = phase
+
+        self.process_worker = ProcessWorker(
+            backend=self.backend,
+            tracker_data=tracker_data,
+            context=self.context,
+            phase=phase,
+            parent=self,
+        )
+        self.process_worker.caught_error.connect(self._log_caught_error)
+        self.process_worker.job_finished.connect(self._on_finished)
+        self.process_worker.job_cancelled.connect(self._on_cancelled)
+        self.process_worker.queued_status_update.connect(self._on_status_update)
+        self.process_worker.progress_signal.connect(self._on_progress_update)
+        self.process_worker.job_failed.connect(self._on_failed)
+        self.process_worker.queued_text_update.connect(self._on_text_update)
+        self.process_worker.queued_text_update_replace_last_line.connect(
+            self._on_text_update_replace_last_line
+        )
+        self.process_worker.prompt_tokens_signal.connect(self._on_prompt_tokens_signal)
+        self.process_worker.overview_signal.connect(self._on_overview_signal)
+        self.process_worker.upload_retry_signal.connect(self._on_upload_retry_signal)
+        self.process_worker.run_outcome_signal.connect(self._on_run_outcome)
+        self.process_worker.start()
+
+    @Slot(object)
+    def _run_job_queue(self, job_paths: list[Path]) -> None:
+        """Upload a set of prepared jobs one after another."""
+        if self.queue_worker or self.process_worker:
+            return
+
+        self.tracker_process_tree.clear()
+        self._on_text_update(
+            f'<h3 style="margin: 0; padding: 0;">📚 Running {len(job_paths)} '
+            "queued job(s)</h3>"
+        )
+        GSigs().wizard_set_disabled.emit(True)
+        GSigs().wizard_process_btn_set_hidden.emit()
+        self.save_job_btn.hide()
+        self.prepare_job_btn.hide()
+
+        self.queue_worker = QueueWorker(
+            backend=self.backend,
+            config=self.config,
+            job_paths=job_paths,
+            parent=self,
+        )
+        self.queue_worker.queued_text_update.connect(self._on_text_update)
+        self.queue_worker.progress_signal.connect(self._on_progress_update)
+        self.queue_worker.results.connect(self._on_queue_results)
+        self.queue_worker.job_failed.connect(self._on_failed)
+        self.queue_worker.job_finished.connect(self._on_queue_finished)
+        self.queue_worker.start()
+
+    @Slot(object)
+    def _on_queue_results(self, results: list[QueuedJobOutcome]) -> None:
+        counts: dict[QueuedJobResult, int] = {}
+        lines: list[str] = []
+        for outcome in results:
+            counts[outcome.result] = counts.get(outcome.result, 0) + 1
+            label = outcome.result.name.replace("_", " ").lower()
+            detail = f" — {outcome.detail}" if outcome.detail else ""
+            lines.append(f"<li><b>{outcome.job_name}</b>: {label}{detail}</li>")
+
+        uploaded = counts.get(QueuedJobResult.UPLOADED, 0)
+        self._on_text_update(
+            f'<br /><h3 style="margin-bottom: 0;">📚 Queue finished: '
+            f"{uploaded} of {len(results)} uploaded</h3><ul>" + "".join(lines) + "</ul>"
+        )
+
+    @Slot()
+    def _on_queue_finished(self) -> None:
+        self.queue_worker = None
+        GSigs().wizard_set_disabled.emit(False)
+        self.text_widget.ensureCursorVisible()
+
+    @Slot(object, object)
+    def _on_run_outcome(
+        self, tracker: TrackerSelection, outcome: TrackerRunOutcome
+    ) -> None:
+        self._run_outcomes[tracker] = outcome
 
     @Slot(object)
     def _on_dupe_results(
@@ -498,9 +837,35 @@ class ProcessPage(BaseWizardPage):
             self.processing_mode = UploadProcessMode.UPLOAD
 
     @Slot()
+    def _prepare_job(self) -> None:
+        """Run everything except upload, then save the result as a job."""
+        if (
+            QMessageBox.question(
+                self,
+                "Prepare Job",
+                "This uploads your screenshots and generates the torrent, titles "
+                "and NFOs now, then saves a job that only needs uploading.\n\n"
+                "It can take a while. Continue?",
+            )
+            is not QMessageBox.StandardButton.Yes
+        ):
+            return
+        self.processing_mode = UploadProcessMode.PREPARE
+        self.process_jobs()
+
+    @Slot()
     def _on_finished(self) -> None:
+        prepared = self._run_phase is RunPhase.PREPARE
         self._job_ended()
+        if prepared:
+            # nothing was uploaded, so this run ends in a save rather than in
+            # the deferred-job offer
+            self.processing_mode = UploadProcessMode.DUPE_CHECK
+            self._on_text_update("<br /><span>📦 Prepared. Saving this job...</span>")
+            self._save_job()
+            return
         GSigs().wizard_process_btn_set_hidden.emit()
+        self._offer_deferred_job()
 
     @Slot()
     def _on_cancelled(self) -> None:
@@ -513,12 +878,64 @@ class ProcessPage(BaseWizardPage):
         # Without this the process button restarts from the first tracker and
         # re-uploads the ones that already succeeded.
         GSigs().wizard_process_btn_set_hidden.emit()
+        self._offer_deferred_job()
 
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
         self._on_text_update(f"<br /><p>{scrub_secrets(e)}</p>")
         LOG.error(LOG.LOG_SOURCE.FE, scrub_secrets(trace_back))
+        self._offer_deferred_job()
+
+    def _deferrable_trackers(self) -> dict[TrackerSelection, TrackerRunOutcome]:
+        """Trackers this run left un-uploaded that can safely be retried later.
+
+        Anything that reached the tracker -- or might have -- is excluded, so a
+        deferred job can never turn into a duplicate upload.
+        """
+        return {
+            tracker: outcome
+            for tracker, outcome in self._run_outcomes.items()
+            if outcome.is_safe_to_reupload()
+        }
+
+    def _offer_deferred_job(self) -> None:
+        """Offer to save whatever this run could not upload as a new job.
+
+        This is the escape hatch for a tracker that was down: skip it during
+        the run, then keep it for later without re-running the whole wizard.
+        The job written here holds *only* the deferred trackers, so it is
+        indistinguishable from one saved before any upload was attempted and
+        needs no special handling on resume.
+        """
+        deferrable = self._deferrable_trackers()
+        if not deferrable:
+            return
+
+        described = ", ".join(
+            f"{tracker} ({self._OUTCOME_LABELS.get(outcome, 'not uploaded')})"
+            for tracker, outcome in deferrable.items()
+        )
+        if (
+            QMessageBox.question(
+                self,
+                "Save Remaining Trackers",
+                f"{len(deferrable)} tracker(s) were not uploaded:\n\n{described}\n\n"
+                "Save them as a job so they can be uploaded later?\n\n"
+                "Note: any title or NFO edits made during this run are not kept; "
+                "they are regenerated when the job is processed.",
+            )
+            is not QMessageBox.StandardButton.Yes
+        ):
+            return
+
+        self._save_job(keep_trackers=set(deferrable))
+
+    _OUTCOME_LABELS = {
+        TrackerRunOutcome.NOT_ATTEMPTED: "not attempted",
+        TrackerRunOutcome.SKIPPED: "skipped",
+        TrackerRunOutcome.UPLOAD_FAILED: "upload failed",
+    }
 
     @Slot(object)
     def _on_upload_retry_signal(self, failure: UploadFailure) -> None:
@@ -614,6 +1031,19 @@ class ProcessPage(BaseWizardPage):
         if self.process_worker:
             self.open_temp_output_btn.show()
             self.text_widget.ensureCursorVisible()
+            if self._run_phase is RunPhase.PREPARE:
+                # preparing uploads nothing, so saving is exactly what comes
+                # next -- but there is nothing left to prepare a second time
+                self.save_job_btn.setDisabled(False)
+                self.prepare_job_btn.hide()
+            else:
+                # uploads have already been attempted, so saving this as a job
+                # to run later would only invite duplicate uploads
+                self.save_job_btn.hide()
+                self.prepare_job_btn.hide()
+        else:
+            self.save_job_btn.setDisabled(False)
+            self.prepare_job_btn.setDisabled(False)
         self.process_worker = None
         GSigs().wizard_set_disabled.emit(False)
         self.tracker_process_tree.setDisabled(False)
@@ -722,35 +1152,67 @@ class ProcessPage(BaseWizardPage):
 
     def _update_last_used_host(self) -> None:
         start_data = deepcopy(self.config.settings.trackers.last_used_image_host)
-        for row in self.tracker_process_tree.get_item_values():
-            _, (_, (_, (tracker, img_dest))), _ = cast(
-                tuple[
-                    str,
-                    tuple[
-                        str,
-                        tuple[
-                            ImageUploadFromTo,
-                            tuple[TrackerSelection, ImageHost | ImageSource],
-                        ],
-                    ],
-                    str,
-                ],
-                row,
-            )
+        for (
+            tracker,
+            image_host_data,
+        ) in self.context.shared_data.tracker_image_hosts.items():
+            img_dest = image_host_data.img_to
             try:
-                self.config.settings.trackers.last_used_image_host[
-                    TrackerSelection(tracker)
-                ] = ImageHost(img_dest)
+                self.config.settings.trackers.last_used_image_host[tracker] = ImageHost(
+                    img_dest
+                )
             except ValueError:
-                self.config.settings.trackers.last_used_image_host[
-                    TrackerSelection(tracker)
-                ] = ImageSource(img_dest)
+                self.config.settings.trackers.last_used_image_host[tracker] = (
+                    ImageSource(img_dest)
+                )
         if self.config.settings.trackers.last_used_image_host != start_data:
             self.config.save()
+
+    # the label the combo boxes show has to match the one carried in the run
+    # data, so both come from the same function
+    _image_host_label = staticmethod(image_host_label)
+
+    def _sync_tracker_image_hosts(self) -> None:
+        """Mirror the combo box selections onto the shared payload.
+
+        The combo boxes are the UI for this choice, but everything downstream
+        (processing, the last-used config entry, saved jobs) reads it from the
+        payload so it is never trapped inside the widgets.
+
+        This runs on every `combo_changed` signal, including one fired by a
+        row's own combo box while it is still being populated (adding its
+        first item transitions a fresh `QComboBox` from no selection to its
+        first one, which Qt reports synchronously) -- at that instant the row
+        exists in the tree but doesn't have combo data to report yet, so its
+        column-1 value comes back as plain (empty) item text rather than the
+        combo tuple. Such a row is skipped rather than unpacked; the sync
+        `add_tracker_items()` runs once every row has finished being added
+        fills it back in.
+        """
+        selections: dict[TrackerSelection, ImageUploadFromTo] = {}
+        for row in self.tracker_process_tree.get_item_values():
+            if len(row) != 3:
+                continue
+            tracker, host_column, _status = row
+            if not isinstance(host_column, tuple) or len(host_column) != 2:
+                continue
+            _combo_text, host_data = host_column
+            if not isinstance(host_data, tuple) or len(host_data) != 2:
+                continue
+            image_host_data, _tracker_and_host = host_data
+            if not isinstance(image_host_data, ImageUploadFromTo):
+                continue
+            selections[TrackerSelection(tracker)] = image_host_data
+        self.context.shared_data.tracker_image_hosts.clear()
+        self.context.shared_data.tracker_image_hosts.update(selections)
 
     def add_tracker_items(self) -> None:
         # sort the trackers in the users desired order before displaying them
         if self.context.shared_data.selected_trackers:
+            # snapshot before any rows are built: adding rows fires
+            # `combo_changed`, which re-syncs (and would otherwise clear) the
+            # selections a loaded job restored into the payload
+            restored_hosts = dict(self.context.shared_data.tracker_image_hosts)
             upload_type = ImageSource.IMAGES
             enabled_img_hosts: dict[
                 ImageHost | ImageSource, bool | ImagePayloadBase | list[ImageUploadData]
@@ -802,10 +1264,7 @@ class ProcessPage(BaseWizardPage):
                             1,
                             [
                                 (
-                                    f"{upload_type} ➔ {img_host}"
-                                    if img_host
-                                    not in {ImageHost.DISABLED, ImageSource.URLS}
-                                    else str(img_host),
+                                    self._image_host_label(upload_type, img_host),
                                     (
                                         ImageUploadFromTo(upload_type, img_host),
                                         (tracker, img_host),
@@ -816,15 +1275,32 @@ class ProcessPage(BaseWizardPage):
                         )
                     ],
                 )
+                if not combo_box:
+                    continue
+
+                # a restored job knows exactly which destination was chosen, so
+                # match it directly; otherwise fall back to the remembered
+                # preference, which only has the destination to go on
+                restored_host = restored_hosts.get(tracker)
+                if restored_host:
+                    restored_idx = combo_box.findText(
+                        self._image_host_label(upload_type, restored_host.img_to)
+                    )
+                    if restored_idx != -1:
+                        combo_box.setCurrentIndex(restored_idx)
+                        continue
+
                 last_used_host = self.config.settings.trackers.last_used_image_host.get(
                     tracker
                 )
-                if combo_box and last_used_host:
+                if last_used_host:
                     get_last = combo_box.findText(
                         str(last_used_host), flags=Qt.MatchFlag.MatchContains
                     )
                     if get_last != -1:
                         combo_box.setCurrentIndex(get_last)
+
+            self._sync_tracker_image_hosts()
 
     def _plugin_image_host_available(self) -> bool:
         """Whether a loaded plugin currently provides image host uploads.
@@ -844,58 +1320,27 @@ class ProcessPage(BaseWizardPage):
     @Slot(QComboBox, int)
     def _tree_combo_changed(self, _combo: QComboBox, _idx: int) -> None:
         self.save_config = True
+        self._sync_tracker_image_hosts()
 
     def _gather_tracker_data(self, detected_input: Path) -> dict[str, Any] | None:
         process_dir = self.context.media_input.working_dir
         if not process_dir:
             raise ValueError("Failed to detect MediaInputPayload.working_dir")
 
-        # build data
-        tracker_data: dict[str, dict[str, Path | str | ImageUploadFromTo]] = {}
-        for row in self.tracker_process_tree.get_item_values():
-            tracker, (combo_text, (image_host_data, _)), _ = cast(
-                tuple[
-                    str,
-                    tuple[
-                        str,
-                        tuple[
-                            ImageUploadFromTo,
-                            tuple[TrackerSelection, ImageHost | ImageSource],
-                        ],
-                    ],
-                    str,
-                ],
-                row,
-            )
-            process_dir_out = process_dir / tracker.lower()
-            process_dir_out.mkdir(parents=True, exist_ok=True)
-            torrent_out = Path(process_dir_out / f"{detected_input.stem}.torrent")
+        tracker_data = build_tracker_data(
+            working_dir=process_dir,
+            input_path=detected_input,
+            tracker_image_hosts=self.context.shared_data.tracker_image_hosts,
+        )
 
-            if self.processing_mode == UploadProcessMode.UPLOAD:
-                if torrent_out.exists():
-                    if (
-                        QMessageBox.question(
-                            self,
-                            "Overwrite?",
-                            f"\n\nTracker: {tracker}\n\nFile: {torrent_out}\n\nFile already "
-                            "exists, would you like to overwrite?",
-                        )
-                        is QMessageBox.StandardButton.No
-                    ):
-                        new_torrent_out, _ = QFileDialog.getSaveFileName(
-                            parent=self,
-                            caption="Select Save Output",
-                            filter="*.torrent",
-                            dir=str(process_dir_out) if process_dir_out else "",
-                        )
-                        if not new_torrent_out:
-                            return None
-                        torrent_out = Path(new_torrent_out)
-            tracker_data[tracker] = {
-                "path": torrent_out,
-                "image_host": combo_text,
-                "image_host_data": image_host_data,
-            }
+        # the prompt is the one part that needs a user, so it stays here rather
+        # than in the shared builder the queue also calls
+        if self.processing_mode is UploadProcessMode.UPLOAD:
+            for tracker, entry in tracker_data.items():
+                chosen = self._confirm_torrent_output(tracker, entry["path"])
+                if chosen is None:
+                    return None
+                entry["path"] = chosen
 
         if not tracker_data:
             tracker_paths_error_msg = "Failed to generate tracker data"
@@ -903,6 +1348,32 @@ class ProcessPage(BaseWizardPage):
             raise ProcessError(tracker_paths_error_msg)
 
         return tracker_data
+
+    def _confirm_torrent_output(self, tracker: str, torrent_out: Path) -> Path | None:
+        """Settle where a tracker's torrent goes when one is already there.
+
+        Returns the path to use, or None when the user backed out entirely.
+        """
+        if not torrent_out.exists():
+            return torrent_out
+        if (
+            QMessageBox.question(
+                self,
+                "Overwrite?",
+                f"\n\nTracker: {tracker}\n\nFile: {torrent_out}\n\nFile already "
+                "exists, would you like to overwrite?",
+            )
+            is not QMessageBox.StandardButton.No
+        ):
+            return torrent_out
+
+        new_torrent_out, _ = QFileDialog.getSaveFileName(
+            parent=self,
+            caption="Select Save Output",
+            filter="*.torrent",
+            dir=str(torrent_out.parent),
+        )
+        return Path(new_torrent_out) if new_torrent_out else None
 
     def get_theme_colors(self) -> str:
         app = cast(QApplication | None, QApplication.instance())
