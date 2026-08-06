@@ -96,7 +96,7 @@ def _save(
     context.media_input.input_path = media
     context.media_input.working_dir = media.parent / "work"
     context.media_input.file_list.append(media)
-    context.media_input.file_list_mediainfo[media] = MediaInfo.parse(
+    context.media_input.file_list_mediainfo[media] = MediaInfo.parse(  # type: ignore[reportArgumentType]
         media, legacy_stream_display=True
     )
     context.shared_data.selected_trackers = [TrackerSelection.AITHER]
