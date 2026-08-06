@@ -217,3 +217,56 @@ def test_migration_chain_guard_catches_a_bump_without_a_migration(
 
     with pytest.raises(RuntimeError, match="migrations are incomplete"):
         check_migration_chain()
+
+
+def test_write_job_document_rewrites_an_existing_job(working_dir: Path) -> None:
+    job = store.build_job("original", JobSummary(), {"shared_data": {}})
+    directory = store.save_job(job, working_dir)
+
+    job.name = "renamed"
+    returned = store.write_job_document(job, directory)
+
+    assert returned == directory
+    assert store.load_job(directory).name == "renamed"
+
+
+def test_write_job_document_reports_unserializable_content(working_dir: Path) -> None:
+    job = store.build_job("bad", JobSummary(), {"oops": object()})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+
+    with pytest.raises(store.JobStoreError, match="cannot be saved"):
+        store.write_job_document(job, directory)
+
+
+def test_prune_unreferenced_nfos_keeps_only_what_the_context_points_at(
+    working_dir: Path,
+) -> None:
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    nfo_dir = directory / store.JOB_NFO_DIR_NAME
+    nfo_dir.mkdir(parents=True)
+    (nfo_dir / "aither.txt").write_text("kept", encoding="utf-8")
+    (nfo_dir / "huno.txt").write_text("dropped", encoding="utf-8")
+
+    store.prune_unreferenced_nfos(
+        directory,
+        {
+            "shared_data": {
+                "tracker_release_data": {
+                    "AITHER": {"title": "t", "nfo_asset": "nfo/aither.txt"}
+                }
+            }
+        },
+    )
+
+    assert {path.name for path in nfo_dir.iterdir()} == {"aither.txt"}
+
+
+def test_prune_unreferenced_nfos_is_a_no_op_without_an_nfo_dir(
+    working_dir: Path,
+) -> None:
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+
+    # must not raise
+    store.prune_unreferenced_nfos(directory, {"shared_data": {}})

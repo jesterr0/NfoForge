@@ -38,7 +38,9 @@ from src.backend.jobs.store import (
     jobs_dir,
     list_jobs,
     load_job,
+    prune_unreferenced_nfos,
     save_job,
+    write_job_document,
 )
 
 __all__ = [
@@ -66,7 +68,9 @@ __all__ = [
     "list_jobs",
     "load_job",
     "mediainfo_xml",
+    "prune_unreferenced_nfos",
     "read_job_asset",
     "save_job",
     "template_fingerprint",
+    "write_job_document",
 ]

@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
+from typing import Any
 
 import shortuuid
 
@@ -64,7 +65,9 @@ __all__ = [
     "jobs_dir",
     "list_jobs",
     "load_job",
+    "prune_unreferenced_nfos",
     "save_job",
+    "write_job_document",
 ]
 
 
@@ -124,6 +127,31 @@ def build_job(
     )
 
 
+def write_job_document(job: SavedJob, directory: Path) -> Path:
+    """Write `job.json` into an existing job directory and return that directory.
+
+    `save_job` derives the directory from a working directory plus a job id.
+    This takes the directory itself, which is what a caller holding only a
+    job's path has -- the queue rewriting a job it just ran, or the picker
+    renaming one.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        payload = json.dumps(job.to_dict(), indent=2)
+    except (TypeError, ValueError) as error:
+        # a plugin or metadata provider can put anything in the free-form
+        # fields; failing here rather than escaping as a raw TypeError is what
+        # lets the caller clean up the half-written directory
+        raise JobStoreError(
+            f"Job '{job.name}' contains data that cannot be saved: {error}"
+        ) from error
+    try:
+        atomic_write_text(directory / JOB_DOCUMENT_NAME, payload)
+    except OSError as error:
+        raise JobStoreError(f"Could not write job to '{directory}': {error}") from error
+    return directory
+
+
 def save_job(job: SavedJob, working_dir: Path) -> Path:
     """Write a job's document into its directory and return that directory.
 
@@ -131,15 +159,37 @@ def save_job(job: SavedJob, working_dir: Path) -> Path:
     been placed in the directory by the caller: this writes `job.json` last so
     the job only becomes visible once it is complete.
     """
-    directory = job_dir(working_dir, job.job_id, ensure_exists=True)
-    try:
-        atomic_write_text(
-            directory / JOB_DOCUMENT_NAME, json.dumps(job.to_dict(), indent=2)
-        )
-    except OSError as error:
-        raise JobStoreError(f"Could not write job to '{directory}': {error}") from error
+    directory = write_job_document(job, job_dir(working_dir, job.job_id))
     LOG.info(LOG.LOG_SOURCE.BE, f"Saved job '{job.name}' to {directory}")
     return directory
+
+
+def prune_unreferenced_nfos(directory: Path, context: dict[str, Any]) -> None:
+    """Delete NFO sidecars a job's context no longer points at.
+
+    Narrowing a job to fewer trackers leaves the dropped trackers' NFOs behind.
+    They are dead weight, and worse, they read as evidence the job still covers
+    those trackers.
+    """
+    nfo_dir = directory / JOB_NFO_DIR_NAME
+    if not nfo_dir.is_dir():
+        return
+
+    referenced: set[str] = set()
+    shared = context.get("shared_data")
+    if isinstance(shared, dict):
+        release_data = shared.get("tracker_release_data")
+        if isinstance(release_data, dict):
+            for entry in release_data.values():
+                if not isinstance(entry, dict):
+                    continue
+                name = entry.get("nfo_asset")
+                if isinstance(name, str) and name:
+                    referenced.add(Path(name).name)
+
+    for candidate in nfo_dir.iterdir():
+        if candidate.is_file() and candidate.name not in referenced:
+            candidate.unlink(missing_ok=True)
 
 
 def _read_document(path: Path) -> dict:
