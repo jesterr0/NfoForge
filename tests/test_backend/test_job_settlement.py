@@ -10,13 +10,14 @@ from typing import Any
 
 import pytest
 
+from src.backend import job_queue as job_queue_module
 from src.backend.job_queue import (
     JobDisposition,
     JobQueueRunner,
     QueuedJobOutcome,
     QueuedJobResult,
 )
-from src.backend.jobs import store
+from src.backend.jobs import JobStoreError, store
 from src.backend.jobs.models import JobSummary
 from src.backend.upload_retry import TrackerRunOutcome
 from src.enums.tracker_selection import TrackerSelection
@@ -52,8 +53,18 @@ def _job(working_dir: Path) -> tuple[Any, Path]:
     return job, directory
 
 
-def _runner() -> JobQueueRunner:
-    return JobQueueRunner(backend=SimpleNamespace(), config=SimpleNamespace())
+def _runner(messages: list[str] | None = None) -> JobQueueRunner:
+    """A runner whose queue-log lines land in `messages`, when given one.
+
+    Nothing in the original ten tests cares what gets logged, only what
+    happens to the job's files -- which is exactly how a message emitted by
+    `_settle` could vanish without a single test failing.
+    """
+    return JobQueueRunner(
+        backend=SimpleNamespace(),
+        config=SimpleNamespace(),
+        text_update=messages.append if messages is not None else None,
+    )
 
 
 def test_a_job_whose_trackers_all_uploaded_is_deleted(working_dir: Path) -> None:
@@ -292,3 +303,158 @@ def test_a_job_that_never_reached_upload_is_untouched(working_dir: Path) -> None
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
+
+
+# --------------------------------------------------------------------------
+# what actually reaches the queue log -- the regression this file exists to
+# catch is a message that silently stops being emitted
+# --------------------------------------------------------------------------
+def test_every_tracker_unconfirmed_is_named_in_the_log(working_dir: Path) -> None:
+    """The one outcome nobody can retry or write off must say so, or the
+    fully-unconfirmed run leaves no trace for a human to act on."""
+    job, directory = _job(working_dir)
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.FAILED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.MAY_HAVE_UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.MAY_HAVE_UPLOADED,
+        },
+    )
+    messages: list[str] = []
+
+    _runner(messages)._settle(job, outcome)
+
+    assert outcome.disposition is JobDisposition.KEPT
+    assert directory.exists()
+    logged = " ".join(messages)
+    assert "Aither" in logged
+    assert "HUNO" in logged
+
+
+def test_every_tracker_disabled_emits_nothing(working_dir: Path) -> None:
+    """Uploads switched off in config is the user's own choice, not a warning."""
+    job, directory = _job(working_dir)
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOAD_DISABLED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOAD_DISABLED,
+        },
+    )
+    messages: list[str] = []
+
+    _runner(messages)._settle(job, outcome)
+
+    assert outcome.disposition is JobDisposition.KEPT
+    assert directory.exists()
+    assert messages == []
+
+
+def test_every_tracker_not_attempted_emits_nothing(working_dir: Path) -> None:
+    """A run that never got as far as a tracker has nothing to report yet."""
+    job, directory = _job(working_dir)
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.FAILED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.NOT_ATTEMPTED,
+            TrackerSelection.HUNO: TrackerRunOutcome.NOT_ATTEMPTED,
+        },
+    )
+    messages: list[str] = []
+
+    _runner(messages)._settle(job, outcome)
+
+    assert outcome.disposition is JobDisposition.KEPT
+    assert directory.exists()
+    assert messages == []
+
+
+def test_a_narrowed_job_logs_both_the_kept_line_and_the_unconfirmed_warning(
+    working_dir: Path,
+) -> None:
+    """Narrowing and the unconfirmed warning answer different questions, so a
+    job that hits both must say both, not just the one that fired first."""
+    job, directory = _job(working_dir)
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.MAY_HAVE_UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOADED,
+        },
+    )
+    messages: list[str] = []
+
+    _runner(messages)._settle(job, outcome)
+
+    assert outcome.disposition is JobDisposition.NARROWED
+    assert any("Kept" in message for message in messages)
+    assert any("Check" in message and "Aither" in message for message in messages)
+
+
+def test_a_failed_delete_is_reported_not_just_logged(
+    working_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A delete that fails leaves a fully-uploaded job on disk -- exactly the
+    state that re-uploads everywhere next run, so it cannot be silent."""
+    job, directory = _job(working_dir)
+
+    def _boom(_directory: Path) -> None:
+        raise JobStoreError("disk is read-only")
+
+    monkeypatch.setattr(job_queue_module, "delete_job", _boom)
+    messages: list[str] = []
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOADED,
+        },
+    )
+
+    _runner(messages)._settle(job, outcome)
+
+    assert outcome.disposition is JobDisposition.KEPT
+    assert directory.exists()
+    assert any("could not be removed" in message for message in messages)
+
+
+def test_a_failed_narrow_is_reported_not_just_logged(
+    working_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A narrow that fails to write leaves the uploaded trackers still listed
+    -- exactly the state that re-uploads them next run -- so it too must
+    reach the queue log, not just the application log."""
+    job, directory = _job(working_dir)
+
+    def _boom(*_args: Any, **_kwargs: Any) -> Path:
+        raise JobStoreError("disk is read-only")
+
+    monkeypatch.setattr(job_queue_module, "write_job_document", _boom)
+    messages: list[str] = []
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOAD_FAILED,
+        },
+    )
+
+    _runner(messages)._settle(job, outcome)
+
+    assert outcome.disposition is JobDisposition.KEPT
+    assert any(
+        "already uploaded and will send to them again" in message
+        for message in messages
+    )

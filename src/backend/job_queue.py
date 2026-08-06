@@ -433,7 +433,9 @@ class JobQueueRunner:
             in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
         }
         if not landed:
-            # nothing reached a tracker, so the job is still exactly itself
+            # Nothing reached a tracker, so the job is still exactly itself.
+            # It still needs saying when one of them cannot be accounted for.
+            self._warn_unconfirmed(job, outcome)
             return
 
         retained = set(outcome.outcomes) - landed
@@ -491,18 +493,31 @@ class JobQueueRunner:
             f"{escape(remaining)}; the trackers that uploaded were removed from "
             "it</span>"
         )
+        self._warn_unconfirmed(job, outcome)
 
+    def _warn_unconfirmed(self, job: SavedJob, outcome: QueuedJobOutcome) -> None:
+        """Name any tracker whose upload could not be established either way.
+
+        The queue can neither retry these nor write them off, so they are the
+        one outcome that needs a person. Said whether the job was narrowed or
+        left alone, because the question is the same either way.
+
+        Deliberately silent about a tracker whose uploads are switched off in
+        config: nothing was sent, but the user is the one who arranged that, so
+        reporting it as something to look into would be noise.
+        """
         unconfirmed = sorted(
             str(tracker)
             for tracker, tracker_outcome in outcome.outcomes.items()
             if tracker_outcome is TrackerRunOutcome.MAY_HAVE_UPLOADED
         )
-        if unconfirmed:
-            self._text_update(
-                f"<br /><span>⚠️ Check {escape(', '.join(unconfirmed))} on the "
-                "tracker before running this job again -- the upload could not "
-                "be confirmed either way</span>"
-            )
+        if not unconfirmed:
+            return
+        self._text_update(
+            f"<br /><span>⚠️ Check {escape(', '.join(unconfirmed))} on the "
+            f"tracker before running <b>{escape(job.name)}</b> again -- the "
+            "upload could not be confirmed either way</span>"
+        )
 
 
 class _LoggingSignal:
