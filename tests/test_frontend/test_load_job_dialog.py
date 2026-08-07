@@ -464,7 +464,12 @@ def test_the_details_pane_describes_the_selected_job(
     text = dialog.details_lbl.text()
     assert "Example" in text
     assert "Aither" in text
-    assert "CHEVERETO_V3" in text
+    # Both halves of the tracker row are stored as enum member names and both
+    # must be resolved for display -- checking only the tracker leaves the
+    # destination free to render as the raw "CHEVERETO_V3" beside a
+    # humanised "Aither".
+    assert "Chevereto v3" in text
+    assert "CHEVERETO_V3" not in text
     assert "2 screenshot" in text
     assert str(directory) in text
     # none of the decoy job's own data belongs here

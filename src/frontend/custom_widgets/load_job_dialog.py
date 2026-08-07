@@ -1,7 +1,9 @@
 """Picker for saved jobs."""
 
 from datetime import datetime
+from enum import Enum
 from html import escape
+from typing import Any
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QBrush, QPalette
@@ -31,11 +33,21 @@ from src.backend.utils.file_utilities import (
     open_explorer,
 )
 from src.config.profiles import unique_working_dirs
+from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.logger.nfo_forge_logger import LOG
 
 _LISTING_ROLE = Qt.ItemDataRole.UserRole
+
+# `img_to` is stored as an enum member name, and the same name can belong to
+# either ImageHost or ImageSource -- see `_image_host_display_name`, and
+# `_image_upload_from_to_to_dict` in `src/backend/jobs/codec.py`, which is why
+# `img_to_type` is carried alongside it in the first place.
+_IMAGE_DESTINATION_ENUMS: dict[str, type[Enum]] = {
+    "ImageHost": ImageHost,
+    "ImageSource": ImageSource,
+}
 
 
 class LoadJobDialog(QDialog):
@@ -334,6 +346,30 @@ class LoadJobDialog(QDialog):
             return str(raw_name)
 
     @staticmethod
+    def _image_host_display_name(entry: dict[str, Any]) -> str:
+        """Resolve a stored image destination back to what the user picked.
+
+        The same problem `_tracker_display_name` solves, one field over. The
+        codec writes `img_to` as an enum *member name* (`CHEVERETO_V3`) and
+        carries `img_to_type` alongside it precisely because that name alone
+        cannot say whether it belongs to `ImageHost` or `ImageSource`. Render
+        the raw name and the pane shows "Aither -> CHEVERETO_V3": a humanised
+        tracker arrowing at an internal identifier, in a table whose whole job
+        is to be readable.
+
+        Falls back to the raw string, so a destination retired since the job
+        was saved still shows something.
+        """
+        raw = str(entry.get("img_to", "?"))
+        destination = _IMAGE_DESTINATION_ENUMS.get(str(entry.get("img_to_type")))
+        if destination is None:
+            return raw
+        try:
+            return str(destination[raw])
+        except KeyError:
+            return raw
+
+    @staticmethod
     def _saved_text(created_at: str) -> str:
         """Render the stored UTC timestamp in the user's local time."""
         try:
@@ -457,7 +493,7 @@ class LoadJobDialog(QDialog):
             rows.append(("Title", escape(title_text)))
         summary = listing.summary
         if summary.media_type:
-            rows.append(("Type", summary.media_type))
+            rows.append(("Type", escape(summary.media_type)))
         if summary.file_count:
             rows.append(("Files", str(summary.file_count)))
         if summary.input_path:
@@ -483,7 +519,7 @@ class LoadJobDialog(QDialog):
                             "Trackers",
                             "<br />".join(
                                 f"{escape(self._tracker_display_name(name))} &rarr; "
-                                f"{escape(str(entry.get('img_to', '?')))}"
+                                f"{escape(self._image_host_display_name(entry))}"
                                 for name, entry in hosts.items()
                                 if isinstance(entry, dict)
                             ),
