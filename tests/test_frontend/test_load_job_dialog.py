@@ -882,6 +882,43 @@ def test_renaming_rewrites_only_the_name(
     assert dialog.job_tree.topLevelItem(0).text(0) == "new name"
 
 
+def test_a_failed_rename_reports_the_job_by_name(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delete's failure path names each job it could not remove -- see
+    `test_one_failed_delete_does_not_strand_the_rest`. Rename's used to say
+    only that "job" failed, leaving a user with several jobs open no way to
+    tell which one broke.
+    """
+    _save(working_dir, "old name")
+    dialog = _open_dialog(qapp)
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("new name", True)),
+    )
+
+    def flaky_write(*_a: Any, **_k: Any) -> None:
+        raise load_job_dialog_module.JobStoreError("disk said no")
+
+    monkeypatch.setattr(load_job_dialog_module, "write_job_document", flaky_write)
+    reported: list[str] = []
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "critical",
+        lambda _parent, _title, text, *_a, **_k: reported.append(text),
+    )
+
+    dialog._rename_selected()
+
+    assert reported and "old name" in reported[0]
+
+
 def test_a_rename_refreshes_the_cached_details_pane_text(
     qapp: Any,
     working_dir: Path,

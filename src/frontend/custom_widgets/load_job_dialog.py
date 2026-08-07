@@ -962,7 +962,9 @@ class LoadJobDialog(QDialog):
         except JobStoreError as error:
             LOG.error(LOG.LOG_SOURCE.FE, f"Failed to rename job: {error}")
             QMessageBox.critical(
-                self, "Rename Failed", f"Could not rename job:\n\n{error}"
+                self,
+                "Rename Failed",
+                f"Could not rename '{listing.name}':\n\n{error}",
             )
             return
 
