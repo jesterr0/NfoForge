@@ -100,8 +100,17 @@ def test_columns_are_sized_for_what_they_hold(
     header = dialog.job_tree.header()
 
     assert header.sectionResizeMode(0) is QHeaderView.ResizeMode.Stretch
+    assert header.sectionResizeMode(1) is QHeaderView.ResizeMode.Stretch
     assert header.sectionResizeMode(2) is QHeaderView.ResizeMode.ResizeToContents
     assert header.sectionResizeMode(3) is QHeaderView.ResizeMode.Interactive
+    assert header.sectionResizeMode(4) is QHeaderView.ResizeMode.ResizeToContents
+    assert header.sectionResizeMode(5) is QHeaderView.ResizeMode.ResizeToContents
+    assert header.sectionResizeMode(6) is QHeaderView.ResizeMode.ResizeToContents
+    # Trackers (column 3) is the one column seeded with an explicit starting
+    # width rather than left to size itself. The dialog is never shown or
+    # resized in this test, so nothing here would move it off the seeded
+    # value.
+    assert header.sectionSize(3) == 180
     assert dialog.job_tree.textElideMode() is Qt.TextElideMode.ElideRight
 
 
