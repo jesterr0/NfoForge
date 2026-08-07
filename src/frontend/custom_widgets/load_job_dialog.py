@@ -120,6 +120,7 @@ class LoadJobDialog(QDialog):
         self.status_lbl.setTextFormat(Qt.TextFormat.PlainText)
 
         self.delete_btn = QPushButton("Delete", self)
+        self.delete_btn.setShortcut(Qt.Key.Key_Delete)
         self.delete_btn.clicked.connect(self._delete_selected)
 
         self.switch_btn = QPushButton("Switch profile and load", self)
@@ -356,7 +357,7 @@ class LoadJobDialog(QDialog):
         selected = self._selected_listings()
         queueable = self.queueable_listings()
 
-        self.delete_btn.setEnabled(len(selected) == 1)
+        self.delete_btn.setEnabled(bool(selected))
         self.switch_btn.setEnabled(
             len(selected) == 1 and listing is not None and not matches
         )
@@ -413,24 +414,35 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _delete_selected(self) -> None:
-        listing = self._current_listing()
-        if listing is None or len(self._selected_listings()) != 1:
+        listings = self._selected_listings()
+        if not listings:
             return
+
+        names = "\n".join(f"  {listing.name}" for listing in listings)
         if (
             QMessageBox.question(
                 self,
-                "Delete Job",
-                f"Delete saved job '{listing.name}'?\n\nThis cannot be undone.",
+                "Delete Job" if len(listings) == 1 else "Delete Jobs",
+                f"Delete {len(listings)} saved job(s)?\n\n{names}\n\n"
+                "This also removes their screenshots, MediaInfo and torrents. "
+                "It cannot be undone.",
             )
             is not QMessageBox.StandardButton.Yes
         ):
             return
-        try:
-            delete_job(listing.path)
-        except JobStoreError as error:
-            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to delete job: {error}")
+
+        failures: list[str] = []
+        for listing in listings:
+            try:
+                delete_job(listing.path)
+            except JobStoreError as error:
+                LOG.error(LOG.LOG_SOURCE.FE, f"Failed to delete job: {error}")
+                failures.append(f"{listing.name}: {error}")
+
+        if failures:
             QMessageBox.critical(
-                self, "Delete Failed", f"Could not delete job:\n\n{error}"
+                self,
+                "Delete Failed",
+                "Some jobs could not be deleted:\n\n" + "\n".join(failures),
             )
-            return
         self._load_listings()

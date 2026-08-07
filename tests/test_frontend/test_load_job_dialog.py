@@ -294,3 +294,89 @@ def test_the_state_icon_is_chosen_by_the_job_s_own_state(
     assert not ready_icon.isNull()
     assert not draft_icon.isNull()
     assert ready_icon.cacheKey() != draft_icon.cacheKey()
+
+
+def test_delete_removes_every_selected_job(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _save(working_dir, "one")
+    _save(working_dir, "two")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "question",
+        lambda *_a, **_k: load_job_dialog_module.QMessageBox.StandardButton.Yes,
+    )
+
+    dialog._delete_selected()
+
+    assert dialog.job_tree.topLevelItemCount() == 0
+    assert list((working_dir / "jobs").iterdir()) == []
+
+
+def test_delete_only_removes_the_selected_job(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dangerous failure mode here is deleting more than was selected.
+
+    Asserting the selected job's directory is gone would also pass a delete
+    that wipes every saved job on disk -- what actually catches an
+    over-broad delete is checking that the job which was *not* selected is
+    still there.
+    """
+    kept_dir = _save(working_dir, "keep")
+    _save(working_dir, "remove")
+    dialog = LoadJobDialog("default")
+    item = dialog.job_tree.findItems("remove", Qt.MatchFlag.MatchExactly, 0)[0]
+    item.setSelected(True)
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "question",
+        lambda *_a, **_k: load_job_dialog_module.QMessageBox.StandardButton.Yes,
+    )
+
+    dialog._delete_selected()
+
+    assert kept_dir.exists()
+    assert [
+        dialog.job_tree.topLevelItem(index).text(0)
+        for index in range(dialog.job_tree.topLevelItemCount())
+    ] == ["keep"]
+
+
+def test_the_delete_confirmation_names_what_it_will_remove(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _save(working_dir, "alpha")
+    _save(working_dir, "beta")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+    asked: list[str] = []
+
+    def capture(_parent: Any, _title: str, text: str, *_a: Any, **_k: Any) -> Any:
+        asked.append(text)
+        return load_job_dialog_module.QMessageBox.StandardButton.No
+
+    monkeypatch.setattr(load_job_dialog_module.QMessageBox, "question", capture)
+
+    dialog._delete_selected()
+
+    assert "alpha" in asked[0] and "beta" in asked[0]
+
+
+def test_the_delete_key_is_wired_to_delete(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    dialog = LoadJobDialog("default")
+
+    assert dialog.delete_btn.shortcut() == Qt.Key.Key_Delete
