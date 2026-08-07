@@ -14,7 +14,10 @@ from src.backend.jobs.assets import (
     capture_mediainfo,
     copy_base_torrent,
     copy_images,
+    fingerprint_files,
+    fingerprints_match,
     read_job_asset,
+    torrent_content_files,
 )
 from src.backend.utils.media_info_utils import (
     MinimalMediaInfo,
@@ -210,3 +213,77 @@ def test_fingerprint_round_trips(sample_media: Path) -> None:
     assert MediaFingerprint.from_dict(fingerprint.to_dict()) == fingerprint
     assert MediaFingerprint.from_dict({"size": "nope"}) is None
     assert MediaFingerprint.from_dict(None) is None
+
+
+def test_torrent_content_files_walks_a_directory(tmp_path: Path) -> None:
+    pack = tmp_path / "Pack.S01"
+    (pack / "sub").mkdir(parents=True)
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "sub" / "e02.mkv").write_bytes(b"b")
+
+    assert torrent_content_files(pack) == [
+        pack / "e01.mkv",
+        pack / "sub" / "e02.mkv",
+    ]
+
+
+def test_torrent_content_files_of_a_single_file_is_that_file(tmp_path: Path) -> None:
+    media = tmp_path / "movie.mkv"
+    media.write_bytes(b"a")
+
+    assert torrent_content_files(media) == [media]
+
+
+def test_fingerprints_match_an_unchanged_pack(tmp_path: Path) -> None:
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+
+    stored = fingerprint_files(torrent_content_files(pack))
+
+    assert fingerprints_match(stored, pack) is True
+
+
+def test_a_changed_second_file_invalidates_the_pack(tmp_path: Path) -> None:
+    """The whole point: episode 1 alone cannot vouch for the torrent."""
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+    stored = fingerprint_files(torrent_content_files(pack))
+
+    (pack / "e02.mkv").write_bytes(b"changed")
+
+    assert fingerprints_match(stored, pack) is False
+
+
+def test_an_added_file_invalidates_the_pack(tmp_path: Path) -> None:
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    stored = fingerprint_files(torrent_content_files(pack))
+
+    (pack / "e02.mkv").write_bytes(b"b")
+
+    assert fingerprints_match(stored, pack) is False
+
+
+def test_a_removed_file_invalidates_the_pack(tmp_path: Path) -> None:
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"b")
+    stored = fingerprint_files(torrent_content_files(pack))
+
+    (pack / "e02.mkv").unlink()
+
+    assert fingerprints_match(stored, pack) is False
+
+
+def test_an_empty_record_never_matches(tmp_path: Path) -> None:
+    media = tmp_path / "movie.mkv"
+    media.write_bytes(b"a")
+
+    assert fingerprints_match({}, media) is False
+    assert fingerprints_match(None, media) is False

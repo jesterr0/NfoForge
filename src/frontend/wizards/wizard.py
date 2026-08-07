@@ -13,6 +13,7 @@ from src.backend.jobs import (
     SavedJob,
     base_torrent_path,
     context_from_dict,
+    fingerprints_match,
     load_job,
     read_job_asset,
     template_fingerprint,
@@ -347,13 +348,27 @@ class MainWindowWizard(QWizard):
             return
 
         details = job.context.get("base_torrent")
-        fingerprint = (
-            MediaFingerprint.from_dict(details.get("fingerprint"))
-            if isinstance(details, dict)
-            else None
-        )
-        media = context.media_input.get_first_file()
-        if fingerprint is None or media is None or not fingerprint.matches(media):
+        input_path = context.media_input.input_path
+        if not isinstance(details, dict) or input_path is None:
+            return
+
+        recorded = details.get("fingerprints")
+        if isinstance(recorded, dict) and recorded:
+            unchanged = fingerprints_match(recorded, input_path)
+        else:
+            # Jobs saved before the whole-release fingerprint recorded only the
+            # first file. Honour that for a single-file release, where it is the
+            # same thing; for a directory it proves nothing, so re-hash.
+            legacy = MediaFingerprint.from_dict(details.get("fingerprint"))
+            media = context.media_input.get_first_file()
+            unchanged = (
+                not input_path.is_dir()
+                and legacy is not None
+                and media is not None
+                and legacy.matches(media)
+            )
+
+        if not unchanged:
             LOG.info(
                 LOG.LOG_SOURCE.FE,
                 f"Not reusing the torrent saved with job '{job.name}': its media "

@@ -23,6 +23,7 @@ Qt-free, so it stays unit testable.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path
@@ -258,3 +259,45 @@ def base_torrent_path(directory: Path) -> Path | None:
     """The stored base torrent, if this job has one."""
     candidate = directory / JOB_BASE_TORRENT_NAME
     return candidate if candidate.is_file() else None
+
+
+def torrent_content_files(input_path: Path) -> list[Path]:
+    """Every file the generated torrent covers, in a stable order.
+
+    Walks the input rather than reading `MediaInputPayload.file_list`: the
+    torrent is built from `input_path`, so for a pack it also covers subtitles
+    and other extras that the media file list leaves out.
+    """
+    if input_path.is_dir():
+        return sorted(path for path in input_path.rglob("*") if path.is_file())
+    return [input_path] if input_path.is_file() else []
+
+
+def fingerprint_files(paths: Iterable[Path]) -> dict[str, dict[str, int]]:
+    """Size and mtime for each path, keyed by its string form."""
+    captured: dict[str, dict[str, int]] = {}
+    for path in paths:
+        try:
+            captured[str(path)] = MediaFingerprint.of(path).to_dict()
+        except OSError as error:
+            raise JobAssetError(f"Could not fingerprint '{path}': {error}") from error
+    return captured
+
+
+def fingerprints_match(stored: Any, input_path: Path) -> bool:
+    """Whether every file the torrent covers is unchanged since it was recorded.
+
+    The recorded set has to match exactly. A file added to or removed from a
+    pack changes the torrent just as surely as an edited one does, and a clone
+    made from a stale base uploads a torrent that does not describe its own
+    content.
+    """
+    if not isinstance(stored, dict) or not stored:
+        return False
+    if {str(path) for path in torrent_content_files(input_path)} != set(stored):
+        return False
+    for raw_path, raw_fingerprint in stored.items():
+        fingerprint = MediaFingerprint.from_dict(raw_fingerprint)
+        if fingerprint is None or not fingerprint.matches(Path(raw_path)):
+            return False
+    return True

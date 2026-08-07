@@ -29,7 +29,6 @@ from src.backend.jobs import (
     JobCodecError,
     JobStoreError,
     JobSummary,
-    MediaFingerprint,
     build_job,
     capture_mediainfo,
     capture_nfos,
@@ -37,8 +36,10 @@ from src.backend.jobs import (
     copy_base_torrent,
     copy_images,
     filter_context_document,
+    fingerprint_files,
     job_dir,
     save_job,
+    torrent_content_files,
 )
 from src.backend.process import ProcessBackEnd
 from src.backend.tracker_run_data import build_tracker_data, image_host_label
@@ -521,11 +522,12 @@ class ProcessPage(BaseWizardPage):
                 str(image) for image in copied_images
             ]
         if base_torrent:
+            input_path = media_input.require_input_path()
             document["base_torrent"] = {
-                "media": str(media_input.require_first_file()),
-                "fingerprint": MediaFingerprint.of(
-                    media_input.require_first_file()
-                ).to_dict(),
+                "media": str(input_path),
+                # every file, not just the first: the torrent is built from
+                # `input_path`, so one file of a pack cannot vouch for the rest
+                "fingerprints": fingerprint_files(torrent_content_files(input_path)),
             }
         if keep_trackers is not None:
             document = filter_context_document(document, keep_trackers)

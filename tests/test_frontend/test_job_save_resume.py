@@ -864,6 +864,39 @@ def test_a_fully_served_job_asks_nothing(qapp: Any, sample_media: Path) -> None:
     )
 
 
+def test_a_pack_with_a_changed_episode_falls_back_to_hashing(
+    qapp: Any, tmp_path: Path
+) -> None:
+    from src.backend.jobs import fingerprint_files, torrent_content_files
+
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    (job_dir_path / "base.torrent").write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = pack
+    context.media_input.file_list.append(pack / "e01.mkv")
+
+    job = SimpleNamespace(
+        name="pack",
+        context={
+            "base_torrent": {
+                "media": str(pack),
+                "fingerprints": fingerprint_files(torrent_content_files(pack)),
+            }
+        },
+    )
+
+    (pack / "e02.mkv").write_bytes(b"different")
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent is None
+
+
 # --------------------------------------------------------------------------
 # starting over clears the MediaInfo cache
 # --------------------------------------------------------------------------
