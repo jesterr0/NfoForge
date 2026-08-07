@@ -224,12 +224,16 @@ def test_a_row_hidden_while_selected_does_not_come_back_selected(
 def test_a_mixed_selection_explains_why_the_queue_is_unavailable(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
+    """`queue_btn` now reflects the queue list, not the selection -- it would
+    be disabled here regardless, since nothing has been added yet. What a
+    mixed selection actually still gates is whether it can be *added*.
+    """
     _save(working_dir, "ready", prepared=True)
     _save(working_dir, "not-ready", prepared=False)
     dialog = LoadJobDialog("default")
     dialog.job_tree.selectAll()
 
-    assert not dialog.queue_btn.isEnabled()
+    assert not dialog.add_to_queue_btn.isEnabled()
     assert "not prepared" in dialog.status_lbl.text()
 
 
@@ -806,3 +810,187 @@ def test_one_failed_delete_does_not_strand_the_rest(
     assert fails_dir.exists()
     assert not succeeds_dir.exists()
     assert reported and "unlucky" in reported[0]
+
+
+# --------------------------------------------------------------------------
+# the queue: an explicit, ordered list beside the tree
+# --------------------------------------------------------------------------
+def test_only_a_runnable_job_can_be_added_to_the_queue(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "ready", prepared=True)
+    _save(working_dir, "not-ready", prepared=False)
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+
+    assert not dialog.add_to_queue_btn.isEnabled()
+
+
+def test_only_prepared_jobs_on_this_config_can_be_added_to_the_queue(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """A queue has nobody to answer a prompt, and no business using another
+    config's credentials -- even calling `_add_to_queue` directly against a
+    mixed selection (the button itself would be disabled first) must not let
+    either kind in.
+    """
+    _save(working_dir, "ready", prepared=True, profile="config")
+    _save(working_dir, "raw", prepared=False, profile="config")
+    _save(working_dir, "other-config", prepared=True, profile="anime")
+    dialog = LoadJobDialog("config")
+    dialog.only_this_config.setChecked(False)
+    dialog.job_tree.selectAll()
+
+    dialog._add_to_queue()
+
+    assert [listing.name for listing in dialog.queueable_listings()] == ["ready"]
+
+
+def test_adding_jobs_builds_a_queue_in_click_order(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Queue order must come from when each job was added, not from the
+    tree's row order -- otherwise this would pass even if `_add_to_queue`
+    silently re-sorted the queue to match the tree on every call.
+
+    Newest-first sorting puts "second" at row 0 and "first" at row 1. Adding
+    "first" (row 1) before "second" (row 0) makes the click order the exact
+    reverse of the tree's display order, so only a queue that actually
+    tracks add order -- not display order -- produces this sequence.
+    """
+    _save(working_dir, "first", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "second", created_at="2026-06-01T00:00:00+00:00")
+    dialog = LoadJobDialog("default")
+    # `_load_listings` leaves row 0 selected as the initial current item;
+    # clear it so only the row picked below is selected on the first add.
+    dialog.job_tree.clearSelection()
+
+    dialog.job_tree.topLevelItem(1).setSelected(True)
+    dialog._add_to_queue()
+    dialog.job_tree.clearSelection()
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    dialog._add_to_queue()
+
+    assert [listing.name for listing in dialog.queueable_listings()] == [
+        "first",
+        "second",
+    ]
+
+
+def test_a_job_cannot_be_queued_twice(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "once")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+
+    dialog._add_to_queue()
+    dialog._add_to_queue()
+
+    assert dialog.queue_list.count() == 1
+
+
+def test_a_queued_job_can_be_moved_up(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Asserts the resulting sequence, not merely that the current row moved.
+
+    "a" and "b" are queued in tree row order ("b" first, since newest-first
+    sorting puts it at row 0), giving a starting queue of ["b", "a"]. Moving
+    "a" up must produce ["a", "b"] -- which matches neither that add order
+    nor the tree's display order, so it cannot pass by coincidence.
+    """
+    _save(working_dir, "a", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "b", created_at="2026-06-01T00:00:00+00:00")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    dialog._add_to_queue()
+    dialog.job_tree.clearSelection()
+    dialog.job_tree.topLevelItem(1).setSelected(True)
+    dialog._add_to_queue()
+    dialog.queue_list.setCurrentRow(1)
+
+    dialog._move_queued(-1)
+
+    assert dialog.queue_list.currentRow() == 0
+    assert [listing.name for listing in dialog.queueable_listings()] == ["a", "b"]
+
+
+def test_removing_from_the_queue_leaves_the_job_saved(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    directory = _save(working_dir, "keep")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    dialog._add_to_queue()
+    dialog.queue_list.setCurrentRow(0)
+
+    dialog._remove_queued()
+
+    assert dialog.queue_list.count() == 0
+    assert directory.exists()
+
+
+def test_run_queue_needs_a_queue(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "ready")
+    dialog = LoadJobDialog("default")
+
+    assert not dialog.queue_btn.isEnabled()
+
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    dialog._add_to_queue()
+
+    assert dialog.queue_btn.isEnabled()
+
+
+def test_adding_prepared_jobs_enables_the_queue_and_accept_queue_reports_them(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "ready-one", prepared=True, profile="config")
+    _save(working_dir, "ready-two", prepared=True, profile="config")
+    dialog = LoadJobDialog("config")
+    dialog.job_tree.selectAll()
+
+    dialog._add_to_queue()
+
+    assert dialog.queue_btn.isEnabled()
+
+    dialog._accept_queue()
+
+    assert {listing.name for listing in dialog.queued_listings} == {
+        "ready-one",
+        "ready-two",
+    }
+    assert dialog.selected_listing is None
+
+
+def test_deleting_a_queued_job_takes_it_out_of_the_queue(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Asserts the queue shrank AND that an unrelated queued job survived --
+    otherwise this would still pass a `_drop_from_queue` that emptied the
+    whole queue on any delete, rather than only the deleted job's entry.
+    """
+    _save(working_dir, "doomed", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "survivor", created_at="2026-06-01T00:00:00+00:00")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+    dialog._add_to_queue()
+    doomed_item = dialog.job_tree.findItems("doomed", Qt.MatchFlag.MatchExactly, 0)[0]
+    dialog.job_tree.clearSelection()
+    doomed_item.setSelected(True)
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "question",
+        lambda *_a, **_k: load_job_dialog_module.QMessageBox.StandardButton.Yes,
+    )
+
+    dialog._delete_selected()
+
+    assert dialog.queue_list.count() == 1
+    assert [listing.name for listing in dialog.queueable_listings()] == ["survivor"]

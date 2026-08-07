@@ -3,6 +3,7 @@
 from datetime import datetime
 from enum import Enum
 from html import escape
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, Slot
@@ -17,6 +18,8 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -167,11 +170,43 @@ class LoadJobDialog(QDialog):
         details_layout.addWidget(details_scroll, stretch=1)
         details_layout.addWidget(self.open_folder_btn)
 
+        self.queue_list = QListWidget(self)
+        self.queue_list.setToolTip(
+            "Jobs run top to bottom. Only prepared jobs on this config can be "
+            "queued, since a queue has nobody to answer a prompt"
+        )
+        self.queue_list.currentRowChanged.connect(self._update_button_state)
+
+        self.add_to_queue_btn = QPushButton("Add to queue", self)
+        self.add_to_queue_btn.clicked.connect(self._add_to_queue)
+        self.queue_up_btn = QPushButton("Up", self)
+        self.queue_up_btn.clicked.connect(lambda: self._move_queued(-1))
+        self.queue_down_btn = QPushButton("Down", self)
+        self.queue_down_btn.clicked.connect(lambda: self._move_queued(1))
+        self.queue_remove_btn = QPushButton("Remove", self)
+        self.queue_remove_btn.setToolTip("Take it out of the queue; the job is kept")
+        self.queue_remove_btn.clicked.connect(self._remove_queued)
+
+        queue_buttons = QHBoxLayout()
+        queue_buttons.addWidget(self.queue_up_btn)
+        queue_buttons.addWidget(self.queue_down_btn)
+        queue_buttons.addWidget(self.queue_remove_btn)
+
+        queue_panel = QWidget(self)
+        queue_layout = QVBoxLayout(queue_panel)
+        queue_layout.setContentsMargins(8, 0, 8, 0)
+        queue_layout.addWidget(QLabel("<b>Queue</b>", parent=queue_panel))
+        queue_layout.addWidget(self.add_to_queue_btn)
+        queue_layout.addWidget(self.queue_list, stretch=1)
+        queue_layout.addLayout(queue_buttons)
+
         self.splitter = CustomSplitter(Qt.Orientation.Horizontal, self)
         self.splitter.addWidget(self.job_tree)
         self.splitter.addWidget(details_panel)
+        self.splitter.insertWidget(1, queue_panel)
         self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 2)
+        self.splitter.setStretchFactor(2, 2)
 
         self.status_lbl = QLabel("", wordWrap=True, parent=self)
         self.status_lbl.setTextFormat(Qt.TextFormat.PlainText)
@@ -191,11 +226,7 @@ class LoadJobDialog(QDialog):
         self.switch_btn.clicked.connect(self._accept_with_switch)
 
         self.queue_btn = QPushButton("Run Queue", self)
-        self.queue_btn.setToolTip(
-            "Upload the selected jobs one after another. Only prepared jobs on "
-            "this config can be queued, since a queue has nobody to answer a "
-            "prompt"
-        )
+        self.queue_btn.setToolTip("Upload the queued jobs one after another, in order")
         self.queue_btn.clicked.connect(self._accept_queue)
 
         self.button_box = QDialogButtonBox(
@@ -415,22 +446,77 @@ class LoadJobDialog(QDialog):
         return listings
 
     def queueable_listings(self) -> list[JobListing]:
-        """Selected jobs the queue is actually allowed to run.
+        """The queue, in the order the user put it in.
 
-        Both conditions are load-bearing: a job from another config would upload
-        with the wrong credentials, and an unprepared one would stop at a prompt.
+        Membership was already gated when each job was added: a job from another
+        config would upload with the wrong credentials, and an unprepared one
+        would stop at a prompt.
         """
-        return [
-            listing
-            for listing in self._selected_listings()
-            if listing.prepared and listing.matches_profile(self.active_profile)
-        ]
+        listings: list[JobListing] = []
+        for row in range(self.queue_list.count()):
+            listing = self.queue_list.item(row).data(_LISTING_ROLE)
+            if isinstance(listing, JobListing):
+                listings.append(listing)
+        return listings
+
+    def _can_queue(self, listing: JobListing) -> bool:
+        return listing.prepared and listing.matches_profile(self.active_profile)
+
+    def _queued_paths(self) -> list[Path]:
+        return [listing.path for listing in self.queueable_listings()]
+
+    def _renumber_queue(self) -> None:
+        for row in range(self.queue_list.count()):
+            item = self.queue_list.item(row)
+            listing = item.data(_LISTING_ROLE)
+            if isinstance(listing, JobListing):
+                item.setText(f"{row + 1}. {listing.name}")
+
+    @Slot()
+    def _add_to_queue(self) -> None:
+        queued = {listing.path for listing in self.queueable_listings()}
+        for listing in self._selected_listings():
+            if not self._can_queue(listing) or listing.path in queued:
+                continue
+            item = QListWidgetItem(listing.name)
+            item.setData(_LISTING_ROLE, listing)
+            self.queue_list.addItem(item)
+            queued.add(listing.path)
+        self._renumber_queue()
+        self._update_button_state()
+
+    def _move_queued(self, offset: int) -> None:
+        row = self.queue_list.currentRow()
+        target = row + offset
+        if row < 0 or not 0 <= target < self.queue_list.count():
+            return
+        self.queue_list.insertItem(target, self.queue_list.takeItem(row))
+        self.queue_list.setCurrentRow(target)
+        self._renumber_queue()
+        self._update_button_state()
+
+    @Slot()
+    def _remove_queued(self) -> None:
+        row = self.queue_list.currentRow()
+        if row < 0:
+            return
+        self.queue_list.takeItem(row)
+        self._renumber_queue()
+        self._update_button_state()
+
+    def _drop_from_queue(self, paths: set[Path]) -> None:
+        """Take deleted jobs out of the queue, so it cannot point at nothing."""
+        for row in reversed(range(self.queue_list.count())):
+            listing = self.queue_list.item(row).data(_LISTING_ROLE)
+            if isinstance(listing, JobListing) and listing.path in paths:
+                self.queue_list.takeItem(row)
+        self._renumber_queue()
 
     def _selection_hint(self) -> str:
         """One line saying what the current selection can and cannot do."""
         selected = self._selected_listings()
         if not selected:
-            return "Select a job to load, or several prepared ones to queue."
+            return "Select a job to load, or several prepared ones to add to the queue."
 
         listing = self._current_listing()
         if len(selected) == 1 and listing is not None:
@@ -443,9 +529,9 @@ class LoadJobDialog(QDialog):
             if not listing.prepared:
                 return (
                     f"'{listing.name}' still needs input, so it can be loaded "
-                    "but not queued."
+                    "but not added to the queue."
                 )
-            return f"'{listing.name}' is ready to load or queue."
+            return f"'{listing.name}' is ready to load or add to the queue."
 
         unprepared = sum(1 for entry in selected if not entry.prepared)
         other_config = sum(
@@ -458,27 +544,34 @@ class LoadJobDialog(QDialog):
             reasons.append(f"{other_config} on another config")
         if reasons:
             return (
-                f"{len(selected)} selected; cannot queue because "
+                f"{len(selected)} selected; cannot add to the queue because "
                 + " and ".join(reasons)
                 + ". A queue has nobody to answer a prompt."
             )
-        return f"{len(selected)} prepared job(s) selected; ready to queue."
+        return f"{len(selected)} prepared job(s) selected; ready to add to the queue."
 
     @Slot()
     def _update_button_state(self) -> None:
         listing = self._current_listing()
         matches = listing is not None and listing.matches_profile(self.active_profile)
         selected = self._selected_listings()
-        queueable = self.queueable_listings()
 
         self.delete_btn.setEnabled(bool(selected))
         self.rename_btn.setEnabled(len(selected) == 1)
         self.switch_btn.setEnabled(
             len(selected) == 1 and listing is not None and not matches
         )
-        # every selected job has to be runnable, so a mixed selection cannot
+        # every selected job has to be addable, so a mixed selection cannot
         # silently drop the ones it would skip
-        self.queue_btn.setEnabled(bool(queueable) and len(queueable) == len(selected))
+        addable = [listing for listing in selected if self._can_queue(listing)]
+        self.add_to_queue_btn.setEnabled(
+            bool(addable) and len(addable) == len(selected)
+        )
+        self.queue_btn.setEnabled(self.queue_list.count() > 0)
+        row = self.queue_list.currentRow()
+        self.queue_up_btn.setEnabled(row > 0)
+        self.queue_down_btn.setEnabled(0 <= row < self.queue_list.count() - 1)
+        self.queue_remove_btn.setEnabled(row >= 0)
         open_button = self.button_box.button(QDialogButtonBox.StandardButton.Open)
         if open_button:
             open_button.setEnabled(matches and len(selected) == 1)
@@ -600,10 +693,10 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _accept_queue(self) -> None:
-        queueable = self.queueable_listings()
-        if not queueable or len(queueable) != len(self._selected_listings()):
+        queued = self.queueable_listings()
+        if not queued:
             return
-        self.queued_listings = queueable
+        self.queued_listings = queued
         self.selected_listing = None
         self.accept()
 
@@ -621,6 +714,7 @@ class LoadJobDialog(QDialog):
         listings = self._selected_listings()
         if not listings:
             return
+        paths = {listing.path for listing in listings}
 
         # Spelled out rather than "job(s)": this is the one irreversible action
         # in the dialog, and the list of what goes with it has to match what a
@@ -665,6 +759,7 @@ class LoadJobDialog(QDialog):
                 "Delete Failed",
                 "Some jobs could not be deleted:\n\n" + "\n".join(failures),
             )
+        self._drop_from_queue(paths)
         self._load_listings()
 
     @Slot()

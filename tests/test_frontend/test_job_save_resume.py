@@ -558,47 +558,6 @@ def _save_listing(
     )
 
 
-def test_only_prepared_jobs_on_this_config_can_be_queued(
-    qapp: Any, working_dir: Path, patched_working_dirs: None
-) -> None:
-    """A queue has nobody to answer a prompt, and no business using another
-    config's credentials."""
-    _save_listing(working_dir, "ready", prepared=True)
-    _save_listing(working_dir, "raw", prepared=False)
-    _save_listing(working_dir, "other-config", prepared=True, profile="anime")
-
-    dialog = LoadJobDialog("config")
-    try:
-        dialog.job_tree.selectAll()
-        queueable = [listing.name for listing in dialog.queueable_listings()]
-        assert queueable == ["ready"]
-        # a mixed selection must not silently drop what it cannot run
-        assert not dialog.queue_btn.isEnabled()
-    finally:
-        dialog.deleteLater()
-
-
-def test_selecting_only_prepared_jobs_enables_the_queue(
-    qapp: Any, working_dir: Path, patched_working_dirs: None
-) -> None:
-    _save_listing(working_dir, "ready-one", prepared=True)
-    _save_listing(working_dir, "ready-two", prepared=True)
-
-    dialog = LoadJobDialog("config")
-    try:
-        dialog.job_tree.selectAll()
-        assert dialog.queue_btn.isEnabled()
-
-        dialog._accept_queue()
-        assert {listing.name for listing in dialog.queued_listings} == {
-            "ready-one",
-            "ready-two",
-        }
-        assert dialog.selected_listing is None
-    finally:
-        dialog.deleteLater()
-
-
 def test_the_picker_shows_whether_a_job_is_prepared(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
