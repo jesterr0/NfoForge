@@ -1142,6 +1142,10 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
     box = captured_boxes[0]
     assert box.textFormat() == Qt.TextFormat.PlainText
     assert "<b>bold</b> job" in box.text()
+    # The rest of the confirmation wording, pinned so a rename silently
+    # reverting "Jobs" (as already happened once on this branch) is caught
+    # here rather than only in the wizard button's tooltip.
+    assert "Use 'Jobs' on the start page to come back to it." in box.text()
     # A regression that stopped displaying the box entirely -- e.g. building
     # `saved_box` and never calling `.exec()` -- would leave every assertion
     # above green. This is what catches that.

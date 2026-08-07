@@ -99,6 +99,39 @@ def test_open_load_job_dialog_frees_the_dialog_when_the_user_cancels(
     assert _FakeLoadJobDialog.instances[0].delete_later_called is True
 
 
+def test_the_jobs_button_tooltip_explains_what_it_opens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The "Jobs" button repurposes the wizard's unused HelpButton slot (see
+    the comment above it in production), so nothing about its label says
+    what it does -- the tooltip is the only explanation the user gets. Pinned
+    so a rename silently reverting the wording, as already happened once on
+    this branch, is caught here.
+
+    Page construction and processing-context setup are heavy and unrelated
+    to the button itself, so they are stubbed to let a real
+    `MainWindowWizard` come up far enough to build its buttons.
+    """
+    monkeypatch.setattr(
+        wizard_module,
+        "create_processing_context",
+        lambda *_a, **_k: SimpleNamespace(),
+    )
+    monkeypatch.setattr(MainWindowWizard, "_generate_new_pages", lambda self: [])
+    monkeypatch.setattr(MainWindowWizard, "_insert_plugin_page", lambda self: None)
+    monkeypatch.setattr(MainWindowWizard, "_build_wizard_pages", lambda self: None)
+    monkeypatch.setattr(MainWindowWizard, "_set_start_page", lambda self: None)
+    config = SimpleNamespace(
+        settings=SimpleNamespace(), plugin_manager=SimpleNamespace()
+    )
+
+    wizard = MainWindowWizard(config, None)  # pyright: ignore[reportArgumentType]
+
+    assert wizard.load_job_button.toolTip() == (
+        "Browse saved jobs: load one to process it, or queue several"
+    )
+
+
 def test_open_load_job_dialog_frees_the_dialog_after_accepting_a_queue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
