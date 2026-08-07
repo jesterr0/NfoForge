@@ -175,6 +175,11 @@ class LoadJobDialog(QDialog):
                 QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText
             )
         )
+        # Built here from the live palette rather than registered with
+        # QTAThemeSwap: that helper only takes QToolButton / QPushButton /
+        # qta.IconWidget, and a QTreeWidgetItem is none of those. The cost is
+        # that a colour-scheme change mid-dialog leaves these until the next
+        # populate -- which every load and delete triggers anyway.
         icon_color = self.palette().color(QPalette.ColorRole.WindowText).name()
         prepared_icon = qta.icon("mdi6.package-variant-closed", color=icon_color)
         needs_input_icon = qta.icon("mdi6.pencil-outline", color=icon_color)

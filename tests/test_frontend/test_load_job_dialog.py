@@ -268,3 +268,29 @@ def test_state_column_carries_an_icon(
     dialog = LoadJobDialog("default")
 
     assert not dialog.job_tree.topLevelItem(0).icon(5).isNull()
+
+
+def test_the_state_icon_is_chosen_by_the_job_s_own_state(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """A non-null icon on one row proves only that *an* icon was set.
+
+    Setting the same icon on every row unconditionally would satisfy that, so
+    what pins the conditional is the two states resolving to different icons.
+    `QIcon.cacheKey()` is equal for references to one icon and differs between
+    distinct ones, which is exactly the distinction needed here.
+    """
+    _save(working_dir, "ready", prepared=True)
+    _save(working_dir, "draft", prepared=False)
+    dialog = LoadJobDialog("default")
+
+    rows = {
+        dialog.job_tree.topLevelItem(index).text(0): dialog.job_tree.topLevelItem(index)
+        for index in range(dialog.job_tree.topLevelItemCount())
+    }
+    ready_icon = rows["ready"].icon(5)
+    draft_icon = rows["draft"].icon(5)
+
+    assert not ready_icon.isNull()
+    assert not draft_icon.isNull()
+    assert ready_icon.cacheKey() != draft_icon.cacheKey()
