@@ -5,12 +5,14 @@ from datetime import datetime
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QBrush, QPalette
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTreeWidget,
@@ -60,6 +62,23 @@ class LoadJobDialog(QDialog):
             wordWrap=True,
             parent=self,
         )
+
+        self.filter_edit = QLineEdit(self)
+        self.filter_edit.setPlaceholderText("Filter by name, title or tracker...")
+        self.filter_edit.setClearButtonEnabled(True)
+        self.filter_edit.textChanged.connect(self._apply_filter)
+
+        self.only_this_config = QCheckBox("Only this config", self)
+        self.only_this_config.setChecked(True)
+        self.only_this_config.setToolTip(
+            "Jobs saved under another config can still be opened, but only via "
+            "'Switch profile and load'"
+        )
+        self.only_this_config.toggled.connect(self._apply_filter)
+
+        filter_row = QHBoxLayout()
+        filter_row.addWidget(self.filter_edit, stretch=1)
+        filter_row.addWidget(self.only_this_config)
 
         self.job_tree = QTreeWidget(self)
         self.job_tree.setFrameShape(QFrame.Shape.Box)
@@ -133,6 +152,7 @@ class LoadJobDialog(QDialog):
 
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.info_lbl)
+        main_layout.addLayout(filter_row)
         main_layout.addWidget(self.empty_lbl)
         main_layout.addWidget(self.job_tree, stretch=1)
         main_layout.addLayout(bottom_row)
@@ -190,6 +210,41 @@ class LoadJobDialog(QDialog):
         first_item = self.job_tree.topLevelItem(0)
         if first_item is not None:
             self.job_tree.setCurrentItem(first_item)
+        self._apply_filter()
+
+    @Slot()
+    def _apply_filter(self) -> None:
+        """Hide rows that do not match the filter, and deselect what it hides.
+
+        A hidden row that stayed selected would still be picked up by Load,
+        Delete and the queue, which is exactly the kind of action-at-a-distance
+        a filter is supposed to remove.
+        """
+        needle = self.filter_edit.text().strip().casefold()
+        only_mine = self.only_this_config.isChecked()
+
+        for index in range(self.job_tree.topLevelItemCount()):
+            item = self.job_tree.topLevelItem(index)
+            if item is None:
+                continue
+            listing = item.data(0, _LISTING_ROLE)
+            if not isinstance(listing, JobListing):
+                continue
+            haystack = " ".join(
+                (
+                    listing.name,
+                    listing.summary.title or "",
+                    listing.summary.input_name or "",
+                    " ".join(listing.summary.trackers),
+                )
+            ).casefold()
+            hidden = bool(needle) and needle not in haystack
+            if only_mine and not listing.matches_profile(self.active_profile):
+                hidden = True
+            item.setHidden(hidden)
+            if hidden:
+                item.setSelected(False)
+
         self._update_button_state()
 
     @staticmethod
@@ -223,6 +278,8 @@ class LoadJobDialog(QDialog):
     def _selected_listings(self) -> list[JobListing]:
         listings: list[JobListing] = []
         for item in self.job_tree.selectedItems():
+            if item.isHidden():
+                continue
             listing = item.data(0, _LISTING_ROLE)
             if isinstance(listing, JobListing):
                 listings.append(listing)

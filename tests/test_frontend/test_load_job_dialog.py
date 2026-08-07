@@ -132,3 +132,60 @@ def test_the_info_label_does_not_repeat_the_window_title(
 
     assert dialog.windowTitle() == "Saved Jobs"
     assert "<h3" not in dialog.info_lbl.text()
+
+
+def test_filtering_matches_name_title_and_tracker(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "alpha", title="Alpha Movie", trackers=["Aither"])
+    _save(working_dir, "beta", title="Beta Movie", trackers=["Huno"])
+    dialog = LoadJobDialog("default")
+
+    dialog.filter_edit.setText("huno")
+
+    visible = [
+        dialog.job_tree.topLevelItem(i).text(0)
+        for i in range(dialog.job_tree.topLevelItemCount())
+        if not dialog.job_tree.topLevelItem(i).isHidden()
+    ]
+    assert visible == ["beta"]
+
+
+def test_only_this_config_hides_other_profiles_by_default(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "mine", profile="default")
+    _save(working_dir, "theirs", profile="anime")
+    dialog = LoadJobDialog("default")
+
+    assert dialog.only_this_config.isChecked()
+    hidden = {
+        dialog.job_tree.topLevelItem(i).text(0)
+        for i in range(dialog.job_tree.topLevelItemCount())
+        if dialog.job_tree.topLevelItem(i).isHidden()
+    }
+    assert hidden == {"theirs"}
+
+
+def test_unchecking_only_this_config_reveals_other_profiles(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "theirs", profile="anime")
+    dialog = LoadJobDialog("default")
+
+    dialog.only_this_config.setChecked(False)
+
+    assert not dialog.job_tree.topLevelItem(0).isHidden()
+
+
+def test_hiding_a_row_also_deselects_it(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """A hidden row left selected would silently take part in Load or Delete."""
+    _save(working_dir, "alpha")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+
+    dialog.filter_edit.setText("nothing matches this")
+
+    assert dialog._selected_listings() == []
