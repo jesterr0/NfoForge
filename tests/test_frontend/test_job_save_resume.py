@@ -28,6 +28,7 @@ from src.backend.jobs import (
 )
 from src.backend.jobs.models import JobSummary
 from src.backend.upload_retry import TrackerRunOutcome
+from src.backend.utils.media_info_utils import clear_full_mi_str_cache
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
@@ -42,6 +43,15 @@ from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.wizard import MainWindowWizard
 from src.packages.custom_types import ImageUploadFromTo
 from src.payloads.image_hosts import ImagePayloadBase
+
+
+@pytest.fixture(autouse=True)
+def _clear_mi_cache() -> None:
+    # a test that seeds this module-global cache and then fails its own
+    # assertion would otherwise leave the entry behind for the rest of the
+    # session, so clearing it up front rather than trusting the code under
+    # test to do so is what keeps tests independent
+    clear_full_mi_str_cache()
 
 
 @pytest.fixture
