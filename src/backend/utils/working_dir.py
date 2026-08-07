@@ -61,3 +61,22 @@ def cleanable_items(working_dir: Path) -> list[Path]:
     if not working_dir.is_dir():
         return []
     return [item for item in working_dir.iterdir() if item.name != JOBS_DIR_NAME]
+
+
+def cleanable_size(working_dir: Path) -> int:
+    """Bytes clean up could reclaim.
+
+    Files can vanish between being listed and being measured -- another run
+    writing into the same tree, the OS clearing a temp file -- and a status bar
+    readout is never worth an exception.
+    """
+    total = 0
+    for item in cleanable_items(working_dir):
+        candidates = item.rglob("*") if item.is_dir() else iter((item,))
+        for candidate in candidates:
+            try:
+                if candidate.is_file():
+                    total += candidate.stat().st_size
+            except OSError:
+                continue
+    return total
