@@ -559,6 +559,107 @@ def test_the_details_pane_clears_once_a_selection_is_lost(
     assert not dialog.open_folder_btn.isEnabled()
 
 
+def test_refreshing_details_for_the_same_listing_does_not_re_read_the_document(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_describe` parses the job document and walks its folder -- the same
+    read this branch already moved off-thread for `list_jobs`, so repeating it
+    on every keystroke or on an unrelated selection change would undo that.
+
+    `queue_list.currentRowChanged` feeds the same `_update_button_state` ->
+    `_refresh_details` chain the tree's own selection does, so moving the
+    queue selection alone -- with the tree's current item unchanged -- has to
+    be a no-op here too, not just a direct repeated call.
+    """
+    _save(working_dir, "job")
+    dialog = _open_dialog(qapp)
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    dialog._add_to_queue()
+    assert dialog.details_lbl.text() != ""
+
+    calls: list[Path] = []
+    real_load_job = load_job_dialog_module.load_job
+
+    def counting_load_job(path: Path) -> Any:
+        calls.append(path)
+        return real_load_job(path)
+
+    monkeypatch.setattr(load_job_dialog_module, "load_job", counting_load_job)
+
+    dialog._refresh_details()
+    dialog.queue_list.setCurrentRow(0)
+
+    assert calls == []
+
+
+def test_repeated_refresh_details_calls_skip_describe_entirely(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_describe`'s own memoisation would hide a missing skip here -- a
+    second call would still avoid re-reading the document by hitting the
+    cache. What the early return in `_refresh_details` buys beyond that is
+    not calling `_describe` (and re-stat'ing `is_dir()`) at all when the
+    listing to show has not changed, so this spies on `_describe` itself
+    rather than on what it reads.
+    """
+    _save(working_dir, "job")
+    dialog = _open_dialog(qapp)
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    assert dialog.details_lbl.text() != ""
+
+    calls: list[Any] = []
+    real_describe = dialog._describe
+
+    def counting_describe(listing: Any) -> str:
+        calls.append(listing)
+        return real_describe(listing)
+
+    monkeypatch.setattr(dialog, "_describe", counting_describe)
+
+    dialog._refresh_details()
+
+    assert calls == []
+
+
+def test_switching_back_to_a_previously_described_job_does_not_re_read_it(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The skip in `_refresh_details` only covers a listing unchanged since
+    the last call -- switching away and back is a change each time, so it is
+    `_describe`'s own memoisation, not the skip, that has to catch this.
+    """
+    _save(working_dir, "alpha", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "beta", created_at="2026-06-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    alpha_item = dialog.job_tree.findItems("alpha", Qt.MatchFlag.MatchExactly, 0)[0]
+    beta_item = dialog.job_tree.findItems("beta", Qt.MatchFlag.MatchExactly, 0)[0]
+    dialog.job_tree.setCurrentItem(alpha_item)
+    dialog.job_tree.setCurrentItem(beta_item)
+
+    calls: list[Path] = []
+    real_load_job = load_job_dialog_module.load_job
+
+    def counting_load_job(path: Path) -> Any:
+        calls.append(path)
+        return real_load_job(path)
+
+    monkeypatch.setattr(load_job_dialog_module, "load_job", counting_load_job)
+
+    dialog.job_tree.setCurrentItem(alpha_item)
+
+    assert calls == []
+
+
 def test_the_details_pane_escapes_html_in_a_job_s_name(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
@@ -698,6 +799,38 @@ def test_renaming_rewrites_only_the_name(
     assert reloaded.name == "new name"
     assert reloaded.summary.trackers == ["Aither"]
     assert dialog.job_tree.topLevelItem(0).text(0) == "new name"
+
+
+def test_a_rename_refreshes_the_cached_details_pane_text(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The details cache is keyed by path, and a rename keeps the same path --
+    so a cache entry (or a "nothing changed" skip) left over from before the
+    reload would go on showing the pre-rename name even though the row itself
+    updated. Both are cleared in `_load_listings` for exactly this reason.
+    """
+    # A distinct title, so the pane's bolded name header -- what the cache is
+    # actually keyed on and what rename actually changes -- is unambiguous
+    # against the "Title" row it also shows, which rename leaves untouched.
+    _save(working_dir, "old name", title="Some Movie")
+    dialog = _open_dialog(qapp)
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    assert "<b>old name</b>" in dialog.details_lbl.text()
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("new name", True)),
+    )
+
+    dialog._rename_selected()
+    _wait_for_load(dialog, qapp)
+
+    assert "<b>new name</b>" in dialog.details_lbl.text()
+    assert "<b>old name</b>" not in dialog.details_lbl.text()
 
 
 def test_cancelling_the_rename_changes_nothing(

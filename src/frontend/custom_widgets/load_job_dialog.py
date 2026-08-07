@@ -106,6 +106,20 @@ class LoadJobDialog(QDialog):
         self.queued_listings: list[JobListing] = []
         """Jobs to run back to back, when the user chose Run Queue."""
         self._loader: _ListingLoader | None = None
+        self._details_cache: dict[Path, str] = {}
+        """`_describe(listing)` output, keyed by job path.
+
+        `_describe` parses the job document and walks its folder -- the same
+        read this branch already moved off-thread for `list_jobs`. Cleared in
+        `_load_listings`, so a rename or delete cannot leave a stale render
+        behind.
+        """
+        self._last_described_path: Path | None = None
+        """The path `_refresh_details` last rendered, so an unrelated widget
+        update -- moving the queue selection, typing in the filter -- that
+        leaves the tree's current listing unchanged can skip the whole
+        refresh rather than re-describing the same job from scratch.
+        """
 
         self.info_lbl = QLabel(
             "<i><span>Pick a saved job to jump straight to processing. Duplicate "
@@ -287,6 +301,12 @@ class LoadJobDialog(QDialog):
         # UI today (delete and rename are disabled while the tree is empty),
         # but the invariant should not depend on that staying true.
         self._stop_loader()
+        # A path can be reused by a new render after this reload -- a rename
+        # writes a new name under the same path, and `_describe` reads the
+        # document fresh once repopulated -- so a cached render or a "nothing
+        # changed" skip from before the reload must not survive it.
+        self._details_cache.clear()
+        self._last_described_path = None
 
         self.job_tree.clear()
         self.job_tree.setVisible(False)
@@ -667,7 +687,17 @@ class LoadJobDialog(QDialog):
         The per-tracker image hosts and the screenshot count only exist in the
         job's document, so it is read here rather than at list time -- one file
         read when a row is picked, instead of one per job on every open.
+
+        Memoised by path in `self._details_cache`: this reads the job's
+        document and walks its folder on disk, and a job's rendered
+        description cannot change while it sits in the same tree between
+        reloads, so a second call for a job already described this session
+        would otherwise repeat both for no new information.
         """
+        cached = self._details_cache.get(listing.path)
+        if cached is not None:
+            return cached
+
         rows: list[tuple[str, str]] = [
             ("Saved", self._saved_text(listing.created_at)),
             (
@@ -729,14 +759,34 @@ class LoadJobDialog(QDialog):
             f"<td>{value}</td></tr>"
             for label, value in rows
         )
-        return (
+        rendered = (
             f"<p style='margin: 0 0 6px 0;'><b>{escape(listing.name)}</b></p>"
             f"<table>{body}</table>"
         )
+        self._details_cache[listing.path] = rendered
+        return rendered
 
     def _refresh_details(self) -> None:
+        """Render the details pane for the tree's current listing, if any.
+
+        `_update_button_state` runs this on every filter keystroke and on
+        `queue_list.currentRowChanged` -- neither of which necessarily moves
+        the tree's own current item. Bailing out here when the listing to
+        show has not changed since the last call is what stops those from
+        re-reading the job's document and re-walking its folder for no
+        reason; `_describe`'s own memoisation only covers the read, not the
+        `is_dir()` stat this method also does.
+        """
         listing = self._current_listing()
         if listing is None or listing not in self._selected_listings():
+            listing = None
+
+        path = listing.path if listing is not None else None
+        if path == self._last_described_path:
+            return
+        self._last_described_path = path
+
+        if listing is None:
             self.details_lbl.setText("")
             self.open_folder_btn.setEnabled(False)
             return
