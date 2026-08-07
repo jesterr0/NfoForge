@@ -259,3 +259,12 @@ def test_double_clicking_a_cross_profile_row_offers_the_switch(
 
     assert dialog.switch_profile_requested is True
     assert dialog.selected_listing is not None
+
+
+def test_state_column_carries_an_icon(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "job", prepared=True)
+    dialog = LoadJobDialog("default")
+
+    assert not dialog.job_tree.topLevelItem(0).icon(5).isNull()

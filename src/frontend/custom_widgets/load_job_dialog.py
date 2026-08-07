@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+import qtawesome as qta
 
 from src.backend.jobs import JobListing, JobStoreError, delete_job, list_jobs
 from src.config.profiles import unique_working_dirs
@@ -174,6 +175,9 @@ class LoadJobDialog(QDialog):
                 QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText
             )
         )
+        icon_color = self.palette().color(QPalette.ColorRole.WindowText).name()
+        prepared_icon = qta.icon("mdi6.package-variant-closed", color=icon_color)
+        needs_input_icon = qta.icon("mdi6.pencil-outline", color=icon_color)
 
         for listing in listings:
             item = QTreeWidgetItem(
@@ -188,6 +192,7 @@ class LoadJobDialog(QDialog):
                 )
             )
             item.setData(0, _LISTING_ROLE, listing)
+            item.setIcon(5, prepared_icon if listing.prepared else needs_input_icon)
             # the Trackers column is Interactive and elides, so the full list
             # has to be reachable somewhere
             if listing.summary.trackers:
