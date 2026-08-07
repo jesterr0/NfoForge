@@ -1033,3 +1033,13 @@ def test_starting_over_drops_mediainfo_cached_by_a_loaded_job(
     MainWindowWizard.reset_wizard(wizard)  # pyright: ignore[reportArgumentType]
 
     assert media_info_utils._FULL_MI_STR_CACHE == {}
+
+
+def test_a_job_name_with_markup_is_escaped_in_the_log(qapp: Any) -> None:
+    written: list[str] = []
+    page = SimpleNamespace(_on_text_update=written.append)
+
+    ProcessPage._announce_saved_job(page, "<b>bold</b> job")  # pyright: ignore[reportArgumentType]
+
+    assert "&lt;b&gt;" in written[0]
+    assert "<b>bold</b> job" not in written[0]

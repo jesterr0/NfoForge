@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import fields
+from html import escape
 from pathlib import Path
 import shutil
 import traceback
@@ -408,6 +409,17 @@ class ProcessPage(BaseWizardPage):
         main_layout.addLayout(button_row)
         self.setLayout(main_layout)
 
+    def _announce_saved_job(self, name: str) -> None:
+        """Note a save in the log pane.
+
+        Escaped because the name is free text from a prompt, and the pane
+        renders HTML -- an unescaped `<` silently swallows the rest of the line.
+        """
+        self._on_text_update(
+            f"<br /><span>💾 Saved job '{escape(name)}'. Load it from the start "
+            "page to process it later.</span>"
+        )
+
     @Slot()
     def _save_job(self, keep_trackers: set[TrackerSelection] | None = None) -> None:
         """Persist this configured run so it can be processed later.
@@ -465,10 +477,7 @@ class ProcessPage(BaseWizardPage):
             QMessageBox.critical(self, "Save Failed", f"Could not save job:\n\n{error}")
             return
 
-        self._on_text_update(
-            f"<br /><span>💾 Saved job '{job.name}'. Load it from the start page "
-            "to process it later.</span>"
-        )
+        self._announce_saved_job(job.name)
         QMessageBox.information(
             self,
             "Job Saved",
