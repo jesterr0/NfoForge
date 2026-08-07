@@ -1006,6 +1006,34 @@ def test_accept_selection_targets_the_selected_job_not_the_current_row(
     assert dialog.selected_listing.path != other_dir
 
 
+def test_accept_selection_refuses_a_selected_cross_profile_job(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """The profile guard in `_accept_selection`, reached rather than assumed.
+
+    With `only_this_config` checked -- its default -- a cross-profile row is
+    hidden and deselected by `_apply_filter`, so `_selected_listings()` is
+    empty and `_accept_selection` returns on `len(selected) != 1` before ever
+    reaching the `matches_profile` check below it. Revealing and selecting
+    the row is what it actually takes for a user to get a cross-profile job
+    selected in the first place, so that is what reaches the guard this test
+    means to cover.
+    """
+    _save(working_dir, "theirs", profile="anime")
+    dialog = _open_dialog(qapp)
+    dialog.only_this_config.setChecked(False)
+    item = dialog.job_tree.topLevelItem(0)
+    item.setSelected(True)
+    # Confirm the selection actually landed, so a regression back to the
+    # hidden-and-deselected state fails loudly here instead of the assertion
+    # below passing for the wrong reason.
+    assert len(dialog._selected_listings()) == 1
+
+    dialog._accept_selection()
+
+    assert dialog.selected_listing is None
+
+
 def test_accept_with_switch_targets_the_selected_job_not_the_current_row(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
