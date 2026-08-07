@@ -189,3 +189,33 @@ def test_hiding_a_row_also_deselects_it(
     dialog.filter_edit.setText("nothing matches this")
 
     assert dialog._selected_listings() == []
+
+
+def test_a_row_hidden_while_selected_does_not_come_back_selected(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Clearing a filter must not resurrect a selection the user cannot see.
+
+    This is what the explicit `setSelected(False)` is actually for, and it is
+    the only thing that exercises it. `selectedItems()` already skips hidden
+    rows, so while the filter is on, hiding alone is enough -- but
+    `isSelected()` survives hiding, so without the deselect the row reappears
+    already selected once the filter clears, a selection the user never made
+    and never saw happen.
+    """
+    _save(working_dir, "alpha")
+    _save(working_dir, "beta")
+    dialog = LoadJobDialog("default")
+    for index in range(dialog.job_tree.topLevelItemCount()):
+        dialog.job_tree.topLevelItem(index).setSelected(True)
+
+    dialog.filter_edit.setText("alpha")
+    dialog.filter_edit.setText("")
+
+    rows = [
+        dialog.job_tree.topLevelItem(index)
+        for index in range(dialog.job_tree.topLevelItemCount())
+    ]
+    assert all(not row.isHidden() for row in rows)
+    # "beta" was hidden and so deselected; "alpha" never was, so it stays
+    assert sorted(row.text(0) for row in rows if row.isSelected()) == ["alpha"]
