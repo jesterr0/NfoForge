@@ -5,6 +5,7 @@ tested here is the dialog itself.
 """
 
 from pathlib import Path
+import time
 from typing import Any
 
 from PySide6.QtCore import QItemSelectionModel, Qt
@@ -55,11 +56,45 @@ def _save(
     return store.save_job(job, working_dir)
 
 
+def _open_dialog(qapp: Any, active_profile: str | None = "default") -> LoadJobDialog:
+    """Construct the dialog and wait for its background listing load to land.
+
+    Listing now happens on a `_ListingLoader` thread, so a dialog fresh out of
+    `__init__` has an empty tree until that thread's `loaded` signal is
+    delivered. Every test below except the three under "loading is
+    asynchronous" is about what happens once the list has arrived, not about
+    the loading itself -- for those, waiting once here is the right fix, not
+    a wait bolted into each test.
+
+    Waiting here also keeps the loader thread from still being alive when the
+    test function returns and the dialog is dropped: destroying a running
+    `QThread` aborts the process outright, and this is the one place where
+    that would be silent since nothing here calls `wait()` afterwards.
+    """
+    dialog = LoadJobDialog(active_profile)
+    _wait_for_load(dialog, qapp)
+    return dialog
+
+
+def _wait_for_load(dialog: LoadJobDialog, qapp: Any) -> None:
+    """Block until the dialog's current loader thread has finished and let
+    its queued `loaded` signal reach `_on_listings_loaded` on this thread.
+
+    Also used after `_delete_selected` / `_rename_selected`, which now kick
+    off a fresh reload asynchronously -- calling it even when a particular
+    action returned early (and so never reloaded) is harmless, since waiting
+    on an already-finished thread returns immediately.
+    """
+    assert dialog._loader is not None
+    dialog._loader.wait(5000)
+    qapp.processEvents()
+
+
 def test_columns_are_sized_for_what_they_hold(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save(working_dir, "job")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     header = dialog.job_tree.header()
 
     assert header.sectionResizeMode(0) is QHeaderView.ResizeMode.Stretch
@@ -72,7 +107,7 @@ def test_the_full_tracker_list_is_available_as_a_tooltip(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save(working_dir, "job", trackers=["Aither", "Huno", "LST", "DarkPeers"])
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert "DarkPeers" in dialog.job_tree.topLevelItem(0).toolTip(3)
 
@@ -88,7 +123,7 @@ def test_the_list_opens_sorted_newest_first(
     """
     _save(working_dir, "older", created_at="2026-01-01T00:00:00+00:00")
     _save(working_dir, "newer", created_at="2026-06-01T00:00:00+00:00")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     header = dialog.job_tree.header()
     assert dialog.job_tree.isSortingEnabled()
@@ -107,7 +142,7 @@ def test_the_list_can_be_re_sorted_by_another_column(
     """
     _save(working_dir, "zulu", created_at="2026-06-01T00:00:00+00:00")
     _save(working_dir, "alpha", created_at="2026-01-01T00:00:00+00:00")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     dialog.job_tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
 
@@ -120,7 +155,7 @@ def test_the_list_can_be_re_sorted_by_another_column(
 def test_the_dialog_can_be_resized_from_its_corner(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert dialog.isSizeGripEnabled()
 
@@ -128,7 +163,7 @@ def test_the_dialog_can_be_resized_from_its_corner(
 def test_the_info_label_does_not_repeat_the_window_title(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert dialog.windowTitle() == "Saved Jobs"
     assert "<h3" not in dialog.info_lbl.text()
@@ -139,7 +174,7 @@ def test_filtering_matches_name_title_and_tracker(
 ) -> None:
     _save(working_dir, "alpha", title="Alpha Movie", trackers=["Aither"])
     _save(working_dir, "beta", title="Beta Movie", trackers=["Huno"])
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     dialog.filter_edit.setText("huno")
 
@@ -156,7 +191,7 @@ def test_only_this_config_hides_other_profiles_by_default(
 ) -> None:
     _save(working_dir, "mine", profile="default")
     _save(working_dir, "theirs", profile="anime")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert dialog.only_this_config.isChecked()
     hidden = {
@@ -171,7 +206,7 @@ def test_unchecking_only_this_config_reveals_other_profiles(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save(working_dir, "theirs", profile="anime")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     dialog.only_this_config.setChecked(False)
 
@@ -183,7 +218,7 @@ def test_hiding_a_row_also_deselects_it(
 ) -> None:
     """A hidden row left selected would silently take part in Load or Delete."""
     _save(working_dir, "alpha")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.topLevelItem(0).setSelected(True)
 
     dialog.filter_edit.setText("nothing matches this")
@@ -205,7 +240,7 @@ def test_a_row_hidden_while_selected_does_not_come_back_selected(
     """
     _save(working_dir, "alpha")
     _save(working_dir, "beta")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     for index in range(dialog.job_tree.topLevelItemCount()):
         dialog.job_tree.topLevelItem(index).setSelected(True)
 
@@ -230,7 +265,7 @@ def test_a_mixed_selection_explains_why_the_queue_is_unavailable(
     """
     _save(working_dir, "ready", prepared=True)
     _save(working_dir, "not-ready", prepared=False)
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
 
     assert not dialog.add_to_queue_btn.isEnabled()
@@ -241,7 +276,7 @@ def test_a_cross_profile_selection_says_which_config_it_needs(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save(working_dir, "theirs", profile="anime")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.only_this_config.setChecked(False)
     dialog.job_tree.topLevelItem(0).setSelected(True)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
@@ -254,7 +289,7 @@ def test_double_clicking_a_cross_profile_row_offers_the_switch(
 ) -> None:
     """Silently doing nothing is the current behaviour and the worst option."""
     _save(working_dir, "theirs", profile="anime")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.only_this_config.setChecked(False)
     item = dialog.job_tree.topLevelItem(0)
     dialog.job_tree.setCurrentItem(item)
@@ -269,7 +304,7 @@ def test_state_column_carries_an_icon(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save(working_dir, "job", prepared=True)
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert not dialog.job_tree.topLevelItem(0).icon(5).isNull()
 
@@ -286,7 +321,7 @@ def test_the_state_icon_is_chosen_by_the_job_s_own_state(
     """
     _save(working_dir, "ready", prepared=True)
     _save(working_dir, "draft", prepared=False)
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     rows = {
         dialog.job_tree.topLevelItem(index).text(0): dialog.job_tree.topLevelItem(index)
@@ -308,7 +343,7 @@ def test_delete_removes_every_selected_job(
 ) -> None:
     _save(working_dir, "one")
     _save(working_dir, "two")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
     monkeypatch.setattr(
         load_job_dialog_module.QMessageBox,
@@ -317,6 +352,7 @@ def test_delete_removes_every_selected_job(
     )
 
     dialog._delete_selected()
+    _wait_for_load(dialog, qapp)
 
     assert dialog.job_tree.topLevelItemCount() == 0
     assert list((working_dir / "jobs").iterdir()) == []
@@ -337,7 +373,7 @@ def test_delete_only_removes_the_selected_job(
     """
     kept_dir = _save(working_dir, "keep")
     _save(working_dir, "remove")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     item = dialog.job_tree.findItems("remove", Qt.MatchFlag.MatchExactly, 0)[0]
     item.setSelected(True)
     monkeypatch.setattr(
@@ -347,6 +383,7 @@ def test_delete_only_removes_the_selected_job(
     )
 
     dialog._delete_selected()
+    _wait_for_load(dialog, qapp)
 
     assert kept_dir.exists()
     assert [
@@ -363,7 +400,7 @@ def test_the_delete_confirmation_names_what_it_will_remove(
 ) -> None:
     _save(working_dir, "alpha")
     _save(working_dir, "beta")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
     asked: list[str] = []
 
@@ -374,6 +411,7 @@ def test_the_delete_confirmation_names_what_it_will_remove(
     monkeypatch.setattr(load_job_dialog_module.QMessageBox, "question", capture)
 
     dialog._delete_selected()
+    _wait_for_load(dialog, qapp)
 
     assert "alpha" in asked[0] and "beta" in asked[0]
 
@@ -381,7 +419,7 @@ def test_the_delete_confirmation_names_what_it_will_remove(
 def test_the_delete_key_is_wired_to_delete(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert dialog.delete_btn.shortcut() == Qt.Key.Key_Delete
 
@@ -389,7 +427,7 @@ def test_the_delete_key_is_wired_to_delete(
 def test_the_f2_key_is_wired_to_rename(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert dialog.rename_btn.shortcut() == Qt.Key.Key_F2
 
@@ -404,7 +442,7 @@ def test_a_job_with_missing_media_is_marked_in_the_list(
         config_profile="default",
     )
     store.save_job(job, working_dir)
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     item = dialog.job_tree.topLevelItem(0)
     assert not item.icon(0).isNull()
@@ -469,7 +507,7 @@ def test_the_details_pane_describes_the_selected_job(
     decoy.created_at = "2020-06-01T00:00:00+00:00"
     store.save_job(decoy, working_dir)
 
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     item = dialog.job_tree.findItems("Example", Qt.MatchFlag.MatchExactly, 0)[0]
     dialog.job_tree.setCurrentItem(item)
 
@@ -494,7 +532,7 @@ def test_the_details_pane_describes_the_selected_job(
 def test_the_details_pane_is_cleared_when_nothing_is_selected(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert dialog.details_lbl.text() == ""
     assert not dialog.open_folder_btn.isEnabled()
@@ -510,7 +548,7 @@ def test_the_details_pane_clears_once_a_selection_is_lost(
     exercises that path.
     """
     _save(working_dir, "alpha")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     assert dialog.details_lbl.text() != ""
     assert dialog.open_folder_btn.isEnabled()
@@ -531,7 +569,7 @@ def test_the_details_pane_escapes_html_in_a_job_s_name(
     class of bug twice, for the log pane and the save-confirmation box.
     """
     _save(working_dir, "<b>evil</b> & friends")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
 
     text = dialog.details_lbl.text()
@@ -564,7 +602,7 @@ def test_a_retired_tracker_name_in_the_document_does_not_crash_the_pane(
         config_profile="default",
     )
     store.save_job(job, working_dir)
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
 
     assert "RETIRED_TRACKER" in dialog.details_lbl.text()
@@ -583,7 +621,7 @@ def test_an_unreadable_job_does_not_break_the_details_pane(
         working_dir,
     )
     (directory / store.JOB_DOCUMENT_NAME).write_text("not json", encoding="utf-8")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     # listing skips unreadable jobs, so add the row by hand to exercise the pane
     from src.backend.jobs.models import JobListing
@@ -623,7 +661,7 @@ def test_the_open_folder_button_opens_the_selected_job_s_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = _save(working_dir, "job")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     assert dialog.open_folder_btn.isEnabled()
 
@@ -644,7 +682,7 @@ def test_renaming_rewrites_only_the_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = _save(working_dir, "old name", trackers=["Aither"])
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
     monkeypatch.setattr(
@@ -654,6 +692,7 @@ def test_renaming_rewrites_only_the_name(
     )
 
     dialog._rename_selected()
+    _wait_for_load(dialog, qapp)
 
     reloaded = store.load_job(directory)
     assert reloaded.name == "new name"
@@ -668,7 +707,7 @@ def test_cancelling_the_rename_changes_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = _save(working_dir, "keep me")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
     monkeypatch.setattr(
@@ -678,6 +717,7 @@ def test_cancelling_the_rename_changes_nothing(
     )
 
     dialog._rename_selected()
+    _wait_for_load(dialog, qapp)
 
     assert store.load_job(directory).name == "keep me"
 
@@ -696,7 +736,7 @@ def test_an_empty_new_name_is_refused(
     writes `name: ""` to disk, with nothing failing.
     """
     directory = _save(working_dir, "keep me")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
     monkeypatch.setattr(
@@ -706,6 +746,7 @@ def test_an_empty_new_name_is_refused(
     )
 
     dialog._rename_selected()
+    _wait_for_load(dialog, qapp)
 
     assert store.load_job(directory).name == "keep me"
 
@@ -727,7 +768,7 @@ def test_rename_targets_the_selected_job_not_the_current_row(
     other_dir = _save(
         working_dir, "merely current", created_at="2026-01-01T00:00:00+00:00"
     )
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     selected_row = dialog.job_tree.topLevelItem(0)
     current_row = dialog.job_tree.topLevelItem(1)
@@ -746,6 +787,7 @@ def test_rename_targets_the_selected_job_not_the_current_row(
     )
 
     dialog._rename_selected()
+    _wait_for_load(dialog, qapp)
 
     assert store.load_job(keep_dir).name == "renamed"
     assert store.load_job(other_dir).name == "merely current"
@@ -756,7 +798,7 @@ def test_rename_is_only_available_for_one_job(
 ) -> None:
     _save(working_dir, "one")
     _save(working_dir, "two")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
 
     assert not dialog.rename_btn.isEnabled()
@@ -781,7 +823,7 @@ def test_one_failed_delete_does_not_strand_the_rest(
     # only catch the mutation on roughly half of runs.
     fails_dir = _save(working_dir, "unlucky", created_at="2026-06-01T00:00:00+00:00")
     succeeds_dir = _save(working_dir, "fine", created_at="2026-01-01T00:00:00+00:00")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
     assert dialog.job_tree.topLevelItem(0).text(0) == "unlucky"
 
@@ -806,6 +848,7 @@ def test_one_failed_delete_does_not_strand_the_rest(
     )
 
     dialog._delete_selected()
+    _wait_for_load(dialog, qapp)
 
     assert fails_dir.exists()
     assert not succeeds_dir.exists()
@@ -820,7 +863,7 @@ def test_only_a_runnable_job_can_be_added_to_the_queue(
 ) -> None:
     _save(working_dir, "ready", prepared=True)
     _save(working_dir, "not-ready", prepared=False)
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
 
     assert not dialog.add_to_queue_btn.isEnabled()
@@ -837,7 +880,7 @@ def test_only_prepared_jobs_on_this_config_can_be_added_to_the_queue(
     _save(working_dir, "ready", prepared=True, profile="config")
     _save(working_dir, "raw", prepared=False, profile="config")
     _save(working_dir, "other-config", prepared=True, profile="anime")
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     dialog.only_this_config.setChecked(False)
     dialog.job_tree.selectAll()
 
@@ -860,7 +903,7 @@ def test_adding_jobs_builds_a_queue_in_click_order(
     """
     _save(working_dir, "first", created_at="2026-01-01T00:00:00+00:00")
     _save(working_dir, "second", created_at="2026-06-01T00:00:00+00:00")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     # `_load_listings` leaves row 0 selected as the initial current item;
     # clear it so only the row picked below is selected on the first add.
     dialog.job_tree.clearSelection()
@@ -881,7 +924,7 @@ def test_a_job_cannot_be_queued_twice(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save(working_dir, "once")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.topLevelItem(0).setSelected(True)
 
     dialog._add_to_queue()
@@ -902,7 +945,7 @@ def test_a_queued_job_can_be_moved_up(
     """
     _save(working_dir, "a", created_at="2026-01-01T00:00:00+00:00")
     _save(working_dir, "b", created_at="2026-06-01T00:00:00+00:00")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.topLevelItem(0).setSelected(True)
     dialog._add_to_queue()
     dialog.job_tree.clearSelection()
@@ -920,7 +963,7 @@ def test_removing_from_the_queue_leaves_the_job_saved(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     directory = _save(working_dir, "keep")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.topLevelItem(0).setSelected(True)
     dialog._add_to_queue()
     dialog.queue_list.setCurrentRow(0)
@@ -935,7 +978,7 @@ def test_run_queue_needs_a_queue(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save(working_dir, "ready")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
 
     assert not dialog.queue_btn.isEnabled()
 
@@ -950,7 +993,7 @@ def test_adding_prepared_jobs_enables_the_queue_and_accept_queue_reports_them(
 ) -> None:
     _save(working_dir, "ready-one", prepared=True, profile="config")
     _save(working_dir, "ready-two", prepared=True, profile="config")
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     dialog.job_tree.selectAll()
 
     dialog._add_to_queue()
@@ -978,7 +1021,7 @@ def test_deleting_a_queued_job_takes_it_out_of_the_queue(
     """
     _save(working_dir, "doomed", created_at="2026-01-01T00:00:00+00:00")
     _save(working_dir, "survivor", created_at="2026-06-01T00:00:00+00:00")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
     dialog._add_to_queue()
     doomed_item = dialog.job_tree.findItems("doomed", Qt.MatchFlag.MatchExactly, 0)[0]
@@ -991,6 +1034,7 @@ def test_deleting_a_queued_job_takes_it_out_of_the_queue(
     )
 
     dialog._delete_selected()
+    _wait_for_load(dialog, qapp)
 
     assert dialog.queue_list.count() == 1
     assert [listing.name for listing in dialog.queueable_listings()] == ["survivor"]
@@ -1010,7 +1054,7 @@ def test_a_failed_delete_leaves_its_queue_entry_in_place(
     """
     stuck_dir = _save(working_dir, "stuck", created_at="2026-01-01T00:00:00+00:00")
     _save(working_dir, "goes", created_at="2026-06-01T00:00:00+00:00")
-    dialog = LoadJobDialog("default")
+    dialog = _open_dialog(qapp)
     dialog.job_tree.selectAll()
     dialog._add_to_queue()
 
@@ -1035,6 +1079,92 @@ def test_a_failed_delete_leaves_its_queue_entry_in_place(
     )
 
     dialog._delete_selected()
+    _wait_for_load(dialog, qapp)
 
     assert [listing.name for listing in dialog.queueable_listings()] == ["stuck"]
     assert reported and "stuck" in reported[0]
+
+
+# --------------------------------------------------------------------------
+# loading is asynchronous
+# --------------------------------------------------------------------------
+def test_the_list_starts_empty_and_says_it_is_loading(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Constructing the dialog must not block on `list_jobs` -- that call is
+    what stalls visibly on a network share, so the tree has to start empty
+    with a placeholder rather than already populated.
+    """
+    _save(working_dir, "job")
+    dialog = LoadJobDialog("default")
+
+    assert dialog.job_tree.topLevelItemCount() == 0
+    assert "Loading" in dialog.empty_lbl.text()
+    assert dialog.empty_lbl.isVisible() or not dialog.isVisible()
+
+    # Nothing above depends on this: it only lets the loader thread `__init__`
+    # started finish before `dialog` goes out of scope. Destroying a `QThread`
+    # while it is still running aborts the process, not just this test.
+    _wait_for_load(dialog, qapp)
+
+
+def test_listings_populate_the_tree_when_they_arrive(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "job")
+    dialog = LoadJobDialog("default")
+
+    _wait_for_load(dialog, qapp)
+
+    assert dialog.job_tree.topLevelItemCount() == 1
+    assert dialog.job_tree.topLevelItem(0).text(0) == "job"
+
+
+def test_an_empty_working_directory_reports_no_jobs(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    dialog = LoadJobDialog("default")
+
+    _wait_for_load(dialog, qapp)
+
+    assert "No saved jobs yet" in dialog.empty_lbl.text()
+
+
+def test_closing_mid_load_waits_for_the_loader_before_tearing_down(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`done()` exists purely because destroying a running `QThread` aborts
+    the process outright, so what needs proving is that closing the dialog
+    actually blocks until the loader has finished -- not merely that
+    `reject()` did not raise. A real sleep in `run()` (on the loader's own
+    OS thread, so it does not block this test) makes "still running when the
+    user closes the dialog" the case being exercised, rather than a race that
+    happens to resolve one way on a given machine.
+    """
+    _save(working_dir, "job")
+    original_run = load_job_dialog_module._ListingLoader.run
+
+    def slow_run(self: Any) -> None:
+        time.sleep(0.4)
+        original_run(self)
+
+    monkeypatch.setattr(load_job_dialog_module._ListingLoader, "run", slow_run)
+
+    dialog = LoadJobDialog("default")
+    assert dialog._loader is not None
+    assert dialog._loader.isRunning()
+
+    dialog.reject()
+
+    # If `done()` merely disconnected the signal and returned without ever
+    # calling `wait()`, the loader would still be mid-sleep here.
+    assert dialog._loader.isRunning() is False
+    # And if the disconnect happened after (or not at all), the loader's
+    # `loaded` signal -- queued for delivery once the sleep ends -- would
+    # still land on a dialog that is closing, repopulating a tree nobody is
+    # looking at.
+    qapp.processEvents()
+    assert dialog.job_tree.topLevelItemCount() == 0

@@ -57,6 +57,22 @@ def patched_working_dirs(working_dir: Path, monkeypatch: pytest.MonkeyPatch) -> 
     )
 
 
+def _open_dialog(qapp: Any, active_profile: str | None) -> LoadJobDialog:
+    """Construct the picker and wait for its background listing load to land.
+
+    Listing runs on a `_ListingLoader` thread now, so the tree below is empty
+    until that thread's `loaded` signal is delivered -- every test here is
+    about what the picker does with a loaded list, not about the loading
+    itself (that is covered in `test_load_job_dialog.py`), so waiting once
+    here is the fix.
+    """
+    dialog = LoadJobDialog(active_profile)
+    assert dialog._loader is not None
+    dialog._loader.wait(5000)
+    qapp.processEvents()
+    return dialog
+
+
 @pytest.fixture
 def sample_media(tmp_path: Path) -> Path:
     path = tmp_path / "Example.Movie.2024.wav"
@@ -475,7 +491,7 @@ def test_load_dialog_lists_saved_jobs_and_reports_the_choice(
     )
     store.save_job(job, working_dir)
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         assert dialog.job_tree.topLevelItemCount() == 1
         item = dialog.job_tree.topLevelItem(0)
@@ -495,7 +511,7 @@ def test_load_dialog_lists_saved_jobs_and_reports_the_choice(
 def test_load_dialog_is_empty_and_inert_without_jobs(
     qapp: Any, patched_working_dirs: None
 ) -> None:
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         assert dialog.job_tree.topLevelItemCount() == 0
         dialog._accept_selection()
@@ -512,7 +528,7 @@ def test_a_job_from_another_config_is_listed_but_not_directly_loadable(
         store.build_job("Other", JobSummary(), {}, config_profile="anime"), working_dir
     )
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         assert dialog.job_tree.topLevelItemCount() == 1
         dialog._accept_selection()
@@ -534,7 +550,7 @@ def test_a_job_without_a_recorded_config_stays_loadable(
         store.build_job("Legacy", JobSummary(), {}, config_profile=""), working_dir
     )
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         dialog._accept_selection()
         assert dialog.selected_listing is not None
@@ -563,7 +579,7 @@ def test_the_picker_shows_whether_a_job_is_prepared(
 ) -> None:
     _save_listing(working_dir, "ready", prepared=True)
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         item = dialog.job_tree.topLevelItem(0)
         assert item is not None
@@ -586,9 +602,12 @@ def test_load_dialog_deletes_the_selected_job(
         QMessageBox, "question", lambda *_a, **_k: QMessageBox.StandardButton.Yes
     )
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         dialog._delete_selected()
+        assert dialog._loader is not None
+        dialog._loader.wait(5000)
+        qapp.processEvents()
         assert dialog.job_tree.topLevelItemCount() == 0
         assert store.list_jobs([working_dir]) == []
     finally:

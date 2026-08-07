@@ -6,7 +6,7 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtGui import QBrush, QPalette
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -61,6 +61,24 @@ _IMAGE_DESTINATION_ENUMS: dict[str, type[Enum]] = {
 }
 
 
+class _ListingLoader(QThread):
+    """Reads the saved-job list off the GUI thread.
+
+    Listing walks every config profile's working directory and parses every
+    `job.json` in it. That is fine locally and a visible stall on a network
+    share, and the dialog has nothing to show until it finishes either way.
+    """
+
+    loaded = Signal(object)  # list[JobListing]
+
+    def run(self) -> None:
+        try:
+            self.loaded.emit(list_jobs(unique_working_dirs()))
+        except Exception as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Could not list saved jobs: {error}")
+            self.loaded.emit([])
+
+
 class LoadJobDialog(QDialog):
     """Lists saved jobs and reports which one the user chose to load.
 
@@ -86,6 +104,7 @@ class LoadJobDialog(QDialog):
         self.switch_profile_requested = False
         self.queued_listings: list[JobListing] = []
         """Jobs to run back to back, when the user chose Run Queue."""
+        self._loader: _ListingLoader | None = None
 
         self.info_lbl = QLabel(
             "<i><span>Pick a saved job to jump straight to processing. Duplicate "
@@ -259,11 +278,22 @@ class LoadJobDialog(QDialog):
         self._load_listings()
 
     def _load_listings(self) -> None:
+        self.job_tree.clear()
+        self.job_tree.setVisible(False)
+        self.empty_lbl.setText("<span>Loading saved jobs...</span>")
+        self.empty_lbl.setVisible(True)
+        self._update_button_state()
+
+        self._loader = _ListingLoader(self)
+        self._loader.loaded.connect(self._on_listings_loaded)
+        self._loader.start()
+
+    @Slot(object)
+    def _on_listings_loaded(self, listings: list[JobListing]) -> None:
         # sorting reshuffles the tree on every insert otherwise, which is
         # wasted work and would show rows swapping places as they load
         self.job_tree.setSortingEnabled(False)
         self.job_tree.clear()
-        listings = list_jobs(unique_working_dirs())
         muted = QBrush(
             self.palette().color(
                 QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText
@@ -325,11 +355,30 @@ class LoadJobDialog(QDialog):
 
         has_jobs = bool(listings)
         self.job_tree.setVisible(has_jobs)
+        self.empty_lbl.setText(
+            "<span>No saved jobs yet. Use <b>Save Job</b> on the process page "
+            "to create one.</span>"
+        )
         self.empty_lbl.setVisible(not has_jobs)
         first_item = self.job_tree.topLevelItem(0)
         if first_item is not None:
             self.job_tree.setCurrentItem(first_item)
         self._apply_filter()
+
+    def done(self, result: int) -> None:
+        """Stop the loader before the dialog is torn down.
+
+        Qt aborts the process outright if a `QThread` is still running when
+        its C++ object is destroyed, and `_loader` is parented to this dialog
+        -- so a dialog closed mid-load would otherwise take the whole app down
+        with it, not just fail to show the results. Disconnecting first means
+        a load that finishes just after this point does not deliver into a
+        dialog that is already on its way out.
+        """
+        if self._loader is not None and self._loader.isRunning():
+            self._loader.loaded.disconnect(self._on_listings_loaded)
+            self._loader.wait(2000)
+        super().done(result)
 
     @Slot()
     def _apply_filter(self) -> None:
