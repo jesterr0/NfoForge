@@ -219,3 +219,43 @@ def test_a_row_hidden_while_selected_does_not_come_back_selected(
     assert all(not row.isHidden() for row in rows)
     # "beta" was hidden and so deselected; "alpha" never was, so it stays
     assert sorted(row.text(0) for row in rows if row.isSelected()) == ["alpha"]
+
+
+def test_a_mixed_selection_explains_why_the_queue_is_unavailable(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "ready", prepared=True)
+    _save(working_dir, "not-ready", prepared=False)
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+
+    assert not dialog.queue_btn.isEnabled()
+    assert "not prepared" in dialog.status_lbl.text()
+
+
+def test_a_cross_profile_selection_says_which_config_it_needs(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "theirs", profile="anime")
+    dialog = LoadJobDialog("default")
+    dialog.only_this_config.setChecked(False)
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+
+    assert "anime" in dialog.status_lbl.text()
+
+
+def test_double_clicking_a_cross_profile_row_offers_the_switch(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Silently doing nothing is the current behaviour and the worst option."""
+    _save(working_dir, "theirs", profile="anime")
+    dialog = LoadJobDialog("default")
+    dialog.only_this_config.setChecked(False)
+    item = dialog.job_tree.topLevelItem(0)
+    dialog.job_tree.setCurrentItem(item)
+
+    dialog._on_double_click(item, 0)
+
+    assert dialog.switch_profile_requested is True
+    assert dialog.selected_listing is not None

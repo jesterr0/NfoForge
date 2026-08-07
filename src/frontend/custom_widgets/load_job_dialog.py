@@ -104,7 +104,7 @@ class LoadJobDialog(QDialog):
         self.job_tree.setSortingEnabled(True)
         # multi-select so several prepared jobs can be queued in one go
         self.job_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
-        self.job_tree.itemDoubleClicked.connect(self._accept_selection)
+        self.job_tree.itemDoubleClicked.connect(self._on_double_click)
         self.job_tree.itemSelectionChanged.connect(self._update_button_state)
 
         self.empty_lbl = QLabel(
@@ -114,6 +114,9 @@ class LoadJobDialog(QDialog):
             parent=self,
         )
         self.empty_lbl.hide()
+
+        self.status_lbl = QLabel("", wordWrap=True, parent=self)
+        self.status_lbl.setTextFormat(Qt.TextFormat.PlainText)
 
         self.delete_btn = QPushButton("Delete", self)
         self.delete_btn.clicked.connect(self._delete_selected)
@@ -155,6 +158,7 @@ class LoadJobDialog(QDialog):
         main_layout.addLayout(filter_row)
         main_layout.addWidget(self.empty_lbl)
         main_layout.addWidget(self.job_tree, stretch=1)
+        main_layout.addWidget(self.status_lbl)
         main_layout.addLayout(bottom_row)
 
         self._load_listings()
@@ -297,6 +301,44 @@ class LoadJobDialog(QDialog):
             if listing.prepared and listing.matches_profile(self.active_profile)
         ]
 
+    def _selection_hint(self) -> str:
+        """One line saying what the current selection can and cannot do."""
+        selected = self._selected_listings()
+        if not selected:
+            return "Select a job to load, or several prepared ones to queue."
+
+        listing = self._current_listing()
+        if len(selected) == 1 and listing is not None:
+            if not listing.matches_profile(self.active_profile):
+                return (
+                    f"'{listing.name}' was saved under config "
+                    f"'{listing.config_profile}'. Use 'Switch profile and load' "
+                    "to open it."
+                )
+            if not listing.prepared:
+                return (
+                    f"'{listing.name}' still needs input, so it can be loaded "
+                    "but not queued."
+                )
+            return f"'{listing.name}' is ready to load or queue."
+
+        unprepared = sum(1 for entry in selected if not entry.prepared)
+        other_config = sum(
+            1 for entry in selected if not entry.matches_profile(self.active_profile)
+        )
+        reasons: list[str] = []
+        if unprepared:
+            reasons.append(f"{unprepared} not prepared")
+        if other_config:
+            reasons.append(f"{other_config} on another config")
+        if reasons:
+            return (
+                f"{len(selected)} selected; cannot queue because "
+                + " and ".join(reasons)
+                + ". A queue has nobody to answer a prompt."
+            )
+        return f"{len(selected)} prepared job(s) selected; ready to queue."
+
     @Slot()
     def _update_button_state(self) -> None:
         listing = self._current_listing()
@@ -314,6 +356,23 @@ class LoadJobDialog(QDialog):
         open_button = self.button_box.button(QDialogButtonBox.StandardButton.Open)
         if open_button:
             open_button.setEnabled(matches and len(selected) == 1)
+        self.status_lbl.setText(self._selection_hint())
+
+    @Slot(QTreeWidgetItem, int)
+    def _on_double_click(self, item: QTreeWidgetItem, _column: int) -> None:
+        """Open on double click, routing a cross-profile job to the switch.
+
+        Doing nothing is what this used to do, and it reads as the dialog being
+        broken rather than as the job needing a different config.
+        """
+        listing = item.data(0, _LISTING_ROLE)
+        if not isinstance(listing, JobListing):
+            return
+        self.job_tree.setCurrentItem(item)
+        if listing.matches_profile(self.active_profile):
+            self._accept_selection()
+        else:
+            self._accept_with_switch()
 
     @Slot()
     def _accept_selection(self) -> None:
