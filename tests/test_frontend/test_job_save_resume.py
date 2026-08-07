@@ -1033,7 +1033,7 @@ def test_a_job_name_with_markup_is_escaped_in_the_log(qapp: Any) -> None:
 
 
 def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
-    qapp: Any, monkeypatch: pytest.MonkeyPatch
+    qapp: Any, working_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The save confirmation box must show the job name verbatim, not interpret
     markup. Verifies that the box uses PlainText format so angle brackets do
@@ -1087,10 +1087,13 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
     # Mock the dependencies to reach the save success path.
     page = SimpleNamespace()
     page.context = ProcessingContext()
+    # A real directory, because `_save_job` really creates one: `build_job` and
+    # `save_job` are mocked below but `job_dir(..., ensure_exists=True)` is not,
+    # and it mkdirs. A hardcoded absolute path here resolves against the current
+    # drive on Windows and quietly writes outside the repo, while on Linux it
+    # raises PermissionError -- green locally, red on CI.
     page.config = SimpleNamespace(
-        settings=SimpleNamespace(
-            general=SimpleNamespace(working_dir=Path("/working/test"))
-        ),
+        settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
         program=SimpleNamespace(current_config="test"),
     )
     page._announce_saved_job = lambda name: None  # no-op for this test
@@ -1127,3 +1130,6 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
     box = captured_boxes[0]
     assert box.textFormat() == Qt.TextFormat.PlainText
     assert "<b>bold</b> job" in box.text()
+    # Pins the working directory to the fixture: revert it to a hardcoded path
+    # and this fails here rather than only on a Linux runner.
+    assert (working_dir / "jobs" / "test-id").is_dir()
