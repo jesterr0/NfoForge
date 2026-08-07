@@ -287,7 +287,10 @@ def torrent_content_files(input_path: Path) -> list[Path]:
         found: list[Path] = []
         for directory, _sub_dirs, file_names in os.walk(input_path, followlinks=True):
             found.extend(Path(directory) / name for name in file_names)
-        return sorted(found)
+        # sorted with the same casefold key torf's list_files uses (see
+        # torf/_utils.py), so the order this reports matches the order torf
+        # itself assigns the pack's files
+        return sorted(found, key=lambda path: str(path).casefold())
     return [input_path] if input_path.is_file() else []
 
 
