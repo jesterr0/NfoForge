@@ -4,6 +4,7 @@ The save/resume round trip is covered in `test_job_save_resume.py`; what is
 tested here is the dialog itself.
 """
 
+from datetime import datetime
 from pathlib import Path
 import re
 import time
@@ -1838,3 +1839,36 @@ def test_stop_loader_tolerates_a_loader_whose_c_plus_plus_object_is_gone(
     dialog._stop_loader()
 
     assert dialog._loader is None
+
+
+# --------------------------------------------------------------------------
+# _saved_text: renders the stored UTC timestamp in local time for the
+# "Saved" column and the details pane. Local time is not controllable
+# cross-platform in this test suite (no `time.tzset()` on Windows), so these
+# assertions are written to hold regardless of the runner's zone rather than
+# pinning a literal rendered string.
+# --------------------------------------------------------------------------
+
+
+def test_saved_text_format_is_pinned() -> None:
+    rendered = LoadJobDialog._saved_text("2026-01-01T00:00:00+00:00")
+
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", rendered)
+
+
+def test_saved_text_preserves_the_instant() -> None:
+    """Timezone-independent: compares the instant the rendering represents
+    against the instant that went in, not the wall-clock text -- which would
+    only match on a UTC runner. The one-minute tolerance is because the
+    format drops seconds.
+    """
+    raw = "2026-01-01T00:00:00+00:00"
+
+    rendered = LoadJobDialog._saved_text(raw)
+
+    parsed = datetime.strptime(rendered, "%Y-%m-%d %H:%M").astimezone()
+    assert abs((parsed - datetime.fromisoformat(raw)).total_seconds()) < 60
+
+
+def test_saved_text_falls_back_to_the_input_verbatim_when_unparseable() -> None:
+    assert LoadJobDialog._saved_text("not a date") == "not a date"
