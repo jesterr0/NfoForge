@@ -383,6 +383,31 @@ def test_double_clicking_a_cross_profile_row_offers_the_switch(
     assert dialog.selected_listing is not None
 
 
+def test_double_clicking_a_same_profile_row_just_opens_it(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """The ordinary case: a double click on a row already on the active
+    profile must accept the dialog and select that job outright, without
+    ever offering the profile switch.
+
+    This matters more than an ordinary coverage gap: the cross-profile
+    branch calls `load_profile()`, which changes persistent global config.
+    Pinning which branch runs is what stops the ordinary case from silently
+    acquiring that side effect.
+    """
+    job_dir = _save(working_dir, "mine")
+    dialog = _open_dialog(qapp)
+    item = dialog.job_tree.topLevelItem(0)
+    dialog.job_tree.setCurrentItem(item)
+
+    dialog._on_double_click(item, 0)
+
+    assert dialog.result() == dialog.DialogCode.Accepted
+    assert dialog.switch_profile_requested is False
+    assert dialog.selected_listing is not None
+    assert dialog.selected_listing.path == job_dir
+
+
 def test_state_column_carries_an_icon(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
