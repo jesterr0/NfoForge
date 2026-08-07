@@ -229,8 +229,16 @@ Two buttons on the Process Page do this:
   host, the torrent is generated, and titles and NFOs are written. The saved job then
   only needs uploading, and asks nothing when it runs.
 
-**Jobs** on the start page opens the saved-job window. Filter by name, title or tracker;
-add prepared jobs to the queue on the right to upload several in a row.
+**Jobs** on the start page opens the saved-job window. Filter by name, title or tracker,
+sort by any column, and select a job to see what it holds -- its trackers and their
+image hosts, how many screenshots it carries, where its media is and how much disk it
+uses. Add prepared jobs to the queue panel to upload several in a row.
+
+A job whose source media is no longer where it was saved is flagged with a warning icon
+and cannot be processed until the file is back. **Rename** (or F2) changes a job's name
+without touching anything else about it. Selecting several jobs and pressing **Delete**
+removes them together -- along with their screenshots, MediaInfo, NFOs and torrents,
+which cannot be undone.
 
 Each job is a self-contained folder under `<working directory>/jobs`, holding its own
 screenshots, MediaInfo, NFOs and a copy of the torrent. Settings -> General **Clean Up**
