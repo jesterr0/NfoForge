@@ -417,6 +417,11 @@ class LoadJobDialog(QDialog):
         that is exactly the case that exceeds two seconds. Returning early
         leaves a running thread to be destroyed, which aborts the process. A
         brief freeze while closing is much the lesser cost.
+
+        The wait is itself guarded against `RuntimeError`: if the underlying
+        C++ object is already destroyed, that is exactly the post-condition
+        this method wants -- no live thread left to wait for -- so suppressing
+        it there is correct rather than masking a real failure.
         """
         loader = self._loader
         self._loader = None
@@ -424,7 +429,8 @@ class LoadJobDialog(QDialog):
             return
         with suppress(RuntimeError, TypeError):
             loader.loaded.disconnect(self._on_listings_loaded)
-        loader.wait()
+        with suppress(RuntimeError):
+            loader.wait()
 
     def done(self, result: int) -> None:
         self._stop_loader()

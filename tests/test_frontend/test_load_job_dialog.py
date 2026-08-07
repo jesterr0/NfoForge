@@ -7,6 +7,7 @@ tested here is the dialog itself.
 from pathlib import Path
 import re
 import time
+from types import SimpleNamespace
 from typing import Any
 
 from PySide6.QtCore import QItemSelectionModel, Qt
@@ -1762,3 +1763,31 @@ def test_calling_load_listings_twice_retires_the_first_loader(
 
     assert dialog.job_tree.topLevelItemCount() == 1
     assert dialog.job_tree.topLevelItem(0).text(0) == "job"
+
+
+def test_stop_loader_tolerates_a_loader_whose_c_plus_plus_object_is_gone(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`wait()` on a `QThread` whose underlying C++ object is already
+    destroyed raises `RuntimeError`, which is exactly the post-condition
+    `_stop_loader` wants -- no live thread left to wait for -- so it has to
+    be tolerated rather than propagate out of dialog close.
+
+    Not reachable through the real `_ListingLoader` today, and there is no
+    safe way to actually destroy a live `QThread`'s C++ object from Python to
+    reproduce it -- doing so aborts the process rather than raising. A stub
+    whose `wait()` raises `RuntimeError` stands in for that case instead.
+    """
+    dialog = _open_dialog(qapp)
+
+    def raise_runtime_error() -> None:
+        raise RuntimeError("Internal C++ object already deleted.")
+
+    dialog._loader = SimpleNamespace(  # pyright: ignore[reportAttributeAccessIssue]
+        loaded=SimpleNamespace(disconnect=lambda *_a, **_k: None),
+        wait=raise_runtime_error,
+    )
+
+    dialog._stop_loader()
+
+    assert dialog._loader is None
