@@ -192,7 +192,17 @@ class MainWindowWizard(QWizard):
     def open_load_job_dialog(self) -> None:
         """Pick saved jobs and either resume one or run several as a queue."""
         dialog = LoadJobDialog(self.config.program.current_config, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Same leak `queue_dialog` is guarded against below, and parenting
+        # gives this one longer to matter: it holds a listing tree, a details
+        # pane and one retired-but-parented `_ListingLoader` per
+        # `_load_listings()` call. `done()` already blocks `exec()` from
+        # returning until any in-flight loader has stopped, so there is
+        # nothing left running for `deleteLater()` to tear down. Scheduled
+        # once here, right after `exec()`, so it covers every return below
+        # regardless of which one is taken.
+        dialog.deleteLater()
+        if not accepted:
             return
 
         if dialog.queued_listings:
