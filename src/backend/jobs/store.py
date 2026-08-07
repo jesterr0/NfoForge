@@ -128,7 +128,7 @@ def build_job(
 
 
 def write_job_document(job: SavedJob, directory: Path) -> Path:
-    """Write `job.json` into an existing job directory and return that directory.
+    """Write `job.json` into a job directory, creating it if needed, and return it.
 
     `save_job` derives the directory from a working directory plus a job id.
     This takes the directory itself, which is what a caller holding only a
