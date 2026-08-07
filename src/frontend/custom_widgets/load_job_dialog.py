@@ -617,8 +617,11 @@ class LoadJobDialog(QDialog):
         if not selected:
             return "Select a job to load, or several prepared ones to add to the queue."
 
-        listing = self._current_listing()
-        if len(selected) == 1 and listing is not None:
+        # The selected job, not the current one -- see `_rename_selected`.
+        # The hint is display-only, but it still has to name the row that is
+        # actually highlighted, not whatever `currentItem()` last landed on.
+        if len(selected) == 1:
+            listing = selected[0]
             if not listing.matches_profile(self.active_profile):
                 return (
                     f"'{listing.name}' was saved under config "

@@ -1047,6 +1047,42 @@ def test_accept_with_switch_targets_the_selected_job_not_the_current_row(
     assert dialog.selected_listing.config_profile == "config-a"
 
 
+def test_selection_hint_names_the_selected_job_not_the_current_row(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Same divergence as rename -- see
+    `test_rename_targets_the_selected_job_not_the_current_row`. The hint is
+    display-only, but it still has to describe the row that is actually
+    highlighted, not whatever `currentItem()` last landed on.
+    """
+    _save(working_dir, "selected", created_at="2026-06-01T00:00:00+00:00")
+    _save(
+        working_dir,
+        "merely current",
+        profile="other",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    dialog = _open_dialog(qapp)
+    dialog.only_this_config.setChecked(False)
+
+    selected_row = dialog.job_tree.topLevelItem(0)
+    current_row = dialog.job_tree.topLevelItem(1)
+    assert selected_row.text(0) == "selected"
+    selected_row.setSelected(True)
+    dialog.job_tree.setCurrentItem(
+        current_row, 0, QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert dialog.job_tree.currentItem() is current_row
+    assert [item.text(0) for item in dialog.job_tree.selectedItems()] == ["selected"]
+
+    # "selected" matches the active profile and is prepared, so the hint says
+    # it is ready. The merely-current row is on another config -- if the hint
+    # named it instead, this would talk about switching profiles, not loading.
+    assert (
+        dialog._selection_hint() == "'selected' is ready to load or add to the queue."
+    )
+
+
 def test_rename_is_only_available_for_one_job(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
