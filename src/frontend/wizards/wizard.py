@@ -350,10 +350,11 @@ class MainWindowWizard(QWizard):
         """Offer the job's stored torrent for reuse, if the media is unchanged.
 
         Hashing is the most expensive part of a run, so a job that carries a
-        finished torrent can skip it -- but only while the media is byte-for-byte
-        what it was. Cloning a torrent whose piece hashes no longer match would
-        upload a torrent that simply does not work, so a changed (or missing)
-        file silently falls back to hashing.
+        finished torrent can skip it -- but only while the media's size and
+        modified time still match what `MediaFingerprint` recorded. Cloning a
+        torrent whose piece hashes no longer match would upload a torrent that
+        simply does not work, so a changed (or missing) file silently falls
+        back to hashing.
         """
         stored = base_torrent_path(directory)
         if stored is None:
