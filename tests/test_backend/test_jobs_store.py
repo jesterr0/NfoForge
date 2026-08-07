@@ -272,6 +272,56 @@ def test_prune_unreferenced_nfos_is_a_no_op_without_an_nfo_dir(
     store.prune_unreferenced_nfos(directory, {"shared_data": {}})
 
 
+@pytest.mark.parametrize(
+    "context",
+    [
+        {},
+        {"shared_data": "not a mapping"},
+        {"shared_data": {}},
+        {"shared_data": {"tracker_release_data": "not a mapping either"}},
+    ],
+)
+def test_prune_unreferenced_nfos_guards_a_malformed_context(
+    working_dir: Path,
+    context: dict,
+) -> None:
+    """A context with no usable tracker_release_data must not read as 'references nothing'.
+
+    Deleting every NFO on a malformed context would turn a bug elsewhere in
+    the pipeline into a data-loss bug here too.
+    """
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    nfo_dir = directory / store.JOB_NFO_DIR_NAME
+    nfo_dir.mkdir(parents=True)
+    (nfo_dir / "aither.txt").write_text("kept", encoding="utf-8")
+
+    store.prune_unreferenced_nfos(directory, context)
+
+    assert {path.name for path in nfo_dir.iterdir()} == {"aither.txt"}
+
+
+def test_prune_unreferenced_nfos_prunes_a_legitimately_empty_mapping(
+    working_dir: Path,
+) -> None:
+    """An empty tracker_release_data (a job with no NFOs) still means prune everything.
+
+    That is distinct from a missing mapping: here the context did say what is
+    referenced, and the answer is nothing.
+    """
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    nfo_dir = directory / store.JOB_NFO_DIR_NAME
+    nfo_dir.mkdir(parents=True)
+    (nfo_dir / "orphaned.txt").write_text("orphaned", encoding="utf-8")
+
+    store.prune_unreferenced_nfos(
+        directory, {"shared_data": {"tracker_release_data": {}}}
+    )
+
+    assert list(nfo_dir.iterdir()) == []
+
+
 def test_a_listing_reports_whether_its_media_is_still_there(
     working_dir: Path, tmp_path: Path
 ) -> None:

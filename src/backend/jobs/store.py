@@ -170,22 +170,41 @@ def prune_unreferenced_nfos(directory: Path, context: dict[str, Any]) -> None:
     Narrowing a job to fewer trackers leaves the dropped trackers' NFOs behind.
     They are dead weight, and worse, they read as evidence the job still covers
     those trackers.
+
+    A malformed context must not read as "references nothing": that would
+    delete every NFO the job owns instead of the handful a narrowing dropped.
+    So a missing or wrong-typed `tracker_release_data` bails out with nothing
+    touched, while a `tracker_release_data` that is present but genuinely
+    empty (a job with no NFOs at all) still prunes -- that mapping deliberately
+    driving zero references is not the same as not having one to read.
     """
     nfo_dir = directory / JOB_NFO_DIR_NAME
     if not nfo_dir.is_dir():
         return
 
-    referenced: set[str] = set()
     shared = context.get("shared_data")
-    if isinstance(shared, dict):
-        release_data = shared.get("tracker_release_data")
-        if isinstance(release_data, dict):
-            for entry in release_data.values():
-                if not isinstance(entry, dict):
-                    continue
-                name = entry.get("nfo_asset")
-                if isinstance(name, str) and name:
-                    referenced.add(Path(name).name)
+    if not isinstance(shared, dict):
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Not pruning NFOs in '{directory}': context has no 'shared_data' mapping",
+        )
+        return
+    release_data = shared.get("tracker_release_data")
+    if not isinstance(release_data, dict):
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Not pruning NFOs in '{directory}': context has no "
+            "'tracker_release_data' mapping",
+        )
+        return
+
+    referenced: set[str] = set()
+    for entry in release_data.values():
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("nfo_asset")
+        if isinstance(name, str) and name:
+            referenced.add(Path(name).name)
 
     for candidate in nfo_dir.iterdir():
         if candidate.is_file() and candidate.name not in referenced:
