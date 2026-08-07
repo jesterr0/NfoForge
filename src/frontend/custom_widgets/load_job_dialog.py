@@ -866,8 +866,10 @@ class LoadJobDialog(QDialog):
 
         # Spelled out rather than "job(s)": this is the one irreversible action
         # in the dialog, and the list of what goes with it has to match what a
-        # job directory actually holds -- images/, mediainfo/, nfo/ and the
-        # base torrent. Omitting any of them understates the loss.
+        # job directory actually holds. On disk that's images/, mediainfo/,
+        # nfo/ and the base torrent; the text below names the same four
+        # things in the terms a user recognizes -- screenshots, MediaInfo,
+        # NFOs and torrent(s). Omitting any of them understates the loss.
         count = len(listings)
         names = "\n".join(f"  {listing.name}" for listing in listings)
         if count == 1:
