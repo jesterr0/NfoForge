@@ -478,12 +478,20 @@ class ProcessPage(BaseWizardPage):
             return
 
         self._announce_saved_job(job.name)
-        QMessageBox.information(
-            self,
-            "Job Saved",
+        saved_box = QMessageBox(self)
+        saved_box.setWindowTitle("Job Saved")
+        # PlainText rather than the default AutoText: the job name is free text
+        # from a prompt, and one containing angle brackets would otherwise flip
+        # the box into rich-text mode, swallowing the name and collapsing the
+        # line breaks below it. Escaping is not the fix here -- it would show
+        # the entities literally instead of the name the user typed.
+        saved_box.setTextFormat(Qt.TextFormat.PlainText)
+        saved_box.setIcon(QMessageBox.Icon.Information)
+        saved_box.setText(
             f"Saved '{job.name}'.\n\nUse 'Load Job' on the start page to come "
-            f"back to it.\n\n{job_path}",
+            f"back to it.\n\n{job_path}"
         )
+        saved_box.exec()
 
     def _build_job_document(
         self, directory: Path, keep_trackers: set[TrackerSelection] | None

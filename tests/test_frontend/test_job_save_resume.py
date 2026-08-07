@@ -9,6 +9,7 @@ import wave
 from pymediainfo import MediaInfo
 from PySide6.QtWidgets import (
     QDialog,
+    QInputDialog,
     QMessageBox,
     QPushButton,
     QWizard,
@@ -1043,3 +1044,100 @@ def test_a_job_name_with_markup_is_escaped_in_the_log(qapp: Any) -> None:
 
     assert "&lt;b&gt;" in written[0]
     assert "<b>bold</b> job" not in written[0]
+
+
+def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
+    qapp: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The save confirmation box must show the job name verbatim, not interpret
+    markup. Verifies that the box uses PlainText format so angle brackets do
+    not flip it into rich-text mode.
+    """
+    from PySide6.QtGui import Qt
+
+    captured_boxes: list[Any] = []
+
+    class MockMessageBox:
+        """Mock that accepts any parent and captures the instance."""
+
+        Icon = QMessageBox.Icon
+        Accepted = QMessageBox.Accepted
+
+        def __init__(self, parent: Any = None) -> None:
+            self.parent_obj = parent
+            self.title = ""
+            self.icon = None
+            self.text_format = Qt.TextFormat.AutoText
+            self.icon_val = None
+            self.text_val = ""
+            captured_boxes.append(self)
+
+        def setWindowTitle(self, title: str) -> None:
+            self.title = title
+
+        def setTextFormat(self, fmt: Any) -> None:
+            self.text_format = fmt
+
+        def textFormat(self) -> Any:
+            return self.text_format
+
+        def setIcon(self, icon: Any) -> None:
+            self.icon_val = icon
+
+        def setText(self, text: str) -> None:
+            self.text_val = text
+
+        def text(self) -> str:
+            return self.text_val
+
+        def exec(self) -> int:
+            return self.Accepted
+
+    monkeypatch.setattr(process_module, "QMessageBox", MockMessageBox)
+    monkeypatch.setattr(
+        QInputDialog, "getText", lambda *_a, **_k: ("<b>bold</b> job", True)
+    )
+
+    # Mock the dependencies to reach the save success path.
+    page = SimpleNamespace()
+    page.context = ProcessingContext()
+    page.config = SimpleNamespace(
+        settings=SimpleNamespace(
+            general=SimpleNamespace(working_dir=Path("/working/test"))
+        ),
+        program=SimpleNamespace(current_config="test"),
+    )
+    page._announce_saved_job = lambda name: None  # no-op for this test
+    page._build_job_document = lambda *_: {}
+    page._job_summary = lambda *_: JobSummary()
+    page._default_job_name = lambda: "test"
+    page._on_text_update = lambda *_: None
+
+    # Mock media validation.
+    monkeypatch.setattr(
+        "src.context.processing_context.MediaInputPayload.require_existing_media_paths",
+        lambda *_, **__: None,
+    )
+
+    monkeypatch.setattr(
+        "src.frontend.wizards.process.build_job",
+        lambda **_: SimpleNamespace(
+            name="<b>bold</b> job", job_id="test-id", context={}
+        ),
+    )
+    monkeypatch.setattr(
+        "src.frontend.wizards.process.save_job",
+        lambda *_: Path("/saved/job"),
+    )
+
+    # Drive the success path of _save_job.
+    context = page.context
+    context.media_input.input_path = Path("/test.mkv")
+
+    ProcessPage._save_job(page)  # pyright: ignore[reportArgumentType]
+
+    # The message box should have been created.
+    assert len(captured_boxes) == 1
+    box = captured_boxes[0]
+    assert box.textFormat() == Qt.TextFormat.PlainText
+    assert "<b>bold</b> job" in box.text()
