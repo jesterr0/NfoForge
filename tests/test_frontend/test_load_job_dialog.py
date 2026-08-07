@@ -77,15 +77,44 @@ def test_the_full_tracker_list_is_available_as_a_tooltip(
     assert "DarkPeers" in dialog.job_tree.topLevelItem(0).toolTip(3)
 
 
-def test_jobs_are_sortable_and_start_newest_first(
+def test_the_list_opens_sorted_newest_first(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
+    """Assert the sort is configured, not that the rows happen to be in order.
+
+    `list_jobs` already returns newest-first, so checking row 0 proves nothing
+    -- it passes with sorting switched off entirely. The sort indicator is what
+    only `sortByColumn` can set.
+    """
     _save(working_dir, "older", created_at="2026-01-01T00:00:00+00:00")
     _save(working_dir, "newer", created_at="2026-06-01T00:00:00+00:00")
     dialog = LoadJobDialog("default")
 
+    header = dialog.job_tree.header()
     assert dialog.job_tree.isSortingEnabled()
+    assert header.sortIndicatorSection() == 6
+    assert header.sortIndicatorOrder() is Qt.SortOrder.DescendingOrder
     assert dialog.job_tree.topLevelItem(0).text(0) == "newer"
+
+
+def test_the_list_can_be_re_sorted_by_another_column(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Proves the widget sorts, rather than that its input arrived sorted.
+
+    Names are chosen so alphabetical order is the reverse of newest-first: only
+    a live sort can put "alpha" above "zulu" here.
+    """
+    _save(working_dir, "zulu", created_at="2026-06-01T00:00:00+00:00")
+    _save(working_dir, "alpha", created_at="2026-01-01T00:00:00+00:00")
+    dialog = LoadJobDialog("default")
+
+    dialog.job_tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+
+    assert [
+        dialog.job_tree.topLevelItem(index).text(0)
+        for index in range(dialog.job_tree.topLevelItemCount())
+    ] == ["alpha", "zulu"]
 
 
 def test_the_dialog_can_be_resized_from_its_corner(
