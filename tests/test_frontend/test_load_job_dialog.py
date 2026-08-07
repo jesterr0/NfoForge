@@ -120,12 +120,24 @@ def test_the_list_opens_sorted_newest_first(
     `list_jobs` already returns newest-first, so checking row 0 proves nothing
     -- it passes with sorting switched off entirely. The sort indicator is what
     only `sortByColumn` can set.
+
+    Checked again after a reload (triggered the same way delete and rename
+    trigger one) because the flag and indicator are set by the populate path
+    on every call, not only by dialog construction.
     """
     _save(working_dir, "older", created_at="2026-01-01T00:00:00+00:00")
     _save(working_dir, "newer", created_at="2026-06-01T00:00:00+00:00")
     dialog = _open_dialog(qapp)
 
     header = dialog.job_tree.header()
+    assert dialog.job_tree.isSortingEnabled()
+    assert header.sortIndicatorSection() == 6
+    assert header.sortIndicatorOrder() is Qt.SortOrder.DescendingOrder
+    assert dialog.job_tree.topLevelItem(0).text(0) == "newer"
+
+    dialog._load_listings()
+    _wait_for_load(dialog, qapp)
+
     assert dialog.job_tree.isSortingEnabled()
     assert header.sortIndicatorSection() == 6
     assert header.sortIndicatorOrder() is Qt.SortOrder.DescendingOrder

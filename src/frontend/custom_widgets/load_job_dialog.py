@@ -168,7 +168,6 @@ class LoadJobDialog(QDialog):
         header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         header.resizeSection(3, 180)
         self.job_tree.setTextElideMode(Qt.TextElideMode.ElideRight)
-        self.job_tree.setSortingEnabled(True)
         # multi-select so several prepared jobs can be queued in one go
         self.job_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.job_tree.itemDoubleClicked.connect(self._on_double_click)
