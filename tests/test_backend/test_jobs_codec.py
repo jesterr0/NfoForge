@@ -1,5 +1,6 @@
 """Round-trip coverage for saving and restoring a processing context."""
 
+import json
 from pathlib import Path
 import struct
 from types import SimpleNamespace
@@ -352,3 +353,16 @@ def test_filtering_to_nothing_yields_an_empty_tracker_set(
 
     assert filtered["shared_data"]["selected_trackers"] == []
     assert filtered["shared_data"]["tracker_image_hosts"] == {}
+
+
+def test_an_unserializable_provider_payload_is_dropped_not_fatal() -> None:
+    context = ProcessingContext()
+    context.media_search.tmdb_data = {"ok": 1}
+    context.media_search.tvdb_data = object()
+
+    document = context_to_dict(context)
+
+    assert document["media_search"]["tmdb_data"] == {"ok": 1}
+    assert document["media_search"]["tvdb_data"] is None
+    # the whole document must still survive a round trip through JSON
+    json.dumps(document)
