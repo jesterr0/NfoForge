@@ -11,8 +11,10 @@ from types import SimpleNamespace
 from typing import Any
 
 from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import QDialogButtonBox, QHeaderView
 import pytest
+import qtawesome as qta
 
 from src.backend.jobs import store
 from src.backend.jobs.models import JobSummary
@@ -420,27 +422,38 @@ def test_state_column_carries_an_icon(
 def test_the_state_icon_is_chosen_by_the_job_s_own_state(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
-    """A non-null icon on one row proves only that *an* icon was set.
+    """A non-null icon on one row proves only that *an* icon was set, and the
+    two icons merely differing from each other proves only that they are not
+    identical -- both a "same icon for every row" bug and a "states swapped"
+    bug would be missed by that alone: a swap still leaves two distinct,
+    non-null icons, just attached to the wrong rows.
 
-    Setting the same icon on every row unconditionally would satisfy that, so
-    what pins the conditional is the two states resolving to different icons.
-    `QIcon.cacheKey()` is equal for references to one icon and differs between
-    distinct ones, which is exactly the distinction needed here.
+    `qtawesome` caches by (icon name, color), so calling `qta.icon()` here
+    with production's exact name and color reproduces the same `QIcon`
+    `cacheKey()` -- verified empirically, not assumed -- which is what lets
+    each row's icon be checked against the specific icon it should hold,
+    not just against its sibling.
+
+    Rows are collected into a dict keyed by name rather than read by
+    position: newly-saved jobs can tie on `created_at` to the second, and the
+    listing's tie-break sorts by job id, a random `shortuuid` -- so which row
+    lands at index 0 is not deterministic between runs.
     """
     _save(working_dir, "ready", prepared=True)
     _save(working_dir, "draft", prepared=False)
     dialog = _open_dialog(qapp)
 
-    rows = {
-        dialog.job_tree.topLevelItem(index).text(0): dialog.job_tree.topLevelItem(index)
-        for index in range(dialog.job_tree.topLevelItemCount())
-    }
-    ready_icon = rows["ready"].icon(5)
-    draft_icon = rows["draft"].icon(5)
+    rows = {}
+    for index in range(dialog.job_tree.topLevelItemCount()):
+        item = dialog.job_tree.topLevelItem(index)
+        rows[item.text(0)] = item
 
-    assert not ready_icon.isNull()
-    assert not draft_icon.isNull()
-    assert ready_icon.cacheKey() != draft_icon.cacheKey()
+    icon_color = dialog.palette().color(QPalette.ColorRole.WindowText).name()
+    prepared_icon = qta.icon("mdi6.package-variant-closed", color=icon_color)
+    needs_input_icon = qta.icon("mdi6.pencil-outline", color=icon_color)
+
+    assert rows["ready"].icon(5).cacheKey() == prepared_icon.cacheKey()
+    assert rows["draft"].icon(5).cacheKey() == needs_input_icon.cacheKey()
 
 
 def test_delete_removes_every_selected_job(
