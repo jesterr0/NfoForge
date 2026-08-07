@@ -64,6 +64,30 @@ def test_cleanable_items_is_empty_for_a_missing_directory(tmp_path: Path) -> Non
     assert cleanable_items(tmp_path / "never-created") == []
 
 
+def test_cleanable_items_survives_the_directory_vanishing_before_iterdir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The directory can be removed between the is_dir() check and iterdir().
+
+    Same race cleanable_size guards one level down; unguarded here it would
+    surface straight out of cleanable_items and out of cleanable_size too,
+    since cleanable_size iterates this function's result.
+    """
+    working_dir = tmp_path / "nfoforge"
+    working_dir.mkdir()
+
+    real_iterdir = Path.iterdir
+
+    def vanishing(self: Path) -> object:
+        if self == working_dir:
+            raise OSError("directory vanished mid-scan")
+        return real_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", vanishing)
+
+    assert cleanable_items(working_dir) == []
+
+
 def test_cleanable_size_adds_up_what_clean_up_would_remove(tmp_path: Path) -> None:
     processing = tmp_path / "processing" / "run"
     processing.mkdir(parents=True)

@@ -57,10 +57,18 @@ def cleanable_items(working_dir: Path) -> list[Path]:
     Expressed as an exclusion rather than "only the processing folder" so that
     run folders written directly at the working directory root by older
     versions are swept up too, without needing a migration step.
+
+    Same race `cleanable_size` guards one level down: the directory can be
+    removed in the window between the `is_dir()` check and `iterdir()`
+    actually running, and an unhandled `OSError` there would surface out of
+    this function and out of `cleanable_size`, which iterates its result.
     """
     if not working_dir.is_dir():
         return []
-    return [item for item in working_dir.iterdir() if item.name != JOBS_DIR_NAME]
+    try:
+        return [item for item in working_dir.iterdir() if item.name != JOBS_DIR_NAME]
+    except OSError:
+        return []
 
 
 def cleanable_size(working_dir: Path) -> int:
