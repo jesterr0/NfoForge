@@ -399,6 +399,227 @@ def test_a_job_with_missing_media_is_marked_in_the_list(
     assert "no longer" in item.toolTip(0)
 
 
+def test_the_details_pane_describes_the_selected_job(
+    qapp: Any, working_dir: Path, patched_working_dirs: None, tmp_path: Path
+) -> None:
+    media = tmp_path / "Example.2024.mkv"
+    media.write_bytes(b"x" * 20)
+    job = store.build_job(
+        "Example",
+        JobSummary(
+            title="Example",
+            year=2024,
+            media_type="Movie",
+            input_path=str(media),
+            file_count=1,
+            trackers=["Aither"],
+        ),
+        {
+            "shared_data": {
+                "loaded_images": ["a.png", "b.png"],
+                "tracker_image_hosts": {
+                    "AITHER": {
+                        "img_from": "IMAGES",
+                        "img_to": "CHEVERETO_V3",
+                        "img_to_type": "ImageHost",
+                    }
+                },
+            }
+        },
+        config_profile="default",
+    )
+    job.created_at = "2020-01-01T00:00:00+00:00"
+    directory = store.save_job(job, working_dir)
+
+    # A second job the pane must not bleed into. With only one job saved,
+    # assertions on substrings alone would still pass if the pane rendered
+    # nothing at all, or the wrong row's data -- there would be nothing else
+    # to distinguish it from. Pinning it newer than "Example" also makes it
+    # the tree's default (post-sort) row, so a details pane that quietly
+    # ignores the selection and shows row 0 shows this job, not "Example".
+    decoy = store.build_job(
+        "Decoy",
+        JobSummary(title="Decoy", year=2020, trackers=["Huno"]),
+        {
+            "shared_data": {
+                "loaded_images": ["c.png"],
+                "tracker_image_hosts": {
+                    "HUNO": {
+                        "img_from": "IMAGES",
+                        "img_to": "PTPIMG",
+                        "img_to_type": "ImageHost",
+                    }
+                },
+            }
+        },
+        config_profile="default",
+    )
+    decoy.created_at = "2020-06-01T00:00:00+00:00"
+    store.save_job(decoy, working_dir)
+
+    dialog = LoadJobDialog("default")
+    item = dialog.job_tree.findItems("Example", Qt.MatchFlag.MatchExactly, 0)[0]
+    dialog.job_tree.setCurrentItem(item)
+
+    text = dialog.details_lbl.text()
+    assert "Example" in text
+    assert "Aither" in text
+    assert "CHEVERETO_V3" in text
+    assert "2 screenshot" in text
+    assert str(directory) in text
+    # none of the decoy job's own data belongs here
+    assert "Decoy" not in text
+    assert "Huno" not in text
+    assert "PTPIMG" not in text
+    assert "1 screenshot" not in text
+
+
+def test_the_details_pane_is_cleared_when_nothing_is_selected(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    dialog = LoadJobDialog("default")
+
+    assert dialog.details_lbl.text() == ""
+    assert not dialog.open_folder_btn.isEnabled()
+
+
+def test_the_details_pane_clears_once_a_selection_is_lost(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """The empty-dialog case above can pass on the widgets' own construction
+    defaults alone, without `_refresh_details` ever running -- it does not by
+    itself prove the pane reacts to a selection going away. Populating the
+    pane first, then hiding the selected row via the filter, is what actually
+    exercises that path.
+    """
+    _save(working_dir, "alpha")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    assert dialog.details_lbl.text() != ""
+    assert dialog.open_folder_btn.isEnabled()
+
+    dialog.filter_edit.setText("nothing matches this")
+
+    assert dialog.details_lbl.text() == ""
+    assert not dialog.open_folder_btn.isEnabled()
+
+
+def test_the_details_pane_escapes_html_in_a_job_s_name(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Job names are free text from a prompt, and the pane renders rich text.
+
+    A name like this reaching the pane unescaped would inject markup into a
+    QLabel that interprets it -- this plan has already had to fix that same
+    class of bug twice, for the log pane and the save-confirmation box.
+    """
+    _save(working_dir, "<b>evil</b> & friends")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+
+    text = dialog.details_lbl.text()
+    assert "<b>evil</b>" not in text
+    assert "&lt;b&gt;evil&lt;/b&gt; &amp; friends" in text
+
+
+def test_a_retired_tracker_name_in_the_document_does_not_crash_the_pane(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`tracker_image_hosts` is keyed by enum member name, so a tracker that
+    has since been removed from `TrackerSelection` leaves a name the current
+    build cannot resolve. Falling back to the raw string is what stops that
+    from becoming an unhandled `ValueError` out of `_describe`.
+    """
+    job = store.build_job(
+        "job",
+        JobSummary(title="job"),
+        {
+            "shared_data": {
+                "tracker_image_hosts": {
+                    "RETIRED_TRACKER": {
+                        "img_from": "IMAGES",
+                        "img_to": "CHEVERETO_V3",
+                        "img_to_type": "ImageHost",
+                    }
+                },
+            }
+        },
+        config_profile="default",
+    )
+    store.save_job(job, working_dir)
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+
+    assert "RETIRED_TRACKER" in dialog.details_lbl.text()
+
+
+def test_an_unreadable_job_does_not_break_the_details_pane(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = store.save_job(
+        store.build_job(
+            "broken", JobSummary(title="Broken"), {}, config_profile="default"
+        ),
+        working_dir,
+    )
+    (directory / store.JOB_DOCUMENT_NAME).write_text("not json", encoding="utf-8")
+    dialog = LoadJobDialog("default")
+
+    # listing skips unreadable jobs, so add the row by hand to exercise the pane
+    from src.backend.jobs.models import JobListing
+
+    listing = JobListing(
+        job_id="x",
+        name="broken",
+        created_at="2026-01-01T00:00:00+00:00",
+        summary=JobSummary(title="Broken"),
+        path=directory,
+        config_profile="default",
+    )
+
+    # The "Broken" title comes straight from the listing passed in, not from
+    # the document -- it would show up even if load_job never ran at all. What
+    # actually proves the corrupt document was read and its failure handled,
+    # rather than this test silently exercising the happy path, is that
+    # load_job's failure got logged.
+    warnings: list[object] = []
+    monkeypatch.setattr(
+        load_job_dialog_module.LOG,
+        "warning",
+        lambda _source, message: warnings.append(message),
+    )
+
+    text = dialog._describe(listing)
+
+    assert "Broken" in text
+    assert warnings
+    assert "not valid JSON" in str(warnings[0])
+
+
+def test_the_open_folder_button_opens_the_selected_job_s_directory(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = _save(working_dir, "job")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    assert dialog.open_folder_btn.isEnabled()
+
+    opened: list[Path] = []
+    monkeypatch.setattr(
+        load_job_dialog_module, "open_explorer", lambda path: opened.append(path)
+    )
+
+    dialog.open_folder_btn.click()
+
+    assert opened == [directory]
+
+
 def test_one_failed_delete_does_not_strand_the_rest(
     qapp: Any,
     working_dir: Path,

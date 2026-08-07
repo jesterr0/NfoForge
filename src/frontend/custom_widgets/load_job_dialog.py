@@ -1,6 +1,7 @@
 """Picker for saved jobs."""
 
 from datetime import datetime
+from html import escape
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QBrush, QPalette
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -22,8 +24,15 @@ from PySide6.QtWidgets import (
 )
 import qtawesome as qta
 
-from src.backend.jobs import JobListing, JobStoreError, delete_job, list_jobs
+from src.backend.jobs import JobListing, JobStoreError, delete_job, list_jobs, load_job
+from src.backend.utils.file_utilities import (
+    file_bytes_to_str,
+    get_dir_size,
+    open_explorer,
+)
 from src.config.profiles import unique_working_dirs
+from src.enums.tracker_selection import TrackerSelection
+from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.logger.nfo_forge_logger import LOG
 
 _LISTING_ROLE = Qt.ItemDataRole.UserRole
@@ -116,6 +125,34 @@ class LoadJobDialog(QDialog):
         )
         self.empty_lbl.hide()
 
+        self.details_lbl = QLabel("", wordWrap=True, parent=self)
+        self.details_lbl.setTextFormat(Qt.TextFormat.RichText)
+        self.details_lbl.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
+        self.details_lbl.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
+        self.open_folder_btn = QPushButton("Open job folder", self)
+        self.open_folder_btn.setEnabled(False)
+        self.open_folder_btn.clicked.connect(self._open_job_folder)
+
+        details_panel = QWidget(self)
+        details_layout = QVBoxLayout(details_panel)
+        details_layout.setContentsMargins(8, 0, 0, 0)
+        details_scroll = QScrollArea(details_panel)
+        details_scroll.setWidgetResizable(True)
+        details_scroll.setWidget(self.details_lbl)
+        details_layout.addWidget(details_scroll, stretch=1)
+        details_layout.addWidget(self.open_folder_btn)
+
+        self.splitter = CustomSplitter(Qt.Orientation.Horizontal, self)
+        self.splitter.addWidget(self.job_tree)
+        self.splitter.addWidget(details_panel)
+        self.splitter.setStretchFactor(0, 3)
+        self.splitter.setStretchFactor(1, 2)
+
         self.status_lbl = QLabel("", wordWrap=True, parent=self)
         self.status_lbl.setTextFormat(Qt.TextFormat.PlainText)
 
@@ -159,7 +196,7 @@ class LoadJobDialog(QDialog):
         main_layout.addWidget(self.info_lbl)
         main_layout.addLayout(filter_row)
         main_layout.addWidget(self.empty_lbl)
-        main_layout.addWidget(self.job_tree, stretch=1)
+        main_layout.addWidget(self.splitter, stretch=1)
         main_layout.addWidget(self.status_lbl)
         main_layout.addLayout(bottom_row)
 
@@ -280,6 +317,23 @@ class LoadJobDialog(QDialog):
         return f"{title} ({year})" if title and year else title
 
     @staticmethod
+    def _tracker_display_name(raw_name: object) -> str:
+        """A tracker's saved-job key, in the same casing the rest of the UI uses.
+
+        `tracker_image_hosts` is keyed by `TrackerSelection` member *name*
+        (`"AITHER"`), matching the round-trip-by-name convention the job codec
+        uses everywhere -- see `src/backend/jobs/codec.py`. That is not the
+        member's display value (`"Aither"`), which is what the tree's Trackers
+        column and `JobSummary.trackers` both show. A name a current build no
+        longer recognises -- a retired tracker -- falls back to the raw string
+        rather than raising out of the details pane.
+        """
+        try:
+            return str(TrackerSelection(str(raw_name)))
+        except ValueError:
+            return str(raw_name)
+
+    @staticmethod
     def _saved_text(created_at: str) -> str:
         """Render the stored UTC timestamp in the user's local time."""
         try:
@@ -379,6 +433,95 @@ class LoadJobDialog(QDialog):
         if open_button:
             open_button.setEnabled(matches and len(selected) == 1)
         self.status_lbl.setText(self._selection_hint())
+        self._refresh_details()
+
+    def _describe(self, listing: JobListing) -> str:
+        """Everything worth knowing about a job before committing to it.
+
+        The per-tracker image hosts and the screenshot count only exist in the
+        job's document, so it is read here rather than at list time -- one file
+        read when a row is picked, instead of one per job on every open.
+        """
+        rows: list[tuple[str, str]] = [
+            ("Saved", self._saved_text(listing.created_at)),
+            (
+                "Config",
+                escape(listing.config_profile)
+                if listing.config_profile
+                else "not recorded",
+            ),
+            ("State", "Prepared" if listing.prepared else "Needs input"),
+        ]
+        title_text = self._title_text(listing)
+        if title_text:
+            rows.append(("Title", escape(title_text)))
+        summary = listing.summary
+        if summary.media_type:
+            rows.append(("Type", summary.media_type))
+        if summary.file_count:
+            rows.append(("Files", str(summary.file_count)))
+        if summary.input_path:
+            note = "" if listing.media_available else "  (no longer there)"
+            rows.append(("Media", f"{escape(summary.input_path)}{note}"))
+
+        try:
+            job = load_job(listing.path)
+        except JobStoreError as error:
+            LOG.warning(LOG.LOG_SOURCE.FE, f"Could not describe job: {error}")
+            job = None
+
+        if job is not None:
+            shared = job.context.get("shared_data")
+            if isinstance(shared, dict):
+                images = shared.get("loaded_images")
+                if isinstance(images, list):
+                    rows.append(("Screenshots", f"{len(images)} screenshot(s)"))
+                hosts = shared.get("tracker_image_hosts")
+                if isinstance(hosts, dict) and hosts:
+                    rows.append(
+                        (
+                            "Trackers",
+                            "<br />".join(
+                                f"{escape(self._tracker_display_name(name))} &rarr; "
+                                f"{escape(str(entry.get('img_to', '?')))}"
+                                for name, entry in hosts.items()
+                                if isinstance(entry, dict)
+                            ),
+                        )
+                    )
+        if not any(label == "Trackers" for label, _ in rows) and summary.trackers:
+            rows.append(("Trackers", "<br />".join(map(escape, summary.trackers))))
+
+        try:
+            rows.append(("On disk", file_bytes_to_str(get_dir_size(listing.path))))
+        except OSError:
+            pass
+        rows.append(("Folder", escape(str(listing.path))))
+
+        body = "".join(
+            f"<tr><td style='padding-right: 10px;'><b>{label}</b></td>"
+            f"<td>{value}</td></tr>"
+            for label, value in rows
+        )
+        return (
+            f"<p style='margin: 0 0 6px 0;'><b>{escape(listing.name)}</b></p>"
+            f"<table>{body}</table>"
+        )
+
+    def _refresh_details(self) -> None:
+        listing = self._current_listing()
+        if listing is None or listing not in self._selected_listings():
+            self.details_lbl.setText("")
+            self.open_folder_btn.setEnabled(False)
+            return
+        self.details_lbl.setText(self._describe(listing))
+        self.open_folder_btn.setEnabled(listing.path.is_dir())
+
+    @Slot()
+    def _open_job_folder(self) -> None:
+        listing = self._current_listing()
+        if listing is not None:
+            open_explorer(listing.path)
 
     @Slot(QTreeWidgetItem, int)
     def _on_double_click(self, item: QTreeWidgetItem, _column: int) -> None:
