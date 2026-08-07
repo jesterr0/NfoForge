@@ -994,3 +994,47 @@ def test_deleting_a_queued_job_takes_it_out_of_the_queue(
 
     assert dialog.queue_list.count() == 1
     assert [listing.name for listing in dialog.queueable_listings()] == ["survivor"]
+
+
+def test_a_failed_delete_leaves_its_queue_entry_in_place(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A delete that raises must not also drop its queue entry -- the job is
+    untouched on disk and still perfectly runnable, so losing its queue
+    position would be an undisclosed side effect of an operation that never
+    happened. Only the job whose delete actually succeeded should leave the
+    queue.
+    """
+    stuck_dir = _save(working_dir, "stuck", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "goes", created_at="2026-06-01T00:00:00+00:00")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+    dialog._add_to_queue()
+
+    real_delete = load_job_dialog_module.delete_job
+
+    def flaky(path: Path) -> None:
+        if path == stuck_dir:
+            raise load_job_dialog_module.JobStoreError("disk said no")
+        real_delete(path)
+
+    reported: list[str] = []
+    monkeypatch.setattr(load_job_dialog_module, "delete_job", flaky)
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "question",
+        lambda *_a, **_k: load_job_dialog_module.QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "critical",
+        lambda _parent, _title, text, *_a, **_k: reported.append(text),
+    )
+
+    dialog._delete_selected()
+
+    assert [listing.name for listing in dialog.queueable_listings()] == ["stuck"]
+    assert reported and "stuck" in reported[0]

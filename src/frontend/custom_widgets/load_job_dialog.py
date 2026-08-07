@@ -462,8 +462,14 @@ class LoadJobDialog(QDialog):
     def _can_queue(self, listing: JobListing) -> bool:
         return listing.prepared and listing.matches_profile(self.active_profile)
 
-    def _queued_paths(self) -> list[Path]:
-        return [listing.path for listing in self.queueable_listings()]
+    def _queued_paths(self) -> set[Path]:
+        """Paths already in the queue, for the duplicate check.
+
+        Its own method rather than an inline comprehension in `_add_to_queue`,
+        so the "what is already queued" question has one answer that
+        `_drop_from_queue` and any later caller can share.
+        """
+        return {listing.path for listing in self.queueable_listings()}
 
     def _renumber_queue(self) -> None:
         for row in range(self.queue_list.count()):
@@ -474,7 +480,7 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _add_to_queue(self) -> None:
-        queued = {listing.path for listing in self.queueable_listings()}
+        queued = self._queued_paths()
         for listing in self._selected_listings():
             if not self._can_queue(listing) or listing.path in queued:
                 continue
@@ -714,7 +720,6 @@ class LoadJobDialog(QDialog):
         listings = self._selected_listings()
         if not listings:
             return
-        paths = {listing.path for listing in listings}
 
         # Spelled out rather than "job(s)": this is the one irreversible action
         # in the dialog, and the list of what goes with it has to match what a
@@ -745,6 +750,7 @@ class LoadJobDialog(QDialog):
         ):
             return
 
+        removed: set[Path] = set()
         failures: list[str] = []
         for listing in listings:
             try:
@@ -752,6 +758,8 @@ class LoadJobDialog(QDialog):
             except JobStoreError as error:
                 LOG.error(LOG.LOG_SOURCE.FE, f"Failed to delete job: {error}")
                 failures.append(f"{listing.name}: {error}")
+                continue
+            removed.add(listing.path)
 
         if failures:
             QMessageBox.critical(
@@ -759,7 +767,12 @@ class LoadJobDialog(QDialog):
                 "Delete Failed",
                 "Some jobs could not be deleted:\n\n" + "\n".join(failures),
             )
-        self._drop_from_queue(paths)
+
+        # Only what actually went. A job whose delete failed is still on disk
+        # and still runnable, so dropping it from the queue would be a second,
+        # silent consequence of an operation that did not happen -- and the
+        # user would lose its queue position with nothing saying so.
+        self._drop_from_queue(removed)
         self._load_listings()
 
     @Slot()
