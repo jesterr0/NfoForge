@@ -488,7 +488,7 @@ class ProcessPage(BaseWizardPage):
         saved_box.setTextFormat(Qt.TextFormat.PlainText)
         saved_box.setIcon(QMessageBox.Icon.Information)
         saved_box.setText(
-            f"Saved '{job.name}'.\n\nUse 'Load Job' on the start page to come "
+            f"Saved '{job.name}'.\n\nUse 'Jobs' on the start page to come "
             f"back to it.\n\n{job_path}"
         )
         saved_box.exec()

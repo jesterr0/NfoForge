@@ -669,15 +669,15 @@ def test_start_id_plus_restart_jumps_straight_to_the_process_page(qapp: Any) -> 
     assert wizard.currentId() == WizardPages.INPUT_PAGE.value
 
 
-def test_help_button_slot_can_carry_the_load_job_button(qapp: Any) -> None:
-    """All three CustomButton slots are taken, so Load Job rides on HelpButton.
+def test_help_button_slot_can_carry_the_jobs_button(qapp: Any) -> None:
+    """All three CustomButton slots are taken, so Jobs rides on HelpButton.
 
     Guards that a custom button placed in that slot really is shown when the
     layout asks for it, and hidden when a layout omits it.
     """
     wizard = QWizard()
     wizard.setPage(WizardPages.INPUT_PAGE.value, QWizardPage())
-    load_button = QPushButton("Load Job", wizard)
+    load_button = QPushButton("Jobs", wizard)
     wizard.setButton(QWizard.WizardButton.HelpButton, load_button)
     wizard.setOption(QWizard.WizardOption.HaveHelpButton)
     wizard.setButtonLayout(

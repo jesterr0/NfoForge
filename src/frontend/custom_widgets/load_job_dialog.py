@@ -42,8 +42,9 @@ class LoadJobDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("loadJobDialog")
-        self.setWindowTitle("Load Job")
+        self.setWindowTitle("Saved Jobs")
         self.resize(860, 400)
+        self.setSizeGripEnabled(True)
 
         self.active_profile = active_profile or ""
         self.selected_listing: JobListing | None = None
@@ -51,8 +52,7 @@ class LoadJobDialog(QDialog):
         self.queued_listings: list[JobListing] = []
         """Jobs to run back to back, when the user chose Run Queue."""
 
-        info_lbl = QLabel(
-            f'<h3 style="margin: 0; margin-bottom: 6px;">{self.windowTitle()}</h3>'
+        self.info_lbl = QLabel(
             "<i><span>Pick a saved job to jump straight to processing. Duplicate "
             "checks still run when you process it.<br />Jobs saved under another "
             "config are shown greyed out; use <b>Switch profile and load</b> to "
@@ -69,7 +69,20 @@ class LoadJobDialog(QDialog):
         self.job_tree.setHeaderLabels(
             ("Name", "Title", "Type", "Trackers", "Config", "State", "Saved")
         )
-        self.job_tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Column widths carry meaning here: Name and Title are what a job is
+        # recognised by, Trackers is an open-ended list the user may want wider,
+        # and the rest are short enough to size themselves.
+        header = self.job_tree.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        header.resizeSection(3, 180)
+        self.job_tree.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.job_tree.setSortingEnabled(True)
         # multi-select so several prepared jobs can be queued in one go
         self.job_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.job_tree.itemDoubleClicked.connect(self._accept_selection)
@@ -119,7 +132,7 @@ class LoadJobDialog(QDialog):
         bottom_row.addWidget(self.button_box)
 
         main_layout = QVBoxLayout(self)
-        main_layout.addWidget(info_lbl)
+        main_layout.addWidget(self.info_lbl)
         main_layout.addWidget(self.empty_lbl)
         main_layout.addWidget(self.job_tree, stretch=1)
         main_layout.addLayout(bottom_row)
@@ -127,6 +140,9 @@ class LoadJobDialog(QDialog):
         self._load_listings()
 
     def _load_listings(self) -> None:
+        # sorting reshuffles the tree on every insert otherwise, which is
+        # wasted work and would show rows swapping places as they load
+        self.job_tree.setSortingEnabled(False)
         self.job_tree.clear()
         listings = list_jobs(unique_working_dirs())
         muted = QBrush(
@@ -148,6 +164,10 @@ class LoadJobDialog(QDialog):
                 )
             )
             item.setData(0, _LISTING_ROLE, listing)
+            # the Trackers column is Interactive and elides, so the full list
+            # has to be reachable somewhere
+            if listing.summary.trackers:
+                item.setToolTip(3, "\n".join(listing.summary.trackers))
             if not listing.matches_profile(self.active_profile):
                 # muted rather than disabled: a disabled item cannot be
                 # selected at all, and selecting it is exactly how the user
@@ -160,6 +180,9 @@ class LoadJobDialog(QDialog):
                     "Use 'Switch profile and load' to open it.",
                 )
             self.job_tree.addTopLevelItem(item)
+
+        self.job_tree.setSortingEnabled(True)
+        self.job_tree.sortByColumn(6, Qt.SortOrder.DescendingOrder)
 
         has_jobs = bool(listings)
         self.job_tree.setVisible(has_jobs)

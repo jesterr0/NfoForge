@@ -95,10 +95,12 @@ class MainWindowWizard(QWizard):
         self.setOption(QWizard.WizardOption.HaveCustomButton3)
 
         # all three CustomButton slots are already spoken for, so the unused
-        # HelpButton slot carries "Load Job" -- the same re-purposing this
+        # HelpButton slot carries "Jobs" -- the same re-purposing this
         # wizard already does by putting "Next" on the CommitButton
-        self.load_job_button = QPushButton("Load Job", self)
-        self.load_job_button.setToolTip("Load a previously saved job and process it")
+        self.load_job_button = QPushButton("Jobs", self)
+        self.load_job_button.setToolTip(
+            "Browse saved jobs: load one to process it, or queue several"
+        )
         self.load_job_button.clicked.connect(self.open_load_job_dialog)
         self.setButton(QWizard.WizardButton.HelpButton, self.load_job_button)
         self.setOption(QWizard.WizardOption.HaveHelpButton)
