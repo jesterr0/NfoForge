@@ -418,14 +418,30 @@ class LoadJobDialog(QDialog):
         if not listings:
             return
 
+        # Spelled out rather than "job(s)": this is the one irreversible action
+        # in the dialog, and the list of what goes with it has to match what a
+        # job directory actually holds -- images/, mediainfo/, nfo/ and the
+        # base torrent. Omitting any of them understates the loss.
+        count = len(listings)
         names = "\n".join(f"  {listing.name}" for listing in listings)
+        if count == 1:
+            title = "Delete Job"
+            question = "Delete this saved job?"
+            consequence = (
+                "This also removes its screenshots, MediaInfo, NFOs and torrent."
+            )
+        else:
+            title = "Delete Jobs"
+            question = f"Delete these {count} saved jobs?"
+            consequence = (
+                "This also removes their screenshots, MediaInfo, NFOs and torrents."
+            )
+
         if (
             QMessageBox.question(
                 self,
-                "Delete Job" if len(listings) == 1 else "Delete Jobs",
-                f"Delete {len(listings)} saved job(s)?\n\n{names}\n\n"
-                "This also removes their screenshots, MediaInfo and torrents. "
-                "It cannot be undone.",
+                title,
+                f"{question}\n\n{names}\n\n{consequence} It cannot be undone.",
             )
             is not QMessageBox.StandardButton.Yes
         ):

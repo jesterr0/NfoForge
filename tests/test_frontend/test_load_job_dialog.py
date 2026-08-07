@@ -380,3 +380,47 @@ def test_the_delete_key_is_wired_to_delete(
     dialog = LoadJobDialog("default")
 
     assert dialog.delete_btn.shortcut() == Qt.Key.Key_Delete
+
+
+def test_one_failed_delete_does_not_strand_the_rest(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Continuing past a failure is this method's whole point.
+
+    An accidental `break`, or the `try` drifting outside the loop, would leave
+    every job after the first failure sitting on disk while the user is told
+    only about the one that failed. Nothing else in the suite would notice.
+    """
+    fails_dir = _save(working_dir, "unlucky")
+    succeeds_dir = _save(working_dir, "fine")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+
+    real_delete = load_job_dialog_module.delete_job
+
+    def flaky(path: Path) -> None:
+        if path == fails_dir:
+            raise load_job_dialog_module.JobStoreError("disk said no")
+        real_delete(path)
+
+    reported: list[str] = []
+    monkeypatch.setattr(load_job_dialog_module, "delete_job", flaky)
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "question",
+        lambda *_a, **_k: load_job_dialog_module.QMessageBox.StandardButton.Yes,
+    )
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "critical",
+        lambda _parent, _title, text, *_a, **_k: reported.append(text),
+    )
+
+    dialog._delete_selected()
+
+    assert fails_dir.exists()
+    assert not succeeds_dir.exists()
+    assert reported and "unlucky" in reported[0]
