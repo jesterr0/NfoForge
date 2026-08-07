@@ -432,6 +432,31 @@ def test_accepting_the_offer_saves_only_the_deferrable_trackers(
     ]
 
 
+def test_a_deferred_job_only_stores_nfos_for_the_trackers_it_keeps(
+    qapp: Any, sample_media: Path, tmp_path: Path
+) -> None:
+    """A dropped tracker's NFO left in the folder implies the job still covers it."""
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
+        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+    )
+    context.shared_data.tracker_release_data = {
+        TrackerSelection.AITHER: {"title": "a", "nfo": "already uploaded"},
+        TrackerSelection.HUNO: {"title": "h", "nfo": "still to go"},
+    }
+
+    page = SimpleNamespace(context=context)
+    page._first_generated_torrent = lambda: None
+    directory = tmp_path / "job"
+    directory.mkdir()
+
+    document = ProcessPage._build_job_document(page, directory, {TrackerSelection.HUNO})
+
+    assert set(document["shared_data"]["tracker_release_data"]) == {"HUNO"}
+    assert {path.name for path in (directory / "nfo").iterdir()} == {"huno.txt"}
+
+
 # --------------------------------------------------------------------------
 # load dialog
 # --------------------------------------------------------------------------

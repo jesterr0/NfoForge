@@ -504,10 +504,16 @@ class ProcessPage(BaseWizardPage):
             copy_base_torrent(directory, base_torrent)
 
         # a prepared job's NFOs are the ones that get uploaded, so they cannot
-        # be left in `processing/` where Clean Up would take them
-        nfo_assets = capture_nfos(
-            directory, self.context.shared_data.tracker_release_data
-        )
+        # be left in `processing/` where Clean Up would take them -- and a
+        # narrowed job must not keep sidecars for trackers it no longer covers
+        release_data = self.context.shared_data.tracker_release_data
+        if keep_trackers is not None:
+            release_data = {
+                tracker: release
+                for tracker, release in release_data.items()
+                if tracker in keep_trackers
+            }
+        nfo_assets = capture_nfos(directory, release_data)
 
         document = context_to_dict(self.context, mediainfo_assets, nfo_assets)
         if copied_images:
@@ -821,8 +827,9 @@ class ProcessPage(BaseWizardPage):
                 "Save Remaining Trackers",
                 f"{len(deferrable)} tracker(s) were not uploaded:\n\n{described}\n\n"
                 "Save them as a job so they can be uploaded later?\n\n"
-                "Note: any title or NFO edits made during this run are not kept; "
-                "they are regenerated when the job is processed.",
+                "The titles and NFOs from this run are saved with the job, "
+                "including any edits you made in the overview, so it will "
+                "upload exactly what you saw here.",
             )
             is not QMessageBox.StandardButton.Yes
         ):
