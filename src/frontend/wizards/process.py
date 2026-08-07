@@ -996,16 +996,22 @@ class ProcessPage(BaseWizardPage):
     @Slot(str)
     def _on_text_update_replace_last_line(self, txt: str) -> None:
         """Updates last line of text from the start of line"""
+        # Same reason `_on_text_update` scrubs before inserting: this channel
+        # is reachable from plugins (`UploadReporter.replace_last_line`), and
+        # it is what the user actually sees in the log pane -- LOG.info's own
+        # sink already scrubs centrally (`nfo_forge_logger.py`), but the
+        # inserted HTML does not go through that.
+        safe_txt = scrub_secrets(txt)
         cursor = self.text_widget.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.movePosition(
             QTextCursor.MoveOperation.StartOfLine, QTextCursor.MoveMode.KeepAnchor
         )
         cursor.removeSelectedText()
-        cursor.insertHtml(txt)
+        cursor.insertHtml(safe_txt)
         self.text_widget.setTextCursor(cursor)
         self.text_widget.ensureCursorVisible()
-        LOG.info(LOG.LOG_SOURCE.FE, f"Process log replace last line: {txt}")
+        LOG.info(LOG.LOG_SOURCE.FE, f"Process log replace last line: {safe_txt}")
 
     @Slot(str)
     def _log_caught_error(self, txt: str) -> None:
