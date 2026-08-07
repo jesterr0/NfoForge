@@ -59,10 +59,11 @@
     its duplicate check finds something _or_ when that check could not complete --
     unverified is treated the same as found, since the queue has nobody to ask what the
     interactive flow asks. Once a job has uploaded, the trackers that went out are
-    removed from it, and a job with nothing left is deleted -- so re-running a queue can
-    never re-upload what already landed. A tracker that fails is retried automatically
-    and then passed by without blocking, and no single job failing stops the ones behind
-    it.
+    removed from it, and a job with nothing left is deleted, so re-running a queue does
+    not re-upload what already landed -- short of that bookkeeping update itself
+    failing, which is logged and leaves the job to try again next run. A tracker that
+    fails is retried automatically and then passed by without blocking, and no single
+    job failing stops the ones behind it.
 - Plugins:
   - Added optional post-upload plugins. Processors run once per tracker after that
     tracker's upload and torrent-client injection finish (or fail), reporting one of
