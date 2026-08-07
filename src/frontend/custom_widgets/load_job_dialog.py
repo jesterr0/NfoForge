@@ -131,7 +131,9 @@ class LoadJobDialog(QDialog):
         )
 
         self.filter_edit = QLineEdit(self)
-        self.filter_edit.setPlaceholderText("Filter by name, title or tracker...")
+        self.filter_edit.setPlaceholderText(
+            "Filter by name, title, file or tracker..."
+        )
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self._apply_filter)
 

@@ -198,6 +198,34 @@ def test_filtering_matches_name_title_and_tracker(
     assert visible == ["beta"]
 
 
+def test_filtering_matches_input_name(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """The placeholder promises filtering by file works, so `_apply_filter`'s
+    haystack has to actually include `input_name` -- a filter that only
+    searched `name`, `title` and `trackers` would leave that promise broken
+    for a user filtering by the source filename.
+    """
+    job = store.build_job(
+        "job",
+        JobSummary(
+            title="Some Title",
+            trackers=["Aither"],
+            input_name="Distinctive.Source.File.mkv",
+        ),
+        {"shared_data": {}},
+        config_profile="default",
+    )
+    store.save_job(job, working_dir)
+    dialog = _open_dialog(qapp)
+
+    assert "file" in dialog.filter_edit.placeholderText().casefold()
+
+    dialog.filter_edit.setText("distinctive.source.file")
+
+    assert not dialog.job_tree.topLevelItem(0).isHidden()
+
+
 def test_only_this_config_hides_other_profiles_by_default(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
