@@ -217,7 +217,7 @@ tracker you selected.
 --8<-- "docs/snippets/successful_release.txt"
 ```
 
-### Saved jobs
+### Saved Jobs
 
 A configured upload can be saved and processed later, including after closing NfoForge.
 Two buttons on the Process Page do this:
@@ -253,7 +253,7 @@ covers is unchanged.
 Duplicate checks are deliberately _not_ run at save time. They run immediately before
 uploading, where the answer is current.
 
-#### Jobs and config profiles
+#### Jobs and Config Profiles
 
 A job records the config profile it was built under but stores no settings of its own --
 credentials, templates and per-tracker options are read live at resume time. Jobs
@@ -266,7 +266,7 @@ NFO templates are shared across configs. A prepared job uploads the NFO it prepa
 editing the template afterwards does not change what it sends -- loading the job says
 which template changed so the difference is not silent.
 
-#### The queue
+#### The Queue
 
 Select prepared jobs on the current config, add them to the queue in the order you want
 them run, and press **Run Queue**. The queue window lists every job and expands the
