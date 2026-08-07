@@ -350,6 +350,11 @@ class MainWindowWizard(QWizard):
         details = job.context.get("base_torrent")
         input_path = context.media_input.input_path
         if not isinstance(details, dict) or input_path is None:
+            LOG.info(
+                LOG.LOG_SOURCE.FE,
+                f"Not reusing the torrent saved with job '{job.name}': its "
+                "saved fingerprint details or current input path are missing",
+            )
             return
 
         recorded = details.get("fingerprints")

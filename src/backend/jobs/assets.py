@@ -15,8 +15,9 @@ Three kinds of asset are captured:
   plain-text dump trackers actually receive. Between them a resumed run never
   has to call `MediaInfo.parse()` against the media again.
 - **The base torrent**, so a resumed run clones instead of re-hashing what may
-  be tens of gigabytes. Recorded with the media's size and mtime so a changed
-  file falls back to hashing rather than shipping stale piece hashes.
+  be tens of gigabytes. Recorded with the size and mtime of every file the
+  torrent covers, so a changed, added, or removed file falls back to hashing
+  rather than shipping stale piece hashes.
 
 Qt-free, so it stays unit testable.
 """
@@ -26,6 +27,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import Path
 import shutil
 from typing import Any
@@ -267,9 +269,25 @@ def torrent_content_files(input_path: Path) -> list[Path]:
     Walks the input rather than reading `MediaInputPayload.file_list`: the
     torrent is built from `input_path`, so for a pack it also covers subtitles
     and other extras that the media file list leaves out.
+
+    Uses `os.walk(followlinks=True)` rather than `Path.rglob`: torf itself
+    walks with `followlinks=True` (see `torf/_utils.py`), and `rglob`'s `**`
+    does not descend into a symlinked directory on this project's Python
+    floor. Missing a symlinked subtree here would mean a file the torrent
+    covers is never fingerprinted, so an edit inside it would go undetected --
+    the exact failure this function exists to close.
+
+    Index sidecars such as `.lwi`/`.ffindex` are deliberately included even
+    though torrent creation excludes them (see `INDEX_SIDECAR_GLOBS` in
+    `src/backend/torrents/torrent.py`): fingerprinting a file the torrent does
+    not actually contain only costs a spurious re-hash, never a stale clone,
+    and it is not worth coupling this package to that one over it.
     """
     if input_path.is_dir():
-        return sorted(path for path in input_path.rglob("*") if path.is_file())
+        found: list[Path] = []
+        for directory, _sub_dirs, file_names in os.walk(input_path, followlinks=True):
+            found.extend(Path(directory) / name for name in file_names)
+        return sorted(found)
     return [input_path] if input_path.is_file() else []
 
 

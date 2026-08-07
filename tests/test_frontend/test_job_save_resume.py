@@ -17,10 +17,13 @@ from PySide6.QtWidgets import (
 import pytest
 
 from src.backend.jobs import (
+    MediaFingerprint,
     context_from_dict,
     context_to_dict,
+    fingerprint_files,
     store,
     template_fingerprint,
+    torrent_content_files,
 )
 from src.backend.jobs.models import JobSummary
 from src.backend.upload_retry import TrackerRunOutcome
@@ -867,8 +870,6 @@ def test_a_fully_served_job_asks_nothing(qapp: Any, sample_media: Path) -> None:
 def test_a_pack_with_a_changed_episode_falls_back_to_hashing(
     qapp: Any, tmp_path: Path
 ) -> None:
-    from src.backend.jobs import fingerprint_files, torrent_content_files
-
     pack = tmp_path / "Pack.S01"
     pack.mkdir()
     (pack / "e01.mkv").write_bytes(b"a")
@@ -892,6 +893,102 @@ def test_a_pack_with_a_changed_episode_falls_back_to_hashing(
     )
 
     (pack / "e02.mkv").write_bytes(b"different")
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent is None
+
+
+def test_an_unchanged_pack_reuses_the_stored_torrent(qapp: Any, tmp_path: Path) -> None:
+    """The positive case: nothing changed, so the clone must actually happen."""
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    stored = job_dir_path / "base.torrent"
+    stored.write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = pack
+    context.media_input.file_list.append(pack / "e01.mkv")
+
+    job = SimpleNamespace(
+        name="pack",
+        context={
+            "base_torrent": {
+                "media": str(pack),
+                "fingerprints": fingerprint_files(torrent_content_files(pack)),
+            }
+        },
+    )
+
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent == stored
+
+
+def test_a_legacy_single_file_fingerprint_is_honoured(
+    qapp: Any, tmp_path: Path
+) -> None:
+    """A job saved before whole-release fingerprints recorded only the first
+    file -- for a single-file release that is the whole torrent, so it must
+    still be trusted."""
+    media = tmp_path / "movie.mkv"
+    media.write_bytes(b"a")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    stored = job_dir_path / "base.torrent"
+    stored.write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = media
+    context.media_input.file_list.append(media)
+
+    job = SimpleNamespace(
+        name="movie",
+        context={
+            "base_torrent": {
+                "media": str(media),
+                "fingerprint": MediaFingerprint.of(media).to_dict(),
+            }
+        },
+    )
+
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent == stored
+
+
+def test_a_legacy_fingerprint_does_not_vouch_for_a_directory(
+    qapp: Any, tmp_path: Path
+) -> None:
+    """Guards the `is_dir()` check: a pre-fix job recorded only the first
+    file, which cannot prove the rest of a pack is unchanged even though that
+    first file itself is untouched here."""
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    first = pack / "e01.mkv"
+    first.write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    (job_dir_path / "base.torrent").write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = pack
+    context.media_input.file_list.append(first)
+
+    job = SimpleNamespace(
+        name="pack",
+        context={
+            "base_torrent": {
+                "media": str(pack),
+                "fingerprint": MediaFingerprint.of(first).to_dict(),
+            }
+        },
+    )
+
     MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
 
     assert context.shared_data.base_torrent is None

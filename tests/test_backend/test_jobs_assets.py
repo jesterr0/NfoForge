@@ -1,5 +1,6 @@
 """Coverage for the files a job copies in so it stops depending on `processing/`."""
 
+import os
 from pathlib import Path
 import struct
 import wave
@@ -199,6 +200,21 @@ def test_fingerprint_detects_a_changed_media_file(sample_media: Path) -> None:
     sample_media.write_bytes(b"completely different content")
 
     assert not fingerprint.matches(sample_media)
+
+
+def test_fingerprint_detects_a_changed_mtime_at_the_same_size(tmp_path: Path) -> None:
+    """Isolates the mtime half of the comparison: the test above changes size
+    too, so it alone would still pass with mtime comparison dropped."""
+    media = tmp_path / "movie.mkv"
+    media.write_bytes(b"same length")
+    fingerprint = MediaFingerprint.of(media)
+
+    media.write_bytes(b"still same!")  # same byte count, different content
+    bumped = fingerprint.mtime_ns + 1_000_000_000
+    os.utime(media, ns=(bumped, bumped))
+
+    assert media.stat().st_size == fingerprint.size
+    assert not fingerprint.matches(media)
 
 
 def test_fingerprint_of_a_missing_file_never_matches(tmp_path: Path) -> None:
