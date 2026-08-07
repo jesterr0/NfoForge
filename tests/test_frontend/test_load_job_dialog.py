@@ -1136,35 +1136,92 @@ def test_closing_mid_load_waits_for_the_loader_before_tearing_down(
     patched_working_dirs: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`done()` exists purely because destroying a running `QThread` aborts
-    the process outright, so what needs proving is that closing the dialog
-    actually blocks until the loader has finished -- not merely that
-    `reject()` did not raise. A real sleep in `run()` (on the loader's own
-    OS thread, so it does not block this test) makes "still running when the
-    user closes the dialog" the case being exercised, rather than a race that
-    happens to resolve one way on a given machine.
+    """`_stop_loader` exists purely because destroying a running `QThread`
+    aborts the process outright, so what needs proving is that closing the
+    dialog actually blocks until the loader has finished -- not merely that
+    `reject()` did not raise, and not only up to some cap.
+
+    The 2.2s sleep here (on the loader's own OS thread, so it does not block
+    this test) is deliberately past the two-second bound an earlier version
+    of `_stop_loader` used: that cap failed in exactly the slow-network-share
+    scan this task exists to get off the GUI thread, since that is precisely
+    the case that runs long. The fix has no cap, and this is what proves it
+    -- a version with `wait(2000)` reinstated fails this test, since the
+    loader would still be asleep for another ~200ms when the assertion runs.
     """
     _save(working_dir, "job")
     original_run = load_job_dialog_module._ListingLoader.run
 
     def slow_run(self: Any) -> None:
-        time.sleep(0.4)
+        time.sleep(2.2)
         original_run(self)
 
     monkeypatch.setattr(load_job_dialog_module._ListingLoader, "run", slow_run)
 
     dialog = LoadJobDialog("default")
-    assert dialog._loader is not None
-    assert dialog._loader.isRunning()
+    loader = dialog._loader
+    assert loader is not None
+    assert loader.isRunning()
 
     dialog.reject()
 
-    # If `done()` merely disconnected the signal and returned without ever
-    # calling `wait()`, the loader would still be mid-sleep here.
-    assert dialog._loader.isRunning() is False
+    # `_stop_loader` clears `dialog._loader` before returning, so the loader
+    # reference captured above -- not `dialog._loader`, which is now `None`
+    # -- is what proves the thread itself finished rather than merely being
+    # detached.
+    assert loader.isRunning() is False
     # And if the disconnect happened after (or not at all), the loader's
     # `loaded` signal -- queued for delivery once the sleep ends -- would
     # still land on a dialog that is closing, repopulating a tree nobody is
     # looking at.
     qapp.processEvents()
     assert dialog.job_tree.topLevelItemCount() == 0
+
+
+def test_calling_load_listings_twice_retires_the_first_loader(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second `_load_listings()` call while the first is still scanning
+    must retire that first loader, not orphan it. An orphaned loader is still
+    running and still parented to the dialog, but no longer reachable through
+    `self._loader` -- which is exactly the thread `done()` could never wait
+    on, and destroying it later aborts the process.
+
+    Slowing only the first `run()` (via a call counter) guarantees the first
+    loader is still going when the second call arrives, rather than hoping a
+    fast local scan wins a race.
+    """
+    _save(working_dir, "job")
+    original_run = load_job_dialog_module._ListingLoader.run
+    calls = 0
+
+    def slow_first_run(self: Any) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            time.sleep(0.4)
+        original_run(self)
+
+    monkeypatch.setattr(load_job_dialog_module._ListingLoader, "run", slow_first_run)
+
+    dialog = LoadJobDialog("default")
+    first_loader = dialog._loader
+    assert first_loader is not None
+    assert first_loader.isRunning()
+
+    dialog._load_listings()
+
+    # Retired, not abandoned: if `_load_listings` had merely rebound
+    # `self._loader` to a new instance, `first_loader` would still be
+    # running here.
+    assert first_loader.isRunning() is False
+    assert dialog._loader is not None
+    assert dialog._loader is not first_loader
+
+    _wait_for_load(dialog, qapp)
+
+    assert dialog.job_tree.topLevelItemCount() == 1
+    assert dialog.job_tree.topLevelItem(0).text(0) == "job"

@@ -1,5 +1,6 @@
 """Picker for saved jobs."""
 
+from contextlib import suppress
 from datetime import datetime
 from enum import Enum
 from html import escape
@@ -278,6 +279,15 @@ class LoadJobDialog(QDialog):
         self._load_listings()
 
     def _load_listings(self) -> None:
+        # Retire any loader still in flight before starting another. Without
+        # this, a second call replaces `self._loader` and the previous thread
+        # becomes unreachable -- still running, still parented, and no longer
+        # something `done()` can wait on, which is exactly the destroy-a-live-
+        # thread abort this change exists to avoid. Not reachable through the
+        # UI today (delete and rename are disabled while the tree is empty),
+        # but the invariant should not depend on that staying true.
+        self._stop_loader()
+
         self.job_tree.clear()
         self.job_tree.setVisible(False)
         self.empty_lbl.setText("<span>Loading saved jobs...</span>")
@@ -365,19 +375,33 @@ class LoadJobDialog(QDialog):
             self.job_tree.setCurrentItem(first_item)
         self._apply_filter()
 
-    def done(self, result: int) -> None:
-        """Stop the loader before the dialog is torn down.
+    def _stop_loader(self) -> None:
+        """Detach and finish the current loader before moving on.
 
-        Qt aborts the process outright if a `QThread` is still running when
-        its C++ object is destroyed, and `_loader` is parented to this dialog
-        -- so a dialog closed mid-load would otherwise take the whole app down
-        with it, not just fail to show the results. Disconnecting first means
-        a load that finishes just after this point does not deliver into a
-        dialog that is already on its way out.
+        Disconnect first, and unconditionally. A queued `loaded` is delivered
+        only if the connection is still live when it is dispatched, so severing
+        it cancels an emission already in flight. Gating the disconnect on
+        `isRunning()` would miss a loader that finished in the window between
+        the check and the call, letting its result land in a dialog that is
+        already closing.
+
+        Then wait with no cap. An earlier version waited two seconds, which is
+        precisely the wrong bound: the case this has to survive is the slow
+        network scan the whole change exists to get off the GUI thread, and
+        that is exactly the case that exceeds two seconds. Returning early
+        leaves a running thread to be destroyed, which aborts the process. A
+        brief freeze while closing is much the lesser cost.
         """
-        if self._loader is not None and self._loader.isRunning():
-            self._loader.loaded.disconnect(self._on_listings_loaded)
-            self._loader.wait(2000)
+        loader = self._loader
+        self._loader = None
+        if loader is None:
+            return
+        with suppress(RuntimeError, TypeError):
+            loader.loaded.disconnect(self._on_listings_loaded)
+        loader.wait()
+
+    def done(self, result: int) -> None:
+        self._stop_loader()
         super().done(result)
 
     @Slot()
