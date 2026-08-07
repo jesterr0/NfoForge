@@ -374,6 +374,14 @@ def test_delete_only_removes_the_selected_job(
     kept_dir = _save(working_dir, "keep")
     _save(working_dir, "remove")
     dialog = _open_dialog(qapp)
+    # `_on_listings_loaded` already leaves row 0 selected via `setCurrentItem`.
+    # Without clearing it first, `setSelected(True)` below only *adds* "remove"
+    # to that selection -- and this test happens to pass regardless, because
+    # both jobs tie on the "Saved" column and "remove" is the one the tie
+    # lands on row 0. That is not something this test states or controls, so
+    # renaming either fixture job would make the tie-break, not the targeting
+    # logic, decide whether it passes.
+    dialog.job_tree.clearSelection()
     item = dialog.job_tree.findItems("remove", Qt.MatchFlag.MatchExactly, 0)[0]
     item.setSelected(True)
     monkeypatch.setattr(
