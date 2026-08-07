@@ -499,7 +499,10 @@ class ProcessPage(BaseWizardPage):
         """Capture the job's assets, then serialize it pointing at those copies.
 
         Everything a resumed run needs is copied beside the job so it stops
-        depending on `processing/`, which Clean Up is meant to empty.
+        depending on `processing/`, which Clean Up is meant to empty. When
+        `keep_trackers` is given, only the NFOs for those trackers are
+        captured -- a narrowed job must not keep sidecars for trackers it no
+        longer covers.
         """
         media_input = self.context.media_input
 
