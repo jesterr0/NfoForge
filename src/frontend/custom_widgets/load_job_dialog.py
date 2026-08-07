@@ -120,6 +120,13 @@ class LoadJobDialog(QDialog):
         leaves the tree's current listing unchanged can skip the whole
         refresh rather than re-describing the same job from scratch.
         """
+        self._details_source: str = "tree"
+        """Which pane the details view and Open Folder currently describe:
+        `"tree"` or `"queue"`. Tracked explicitly rather than via focus --
+        `hasFocus()` is unreliable before the dialog is shown, and the tests
+        for this file construct the dialog without showing it. Set by
+        `_on_tree_selection_changed` and `_on_queue_row_changed`, below.
+        """
 
         self.info_lbl = QLabel(
             "<i><span>Pick a saved job to jump straight to processing. Duplicate "
@@ -131,9 +138,7 @@ class LoadJobDialog(QDialog):
         )
 
         self.filter_edit = QLineEdit(self)
-        self.filter_edit.setPlaceholderText(
-            "Filter by name, title, file or tracker..."
-        )
+        self.filter_edit.setPlaceholderText("Filter by name, title, file or tracker...")
         self.filter_edit.setClearButtonEnabled(True)
         self.filter_edit.textChanged.connect(self._apply_filter)
 
@@ -173,7 +178,7 @@ class LoadJobDialog(QDialog):
         # multi-select so several prepared jobs can be queued in one go
         self.job_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.job_tree.itemDoubleClicked.connect(self._on_double_click)
-        self.job_tree.itemSelectionChanged.connect(self._update_button_state)
+        self.job_tree.itemSelectionChanged.connect(self._on_tree_selection_changed)
 
         self.empty_lbl = QLabel(
             "<span>No saved jobs yet. Use <b>Save Job</b> on the process page "
@@ -210,7 +215,7 @@ class LoadJobDialog(QDialog):
             "Jobs run top to bottom. Only prepared jobs on this config can be "
             "queued, since a queue has nobody to answer a prompt"
         )
-        self.queue_list.currentRowChanged.connect(self._update_button_state)
+        self.queue_list.currentRowChanged.connect(self._on_queue_row_changed)
 
         self.add_to_queue_btn = QPushButton("Add to queue", self)
         self.add_to_queue_btn.clicked.connect(self._add_to_queue)
@@ -529,6 +534,25 @@ class LoadJobDialog(QDialog):
         listing = item.data(0, _LISTING_ROLE)
         return listing if isinstance(listing, JobListing) else None
 
+    def _details_listing(self) -> JobListing | None:
+        """The listing the details pane and Open Folder currently describe.
+
+        Follows `self._details_source` rather than the tree unconditionally,
+        so clicking a queue row describes that queued job instead of
+        whatever the tree's own selection happens to be.
+        """
+        if self._details_source == "queue":
+            item = self.queue_list.currentItem()
+            if item is None:
+                return None
+            listing = item.data(_LISTING_ROLE)
+            return listing if isinstance(listing, JobListing) else None
+
+        listing = self._current_listing()
+        if listing is None or listing not in self._selected_listings():
+            return None
+        return listing
+
     def _selected_listings(self) -> list[JobListing]:
         listings: list[JobListing] = []
         for item in self.job_tree.selectedItems():
@@ -662,6 +686,16 @@ class LoadJobDialog(QDialog):
         return f"{len(selected)} prepared job(s) selected; ready to add to the queue."
 
     @Slot()
+    def _on_tree_selection_changed(self) -> None:
+        self._details_source = "tree"
+        self._update_button_state()
+
+    @Slot()
+    def _on_queue_row_changed(self) -> None:
+        self._details_source = "queue"
+        self._update_button_state()
+
+    @Slot()
     def _update_button_state(self) -> None:
         # The selected job, not the current one -- see `_rename_selected`.
         # Enablement and the actions it gates have to agree with the same
@@ -779,19 +813,20 @@ class LoadJobDialog(QDialog):
         return rendered
 
     def _refresh_details(self) -> None:
-        """Render the details pane for the tree's current listing, if any.
+        """Render the details pane for the active source's current listing.
 
-        `_update_button_state` runs this on every filter keystroke and on
-        `queue_list.currentRowChanged` -- neither of which necessarily moves
-        the tree's own current item. Bailing out here when the listing to
-        show has not changed since the last call is what stops those from
+        The active source -- tree or queue -- comes from `_details_listing`.
+        `_update_button_state` runs this on every filter keystroke, which
+        moves neither pane's current item. Bailing out here when the listing
+        to show has not changed since the last call is what stops that from
         re-reading the job's document and re-walking its folder for no
         reason; `_describe`'s own memoisation only covers the read, not the
-        `is_dir()` stat this method also does.
+        `is_dir()` stat this method also does. Switching source to a
+        different job changes the path and so still re-renders; if the same
+        job sits in both panes the early return is correct, since the
+        rendered content would be identical either way.
         """
-        listing = self._current_listing()
-        if listing is None or listing not in self._selected_listings():
-            listing = None
+        listing = self._details_listing()
 
         path = listing.path if listing is not None else None
         if path == self._last_described_path:
@@ -807,7 +842,10 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _open_job_folder(self) -> None:
-        listing = self._current_listing()
+        # Follows the same source as the details pane it sits under -- see
+        # `_details_listing` -- so the button never opens a different job's
+        # folder than the one the pane is currently describing.
+        listing = self._details_listing()
         if listing is not None:
             open_explorer(listing.path)
 

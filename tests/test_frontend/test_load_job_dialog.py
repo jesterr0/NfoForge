@@ -677,6 +677,115 @@ def test_refreshing_details_for_the_same_listing_does_not_re_read_the_document(
     assert calls == []
 
 
+def test_selecting_a_queue_row_describes_that_job(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Clicking a queue row must describe the queued job, not whatever the
+    tree's own selection still points at -- the two panes used to share one
+    detail view, driven only by the tree's current item, so selecting a
+    queued job told the user nothing about it.
+
+    The tree selection is left on a *different* job throughout, so this
+    cannot pass by the pane coincidentally still showing the right thing.
+    """
+    _save(working_dir, "tree-job", created_at="2026-06-01T00:00:00+00:00")
+    _save(working_dir, "queue-job", created_at="2026-01-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+    queue_source_item = dialog.job_tree.findItems(
+        "queue-job", Qt.MatchFlag.MatchExactly, 0
+    )[0]
+
+    # Queue "queue-job" without disturbing the eventual tree selection.
+    dialog.job_tree.clearSelection()
+    queue_source_item.setSelected(True)
+    dialog._add_to_queue()
+    queue_source_item.setSelected(False)
+
+    # Leave the tree selected on "tree-job" -- the pane must not describe this.
+    dialog.job_tree.setCurrentItem(tree_item)
+    tree_item.setSelected(True)
+    assert "tree-job" in dialog.details_lbl.text()
+    assert "queue-job" not in dialog.details_lbl.text()
+
+    dialog.queue_list.setCurrentRow(0)
+
+    assert "queue-job" in dialog.details_lbl.text()
+    assert "tree-job" not in dialog.details_lbl.text()
+
+
+def test_changing_the_tree_selection_after_a_queue_row_describes_the_tree_job_again(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Once a queue row has taken over the pane, the tree's own selection has
+    to be able to take it back -- the pane describes whichever pane the user
+    last interacted with, not permanently whichever was clicked first.
+    """
+    _save(working_dir, "tree-job", created_at="2026-06-01T00:00:00+00:00")
+    _save(working_dir, "queue-job", created_at="2026-01-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+    queue_source_item = dialog.job_tree.findItems(
+        "queue-job", Qt.MatchFlag.MatchExactly, 0
+    )[0]
+
+    dialog.job_tree.clearSelection()
+    queue_source_item.setSelected(True)
+    dialog._add_to_queue()
+    queue_source_item.setSelected(False)
+    dialog.job_tree.setCurrentItem(tree_item)
+    tree_item.setSelected(True)
+
+    dialog.queue_list.setCurrentRow(0)
+    assert "queue-job" in dialog.details_lbl.text()
+
+    # Re-select the tree's row -- a real change to the tree's selection, not
+    # a repeat of a call that would already be a no-op.
+    tree_item.setSelected(False)
+    tree_item.setSelected(True)
+
+    assert "tree-job" in dialog.details_lbl.text()
+    assert "queue-job" not in dialog.details_lbl.text()
+
+
+def test_open_folder_acts_on_the_queue_row_while_it_is_the_source(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Open Folder has to follow the same source as the details pane it sits
+    under -- otherwise the pane can describe a queued job while the button
+    opens a different one, lying about what it acts on.
+    """
+    tree_dir = _save(working_dir, "tree-job", created_at="2026-06-01T00:00:00+00:00")
+    queue_dir = _save(working_dir, "queue-job", created_at="2026-01-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+    queue_source_item = dialog.job_tree.findItems(
+        "queue-job", Qt.MatchFlag.MatchExactly, 0
+    )[0]
+
+    dialog.job_tree.clearSelection()
+    queue_source_item.setSelected(True)
+    dialog._add_to_queue()
+    queue_source_item.setSelected(False)
+    dialog.job_tree.setCurrentItem(tree_item)
+    tree_item.setSelected(True)
+
+    dialog.queue_list.setCurrentRow(0)
+
+    opened: list[Path] = []
+    monkeypatch.setattr(
+        load_job_dialog_module, "open_explorer", lambda path: opened.append(path)
+    )
+
+    dialog.open_folder_btn.click()
+
+    assert opened == [queue_dir]
+    assert opened != [tree_dir]
+
+
 def test_repeated_refresh_details_calls_skip_describe_entirely(
     qapp: Any,
     working_dir: Path,
