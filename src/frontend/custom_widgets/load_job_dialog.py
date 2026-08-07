@@ -675,9 +675,17 @@ class LoadJobDialog(QDialog):
         job by path -- a queue mid-flight, a listing already on screen -- is
         invalidated by the rename.
         """
-        listing = self._current_listing()
-        if listing is None or len(self._selected_listings()) != 1:
+        # The selected job, not the current one. `currentItem()` can sit on a
+        # row that is not selected -- ctrl+click a second row, ctrl+click it
+        # again, and the current item stays there while the first row remains
+        # the only selection. Renaming what is current would rewrite the wrong
+        # job's name on disk while the right one is still highlighted. The
+        # sibling load/switch actions have the same shape but only mis-open a
+        # job; this one writes.
+        selected = self._selected_listings()
+        if len(selected) != 1:
             return
+        listing = selected[0]
 
         name, accepted = QInputDialog.getText(
             self, "Rename Job", "Job name:", text=listing.name

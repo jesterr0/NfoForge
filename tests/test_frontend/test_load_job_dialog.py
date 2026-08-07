@@ -7,7 +7,7 @@ tested here is the dialog itself.
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QHeaderView
 import pytest
 
@@ -676,6 +676,75 @@ def test_cancelling_the_rename_changes_nothing(
     dialog._rename_selected()
 
     assert store.load_job(directory).name == "keep me"
+
+
+def test_an_empty_new_name_is_refused(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Accepting the prompt with a blank field must not blank the job's name.
+
+    The guard is `not accepted or not name.strip()`. The cancel test only ever
+    supplies `accepted=False`, so it cannot tell the two halves apart -- narrow
+    the guard to `if not accepted` and a user who clicks OK on an empty field
+    writes `name: ""` to disk, with nothing failing.
+    """
+    directory = _save(working_dir, "keep me")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("   ", True)),
+    )
+
+    dialog._rename_selected()
+
+    assert store.load_job(directory).name == "keep me"
+
+
+def test_rename_targets_the_selected_job_not_the_current_row(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`currentItem()` can point at a row that is not selected.
+
+    Ctrl+clicking a second row and ctrl+clicking it again leaves the current
+    item there while the first row stays the only selection. Targeting the
+    current row would rename the wrong job on disk while the right one is
+    still highlighted.
+    """
+    keep_dir = _save(working_dir, "selected", created_at="2026-06-01T00:00:00+00:00")
+    other_dir = _save(
+        working_dir, "merely current", created_at="2026-01-01T00:00:00+00:00"
+    )
+    dialog = LoadJobDialog("default")
+
+    selected_row = dialog.job_tree.topLevelItem(0)
+    current_row = dialog.job_tree.topLevelItem(1)
+    assert selected_row.text(0) == "selected"
+    selected_row.setSelected(True)
+    dialog.job_tree.setCurrentItem(
+        current_row, 0, QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert dialog.job_tree.currentItem() is current_row
+    assert [item.text(0) for item in dialog.job_tree.selectedItems()] == ["selected"]
+
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("renamed", True)),
+    )
+
+    dialog._rename_selected()
+
+    assert store.load_job(keep_dir).name == "renamed"
+    assert store.load_job(other_dir).name == "merely current"
 
 
 def test_rename_is_only_available_for_one_job(
