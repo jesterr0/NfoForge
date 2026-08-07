@@ -394,10 +394,16 @@ def test_one_failed_delete_does_not_strand_the_rest(
     every job after the first failure sitting on disk while the user is told
     only about the one that failed. Nothing else in the suite would notice.
     """
-    fails_dir = _save(working_dir, "unlucky")
-    succeeds_dir = _save(working_dir, "fine")
+    # Explicit timestamps, because the order matters: the failing job must be
+    # processed FIRST for this test to catch a `break` after the failure. Left
+    # to `_save`'s default both land in the same second, and `list_jobs` then
+    # tie-breaks on the random shortuuid directory name -- so the guard would
+    # only catch the mutation on roughly half of runs.
+    fails_dir = _save(working_dir, "unlucky", created_at="2026-06-01T00:00:00+00:00")
+    succeeds_dir = _save(working_dir, "fine", created_at="2026-01-01T00:00:00+00:00")
     dialog = LoadJobDialog("default")
     dialog.job_tree.selectAll()
+    assert dialog.job_tree.topLevelItem(0).text(0) == "unlucky"
 
     real_delete = load_job_dialog_module.delete_job
 
