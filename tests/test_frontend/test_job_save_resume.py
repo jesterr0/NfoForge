@@ -1066,6 +1066,7 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
             self.text_format = Qt.TextFormat.AutoText
             self.icon_val = None
             self.text_val = ""
+            self.exec_called = False
             captured_boxes.append(self)
 
         def setWindowTitle(self, title: str) -> None:
@@ -1087,6 +1088,7 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
             return self.text_val
 
         def exec(self) -> int:
+            self.exec_called = True
             return self.Accepted
 
     monkeypatch.setattr(process_module, "QMessageBox", MockMessageBox)
@@ -1140,6 +1142,10 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
     box = captured_boxes[0]
     assert box.textFormat() == Qt.TextFormat.PlainText
     assert "<b>bold</b> job" in box.text()
+    # A regression that stopped displaying the box entirely -- e.g. building
+    # `saved_box` and never calling `.exec()` -- would leave every assertion
+    # above green. This is what catches that.
+    assert box.exec_called is True
     # Pins the working directory to the fixture: revert it to a hardcoded path
     # and this fails here rather than only on a Linux runner.
     assert (working_dir / "jobs" / "test-id").is_dir()
