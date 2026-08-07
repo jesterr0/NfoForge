@@ -382,6 +382,14 @@ def test_the_delete_key_is_wired_to_delete(
     assert dialog.delete_btn.shortcut() == Qt.Key.Key_Delete
 
 
+def test_the_f2_key_is_wired_to_rename(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    dialog = LoadJobDialog("default")
+
+    assert dialog.rename_btn.shortcut() == Qt.Key.Key_F2
+
+
 def test_a_job_with_missing_media_is_marked_in_the_list(
     qapp: Any, working_dir: Path, patched_working_dirs: None, tmp_path: Path
 ) -> None:
@@ -623,6 +631,62 @@ def test_the_open_folder_button_opens_the_selected_job_s_directory(
     dialog.open_folder_btn.click()
 
     assert opened == [directory]
+
+
+def test_renaming_rewrites_only_the_name(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = _save(working_dir, "old name", trackers=["Aither"])
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("new name", True)),
+    )
+
+    dialog._rename_selected()
+
+    reloaded = store.load_job(directory)
+    assert reloaded.name == "new name"
+    assert reloaded.summary.trackers == ["Aither"]
+    assert dialog.job_tree.topLevelItem(0).text(0) == "new name"
+
+
+def test_cancelling_the_rename_changes_nothing(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = _save(working_dir, "keep me")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("", False)),
+    )
+
+    dialog._rename_selected()
+
+    assert store.load_job(directory).name == "keep me"
+
+
+def test_rename_is_only_available_for_one_job(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "one")
+    _save(working_dir, "two")
+    dialog = LoadJobDialog("default")
+    dialog.job_tree.selectAll()
+
+    assert not dialog.rename_btn.isEnabled()
 
 
 def test_one_failed_delete_does_not_strand_the_rest(

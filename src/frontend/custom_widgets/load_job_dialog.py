@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -26,7 +27,14 @@ from PySide6.QtWidgets import (
 )
 import qtawesome as qta
 
-from src.backend.jobs import JobListing, JobStoreError, delete_job, list_jobs, load_job
+from src.backend.jobs import (
+    JobListing,
+    JobStoreError,
+    delete_job,
+    list_jobs,
+    load_job,
+    write_job_document,
+)
 from src.backend.utils.file_utilities import (
     file_bytes_to_str,
     get_dir_size,
@@ -172,6 +180,10 @@ class LoadJobDialog(QDialog):
         self.delete_btn.setShortcut(Qt.Key.Key_Delete)
         self.delete_btn.clicked.connect(self._delete_selected)
 
+        self.rename_btn = QPushButton("Rename", self)
+        self.rename_btn.setShortcut(Qt.Key.Key_F2)
+        self.rename_btn.clicked.connect(self._rename_selected)
+
         self.switch_btn = QPushButton("Switch profile and load", self)
         self.switch_btn.setToolTip(
             "Activate the config this job was saved under, then load it"
@@ -199,6 +211,7 @@ class LoadJobDialog(QDialog):
 
         bottom_row = QHBoxLayout()
         bottom_row.addWidget(self.delete_btn)
+        bottom_row.addWidget(self.rename_btn)
         bottom_row.addStretch(1)
         bottom_row.addWidget(self.queue_btn)
         bottom_row.addWidget(self.switch_btn)
@@ -459,6 +472,7 @@ class LoadJobDialog(QDialog):
         queueable = self.queueable_listings()
 
         self.delete_btn.setEnabled(bool(selected))
+        self.rename_btn.setEnabled(len(selected) == 1)
         self.switch_btn.setEnabled(
             len(selected) == 1 and listing is not None and not matches
         )
@@ -651,4 +665,35 @@ class LoadJobDialog(QDialog):
                 "Delete Failed",
                 "Some jobs could not be deleted:\n\n" + "\n".join(failures),
             )
+        self._load_listings()
+
+    @Slot()
+    def _rename_selected(self) -> None:
+        """Rewrite a job's display name, and nothing else.
+
+        The job id and its directory are untouched, so nothing pointing at the
+        job by path -- a queue mid-flight, a listing already on screen -- is
+        invalidated by the rename.
+        """
+        listing = self._current_listing()
+        if listing is None or len(self._selected_listings()) != 1:
+            return
+
+        name, accepted = QInputDialog.getText(
+            self, "Rename Job", "Job name:", text=listing.name
+        )
+        if not accepted or not name.strip():
+            return
+
+        try:
+            job = load_job(listing.path)
+            job.name = name.strip()
+            write_job_document(job, listing.path)
+        except JobStoreError as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to rename job: {error}")
+            QMessageBox.critical(
+                self, "Rename Failed", f"Could not rename job:\n\n{error}"
+            )
+            return
+
         self._load_listings()
