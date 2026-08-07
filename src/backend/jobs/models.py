@@ -23,6 +23,13 @@ class JobSummary:
     input_name: str | None = None
     file_count: int = 0
     trackers: list[str] = field(default_factory=list)
+    input_path: str = ""
+    """Full path of the media, so the picker can tell a broken job at a glance.
+
+    `input_name` is only the file name, which cannot be checked against the
+    filesystem. Jobs saved before this was recorded leave it empty and are
+    treated as fine rather than as broken.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -32,6 +39,7 @@ class JobSummary:
             "input_name": self.input_name,
             "file_count": self.file_count,
             "trackers": list(self.trackers),
+            "input_path": self.input_path,
         }
 
     @classmethod
@@ -46,6 +54,7 @@ class JobSummary:
             trackers=[str(tracker) for tracker in trackers]
             if isinstance(trackers, list)
             else [],
+            input_path=str(document.get("input_path") or ""),
         )
 
 
@@ -124,6 +133,12 @@ class JobListing:
 
     Only a prepared job can be run from the queue: an unprepared one would stop
     at a prompt there is nobody to answer.
+    """
+    media_available: bool = True
+    """Whether the job's media is still where it was saved.
+
+    Checked when the list is built so a job that cannot run is visible as such
+    before the user commits to loading it.
     """
 
     def matches_profile(self, active_profile: str | None) -> bool:

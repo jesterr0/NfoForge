@@ -382,6 +382,23 @@ def test_the_delete_key_is_wired_to_delete(
     assert dialog.delete_btn.shortcut() == Qt.Key.Key_Delete
 
 
+def test_a_job_with_missing_media_is_marked_in_the_list(
+    qapp: Any, working_dir: Path, patched_working_dirs: None, tmp_path: Path
+) -> None:
+    job = store.build_job(
+        "broken",
+        JobSummary(title="Broken", input_path=str(tmp_path / "nope.mkv")),
+        {"shared_data": {}},
+        config_profile="default",
+    )
+    store.save_job(job, working_dir)
+    dialog = LoadJobDialog("default")
+
+    item = dialog.job_tree.topLevelItem(0)
+    assert not item.icon(0).isNull()
+    assert "no longer" in item.toolTip(0)
+
+
 def test_one_failed_delete_does_not_strand_the_rest(
     qapp: Any,
     working_dir: Path,

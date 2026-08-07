@@ -270,3 +270,31 @@ def test_prune_unreferenced_nfos_is_a_no_op_without_an_nfo_dir(
 
     # must not raise
     store.prune_unreferenced_nfos(directory, {"shared_data": {}})
+
+
+def test_a_listing_reports_whether_its_media_is_still_there(
+    working_dir: Path, tmp_path: Path
+) -> None:
+    media = tmp_path / "present.mkv"
+    media.write_bytes(b"x")
+    store.save_job(
+        store.build_job("here", JobSummary(input_path=str(media)), {}), working_dir
+    )
+    store.save_job(
+        store.build_job(
+            "gone", JobSummary(input_path=str(tmp_path / "missing.mkv")), {}
+        ),
+        working_dir,
+    )
+
+    listings = {entry.name: entry for entry in store.list_jobs([working_dir])}
+
+    assert listings["here"].media_available is True
+    assert listings["gone"].media_available is False
+
+
+def test_a_job_that_recorded_no_media_path_is_not_flagged(working_dir: Path) -> None:
+    """Jobs saved before the path was recorded must not all look broken."""
+    store.save_job(store.build_job("old", JobSummary(), {}), working_dir)
+
+    assert store.list_jobs([working_dir])[0].media_available is True

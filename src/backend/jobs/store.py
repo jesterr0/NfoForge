@@ -264,18 +264,25 @@ def list_jobs(working_dirs: Iterable[Path]) -> list[JobListing]:
             except JobStoreError as error:
                 LOG.warning(LOG.LOG_SOURCE.BE, f"Skipping unreadable job: {error}")
                 continue
-            summary = document.get("summary")
+            summary_document = document.get("summary")
+            summary = JobSummary.from_dict(
+                summary_document if isinstance(summary_document, dict) else {}
+            )
+            # cheap enough to do per job, and it is the difference between the
+            # user finding out here and finding out after clicking Load
+            media_available = (
+                Path(summary.input_path).exists() if summary.input_path else True
+            )
             listings.append(
                 JobListing(
                     job_id=str(document.get("job_id") or candidate.name),
                     name=str(document.get("name") or candidate.name),
                     created_at=str(document.get("created_at") or ""),
                     config_profile=str(document.get("config_profile") or ""),
-                    summary=JobSummary.from_dict(
-                        summary if isinstance(summary, dict) else {}
-                    ),
+                    summary=summary,
                     prepared=_document_is_prepared(document),
                     path=candidate,
+                    media_available=media_available,
                 )
             )
 

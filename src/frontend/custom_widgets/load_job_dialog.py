@@ -184,6 +184,7 @@ class LoadJobDialog(QDialog):
         icon_color = self.palette().color(QPalette.ColorRole.WindowText).name()
         prepared_icon = qta.icon("mdi6.package-variant-closed", color=icon_color)
         needs_input_icon = qta.icon("mdi6.pencil-outline", color=icon_color)
+        missing_icon = qta.icon("mdi6.alert-outline", color=icon_color)
 
         for listing in listings:
             item = QTreeWidgetItem(
@@ -213,6 +214,16 @@ class LoadJobDialog(QDialog):
                     0,
                     f"Saved under config '{listing.config_profile}'. "
                     "Use 'Switch profile and load' to open it.",
+                )
+            if not listing.media_available:
+                # after the cross-profile tooltip so this one wins -- a job
+                # that cannot run at all is the more urgent fact
+                item.setIcon(0, missing_icon)
+                item.setToolTip(
+                    0,
+                    "The media this job was built from is no longer at "
+                    f"'{listing.summary.input_path}', so it cannot be processed "
+                    "until the file is back.",
                 )
             self.job_tree.addTopLevelItem(item)
 

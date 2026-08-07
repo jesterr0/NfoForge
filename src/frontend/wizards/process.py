@@ -584,6 +584,7 @@ class ProcessPage(BaseWizardPage):
             year=self.context.media_search.year,
             media_type=str(media_type) if media_type else None,
             input_name=input_path.name if input_path else None,
+            input_path=str(input_path) if input_path else "",
             file_count=len(self.context.media_input.file_list),
             trackers=[
                 str(tracker)
