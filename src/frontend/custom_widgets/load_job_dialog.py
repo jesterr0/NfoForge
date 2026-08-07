@@ -645,11 +645,19 @@ class LoadJobDialog(QDialog):
             reasons.append(f"{unprepared} not prepared")
         if other_config:
             reasons.append(f"{other_config} on another config")
-        if reasons:
+        # Counted once here for the headline, even though a job that is both
+        # unprepared and on another config is counted in both `reasons` --
+        # otherwise one such job selected reads as two problem jobs.
+        blocked = [
+            entry
+            for entry in selected
+            if not entry.prepared or not entry.matches_profile(self.active_profile)
+        ]
+        if blocked:
             return (
-                f"{len(selected)} selected; cannot add to the queue because "
-                + " and ".join(reasons)
-                + ". A queue has nobody to answer a prompt."
+                f"{len(selected)} selected; {len(blocked)} cannot be added to "
+                "the queue (" + ", ".join(reasons) + "). A queue has nobody to "
+                "answer a prompt."
             )
         return f"{len(selected)} prepared job(s) selected; ready to add to the queue."
 

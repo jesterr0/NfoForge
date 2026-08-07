@@ -5,6 +5,7 @@ tested here is the dialog itself.
 """
 
 from pathlib import Path
+import re
 import time
 from typing import Any
 
@@ -310,6 +311,38 @@ def test_a_mixed_selection_explains_why_the_queue_is_unavailable(
 
     assert not dialog.add_to_queue_btn.isEnabled()
     assert "not prepared" in dialog.status_lbl.text()
+
+
+def test_selection_hint_counts_a_doubly_blocked_job_once(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`unprepared` and `other_config` are counted independently, so a job
+    matching both reasons used to be counted in each -- one problem job read
+    as two. The headline now counts blocked jobs once, with the per-reason
+    counts kept only as a breakdown, so no number in the message can exceed
+    the number of jobs actually selected.
+
+    A selection of exactly one such job cannot exercise this: `_selection_hint`
+    special-cases a size-one selection before reaching the reason-counting
+    code below, reporting the profile mismatch instead of the reasons list.
+    Reaching the code under test needs at least one other job alongside it.
+    """
+    _save(working_dir, "problem", prepared=False, profile="anime")
+    _save(working_dir, "fine", prepared=True, profile="default")
+    dialog = _open_dialog(qapp)
+    dialog.only_this_config.setChecked(False)
+    dialog.job_tree.selectAll()
+    selected = dialog._selected_listings()
+    assert len(selected) == 2
+
+    hint = dialog._selection_hint()
+
+    assert hint == (
+        "2 selected; 1 cannot be added to the queue (1 not prepared, "
+        "1 on another config). A queue has nobody to answer a prompt."
+    )
+    for number in re.findall(r"\d+", hint):
+        assert int(number) <= len(selected)
 
 
 def test_a_cross_profile_selection_says_which_config_it_needs(
