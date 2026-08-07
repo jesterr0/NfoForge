@@ -1,5 +1,6 @@
 """Coverage for the working directory layout that keeps jobs safe from cleanup."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -92,4 +93,42 @@ def test_cleanable_size_survives_a_file_disappearing(
 
     monkeypatch.setattr(Path, "stat", vanishing)
 
+    assert cleanable_size(tmp_path) == 0
+
+
+def test_cleanable_size_survives_a_directory_disappearing_mid_walk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A whole subdirectory can vanish while rglob() is still descending into it.
+
+    That surfaces as an exception from the `for` statement driving the walk,
+    not from a stat() call inside the loop body, so it needs its own guard
+    one level up from the per-file one.
+    """
+    keep = tmp_path / "processing" / "keep"
+    keep.mkdir(parents=True)
+    (keep / "shot.png").write_bytes(b"x" * 50)
+
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    (gone / "trace.log").write_bytes(b"x" * 30)
+
+    real_scandir = os.scandir
+
+    def vanishing(path: object = ".") -> object:
+        if Path(path).name == "gone":
+            raise FileNotFoundError("directory vanished mid-scan")
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", vanishing)
+
+    # "gone" disappears out from under the walk; only "keep" can still be measured
+    assert cleanable_size(tmp_path) == 50
+
+
+def test_cleanable_size_is_zero_for_a_missing_directory(tmp_path: Path) -> None:
+    assert cleanable_size(tmp_path / "never-created") == 0
+
+
+def test_cleanable_size_is_zero_for_an_empty_directory(tmp_path: Path) -> None:
     assert cleanable_size(tmp_path) == 0

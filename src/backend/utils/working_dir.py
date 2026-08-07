@@ -66,17 +66,29 @@ def cleanable_items(working_dir: Path) -> list[Path]:
 def cleanable_size(working_dir: Path) -> int:
     """Bytes clean up could reclaim.
 
-    Files can vanish between being listed and being measured -- another run
-    writing into the same tree, the OS clearing a temp file -- and a status bar
-    readout is never worth an exception.
+    Two nested guards, because a scan can lose ground at two different levels.
+    A single file can vanish between being listed and being stat()'d -- the
+    inner guard skips just that file so its siblings still count toward the
+    total. But the walk itself can also vanish out from under us: rglob()
+    calls os.scandir() lazily as it descends and only swallows
+    PermissionError, so if a whole subdirectory disappears mid-descent (a
+    concurrent job's run folder, say) the exception surfaces from the `for`
+    statement itself, past a guard sitting only in the loop body. The outer
+    guard catches that case too, so one vanished top-level item doesn't cost
+    us the count already gathered for the rest.
     """
     total = 0
     for item in cleanable_items(working_dir):
-        candidates = item.rglob("*") if item.is_dir() else iter((item,))
-        for candidate in candidates:
-            try:
-                if candidate.is_file():
-                    total += candidate.stat().st_size
-            except OSError:
-                continue
+        try:
+            if item.is_dir():
+                for candidate in item.rglob("*"):
+                    try:
+                        if candidate.is_file():
+                            total += candidate.stat().st_size
+                    except OSError:
+                        continue
+            elif item.is_file():
+                total += item.stat().st_size
+        except OSError:
+            continue
     return total
