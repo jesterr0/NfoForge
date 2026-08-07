@@ -162,6 +162,12 @@ class MainWindowWizard(QWizard):
 
     @Slot()
     def reset_wizard(self) -> None:
+        # A job load caches each file's MediaInfo text dump globally so the
+        # media never has to be re-read. Starting over means a genuinely new
+        # run, which must measure the file itself rather than inherit a dump
+        # that may now describe a different encode.
+        clear_full_mi_str_cache()
+
         self.context = create_processing_context(
             self.config.settings,
             self.config.plugin_manager,

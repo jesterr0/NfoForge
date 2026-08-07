@@ -33,7 +33,7 @@ from src.enums.wizard import WizardPages
 from src.frontend.custom_widgets import load_job_dialog as load_job_dialog_module
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
-from src.frontend.wizards import process as process_module
+from src.frontend.wizards import process as process_module, wizard as wizard_module
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.wizard import MainWindowWizard
 from src.packages.custom_types import ImageUploadFromTo
@@ -862,3 +862,44 @@ def test_a_fully_served_job_asks_nothing(qapp: Any, sample_media: Path) -> None:
     assert MainWindowWizard._confirm_profile_can_serve_job(
         _wizard_stub(), "Example", context
     )
+
+
+# --------------------------------------------------------------------------
+# starting over clears the MediaInfo cache
+# --------------------------------------------------------------------------
+def test_starting_over_drops_mediainfo_cached_by_a_loaded_job(
+    qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale dump would be sent to a tracker as if it described the new file."""
+    from src.backend.utils import media_info_utils
+
+    media_info_utils.cache_full_mi_str(sample_media, "dump from the previous job")
+
+    # `reset_wizard` builds a real ProcessingContext from live settings, which
+    # a stand-in has none of; the cache clear is what is under test, not that.
+    monkeypatch.setattr(
+        wizard_module, "create_processing_context", lambda _settings, _plugins: None
+    )
+
+    wizard = SimpleNamespace(
+        config=SimpleNamespace(settings=None, plugin_manager=None),
+        context=None,
+        currentIdChanged=SimpleNamespace(disconnect=lambda: None),
+        _remove_all_pages=lambda: None,
+        _generate_new_pages=lambda: [],
+        _PAGES=[],
+        _insert_plugin_page=lambda: None,
+        _build_wizard_pages=lambda: None,
+        _set_start_page=lambda: None,
+        _connect_current_id_changed=lambda: None,
+        _set_disabled=lambda _value: None,
+        next_button=SimpleNamespace(setText=lambda _text: None),
+        process_button=SimpleNamespace(setText=lambda _text: None),
+        setButtonLayout=lambda _buttons: None,
+        starting_buttons=(),
+        restart=lambda: None,
+    )
+
+    MainWindowWizard.reset_wizard(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert media_info_utils._FULL_MI_STR_CACHE == {}
