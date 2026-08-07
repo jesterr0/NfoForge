@@ -187,11 +187,22 @@ class MainWindowWizard(QWizard):
             return
 
         if dialog.queued_listings:
-            JobQueueDialog(
+            # A bare temporary here would still leak: parenting to `self`
+            # transfers ownership to C++, so a dialog built and immediately
+            # `.exec()`'d without ever being assigned would survive the call
+            # as a hidden child of the wizard for the rest of its life --
+            # log widget, finished thread, `ProcessBackEnd` and all, one per
+            # queue run. `reject()` already guarantees the thread has
+            # finished by the time `exec()` returns, so `deleteLater()` here
+            # is never asked to tear down anything still running.
+            queue_dialog = JobQueueDialog(
                 job_paths=[listing.path for listing in dialog.queued_listings],
                 config=self.config,
                 parent=self,
-            ).exec()
+            )
+            queue_dialog.start()
+            queue_dialog.exec()
+            queue_dialog.deleteLater()
             return
 
         listing = dialog.selected_listing

@@ -13,18 +13,18 @@ from PySide6.QtWidgets import QDialogButtonBox, QMessageBox
 import pytest
 
 from src.backend.job_queue import JobDisposition, QueuedJobOutcome, QueuedJobResult
-from src.frontend.custom_widgets import job_queue_dialog as dialog_module
 from src.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
 
 
 @pytest.fixture
-def dialog(
-    qapp: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> JobQueueDialog:
-    """A dialog whose backend is never built, so no config is needed."""
-    monkeypatch.setattr(
-        dialog_module, "ProcessBackEnd", lambda _config: SimpleNamespace()
-    )
+def dialog(qapp: Any, tmp_path: Path) -> JobQueueDialog:
+    """A dialog that has not been started.
+
+    `start()` is deliberately separate from construction, so building this
+    dialog never touches `ProcessBackEnd` or spins up a real `_QueueThread` --
+    no config or monkeypatching needed. Tests exercise its slots directly, the
+    same way the queue's own worker thread would call them.
+    """
     return JobQueueDialog(
         job_paths=[tmp_path / "jobs" / "one", tmp_path / "jobs" / "two"],
         config=SimpleNamespace(),
@@ -145,22 +145,95 @@ def test_cancelling_asks_the_thread_to_stop(dialog: JobQueueDialog) -> None:
 def test_the_dialog_refuses_to_close_while_a_job_is_in_flight(
     dialog: JobQueueDialog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    dialog._thread = SimpleNamespace(isRunning=lambda: True)  # pyright: ignore[reportAttributeAccessIssue]
-    # reject() asks before stopping the queue; answering "No" here means
-    # "don't stop it", which is what leaves `_thread` untouched below. Without
-    # this the real QMessageBox would pop up and block the test forever.
+    """Answering "stop it" cancels the run; it must not also close the window.
+
+    `dialog.result()` can't be trusted to prove that on its own: `Rejected` and
+    a dialog's untouched default result are both `0`, so a check against
+    `result()` alone passes whether or not `reject()` ever ran (see the
+    companion test below, where the real value the class actually produces is
+    pinned down). Spying on `done()` -- the method `QDialog.reject()` calls
+    internally to actually close -- is what tells "refused" apart from
+    "closed", regardless of what `result()` reads.
+    """
+    stopped: list[bool] = []
+    dialog._thread = SimpleNamespace(  # pyright: ignore[reportAttributeAccessIssue]
+        isRunning=lambda: True, cancel=lambda: stopped.append(True)
+    )
+    done_calls: list[object] = []
+    monkeypatch.setattr(dialog, "done", lambda *args: done_calls.append(args))
+    # answering "Yes" (stop it) is the harder case: it must still stop short
+    # of actually closing, only asking the thread to cancel
     monkeypatch.setattr(
-        QMessageBox, "question", lambda *_a, **_k: QMessageBox.StandardButton.No
+        QMessageBox, "question", lambda *_a, **_k: QMessageBox.StandardButton.Yes
     )
 
     dialog.reject()
 
-    assert (
-        dialog.result() != int(JobQueueDialog.DialogCode.Rejected)
-        or dialog.isVisible() is False
-    )
-    # the real assertion: rejecting mid-run must not tear the dialog down
+    assert stopped == [True]
+    assert done_calls == []
     assert dialog._thread is not None
+
+
+def test_the_dialog_closes_when_nothing_is_running(
+    dialog: JobQueueDialog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The companion to the refusal above: with no job in flight, `reject()`
+    must still close rather than refusing unconditionally."""
+    dialog._thread = None
+    done_calls: list[object] = []
+    monkeypatch.setattr(dialog, "done", lambda *args: done_calls.append(args))
+
+    dialog.reject()
+
+    assert done_calls == [(int(JobQueueDialog.DialogCode.Rejected),)]
+
+
+def test_a_known_secret_does_not_survive_into_the_log(
+    dialog: JobQueueDialog,
+) -> None:
+    """`_on_text` carries tracker responses, which can carry credentials --
+    the same reason `ProcessPage._on_text_update` scrubs before inserting."""
+    dialog._on_text(
+        "<span>https://tracker.example/deadbeefdeadbeefdeadbeefdeadbeef/announce</span>"
+    )
+
+    assert "deadbeefdeadbeefdeadbeefdeadbeef" not in dialog.text_widget.toPlainText()
+
+
+def test_replacing_the_last_line_scrubs_too_and_leaves_one_line(
+    dialog: JobQueueDialog,
+) -> None:
+    """The replace path is scrubbed the same as the append path -- unlike
+    `ProcessPage`'s equivalent, which does not -- because it carries the same
+    tracker responses and is if anything the more exposed of the two. This
+    also guards the overwrite mechanic itself: the line being replaced must
+    not survive alongside its replacement.
+    """
+    dialog._on_text("<span>running...</span>")
+
+    dialog._on_text_replace(
+        "<span>done: https://tracker.example/"
+        "deadbeefdeadbeefdeadbeefdeadbeef/announce</span>"
+    )
+
+    text = dialog.text_widget.toPlainText()
+    assert "deadbeefdeadbeefdeadbeefdeadbeef" not in text
+    assert "running" not in text
+    assert text.count("\n") == 0
+
+
+def test_a_crash_marks_the_running_job_as_failed_rather_than_leaving_it_stuck(
+    dialog: JobQueueDialog,
+) -> None:
+    """Without this the job that was running when the queue itself raised is
+    left reading "Running" under a header that already says "Queue finished".
+    """
+    dialog._on_job_started(1, "Example")
+
+    dialog._on_failed("boom", "traceback text")
+
+    item = dialog.job_tree.topLevelItem(0)
+    assert "Failed" in item.text(2)
 
 
 def test_the_dialog_closes_once_the_queue_is_done(dialog: JobQueueDialog) -> None:

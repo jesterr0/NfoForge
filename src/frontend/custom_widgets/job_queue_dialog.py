@@ -90,17 +90,6 @@ class _QueueThread(QThread):
         self.job_paths = job_paths
         self._cancelled = False
 
-    def __del__(self) -> None:
-        # Qt destroying a QThread while its `run()` is still executing is
-        # undefined -- on this platform it aborts the whole process rather
-        # than just printing the usual warning. Nothing here waits on a
-        # dialog (see the class docstring), so `run()` finishing is only ever
-        # a matter of time, not user input; blocking briefly for it beats a
-        # crash whenever the dialog (or its `_thread` attribute) is dropped
-        # before the queue naturally finishes.
-        if self.isRunning():
-            self.wait()
-
     def cancel(self) -> None:
         """Stop before the next job. The one in flight is left to finish.
 
@@ -144,15 +133,7 @@ class JobQueueDialog(QDialog):
 
         self.job_paths = list(job_paths)
         self.config = config
-        self.outcomes: list[QueuedJobOutcome] = []
         self._thread: _QueueThread | None = None
-        # Every `_QueueThread` this dialog ever starts, kept independently of
-        # `_thread` itself: `_thread` is a plain attribute a caller (or a test
-        # standing in for the running state) can overwrite, but the worker
-        # object that reassignment orphans is still a Qt child of this dialog
-        # and still needs waiting for in `__del__` -- otherwise it is exactly
-        # the still-running thread that gets torn down with it.
-        self._worker_threads: list[_QueueThread] = []
         self._current_index = 0
         """Which job's tracker rows incoming status belongs to.
 
@@ -224,9 +205,19 @@ class JobQueueDialog(QDialog):
         main_layout.addWidget(self.progress_bar)
         main_layout.addLayout(bottom_row)
 
+    # ------------------------------------------------------------------
+    def start(self) -> None:
+        """Begin the queue. Separate from construction on purpose.
+
+        A thread started inside `__init__` is a thread the caller never chose
+        to start and cannot avoid: the object exists and is already running
+        before it is even assigned to a variable. Splitting this out gives the
+        caller (and a test) a dialog it can inspect or discard before any
+        thread exists, and means a dropped dialog is never one that still has
+        a job in flight.
+        """
         self._start()
 
-    # ------------------------------------------------------------------
     def _start(self) -> None:
         self._thread = _QueueThread(
             backend=ProcessBackEnd(self.config),
@@ -234,7 +225,6 @@ class JobQueueDialog(QDialog):
             job_paths=self.job_paths,
             parent=self,
         )
-        self._worker_threads.append(self._thread)
         self._thread.text.connect(self._on_text)
         self._thread.text_replace.connect(self._on_text_replace)
         self._thread.tracker_status.connect(self._on_tracker_status)
@@ -246,18 +236,6 @@ class JobQueueDialog(QDialog):
         self._thread.finished.connect(self._on_queue_finished)
         self._thread.start()
 
-    def __del__(self) -> None:
-        # Every worker thread is parented to `self`, so Qt would otherwise
-        # tear it down as part of destroying this dialog's C++ object --
-        # deleting a QThread while `run()` is still executing is undefined
-        # there and crashes the process outright rather than merely warning.
-        # Waiting here runs before that cascade starts, whenever this dialog
-        # is dropped without having gone through the normal "reject() blocks
-        # until finished" path (e.g. a test that never closes it).
-        for thread in getattr(self, "_worker_threads", ()):
-            if thread.isRunning():
-                thread.wait()
-
     def _item(self, index: int) -> QTreeWidgetItem | None:
         return self.job_tree.topLevelItem(index - 1)
 
@@ -266,11 +244,13 @@ class JobQueueDialog(QDialog):
     def _on_text(self, message: str) -> None:
         # scrubbed on the way in, as the process page does: queue log lines
         # carry tracker responses, which can carry credentials
+        safe_message = scrub_secrets(message)
         cursor = self.text_widget.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml(scrub_secrets(message))
+        cursor.insertHtml(safe_message)
         self.text_widget.setTextCursor(cursor)
         self.text_widget.ensureCursorVisible()
+        LOG.info(LOG.LOG_SOURCE.FE, f"Queue log: {safe_message}")
 
     @Slot(str)
     def _on_text_replace(self, message: str) -> None:
@@ -280,15 +260,17 @@ class JobQueueDialog(QDialog):
         two panes behave identically. Without it a "running..." line and its
         "done" replacement both stay in the log.
         """
+        safe_message = scrub_secrets(message)
         cursor = self.text_widget.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.movePosition(
             QTextCursor.MoveOperation.StartOfLine, QTextCursor.MoveMode.KeepAnchor
         )
         cursor.removeSelectedText()
-        cursor.insertHtml(scrub_secrets(message))
+        cursor.insertHtml(safe_message)
         self.text_widget.setTextCursor(cursor)
         self.text_widget.ensureCursorVisible()
+        LOG.info(LOG.LOG_SOURCE.FE, f"Queue log replace last line: {safe_message}")
 
     @Slot(float)
     def _on_progress(self, value: float) -> None:
@@ -304,6 +286,9 @@ class JobQueueDialog(QDialog):
         item.setText(2, "▶️ Running")
         item.setExpanded(True)
         self.job_tree.scrollToItem(item)
+        # a new job's progress starts from zero, not wherever the previous
+        # job's bar was left
+        self.progress_bar.setValue(0)
         self.header_lbl.setText(
             f"<h3 style='margin: 0;'>Job {index} of {len(self.job_paths)}</h3>"
             f"<i><span>{escape(name)}</span></i>"
@@ -340,7 +325,7 @@ class JobQueueDialog(QDialog):
             return
         item.setText(1, outcome.job_name)
         item.setText(2, _RESULT_LABELS.get(outcome.result, outcome.result.name))
-        disposition = _DISPOSITION_LABELS.get(outcome.disposition, "")
+        disposition = _DISPOSITION_LABELS[outcome.disposition]
         detail = outcome.detail
         item.setText(
             3, f"{detail} — job {disposition}" if detail else f"Job {disposition}"
@@ -352,7 +337,6 @@ class JobQueueDialog(QDialog):
 
     @Slot(object)
     def _on_results(self, results: list[QueuedJobOutcome]) -> None:
-        self.outcomes = results
         uploaded = sum(
             1 for outcome in results if outcome.result is QueuedJobResult.UPLOADED
         )
@@ -365,6 +349,15 @@ class JobQueueDialog(QDialog):
     def _on_failed(self, message: str, trace_back: str) -> None:
         LOG.error(LOG.LOG_SOURCE.FE, scrub_secrets(trace_back))
         self._on_text(f"<br /><p>{escape(message)}</p>")
+        # Without this the job that was running when the queue itself raised
+        # is left reading "Running" forever, under a header that already says
+        # "Queue finished" -- the one row that most needs a correct status is
+        # the one this leaves stuck.
+        item = self._item(self._current_index)
+        if item is not None:
+            item.setText(2, _RESULT_LABELS[QueuedJobResult.FAILED])
+            item.setText(3, escape(message))
+            item.setExpanded(True)
 
     @Slot()
     def _on_cancel(self) -> None:
