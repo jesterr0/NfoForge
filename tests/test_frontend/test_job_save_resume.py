@@ -534,6 +534,14 @@ def test_a_job_from_another_config_is_listed_but_not_directly_loadable(
         dialog._accept_selection()
         assert dialog.selected_listing is None
 
+        # "Only this config" hides the row by default, and `_apply_filter`
+        # deselects whatever it hides -- reveal it and select it explicitly,
+        # the way a user has to before `_accept_with_switch` can act on it.
+        dialog.only_this_config.setChecked(False)
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        item.setSelected(True)
+
         dialog._accept_with_switch()
         assert dialog.selected_listing is not None
         assert dialog.selected_listing.config_profile == "anime"

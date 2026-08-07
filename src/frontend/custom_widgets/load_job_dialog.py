@@ -631,9 +631,13 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _update_button_state(self) -> None:
-        listing = self._current_listing()
-        matches = listing is not None and listing.matches_profile(self.active_profile)
+        # The selected job, not the current one -- see `_rename_selected`.
+        # Enablement and the actions it gates have to agree with the same
+        # row, or a coherent-looking UI can act on one job while highlighting
+        # another.
         selected = self._selected_listings()
+        listing = selected[0] if len(selected) == 1 else None
+        matches = listing is not None and listing.matches_profile(self.active_profile)
 
         self.delete_btn.setEnabled(bool(selected))
         self.rename_btn.setEnabled(len(selected) == 1)
@@ -763,8 +767,14 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _accept_selection(self) -> None:
-        listing = self._current_listing()
-        if listing is None or not listing.matches_profile(self.active_profile):
+        # The selected job, not the current one -- see `_rename_selected`.
+        # This is what lands on the process page, where the next action is
+        # Process: loading the wrong release here uploads it to a tracker.
+        selected = self._selected_listings()
+        if len(selected) != 1:
+            return
+        listing = selected[0]
+        if not listing.matches_profile(self.active_profile):
             return
         self.selected_listing = listing
         self.switch_profile_requested = False
@@ -781,8 +791,15 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _accept_with_switch(self) -> None:
-        listing = self._current_listing()
-        if listing is None or listing.matches_profile(self.active_profile):
+        # The selected job, not the current one -- see `_rename_selected`.
+        # This drives `_switch_config_profile`, which loads a profile and
+        # emits `settings_refresh`: a persistent, global config change made
+        # on the strength of a row the user did not select.
+        selected = self._selected_listings()
+        if len(selected) != 1:
+            return
+        listing = selected[0]
+        if listing.matches_profile(self.active_profile):
             return
         self.selected_listing = listing
         self.switch_profile_requested = True

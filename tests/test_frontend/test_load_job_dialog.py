@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 from PySide6.QtCore import QItemSelectionModel, Qt
-from PySide6.QtWidgets import QHeaderView
+from PySide6.QtWidgets import QDialogButtonBox, QHeaderView
 import pytest
 
 from src.backend.jobs import store
@@ -791,6 +791,119 @@ def test_rename_targets_the_selected_job_not_the_current_row(
 
     assert store.load_job(keep_dir).name == "renamed"
     assert store.load_job(other_dir).name == "merely current"
+
+
+def test_button_state_reflects_the_selected_job_not_the_current_row(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Same divergence as rename -- see
+    `test_rename_targets_the_selected_job_not_the_current_row`. Enablement and
+    the actions it gates have to agree on the same job, or a button that looks
+    correctly enabled ends up acting on a row the user did not pick.
+    """
+    _save(working_dir, "selected", created_at="2026-06-01T00:00:00+00:00")
+    _save(
+        working_dir,
+        "merely current",
+        profile="other",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    dialog = _open_dialog(qapp)
+    dialog.only_this_config.setChecked(False)
+
+    selected_row = dialog.job_tree.topLevelItem(0)
+    current_row = dialog.job_tree.topLevelItem(1)
+    assert selected_row.text(0) == "selected"
+    selected_row.setSelected(True)
+    dialog.job_tree.setCurrentItem(
+        current_row, 0, QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert dialog.job_tree.currentItem() is current_row
+    assert [item.text(0) for item in dialog.job_tree.selectedItems()] == ["selected"]
+
+    dialog._update_button_state()
+
+    # "selected" matches the active profile: Load has to be enabled and
+    # Switch has to stay off, even though the merely-current row is the one
+    # that would need a switch.
+    open_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Open)
+    assert open_button is not None
+    assert open_button.isEnabled()
+    assert not dialog.switch_btn.isEnabled()
+
+
+def test_accept_selection_targets_the_selected_job_not_the_current_row(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Same divergence as rename -- see
+    `test_rename_targets_the_selected_job_not_the_current_row` -- but worse: a
+    listing loaded here lands on the process page, where the next action is
+    Process. Loading the wrong release would upload it to a tracker.
+    """
+    selected_dir = _save(
+        working_dir, "selected", created_at="2026-06-01T00:00:00+00:00"
+    )
+    other_dir = _save(
+        working_dir, "merely current", created_at="2026-01-01T00:00:00+00:00"
+    )
+    dialog = _open_dialog(qapp)
+
+    selected_row = dialog.job_tree.topLevelItem(0)
+    current_row = dialog.job_tree.topLevelItem(1)
+    assert selected_row.text(0) == "selected"
+    selected_row.setSelected(True)
+    dialog.job_tree.setCurrentItem(
+        current_row, 0, QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert dialog.job_tree.currentItem() is current_row
+    assert [item.text(0) for item in dialog.job_tree.selectedItems()] == ["selected"]
+
+    dialog._accept_selection()
+
+    assert dialog.selected_listing is not None
+    assert dialog.selected_listing.path == selected_dir
+    assert dialog.selected_listing.path != other_dir
+
+
+def test_accept_with_switch_targets_the_selected_job_not_the_current_row(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Same divergence again, worse still: this drives `_switch_config_profile`,
+    which calls `config.load_profile()` and emits `settings_refresh` --
+    switching the active config, with its credentials and templates, on the
+    strength of a row the user did not select.
+    """
+    selected_dir = _save(
+        working_dir,
+        "selected",
+        profile="config-a",
+        created_at="2026-06-01T00:00:00+00:00",
+    )
+    _save(
+        working_dir,
+        "merely current",
+        profile="config-b",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    dialog = _open_dialog(qapp)
+    dialog.only_this_config.setChecked(False)
+
+    selected_row = dialog.job_tree.topLevelItem(0)
+    current_row = dialog.job_tree.topLevelItem(1)
+    assert selected_row.text(0) == "selected"
+    selected_row.setSelected(True)
+    dialog.job_tree.setCurrentItem(
+        current_row, 0, QItemSelectionModel.SelectionFlag.NoUpdate
+    )
+    assert dialog.job_tree.currentItem() is current_row
+    assert [item.text(0) for item in dialog.job_tree.selectedItems()] == ["selected"]
+
+    dialog._accept_with_switch()
+
+    assert dialog.switch_profile_requested is True
+    assert dialog.selected_listing is not None
+    assert dialog.selected_listing.path == selected_dir
+    assert dialog.selected_listing.config_profile == "config-a"
 
 
 def test_rename_is_only_available_for_one_job(
