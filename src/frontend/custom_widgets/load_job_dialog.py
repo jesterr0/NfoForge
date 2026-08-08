@@ -125,7 +125,15 @@ class LoadJobDialog(QDialog):
         Tracked explicitly rather than via focus -- `hasFocus()` is
         unreliable before the dialog is shown, and the tests for this file
         construct the dialog without showing it. Set by
-        `_on_tree_selection_changed` and `_on_queue_row_changed`, below.
+        `_on_tree_selection_changed` and `_on_queue_row_changed`, below --
+        which is also where `_suppress_source_tracking` is checked.
+        """
+        self._suppress_source_tracking: bool = False
+        """Set around a programmatic selection change so it cannot be
+        mistaken for user interaction. `_apply_filter` deselects rows it
+        hides, and reloading the tree re-clears and re-selects it -- neither
+        is the user switching panes, so the source-setting slots must not
+        act on the signals those changes fire.
         """
 
         self.info_lbl = QLabel(
@@ -322,7 +330,17 @@ class LoadJobDialog(QDialog):
         self._details_cache.clear()
         self._last_described_path = None
 
-        self.job_tree.clear()
+        # Deselecting whatever the tree held fires itemSelectionChanged if
+        # something was selected -- a reload triggered by a rename or delete
+        # must not use that to yank a queue-sourced pane back to the tree
+        # before the reload has even produced anything to show. Confirmed
+        # empirically: without this, the source flips here, synchronously,
+        # before `_on_listings_loaded` ever runs.
+        self._suppress_source_tracking = True
+        try:
+            self.job_tree.clear()
+        finally:
+            self._suppress_source_tracking = False
         self.job_tree.setVisible(False)
         self.empty_lbl.setText("<span>Loading saved jobs...</span>")
         self.empty_lbl.setVisible(True)
@@ -337,7 +355,16 @@ class LoadJobDialog(QDialog):
         # sorting reshuffles the tree on every insert otherwise, which is
         # wasted work and would show rows swapping places as they load
         self.job_tree.setSortingEnabled(False)
-        self.job_tree.clear()
+        # Repopulating the tree fires tree signals; see the same suppression
+        # in `_load_listings`. This clear is a no-op selection-wise today --
+        # `_load_listings` already emptied the tree before starting the
+        # loader that ends up here -- but it costs nothing to keep guarded
+        # rather than depend on that staying true.
+        self._suppress_source_tracking = True
+        try:
+            self.job_tree.clear()
+        finally:
+            self._suppress_source_tracking = False
         muted = QBrush(
             self.palette().color(
                 QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText
@@ -406,7 +433,14 @@ class LoadJobDialog(QDialog):
         self.empty_lbl.setVisible(not has_jobs)
         first_item = self.job_tree.topLevelItem(0)
         if first_item is not None:
-            self.job_tree.setCurrentItem(first_item)
+            # Selecting the tree's own first row on every reload must not
+            # steal a queue-sourced pane back either -- same reasoning as
+            # the clear() above.
+            self._suppress_source_tracking = True
+            try:
+                self.job_tree.setCurrentItem(first_item)
+            finally:
+                self._suppress_source_tracking = False
         self._apply_filter()
 
     def _stop_loader(self) -> None:
@@ -451,31 +485,42 @@ class LoadJobDialog(QDialog):
         A hidden row that stayed selected would still be picked up by Load,
         Delete and the queue, which is exactly the kind of action-at-a-distance
         a filter is supposed to remove.
+
+        The deselect is a programmatic change, not the user picking a
+        different row -- typing in the filter box must not steal the details
+        pane away from a queue-sourced description, so it runs with source
+        tracking suppressed. `try`/`finally` so a raise mid-loop cannot leave
+        the flag stuck, which would disable source tracking for the rest of
+        the dialog's life -- worse than the bug being fixed here.
         """
         needle = self.filter_edit.text().strip().casefold()
         only_mine = self.only_this_config.isChecked()
 
-        for index in range(self.job_tree.topLevelItemCount()):
-            item = self.job_tree.topLevelItem(index)
-            if item is None:
-                continue
-            listing = item.data(0, _LISTING_ROLE)
-            if not isinstance(listing, JobListing):
-                continue
-            haystack = " ".join(
-                (
-                    listing.name,
-                    listing.summary.title or "",
-                    listing.summary.input_name or "",
-                    " ".join(listing.summary.trackers),
-                )
-            ).casefold()
-            hidden = bool(needle) and needle not in haystack
-            if only_mine and not listing.matches_profile(self.active_profile):
-                hidden = True
-            item.setHidden(hidden)
-            if hidden:
-                item.setSelected(False)
+        self._suppress_source_tracking = True
+        try:
+            for index in range(self.job_tree.topLevelItemCount()):
+                item = self.job_tree.topLevelItem(index)
+                if item is None:
+                    continue
+                listing = item.data(0, _LISTING_ROLE)
+                if not isinstance(listing, JobListing):
+                    continue
+                haystack = " ".join(
+                    (
+                        listing.name,
+                        listing.summary.title or "",
+                        listing.summary.input_name or "",
+                        " ".join(listing.summary.trackers),
+                    )
+                ).casefold()
+                hidden = bool(needle) and needle not in haystack
+                if only_mine and not listing.matches_profile(self.active_profile):
+                    hidden = True
+                item.setHidden(hidden)
+                if hidden:
+                    item.setSelected(False)
+        finally:
+            self._suppress_source_tracking = False
 
         self._update_button_state()
 
@@ -700,11 +745,18 @@ class LoadJobDialog(QDialog):
 
     @Slot()
     def _on_tree_selection_changed(self) -> None:
+        # Programmatic selection changes -- a filter hiding a row, a reload
+        # re-populating the tree -- must not be mistaken for the user
+        # switching panes. See `_suppress_source_tracking`.
+        if self._suppress_source_tracking:
+            return
         self._details_source = "tree"
         self._update_button_state()
 
     @Slot()
     def _on_queue_row_changed(self) -> None:
+        if self._suppress_source_tracking:
+            return
         self._details_source = "queue"
         self._update_button_state()
 

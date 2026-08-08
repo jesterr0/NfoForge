@@ -908,6 +908,42 @@ def test_re_clicking_a_queue_row_restores_its_pane(
     assert "queue-job" in dialog.details_lbl.text()
 
 
+def test_a_filter_keystroke_does_not_steal_a_queue_sourced_pane(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`_apply_filter` deselects every row it hides, which fires
+    `itemSelectionChanged` for a row that was selected. If that flips the
+    source to "tree" unconditionally, typing in the filter box silently
+    discards a queue-sourced pane the user was looking at -- even though the
+    user never touched the tree or the queue.
+    """
+    _save(working_dir, "row-a", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "row-b", created_at="2026-06-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    row_a = dialog.job_tree.findItems("row-a", Qt.MatchFlag.MatchExactly, 0)[0]
+    row_b = dialog.job_tree.findItems("row-b", Qt.MatchFlag.MatchExactly, 0)[0]
+
+    _click_tree_item(dialog, row_b, qapp)
+    dialog._add_to_queue()
+    _click_tree_item(dialog, row_a, qapp)
+    assert dialog._details_source == "tree"
+    assert row_a.isSelected()
+
+    _click_queue_row(dialog, 0, qapp)
+    assert dialog._details_source == "queue"
+    assert "row-b" in dialog.details_lbl.text()
+
+    # row A is still selected in the tree; hiding it must not touch the
+    # source, which the user set by clicking the queue row above
+    QTest.keyClicks(dialog.filter_edit, "row-b")
+    qapp.processEvents()
+
+    assert row_a.isHidden()
+    assert dialog._details_source == "queue"
+    assert "row-b" in dialog.details_lbl.text()
+    assert dialog.open_folder_btn.isEnabled()
+
+
 def test_repeated_refresh_details_calls_skip_describe_entirely(
     qapp: Any,
     working_dir: Path,
