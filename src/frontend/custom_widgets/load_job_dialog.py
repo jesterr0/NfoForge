@@ -179,6 +179,12 @@ class LoadJobDialog(QDialog):
         self.job_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
         self.job_tree.itemDoubleClicked.connect(self._on_double_click)
         self.job_tree.itemSelectionChanged.connect(self._on_tree_selection_changed)
+        # itemClicked fires on every press, including a re-click of a row
+        # that is already current -- itemSelectionChanged does not, which is
+        # exactly the case that leaves a re-clicked pane stuck. Keeping both
+        # connected covers clicking and keyboard navigation, which emits no
+        # click at all.
+        self.job_tree.itemClicked.connect(self._on_tree_selection_changed)
 
         self.empty_lbl = QLabel(
             "<span>No saved jobs yet. Use <b>Save Job</b> on the process page "
@@ -216,6 +222,8 @@ class LoadJobDialog(QDialog):
             "queued, since a queue has nobody to answer a prompt"
         )
         self.queue_list.currentRowChanged.connect(self._on_queue_row_changed)
+        # Same reasoning as job_tree.itemClicked, above.
+        self.queue_list.itemClicked.connect(self._on_queue_row_changed)
 
         self.add_to_queue_btn = QPushButton("Add to queue", self)
         self.add_to_queue_btn.clicked.connect(self._add_to_queue)

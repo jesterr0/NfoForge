@@ -13,6 +13,7 @@ from typing import Any
 
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QPalette
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialogButtonBox, QHeaderView
 import pytest
 import qtawesome as qta
@@ -92,6 +93,36 @@ def _wait_for_load(dialog: LoadJobDialog, qapp: Any) -> None:
     """
     assert dialog._loader is not None
     dialog._loader.wait(5000)
+    qapp.processEvents()
+
+
+def _click_tree_item(dialog: LoadJobDialog, item: Any, qapp: Any) -> None:
+    """Drive a real mouse click on a tree row.
+
+    `itemSelectionChanged`/`currentRowChanged` fire only on an actual
+    selection change, not on every click -- calling `setCurrentItem` or
+    `setSelected` directly exercises exactly that already-working path and
+    would not catch a regression in the click-tracking this simulates. The
+    dialog must be shown first: `visualItemRect` spans every column (this
+    tree has 7), which is wider than the offscreen viewport, so clicking its
+    center can land outside the viewport and hit nothing -- column 0's own
+    visual rect is what is actually visible and clickable.
+    """
+    dialog.show()
+    rect = dialog.job_tree.visualRect(dialog.job_tree.indexFromItem(item, 0))
+    QTest.mouseClick(
+        dialog.job_tree.viewport(), Qt.MouseButton.LeftButton, pos=rect.center()
+    )
+    qapp.processEvents()
+
+
+def _click_queue_row(dialog: LoadJobDialog, row: int, qapp: Any) -> None:
+    """Drive a real mouse click on a queue row -- see `_click_tree_item`."""
+    dialog.show()
+    rect = dialog.queue_list.visualItemRect(dialog.queue_list.item(row))
+    QTest.mouseClick(
+        dialog.queue_list.viewport(), Qt.MouseButton.LeftButton, pos=rect.center()
+    )
     qapp.processEvents()
 
 
@@ -833,6 +864,48 @@ def test_open_folder_acts_on_the_queue_row_while_it_is_the_source(
 
     assert opened == [queue_dir]
     assert opened != [tree_dir]
+
+
+# --------------------------------------------------------------------------
+# T18 fix round 1: click tracking and programmatic-change suppression
+# --------------------------------------------------------------------------
+def test_re_clicking_a_queue_row_restores_its_pane(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`currentRowChanged`/`itemSelectionChanged` fire only on an actual
+    change, not on every click -- so re-clicking a queue row that is already
+    `queue_list.currentRow()` emits nothing under selection-only wiring, and
+    the pane silently keeps showing whatever was selected last. With a
+    single-item queue there is no way back to that job short of removing and
+    re-adding it. `itemClicked` fires on every press, including a re-click,
+    which is what this test needs `_click_queue_row`'s real click -- not
+    `setCurrentRow` -- to actually exercise.
+    """
+    _save(working_dir, "tree-job", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "queue-job", created_at="2026-06-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+    queue_source_item = dialog.job_tree.findItems(
+        "queue-job", Qt.MatchFlag.MatchExactly, 0
+    )[0]
+    assert dialog.job_tree.currentItem() is queue_source_item
+
+    dialog._add_to_queue()
+    dialog.job_tree.clearSelection()
+
+    _click_queue_row(dialog, 0, qapp)
+    assert dialog._details_source == "queue"
+    assert "queue-job" in dialog.details_lbl.text()
+
+    _click_tree_item(dialog, tree_item, qapp)
+    assert dialog._details_source == "tree"
+    assert "tree-job" in dialog.details_lbl.text()
+
+    # the same queue row again -- still queue_list.currentRow(), so
+    # currentRowChanged emits nothing; only itemClicked can catch this
+    _click_queue_row(dialog, 0, qapp)
+    assert dialog._details_source == "queue"
+    assert "queue-job" in dialog.details_lbl.text()
 
 
 def test_repeated_refresh_details_calls_skip_describe_entirely(
