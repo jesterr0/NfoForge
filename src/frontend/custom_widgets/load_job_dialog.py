@@ -693,8 +693,15 @@ class LoadJobDialog(QDialog):
         target = row + offset
         if row < 0 or not 0 <= target < self.queue_list.count():
             return
-        self.queue_list.insertItem(target, self.queue_list.takeItem(row))
-        self.queue_list.setCurrentRow(target)
+        # takeItem() and setCurrentRow() both fire currentRowChanged -- this
+        # is the queue reordering itself, not the user picking the queue
+        # pane, so it must not set the source. See `_suppress_source_tracking`.
+        self._suppress_source_tracking = True
+        try:
+            self.queue_list.insertItem(target, self.queue_list.takeItem(row))
+            self.queue_list.setCurrentRow(target)
+        finally:
+            self._suppress_source_tracking = False
         self._renumber_queue()
         self._update_button_state()
 
@@ -703,16 +710,29 @@ class LoadJobDialog(QDialog):
         row = self.queue_list.currentRow()
         if row < 0:
             return
-        self.queue_list.takeItem(row)
+        # takeItem() on the current row fires currentRowChanged -- removing a
+        # row is not the user picking the queue pane. See
+        # `_suppress_source_tracking`.
+        self._suppress_source_tracking = True
+        try:
+            self.queue_list.takeItem(row)
+        finally:
+            self._suppress_source_tracking = False
         self._renumber_queue()
         self._update_button_state()
 
     def _drop_from_queue(self, paths: set[Path]) -> None:
         """Take deleted jobs out of the queue, so it cannot point at nothing."""
-        for row in reversed(range(self.queue_list.count())):
-            listing = self.queue_list.item(row).data(_LISTING_ROLE)
-            if isinstance(listing, JobListing) and listing.path in paths:
-                self.queue_list.takeItem(row)
+        # Same reasoning as `_remove_queued`: a delete elsewhere is not the
+        # user picking the queue pane.
+        self._suppress_source_tracking = True
+        try:
+            for row in reversed(range(self.queue_list.count())):
+                listing = self.queue_list.item(row).data(_LISTING_ROLE)
+                if isinstance(listing, JobListing) and listing.path in paths:
+                    self.queue_list.takeItem(row)
+        finally:
+            self._suppress_source_tracking = False
         self._renumber_queue()
 
     def _selection_hint(self) -> str:

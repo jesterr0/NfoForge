@@ -1859,6 +1859,117 @@ def test_a_failed_delete_leaves_its_queue_entry_in_place(
 
 
 # --------------------------------------------------------------------------
+# T18 fix round 2: queue-management sites left unguarded by round 1
+# --------------------------------------------------------------------------
+def test_removing_a_queued_job_does_not_steal_the_pane_from_the_tree(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`_remove_queued` calls `takeItem` on the queue's current row, which
+    fires `currentRowChanged` -- that is queue bookkeeping, not the user
+    picking the queue pane, so it must not set the source. Two jobs are
+    queued so one remains after the removal: the source has to keep
+    describing the tree rather than the fallback in `_details_listing`
+    papering over an empty queue, which would mask this bug.
+    """
+    _save(working_dir, "queued-a", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "queued-b", created_at="2026-02-01T00:00:00+00:00")
+    _save(working_dir, "tree-job", created_at="2026-06-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    a_item = dialog.job_tree.findItems("queued-a", Qt.MatchFlag.MatchExactly, 0)[0]
+    b_item = dialog.job_tree.findItems("queued-b", Qt.MatchFlag.MatchExactly, 0)[0]
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+
+    _click_tree_item(dialog, a_item, qapp)
+    dialog._add_to_queue()
+    _click_tree_item(dialog, b_item, qapp)
+    dialog._add_to_queue()
+
+    _click_queue_row(dialog, 0, qapp)
+    _click_tree_item(dialog, tree_item, qapp)
+    assert dialog._details_source == "tree"
+    assert "tree-job" in dialog.details_lbl.text()
+
+    dialog.queue_remove_btn.click()
+
+    assert dialog._details_source == "tree"
+    assert "tree-job" in dialog.details_lbl.text()
+
+
+def test_moving_a_queued_job_does_not_steal_the_pane_from_the_tree(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`_move_queued` calls `takeItem` and `setCurrentRow` on the queue,
+    either of which can fire `currentRowChanged` -- reordering the queue is
+    not the user picking the queue pane.
+    """
+    _save(working_dir, "queued-a", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "queued-b", created_at="2026-02-01T00:00:00+00:00")
+    _save(working_dir, "tree-job", created_at="2026-06-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    a_item = dialog.job_tree.findItems("queued-a", Qt.MatchFlag.MatchExactly, 0)[0]
+    b_item = dialog.job_tree.findItems("queued-b", Qt.MatchFlag.MatchExactly, 0)[0]
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+
+    _click_tree_item(dialog, a_item, qapp)
+    dialog._add_to_queue()
+    _click_tree_item(dialog, b_item, qapp)
+    dialog._add_to_queue()
+
+    _click_queue_row(dialog, 1, qapp)
+    _click_tree_item(dialog, tree_item, qapp)
+    assert dialog._details_source == "tree"
+    assert "tree-job" in dialog.details_lbl.text()
+
+    dialog.queue_up_btn.click()
+
+    assert dialog._details_source == "tree"
+    assert "tree-job" in dialog.details_lbl.text()
+
+
+def test_deleting_a_queued_job_does_not_steal_the_pane_from_the_tree(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_drop_from_queue` also calls `takeItem` on the queue -- deleting a
+    different job that happens to be queued must not flip the source away
+    from whatever the user was actually looking at in the tree.
+    """
+    _save(working_dir, "queued-a", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "queued-b", created_at="2026-02-01T00:00:00+00:00")
+    _save(working_dir, "tree-job", created_at="2026-06-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    a_item = dialog.job_tree.findItems("queued-a", Qt.MatchFlag.MatchExactly, 0)[0]
+    b_item = dialog.job_tree.findItems("queued-b", Qt.MatchFlag.MatchExactly, 0)[0]
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+
+    _click_tree_item(dialog, a_item, qapp)
+    dialog._add_to_queue()
+    _click_tree_item(dialog, b_item, qapp)
+    dialog._add_to_queue()
+
+    _click_queue_row(dialog, 0, qapp)
+    _click_tree_item(dialog, tree_item, qapp)
+    assert dialog._details_source == "tree"
+
+    dialog.job_tree.clearSelection()
+    a_item.setSelected(True)
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox,
+        "question",
+        lambda *_a, **_k: load_job_dialog_module.QMessageBox.StandardButton.Yes,
+    )
+
+    dialog._delete_selected()
+    _wait_for_load(dialog, qapp)
+
+    assert dialog._details_source == "tree"
+    assert "tree-job" in dialog.details_lbl.text()
+    assert "queued-b" not in dialog.details_lbl.text()
+
+
+# --------------------------------------------------------------------------
 # loading is asynchronous
 # --------------------------------------------------------------------------
 def test_the_list_starts_empty_and_says_it_is_loading(
