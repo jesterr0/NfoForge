@@ -592,10 +592,15 @@ class LoadJobDialog(QDialog):
         """
         if self._details_source == "queue":
             item = self.queue_list.currentItem()
-            if item is None:
-                return None
-            listing = item.data(_LISTING_ROLE)
-            return listing if isinstance(listing, JobListing) else None
+            if item is not None:
+                listing = item.data(_LISTING_ROLE)
+                if isinstance(listing, JobListing):
+                    return listing
+            # The queue emptied, or lost the row being described, out from
+            # under a queue-sourced pane -- a different widget's action, not
+            # the user switching away. Falling through to the tree below
+            # always leaves something sensible on screen, rather than a pane
+            # that goes blank for no reason the user did anything about.
 
         # an empty tree has no current item, so emptiness needs no separate
         # check here -- and must not be inferred from widget visibility, which

@@ -944,6 +944,48 @@ def test_a_filter_keystroke_does_not_steal_a_queue_sourced_pane(
     assert dialog.open_folder_btn.isEnabled()
 
 
+def test_the_pane_falls_back_to_the_tree_job_once_its_queue_row_is_gone(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Removing the queue row the pane is describing empties
+    `queue_list.currentItem()` out from under a queue-sourced pane -- a
+    different widget's action, not the user switching away. A pane that goes
+    blank because of it reads as a glitch; falling back to the tree's own
+    listing always leaves something sensible on screen.
+
+    Not part of the brief's required A/B/E tests, but added because a
+    mutation check against the pre-existing suite (reverting the fallback to
+    a bare `return None`) showed nothing in the suite caught it -- the
+    brief's claim that C is "covered by the existing suite" did not hold
+    empirically, unlike D's tree-branch behaviour, which a mutation check
+    confirmed really is already covered.
+    """
+    _save(working_dir, "tree-job", created_at="2026-01-01T00:00:00+00:00")
+    _save(working_dir, "queue-job", created_at="2026-06-01T00:00:00+00:00")
+    dialog = _open_dialog(qapp)
+    tree_item = dialog.job_tree.findItems("tree-job", Qt.MatchFlag.MatchExactly, 0)[0]
+    queue_source_item = dialog.job_tree.findItems(
+        "queue-job", Qt.MatchFlag.MatchExactly, 0
+    )[0]
+
+    dialog.job_tree.clearSelection()
+    queue_source_item.setSelected(True)
+    dialog._add_to_queue()
+    queue_source_item.setSelected(False)
+    dialog.job_tree.setCurrentItem(tree_item)
+    tree_item.setSelected(True)
+
+    dialog.queue_list.setCurrentRow(0)
+    assert dialog._details_source == "queue"
+    assert "queue-job" in dialog.details_lbl.text()
+
+    dialog._remove_queued()
+
+    assert dialog.details_lbl.text() != ""
+    assert "tree-job" in dialog.details_lbl.text()
+    assert "queue-job" not in dialog.details_lbl.text()
+
+
 def test_repeated_refresh_details_calls_skip_describe_entirely(
     qapp: Any,
     working_dir: Path,
