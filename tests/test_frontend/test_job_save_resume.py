@@ -9,7 +9,6 @@ import wave
 from pymediainfo import MediaInfo
 from PySide6.QtWidgets import (
     QDialog,
-    QInputDialog,
     QMessageBox,
     QPushButton,
     QWizard,
@@ -1096,9 +1095,6 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
             return self.Accepted
 
     monkeypatch.setattr(process_module, "QMessageBox", MockMessageBox)
-    monkeypatch.setattr(
-        QInputDialog, "getText", lambda *_a, **_k: ("<b>bold</b> job", True)
-    )
 
     # Mock the dependencies to reach the save success path.
     page = SimpleNamespace()

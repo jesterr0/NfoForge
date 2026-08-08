@@ -174,9 +174,12 @@ class LoadJobDialog(QDialog):
         self.job_tree.setHeaderLabels(
             ("Name", "Title", "Type", "Trackers", "Config", "State", "Saved")
         )
-        # Column widths carry meaning here: Name and Title are what a job is
-        # recognized by, Trackers is an open-ended list the user may want wider,
-        # and the rest are short enough to size themselves.
+        # Every column sizes to its own contents rather than sharing out the
+        # panel's width: this tree sits in a splitter pane the user can pull
+        # narrow, and stretching Name and Title to fit it truncated exactly
+        # the two columns a job is recognized by. The row is free to end up
+        # wider than the pane instead, which is what the horizontal scrollbar
+        # below is for -- and why the last section must not stretch.
         header = self.job_tree.header()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setStretchLastSection(False)

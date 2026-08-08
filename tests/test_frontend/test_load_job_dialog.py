@@ -126,25 +126,58 @@ def _click_queue_row(dialog: LoadJobDialog, row: int, qapp: Any) -> None:
     qapp.processEvents()
 
 
+def _answer_rename_prompt(
+    monkeypatch: pytest.MonkeyPatch, typed: str, *, accepted: bool = True
+) -> None:
+    """Answer the rename prompt with `typed` without ever showing it.
+
+    `_change_job_name` builds a `QInputDialog` and `exec()`s it, rather than
+    going through `QInputDialog.getText`, so it can be sized before it opens.
+    A modal `exec()` with nobody to dismiss it hangs the run outright -- not
+    a failure with a message, just a test that never returns -- so every
+    rename test has to stub the prompt, and stubbing the class method the
+    prompt no longer uses would silently do nothing.
+
+    Patched at `exec`/`textValue` rather than at `_change_job_name` itself so
+    the helper's own behaviour -- notably the strip it applies to what was
+    typed, which is what keeps a blank field from blanking a job's name --
+    stays inside what these tests cover.
+    """
+    code = (
+        load_job_dialog_module.QDialog.DialogCode.Accepted
+        if accepted
+        else load_job_dialog_module.QDialog.DialogCode.Rejected
+    )
+    monkeypatch.setattr(load_job_dialog_module.QInputDialog, "exec", lambda _self: code)
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog, "textValue", lambda _self: typed
+    )
+
+
 def test_columns_are_sized_for_what_they_hold(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
+    """Every column sizes to its own contents, and the panel scrolls.
+
+    The three parts are one decision, not three: with all seven columns on
+    ResizeToContents the row is as wide as it needs to be rather than as wide
+    as the panel, so the tree needs a horizontal scrollbar to reach the right
+    of it, and the last section must not stretch or it would absorb the slack
+    and put the columns back out of step with their contents.
+    """
     _save(working_dir, "job")
     dialog = _open_dialog(qapp)
     header = dialog.job_tree.header()
 
-    assert header.sectionResizeMode(0) is QHeaderView.ResizeMode.Stretch
-    assert header.sectionResizeMode(1) is QHeaderView.ResizeMode.Stretch
-    assert header.sectionResizeMode(2) is QHeaderView.ResizeMode.ResizeToContents
-    assert header.sectionResizeMode(3) is QHeaderView.ResizeMode.Interactive
-    assert header.sectionResizeMode(4) is QHeaderView.ResizeMode.ResizeToContents
-    assert header.sectionResizeMode(5) is QHeaderView.ResizeMode.ResizeToContents
-    assert header.sectionResizeMode(6) is QHeaderView.ResizeMode.ResizeToContents
-    # Trackers (column 3) is the one column seeded with an explicit starting
-    # width rather than left to size itself. The dialog is never shown or
-    # resized in this test, so nothing here would move it off the seeded
-    # value.
-    assert header.sectionSize(3) == 180
+    for column in range(dialog.job_tree.columnCount()):
+        assert header.sectionResizeMode(column) is (
+            QHeaderView.ResizeMode.ResizeToContents
+        ), f"column {column}"
+    assert header.stretchLastSection() is False
+    assert (
+        dialog.job_tree.horizontalScrollBarPolicy()
+        is Qt.ScrollBarPolicy.ScrollBarAsNeeded
+    )
     assert dialog.job_tree.textElideMode() is Qt.TextElideMode.ElideRight
 
 
@@ -1176,11 +1209,7 @@ def test_renaming_rewrites_only_the_name(
     dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("new name", True)),
-    )
+    _answer_rename_prompt(monkeypatch, "new name")
 
     dialog._rename_selected()
     _wait_for_load(dialog, qapp)
@@ -1206,11 +1235,7 @@ def test_a_failed_rename_reports_the_job_by_name(
     dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("new name", True)),
-    )
+    _answer_rename_prompt(monkeypatch, "new name")
 
     def flaky_write(*_a: Any, **_k: Any) -> None:
         raise load_job_dialog_module.JobStoreError("disk said no")
@@ -1247,11 +1272,7 @@ def test_a_rename_refreshes_the_cached_details_pane_text(
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
     assert "<b>old name</b>" in dialog.details_lbl.text()
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("new name", True)),
-    )
+    _answer_rename_prompt(monkeypatch, "new name")
 
     dialog._rename_selected()
     _wait_for_load(dialog, qapp)
@@ -1284,11 +1305,7 @@ def test_renaming_a_queued_job_refreshes_its_queue_row_label(
     dialog.job_tree.topLevelItem(0).setSelected(True)
     dialog._add_to_queue()
     assert dialog.queue_list.item(0).text() == "1. old name"
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("new name", True)),
-    )
+    _answer_rename_prompt(monkeypatch, "new name")
 
     dialog._rename_selected()
     _wait_for_load(dialog, qapp)
@@ -1306,11 +1323,7 @@ def test_cancelling_the_rename_changes_nothing(
     dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("", False)),
-    )
+    _answer_rename_prompt(monkeypatch, "", accepted=False)
 
     dialog._rename_selected()
     _wait_for_load(dialog, qapp)
@@ -1326,20 +1339,19 @@ def test_an_empty_new_name_is_refused(
 ) -> None:
     """Accepting the prompt with a blank field must not blank the job's name.
 
-    The guard is `not accepted or not name.strip()`. The cancel test only ever
-    supplies `accepted=False`, so it cannot tell the two halves apart -- narrow
-    the guard to `if not accepted` and a user who clicks OK on an empty field
-    writes `name: ""` to disk, with nothing failing.
+    Two things have to hold together: `_change_job_name` strips what was
+    typed, and `_rename_selected` guards on `not accepted or not name`. Drop
+    either -- the strip, or the second half of the guard -- and a user who
+    clicks OK on a field holding only spaces writes `name: ""` to disk, with
+    nothing failing. The cancel test only ever supplies `accepted=False`, so
+    it cannot tell the halves of that guard apart. Whitespace is typed here
+    rather than an empty string precisely so the strip is covered too.
     """
     directory = _save(working_dir, "keep me")
     dialog = _open_dialog(qapp)
     dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
     dialog.job_tree.topLevelItem(0).setSelected(True)
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("   ", True)),
-    )
+    _answer_rename_prompt(monkeypatch, "   ")
 
     dialog._rename_selected()
     _wait_for_load(dialog, qapp)
@@ -1376,11 +1388,7 @@ def test_rename_targets_the_selected_job_not_the_current_row(
     assert dialog.job_tree.currentItem() is current_row
     assert [item.text(0) for item in dialog.job_tree.selectedItems()] == ["selected"]
 
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("renamed", True)),
-    )
+    _answer_rename_prompt(monkeypatch, "renamed")
 
     dialog._rename_selected()
     _wait_for_load(dialog, qapp)
@@ -1998,11 +2006,7 @@ def test_reloading_while_the_queue_is_the_source_does_not_steal_the_pane(
     assert dialog._details_source == "queue"
     assert "queued-job" in dialog.details_lbl.text()
 
-    monkeypatch.setattr(
-        load_job_dialog_module.QInputDialog,
-        "getText",
-        staticmethod(lambda *_a, **_k: ("renamed-job", True)),
-    )
+    _answer_rename_prompt(monkeypatch, "renamed-job")
     dialog._rename_selected()
     _wait_for_load(dialog, qapp)
 
