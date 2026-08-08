@@ -100,7 +100,7 @@ def _populate(context: ProcessingContext, media: Path) -> None:
     media_input.media_type = MediaType.MOVIE
     media_input.working_dir = media.parent / "working"
     media_input.file_list.append(media)
-    media_input.file_list_mediainfo[media] = MediaInfo.parse(
+    media_input.file_list_mediainfo[media] = MediaInfo.parse(  # pyright: ignore[reportArgumentType]
         media, legacy_stream_display=True
     )
 
@@ -139,7 +139,9 @@ def _wizard_stub(
     )
     wizard._confirm_profile_can_serve_job = (  # pyright: ignore[reportAttributeAccessIssue]
         lambda job_name, context: MainWindowWizard._confirm_profile_can_serve_job(
-            wizard, job_name, context
+            wizard,  # pyright: ignore[reportArgumentType]
+            job_name,
+            context,  # pyright: ignore[reportArgumentType]
         )
     )
     wizard._stale_template_warnings = (  # pyright: ignore[reportAttributeAccessIssue]
@@ -181,9 +183,11 @@ def _fake_page(context: ProcessingContext, *, last_used: dict | None = None) -> 
     )
     page._image_host_label = ProcessPage._image_host_label
     page._plugin_image_host_available = lambda: False
-    page._sync_tracker_image_hosts = lambda: ProcessPage._sync_tracker_image_hosts(page)
+    page._sync_tracker_image_hosts = lambda: ProcessPage._sync_tracker_image_hosts(page)  # pyright: ignore[reportArgumentType]
     page._tree_combo_changed = lambda combo, idx: ProcessPage._tree_combo_changed(
-        page, combo, idx
+        page,  # pyright: ignore[reportArgumentType]
+        combo,
+        idx,
     )
     # wired the same way `ProcessPage.__init__` wires it: without this the
     # fake page never exercises the signal path that `add_tracker_items` (via
@@ -219,7 +223,7 @@ def test_saved_job_round_trips_through_the_store(
             ImageSource.IMAGES, ImageHost.CHEVERETO_V3
         )
     }
-    assert restored.media_input.require_mediainfo(sample_media).tracks
+    assert restored.media_input.require_mediainfo(sample_media).tracks  # pyright: ignore[reportAttributeAccessIssue]
 
 
 # --------------------------------------------------------------------------
@@ -400,7 +404,7 @@ def test_deferrable_trackers_keeps_only_the_safe_ones() -> None:
         }
     )
 
-    deferrable = ProcessPage._deferrable_trackers(page)
+    deferrable = ProcessPage._deferrable_trackers(page)  # pyright: ignore[reportArgumentType]
 
     assert set(deferrable) == {TrackerSelection.HUNO, TrackerSelection.BEYOND_HD}
 
@@ -412,7 +416,7 @@ def test_nothing_is_offered_when_every_tracker_uploaded() -> None:
     )
 
     # must return without prompting at all
-    ProcessPage._offer_deferred_job(page)
+    ProcessPage._offer_deferred_job(page)  # pyright: ignore[reportArgumentType]
 
 
 def test_declining_the_offer_saves_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -431,7 +435,7 @@ def test_declining_the_offer_saves_nothing(monkeypatch: pytest.MonkeyPatch) -> N
         lambda *_a, **_k: process_module.QMessageBox.StandardButton.No,
     )
 
-    ProcessPage._offer_deferred_job(page)
+    ProcessPage._offer_deferred_job(page)  # pyright: ignore[reportArgumentType]
 
     assert saved == []
 
@@ -455,7 +459,7 @@ def test_accepting_the_offer_saves_only_the_deferrable_trackers(
         lambda *_a, **_k: process_module.QMessageBox.StandardButton.Yes,
     )
 
-    ProcessPage._offer_deferred_job(page)
+    ProcessPage._offer_deferred_job(page)  # pyright: ignore[reportArgumentType]
 
     assert saved == [
         {"keep_trackers": {TrackerSelection.HUNO, TrackerSelection.BEYOND_HD}}
@@ -481,7 +485,7 @@ def test_a_deferred_job_only_stores_nfos_for_the_trackers_it_keeps(
     directory = tmp_path / "job"
     directory.mkdir()
 
-    document = ProcessPage._build_job_document(page, directory, {TrackerSelection.HUNO})
+    document = ProcessPage._build_job_document(page, directory, {TrackerSelection.HUNO})  # pyright: ignore[reportArgumentType]
 
     assert set(document["shared_data"]["tracker_release_data"]) == {"HUNO"}
     assert {path.name for path in (directory / "nfo").iterdir()} == {"huno.txt"}
@@ -1057,7 +1061,7 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
         """Mock that accepts any parent and captures the instance."""
 
         Icon = QMessageBox.Icon
-        Accepted = QMessageBox.Accepted
+        Accepted = QMessageBox.DialogCode.Accepted
 
         def __init__(self, parent: Any = None) -> None:
             self.parent_obj = parent
@@ -1108,10 +1112,11 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
         settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
         program=SimpleNamespace(current_config="test"),
     )
-    page._announce_saved_job = lambda name: None  # no-op for this test
+    page._announce_saved_job = lambda name: None
     page._build_job_document = lambda *_: {}
     page._job_summary = lambda *_: JobSummary()
     page._default_job_name = lambda: "test"
+    page._get_job_name = lambda *_: ("<b>bold</b> job", True)
     page._on_text_update = lambda *_: None
 
     # Mock media validation.
