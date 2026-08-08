@@ -1,6 +1,7 @@
 """Picker for saved jobs."""
 
-from contextlib import suppress
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from enum import Enum
 from html import escape
@@ -129,11 +130,13 @@ class LoadJobDialog(QDialog):
         which is also where `_suppress_source_tracking` is checked.
         """
         self._suppress_source_tracking: bool = False
-        """Set around a programmatic selection change so it cannot be
-        mistaken for user interaction. `_apply_filter` deselects rows it
-        hides, and reloading the tree re-clears and re-selects it -- neither
-        is the user switching panes, so the source-setting slots must not
-        act on the signals those changes fire.
+        """Set by `_programmatic_selection`, below, around a selection
+        change that is queue/tree bookkeeping rather than user interaction --
+        `_apply_filter` deselecting a hidden row, a reload re-clearing and
+        re-selecting the tree, the queue reordering or dropping a row.
+        Checked directly here rather than through the context manager, since
+        these two slots are the signal handlers it is guarding against, not
+        callers of it.
         """
 
         self.info_lbl = QLabel(
@@ -336,11 +339,8 @@ class LoadJobDialog(QDialog):
         # before the reload has even produced anything to show. Confirmed
         # empirically: without this, the source flips here, synchronously,
         # before `_on_listings_loaded` ever runs.
-        self._suppress_source_tracking = True
-        try:
+        with self._programmatic_selection():
             self.job_tree.clear()
-        finally:
-            self._suppress_source_tracking = False
         self.job_tree.setVisible(False)
         self.empty_lbl.setText("<span>Loading saved jobs...</span>")
         self.empty_lbl.setVisible(True)
@@ -360,11 +360,8 @@ class LoadJobDialog(QDialog):
         # `_load_listings` already emptied the tree before starting the
         # loader that ends up here -- but it costs nothing to keep guarded
         # rather than depend on that staying true.
-        self._suppress_source_tracking = True
-        try:
+        with self._programmatic_selection():
             self.job_tree.clear()
-        finally:
-            self._suppress_source_tracking = False
         muted = QBrush(
             self.palette().color(
                 QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText
@@ -436,11 +433,8 @@ class LoadJobDialog(QDialog):
             # Selecting the tree's own first row on every reload must not
             # steal a queue-sourced pane back either -- same reasoning as
             # the clear() above.
-            self._suppress_source_tracking = True
-            try:
+            with self._programmatic_selection():
                 self.job_tree.setCurrentItem(first_item)
-            finally:
-                self._suppress_source_tracking = False
 
         # Queue items keep the JobListing they were queued with, which is now
         # stale if the job was renamed since -- rebind each one to the fresh
@@ -516,16 +510,13 @@ class LoadJobDialog(QDialog):
 
         The deselect is a programmatic change, not the user picking a
         different row -- typing in the filter box must not steal the details
-        pane away from a queue-sourced description, so it runs with source
-        tracking suppressed. `try`/`finally` so a raise mid-loop cannot leave
-        the flag stuck, which would disable source tracking for the rest of
-        the dialog's life -- worse than the bug being fixed here.
+        pane away from a queue-sourced description, so it runs inside
+        `_programmatic_selection`.
         """
         needle = self.filter_edit.text().strip().casefold()
         only_mine = self.only_this_config.isChecked()
 
-        self._suppress_source_tracking = True
-        try:
+        with self._programmatic_selection():
             for index in range(self.job_tree.topLevelItemCount()):
                 item = self.job_tree.topLevelItem(index)
                 if item is None:
@@ -547,8 +538,6 @@ class LoadJobDialog(QDialog):
                 item.setHidden(hidden)
                 if hidden:
                     item.setSelected(False)
-        finally:
-            self._suppress_source_tracking = False
 
         self._update_button_state()
 
@@ -707,13 +696,10 @@ class LoadJobDialog(QDialog):
             return
         # takeItem() and setCurrentRow() both fire currentRowChanged -- this
         # is the queue reordering itself, not the user picking the queue
-        # pane, so it must not set the source. See `_suppress_source_tracking`.
-        self._suppress_source_tracking = True
-        try:
+        # pane, so it must not set the source. See `_programmatic_selection`.
+        with self._programmatic_selection():
             self.queue_list.insertItem(target, self.queue_list.takeItem(row))
             self.queue_list.setCurrentRow(target)
-        finally:
-            self._suppress_source_tracking = False
         self._renumber_queue()
         self._update_button_state()
 
@@ -724,12 +710,9 @@ class LoadJobDialog(QDialog):
             return
         # takeItem() on the current row fires currentRowChanged -- removing a
         # row is not the user picking the queue pane. See
-        # `_suppress_source_tracking`.
-        self._suppress_source_tracking = True
-        try:
+        # `_programmatic_selection`.
+        with self._programmatic_selection():
             self.queue_list.takeItem(row)
-        finally:
-            self._suppress_source_tracking = False
         self._renumber_queue()
         self._update_button_state()
 
@@ -737,14 +720,11 @@ class LoadJobDialog(QDialog):
         """Take deleted jobs out of the queue, so it cannot point at nothing."""
         # Same reasoning as `_remove_queued`: a delete elsewhere is not the
         # user picking the queue pane.
-        self._suppress_source_tracking = True
-        try:
+        with self._programmatic_selection():
             for row in reversed(range(self.queue_list.count())):
                 listing = self.queue_list.item(row).data(_LISTING_ROLE)
                 if isinstance(listing, JobListing) and listing.path in paths:
                     self.queue_list.takeItem(row)
-        finally:
-            self._suppress_source_tracking = False
         self._renumber_queue()
 
     def _selection_hint(self) -> str:
@@ -796,11 +776,32 @@ class LoadJobDialog(QDialog):
             )
         return f"{len(selected)} prepared job(s) selected; ready to add to the queue."
 
+    @contextmanager
+    def _programmatic_selection(self) -> Generator[None, None, None]:
+        """Mark a block that changes tree or queue selection without the
+        user having picked anything, so the source-setting slots below
+        ignore whatever `itemSelectionChanged`/`currentRowChanged` it fires.
+
+        Not reentrant -- nothing in this file nests one of these blocks
+        inside another, and if that ever changes, the inner block's own
+        `finally` would clear the flag while the outer block is still in
+        progress. Centralising the flag toggle here exists specifically so a
+        future call site is a single self-documenting line instead of a
+        try/finally to notice and copy correctly: the sites needing this
+        have been missed by enumeration three times over this feature's
+        review history.
+        """
+        self._suppress_source_tracking = True
+        try:
+            yield
+        finally:
+            self._suppress_source_tracking = False
+
     @Slot()
     def _on_tree_selection_changed(self) -> None:
         # Programmatic selection changes -- a filter hiding a row, a reload
         # re-populating the tree -- must not be mistaken for the user
-        # switching panes. See `_suppress_source_tracking`.
+        # switching panes. See `_programmatic_selection`.
         if self._suppress_source_tracking:
             return
         self._details_source = "tree"
