@@ -373,8 +373,8 @@ def test_schema_error_recovery_uses_incompatible_config_title() -> None:
     recovery_calls = []
     app = _bare_nfoforge("test")
     app._offer_archive_and_regenerate = (
-        lambda config_path, error_text, issue_description, title: (
-            recovery_calls.append((config_path, error_text, issue_description, title))
+        lambda config_path, error_text, issue_description, title: recovery_calls.append(
+            (config_path, error_text, issue_description, title)
         )
     )
 

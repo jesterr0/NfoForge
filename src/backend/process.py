@@ -27,6 +27,7 @@ from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.image_host_uploading.lensdump import LensdumpUploader
 from src.backend.image_host_uploading.onlyimage import OnlyImageUploader
 from src.backend.image_host_uploading.pixhost import PixhostUploader
+from src.backend.jobs.assets import template_fingerprint
 from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, TokenSelection
@@ -95,6 +96,7 @@ from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploade
 from src.backend.trackers.utils import format_image_tag
 from src.backend.upload_retry import (
     RETRY_ATTEMPTS,
+    TrackerRunOutcome,
     UploadFailure,
     UploadFailurePhase,
     UploadRetryAction,
@@ -117,6 +119,7 @@ from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
+from src.enums.upload_process import RunPhase
 from src.exceptions import (
     ImageHostError,
     PluginExecutionError,
@@ -725,8 +728,21 @@ class ProcessBackEnd:
         queued_text_update: Callable[[str], None],
         caught_error: SignalInstance,
         upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None,
+        record_outcome: Callable[[TrackerRunOutcome], None] | None = None,
     ) -> tuple[Path | bool | str | None, bool]:
-        """Run one tracker upload with bounded automatic and user retries."""
+        """Run one tracker upload with bounded automatic and user retries.
+
+        `record_outcome` reports whether this tracker may be uploaded again.
+        It is called on every exit path, including the cancel path -- a
+        cancelled tracker whose upload provably never landed (an unreachable
+        tracker, say) is the main thing worth deferring into a new job, so it
+        must not be lumped in with "state unknown".
+        """
+
+        def report(outcome: TrackerRunOutcome) -> None:
+            if record_outcome:
+                record_outcome(outcome)
+
         total_attempts = 0
         manual_retries = 0
 
@@ -781,7 +797,9 @@ class ProcessBackEnd:
                     before_sleep=before_sleep,
                     reraise=True,
                 )
-                return retrying(upload_once), False
+                result = retrying(upload_once), False
+                report(TrackerRunOutcome.UPLOADED)
+                return result
             except ProcessCancelled:
                 raise
             except Exception as error:
@@ -806,7 +824,17 @@ class ProcessBackEnd:
                     f"Upload Error: {scrub_secrets(traceback.format_exc())}"
                 )
 
+                # An upload that may have reached the tracker can never be
+                # retried automatically later; only a provable pre-send
+                # failure is safe to carry into a deferred job.
+                failed_outcome = (
+                    TrackerRunOutcome.MAY_HAVE_UPLOADED
+                    if failure.server_accepted
+                    else TrackerRunOutcome.UPLOAD_FAILED
+                )
+
                 if upload_retry_cb is None:
+                    report(failed_outcome)
                     return None, False
 
                 action = upload_retry_cb(failure)
@@ -819,6 +847,7 @@ class ProcessBackEnd:
                     continue
                 if action is UploadRetryAction.CANCEL:
                     queued_status_update(str(tracker), "⏹ Cancelled")
+                    report(failed_outcome)
                     raise ProcessCancelled from error
                 if failure.phase is UploadFailurePhase.DOWNLOAD:
                     # The upload POST already succeeded; only fetching the
@@ -834,10 +863,16 @@ class ProcessBackEnd:
                         "after the tracker's torrent copy could not be "
                         "downloaded</span>"
                     )
+                    report(TrackerRunOutcome.UPLOADED)
                 else:
                     queued_status_update(str(tracker), "⏭ Skipped")
                     queued_text_update(
                         "<br /><span>Skipped upload after user decision</span>"
+                    )
+                    report(
+                        TrackerRunOutcome.SKIPPED
+                        if failed_outcome is TrackerRunOutcome.UPLOAD_FAILED
+                        else failed_outcome
                     )
                 return None, True
 
@@ -931,9 +966,25 @@ class ProcessBackEnd:
         ]
         | None = None,
         upload_retry_cb: Callable[[UploadFailure], UploadRetryAction] | None = None,
+        run_outcome_cb: Callable[[TrackerSelection, TrackerRunOutcome], None]
+        | None = None,
+        phase: RunPhase = RunPhase.FULL,
     ) -> None:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
+
+        def record_outcome(
+            tracker: TrackerSelection, outcome: TrackerRunOutcome
+        ) -> None:
+            """Report a tracker's fate structurally, not just as status text.
+
+            The per-tracker status this method already emits is display-only
+            and never read back, so it cannot answer "may this be uploaded
+            again?" -- which is what deciding whether a tracker can be carried
+            into a deferred job depends on.
+            """
+            if run_outcome_cb:
+                run_outcome_cb(tracker, outcome)
 
         qbittorrent_save_path = None
         if self.config.settings.torrent_clients.qbittorrent.enabled:
@@ -948,7 +999,17 @@ class ProcessBackEnd:
         )
 
         self.progress_bar_cb = progress_bar_cb
+        # A resumed job can carry a torrent it already hashed; the caller has
+        # verified the media is unchanged before offering it, so cloning from
+        # it is safe and skips the run's most expensive step entirely.
         base_torrent_file: Path | None = None
+        carried_torrent = context.shared_data.base_torrent
+        if carried_torrent and carried_torrent.is_file():
+            base_torrent_file = carried_torrent
+            queued_text_update(
+                "<br /><span>Reusing the torrent saved with this job "
+                "(no re-hash needed)</span>"
+            )
         tracker_health_cache: dict[TrackerSelection, bool] = {}
 
         # determine maximum piece size for the current tracker(s)
@@ -968,11 +1029,20 @@ class ProcessBackEnd:
             '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:'
         )
 
+        # A prepared job already carries finished titles and NFOs, so none of
+        # the generation below runs and neither prompt fires -- that silence is
+        # what lets such a job be uploaded unattended, by a queue or otherwise.
+        already_prepared = context.shared_data.is_prepared()
+        if already_prepared:
+            queued_text_update(
+                "<br /><span>Using the titles and NFOs saved with this job</span>"
+            )
+
         # base user tokens, this will be filled with prompt tokens as well if needed
-        base_usr_tokens: dict[str, str] = {}
+        base_usr_tokens: dict[str, str] = dict(context.shared_data.prompt_token_answers)
 
         # find all prompt tokens
-        if token_prompt_cb:
+        if token_prompt_cb and not already_prepared:
             all_prompt_tokens: list[str] = []
             for tracker_name in process_dict.keys():
                 cur_tracker = TrackerSelection(tracker_name)
@@ -992,9 +1062,13 @@ class ProcessBackEnd:
                     base_usr_tokens.update(response)
 
         # generate tracker titles first, then NFOs
-        tracker_release_data: dict[TrackerSelection, dict[str, str | None]] = {}
-        queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
-        for tracker_name in process_dict.keys():
+        tracker_release_data: dict[TrackerSelection, dict[str, str | None]] = dict(
+            context.shared_data.tracker_release_data
+        )
+        if not already_prepared:
+            queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
+        trackers_to_generate = () if already_prepared else tuple(process_dict.keys())
+        for tracker_name in trackers_to_generate:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
@@ -1113,7 +1187,11 @@ class ProcessBackEnd:
             tracker_release_data[cur_tracker] = {"title": tracker_title, "nfo": nfo}
 
         # update nfos with user updates from front end if enabled
-        if self.config.settings.general.enable_prompt_overview and overview_cb:
+        if (
+            self.config.settings.general.enable_prompt_overview
+            and overview_cb
+            and not already_prepared
+        ):
             confirm_overview = overview_cb(tracker_release_data)
             if confirm_overview:
                 nfo_updates = [
@@ -1128,6 +1206,16 @@ class ProcessBackEnd:
                         f'<span style="font-weight: bold;">{", ".join(nfo_updates)}</span></span></i><br />'
                     )
                 tracker_release_data = confirm_overview
+
+        # Record the finished titles/NFOs (including any overview edits) and the
+        # prompt answers onto the context, so saving after this point produces a
+        # prepared job rather than one that would regenerate and re-ask.
+        context.shared_data.tracker_release_data.clear()
+        context.shared_data.tracker_release_data.update(tracker_release_data)
+        context.shared_data.prompt_token_answers.clear()
+        context.shared_data.prompt_token_answers.update(base_usr_tokens)
+        if not already_prepared:
+            self._record_template_fingerprints(process_dict, context)
 
         # loop from the start and process jobs
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
@@ -1158,8 +1246,11 @@ class ProcessBackEnd:
             if cur_tracker_title:
                 queued_text_update(f"<br />Release title: {cur_tracker_title}")
 
-            # torrent file
-            if idx == 0:
+            # torrent file: hash once, then clone for everyone else. A resumed
+            # job can supply an already-hashed base, which is why this keys off
+            # "do we have a base yet" rather than "is this the first tracker" --
+            # re-hashing tens of gigabytes is the most expensive thing here.
+            if base_torrent_file is None:
                 # try mkbrr first if enabled, fallback to torf if not available or on error
                 try:
                     if self.config.settings.general.enable_mkbrr and (
@@ -1224,6 +1315,15 @@ class ProcessBackEnd:
                 ) as log_out:
                     log_out.write(nfo)
 
+            if phase is RunPhase.PREPARE:
+                # everything this tracker needs now exists; publishing is what a
+                # later run (or the queue) does with it
+                queued_status_update(tracker_name, "📦 Prepared")
+                queued_text_update(
+                    "<br /><span>Prepared torrent and NFO; not uploading</span>"
+                )
+                continue
+
             # pre upload plugin
             pre_upload_decision, pre_upload_error = self._run_pre_upload_plugin(
                 cur_tracker=cur_tracker,
@@ -1242,6 +1342,9 @@ class ProcessBackEnd:
                     f"Pre-upload plugin failed for {cur_tracker}: {pre_upload_error}",
                 )
                 queued_status_update(tracker_name, "❌ Failed")
+                # failed before any upload request was built, so this tracker
+                # is safe to carry into a deferred job
+                record_outcome(cur_tracker, TrackerRunOutcome.UPLOAD_FAILED)
                 continue
 
             # upload
@@ -1260,23 +1363,23 @@ class ProcessBackEnd:
                         tracker=cur_tracker,
                         torrent_path=torrent_path,
                         tracker_health_cache=tracker_health_cache,
-                        upload_request=lambda cur_tracker=cur_tracker,
-                        torrent_path=torrent_path,
-                        nfo=nfo,
-                        cur_tracker_title=cur_tracker_title,
-                        context=context,
-                        release_info=release_info: self.upload(
-                            tracker=cur_tracker,
-                            torrent_file=torrent_path,
-                            nfo=nfo,
-                            tracker_title=cur_tracker_title,
-                            context=context,
-                            release_info=release_info,
+                        upload_request=lambda cur_tracker=cur_tracker, torrent_path=torrent_path, nfo=nfo, cur_tracker_title=cur_tracker_title, context=context, release_info=release_info: (
+                            self.upload(
+                                tracker=cur_tracker,
+                                torrent_file=torrent_path,
+                                nfo=nfo,
+                                tracker_title=cur_tracker_title,
+                                context=context,
+                                release_info=release_info,
+                            )
                         ),
                         queued_status_update=queued_status_update,
                         queued_text_update=queued_text_update,
                         caught_error=caught_error,
                         upload_retry_cb=upload_retry_cb,
+                        record_outcome=lambda outcome, tracker=cur_tracker: (
+                            record_outcome(tracker, outcome)
+                        ),
                     )
 
                     if execute_upload:
@@ -1310,6 +1413,11 @@ class ProcessBackEnd:
                                 ),
                             )
                         else:
+                            # the release is already on the tracker, so this
+                            # must never be offered for a deferred re-upload
+                            record_outcome(
+                                cur_tracker, TrackerRunOutcome.INJECTION_FAILED
+                            )
                             self._run_post_upload_plugin(
                                 cur_tracker=cur_tracker,
                                 context=context,
@@ -1348,6 +1456,13 @@ class ProcessBackEnd:
                 except ProcessCancelled:
                     for remaining_tracker in list(process_dict)[idx:]:
                         queued_status_update(remaining_tracker, "⏹ Cancelled")
+                    # the tracker at `idx` already reported its own outcome
+                    # before raising; everything after it was never touched
+                    for remaining_tracker in list(process_dict)[idx + 1 :]:
+                        record_outcome(
+                            TrackerSelection(remaining_tracker),
+                            TrackerRunOutcome.NOT_ATTEMPTED,
+                        )
                     self.disconnect_from_clients()
                     raise
                 except Exception as upload_error:
@@ -1359,6 +1474,10 @@ class ProcessBackEnd:
                         f"Upload Error: {scrub_secrets(traceback.format_exc())}"
                     )
                     queued_status_update(tracker_name, "❌ Failed")
+                    # an unexpected error anywhere in this block leaves the
+                    # upload's fate genuinely unknown, so refuse to offer it
+                    # for a deferred re-upload
+                    record_outcome(cur_tracker, TrackerRunOutcome.MAY_HAVE_UPLOADED)
                     self._run_post_upload_plugin(
                         cur_tracker=cur_tracker,
                         context=context,
@@ -1375,6 +1494,7 @@ class ProcessBackEnd:
                     "<br /><span>Skipping upload & injection, upload is disabled</span>"
                 )
                 queued_status_update(tracker_name, "✅ Complete")
+                record_outcome(cur_tracker, TrackerRunOutcome.UPLOAD_DISABLED)
             elif (
                 tracker_info.upload_enabled
                 and pre_upload_decision is PreUploadDecision.SKIP
@@ -1383,6 +1503,7 @@ class ProcessBackEnd:
                     "<br /><span>Skipping upload & injection, upload is disabled via plugin</span>"
                 )
                 queued_status_update(tracker_name, "✅ Complete")
+                record_outcome(cur_tracker, TrackerRunOutcome.UPLOAD_DISABLED)
                 self._run_post_upload_plugin(
                     cur_tracker=cur_tracker,
                     context=context,
@@ -1544,6 +1665,20 @@ class ProcessBackEnd:
                     LOG.LOG_SOURCE.BE,
                     f"Image destination for {tracker_name}: {img_to!r} (from {image_host_data.img_from!r})",
                 )
+                cur_tracker = TrackerSelection(tracker_name)
+
+                # a resumed job may already hold this tracker's uploaded URLs;
+                # reuse them rather than putting the same images on the host a
+                # second time, but only while the destination still matches
+                reusable = self._reusable_uploaded_images(context, cur_tracker, img_to)
+                if reusable is not None:
+                    url_data[cur_tracker] = reusable
+                    tracker_to_host_map[cur_tracker] = img_to
+                    queued_text_update(
+                        f"<br /><span>Reusing {len(reusable)} already-uploaded "
+                        f"image(s) for <b>{tracker_name}</b></span>"
+                    )
+                    continue
 
                 # track the image host to be used for each tracker
                 if isinstance(img_to, ImageHost) and img_to is not ImageHost.DISABLED:
@@ -1551,7 +1686,7 @@ class ProcessBackEnd:
                 elif not to_url and img_to is ImageSource.URLS:
                     to_url = True
 
-                tracker_to_host_map[TrackerSelection(tracker_name)] = img_to
+                tracker_to_host_map[cur_tracker] = img_to
             else:
                 # the tracker cannot be mapped to a destination at all, so it will
                 # reach the NFO stage with no images and no other explanation
@@ -1693,7 +1828,80 @@ class ProcessBackEnd:
             f"{ {str(tracker): len(imgs) for tracker, imgs in url_data.items()} }",
         )
 
+        # Record what ended up where, so a job saved after this point can reuse
+        # these URLs instead of putting the same screenshots on the host again.
+        for tracker, images in url_data.items():
+            host = tracker_to_host_map.get(tracker)
+            if host is None or not images:
+                continue
+            context.shared_data.uploaded_images[tracker] = dict(images)
+            context.shared_data.uploaded_image_hosts[tracker] = host
+
         return url_data
+
+    def _record_template_fingerprints(
+        self, process_dict: dict[str, Any], context: ProcessingContext
+    ) -> None:
+        """Note each NFO template's contents at the moment it was rendered.
+
+        A prepared job's frozen NFO deliberately beats a template edited
+        afterwards; this is only so the load path can say *which* template moved
+        rather than letting the difference go unnoticed.
+        """
+        context.shared_data.template_fingerprints.clear()
+        for tracker_name in process_dict:
+            tracker_info = self.config.settings.trackers.by_selection()[
+                TrackerSelection(tracker_name)
+            ]
+            name = tracker_info.nfo_template
+            if not name:
+                continue
+            template = self.template_selector_be.read_template(name=name)
+            if template:
+                context.shared_data.template_fingerprints[name] = template_fingerprint(
+                    template
+                )
+
+    @staticmethod
+    def needs_local_images(
+        context: ProcessingContext,
+        tracker: TrackerSelection,
+        destination: ImageHost | ImageSource,
+    ) -> bool:
+        """Whether this tracker still needs screenshot files on disk.
+
+        Defined in terms of `_reusable_uploaded_images` rather than
+        re-deriving the rule, so "will this upload?" and "does this need the
+        files?" cannot drift apart. Two cases need no files: a destination that
+        uploads nothing (a URL passthrough, or `DISABLED`), and one whose
+        images already went to that same host.
+        """
+        if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
+            return False
+        return (
+            ProcessBackEnd._reusable_uploaded_images(context, tracker, destination)
+            is None
+        )
+
+    @staticmethod
+    def _reusable_uploaded_images(
+        context: ProcessingContext,
+        tracker: TrackerSelection,
+        destination: ImageHost | ImageSource,
+    ) -> dict[int, ImageUploadData] | None:
+        """Previously uploaded images for `tracker`, when still valid.
+
+        Only a real image host is worth reusing: a URL passthrough uploads
+        nothing, and `DISABLED` has nothing to reuse. Reuse also requires the
+        destination to be unchanged -- otherwise the stored URLs point at a
+        host the user has since moved this tracker away from.
+        """
+        if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
+            return None
+        if context.shared_data.uploaded_image_hosts.get(tracker) is not destination:
+            return None
+        images = context.shared_data.uploaded_images.get(tracker)
+        return dict(images) if images else None
 
     def _optimize_images(
         self, progress_bar_cb: Callable[[float], None], files_to_upload: Sequence[Path]

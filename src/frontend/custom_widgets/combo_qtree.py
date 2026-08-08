@@ -131,14 +131,24 @@ class ComboBoxTreeWidget(QTreeWidget):
         self, item: QTreeWidgetItem, col_index: int, combo_items: list[tuple[str, Any]]
     ) -> QComboBox:
         combo_box = QComboBox()
-        combo_box.currentIndexChanged.connect(
-            lambda idx: self.combo_changed.emit(combo_box, idx)
-        )
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(combo_box, stretch=3)
         layout.addStretch(2)
+
+        # Register before any items are added and before the signal is
+        # connected: `addItem` emits `currentIndexChanged` synchronously the
+        # moment the first item lands (the -1 -> 0 transition), and a
+        # `combo_changed` listener that turns around and calls
+        # `get_item_values()` needs this combo already resolvable in
+        # `combo_box_map` at that point, or it falls back to reading `item`'s
+        # plain (still-empty) column text instead of the combo's data.
+        self.combo_box_map[(item, col_index)] = combo_box
+        self.setItemWidget(item, col_index, widget)
+        combo_box.currentIndexChanged.connect(
+            lambda idx: self.combo_changed.emit(combo_box, idx)
+        )
 
         option_set: set[str] = set()
         for txt, data in combo_items:
@@ -146,8 +156,6 @@ class ComboBoxTreeWidget(QTreeWidget):
             option_set.add(txt)
 
         self.combo_options.append(option_set)
-        self.combo_box_map[(item, col_index)] = combo_box
-        self.setItemWidget(item, col_index, widget)
         return combo_box
 
     def get_common_options(self) -> set[str]:

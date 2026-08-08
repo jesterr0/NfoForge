@@ -44,10 +44,11 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "basedpyright",
-    "ruff>=0.9.6",
+    "ruff>=0.16.2",
     "cython>=3.0.12",
     "pytest",
     "pytest-cov",
+    "pytest-timeout",
     "setuptools>=78.1.1",
     "debugpy",
     "types-psutil",
@@ -69,6 +70,7 @@ docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [tool.ruff]
 line-length = 88
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py", "typings/**/*.py"]
 
 [tool.uv]
 constraint-dependencies = ["requests>=2.32.4"]
@@ -94,6 +96,22 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = ["-v", "--tb=short"]
+# The slowest test in the suite runs in ~2s, so this only ever fires on
+# something genuinely stuck. It is here because a blocked test does not fail,
+# it stalls the entire run with no output and nothing naming the test
+# responsible -- an accidental modal dialog cost 30+ minutes of a runner
+# exactly that way. `tests/conftest.py` refuses modals outright; this catches
+# whatever else can wedge (a thread that never finishes, a nested event loop
+# with no quit).
+timeout = 60
+# "thread" rather than the signal-based default pytest-timeout picks on Unix:
+# a Python signal handler only runs between bytecodes, so it cannot interrupt
+# a thread parked inside Qt's C++ event loop -- which is the hang most worth
+# catching here. It also keeps CI and Windows behaving the same way, since
+# Windows has no SIGALRM and would fall back to threads regardless. The
+# tradeoff is that a timeout ends the run instead of failing one test, but it
+# dumps every thread's stack on the way out, which is what names the culprit.
+timeout_method = "thread"
 
 [tool.basedpyright]
 include = [

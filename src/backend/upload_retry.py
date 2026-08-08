@@ -27,6 +27,49 @@ class UploadFailurePhase(Enum):
     INJECTION = auto()
 
 
+class TrackerRunOutcome(Enum):
+    """How one tracker ended up in a processing run.
+
+    The per-tracker status shown in the GUI is display text that is never read
+    back, so this exists to answer one question structurally: may this tracker
+    be uploaded again? Only `NOT_ATTEMPTED`, `SKIPPED` and `UPLOAD_FAILED` may
+    -- see `is_safe_to_reupload`.
+    """
+
+    NOT_ATTEMPTED = auto()
+    """The run ended before this tracker was reached."""
+
+    SKIPPED = auto()
+    """User skipped it before any upload request was sent."""
+
+    UPLOAD_FAILED = auto()
+    """The upload provably did not reach the tracker."""
+
+    MAY_HAVE_UPLOADED = auto()
+    """The request may have landed; re-uploading risks a duplicate."""
+
+    UPLOADED = auto()
+    """Upload succeeded."""
+
+    INJECTION_FAILED = auto()
+    """Upload succeeded but the torrent client injection did not."""
+
+    UPLOAD_DISABLED = auto()
+    """Not uploaded by configuration, so there is nothing to defer."""
+
+    def is_safe_to_reupload(self) -> bool:
+        """Whether uploading this tracker again cannot create a duplicate.
+
+        This is the guard that lets a partially completed run be saved as a
+        job: only trackers this returns True for are carried into it.
+        """
+        return self in {
+            TrackerRunOutcome.NOT_ATTEMPTED,
+            TrackerRunOutcome.SKIPPED,
+            TrackerRunOutcome.UPLOAD_FAILED,
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class UploadFailure:
     """User-facing details for a failed tracker operation."""

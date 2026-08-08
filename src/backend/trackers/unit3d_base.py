@@ -368,9 +368,11 @@ class Unit3dBaseUploader:
         """Retry artifact download without POSTing the upload again."""
         return Retrying(
             retry=retry_if_exception(
-                lambda error: isinstance(error, TrackerError)
-                and bool(getattr(error, "server_accepted", False))
-                and bool(getattr(error, "retryable", False))
+                lambda error: (
+                    isinstance(error, TrackerError)
+                    and bool(getattr(error, "server_accepted", False))
+                    and bool(getattr(error, "retryable", False))
+                )
             ),
             stop=stop_after_attempt(RETRY_ATTEMPTS),
             wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
