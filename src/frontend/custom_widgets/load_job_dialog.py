@@ -99,6 +99,7 @@ class LoadJobDialog(QDialog):
         self.setObjectName("loadJobDialog")
         self.setWindowTitle("Saved Jobs")
         self.resize(860, 400)
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self.setSizeGripEnabled(True)
 
         self.active_profile = active_profile or ""
@@ -174,17 +175,13 @@ class LoadJobDialog(QDialog):
             ("Name", "Title", "Type", "Trackers", "Config", "State", "Saved")
         )
         # Column widths carry meaning here: Name and Title are what a job is
-        # recognised by, Trackers is an open-ended list the user may want wider,
+        # recognized by, Trackers is an open-ended list the user may want wider,
         # and the rest are short enough to size themselves.
         header = self.job_tree.header()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        header.resizeSection(3, 180)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setStretchLastSection(False)
+
+        self.job_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.job_tree.setTextElideMode(Qt.TextElideMode.ElideRight)
         # multi-select so several prepared jobs can be queued in one go
         self.job_tree.setSelectionMode(QTreeWidget.SelectionMode.ExtendedSelection)
@@ -556,7 +553,7 @@ class LoadJobDialog(QDialog):
         uses everywhere -- see `src/backend/jobs/codec.py`. That is not the
         member's display value (`"Aither"`), which is what the tree's Trackers
         column and `JobSummary.trackers` both show. A name a current build no
-        longer recognises -- a retired tracker -- falls back to the raw string
+        longer recognizes -- a retired tracker -- falls back to the raw string
         rather than raising out of the details pane.
         """
         try:
@@ -572,7 +569,7 @@ class LoadJobDialog(QDialog):
         codec writes `img_to` as an enum *member name* (`CHEVERETO_V3`) and
         carries `img_to_type` alongside it precisely because that name alone
         cannot say whether it belongs to `ImageHost` or `ImageSource`. Render
-        the raw name and the pane shows "Aither -> CHEVERETO_V3": a humanised
+        the raw name and the pane shows "Aither -> CHEVERETO_V3": a humanized
         tracker arrowing at an internal identifier, in a table whose whole job
         is to be readable.
 
@@ -785,7 +782,7 @@ class LoadJobDialog(QDialog):
         Not reentrant -- nothing in this file nests one of these blocks
         inside another, and if that ever changes, the inner block's own
         `finally` would clear the flag while the outer block is still in
-        progress. Centralising the flag toggle here exists specifically so a
+        progress. Centralizing the flag toggle here exists specifically so a
         future call site is a single self-documenting line instead of a
         try/finally to notice and copy correctly: the sites needing this
         have been missed by enumeration three times over this feature's
@@ -1106,10 +1103,8 @@ class LoadJobDialog(QDialog):
             return
         listing = selected[0]
 
-        name, accepted = QInputDialog.getText(
-            self, "Rename Job", "Job name:", text=listing.name
-        )
-        if not accepted or not name.strip():
+        name, accepted = self._change_job_name(listing.name)
+        if not accepted or not name:
             return
 
         try:
@@ -1126,3 +1121,20 @@ class LoadJobDialog(QDialog):
             return
 
         self._load_listings()
+
+    def _change_job_name(self, cur_name: str | None) -> tuple[str, bool]:
+        """Dialog to gather change job name from user."""
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle("Rename Job")
+        dlg.setLabelText("Job name:")
+
+        if cur_name:
+            dlg.setTextValue(cur_name)
+
+        dlg.resize(400, dlg.sizeHint().height())
+
+        accepted = dlg.exec() == QDialog.DialogCode.Accepted
+        if not accepted:
+            return "", False
+
+        return dlg.textValue().strip(), True
