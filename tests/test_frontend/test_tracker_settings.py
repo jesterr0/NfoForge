@@ -19,6 +19,10 @@ from src.frontend.custom_widgets.tracker_settings import (
 from src.frontend.stacked_windows.settings.trackers import TrackersSettings
 from tests.repo_paths import DEFAULT_CONFIG_DIR
 
+# Qt's QWIDGETSIZE_MAX: the `maximumWidth` of a widget nobody has capped.
+# PySide6 does not re-export the constant, so it is spelled out here.
+_UNBOUNDED_WIDTH = 16777215
+
 
 def _paths(tmp_path: Path) -> ConfigPaths:
     defaults = tmp_path / "defaults"
@@ -176,16 +180,28 @@ def test_wizard_tracker_selector_keeps_series_filtering(
 def test_tracker_editor_uses_open_bounded_form_sections(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The form is laid out flat, and its controls are width-bounded.
+
+    Bounded rather than a specific width: what matters is that a control
+    cannot stretch the full width of a maximized settings window, leaving its
+    label stranded a screen away from the field it names. The exact number is
+    a design choice free to change, so asserting it here only guarantees that
+    tuning the layout turns the suite red.
+    """
     _, manager = _make_tracker_settings(tmp_path, monkeypatch)
     editor = MTVTrackerEdit(manager)
 
     assert not hasattr(editor, "common_section")
     assert not hasattr(editor, "options_section")
+    # a long announce URL has to wrap rather than widen the label past its cap
     assert editor.announce_url_lbl.wordWrap()
-    assert editor.announce_url_lbl.maximumWidth() == editor.MAX_LABEL_WIDTH
-    assert editor.announce_url.maximumWidth() == editor.MAX_CONTROL_WIDTH
     assert editor.screen_shot_settings is not None
-    assert editor.screen_shot_settings.maximumWidth() == editor.MAX_CONTROL_WIDTH
+    for widget in (
+        editor.announce_url_lbl,
+        editor.announce_url,
+        editor.screen_shot_settings,
+    ):
+        assert 0 < widget.maximumWidth() < _UNBOUNDED_WIDTH, widget
 
 
 def test_tracker_list_exposes_hover_drag_grip(

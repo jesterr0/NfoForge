@@ -1363,25 +1363,23 @@ class ProcessBackEnd:
                         tracker=cur_tracker,
                         torrent_path=torrent_path,
                         tracker_health_cache=tracker_health_cache,
-                        upload_request=lambda cur_tracker=cur_tracker,
-                        torrent_path=torrent_path,
-                        nfo=nfo,
-                        cur_tracker_title=cur_tracker_title,
-                        context=context,
-                        release_info=release_info: self.upload(
-                            tracker=cur_tracker,
-                            torrent_file=torrent_path,
-                            nfo=nfo,
-                            tracker_title=cur_tracker_title,
-                            context=context,
-                            release_info=release_info,
+                        upload_request=lambda cur_tracker=cur_tracker, torrent_path=torrent_path, nfo=nfo, cur_tracker_title=cur_tracker_title, context=context, release_info=release_info: (
+                            self.upload(
+                                tracker=cur_tracker,
+                                torrent_file=torrent_path,
+                                nfo=nfo,
+                                tracker_title=cur_tracker_title,
+                                context=context,
+                                release_info=release_info,
+                            )
                         ),
                         queued_status_update=queued_status_update,
                         queued_text_update=queued_text_update,
                         caught_error=caught_error,
                         upload_retry_cb=upload_retry_cb,
-                        record_outcome=lambda outcome,
-                        tracker=cur_tracker: record_outcome(tracker, outcome),
+                        record_outcome=lambda outcome, tracker=cur_tracker: (
+                            record_outcome(tracker, outcome)
+                        ),
                     )
 
                     if execute_upload:

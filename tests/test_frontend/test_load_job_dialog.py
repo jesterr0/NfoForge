@@ -142,13 +142,22 @@ def _answer_rename_prompt(
     the helper's own behaviour -- notably the strip it applies to what was
     typed, which is what keeps a blank field from blanking a job's name --
     stays inside what these tests cover.
+
+    `exec` is patched on `QDialog` rather than on `QInputDialog` because that
+    is the class it is actually defined on -- `QInputDialog` merely inherits
+    it. Patching the subclass would leave the attribute behind on teardown
+    (monkeypatch restores the value it read, which for an inherited name means
+    writing it onto the subclass), and it is `QDialog.exec` that the suite-wide
+    modal guard in `tests/conftest.py` replaces, so overriding it here is what
+    lets this one prompt through. `textValue` is `QInputDialog`'s own, so it
+    is patched there.
     """
     code = (
         load_job_dialog_module.QDialog.DialogCode.Accepted
         if accepted
         else load_job_dialog_module.QDialog.DialogCode.Rejected
     )
-    monkeypatch.setattr(load_job_dialog_module.QInputDialog, "exec", lambda _self: code)
+    monkeypatch.setattr(load_job_dialog_module.QDialog, "exec", lambda _self: code)
     monkeypatch.setattr(
         load_job_dialog_module.QInputDialog, "textValue", lambda _self: typed
     )
