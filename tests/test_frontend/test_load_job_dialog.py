@@ -1260,6 +1260,42 @@ def test_a_rename_refreshes_the_cached_details_pane_text(
     assert "<b>old name</b>" not in dialog.details_lbl.text()
 
 
+def test_renaming_a_queued_job_refreshes_its_queue_row_label(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_add_to_queue` binds the `JobListing` a queue item was queued with
+    once, at add time, and nothing ever re-binds it. `_renumber_queue` builds
+    each row's label from that stored object, so after renaming an
+    already-queued job on disk, the queue row kept the old name -- the tree
+    rebuilds on reload, but `_on_listings_loaded` never touched `queue_list`.
+    Pre-existing, and made visible by T18 letting the user inspect a queue
+    row at all.
+
+    Asserted on the queue row's own text, not the tree's -- the tree already
+    refreshed correctly before this fix, so checking it would not catch a
+    queue row left stale.
+    """
+    _save(working_dir, "old name")
+    dialog = _open_dialog(qapp)
+    dialog.job_tree.setCurrentItem(dialog.job_tree.topLevelItem(0))
+    dialog.job_tree.topLevelItem(0).setSelected(True)
+    dialog._add_to_queue()
+    assert dialog.queue_list.item(0).text() == "1. old name"
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("new name", True)),
+    )
+
+    dialog._rename_selected()
+    _wait_for_load(dialog, qapp)
+
+    assert dialog.queue_list.item(0).text() == "1. new name"
+
+
 def test_cancelling_the_rename_changes_nothing(
     qapp: Any,
     working_dir: Path,

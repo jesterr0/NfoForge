@@ -441,6 +441,22 @@ class LoadJobDialog(QDialog):
                 self.job_tree.setCurrentItem(first_item)
             finally:
                 self._suppress_source_tracking = False
+
+        # Queue items keep the JobListing they were queued with, which is now
+        # stale if the job was renamed since -- rebind each one to the fresh
+        # listing at the same path so `_renumber_queue` renders the current
+        # name. Only paths still present here are touched: a job missing from
+        # one scan is not proof it is gone, and dropping its queue entry
+        # would be an undisclosed side effect, the same reasoning
+        # `_delete_selected` already applies to a failed delete.
+        by_path = {listing.path: listing for listing in listings}
+        for row in range(self.queue_list.count()):
+            queue_item = self.queue_list.item(row)
+            stored = queue_item.data(_LISTING_ROLE)
+            if isinstance(stored, JobListing) and stored.path in by_path:
+                queue_item.setData(_LISTING_ROLE, by_path[stored.path])
+        self._renumber_queue()
+
         self._apply_filter()
 
     def _stop_loader(self) -> None:
