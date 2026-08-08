@@ -450,9 +450,7 @@ class ProcessPage(BaseWizardPage):
             return
 
         default_name = self._default_job_name()
-        name, accepted = QInputDialog.getText(
-            self, "Save Job", "Job name:", text=default_name
-        )
+        name, accepted = self._get_job_name(default_name)
         if not accepted:
             return
 
@@ -492,6 +490,23 @@ class ProcessPage(BaseWizardPage):
             f"back to it.\n\n{job_path}"
         )
         saved_box.exec()
+
+    def _get_job_name(self, cur_name: str | None) -> tuple[str, bool]:
+        """Dialog to gather save job name."""
+        dlg = QInputDialog(self)
+        dlg.setWindowTitle("Save Job")
+        dlg.setLabelText("Job name:")
+
+        if cur_name:
+            dlg.setTextValue(cur_name)
+
+        dlg.resize(400, dlg.sizeHint().height())
+
+        accepted = dlg.exec() == QDialog.DialogCode.Accepted
+        if not accepted:
+            return "", False
+
+        return dlg.textValue().strip(), True
 
     def _build_job_document(
         self, directory: Path, keep_trackers: set[TrackerSelection] | None
