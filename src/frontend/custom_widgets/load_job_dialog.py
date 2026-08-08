@@ -456,6 +456,18 @@ class LoadJobDialog(QDialog):
             if isinstance(stored, JobListing) and stored.path in by_path:
                 queue_item.setData(_LISTING_ROLE, by_path[stored.path])
         self._renumber_queue()
+        # The rebind above can change a queue-sourced listing's rendered
+        # content without changing its path -- a rename keeps the same path.
+        # `_load_listings` already cleared `_details_cache` and reset
+        # `_last_described_path` once at the start of this reload, but the
+        # button-state refresh that runs there (while the tree is still
+        # empty and the queue not yet rebound) reads and caches the *old*
+        # queue listing at that same path -- both `_describe`'s cache and
+        # `_refresh_details`'s memo -- before this rebind has a chance to
+        # matter. Clearing and resetting again here is what lets the
+        # `_apply_filter` call below actually re-render it.
+        self._details_cache.clear()
+        self._last_described_path = None
 
         self._apply_filter()
 

@@ -1969,6 +1969,47 @@ def test_deleting_a_queued_job_does_not_steal_the_pane_from_the_tree(
     assert "queued-b" not in dialog.details_lbl.text()
 
 
+def test_reloading_while_the_queue_is_the_source_does_not_steal_the_pane(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_load_listings` clears the tree synchronously, before the async
+    reload it kicks off even produces anything to show -- that clear is what
+    actually flips the source first during a real rename/delete reload, not
+    `_on_listings_loaded`'s own (already-empty-by-then) clear. Disclosed as
+    untested in the T18 fix round 1 report; this closes that gap.
+
+    Also pins the rebound queue listing's rendered text, not just the
+    source: renaming keeps the same path, and a stale `_details_cache` entry
+    or `_last_described_path` left over from a button-state refresh that ran
+    mid-reload (while the tree was empty and the queue not yet rebound)
+    would otherwise go on showing the pre-rename name even after the source
+    correctly stayed "queue".
+    """
+    _save(working_dir, "queued-job")
+    dialog = _open_dialog(qapp)
+    item = dialog.job_tree.topLevelItem(0)
+    _click_tree_item(dialog, item, qapp)
+    dialog._add_to_queue()
+
+    _click_queue_row(dialog, 0, qapp)
+    assert dialog._details_source == "queue"
+    assert "queued-job" in dialog.details_lbl.text()
+
+    monkeypatch.setattr(
+        load_job_dialog_module.QInputDialog,
+        "getText",
+        staticmethod(lambda *_a, **_k: ("renamed-job", True)),
+    )
+    dialog._rename_selected()
+    _wait_for_load(dialog, qapp)
+
+    assert dialog._details_source == "queue"
+    assert "renamed-job" in dialog.details_lbl.text()
+
+
 # --------------------------------------------------------------------------
 # loading is asynchronous
 # --------------------------------------------------------------------------
