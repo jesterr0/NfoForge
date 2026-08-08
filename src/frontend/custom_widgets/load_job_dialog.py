@@ -8,7 +8,7 @@ from html import escape
 from pathlib import Path
 from typing import Any, Literal
 
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QBrush, QPalette
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -194,6 +194,12 @@ class LoadJobDialog(QDialog):
         # click at all.
         self.job_tree.itemClicked.connect(self._on_tree_selection_changed)
 
+        # we'll wrap the job tree in a widget to match spacing of the other panels
+        job_panel = QWidget(self)
+        job_layout = QVBoxLayout(job_panel)
+        job_layout.setContentsMargins(0, 0, 8, 0)
+        job_layout.addWidget(self.job_tree, stretch=1)
+
         self.empty_lbl = QLabel(
             "<span>No saved jobs yet. Use <b>Save Job</b> on the process page "
             "to create one.</span>",
@@ -257,12 +263,14 @@ class LoadJobDialog(QDialog):
         queue_layout.addLayout(queue_buttons)
 
         self.splitter = CustomSplitter(Qt.Orientation.Horizontal, self)
-        self.splitter.addWidget(self.job_tree)
+        self.splitter.addWidget(job_panel)
+        self.splitter.addWidget(queue_panel)
         self.splitter.addWidget(details_panel)
-        self.splitter.insertWidget(1, queue_panel)
         self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 2)
         self.splitter.setStretchFactor(2, 2)
+        # after UI loads we'll set the size of each panel relative to the UI
+        QTimer.singleShot(0, self._set_initial_splitter_sizes)
 
         self.status_lbl = QLabel("", wordWrap=True, parent=self)
         self.status_lbl.setTextFormat(Qt.TextFormat.PlainText)
@@ -313,6 +321,17 @@ class LoadJobDialog(QDialog):
         main_layout.addLayout(bottom_row)
 
         self._load_listings()
+
+    def _set_initial_splitter_sizes(self) -> None:
+        """Calculate the right size to set the sizes of each column"""
+        width = self.splitter.width()
+        self.splitter.setSizes(
+            [
+                width * 3 // 7,
+                width * 2 // 7,
+                width * 2 // 7,
+            ]
+        )
 
     def _load_listings(self) -> None:
         # Retire any loader still in flight before starting another. Without
