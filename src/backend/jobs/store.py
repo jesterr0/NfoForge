@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shutil
+from typing import Any
 
 import shortuuid
 
@@ -64,7 +65,9 @@ __all__ = [
     "jobs_dir",
     "list_jobs",
     "load_job",
+    "prune_unreferenced_nfos",
     "save_job",
+    "write_job_document",
 ]
 
 
@@ -124,6 +127,31 @@ def build_job(
     )
 
 
+def write_job_document(job: SavedJob, directory: Path) -> Path:
+    """Write `job.json` into a job directory, creating it if needed, and return it.
+
+    `save_job` derives the directory from a working directory plus a job id.
+    This takes the directory itself, which is what a caller holding only a
+    job's path has -- the queue rewriting a job it just ran, or the picker
+    renaming one.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        payload = json.dumps(job.to_dict(), indent=2)
+    except (TypeError, ValueError) as error:
+        # a plugin or metadata provider can put anything in the free-form
+        # fields; failing here rather than escaping as a raw TypeError is what
+        # lets the caller clean up the half-written directory
+        raise JobStoreError(
+            f"Job '{job.name}' contains data that cannot be saved: {error}"
+        ) from error
+    try:
+        atomic_write_text(directory / JOB_DOCUMENT_NAME, payload)
+    except OSError as error:
+        raise JobStoreError(f"Could not write job to '{directory}': {error}") from error
+    return directory
+
+
 def save_job(job: SavedJob, working_dir: Path) -> Path:
     """Write a job's document into its directory and return that directory.
 
@@ -131,15 +159,56 @@ def save_job(job: SavedJob, working_dir: Path) -> Path:
     been placed in the directory by the caller: this writes `job.json` last so
     the job only becomes visible once it is complete.
     """
-    directory = job_dir(working_dir, job.job_id, ensure_exists=True)
-    try:
-        atomic_write_text(
-            directory / JOB_DOCUMENT_NAME, json.dumps(job.to_dict(), indent=2)
-        )
-    except OSError as error:
-        raise JobStoreError(f"Could not write job to '{directory}': {error}") from error
+    directory = write_job_document(job, job_dir(working_dir, job.job_id))
     LOG.info(LOG.LOG_SOURCE.BE, f"Saved job '{job.name}' to {directory}")
     return directory
+
+
+def prune_unreferenced_nfos(directory: Path, context: dict[str, Any]) -> None:
+    """Delete NFO sidecars a job's context no longer points at.
+
+    Narrowing a job to fewer trackers leaves the dropped trackers' NFOs behind.
+    They are dead weight, and worse, they read as evidence the job still covers
+    those trackers.
+
+    A malformed context must not read as "references nothing": that would
+    delete every NFO the job owns instead of the handful a narrowing dropped.
+    So a missing or wrong-typed `tracker_release_data` bails out with nothing
+    touched, while a `tracker_release_data` that is present but genuinely
+    empty (a job with no NFOs at all) still prunes -- that mapping deliberately
+    driving zero references is not the same as not having one to read.
+    """
+    nfo_dir = directory / JOB_NFO_DIR_NAME
+    if not nfo_dir.is_dir():
+        return
+
+    shared = context.get("shared_data")
+    if not isinstance(shared, dict):
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Not pruning NFOs in '{directory}': context has no 'shared_data' mapping",
+        )
+        return
+    release_data = shared.get("tracker_release_data")
+    if not isinstance(release_data, dict):
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Not pruning NFOs in '{directory}': context has no "
+            "'tracker_release_data' mapping",
+        )
+        return
+
+    referenced: set[str] = set()
+    for entry in release_data.values():
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("nfo_asset")
+        if isinstance(name, str) and name:
+            referenced.add(Path(name).name)
+
+    for candidate in nfo_dir.iterdir():
+        if candidate.is_file() and candidate.name not in referenced:
+            candidate.unlink(missing_ok=True)
 
 
 def _read_document(path: Path) -> dict:
@@ -214,18 +283,25 @@ def list_jobs(working_dirs: Iterable[Path]) -> list[JobListing]:
             except JobStoreError as error:
                 LOG.warning(LOG.LOG_SOURCE.BE, f"Skipping unreadable job: {error}")
                 continue
-            summary = document.get("summary")
+            summary_document = document.get("summary")
+            summary = JobSummary.from_dict(
+                summary_document if isinstance(summary_document, dict) else {}
+            )
+            # cheap enough to do per job, and it is the difference between the
+            # user finding out here and finding out after clicking Load
+            media_available = (
+                Path(summary.input_path).exists() if summary.input_path else True
+            )
             listings.append(
                 JobListing(
                     job_id=str(document.get("job_id") or candidate.name),
                     name=str(document.get("name") or candidate.name),
                     created_at=str(document.get("created_at") or ""),
                     config_profile=str(document.get("config_profile") or ""),
-                    summary=JobSummary.from_dict(
-                        summary if isinstance(summary, dict) else {}
-                    ),
+                    summary=summary,
                     prepared=_document_is_prepared(document),
                     path=candidate,
+                    media_available=media_available,
                 )
             )
 

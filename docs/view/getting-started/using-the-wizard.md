@@ -216,3 +216,72 @@ tracker you selected.
 ```text {.scrollable-code-block}
 --8<-- "docs/snippets/successful_release.txt"
 ```
+
+### Saved Jobs
+
+A configured upload can be saved and processed later, including after closing NfoForge.
+Two buttons on the Process Page do this:
+
+- **Save Job** stores the run as it stands. Loading it later picks up at the Process
+  Page, and everything that needs a decision -- prompt tokens, the overview dialog -- is
+  still asked at that point.
+- **Prepare && Save Job** runs everything except the upload: screenshots go to the image
+  host, the torrent is generated, and titles and NFOs are written. The saved job then
+  only needs uploading, and asks nothing when it runs.
+
+**Jobs** on the start page opens the saved-job window. Filter by name, title or tracker,
+sort by any column, and select a job to see what it holds -- its trackers and their
+image hosts, how many screenshots it carries, where its media is and how much disk it
+uses. Add prepared jobs to the queue panel to upload several in a row.
+
+A job whose source media is no longer where it was saved is flagged with a warning icon
+and cannot be processed until the file is back. **Rename** (or F2) changes a job's name
+without touching anything else about it. Selecting several jobs and pressing **Delete**
+removes them together -- along with their screenshots, MediaInfo, NFOs and torrents,
+which cannot be undone.
+
+Each job is a self-contained folder under `<working directory>/jobs`, holding its own
+screenshots, MediaInfo, NFOs and a copy of the torrent. Settings -> General **Clean Up**
+never touches it, so housekeeping cannot destroy saved work, and deleting a job reclaims
+exactly what it was using.
+
+Resuming reuses what it can. Screenshots already uploaded are not sent again while the
+tracker's image host is unchanged, MediaInfo comes from the stored dumps rather than the
+media file, and the torrent is cloned instead of re-hashed as long as every file it
+covers is unchanged.
+
+Duplicate checks are deliberately _not_ run at save time. They run immediately before
+uploading, where the answer is current.
+
+#### Jobs and Config Profiles
+
+A job records the config profile it was built under but stores no settings of its own --
+credentials, templates and per-tracker options are read live at resume time. Jobs
+belonging to another config are greyed out and open only via **Switch profile and
+load**, since resuming under a different config would silently use its credentials and
+templates. Loading also warns when the active config has disabled one of the job's
+trackers or is missing an NFO template it needs.
+
+NFO templates are shared across configs. A prepared job uploads the NFO it prepared, so
+editing the template afterwards does not change what it sends -- loading the job says
+which template changed so the difference is not silent.
+
+#### The Queue
+
+Select prepared jobs on the current config, add them to the queue in the order you want
+them run, and press **Run Queue**. The queue window lists every job and expands the
+running one to show each tracker's status underneath it. A job that finishes cleanly
+collapses to a single line; one that had a problem stays open on the tracker that
+explains why. The queue can be stopped between jobs -- the one currently uploading is
+always left to finish, since interrupting an upload is what risks a half-sent release.
+
+Only prepared jobs qualify: anything else would stop at a prompt with nobody to answer
+it. A job is skipped and kept for review when its duplicate check finds something _or_
+when that check could not complete -- unverified counts the same as found, because the
+queue cannot ask what the interactive flow asks.
+
+Once a job has run, its files are brought into line with what actually uploaded.
+Trackers that uploaded are removed from it; if none are left, the job is deleted.
+Everything else about the job stays untouched: a tracker that failed, was never
+attempted, was skipped, or is switched off in the current config is still there to try
+again, and one whose fate could not be established is left for you to judge.

@@ -9,6 +9,7 @@ import wave
 from pymediainfo import MediaInfo
 from PySide6.QtWidgets import (
     QDialog,
+    QInputDialog,
     QMessageBox,
     QPushButton,
     QWizard,
@@ -17,13 +18,17 @@ from PySide6.QtWidgets import (
 import pytest
 
 from src.backend.jobs import (
+    MediaFingerprint,
     context_from_dict,
     context_to_dict,
+    fingerprint_files,
     store,
     template_fingerprint,
+    torrent_content_files,
 )
 from src.backend.jobs.models import JobSummary
 from src.backend.upload_retry import TrackerRunOutcome
+from src.backend.utils.media_info_utils import clear_full_mi_str_cache
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
@@ -33,11 +38,20 @@ from src.enums.wizard import WizardPages
 from src.frontend.custom_widgets import load_job_dialog as load_job_dialog_module
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
-from src.frontend.wizards import process as process_module
+from src.frontend.wizards import process as process_module, wizard as wizard_module
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.wizard import MainWindowWizard
 from src.packages.custom_types import ImageUploadFromTo
 from src.payloads.image_hosts import ImagePayloadBase
+
+
+@pytest.fixture(autouse=True)
+def _clear_mi_cache() -> None:
+    # a test that seeds this module-global cache and then fails its own
+    # assertion would otherwise leave the entry behind for the rest of the
+    # session, so clearing it up front rather than trusting the code under
+    # test to do so is what keeps tests independent
+    clear_full_mi_str_cache()
 
 
 @pytest.fixture
@@ -51,6 +65,22 @@ def patched_working_dirs(working_dir: Path, monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(
         load_job_dialog_module, "unique_working_dirs", lambda: [working_dir]
     )
+
+
+def _open_dialog(qapp: Any, active_profile: str | None) -> LoadJobDialog:
+    """Construct the picker and wait for its background listing load to land.
+
+    Listing runs on a `_ListingLoader` thread now, so the tree below is empty
+    until that thread's `loaded` signal is delivered -- every test here is
+    about what the picker does with a loaded list, not about the loading
+    itself (that is covered in `test_load_job_dialog.py`), so waiting once
+    here is the fix.
+    """
+    dialog = LoadJobDialog(active_profile)
+    assert dialog._loader is not None
+    dialog._loader.wait(5000)
+    qapp.processEvents()
+    return dialog
 
 
 @pytest.fixture
@@ -432,6 +462,31 @@ def test_accepting_the_offer_saves_only_the_deferrable_trackers(
     ]
 
 
+def test_a_deferred_job_only_stores_nfos_for_the_trackers_it_keeps(
+    qapp: Any, sample_media: Path, tmp_path: Path
+) -> None:
+    """A dropped tracker's NFO left in the folder implies the job still covers it."""
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
+        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+    )
+    context.shared_data.tracker_release_data = {
+        TrackerSelection.AITHER: {"title": "a", "nfo": "already uploaded"},
+        TrackerSelection.HUNO: {"title": "h", "nfo": "still to go"},
+    }
+
+    page = SimpleNamespace(context=context)
+    page._first_generated_torrent = lambda: None
+    directory = tmp_path / "job"
+    directory.mkdir()
+
+    document = ProcessPage._build_job_document(page, directory, {TrackerSelection.HUNO})
+
+    assert set(document["shared_data"]["tracker_release_data"]) == {"HUNO"}
+    assert {path.name for path in (directory / "nfo").iterdir()} == {"huno.txt"}
+
+
 # --------------------------------------------------------------------------
 # load dialog
 # --------------------------------------------------------------------------
@@ -446,7 +501,7 @@ def test_load_dialog_lists_saved_jobs_and_reports_the_choice(
     )
     store.save_job(job, working_dir)
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         assert dialog.job_tree.topLevelItemCount() == 1
         item = dialog.job_tree.topLevelItem(0)
@@ -466,7 +521,7 @@ def test_load_dialog_lists_saved_jobs_and_reports_the_choice(
 def test_load_dialog_is_empty_and_inert_without_jobs(
     qapp: Any, patched_working_dirs: None
 ) -> None:
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         assert dialog.job_tree.topLevelItemCount() == 0
         dialog._accept_selection()
@@ -483,11 +538,19 @@ def test_a_job_from_another_config_is_listed_but_not_directly_loadable(
         store.build_job("Other", JobSummary(), {}, config_profile="anime"), working_dir
     )
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         assert dialog.job_tree.topLevelItemCount() == 1
         dialog._accept_selection()
         assert dialog.selected_listing is None
+
+        # "Only this config" hides the row by default, and `_apply_filter`
+        # deselects whatever it hides -- reveal it and select it explicitly,
+        # the way a user has to before `_accept_with_switch` can act on it.
+        dialog.only_this_config.setChecked(False)
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        item.setSelected(True)
 
         dialog._accept_with_switch()
         assert dialog.selected_listing is not None
@@ -505,7 +568,7 @@ def test_a_job_without_a_recorded_config_stays_loadable(
         store.build_job("Legacy", JobSummary(), {}, config_profile=""), working_dir
     )
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         dialog._accept_selection()
         assert dialog.selected_listing is not None
@@ -529,53 +592,12 @@ def _save_listing(
     )
 
 
-def test_only_prepared_jobs_on_this_config_can_be_queued(
-    qapp: Any, working_dir: Path, patched_working_dirs: None
-) -> None:
-    """A queue has nobody to answer a prompt, and no business using another
-    config's credentials."""
-    _save_listing(working_dir, "ready", prepared=True)
-    _save_listing(working_dir, "raw", prepared=False)
-    _save_listing(working_dir, "other-config", prepared=True, profile="anime")
-
-    dialog = LoadJobDialog("config")
-    try:
-        dialog.job_tree.selectAll()
-        queueable = [listing.name for listing in dialog.queueable_listings()]
-        assert queueable == ["ready"]
-        # a mixed selection must not silently drop what it cannot run
-        assert not dialog.queue_btn.isEnabled()
-    finally:
-        dialog.deleteLater()
-
-
-def test_selecting_only_prepared_jobs_enables_the_queue(
-    qapp: Any, working_dir: Path, patched_working_dirs: None
-) -> None:
-    _save_listing(working_dir, "ready-one", prepared=True)
-    _save_listing(working_dir, "ready-two", prepared=True)
-
-    dialog = LoadJobDialog("config")
-    try:
-        dialog.job_tree.selectAll()
-        assert dialog.queue_btn.isEnabled()
-
-        dialog._accept_queue()
-        assert {listing.name for listing in dialog.queued_listings} == {
-            "ready-one",
-            "ready-two",
-        }
-        assert dialog.selected_listing is None
-    finally:
-        dialog.deleteLater()
-
-
 def test_the_picker_shows_whether_a_job_is_prepared(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
     _save_listing(working_dir, "ready", prepared=True)
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         item = dialog.job_tree.topLevelItem(0)
         assert item is not None
@@ -598,9 +620,12 @@ def test_load_dialog_deletes_the_selected_job(
         QMessageBox, "question", lambda *_a, **_k: QMessageBox.StandardButton.Yes
     )
 
-    dialog = LoadJobDialog("config")
+    dialog = _open_dialog(qapp, "config")
     try:
         dialog._delete_selected()
+        assert dialog._loader is not None
+        dialog._loader.wait(5000)
+        qapp.processEvents()
         assert dialog.job_tree.topLevelItemCount() == 0
         assert store.list_jobs([working_dir]) == []
     finally:
@@ -640,15 +665,15 @@ def test_start_id_plus_restart_jumps_straight_to_the_process_page(qapp: Any) -> 
     assert wizard.currentId() == WizardPages.INPUT_PAGE.value
 
 
-def test_help_button_slot_can_carry_the_load_job_button(qapp: Any) -> None:
-    """All three CustomButton slots are taken, so Load Job rides on HelpButton.
+def test_help_button_slot_can_carry_the_jobs_button(qapp: Any) -> None:
+    """All three CustomButton slots are taken, so Jobs rides on HelpButton.
 
     Guards that a custom button placed in that slot really is shown when the
     layout asks for it, and hidden when a layout omits it.
     """
     wizard = QWizard()
     wizard.setPage(WizardPages.INPUT_PAGE.value, QWizardPage())
-    load_button = QPushButton("Load Job", wizard)
+    load_button = QPushButton("Jobs", wizard)
     wizard.setButton(QWizard.WizardButton.HelpButton, load_button)
     wizard.setOption(QWizard.WizardOption.HaveHelpButton)
     wizard.setButtonLayout(
@@ -837,3 +862,294 @@ def test_a_fully_served_job_asks_nothing(qapp: Any, sample_media: Path) -> None:
     assert MainWindowWizard._confirm_profile_can_serve_job(
         _wizard_stub(), "Example", context
     )
+
+
+def test_a_pack_with_a_changed_episode_falls_back_to_hashing(
+    qapp: Any, tmp_path: Path
+) -> None:
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    (job_dir_path / "base.torrent").write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = pack
+    context.media_input.file_list.append(pack / "e01.mkv")
+
+    job = SimpleNamespace(
+        name="pack",
+        context={
+            "base_torrent": {
+                "media": str(pack),
+                "fingerprints": fingerprint_files(torrent_content_files(pack)),
+            }
+        },
+    )
+
+    (pack / "e02.mkv").write_bytes(b"different")
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent is None
+
+
+def test_an_unchanged_pack_reuses_the_stored_torrent(qapp: Any, tmp_path: Path) -> None:
+    """The positive case: nothing changed, so the clone must actually happen."""
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    (pack / "e01.mkv").write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    stored = job_dir_path / "base.torrent"
+    stored.write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = pack
+    context.media_input.file_list.append(pack / "e01.mkv")
+
+    job = SimpleNamespace(
+        name="pack",
+        context={
+            "base_torrent": {
+                "media": str(pack),
+                "fingerprints": fingerprint_files(torrent_content_files(pack)),
+            }
+        },
+    )
+
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent == stored
+
+
+def test_a_legacy_single_file_fingerprint_is_honoured(
+    qapp: Any, tmp_path: Path
+) -> None:
+    """A job saved before whole-release fingerprints recorded only the first
+    file -- for a single-file release that is the whole torrent, so it must
+    still be trusted."""
+    media = tmp_path / "movie.mkv"
+    media.write_bytes(b"a")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    stored = job_dir_path / "base.torrent"
+    stored.write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = media
+    context.media_input.file_list.append(media)
+
+    job = SimpleNamespace(
+        name="movie",
+        context={
+            "base_torrent": {
+                "media": str(media),
+                "fingerprint": MediaFingerprint.of(media).to_dict(),
+            }
+        },
+    )
+
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent == stored
+
+
+def test_a_legacy_fingerprint_does_not_vouch_for_a_directory(
+    qapp: Any, tmp_path: Path
+) -> None:
+    """Guards the `is_dir()` check: a pre-fix job recorded only the first
+    file, which cannot prove the rest of a pack is unchanged even though that
+    first file itself is untouched here."""
+    pack = tmp_path / "Pack.S01"
+    pack.mkdir()
+    first = pack / "e01.mkv"
+    first.write_bytes(b"a")
+    (pack / "e02.mkv").write_bytes(b"bb")
+    job_dir_path = tmp_path / "job"
+    job_dir_path.mkdir()
+    (job_dir_path / "base.torrent").write_bytes(b"torrent")
+
+    context = ProcessingContext()
+    context.media_input.input_path = pack
+    context.media_input.file_list.append(first)
+
+    job = SimpleNamespace(
+        name="pack",
+        context={
+            "base_torrent": {
+                "media": str(pack),
+                "fingerprint": MediaFingerprint.of(first).to_dict(),
+            }
+        },
+    )
+
+    MainWindowWizard._attach_base_torrent(SimpleNamespace(), job, job_dir_path, context)  # pyright: ignore[reportArgumentType]
+
+    assert context.shared_data.base_torrent is None
+
+
+# --------------------------------------------------------------------------
+# starting over clears the MediaInfo cache
+# --------------------------------------------------------------------------
+def test_starting_over_drops_mediainfo_cached_by_a_loaded_job(
+    qapp: Any, sample_media: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale dump would be sent to a tracker as if it described the new file."""
+    from src.backend.utils import media_info_utils
+
+    media_info_utils.cache_full_mi_str(sample_media, "dump from the previous job")
+
+    # `reset_wizard` builds a real ProcessingContext from live settings, which
+    # a stand-in has none of; the cache clear is what is under test, not that.
+    monkeypatch.setattr(
+        wizard_module, "create_processing_context", lambda _settings, _plugins: None
+    )
+
+    wizard = SimpleNamespace(
+        config=SimpleNamespace(settings=None, plugin_manager=None),
+        context=None,
+        currentIdChanged=SimpleNamespace(disconnect=lambda: None),
+        _remove_all_pages=lambda: None,
+        _generate_new_pages=lambda: [],
+        _PAGES=[],
+        _insert_plugin_page=lambda: None,
+        _build_wizard_pages=lambda: None,
+        _set_start_page=lambda: None,
+        _connect_current_id_changed=lambda: None,
+        _set_disabled=lambda _value: None,
+        next_button=SimpleNamespace(setText=lambda _text: None),
+        process_button=SimpleNamespace(setText=lambda _text: None),
+        setButtonLayout=lambda _buttons: None,
+        starting_buttons=(),
+        restart=lambda: None,
+    )
+
+    MainWindowWizard.reset_wizard(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert media_info_utils._FULL_MI_STR_CACHE == {}
+
+
+def test_a_job_name_with_markup_is_escaped_in_the_log(qapp: Any) -> None:
+    written: list[str] = []
+    page = SimpleNamespace(_on_text_update=written.append)
+
+    ProcessPage._announce_saved_job(page, "<b>bold</b> job")  # pyright: ignore[reportArgumentType]
+
+    assert "&lt;b&gt;" in written[0]
+    assert "<b>bold</b> job" not in written[0]
+
+
+def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
+    qapp: Any, working_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The save confirmation box must show the job name verbatim, not interpret
+    markup. Verifies that the box uses PlainText format so angle brackets do
+    not flip it into rich-text mode.
+    """
+    from PySide6.QtGui import Qt
+
+    captured_boxes: list[Any] = []
+
+    class MockMessageBox:
+        """Mock that accepts any parent and captures the instance."""
+
+        Icon = QMessageBox.Icon
+        Accepted = QMessageBox.Accepted
+
+        def __init__(self, parent: Any = None) -> None:
+            self.parent_obj = parent
+            self.title = ""
+            self.icon = None
+            self.text_format = Qt.TextFormat.AutoText
+            self.icon_val = None
+            self.text_val = ""
+            self.exec_called = False
+            captured_boxes.append(self)
+
+        def setWindowTitle(self, title: str) -> None:
+            self.title = title
+
+        def setTextFormat(self, fmt: Any) -> None:
+            self.text_format = fmt
+
+        def textFormat(self) -> Any:
+            return self.text_format
+
+        def setIcon(self, icon: Any) -> None:
+            self.icon_val = icon
+
+        def setText(self, text: str) -> None:
+            self.text_val = text
+
+        def text(self) -> str:
+            return self.text_val
+
+        def exec(self) -> int:
+            self.exec_called = True
+            return self.Accepted
+
+    monkeypatch.setattr(process_module, "QMessageBox", MockMessageBox)
+    monkeypatch.setattr(
+        QInputDialog, "getText", lambda *_a, **_k: ("<b>bold</b> job", True)
+    )
+
+    # Mock the dependencies to reach the save success path.
+    page = SimpleNamespace()
+    page.context = ProcessingContext()
+    # A real directory, because `_save_job` really creates one: `build_job` and
+    # `save_job` are mocked below but `job_dir(..., ensure_exists=True)` is not,
+    # and it mkdirs. A hardcoded absolute path here resolves against the current
+    # drive on Windows and quietly writes outside the repo, while on Linux it
+    # raises PermissionError -- green locally, red on CI.
+    page.config = SimpleNamespace(
+        settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
+        program=SimpleNamespace(current_config="test"),
+    )
+    page._announce_saved_job = lambda name: None  # no-op for this test
+    page._build_job_document = lambda *_: {}
+    page._job_summary = lambda *_: JobSummary()
+    page._default_job_name = lambda: "test"
+    page._on_text_update = lambda *_: None
+
+    # Mock media validation.
+    monkeypatch.setattr(
+        "src.context.processing_context.MediaInputPayload.require_existing_media_paths",
+        lambda *_, **__: None,
+    )
+
+    monkeypatch.setattr(
+        "src.frontend.wizards.process.build_job",
+        lambda **_: SimpleNamespace(
+            name="<b>bold</b> job", job_id="test-id", context={}
+        ),
+    )
+    monkeypatch.setattr(
+        "src.frontend.wizards.process.save_job",
+        lambda *_: Path("/saved/job"),
+    )
+
+    # Drive the success path of _save_job.
+    context = page.context
+    context.media_input.input_path = Path("/test.mkv")
+
+    ProcessPage._save_job(page)  # pyright: ignore[reportArgumentType]
+
+    # The message box should have been created.
+    assert len(captured_boxes) == 1
+    box = captured_boxes[0]
+    assert box.textFormat() == Qt.TextFormat.PlainText
+    assert "<b>bold</b> job" in box.text()
+    # The rest of the confirmation wording, pinned so a rename silently
+    # reverting "Jobs" (as already happened once on this branch) is caught
+    # here rather than only in the wizard button's tooltip.
+    assert "Use 'Jobs' on the start page to come back to it." in box.text()
+    # A regression that stopped displaying the box entirely -- e.g. building
+    # `saved_box` and never calling `.exec()` -- would leave every assertion
+    # above green. This is what catches that.
+    assert box.exec_called is True
+    # Pins the working directory to the fixture: revert it to a hardcoded path
+    # and this fails here rather than only on a Linux runner.
+    assert (working_dir / "jobs" / "test-id").is_dir()

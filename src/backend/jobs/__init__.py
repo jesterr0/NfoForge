@@ -18,8 +18,11 @@ from src.backend.jobs.assets import (
     capture_nfos,
     copy_base_torrent,
     copy_images,
+    fingerprint_files,
+    fingerprints_match,
     read_job_asset,
     template_fingerprint,
+    torrent_content_files,
 )
 from src.backend.jobs.codec import (
     JobCodecError,
@@ -38,7 +41,9 @@ from src.backend.jobs.store import (
     jobs_dir,
     list_jobs,
     load_job,
+    prune_unreferenced_nfos,
     save_job,
+    write_job_document,
 )
 
 __all__ = [
@@ -61,12 +66,17 @@ __all__ = [
     "copy_images",
     "delete_job",
     "filter_context_document",
+    "fingerprint_files",
+    "fingerprints_match",
     "job_dir",
     "jobs_dir",
     "list_jobs",
     "load_job",
     "mediainfo_xml",
+    "prune_unreferenced_nfos",
     "read_job_asset",
     "save_job",
     "template_fingerprint",
+    "torrent_content_files",
+    "write_job_document",
 ]

@@ -22,10 +22,9 @@ from PySide6.QtWidgets import (
 
 from src.backend.utils.file_utilities import (
     file_bytes_to_str,
-    get_dir_size,
     open_explorer,
 )
-from src.backend.utils.working_dir import cleanable_items
+from src.backend.utils.working_dir import cleanable_items, cleanable_size
 from src.config.config import ConfigManager
 from src.enums.logging_settings import LogLevel
 from src.enums.settings_window import SettingsTabs
@@ -480,10 +479,7 @@ class GeneralSettings(BaseSettings):
     def _handle_working_dir_clean_up_click(self) -> None:
         working_dir = self.config.settings.general.working_dir
         removable = cleanable_items(working_dir)
-        total_size = sum(
-            get_dir_size(item) if item.is_dir() else item.stat().st_size
-            for item in removable
-        )
+        total_size = cleanable_size(working_dir)
 
         msg = (
             "Would you like to clean up the working directory now?\n\n"

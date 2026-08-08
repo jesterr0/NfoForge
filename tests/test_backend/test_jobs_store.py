@@ -217,3 +217,134 @@ def test_migration_chain_guard_catches_a_bump_without_a_migration(
 
     with pytest.raises(RuntimeError, match="migrations are incomplete"):
         check_migration_chain()
+
+
+def test_write_job_document_rewrites_an_existing_job(working_dir: Path) -> None:
+    job = store.build_job("original", JobSummary(), {"shared_data": {}})
+    directory = store.save_job(job, working_dir)
+
+    job.name = "renamed"
+    returned = store.write_job_document(job, directory)
+
+    assert returned == directory
+    assert store.load_job(directory).name == "renamed"
+
+
+def test_write_job_document_reports_unserializable_content(working_dir: Path) -> None:
+    job = store.build_job("bad", JobSummary(), {"oops": object()})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+
+    with pytest.raises(store.JobStoreError, match="cannot be saved"):
+        store.write_job_document(job, directory)
+
+
+def test_prune_unreferenced_nfos_keeps_only_what_the_context_points_at(
+    working_dir: Path,
+) -> None:
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    nfo_dir = directory / store.JOB_NFO_DIR_NAME
+    nfo_dir.mkdir(parents=True)
+    (nfo_dir / "aither.txt").write_text("kept", encoding="utf-8")
+    (nfo_dir / "huno.txt").write_text("dropped", encoding="utf-8")
+
+    store.prune_unreferenced_nfos(
+        directory,
+        {
+            "shared_data": {
+                "tracker_release_data": {
+                    "AITHER": {"title": "t", "nfo_asset": "nfo/aither.txt"}
+                }
+            }
+        },
+    )
+
+    assert {path.name for path in nfo_dir.iterdir()} == {"aither.txt"}
+
+
+def test_prune_unreferenced_nfos_is_a_no_op_without_an_nfo_dir(
+    working_dir: Path,
+) -> None:
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+
+    # must not raise
+    store.prune_unreferenced_nfos(directory, {"shared_data": {}})
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        {},
+        {"shared_data": "not a mapping"},
+        {"shared_data": {}},
+        {"shared_data": {"tracker_release_data": "not a mapping either"}},
+    ],
+)
+def test_prune_unreferenced_nfos_guards_a_malformed_context(
+    working_dir: Path,
+    context: dict,
+) -> None:
+    """A context with no usable tracker_release_data must not read as 'references nothing'.
+
+    Deleting every NFO on a malformed context would turn a bug elsewhere in
+    the pipeline into a data-loss bug here too.
+    """
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    nfo_dir = directory / store.JOB_NFO_DIR_NAME
+    nfo_dir.mkdir(parents=True)
+    (nfo_dir / "aither.txt").write_text("kept", encoding="utf-8")
+
+    store.prune_unreferenced_nfos(directory, context)
+
+    assert {path.name for path in nfo_dir.iterdir()} == {"aither.txt"}
+
+
+def test_prune_unreferenced_nfos_prunes_a_legitimately_empty_mapping(
+    working_dir: Path,
+) -> None:
+    """An empty tracker_release_data (a job with no NFOs) still means prune everything.
+
+    That is distinct from a missing mapping: here the context did say what is
+    referenced, and the answer is nothing.
+    """
+    job = store.build_job("job", JobSummary(), {})
+    directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
+    nfo_dir = directory / store.JOB_NFO_DIR_NAME
+    nfo_dir.mkdir(parents=True)
+    (nfo_dir / "orphaned.txt").write_text("orphaned", encoding="utf-8")
+
+    store.prune_unreferenced_nfos(
+        directory, {"shared_data": {"tracker_release_data": {}}}
+    )
+
+    assert list(nfo_dir.iterdir()) == []
+
+
+def test_a_listing_reports_whether_its_media_is_still_there(
+    working_dir: Path, tmp_path: Path
+) -> None:
+    media = tmp_path / "present.mkv"
+    media.write_bytes(b"x")
+    store.save_job(
+        store.build_job("here", JobSummary(input_path=str(media)), {}), working_dir
+    )
+    store.save_job(
+        store.build_job(
+            "gone", JobSummary(input_path=str(tmp_path / "missing.mkv")), {}
+        ),
+        working_dir,
+    )
+
+    listings = {entry.name: entry for entry in store.list_jobs([working_dir])}
+
+    assert listings["here"].media_available is True
+    assert listings["gone"].media_available is False
+
+
+def test_a_job_that_recorded_no_media_path_is_not_flagged(working_dir: Path) -> None:
+    """Jobs saved before the path was recorded must not all look broken."""
+    store.save_job(store.build_job("old", JobSummary(), {}), working_dir)
+
+    assert store.list_jobs([working_dir])[0].media_available is True

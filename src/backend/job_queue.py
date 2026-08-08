@@ -21,6 +21,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from html import escape
 from pathlib import Path
 import traceback
 from typing import TYPE_CHECKING, Any, cast
@@ -30,8 +31,12 @@ from src.backend.jobs import (
     JobStoreError,
     SavedJob,
     context_from_dict,
+    delete_job,
+    filter_context_document,
     load_job,
+    prune_unreferenced_nfos,
     read_job_asset,
+    write_job_document,
 )
 from src.backend.process import ProcessBackEnd
 from src.backend.tracker_run_data import build_tracker_data
@@ -67,6 +72,19 @@ class QueuedJobResult(Enum):
     """The run raised rather than completing."""
 
 
+class JobDisposition(Enum):
+    """What the queue did with a job's files once it had run it."""
+
+    KEPT = auto()
+    """Left exactly as it was, for a human to look at."""
+
+    NARROWED = auto()
+    """Rewritten to hold only the trackers that still need uploading."""
+
+    DELETED = auto()
+    """Every tracker uploaded, so there was nothing left to keep."""
+
+
 @dataclass(frozen=True, slots=True)
 class DupeCheckResult:
     """What the duplicate check could and could not establish."""
@@ -97,6 +115,8 @@ class QueuedJobOutcome:
     result: QueuedJobResult
     detail: str = ""
     outcomes: dict[TrackerSelection, TrackerRunOutcome] = field(default_factory=dict)
+    disposition: JobDisposition = JobDisposition.KEPT
+    """What became of this job's files. See `JobQueueRunner._settle`."""
 
     def deferrable_trackers(self) -> set[TrackerSelection]:
         """Trackers this job left un-uploaded that are safe to try again."""
@@ -118,6 +138,9 @@ class JobQueueRunner:
         status_update: Callable[[str, str], None] | None = None,
         progress_cb: Callable[[float], None] | None = None,
         is_cancelled: Callable[[], bool] | None = None,
+        job_started: Callable[[int, str], None] | None = None,
+        job_finished: Callable[[int, QueuedJobOutcome], None] | None = None,
+        text_replace_last_update: Callable[[str], None] | None = None,
     ) -> None:
         self.backend = backend
         self.config = config
@@ -125,6 +148,15 @@ class JobQueueRunner:
         self._status_update = status_update or (lambda _tracker, _status: None)
         self._progress_cb = progress_cb or (lambda _value: None)
         self._is_cancelled = is_cancelled or (lambda: False)
+        # The queue's own window lists jobs before any of them runs, so it needs
+        # to be told when each one starts and ends rather than reconstructing
+        # that from the text log.
+        self._job_started = job_started or (lambda _index, _name: None)
+        self._job_finished = job_finished or (lambda _index, _outcome: None)
+        # A caller with no way to rewrite its last line falls back to appending,
+        # which is what the queue did for everyone -- leaving both halves of
+        # every "running..." / "done" pair in the log.
+        self._text_replace_last_update = text_replace_last_update or self._text_update
 
     # ----------------------------------------------------------------------
     def run(self, job_paths: list[Path]) -> list[QueuedJobOutcome]:
@@ -140,15 +172,18 @@ class JobQueueRunner:
                 f'<br /><h3 style="margin-bottom: 0;">▶️ Job {index} of '
                 f"{len(job_paths)}</h3>"
             )
-            results.append(self._run_one(path))
+            outcome = self._run_one(path, index)
+            self._job_finished(index, outcome)
+            results.append(outcome)
         return results
 
     # ----------------------------------------------------------------------
-    def _run_one(self, path: Path) -> QueuedJobOutcome:
+    def _run_one(self, path: Path, index: int) -> QueuedJobOutcome:
         try:
             job = load_job(path)
         except JobStoreError as error:
             LOG.error(LOG.LOG_SOURCE.BE, f"Queue could not load '{path}': {error}")
+            self._job_started(index, path.name)
             return QueuedJobOutcome(
                 job_name=path.name,
                 path=path,
@@ -156,7 +191,8 @@ class JobQueueRunner:
                 detail=str(error),
             )
 
-        self._text_update(f"<br /><span>Loaded <b>{job.name}</b></span>")
+        self._job_started(index, job.name)
+        self._text_update(f"<br /><span>Loaded <b>{escape(job.name)}</b></span>")
 
         context = self._restore(job, path)
         if isinstance(context, str):
@@ -172,7 +208,8 @@ class JobQueueRunner:
             # dialog, which is precisely what a queue cannot answer
             detail = "job is not prepared, so it would need a user to run"
             self._text_update(
-                f"<br /><span>⏭ Skipping <b>{job.name}</b>: {detail}</span>"
+                f"<br /><span>⏭ Skipping <b>{escape(job.name)}</b>: "
+                f"{escape(detail)}</span>"
             )
             return QueuedJobOutcome(
                 job_name=job.name,
@@ -184,7 +221,8 @@ class JobQueueRunner:
         unusable = self._unusable_reason(context)
         if unusable:
             self._text_update(
-                f"<br /><span>⏭ Skipping <b>{job.name}</b>: {unusable}</span>"
+                f"<br /><span>⏭ Skipping <b>{escape(job.name)}</b>: "
+                f"{escape(unusable)}</span>"
             )
             return QueuedJobOutcome(
                 job_name=job.name,
@@ -215,8 +253,8 @@ class JobQueueRunner:
                 reasons.append(f"could not check {', '.join(dupes.unverified)}")
             detail = "; ".join(reasons)
             self._text_update(
-                f"<br /><span>⏭ Skipping <b>{job.name}</b>: {detail}. The job is "
-                "kept for you to review.</span>"
+                f"<br /><span>⏭ Skipping <b>{escape(job.name)}</b>: "
+                f"{escape(detail)}. The job is kept for you to review.</span>"
             )
             return QueuedJobOutcome(
                 job_name=job.name,
@@ -231,7 +269,9 @@ class JobQueueRunner:
                 detail=detail,
             )
 
-        return self._upload(job, path, context, tracker_data)
+        outcome = self._upload(job, path, context, tracker_data)
+        self._settle(job, outcome)
+        return outcome
 
     # ----------------------------------------------------------------------
     def _restore(self, job: SavedJob, path: Path) -> ProcessingContext | str:
@@ -345,7 +385,7 @@ class JobQueueRunner:
                 process_dict=tracker_data,
                 queued_status_update=self._status_update,
                 queued_text_update=self._text_update,
-                queued_text_update_replace_last_line=self._text_update,
+                queued_text_update_replace_last_line=self._text_replace_last_update,
                 progress_bar_cb=self._progress_cb,
                 # `process_trackers` types this as a Qt signal because every
                 # other caller has a page to surface errors into; the queue has
@@ -378,6 +418,121 @@ class JobQueueRunner:
             path=path,
             result=QueuedJobResult.UPLOADED,
             outcomes=outcomes,
+        )
+
+    def _settle(self, job: SavedJob, outcome: QueuedJobOutcome) -> None:
+        """Bring a job's files into line with what actually uploaded.
+
+        A job left on disk unchanged after uploading is a job the next queue run
+        uploads all over again, so a tracker that reached its destination has to
+        come out of it. Exactly one thing earns removal: proof the release
+        landed. Everything else stays -- never attempted, skipped, provably
+        failed, switched off in config, or an upload nobody can account for --
+        because each of those is either still to do or still to judge, and the
+        job folder is where its prepared torrent and NFO live.
+
+        Framing this as "remove only what provably landed" rather than "keep
+        only what is safe to retry" is what makes the awkward outcomes fall out
+        correctly. `MAY_HAVE_UPLOADED` is neither retryable nor done, and
+        neither is a tracker whose uploads are disabled in config; a two-way
+        split counts both as finished and deletes their prepared work.
+        """
+        if not outcome.outcomes:
+            # the run never reached the upload stage, so there is nothing to
+            # reconcile -- a skipped job is kept for review as it was
+            return
+
+        landed = {
+            tracker
+            for tracker, tracker_outcome in outcome.outcomes.items()
+            if tracker_outcome
+            in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
+        }
+        if not landed:
+            # Nothing reached a tracker, so the job is still exactly itself.
+            # It still needs saying when one of them cannot be accounted for.
+            self._warn_unconfirmed(job, outcome)
+            return
+
+        retained = set(outcome.outcomes) - landed
+        if not retained:
+            try:
+                delete_job(outcome.path)
+            except JobStoreError as error:
+                LOG.error(
+                    LOG.LOG_SOURCE.BE, f"Could not remove a finished job: {error}"
+                )
+                # the one failure that silently re-uploads everywhere next run,
+                # so it cannot be log-only
+                self._text_update(
+                    f"<br /><span>⚠️ <b>{escape(job.name)}</b> uploaded everywhere "
+                    "but could not be removed, so it is still saved and will "
+                    f"upload again if queued: {escape(str(error))}</span>"
+                )
+                return
+            outcome.disposition = JobDisposition.DELETED
+            self._text_update(
+                f"<br /><span>🧹 Removed <b>{escape(job.name)}</b>; every tracker "
+                "uploaded</span>"
+            )
+            return
+
+        try:
+            job.context = filter_context_document(job.context, retained)
+            job.summary.trackers = [
+                str(tracker) for tracker in sorted(retained, key=str)
+            ]
+            write_job_document(job, outcome.path)
+        except (JobStoreError, OSError) as error:
+            LOG.error(LOG.LOG_SOURCE.BE, f"Could not narrow a finished job: {error}")
+            self._text_update(
+                f"<br /><span>⚠️ <b>{escape(job.name)}</b> still lists the trackers "
+                "that already uploaded and will send to them again if queued: "
+                f"{escape(str(error))}</span>"
+            )
+            return
+
+        # the write is the commit point: from here the document on disk is
+        # correct, so the disposition is true even if the tidy-up below fails
+        outcome.disposition = JobDisposition.NARROWED
+        try:
+            prune_unreferenced_nfos(outcome.path, job.context)
+        except OSError as error:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Left stale NFOs behind in {outcome.path}: {error}",
+            )
+
+        remaining = ", ".join(str(tracker) for tracker in sorted(retained, key=str))
+        self._text_update(
+            f"<br /><span>📝 Kept <b>{escape(job.name)}</b> for "
+            f"{escape(remaining)}; the trackers that uploaded were removed from "
+            "it</span>"
+        )
+        self._warn_unconfirmed(job, outcome)
+
+    def _warn_unconfirmed(self, job: SavedJob, outcome: QueuedJobOutcome) -> None:
+        """Name any tracker whose upload could not be established either way.
+
+        The queue can neither retry these nor write them off, so they are the
+        one outcome that needs a person. Said whether the job was narrowed or
+        left alone, because the question is the same either way.
+
+        Deliberately silent about a tracker whose uploads are switched off in
+        config: nothing was sent, but the user is the one who arranged that, so
+        reporting it as something to look into would be noise.
+        """
+        unconfirmed = sorted(
+            str(tracker)
+            for tracker, tracker_outcome in outcome.outcomes.items()
+            if tracker_outcome is TrackerRunOutcome.MAY_HAVE_UPLOADED
+        )
+        if not unconfirmed:
+            return
+        self._text_update(
+            f"<br /><span>⚠️ Check {escape(', '.join(unconfirmed))} on the "
+            f"tracker before running <b>{escape(job.name)}</b> again -- the "
+            "upload could not be confirmed either way</span>"
         )
 
 

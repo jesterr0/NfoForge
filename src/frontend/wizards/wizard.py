@@ -13,6 +13,7 @@ from src.backend.jobs import (
     SavedJob,
     base_torrent_path,
     context_from_dict,
+    fingerprints_match,
     load_job,
     read_job_asset,
     template_fingerprint,
@@ -25,6 +26,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.wizard import WizardPages
 from src.exceptions import ConfigSchemaError
+from src.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
 from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.images import ImagesPage
@@ -93,10 +95,12 @@ class MainWindowWizard(QWizard):
         self.setOption(QWizard.WizardOption.HaveCustomButton3)
 
         # all three CustomButton slots are already spoken for, so the unused
-        # HelpButton slot carries "Load Job" -- the same re-purposing this
+        # HelpButton slot carries "Jobs" -- the same re-purposing this
         # wizard already does by putting "Next" on the CommitButton
-        self.load_job_button = QPushButton("Load Job", self)
-        self.load_job_button.setToolTip("Load a previously saved job and process it")
+        self.load_job_button = QPushButton("Jobs", self)
+        self.load_job_button.setToolTip(
+            "Browse saved jobs: load one to process it, or queue several"
+        )
         self.load_job_button.clicked.connect(self.open_load_job_dialog)
         self.setButton(QWizard.WizardButton.HelpButton, self.load_job_button)
         self.setOption(QWizard.WizardOption.HaveHelpButton)
@@ -161,6 +165,12 @@ class MainWindowWizard(QWizard):
 
     @Slot()
     def reset_wizard(self) -> None:
+        # A job load caches each file's MediaInfo text dump globally so the
+        # media never has to be re-read. Starting over means a genuinely new
+        # run, which must measure the file itself rather than inherit a dump
+        # that may now describe a different encode.
+        clear_full_mi_str_cache()
+
         self.context = create_processing_context(
             self.config.settings,
             self.config.plugin_manager,
@@ -182,13 +192,36 @@ class MainWindowWizard(QWizard):
     def open_load_job_dialog(self) -> None:
         """Pick saved jobs and either resume one or run several as a queue."""
         dialog = LoadJobDialog(self.config.program.current_config, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        accepted = dialog.exec() == QDialog.DialogCode.Accepted
+        # Same leak `queue_dialog` is guarded against below, and parenting
+        # gives this one longer to matter: it holds a listing tree, a details
+        # pane and one retired-but-parented `_ListingLoader` per
+        # `_load_listings()` call. `done()` already blocks `exec()` from
+        # returning until any in-flight loader has stopped, so there is
+        # nothing left running for `deleteLater()` to tear down. Scheduled
+        # once here, right after `exec()`, so it covers every return below
+        # regardless of which one is taken.
+        dialog.deleteLater()
+        if not accepted:
             return
 
         if dialog.queued_listings:
-            GSigs().wizard_run_job_queue.emit(
-                [listing.path for listing in dialog.queued_listings]
+            # A bare temporary here would still leak: parenting to `self`
+            # transfers ownership to C++, so a dialog built and immediately
+            # `.exec()`'d without ever being assigned would survive the call
+            # as a hidden child of the wizard for the rest of its life --
+            # log widget, finished thread, `ProcessBackEnd` and all, one per
+            # queue run. `reject()` already guarantees the thread has
+            # finished by the time `exec()` returns, so `deleteLater()` here
+            # is never asked to tear down anything still running.
+            queue_dialog = JobQueueDialog(
+                job_paths=[listing.path for listing in dialog.queued_listings],
+                config=self.config,
+                parent=self,
             )
+            queue_dialog.start()
+            queue_dialog.exec()
+            queue_dialog.deleteLater()
             return
 
         listing = dialog.selected_listing
@@ -317,23 +350,43 @@ class MainWindowWizard(QWizard):
         """Offer the job's stored torrent for reuse, if the media is unchanged.
 
         Hashing is the most expensive part of a run, so a job that carries a
-        finished torrent can skip it -- but only while the media is byte-for-byte
-        what it was. Cloning a torrent whose piece hashes no longer match would
-        upload a torrent that simply does not work, so a changed (or missing)
-        file silently falls back to hashing.
+        finished torrent can skip it -- but only while the media's size and
+        modified time still match what `MediaFingerprint` recorded. Cloning a
+        torrent whose piece hashes no longer match would upload a torrent that
+        simply does not work, so a changed (or missing) file silently falls
+        back to hashing.
         """
         stored = base_torrent_path(directory)
         if stored is None:
             return
 
         details = job.context.get("base_torrent")
-        fingerprint = (
-            MediaFingerprint.from_dict(details.get("fingerprint"))
-            if isinstance(details, dict)
-            else None
-        )
-        media = context.media_input.get_first_file()
-        if fingerprint is None or media is None or not fingerprint.matches(media):
+        input_path = context.media_input.input_path
+        if not isinstance(details, dict) or input_path is None:
+            LOG.info(
+                LOG.LOG_SOURCE.FE,
+                f"Not reusing the torrent saved with job '{job.name}': its "
+                "saved fingerprint details or current input path are missing",
+            )
+            return
+
+        recorded = details.get("fingerprints")
+        if isinstance(recorded, dict) and recorded:
+            unchanged = fingerprints_match(recorded, input_path)
+        else:
+            # Jobs saved before the whole-release fingerprint recorded only the
+            # first file. Honour that for a single-file release, where it is the
+            # same thing; for a directory it proves nothing, so re-hash.
+            legacy = MediaFingerprint.from_dict(details.get("fingerprint"))
+            media = context.media_input.get_first_file()
+            unchanged = (
+                not input_path.is_dir()
+                and legacy is not None
+                and media is not None
+                and legacy.matches(media)
+            )
+
+        if not unchanged:
             LOG.info(
                 LOG.LOG_SOURCE.FE,
                 f"Not reusing the torrent saved with job '{job.name}': its media "

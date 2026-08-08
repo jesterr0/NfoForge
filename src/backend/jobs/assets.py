@@ -15,16 +15,19 @@ Three kinds of asset are captured:
   plain-text dump trackers actually receive. Between them a resumed run never
   has to call `MediaInfo.parse()` against the media again.
 - **The base torrent**, so a resumed run clones instead of re-hashing what may
-  be tens of gigabytes. Recorded with the media's size and mtime so a changed
-  file falls back to hashing rather than shipping stale piece hashes.
+  be tens of gigabytes. Recorded with the size and mtime of every file the
+  torrent covers, so a changed, added, or removed file falls back to hashing
+  rather than shipping stale piece hashes.
 
 Qt-free, so it stays unit testable.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import Path
 import shutil
 from typing import Any
@@ -258,3 +261,64 @@ def base_torrent_path(directory: Path) -> Path | None:
     """The stored base torrent, if this job has one."""
     candidate = directory / JOB_BASE_TORRENT_NAME
     return candidate if candidate.is_file() else None
+
+
+def torrent_content_files(input_path: Path) -> list[Path]:
+    """Every file the generated torrent covers, in a stable order.
+
+    Walks the input rather than reading `MediaInputPayload.file_list`: the
+    torrent is built from `input_path`, so for a pack it also covers subtitles
+    and other extras that the media file list leaves out.
+
+    Uses `os.walk(followlinks=True)` rather than `Path.rglob`: torf itself
+    walks with `followlinks=True` (see `torf/_utils.py`), and `rglob`'s `**`
+    does not descend into a symlinked directory on this project's Python
+    floor. Missing a symlinked subtree here would mean a file the torrent
+    covers is never fingerprinted, so an edit inside it would go undetected --
+    the exact failure this function exists to close.
+
+    Index sidecars such as `.lwi`/`.ffindex` are deliberately included even
+    though torrent creation excludes them (see `INDEX_SIDECAR_GLOBS` in
+    `src/backend/torrents/torrent.py`): fingerprinting a file the torrent does
+    not actually contain only costs a spurious re-hash, never a stale clone,
+    and it is not worth coupling this package to that one over it.
+    """
+    if input_path.is_dir():
+        found: list[Path] = []
+        for directory, _sub_dirs, file_names in os.walk(input_path, followlinks=True):
+            found.extend(Path(directory) / name for name in file_names)
+        # sorted with the same casefold key torf's list_files uses (see
+        # torf/_utils.py), so the order this reports matches the order torf
+        # itself assigns the pack's files
+        return sorted(found, key=lambda path: str(path).casefold())
+    return [input_path] if input_path.is_file() else []
+
+
+def fingerprint_files(paths: Iterable[Path]) -> dict[str, dict[str, int]]:
+    """Size and mtime for each path, keyed by its string form."""
+    captured: dict[str, dict[str, int]] = {}
+    for path in paths:
+        try:
+            captured[str(path)] = MediaFingerprint.of(path).to_dict()
+        except OSError as error:
+            raise JobAssetError(f"Could not fingerprint '{path}': {error}") from error
+    return captured
+
+
+def fingerprints_match(stored: Any, input_path: Path) -> bool:
+    """Whether every file the torrent covers is unchanged since it was recorded.
+
+    The recorded set has to match exactly. A file added to or removed from a
+    pack changes the torrent just as surely as an edited one does, and a clone
+    made from a stale base uploads a torrent that does not describe its own
+    content.
+    """
+    if not isinstance(stored, dict) or not stored:
+        return False
+    if {str(path) for path in torrent_content_files(input_path)} != set(stored):
+        return False
+    for raw_path, raw_fingerprint in stored.items():
+        fingerprint = MediaFingerprint.from_dict(raw_fingerprint)
+        if fingerprint is None or not fingerprint.matches(Path(raw_path)):
+            return False
+    return True

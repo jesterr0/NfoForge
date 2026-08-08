@@ -125,6 +125,21 @@ def _json_safe_mapping(mapping: dict[str, Any], label: str) -> dict[str, Any]:
     return safe
 
 
+def _json_safe_value(value: Any, label: str) -> Any:
+    """Keep a free-form value only if it survives JSON.
+
+    The metadata providers hand back decoded JSON, so this normally passes
+    untouched. A plugin is free to put anything in these fields, though, and one
+    odd object should cost that field rather than the whole job.
+    """
+    try:
+        json.dumps(value)
+    except (TypeError, ValueError):
+        LOG.warning(LOG.LOG_SOURCE.BE, f"Job save dropped non-serializable {label}")
+        return None
+    return value
+
+
 # --------------------------------------------------------------------------
 # custom types
 # --------------------------------------------------------------------------
@@ -366,11 +381,11 @@ def _media_search_to_dict(context: ProcessingContext) -> dict[str, Any]:
         "media_type": _enum_name(payload.media_type),
         "imdb_id": payload.imdb_id,
         "tmdb_id": payload.tmdb_id,
-        "tmdb_data": payload.tmdb_data,
+        "tmdb_data": _json_safe_value(payload.tmdb_data, "tmdb_data"),
         "tvdb_id": payload.tvdb_id,
-        "tvdb_data": payload.tvdb_data,
+        "tvdb_data": _json_safe_value(payload.tvdb_data, "tvdb_data"),
         "anilist_id": payload.anilist_id,
-        "anilist_data": payload.anilist_data,
+        "anilist_data": _json_safe_value(payload.anilist_data, "anilist_data"),
         "mal_id": payload.mal_id,
         "title": payload.title,
         "year": payload.year,
