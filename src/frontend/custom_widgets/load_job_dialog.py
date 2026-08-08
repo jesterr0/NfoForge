@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 from html import escape
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtGui import QBrush, QPalette
@@ -120,11 +120,11 @@ class LoadJobDialog(QDialog):
         leaves the tree's current listing unchanged can skip the whole
         refresh rather than re-describing the same job from scratch.
         """
-        self._details_source: str = "tree"
-        """Which pane the details view and Open Folder currently describe:
-        `"tree"` or `"queue"`. Tracked explicitly rather than via focus --
-        `hasFocus()` is unreliable before the dialog is shown, and the tests
-        for this file construct the dialog without showing it. Set by
+        self._details_source: Literal["tree", "queue"] = "tree"
+        """Which pane the details view and Open Folder currently describe.
+        Tracked explicitly rather than via focus -- `hasFocus()` is
+        unreliable before the dialog is shown, and the tests for this file
+        construct the dialog without showing it. Set by
         `_on_tree_selection_changed` and `_on_queue_row_changed`, below.
         """
 
@@ -530,16 +530,6 @@ class LoadJobDialog(QDialog):
         except ValueError:
             return created_at
 
-    def _current_listing(self) -> JobListing | None:
-        # an empty tree has no current item, so emptiness needs no separate
-        # check here -- and must not be inferred from widget visibility, which
-        # is still false before the dialog is shown
-        item = self.job_tree.currentItem()
-        if item is None:
-            return None
-        listing = item.data(0, _LISTING_ROLE)
-        return listing if isinstance(listing, JobListing) else None
-
     def _details_listing(self) -> JobListing | None:
         """The listing the details pane and Open Folder currently describe.
 
@@ -554,8 +544,17 @@ class LoadJobDialog(QDialog):
             listing = item.data(_LISTING_ROLE)
             return listing if isinstance(listing, JobListing) else None
 
-        listing = self._current_listing()
-        if listing is None or listing not in self._selected_listings():
+        # an empty tree has no current item, so emptiness needs no separate
+        # check here -- and must not be inferred from widget visibility, which
+        # is still false before the dialog is shown
+        item = self.job_tree.currentItem()
+        if item is None:
+            return None
+        listing = item.data(0, _LISTING_ROLE)
+        if (
+            not isinstance(listing, JobListing)
+            or listing not in self._selected_listings()
+        ):
             return None
         return listing
 
