@@ -101,6 +101,11 @@ def test_a_clean_job_collapses_and_a_problem_job_stays_open(
     )
     dialog._on_job_started(2, "Broken")
     dialog._on_tracker_status("Huno", "❌ Failed")
+    # The row is already open from `_on_job_started`, so asserting it is expanded
+    # after a failure proves nothing on its own. Collapse it first -- the way a
+    # user can mid-run -- and the assertion then pins the thing that matters:
+    # a failed job re-opens itself rather than staying hidden.
+    dialog.job_tree.topLevelItem(1).setExpanded(False)
     dialog._on_job_finished(
         2,
         QueuedJobOutcome(
