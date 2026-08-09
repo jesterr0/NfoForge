@@ -22,20 +22,20 @@
     a series one, so series uploads used the global series template. They now use the
     tracker's enforced series format.
   - ReelFliX's saved title override was being used and no longer is. LST's was already
-    ignored before this change, since LST was already a REQUIRED tracker, and is now
-    hidden from the settings page as well. Both stay in the config file rather than
+    ignored before this change, since LST already dictated its own title format, and is
+    now hidden from the settings page as well. Both stay in the config file rather than
     being deleted.
 - Jobs saved before this release upload the titles stored with them. Saved jobs are
   snapshots by design; re-run from the wizard to pick up the new format.
 
 ### Fixed
 
-- The series settings page let users edit and save title overrides for REQUIRED
-  trackers, including ones that ship no packaged series format at all. Those values
-  were never used. The page now locks every REQUIRED tracker: Aither and LST show
-  their enforced series format read-only, matching the movies page; the rest show a
-  locked, empty field, since they enforce no series format and the global series
-  format applies instead.
+- The series settings page let users edit and save title overrides for trackers that
+  dictate their own title format, including ones that ship no packaged series format
+  at all. Those values were never used. The page now locks every such tracker: Aither
+  and LST show their enforced series format read-only, matching the movies page; the
+  rest show a locked, empty field, since they enforce no series format and the global
+  series format applies instead.
 
 ## [1.1.0] - 2026-08-09
 
