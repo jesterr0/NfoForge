@@ -89,6 +89,8 @@
   can no longer delete saved work, and its size readout now reports only what it can
   actually reclaim. Run folders left at the root by earlier versions are still cleaned
   up, so no manual migration is needed.
+- Update dependencies:
+  - Platformdirs
 
 ### Fixed
 
