@@ -497,19 +497,31 @@ class SeriesManagementSettings(BaseSettings):
 
             for idx, tracker in enumerate(w["tracker_override_map"].keys()):
                 tfo = w["tracker_override_map"][tracker]
-                if (
-                    TRACKER_TITLE_FORMAT_POLICY[tracker]
-                    is TitleFormatPolicy.UNSUPPORTED
-                ):
-                    # No tracker enforces a specific *series* title format
-                    # today (unlike the movie side), so only the "doesn't
-                    # support an override at all" case is locked here.
+                policy = TRACKER_TITLE_FORMAT_POLICY[tracker]
+                if policy is not TitleFormatPolicy.FREE:
+                    # REQUIRED/UNSUPPORTED: always shows the packaged default,
+                    # disabled -- never the live (possibly stale) settings
+                    # value. An UNSUPPORTED tracker has no packaged entry, so
+                    # this yields the blank TitleOverridePayload() it had
+                    # before.
+                    default_override = (
+                        self.config.defaults.trackers.by_selection()[
+                            tracker
+                        ].tvr_title_overrides
+                        or {}
+                    ).get(fmt, TitleOverridePayload())
+                    reason = (
+                        f"{tracker} enforces its own title format and cannot "
+                        "be customized."
+                        if policy is TitleFormatPolicy.REQUIRED
+                        else f"{tracker} does not support a custom title format."
+                    )
                     tfo.set_locked(
-                        f"{tracker} does not support a custom title format.",
-                        override_enabled=False,
-                        token="",
-                        colon_replace=str(TitleOverridePayload().colon_replace),
-                        replace_map=None,
+                        reason,
+                        override_enabled=default_override.enabled,
+                        token=default_override.token,
+                        colon_replace=str(default_override.colon_replace),
+                        replace_map=default_override.replace_map,
                     )
                     if idx == 0:
                         self._update_tracker_override_example(fmt, tfo)
@@ -585,10 +597,11 @@ class SeriesManagementSettings(BaseSettings):
             )
 
             for tracker, tfo in w["tracker_override_map"].items():
-                if (
-                    TRACKER_TITLE_FORMAT_POLICY[tracker]
-                    is TitleFormatPolicy.UNSUPPORTED
-                ):
+                # REQUIRED/UNSUPPORTED widgets are locked to the packaged
+                # default, so there is nothing user-driven to persist. Any
+                # existing settings value is left untouched rather than
+                # overwritten.
+                if TRACKER_TITLE_FORMAT_POLICY[tracker] is not TitleFormatPolicy.FREE:
                     continue
                 existing = self.config.settings.trackers.by_selection()[
                     tracker

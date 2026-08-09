@@ -6,10 +6,15 @@ import pytest
 from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
+from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.multi_episode_style import MultiEpisodeStyle
+from src.enums.series import EpisodeFormat
+from src.enums.token_replacer import ColonReplace
+from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.series_management import (
     SeriesManagementSettings,
 )
+from src.payloads.trackers import TitleOverridePayload
 from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
@@ -135,4 +140,48 @@ def test_multi_episode_style_round_trips_through_reload(
     assert (
         MultiEpisodeStyle(widget.multi_episode_style_combo.currentData())
         == MultiEpisodeStyle.DUPLICATE
+    )
+
+
+def test_required_trackers_are_locked_on_the_series_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Aither is REQUIRED and enforces a series format, so its widget shows
+    the packaged value with every control disabled."""
+    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
+
+    packaged = manager.defaults.trackers.by_selection()[TrackerSelection.AITHER]
+    for fmt in SUPPORTED_TVR_FORMATS:
+        tfo = widget._format_widgets[fmt]["tracker_override_map"][
+            TrackerSelection.AITHER
+        ]
+        expected = (packaged.tvr_title_overrides or {})[fmt]
+        assert tfo.over_ride_format_title.text() == expected.token
+        assert not tfo.enabled_checkbox.isEnabled()
+        assert not tfo.over_ride_format_title.isEnabled()
+        assert not tfo.title_colon_replace.isEnabled()
+
+
+def test_required_tracker_series_overrides_are_not_persisted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale user value for a locked tracker stays in settings untouched:
+    the save path must skip REQUIRED trackers rather than writing the
+    widget's contents over them."""
+    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
+
+    live = manager.settings.trackers.by_selection()[TrackerSelection.AITHER]
+    stale = TitleOverridePayload(
+        enabled=True,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        token="{title_clean} (stale user value)",  # noqa: S106
+    )
+    live.tvr_title_overrides = dict(live.tvr_title_overrides or {})
+    live.tvr_title_overrides[EpisodeFormat.STANDARD] = stale
+
+    widget._save_settings()
+
+    assert (
+        live.tvr_title_overrides[EpisodeFormat.STANDARD].token
+        == "{title_clean} (stale user value)"  # noqa: S105
     )
