@@ -146,20 +146,24 @@ def test_multi_episode_style_round_trips_through_reload(
 def test_required_trackers_are_locked_on_the_series_page(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Aither is REQUIRED and enforces a series format, so its widget shows
-    the packaged value with every control disabled."""
+    """Aither and LST are REQUIRED and enforce a series format, so their
+    widgets show the packaged value with every control disabled, and the
+    reason shown to the user claims the enforced format."""
     widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
 
-    packaged = manager.defaults.trackers.by_selection()[TrackerSelection.AITHER]
-    for fmt in SUPPORTED_TVR_FORMATS:
-        tfo = widget._format_widgets[fmt]["tracker_override_map"][
-            TrackerSelection.AITHER
-        ]
-        expected = (packaged.tvr_title_overrides or {})[fmt]
-        assert tfo.over_ride_format_title.text() == expected.token
-        assert not tfo.enabled_checkbox.isEnabled()
-        assert not tfo.over_ride_format_title.isEnabled()
-        assert not tfo.title_colon_replace.isEnabled()
+    for tracker in (TrackerSelection.AITHER, TrackerSelection.LST):
+        packaged = manager.defaults.trackers.by_selection()[tracker]
+        for fmt in SUPPORTED_TVR_FORMATS:
+            tfo = widget._format_widgets[fmt]["tracker_override_map"][tracker]
+            expected = (packaged.tvr_title_overrides or {})[fmt]
+            assert tfo.over_ride_format_title.text() == expected.token
+            assert not tfo.enabled_checkbox.isEnabled()
+            assert not tfo.over_ride_format_title.isEnabled()
+            assert not tfo.title_colon_replace.isEnabled()
+
+            reason = tfo.over_ride_format_title.toolTip()
+            assert "enforces its own title format" in reason
+            assert str(tracker) in reason
 
 
 def test_required_tracker_with_no_packaged_entry_is_locked_but_not_misdescribed(
