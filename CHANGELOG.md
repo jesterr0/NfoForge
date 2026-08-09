@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- LST and ReelFliX now use the same enforced release title format as Aither. ReelFliX
+  previously had no enforced format; LST's was incorrect, using `{edition}` where it
+  should use `{cut}` and a flat audio token with no Atmos handling. Three consequences
+  for existing users:
+  - LST movie titles change. `{cut}` is a subset of `{edition}`, so marketing editions
+    (Remastered, Criterion, Special, Collectors, Deluxe, Limited, Ultimate, Uncensored)
+    no longer appear in the title.
+  - Series titles change on Aither and LST. Both trackers enforced a movie title but not
+    a series one, so series uploads used the global series template. They now use the
+    tracker's enforced series format.
+  - A custom title override saved for one of these trackers is no longer used or shown,
+    but is kept in the config file rather than deleted.
+- Jobs saved before this release upload the titles stored with them. Saved jobs are
+  snapshots by design; re-run from the wizard to pick up the new format.
+
+### Fixed
+
+- The series settings page let users edit and save title overrides for trackers that
+  enforce their own format. Those values were never used. The page now shows the
+  enforced format read-only, matching the movies page.
+
 ## [1.1.0] - 2026-08-09
 
 ### Added
