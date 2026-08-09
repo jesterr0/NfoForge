@@ -70,15 +70,16 @@ def _make_movies_management_settings(
     return widget, manager
 
 
-def test_reelflix_offered_and_ptp_shown_locked_in_movie_overrides(
+def test_reelflix_locked_and_ptp_shown_locked_in_movie_overrides(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ReelFliX is a FREE movie tracker and must be offered as a fully
-    editable title override target. PassThePopcorn supports movies but not
-    the override feature at all (UNSUPPORTED) -- it still gets a widget (for
-    UI consistency with locked/REQUIRED trackers) but disabled, not hidden
-    from the dropdown."""
-    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+    """ReelFliX now enforces its own movie title format (REQUIRED) and must
+    be offered as a locked title override target showing the packaged
+    default, not a fully editable one. PassThePopcorn supports movies but
+    not the override feature at all (UNSUPPORTED) -- it still gets a widget
+    (for UI consistency with locked/REQUIRED trackers) but disabled, not
+    hidden from the dropdown."""
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
 
     override_trackers = set(widget.tracker_override_map.keys())
     combo = widget.tracker_selection
@@ -86,9 +87,16 @@ def test_reelflix_offered_and_ptp_shown_locked_in_movie_overrides(
 
     assert TrackerSelection.REELFLIX in override_trackers
     assert TrackerSelection.REELFLIX in combo_trackers
-    assert widget.tracker_override_map[
+    reelflix_widget = widget.tracker_override_map[TrackerSelection.REELFLIX]
+    assert not reelflix_widget.enabled_checkbox.isEnabled()
+    assert not reelflix_widget.over_ride_format_title.isEnabled()
+    packaged_reelflix = manager.defaults.trackers.by_selection()[
         TrackerSelection.REELFLIX
-    ].enabled_checkbox.isEnabled()
+    ]
+    assert (
+        reelflix_widget.over_ride_format_title.text()
+        == packaged_reelflix.mvr_title_token_override
+    )
 
     assert TrackerSelection.PASS_THE_POPCORN in override_trackers
     assert TrackerSelection.PASS_THE_POPCORN in combo_trackers
