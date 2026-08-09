@@ -828,9 +828,10 @@ def test_default_config_round_trips_without_key_drift(
     - orphan keys: a key ships in the default that ``save`` never writes
       (e.g. a leftover from a removed feature) -- these must not exist.
     - missing keys: ``save`` writes a key the default omits. The only
-      legitimate case is the per-tracker ``tvr_title_overrides`` tables,
-      which are intentionally not shipped and are seeded on save; anything
-      else means the default is behind the model.
+      legitimate case is the per-tracker ``tvr_title_overrides`` tables.
+      Trackers that enforce a series title ship them (Aither, LST); the
+      rest are seeded on save. Anything else means the default is behind
+      the model.
     """
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
@@ -1396,3 +1397,29 @@ def test_duplicate_checker_is_written_on_save(
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
     assert plugin_settings["duplicate_checker"] == "example.dupechecker"
+
+
+def test_locked_tracker_keeps_its_stale_user_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ReelFliX moved from FREE to REQUIRED. A user who had customized its
+    title override keeps that value on disk: it is no longer read or shown,
+    but it is not destroyed, so it returns intact if the policy is ever
+    reversed."""
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    manager = ConfigManager("test", _paths(tmp_path))
+    manager.load_profile("test")
+
+    reelflix = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
+    reelflix.mvr_title_override_enabled = True
+    reelflix.mvr_title_token_override = "{title_clean} (user custom)"  # noqa: S105
+
+    manager.save()
+    manager.load_profile("test")
+
+    restored = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
+    assert restored.mvr_title_override_enabled is True
+    assert restored.mvr_title_token_override == "{title_clean} (user custom)"  # noqa: S105
