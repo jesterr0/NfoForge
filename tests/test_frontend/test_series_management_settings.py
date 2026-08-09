@@ -162,6 +162,34 @@ def test_required_trackers_are_locked_on_the_series_page(
         assert not tfo.title_colon_replace.isEnabled()
 
 
+def test_required_tracker_with_no_packaged_entry_is_locked_but_not_misdescribed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """HUNO is REQUIRED but ships no packaged `tvr_title_overrides`, so the
+    upload actually falls back to the global series template. The widget
+    must still be locked (the field is not user-editable), but the reason
+    shown to the user must not claim an enforced format that doesn't exist."""
+    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
+
+    packaged = manager.defaults.trackers.by_selection()[TrackerSelection.HUNO]
+    for fmt in SUPPORTED_TVR_FORMATS:
+        entry = (packaged.tvr_title_overrides or {})[fmt]
+        assert not entry.token
+        assert not entry.replace_map
+
+    for fmt in SUPPORTED_TVR_FORMATS:
+        tfo = widget._format_widgets[fmt]["tracker_override_map"][TrackerSelection.HUNO]
+        assert tfo.over_ride_format_title.text() == ""
+        assert not tfo.enabled_checkbox.isEnabled()
+        assert not tfo.over_ride_format_title.isEnabled()
+        assert not tfo.title_colon_replace.isEnabled()
+
+        reason = tfo.over_ride_format_title.toolTip()
+        assert "enforces its own title format" not in reason
+        assert "HUNO" in reason
+        assert "global series format" in reason
+
+
 def test_required_tracker_series_overrides_are_not_persisted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -503,19 +503,31 @@ class SeriesManagementSettings(BaseSettings):
                     # disabled -- never the live (possibly stale) settings
                     # value. An UNSUPPORTED tracker has no packaged entry, so
                     # this yields the blank TitleOverridePayload() it had
-                    # before.
+                    # before. A REQUIRED tracker can also have no packaged
+                    # entry for this format -- most REQUIRED trackers ship no
+                    # tvr_title_overrides at all -- in which case the upload
+                    # actually falls back to the global series template, so
+                    # the reason must not claim an enforced format either.
                     default_override = (
                         self.config.defaults.trackers.by_selection()[
                             tracker
                         ].tvr_title_overrides
                         or {}
                     ).get(fmt, TitleOverridePayload())
-                    reason = (
-                        f"{tracker} enforces its own title format and cannot "
-                        "be customized."
-                        if policy is TitleFormatPolicy.REQUIRED
-                        else f"{tracker} does not support a custom title format."
-                    )
+                    if policy is TitleFormatPolicy.REQUIRED:
+                        if default_override.token or default_override.replace_map:
+                            reason = (
+                                f"{tracker} enforces its own title format "
+                                "and cannot be customized."
+                            )
+                        else:
+                            reason = (
+                                f"{tracker} does not enforce a series title "
+                                "format; the global series format is used "
+                                "instead."
+                            )
+                    else:
+                        reason = f"{tracker} does not support a custom title format."
                     tfo.set_locked(
                         reason,
                         override_enabled=default_override.enabled,
