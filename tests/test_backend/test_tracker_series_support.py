@@ -11,7 +11,9 @@ import pytest
 from src.backend.process import ProcessBackEnd
 from src.backend.trackers.aither import AitherUploader
 from src.backend.trackers.beyondhd import BHDUploader
+from src.backend.trackers.blutopia import BlutopiaUploader
 from src.backend.trackers.darkpeers import DarkPeersUploader
+from src.backend.trackers.fearnopeer import FearNoPeerUploader
 from src.backend.trackers.huno import HunoUploader
 from src.backend.trackers.lst import LSTUploader
 from src.backend.trackers.media_support import (
@@ -24,10 +26,13 @@ from src.backend.trackers.media_support import (
 from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.onlyencodes import OnlyEncodesUploader
 from src.backend.trackers.reelflix import ReelFlixUploader
+from src.backend.trackers.seedpool import SeedPoolUploader
 from src.backend.trackers.shareisland import ShareIslandUploader
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.uploadcx import UploadCXUploader
+from src.backend.trackers.utp import UTPUploader
+from src.backend.trackers.yuscene import YuSceneUploader
 from src.backend.utils.anime import is_anime_release
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
@@ -62,6 +67,12 @@ from src.payloads.series import SeriesReleaseInfo, build_series_release_info
         (TrackerSelection.SHARE_ISLAND, True),
         (TrackerSelection.UPLOAD_CX, True),
         (TrackerSelection.ONLY_ENCODES, True),
+        (TrackerSelection.HDB, True),
+        (TrackerSelection.BLUTOPIA, True),
+        (TrackerSelection.SEEDPOOL, True),
+        (TrackerSelection.UTOPIA, True),
+        (TrackerSelection.YU_SCENE, True),
+        (TrackerSelection.FEAR_NO_PEER, True),
         (TrackerSelection.PASS_THE_POPCORN, False),
         (TrackerSelection.REELFLIX, False),
     ],
@@ -572,6 +583,11 @@ def test_unit3d_movie_encode_without_web_marker_still_resolves_encode(
         ShareIslandUploader,
         UploadCXUploader,
         OnlyEncodesUploader,
+        BlutopiaUploader,
+        SeedPoolUploader,
+        UTPUploader,
+        YuSceneUploader,
+        FearNoPeerUploader,
     ],
 )
 def test_supported_unit3d_trackers_resolve_series_tv_category(

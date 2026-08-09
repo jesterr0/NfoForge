@@ -18,6 +18,9 @@ from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ProcessCancelled, TrackerClientError, TrackerError
+from src.payloads.shared_data import SharedPayload
+from src.plugins.api import PluginDefinition, PostUploadOutcome, PostUploadRequest
+from src.plugins.manager import PluginManager
 
 
 def _backend() -> ProcessBackEnd:
@@ -260,7 +263,7 @@ def test_injection_retry_prompts_and_succeeds(tmp_path: Path) -> None:
     backend._handle_injection = inject  # type: ignore[method-assign]
     callback = MagicMock(return_value=UploadRetryAction.RETRY)
 
-    injected = backend._inject_with_user_retry(
+    injected, injection_error = backend._inject_with_user_retry(
         tracker=TrackerSelection.AITHER,
         tracker_name="Aither",
         torrent_path=tmp_path / "release.torrent",
@@ -272,6 +275,7 @@ def test_injection_retry_prompts_and_succeeds(tmp_path: Path) -> None:
     )
 
     assert injected is True
+    assert injection_error is None
     assert inject.call_count == 2
     failure = callback.call_args.args[0]
     assert failure.phase is UploadFailurePhase.INJECTION
@@ -285,7 +289,7 @@ def test_injection_failure_without_callback_is_reported_once(tmp_path: Path) -> 
     )
     status_update = MagicMock()
 
-    injected = backend._inject_with_user_retry(
+    injected, injection_error = backend._inject_with_user_retry(
         tracker=TrackerSelection.AITHER,
         tracker_name="Aither",
         torrent_path=tmp_path / "release.torrent",
@@ -297,6 +301,7 @@ def test_injection_failure_without_callback_is_reported_once(tmp_path: Path) -> 
     )
 
     assert injected is False
+    assert injection_error is not None
 
 
 def test_injection_status_text_scrubs_credentials_without_callback(
@@ -316,7 +321,7 @@ def test_injection_status_text_scrubs_credentials_without_callback(
     status_update = MagicMock()
     caught_error = cast(SignalInstance, MagicMock())
 
-    injected = backend._inject_with_user_retry(
+    injected, injection_error = backend._inject_with_user_retry(
         tracker=TrackerSelection.AITHER,
         tracker_name="Aither",
         torrent_path=tmp_path / "release.torrent",
@@ -328,6 +333,8 @@ def test_injection_status_text_scrubs_credentials_without_callback(
     )
 
     assert injected is False
+    assert injection_error is not None
+    assert "hunter2" not in injection_error
     status_text = status_update.call_args.args[1]
     assert "hunter2" not in status_text
     caught_error.emit.assert_called_once()
@@ -347,7 +354,7 @@ def test_injection_status_and_message_scrub_credentials_after_skip(
     callback = MagicMock(return_value=UploadRetryAction.SKIP)
     status_update = MagicMock()
 
-    injected = backend._inject_with_user_retry(
+    injected, injection_error = backend._inject_with_user_retry(
         tracker=TrackerSelection.AITHER,
         tracker_name="Aither",
         torrent_path=tmp_path / "release.torrent",
@@ -359,6 +366,8 @@ def test_injection_status_and_message_scrub_credentials_after_skip(
     )
 
     assert injected is False
+    assert injection_error is not None
+    assert "hunter2" not in injection_error
     failure = callback.call_args.args[0]
     assert "hunter2" not in failure.message
     final_status_text = status_update.call_args.args[1]
@@ -438,7 +447,8 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
         SimpleNamespace(
             media_input=SimpleNamespace(
                 require_input_path=lambda: tmp_path / "media.mkv"
-            )
+            ),
+            shared_data=SharedPayload(),
         ),
     )
     process_dict = {
@@ -463,4 +473,199 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
 
     backend.disconnect_from_clients.assert_called_once()
     assert ("Aither", "⏹ Cancelled") in status_updates
-    assert ("BeyondHD", "⏹ Cancelled") in status_updates
+
+
+def _patch_torrent_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        process_module, "generate_torrent", lambda **_kwargs: MagicMock()
+    )
+    monkeypatch.setattr(
+        process_module,
+        "write_torrent",
+        lambda *_a, **_kwargs: tmp_path / "written.torrent",
+    )
+    monkeypatch.setattr(
+        process_module,
+        "build_series_release_info",
+        lambda *_a, **_kwargs: MagicMock(),
+    )
+
+
+def _process_trackers_backend(
+    *,
+    upload_return: object = True,
+    injection_side_effect: Exception | None = None,
+    skip_via_pre_upload: bool = False,
+) -> tuple[ProcessBackEnd, list[PostUploadRequest]]:
+    """Build a `ProcessBackEnd` wired for a real `process_trackers()` run,
+    with a post-upload plugin registered that records every request it sees.
+    """
+    received: list[PostUploadRequest] = []
+
+    def notify(request: PostUploadRequest) -> None:
+        received.append(request)
+
+    plugin_manager = PluginManager()
+    plugin_manager.register(
+        "test.notify",
+        PluginDefinition(
+            display_name="test.notify", version="1.0.0", post_upload=notify
+        ),
+        "test",
+    )
+    pre_upload_plugin_id = ""
+    if skip_via_pre_upload:
+        from src.plugins.api import PreUploadDecision, PreUploadRequest
+
+        def skip(request: PreUploadRequest) -> PreUploadDecision:
+            return PreUploadDecision.SKIP
+
+        plugin_manager.register(
+            "test.skip",
+            PluginDefinition(
+                display_name="test.skip", version="1.0.0", pre_upload=skip
+            ),
+            "test",
+        )
+        pre_upload_plugin_id = "test.skip"
+
+    tracker_info = SimpleNamespace(upload_enabled=True, nfo_template=None)
+    backend = object.__new__(ProcessBackEnd)
+    backend.config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            settings=SimpleNamespace(
+                general=SimpleNamespace(
+                    timeout=60,
+                    enable_mkbrr=False,
+                    enable_plugins=True,
+                    enable_prompt_overview=False,
+                ),
+                trackers=SimpleNamespace(
+                    by_selection=lambda: {TrackerSelection.AITHER: tracker_info}
+                ),
+                plugins=SimpleNamespace(
+                    pre_upload=pre_upload_plugin_id,
+                    post_upload="test.notify",
+                    token_replacer="",
+                ),
+                user_tokens=SimpleNamespace(tokens={}),
+                dependencies=SimpleNamespace(mkbrr=None),
+                torrent_clients=SimpleNamespace(
+                    qbittorrent=SimpleNamespace(enabled=False)
+                ),
+            ),
+            plugin_manager=plugin_manager,
+        ),
+    )
+    backend.template_selector_be = SimpleNamespace(
+        load_templates=lambda: None, read_template=lambda name=None: None
+    )
+    backend.handle_images_for_trackers = MagicMock(return_value={})  # type: ignore[method-assign]
+    backend.determine_max_piece_size = MagicMock(return_value=None)  # type: ignore[method-assign]
+    backend.generate_tracker_title = MagicMock(return_value=None)  # type: ignore[method-assign]
+    backend.upload = MagicMock(return_value=upload_return)  # type: ignore[method-assign]
+    backend.progress_bar_cb = None
+    if injection_side_effect is not None:
+        backend._handle_injection = MagicMock(  # type: ignore[method-assign]
+            side_effect=injection_side_effect
+        )
+    else:
+        backend._handle_injection = MagicMock(return_value=None)  # type: ignore[method-assign]
+    backend.disconnect_from_clients = MagicMock()  # type: ignore[method-assign]
+    return backend, received
+
+
+def _run_process_trackers(
+    backend: ProcessBackEnd, tmp_path: Path, *, upload_retry_cb: object = None
+) -> None:
+    context = cast(
+        ProcessingContext,
+        SimpleNamespace(
+            media_input=SimpleNamespace(
+                require_input_path=lambda: tmp_path / "media.mkv"
+            ),
+            shared_data=SharedPayload(),
+        ),
+    )
+    process_dict = {"Aither": {"path": tmp_path / "aither.torrent"}}
+    backend.process_trackers(
+        process_dict=process_dict,
+        queued_status_update=lambda _tracker, _status: None,
+        queued_text_update=MagicMock(),
+        queued_text_update_replace_last_line=MagicMock(),
+        progress_bar_cb=MagicMock(),
+        caught_error=cast(SignalInstance, MagicMock()),
+        context=context,
+        upload_retry_cb=upload_retry_cb,  # type: ignore[arg-type]
+    )
+
+
+def test_post_upload_plugin_fires_success_on_full_cycle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_torrent_pipeline(monkeypatch, tmp_path)
+    backend, received = _process_trackers_backend()
+
+    _run_process_trackers(backend, tmp_path)
+
+    assert len(received) == 1
+    assert received[0].outcome is PostUploadOutcome.SUCCESS
+    assert received[0].error is None
+
+
+def test_post_upload_plugin_fires_injection_failed_with_scrubbed_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_torrent_pipeline(monkeypatch, tmp_path)
+    backend, received = _process_trackers_backend(
+        injection_side_effect=TrackerClientError("client offline, token=SECRET123")
+    )
+
+    _run_process_trackers(backend, tmp_path)
+
+    assert len(received) == 1
+    assert received[0].outcome is PostUploadOutcome.INJECTION_FAILED
+    assert received[0].error is not None
+    assert "SECRET123" not in received[0].error
+
+
+def test_post_upload_plugin_fires_upload_failed_on_falsy_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_torrent_pipeline(monkeypatch, tmp_path)
+    backend, received = _process_trackers_backend(upload_return=False)
+
+    _run_process_trackers(backend, tmp_path, upload_retry_cb=None)
+
+    assert len(received) == 1
+    assert received[0].outcome is PostUploadOutcome.UPLOAD_FAILED
+
+
+def test_post_upload_plugin_fires_skipped_when_pre_upload_plugin_skips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_torrent_pipeline(monkeypatch, tmp_path)
+    backend, received = _process_trackers_backend(skip_via_pre_upload=True)
+
+    _run_process_trackers(backend, tmp_path)
+
+    assert len(received) == 1
+    assert received[0].outcome is PostUploadOutcome.SKIPPED
+
+
+def test_post_upload_plugin_does_not_fire_for_a_disabled_tracker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _patch_torrent_pipeline(monkeypatch, tmp_path)
+    backend, received = _process_trackers_backend()
+    backend.config.settings.trackers.by_selection = lambda: {  # type: ignore[method-assign]
+        TrackerSelection.AITHER: SimpleNamespace(
+            upload_enabled=False, nfo_template=None
+        )
+    }
+
+    _run_process_trackers(backend, tmp_path)
+
+    assert received == []

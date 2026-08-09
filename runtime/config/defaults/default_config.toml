@@ -163,7 +163,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -380,6 +380,139 @@ internal = false
 personal_release = false
 image_width = 500
 
+[tracker.hdb]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "HDBits"
+comments = ""
+nfo_template = ""
+max_piece_size = 16777216
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+username = ""
+passkey = ""
+session_cookie = ""
+internal = false
+image_width = 350
+
+[tracker.blutopia]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "BLU"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+opt_in_to_mod_queue = false
+image_width = 500
+
+[tracker.seedpool]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "SP"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.utp]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "UTP"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.yuscene]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "YUS"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
+[tracker.fearnopeer]
+upload_enabled = true
+announce_url = ""
+enabled = false
+source = "FNP"
+comments = ""
+nfo_template = ""
+max_piece_size = 0
+url_type = 1
+column_s = 1
+column_space = 1
+row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
+api_key = ""
+anonymous = false
+internal = false
+personal_release = false
+image_width = 500
+
 [torrent_client]
 
 [torrent_client.qbittorrent]
@@ -550,6 +683,20 @@ api_key = ""
 enabled = false
 base_url = "https://imgbox.com/"
 
+[image_hosts.only_image]
+enabled = false
+base_url = "https://onlyimage.org/"
+api_key = ""
+
+[image_hosts.pixhost]
+enabled = false
+base_url = "https://pixhost.to/"
+
+[image_hosts.lensdump]
+enabled = false
+base_url = "https://lensdump.com/"
+api_key = ""
+
 [urls]
 alt = ""
 columns = 1
@@ -564,7 +711,10 @@ urls_manual = 0
 wizard_page = ""
 token_replacer = ""
 pre_upload = ""
+post_upload = ""
 metadata_transformer = ""
+image_host_uploader = ""
+duplicate_checker = ""
 
 [template_settings]
 block_syntax_color = "#A4036F"

@@ -3,6 +3,7 @@ import platform
 
 import flatbencode as bencode
 from niquests.structures import CaseInsensitiveDict
+import regex
 
 from src.enums.tracker_selection import TrackerSelection
 from src.logger.nfo_forge_logger import LOG
@@ -11,6 +12,31 @@ from src.version import __version__, program_name
 TRACKER_HEADERS = {
     "User-Agent": f"{program_name} v{__version__} ({platform.system()} {platform.release()})"
 }
+
+# Shared disc-detection heuristic used by every tracker that infers a
+# release's disc/encode/remux type from its filename (BeyondHD, the UNIT3D
+# family, PassThePopcorn, HDBits). Compiled case-insensitively: its literal
+# tokens (AVC, HEVC, BD, Blu, ISO, COMPLETE, ...) are upper/mixed-case, but
+# every caller matches it against an already-lowercased title -- without
+# IGNORECASE the positive-match branches can never fire, so a real disc
+# release always fell through to whatever check came next (silently
+# misclassified as an encode, or -- for the UNIT3D trackers -- rejected
+# outright with "Failed to determine 'Type ID'"). One shared, correctly
+# case-insensitive pattern instead of four independently-drifting copies.
+DISC_TITLE_REGEX = regex.compile(
+    (
+        r"^(?!.*\b((?<!HD[._ -]|HD)DVD|BDRip|720p|MKV|XviD"
+        r"|WMV|d3g|(BD)?REMUX|^(?=.*1080p)(?=.*HEVC)|[xh][-_. ]"
+        r"?26[45]|German.*[DM]L|((?<=\d{4}).*German.*([DM]L)?)"
+        r"(?=.*\b(AVC|HEVC|VC[-_. ]?1|MVC|MPEG[-_. ]?2)\b))\b)(((?=.*\b(Blu[-_. ]?ray"
+        r"|BD|HD[-_. ]?DVD)\b)(?=.*\b(AVC|HEVC|VC[-_. ]?1|MVC|"
+        r"MPEG[-_. ]?2|BDMV|ISO)\b))|^((?=.*\b(((?=.*\b((.*_)?COMPLETE.*"
+        r"|Dis[ck])\b)(?=.*(Blu[-_. ]?ray|HD[-_. ]?DVD)))|3D[-_. ]?BD|"
+        r"BR[-_. ]?DISK|Full[-_. ]?Blu[-_. ]?ray|^((?=.*((BD|UHD)[-_. ]?(25"
+        r"|50|66|100|ISO)))))))).*"
+    ),
+    regex.IGNORECASE,
+)
 
 
 def tracker_string_replace_map() -> dict[str, str]:
@@ -71,6 +97,12 @@ _TRACKER_MAP = {
     TrackerSelection.SHARE_ISLAND: _basic_bbcode_formatting,
     TrackerSelection.UPLOAD_CX: _basic_bbcode_formatting,
     TrackerSelection.ONLY_ENCODES: _basic_bbcode_formatting,
+    TrackerSelection.HDB: _basic_bbcode_formatting,
+    TrackerSelection.BLUTOPIA: _basic_bbcode_formatting,
+    TrackerSelection.SEEDPOOL: _basic_bbcode_formatting,
+    TrackerSelection.UTOPIA: _basic_bbcode_formatting,
+    TrackerSelection.YU_SCENE: _basic_bbcode_formatting,
+    TrackerSelection.FEAR_NO_PEER: _basic_bbcode_formatting,
 }
 
 

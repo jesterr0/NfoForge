@@ -25,17 +25,23 @@ from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.custom_widgets.tracker_management import (
     AitherTrackerEdit,
     BHDTrackerEdit,
+    BlutopiaEdit,
     DarkPeersEdit,
+    FearNoPeerEdit,
+    HDBTrackerEdit,
     HunoTrackerEdit,
     LSTTrackerEdit,
     MTVTrackerEdit,
     OnlyEncodesEdit,
     PTPTrackerEdit,
     RFTrackerEdit,
+    SeedPoolEdit,
     ShareIslandEdit,
     TLTrackerEdit,
     TrackerEditBase,
     UploadCXEdit,
+    UTPEdit,
+    YuSceneEdit,
 )
 
 TrackerEditorType = type[TrackerEditBase]
@@ -53,6 +59,12 @@ TRACKER_EDITOR_TYPES: Mapping[TrackerSelection, TrackerEditorType] = {
     TrackerSelection.SHARE_ISLAND: ShareIslandEdit,
     TrackerSelection.UPLOAD_CX: UploadCXEdit,
     TrackerSelection.ONLY_ENCODES: OnlyEncodesEdit,
+    TrackerSelection.HDB: HDBTrackerEdit,
+    TrackerSelection.BLUTOPIA: BlutopiaEdit,
+    TrackerSelection.SEEDPOOL: SeedPoolEdit,
+    TrackerSelection.UTOPIA: UTPEdit,
+    TrackerSelection.YU_SCENE: YuSceneEdit,
+    TrackerSelection.FEAR_NO_PEER: FearNoPeerEdit,
 }
 
 

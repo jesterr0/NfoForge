@@ -47,6 +47,12 @@ tracker-specific series paths are still limited; see
 - ShareIsland
 - OnlyEncodes
 - UploadCX
+- HDBits
+- Blutopia
+- SeedPool
+- UTP
+- Yu-Scene
+- FearNoPeer
 
 <!-- prettier-ignore -->
 !!! info
@@ -63,6 +69,9 @@ tracker-specific series paths are still limited; see
 - Chevereto v3/v4
 - ImageBox
 - ImageBB
+- OnlyImage
+- Pixhost
+- Lensdump
 
 ## Requirements
 

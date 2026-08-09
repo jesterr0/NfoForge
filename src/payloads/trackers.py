@@ -189,3 +189,58 @@ class OnlyEncodesInfo(TrackerInfo):
     internal: bool = False
     personal_release: bool = False
     image_width: int = 500
+
+
+@dataclass(slots=True)
+class HDBInfo(TrackerInfo):
+    username: str | None = None
+    passkey: str | None = None
+    session_cookie: str | None = None
+    internal: bool = False
+    image_width: int = 350
+
+
+@dataclass(slots=True)
+class BlutopiaInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    opt_in_to_mod_queue: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class SeedPoolInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class UTPInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class YuSceneInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500
+
+
+@dataclass(slots=True)
+class FearNoPeerInfo(TrackerInfo):
+    api_key: str | None = None
+    anonymous: bool = False
+    internal: bool = False
+    personal_release: bool = False
+    image_width: int = 500

@@ -29,21 +29,30 @@ from src.payloads.image_hosts import (
     ImageBBPayload,
     ImageBoxPayload,
     ImagePayloadBase,
+    LensdumpPayload,
+    OnlyImagePayload,
+    PixhostPayload,
 )
 from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
+    BlutopiaInfo,
     DarkPeersInfo,
+    FearNoPeerInfo,
+    HDBInfo,
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
     OnlyEncodesInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
+    SeedPoolInfo,
     ShareIslandInfo,
     TorrentLeechInfo,
     TrackerInfo,
     UploadCXInfo,
+    UTPInfo,
+    YuSceneInfo,
 )
 from src.payloads.watch_folder import WatchFolder
 
@@ -122,6 +131,12 @@ class TrackerSettings:
     share_island: ShareIslandInfo
     upload_cx: UploadCXInfo
     only_encodes: OnlyEncodesInfo
+    hdb: HDBInfo
+    blutopia: BlutopiaInfo
+    seedpool: SeedPoolInfo
+    utp: UTPInfo
+    yuscene: YuSceneInfo
+    fearnopeer: FearNoPeerInfo
 
     def by_selection(self) -> dict[TrackerSelection, TrackerInfo]:
         return {
@@ -137,6 +152,12 @@ class TrackerSettings:
             TrackerSelection.SHARE_ISLAND: self.share_island,
             TrackerSelection.UPLOAD_CX: self.upload_cx,
             TrackerSelection.ONLY_ENCODES: self.only_encodes,
+            TrackerSelection.HDB: self.hdb,
+            TrackerSelection.BLUTOPIA: self.blutopia,
+            TrackerSelection.SEEDPOOL: self.seedpool,
+            TrackerSelection.UTOPIA: self.utp,
+            TrackerSelection.YU_SCENE: self.yuscene,
+            TrackerSelection.FEAR_NO_PEER: self.fearnopeer,
         }
 
 
@@ -330,6 +351,9 @@ class ImageHostSettings:
     chevereto_v4: CheveretoV4Payload
     image_bb: ImageBBPayload
     image_box: ImageBoxPayload
+    only_image: OnlyImagePayload
+    pixhost: PixhostPayload
+    lensdump: LensdumpPayload
 
     def by_selection(self) -> dict[ImageHost, ImagePayloadBase]:
         return {
@@ -337,6 +361,9 @@ class ImageHostSettings:
             ImageHost.CHEVERETO_V4: self.chevereto_v4,
             ImageHost.IMAGE_BB: self.image_bb,
             ImageHost.IMAGE_BOX: self.image_box,
+            ImageHost.ONLY_IMAGE: self.only_image,
+            ImageHost.PIXHOST: self.pixhost,
+            ImageHost.LENSDUMP: self.lensdump,
         }
 
 
@@ -357,7 +384,10 @@ class PluginSettings:
     wizard_page: str | None
     token_replacer: str | None
     pre_upload: str | None
+    post_upload: str | None
     metadata_transformer: str | None
+    image_host_uploader: str | None
+    duplicate_checker: str | None
 
 
 @dataclass(slots=True)

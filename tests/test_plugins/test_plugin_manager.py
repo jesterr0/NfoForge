@@ -1,19 +1,35 @@
 from __future__ import annotations
 
+from pathlib import Path
 import sys
 import threading
 import time
 
 import pytest
 
-from src.exceptions import PluginExecutionError
+from src.backend.image_host_uploading.base_image_host import (
+    BaseImageHostUploader,
+    ImageUploadRequest,
+)
+from src.enums.tracker_selection import TrackerSelection
+from src.exceptions import PluginError, PluginExecutionError
+from src.packages.custom_types import ImageUploadData, RenameNormalization
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.tracker_search_result import TrackerSearchResult
 from src.plugins.api import (
+    CustomEditionContribution,
+    DuplicateChecker,
+    DuplicateCheckRequest,
     MetadataInputContext,
     MetadataTransformContext,
     MetadataTransformer,
     MetadataTransformRequest,
     PluginDefinition,
+    PostUploadOutcome,
+    PostUploadProcessor,
+    PostUploadRequest,
+    UploadReporter,
 )
 from src.plugins.manager import PluginManager
 
@@ -151,3 +167,398 @@ def test_a_transformer_calling_sys_exit_surfaces_as_an_error() -> None:
 
     with pytest.raises(PluginExecutionError, match="plugin requested exit"):
         manager.transform_metadata("test.exits", _transform_request(timeout=2))
+
+
+def _post_upload_definition(
+    *, plugin_id: str, post_upload: PostUploadProcessor
+) -> PluginDefinition:
+    return PluginDefinition(
+        display_name=plugin_id,
+        version="1.0.0",
+        post_upload=post_upload,
+    )
+
+
+def _post_upload_request(*, outcome: PostUploadOutcome) -> PostUploadRequest:
+    return PostUploadRequest(
+        config=None,  # type: ignore[arg-type]
+        context=None,  # type: ignore[arg-type]
+        tracker=TrackerSelection.AITHER,
+        torrent_file=Path("release.torrent"),
+        reporter=UploadReporter(
+            append_text=lambda _text: None,
+            replace_last_line=lambda _text: None,
+            set_progress=lambda _value: None,
+        ),
+        outcome=outcome,
+    )
+
+
+def test_run_post_upload_calls_the_registered_processor() -> None:
+    manager = PluginManager()
+    received: list[PostUploadRequest] = []
+
+    def notify(request: PostUploadRequest) -> None:
+        received.append(request)
+
+    manager.register(
+        "test.notify",
+        _post_upload_definition(plugin_id="test.notify", post_upload=notify),
+        "test",
+    )
+
+    manager.run_post_upload(
+        "test.notify", _post_upload_request(outcome=PostUploadOutcome.SUCCESS)
+    )
+
+    assert len(received) == 1
+    assert received[0].outcome is PostUploadOutcome.SUCCESS
+
+
+def test_run_post_upload_wraps_a_raising_processor_in_plugin_execution_error() -> None:
+    manager = PluginManager()
+
+    def explodes(request: PostUploadRequest) -> None:
+        raise RuntimeError("notifier unreachable")
+
+    manager.register(
+        "test.explode",
+        _post_upload_definition(plugin_id="test.explode", post_upload=explodes),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="notifier unreachable"):
+        manager.run_post_upload(
+            "test.explode",
+            _post_upload_request(outcome=PostUploadOutcome.UPLOAD_FAILED),
+        )
+
+
+class _StubImageHostUploader(BaseImageHostUploader):
+    async def upload(self, request: ImageUploadRequest) -> dict[int, ImageUploadData]:
+        return {}
+
+
+def test_registering_an_image_host_uploader_only_plugin_succeeds() -> None:
+    manager = PluginManager()
+    uploader = _StubImageHostUploader()
+
+    record = manager.register(
+        "test.imghost",
+        PluginDefinition(
+            display_name="test.imghost",
+            version="1.0.0",
+            image_host_uploader=uploader,
+        ),
+        "test",
+    )
+
+    assert record.definition.image_host_uploader is uploader
+    assert manager.definitions_with("image_host_uploader") == (record,)
+
+
+def test_a_non_base_image_host_uploader_value_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="BaseImageHostUploader"):
+        manager.register(
+            "test.badimghost",
+            PluginDefinition(
+                display_name="test.badimghost",
+                version="1.0.0",
+                image_host_uploader="not an uploader",  # type: ignore[arg-type]
+            ),
+            "test",
+        )
+
+
+def _dupe_definition(
+    *, plugin_id: str, duplicate_checker: DuplicateChecker
+) -> PluginDefinition:
+    return PluginDefinition(
+        display_name=plugin_id,
+        version="1.0.0",
+        duplicate_checker=duplicate_checker,
+    )
+
+
+def _dupe_request(*, timeout: int = 5) -> DuplicateCheckRequest:
+    return DuplicateCheckRequest(
+        config=None,  # type: ignore[arg-type]
+        tracker=TrackerSelection.AITHER,
+        media_input=MediaInputPayload(),
+        media_search=MediaSearchPayload(title="TMDb title"),
+        timeout=timeout,
+    )
+
+
+def test_run_duplicate_checker_returns_the_processors_results() -> None:
+    manager = PluginManager()
+    hit = TrackerSearchResult(name="Existing.Release-GROUP")
+
+    def finds_one(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        return [hit]
+
+    manager.register(
+        "test.dupechecker",
+        _dupe_definition(plugin_id="test.dupechecker", duplicate_checker=finds_one),
+        "test",
+    )
+
+    result = manager.run_duplicate_checker("test.dupechecker", _dupe_request())
+
+    assert list(result) == [hit]
+
+
+def test_run_duplicate_checker_wraps_a_raising_processor_in_plugin_execution_error() -> (
+    None
+):
+    manager = PluginManager()
+
+    def explodes(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        raise RuntimeError("search backend unreachable")
+
+    manager.register(
+        "test.explode",
+        _dupe_definition(plugin_id="test.explode", duplicate_checker=explodes),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="search backend unreachable"):
+        manager.run_duplicate_checker("test.explode", _dupe_request())
+
+
+def test_run_duplicate_checker_rejects_a_non_sequence_return() -> None:
+    manager = PluginManager()
+
+    def returns_wrong_type(request: DuplicateCheckRequest) -> object:
+        return {"not": "a sequence"}
+
+    manager.register(
+        "test.badreturn",
+        _dupe_definition(
+            plugin_id="test.badreturn",
+            duplicate_checker=returns_wrong_type,  # type: ignore[arg-type]
+        ),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="sequence"):
+        manager.run_duplicate_checker("test.badreturn", _dupe_request())
+
+
+def test_a_blocking_duplicate_checker_is_abandoned_at_the_timeout() -> None:
+    manager = PluginManager()
+
+    def hangs(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        time.sleep(30)
+        raise AssertionError("should never be reached")
+
+    manager.register(
+        "test.hang.dupe",
+        _dupe_definition(plugin_id="test.hang.dupe", duplicate_checker=hangs),
+        "test",
+    )
+
+    started = time.monotonic()
+    with pytest.raises(PluginExecutionError, match="timed out"):
+        manager.run_duplicate_checker("test.hang.dupe", _dupe_request(timeout=1))
+
+    assert time.monotonic() - started < 10
+
+
+def test_the_abandoned_duplicate_checker_thread_does_not_block_interpreter_exit() -> (
+    None
+):
+    """Same daemon-thread guarantee as the metadata-transformer timeout path --
+    see `PluginManager._run_transformer_with_timeout`'s docstring."""
+    manager = PluginManager()
+
+    def hangs(request: DuplicateCheckRequest) -> list[TrackerSearchResult]:
+        time.sleep(30)
+        raise AssertionError("should never be reached")
+
+    manager.register(
+        "test.hang.dupe.daemon",
+        _dupe_definition(plugin_id="test.hang.dupe.daemon", duplicate_checker=hangs),
+        "test",
+    )
+
+    with pytest.raises(PluginExecutionError, match="timed out"):
+        manager.run_duplicate_checker("test.hang.dupe.daemon", _dupe_request(timeout=1))
+
+    hung_threads = [
+        thread
+        for thread in threading.enumerate()
+        if "test.hang.dupe.daemon" in thread.name
+    ]
+    assert hung_threads
+    assert all(thread.daemon for thread in hung_threads)
+
+
+def _fan_edit_contribution(*, is_cut: bool = False) -> CustomEditionContribution:
+    return CustomEditionContribution(
+        entry=RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),
+        is_cut=is_cut,
+    )
+
+
+def test_registering_a_custom_editions_only_plugin_succeeds() -> None:
+    manager = PluginManager()
+    contribution = _fan_edit_contribution(is_cut=True)
+
+    record = manager.register(
+        "test.customedition",
+        PluginDefinition(
+            display_name="test.customedition",
+            version="1.0.0",
+            custom_editions=(contribution,),
+        ),
+        "test",
+    )
+
+    assert record.definition.custom_editions == (contribution,)
+    assert manager.custom_edition_info(enabled=True) == (contribution.entry,)
+    assert manager.custom_cut_names(enabled=True) == frozenset({"Fan Edit"})
+
+
+def test_custom_editions_from_multiple_plugins_are_merged() -> None:
+    manager = PluginManager()
+    manager.register(
+        "test.one",
+        PluginDefinition(
+            display_name="test.one",
+            version="1.0.0",
+            custom_editions=(_fan_edit_contribution(),),
+        ),
+        "test",
+    )
+    other = CustomEditionContribution(
+        entry=RenameNormalization("Studio Cut", (r"studio[\s\.\-_]*cut",)),
+        is_cut=True,
+    )
+    manager.register(
+        "test.two",
+        PluginDefinition(
+            display_name="test.two", version="1.0.0", custom_editions=(other,)
+        ),
+        "test",
+    )
+
+    names = {item.normalized for item in manager.custom_edition_info(enabled=True)}
+    assert names == {"Fan Edit", "Studio Cut"}
+    assert manager.custom_cut_names(enabled=True) == frozenset({"Studio Cut"})
+
+
+def test_custom_edition_info_and_cut_names_are_empty_when_disabled() -> None:
+    manager = PluginManager()
+    manager.register(
+        "test.customedition",
+        PluginDefinition(
+            display_name="test.customedition",
+            version="1.0.0",
+            custom_editions=(_fan_edit_contribution(is_cut=True),),
+        ),
+        "test",
+    )
+
+    assert manager.custom_edition_info(enabled=False) == ()
+    assert manager.custom_cut_names(enabled=False) == frozenset()
+
+
+def test_a_custom_edition_colliding_with_a_built_in_name_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="Directors Cut"):
+        manager.register(
+            "test.collides",
+            PluginDefinition(
+                display_name="test.collides",
+                version="1.0.0",
+                custom_editions=(
+                    CustomEditionContribution(
+                        entry=RenameNormalization(
+                            "Directors Cut", (r"directors[\s\.\-_]*cut",)
+                        ),
+                    ),
+                ),
+            ),
+            "test",
+        )
+
+
+def test_two_plugins_contributing_the_same_custom_name_is_rejected() -> None:
+    manager = PluginManager()
+    manager.register(
+        "test.one",
+        PluginDefinition(
+            display_name="test.one",
+            version="1.0.0",
+            custom_editions=(_fan_edit_contribution(),),
+        ),
+        "test",
+    )
+
+    with pytest.raises(PluginError, match="Fan Edit"):
+        manager.register(
+            "test.two",
+            PluginDefinition(
+                display_name="test.two",
+                version="1.0.0",
+                custom_editions=(_fan_edit_contribution(),),
+            ),
+            "test",
+        )
+
+
+def test_a_custom_edition_with_an_empty_normalized_name_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="normalized"):
+        manager.register(
+            "test.badname",
+            PluginDefinition(
+                display_name="test.badname",
+                version="1.0.0",
+                custom_editions=(
+                    CustomEditionContribution(
+                        entry=RenameNormalization("", (r"pattern",)),
+                    ),
+                ),
+            ),
+            "test",
+        )
+
+
+def test_a_custom_edition_with_no_patterns_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="re_gex"):
+        manager.register(
+            "test.badpattern",
+            PluginDefinition(
+                display_name="test.badpattern",
+                version="1.0.0",
+                custom_editions=(
+                    CustomEditionContribution(
+                        entry=RenameNormalization("Fan Edit", ()),
+                    ),
+                ),
+            ),
+            "test",
+        )
+
+
+def test_a_non_custom_edition_contribution_entry_is_rejected() -> None:
+    manager = PluginManager()
+
+    with pytest.raises(PluginError, match="CustomEditionContribution"):
+        manager.register(
+            "test.badtype",
+            PluginDefinition(
+                display_name="test.badtype",
+                version="1.0.0",
+                custom_editions=("not a contribution",),  # type: ignore[arg-type]
+            ),
+            "test",
+        )

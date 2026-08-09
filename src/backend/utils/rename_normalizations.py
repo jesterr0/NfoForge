@@ -64,6 +64,22 @@ EDITION_INFO: Sequence[RenameNormalization] = (
     RenameNormalization("Uncut", (r"uncut",)),
 )
 
+# Which EDITION_INFO entries are a "Cut" (per Aither's naming guide: stays in
+# the release title) versus a marketing "Edition" (guide says omit from the
+# title, mention in the description instead). EDITION_INFO stays the single
+# source of truth for *what's recognized*; this set only governs *which
+# recognized entries count as a Cut* -- see token_replacer._cut().
+CUT_EDITION_NAMES: frozenset[str] = frozenset(
+    {
+        "Alternative Cut",
+        "Directors Cut",
+        "Extended Cut",
+        "Theatrical Cut",
+        "Uncut",
+        "Unrated",
+    }
+)
+
 FRAME_SIZE_INFO = (
     RenameNormalization("IMAX", (IMAX_REGEX,)),
     RenameNormalization(

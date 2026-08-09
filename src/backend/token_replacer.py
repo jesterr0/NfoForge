@@ -29,7 +29,11 @@ from src.backend.utils.media_info_utils import (
     calculate_avg_bitrate,
     calculate_avg_video_bit_rate,
 )
-from src.backend.utils.rename_normalizations import EDITION_INFO, is_imax
+from src.backend.utils.rename_normalizations import (
+    CUT_EDITION_NAMES,
+    EDITION_INFO,
+    is_imax,
+)
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
@@ -41,7 +45,7 @@ from src.enums.token_replacer import ColonReplace, SharedWithType, UnfilledToken
 from src.exceptions import GuessitParsingError, InvalidTokenError
 from src.logger.nfo_forge_logger import LOG
 from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import ImageUploadData
+from src.packages.custom_types import ImageUploadData, RenameNormalization
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.series import format_multi_season_range
@@ -85,6 +89,8 @@ class TokenReplacer:
         "media_search_obj",
         "flatten",
         "flat_filters",
+        "custom_edition_info",
+        "custom_cut_names",
         "file_name_mode",
         "token_type",
         "unfilled_token_mode",
@@ -139,6 +145,8 @@ class TokenReplacer:
         media_search_obj: MediaSearchPayload | None = None,
         flatten: bool | None = False,
         flat_filters: Mapping[str, FlatFilter] | None = None,
+        custom_edition_info: Sequence[RenameNormalization] | None = None,
+        custom_cut_names: frozenset[str] | None = None,
         file_name_mode: bool = True,
         token_type: Iterable[TokenType] | type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
@@ -223,6 +231,11 @@ class TokenReplacer:
                 single-episode files, whose {episode_number} stays the raw start number.
             flat_filters (Optional[Mapping[str, FlatFilter]]): Custom filters for flat mode.
                 Dictionary mapping filter names to callable functions that take (value, *args) and return str.
+            custom_edition_info (Optional[Sequence[RenameNormalization]]): Plugin-contributed
+                entries merged with EDITION_INFO for the {edition}/{cut} tokens.
+            custom_cut_names (Optional[frozenset[str]]): Plugin-contributed entry names merged
+                with CUT_EDITION_NAMES -- which of `custom_edition_info` (by `.normalized`) counts
+                as a Cut for the {cut} token, same as the built-in CUT_EDITION_NAMES split.
             active_file (Optional[Path]): File to use for filename and MediaInfo-derived
                 tokens. When omitted, the payload's comparison media or first file is used.
         """
@@ -236,6 +249,8 @@ class TokenReplacer:
         )
         self.flatten = flatten
         self.flat_filters = flat_filters
+        self.custom_edition_info = custom_edition_info or ()
+        self.custom_cut_names = custom_cut_names or frozenset()
         self.file_name_mode = file_name_mode
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
@@ -627,6 +642,9 @@ class TokenReplacer:
     def _media_tokens(self, token_data: TokenData) -> str:
         if token_data.bracket_token == Tokens.EDITION.token:
             return self._edition(token_data)
+
+        elif token_data.bracket_token == Tokens.CUT.token:
+            return self._cut(token_data)
 
         elif token_data.bracket_token == Tokens.FRAME_SIZE.token:
             return self._frame_size(token_data)
@@ -1112,12 +1130,16 @@ class TokenReplacer:
             values = source.get(key, [])
             return values if isinstance(values, list) else [values]
 
+        # plugin-contributed entries (src.plugins.api.CustomEditionContribution)
+        # are recognized alongside the built-in table, same regex matching
+        all_edition_info = (*EDITION_INFO, *self.custom_edition_info)
+
         # ensure we have unique editions
         normalized_edition_set: set[object] = set()
 
         # search the entire filename for edition patterns
         filename = self.media_input.stem.lower()
-        for rename_normalize in EDITION_INFO:
+        for rename_normalize in all_edition_info:
             for regex_str in rename_normalize.re_gex:
                 if re.search(regex_str, filename, flags=re.I):
                     normalized_edition_set.add(rename_normalize.normalized)
@@ -1129,7 +1151,7 @@ class TokenReplacer:
             if is_imax(item):
                 continue
             matched = False
-            for rename_normalize in EDITION_INFO:
+            for rename_normalize in all_edition_info:
                 for regex_str in rename_normalize.re_gex:
                     if re.search(regex_str, str(item), flags=re.I):
                         normalized_edition_set.add(rename_normalize.normalized)
@@ -1142,6 +1164,75 @@ class TokenReplacer:
 
         return self._optional_user_input(
             " ".join(str(item) for item in normalized_edition_set), token_data
+        )
+
+    def _cut(self, token_data: TokenData) -> str:
+        """Subset of {edition} covering only "Cut"-classified entries (see
+        CUT_EDITION_NAMES) -- e.g. Director's Cut/Extended/Unrated, which stay
+        in a title that must follow Aither's naming guide, unlike
+        marketing-style Editions (Criterion, Deluxe, Special, ...).
+
+        Plugin-contributed entries (src.plugins.api.CustomEditionContribution)
+        are recognized alongside the built-in table -- `custom_edition_info`
+        for the entries themselves, `custom_cut_names` for which of those
+        entries count as a Cut here, same split as the built-in table.
+        """
+        all_edition_info = (*EDITION_INFO, *self.custom_edition_info)
+        all_cut_names = CUT_EDITION_NAMES | self.custom_cut_names
+
+        if self.edition_override:
+            for rename_normalize in all_edition_info:
+                if rename_normalize.normalized not in all_cut_names:
+                    continue
+                for regex_str in rename_normalize.re_gex:
+                    if re.search(regex_str, self.edition_override, flags=re.I):
+                        return self._optional_user_input(
+                            rename_normalize.normalized, token_data
+                        )
+            return self._optional_user_input("", token_data)
+
+        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
+            """Helper function to collect edition data from a source."""
+            values = source.get(key, [])
+            return values if isinstance(values, list) else [values]
+
+        # ensure we have unique cuts
+        normalized_cut_set: set[str] = set()
+
+        # search the entire filename for cut patterns
+        filename = self.media_input.stem.lower()
+        for rename_normalize in all_edition_info:
+            if rename_normalize.normalized not in all_cut_names:
+                continue
+            for regex_str in rename_normalize.re_gex:
+                if re.search(regex_str, filename, flags=re.I):
+                    normalized_cut_set.add(rename_normalize.normalized)
+                    break  # only add once per cut type
+
+        # also process any editions from guess_name['edition'] -- unlike
+        # _edition(), an item that doesn't match a known Cut (including one
+        # that matches a known, non-Cut Edition, or nothing at all) is
+        # dropped rather than carried through unnormalized: an unrecognized
+        # string can't be confidently called a Cut, and the guide's own
+        # default for an omitted Cut is "assumed Theatrical."
+        edition_set = set(collect_editions(self.guess_name, "edition"))
+        for item in edition_set:
+            if is_imax(item):
+                continue
+            matched = False
+            for rename_normalize in all_edition_info:
+                if rename_normalize.normalized not in all_cut_names:
+                    continue
+                for regex_str in rename_normalize.re_gex:
+                    if re.search(regex_str, str(item), flags=re.I):
+                        normalized_cut_set.add(rename_normalize.normalized)
+                        matched = True
+                        break
+                if matched:
+                    break
+
+        return self._optional_user_input(
+            " ".join(str(item) for item in normalized_cut_set), token_data
         )
 
     def _frame_size(self, token_data: TokenData) -> str:

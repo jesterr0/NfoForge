@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.media_input import MediaInputBackEnd
+from src.backend.utils.working_dir import processing_dir
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.exceptions import MediaFileNotFoundError
@@ -274,7 +275,7 @@ class MediaInput(BaseWizardPage):
             raise FileNotFoundError("Failed to detect input path or file list")
 
         self.set_working_dir(
-            self.config.settings.general.working_dir
+            processing_dir(self.config.settings.general.working_dir)
             / self.gen_unique_date_name(input_path)
         )
 

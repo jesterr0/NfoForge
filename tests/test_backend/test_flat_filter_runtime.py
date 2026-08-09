@@ -11,6 +11,7 @@ from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.token_replacer import ColonReplace
+from src.enums.tracker_selection import TrackerSelection
 from src.payloads.series import build_series_release_info
 from src.payloads.trackers import TrackerInfo
 
@@ -46,6 +47,7 @@ def test_tracker_title_applies_processing_context_flat_filters() -> None:
     )
 
     output = backend.generate_tracker_title(
+        TrackerSelection.BEYOND_HD,  # FREE policy -- reads tracker_info as before
         TrackerInfo(),
         context,
         build_series_release_info(context.media_input),

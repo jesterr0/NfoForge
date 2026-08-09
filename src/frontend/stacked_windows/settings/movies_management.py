@@ -19,6 +19,10 @@ from PySide6.QtWidgets import (
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.trackers.media_support import UNSUPPORTED_MOVIE_TRACKERS
+from src.backend.trackers.title_format_policy import (
+    TRACKER_TITLE_FORMAT_POLICY,
+    TitleFormatPolicy,
+)
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
@@ -46,13 +50,6 @@ if TYPE_CHECKING:
 
 class MoviesManagementSettings(BaseSettings):
     """Movie specific settings"""
-
-    # Trackers that support movie uploads but not the title override feature
-    # (PassThePopcorn has strict naming rules). Trackers that can't take movies
-    # at all are excluded separately via UNSUPPORTED_MOVIE_TRACKERS.
-    TRACKERS_OVERRIDE_NOT_SUPPORTED: tuple[TrackerSelection, ...] = (
-        TrackerSelection.PASS_THE_POPCORN,
-    )
 
     def __init__(
         self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
@@ -215,10 +212,7 @@ class MoviesManagementSettings(BaseSettings):
         self.tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
         self.tracker_over_ride_stacked_widget = ResizableStackedWidget(self)
         for tracker in self.config.settings.trackers.by_selection().keys():
-            if (
-                tracker in UNSUPPORTED_MOVIE_TRACKERS
-                or tracker in self.TRACKERS_OVERRIDE_NOT_SUPPORTED
-            ):
+            if tracker in UNSUPPORTED_MOVIE_TRACKERS:
                 continue
             tracker_format_override = TrackerFormatOverride(self)
             tracker_format_override.setting_changed.connect(
@@ -322,6 +316,12 @@ class MoviesManagementSettings(BaseSettings):
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),
+            custom_edition_info=self.config.plugin_manager.custom_edition_info(
+                enabled=self.config.settings.general.enable_plugins
+            ),
+            custom_cut_names=self.config.plugin_manager.custom_cut_names(
+                enabled=self.config.settings.general.enable_plugins
+            ),
         )
         example_txt = qline.text()
         output = format_str.get_output()
@@ -411,27 +411,45 @@ class MoviesManagementSettings(BaseSettings):
             )
         # load saved tracker overrides
         for idx, tracker in enumerate(self.tracker_override_map.keys()):
-            tracker_info = self.config.settings.trackers.by_selection()[tracker]
             over_ride_widget = self.tracker_override_map[tracker]
-            over_ride_widget.enabled_checkbox.setChecked(
-                tracker_info.mvr_title_override_enabled
-            )
-            over_ride_widget.set_colon_replace(
-                str(tracker_info.mvr_title_colon_replace)
-            )
-            self._update_qline_cursor_0(
-                over_ride_widget.over_ride_format_title,
-                tracker_info.mvr_title_token_override,
-            )
-            over_ride_widget.over_ride_replacement_table.set_default_rules(
-                self.config.defaults.trackers.by_selection()[
-                    tracker
-                ].mvr_title_replace_map
-            )
-            over_ride_widget.over_ride_replacement_table.reset()
-            if tracker_info.mvr_title_replace_map:
-                over_ride_widget.over_ride_replacement_table.add_rows(
-                    tracker_info.mvr_title_replace_map
+            policy = TRACKER_TITLE_FORMAT_POLICY[tracker]
+            if policy is TitleFormatPolicy.FREE:
+                tracker_info = self.config.settings.trackers.by_selection()[tracker]
+                over_ride_widget.enabled_checkbox.setChecked(
+                    tracker_info.mvr_title_override_enabled
+                )
+                over_ride_widget.set_colon_replace(
+                    str(tracker_info.mvr_title_colon_replace)
+                )
+                self._update_qline_cursor_0(
+                    over_ride_widget.over_ride_format_title,
+                    tracker_info.mvr_title_token_override,
+                )
+                over_ride_widget.over_ride_replacement_table.set_default_rules(
+                    self.config.defaults.trackers.by_selection()[
+                        tracker
+                    ].mvr_title_replace_map
+                )
+                over_ride_widget.over_ride_replacement_table.reset()
+                if tracker_info.mvr_title_replace_map:
+                    over_ride_widget.over_ride_replacement_table.add_rows(
+                        tracker_info.mvr_title_replace_map
+                    )
+            else:
+                # REQUIRED/UNSUPPORTED: always shows the packaged default,
+                # disabled -- never the live (possibly stale) settings value.
+                default_info = self.config.defaults.trackers.by_selection()[tracker]
+                reason = (
+                    f"{tracker} enforces its own title format and cannot be customized."
+                    if policy is TitleFormatPolicy.REQUIRED
+                    else f"{tracker} does not support a custom title format."
+                )
+                over_ride_widget.set_locked(
+                    reason,
+                    override_enabled=default_info.mvr_title_override_enabled,
+                    token=default_info.mvr_title_token_override,
+                    colon_replace=str(default_info.mvr_title_colon_replace),
+                    replace_map=default_info.mvr_title_replace_map,
                 )
             # we only want to pay the cost of running the token engine on the currently visible tracker
             # override the others will be updated as they are clicked through
@@ -473,8 +491,12 @@ class MoviesManagementSettings(BaseSettings):
             self.format_file_name_token_input.text()
         )
         self.config.settings.movie.title_token = self.format_release_title_input.text()
-        # save tracker overrides
+        # save tracker overrides -- REQUIRED/UNSUPPORTED trackers are locked
+        # to the packaged default (see generate_tracker_title) and their
+        # widgets are disabled, so nothing user-driven to persist for them.
         for tracker in self.tracker_override_map.keys():
+            if TRACKER_TITLE_FORMAT_POLICY[tracker] is not TitleFormatPolicy.FREE:
+                continue
             over_ride_widget = self.tracker_override_map[tracker]
             self.config.settings.trackers.by_selection()[
                 tracker

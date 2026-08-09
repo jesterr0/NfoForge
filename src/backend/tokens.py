@@ -55,6 +55,10 @@ class Tokens:
 
     # File Tokens
     EDITION = FileToken("{edition}", "Edition")
+    CUT = FileToken(
+        "{cut}",
+        "Cut, e.g. Director's Cut/Extended/Unrated (subset of {edition})",
+    )
     FRAME_SIZE = FileToken("{frame_size}", "Frame size (IMAX/Open Matte)")
     HYBRID = FileToken("{hybrid}", "HYBRID")
     LOCALIZATION = FileToken("{localization}", "Subbed/Dubbed")

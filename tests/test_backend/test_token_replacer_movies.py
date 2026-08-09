@@ -11,6 +11,7 @@ from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
+from src.packages.custom_types import RenameNormalization
 from src.payloads.media_search import MediaSearchPayload
 
 
@@ -105,6 +106,167 @@ def test_frame_size_does_not_normalize_climax_as_imax(monkeypatch) -> None:
     edition = replacer._edition(_td())
     assert "IMAX" not in edition
     assert "Climax" in edition
+
+
+def _movie_replacer_with_edition_override(edition_override: str) -> TokenReplacer:
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{cut}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        edition_override=edition_override,
+    )
+
+
+def test_cut_resolves_the_cut_classified_edition_from_the_default_fixture() -> None:
+    # The example movie filename parses to ["Director's Cut", "IMAX"] (see
+    # test_frame_size_normalizes_imax_without_mutating_during_iteration).
+    # Directors Cut is Cut-classified and must survive; IMAX is handled by
+    # {frame_size}, not {cut} or {edition}, and must not leak through.
+    replacer = _movie_replacer()
+
+    cut = replacer._cut(_td())
+
+    assert cut == "Directors Cut"
+    assert "IMAX" not in cut
+
+
+def test_cut_excludes_a_non_cut_edition_that_edition_still_includes(
+    monkeypatch,
+) -> None:
+    # The fixture's raw filename independently contains "Director's Cut", so
+    # both tokens still pick that up from the filename-scan path regardless
+    # of this guessit mock -- membership, not equality, isolates the thing
+    # actually under test: whether the mocked "Special Edition" leaks into
+    # {cut} the way it correctly does into {edition}.
+    monkeypatch.setattr(
+        "src.backend.token_replacer.guessit",
+        lambda *_args, **_kwargs: {"edition": "Special Edition"},
+    )
+    replacer = _movie_replacer()
+
+    cut = replacer._cut(_td())
+    edition = replacer._edition(_td())
+
+    assert "Special Edition" not in cut
+    assert "Special Edition" in edition
+
+
+def test_cut_override_matches_a_cut_pattern() -> None:
+    replacer = _movie_replacer_with_edition_override("Extended Cut")
+
+    assert replacer._cut(_td()) == "Extended Cut"
+
+
+def test_cut_override_rejects_a_non_cut_edition_that_edition_still_includes() -> None:
+    replacer = _movie_replacer_with_edition_override("Deluxe Edition")
+
+    assert replacer._cut(_td()) == ""
+    assert replacer._edition(_td()) == "Deluxe Edition"
+
+
+def test_cut_override_rejects_unrecognized_freeform_text() -> None:
+    replacer = _movie_replacer_with_edition_override("35th Anniversary Restoration")
+
+    assert replacer._cut(_td()) == ""
+
+
+def test_cut_token_resolves_through_the_token_string() -> None:
+    # The direct-resolver tests above would still pass if the registry entry
+    # or the dispatch branch were deleted; this one goes through get_output()
+    # so it fails if the token stops being reachable.
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{cut}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    ).get_output()
+
+    assert output == "Directors.Cut.mkv"
+
+
+def _custom_edition_replacer(
+    token: str, edition_override: str, *, is_cut: bool
+) -> TokenReplacer:
+    entry = RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",))
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string=token,
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        edition_override=edition_override,
+        custom_edition_info=(entry,),
+        custom_cut_names=frozenset({"Fan Edit"}) if is_cut else frozenset(),
+    )
+
+
+def test_custom_edition_contribution_resolves_via_edition_override() -> None:
+    replacer = _custom_edition_replacer("{edition}", "Fan Edit", is_cut=False)
+
+    assert replacer._edition(_td()) == "Fan Edit"
+
+
+def test_custom_edition_not_classified_as_cut_is_excluded_from_cut_override() -> None:
+    replacer = _custom_edition_replacer("{cut}", "Fan Edit", is_cut=False)
+
+    assert replacer._cut(_td()) == ""
+
+
+def test_custom_edition_classified_as_cut_is_included_in_cut_override() -> None:
+    replacer = _custom_edition_replacer("{cut}", "Fan Edit", is_cut=True)
+
+    assert replacer._cut(_td()) == "Fan Edit"
+
+
+def test_custom_edition_is_recognized_from_guessit_edition(monkeypatch) -> None:
+    # Membership, not equality: the fixture's raw filename independently
+    # contains "Director's Cut" (see test_cut_excludes_a_non_cut_edition...
+    # above), so {edition}'s filename-scan path still picks that up too.
+    monkeypatch.setattr(
+        "src.backend.token_replacer.guessit",
+        lambda *_args, **_kwargs: {"edition": "Fan Edit"},
+    )
+    replacer = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{edition}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        custom_edition_info=(RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),),
+    )
+
+    assert "Fan Edit" in replacer._edition(_td())
+
+
+def test_custom_edition_token_resolves_through_the_token_string() -> None:
+    # As with test_cut_token_resolves_through_the_token_string: goes through
+    # get_output() so it fails if the merge point in _cut()'s dispatch were
+    # ever deleted, not just the direct-resolver method.
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{cut}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        edition_override="Fan Edit",
+        custom_edition_info=(RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),),
+        custom_cut_names=frozenset({"Fan Edit"}),
+    ).get_output()
+
+    assert output == "Fan.Edit.mkv"
 
 
 def test_title_tokens_use_first_guessit_title_when_list_shaped(

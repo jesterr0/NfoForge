@@ -28,7 +28,10 @@ _CAPABILITY_LABELS = {
     "wizard_page": "Wizard input",
     "token_replacer": "Token replacement",
     "pre_upload": "Pre-upload",
+    "post_upload": "Post-upload",
     "metadata_transformer": "Metadata transformation",
+    "image_host_uploader": "Image host uploader",
+    "duplicate_checker": "Duplicate checker",
     "jinja2_filters": "Jinja filters",
     "jinja2_functions": "Jinja functions",
     "flat_filters": "Flat filters",
@@ -59,7 +62,10 @@ class PluginsSettings(BaseSettings):
         self.plugin_wizard_page_combo = self._create_combo()
         self.plugin_token_replacer_combo = self._create_combo()
         self.plugin_pre_upload_combo = self._create_combo()
+        self.plugin_post_upload_combo = self._create_combo()
         self.plugin_metadata_transformer_combo = self._create_combo()
+        self.plugin_image_host_uploader_combo = self._create_combo()
+        self.plugin_duplicate_checker_combo = self._create_combo()
 
         selectors = (
             (
@@ -78,9 +84,26 @@ class PluginsSettings(BaseSettings):
                 self.plugin_pre_upload_combo,
             ),
             (
+                "Post-upload Processor",
+                "Choose an optional plugin to run after tracker uploads finish.",
+                self.plugin_post_upload_combo,
+            ),
+            (
                 "Metadata Transformer",
                 "Choose an optional plugin to transform completed TMDB metadata.",
                 self.plugin_metadata_transformer_combo,
+            ),
+            (
+                "Image Host Uploader",
+                "Choose an optional plugin to upload screenshots to a custom image "
+                'host, selectable per tracker as "Plugin".',
+                self.plugin_image_host_uploader_combo,
+            ),
+            (
+                "Duplicate Checker",
+                "Choose an optional plugin to supplement built-in dupe checking "
+                "with an additional source, per tracker.",
+                self.plugin_duplicate_checker_combo,
             ),
         )
         self._selection_widgets = tuple(combo for _, _, combo in selectors)
@@ -157,10 +180,28 @@ class PluginsSettings(BaseSettings):
                 selections.pre_upload,
             ),
             (
+                "post_upload",
+                "Default Post-upload Processing",
+                self.plugin_post_upload_combo,
+                selections.post_upload,
+            ),
+            (
                 "metadata_transformer",
                 "TMDB Metadata",
                 self.plugin_metadata_transformer_combo,
                 selections.metadata_transformer,
+            ),
+            (
+                "image_host_uploader",
+                "Default Image Host Uploader",
+                self.plugin_image_host_uploader_combo,
+                selections.image_host_uploader,
+            ),
+            (
+                "duplicate_checker",
+                "Default Duplicate Checker",
+                self.plugin_duplicate_checker_combo,
+                selections.duplicate_checker,
             ),
         )
         for capability, default_text, combo, plugin_id in capability_combos:
@@ -252,7 +293,10 @@ class PluginsSettings(BaseSettings):
             ("wizard_page", "Wizard input"),
             ("token_replacer", "Token replacement"),
             ("pre_upload", "Pre-upload"),
+            ("post_upload", "Post-upload"),
             ("metadata_transformer", "Metadata transformation"),
+            ("image_host_uploader", "Image host uploader"),
+            ("duplicate_checker", "Duplicate checker"),
         ):
             plugin_id = getattr(settings, attribute)
             if plugin_id:
@@ -281,8 +325,17 @@ class PluginsSettings(BaseSettings):
         self.config.settings.plugins.pre_upload = (
             self.plugin_pre_upload_combo.currentData()
         )
+        self.config.settings.plugins.post_upload = (
+            self.plugin_post_upload_combo.currentData()
+        )
         self.config.settings.plugins.metadata_transformer = (
             self.plugin_metadata_transformer_combo.currentData()
+        )
+        self.config.settings.plugins.image_host_uploader = (
+            self.plugin_image_host_uploader_combo.currentData()
+        )
+        self.config.settings.plugins.duplicate_checker = (
+            self.plugin_duplicate_checker_combo.currentData()
         )
         self.updated_settings_applied.emit()
 

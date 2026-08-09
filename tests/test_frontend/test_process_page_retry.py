@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot
-from PySide6.QtWidgets import QMessageBox, QWidget
+from PySide6.QtWidgets import QMessageBox, QTextBrowser, QWidget
 import pytest
 
 from src.backend.upload_retry import (
@@ -162,12 +162,34 @@ def test_retry_is_relabelled_when_the_tracker_may_have_the_torrent(responses) ->
     assert responses == [UploadRetryAction.RETRY]
 
 
+def test_replacing_the_last_line_scrubs_secrets_too(qapp) -> None:
+    """`_on_text_update` scrubs before inserting; its replace-last-line twin
+    did not, even though the same plugin-reachable channel
+    (`UploadReporter.replace_last_line`, fed from `ProcessBackEnd`) writes
+    through it. The gap was the log *pane* specifically -- the logger itself
+    already scrubs centrally before anything reaches disk.
+    """
+    stub = SimpleNamespace(text_widget=QTextBrowser())
+
+    ProcessPage._on_text_update_replace_last_line(
+        stub,
+        "<span>done: https://tracker.example/"
+        "deadbeefdeadbeefdeadbeefdeadbeef/announce</span>",
+    )
+
+    assert "deadbeefdeadbeefdeadbeefdeadbeef" not in stub.text_widget.toPlainText()
+
+
 def test_cancel_hides_the_process_button() -> None:
     """Otherwise pressing Process again re-uploads the trackers that finished."""
     fired: list[bool] = []
     handler = lambda: fired.append(True)
     GSigs().wizard_process_btn_set_hidden.connect(handler)
-    stub = SimpleNamespace(_job_ended=MagicMock(), _on_text_update=MagicMock())
+    stub = SimpleNamespace(
+        _job_ended=MagicMock(),
+        _on_text_update=MagicMock(),
+        _offer_deferred_job=MagicMock(),
+    )
     try:
         ProcessPage._on_cancelled(stub)
     finally:
@@ -175,6 +197,7 @@ def test_cancel_hides_the_process_button() -> None:
 
     assert fired == [True]
     stub._job_ended.assert_called_once_with()
+    stub._offer_deferred_job.assert_called_once_with()
 
 
 def test_worker_is_released_when_the_prompt_never_runs() -> None:

@@ -38,7 +38,7 @@
 | `{{ source_file }}`                | Source filename with extension                                                                   |
 | `{{ source_file_no_ext }}`         | Source filename without extension                                                                |
 | `{{ subtitle_s }}`                 | English, French, ...                                                                             |
-| `{{ total_episodes }}`             | Total episodes in season/series                                                                  |
+| `{{ total_episodes }}`             | Total episodes in the series                                                                     |
 | `{{ total_seasons }}`              | Total seasons in series                                                                          |
 | `{{ video_bit_rate }}`             | Average video bit-rate in kbps (9975 kbps)                                                       |
 | `{{ video_bit_rate_num_only }}`    | Average video bit-rate in kbps, numbers only (9975)                                              |

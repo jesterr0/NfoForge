@@ -28,4 +28,10 @@ def create_processing_context(
     return ProcessingContext(
         jinja_engine=engine,
         flat_filters=plugin_manager.flat_filters(enabled=config.general.enable_plugins),
+        custom_edition_info=plugin_manager.custom_edition_info(
+            enabled=config.general.enable_plugins
+        ),
+        custom_cut_names=plugin_manager.custom_cut_names(
+            enabled=config.general.enable_plugins
+        ),
     )

@@ -61,22 +61,31 @@ from src.payloads.image_hosts import (
     CheveretoV4Payload,
     ImageBBPayload,
     ImageBoxPayload,
+    LensdumpPayload,
+    OnlyImagePayload,
+    PixhostPayload,
 )
 from src.payloads.trackers import (
     AitherInfo,
     BeyondHDInfo,
+    BlutopiaInfo,
     DarkPeersInfo,
+    FearNoPeerInfo,
+    HDBInfo,
     HunoInfo,
     LSTInfo,
     MoreThanTVInfo,
     OnlyEncodesInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
+    SeedPoolInfo,
     ShareIslandInfo,
     TitleOverridePayload,
     TorrentLeechInfo,
     TrackerInfo,
     UploadCXInfo,
+    UTPInfo,
+    YuSceneInfo,
 )
 from src.payloads.watch_folder import WatchFolder
 
@@ -704,6 +713,235 @@ class TypedTomlOperations:
             )
             oe_data["image_width"] = self.settings.trackers.only_encodes.image_width
 
+            # HDBits tracker
+            hdb_data = self._ensure_toml_table(tracker_data, "hdb")
+            hdb_data["upload_enabled"] = self.settings.trackers.hdb.upload_enabled
+            hdb_data["announce_url"] = self.settings.trackers.hdb.announce_url
+            hdb_data["enabled"] = self.settings.trackers.hdb.enabled
+            hdb_data["source"] = self.settings.trackers.hdb.source
+            hdb_data["comments"] = self.settings.trackers.hdb.comments
+            hdb_data["nfo_template"] = self.settings.trackers.hdb.nfo_template
+            hdb_data["max_piece_size"] = self.settings.trackers.hdb.max_piece_size
+            hdb_data["url_type"] = URLType(self.settings.trackers.hdb.url_type).value
+            hdb_data["column_s"] = self.settings.trackers.hdb.column_s
+            hdb_data["column_space"] = self.settings.trackers.hdb.column_space
+            hdb_data["row_space"] = self.settings.trackers.hdb.row_space
+            hdb_data["mvr_title_override_enabled"] = (
+                self.settings.trackers.hdb.mvr_title_override_enabled
+            )
+            hdb_data["mvr_title_colon_replace"] = ColonReplace(
+                self.settings.trackers.hdb.mvr_title_colon_replace
+            ).value
+            hdb_data["mvr_title_token_override"] = (
+                self.settings.trackers.hdb.mvr_title_token_override
+            )
+            hdb_data["mvr_title_replace_map"] = (
+                self.settings.trackers.hdb.mvr_title_replace_map
+            )
+            hdb_data["username"] = self.settings.trackers.hdb.username
+            hdb_data["passkey"] = self.settings.trackers.hdb.passkey
+            hdb_data["session_cookie"] = self.settings.trackers.hdb.session_cookie
+            hdb_data["internal"] = self.settings.trackers.hdb.internal
+            hdb_data["image_width"] = self.settings.trackers.hdb.image_width
+
+            # Blutopia tracker
+            blutopia_data = self._ensure_toml_table(tracker_data, "blutopia")
+            blutopia_data["upload_enabled"] = (
+                self.settings.trackers.blutopia.upload_enabled
+            )
+            blutopia_data["announce_url"] = self.settings.trackers.blutopia.announce_url
+            blutopia_data["enabled"] = self.settings.trackers.blutopia.enabled
+            blutopia_data["source"] = self.settings.trackers.blutopia.source
+            blutopia_data["comments"] = self.settings.trackers.blutopia.comments
+            blutopia_data["nfo_template"] = self.settings.trackers.blutopia.nfo_template
+            blutopia_data["max_piece_size"] = (
+                self.settings.trackers.blutopia.max_piece_size
+            )
+            blutopia_data["url_type"] = URLType(
+                self.settings.trackers.blutopia.url_type
+            ).value
+            blutopia_data["column_s"] = self.settings.trackers.blutopia.column_s
+            blutopia_data["column_space"] = self.settings.trackers.blutopia.column_space
+            blutopia_data["row_space"] = self.settings.trackers.blutopia.row_space
+            blutopia_data["mvr_title_override_enabled"] = (
+                self.settings.trackers.blutopia.mvr_title_override_enabled
+            )
+            blutopia_data["mvr_title_colon_replace"] = ColonReplace(
+                self.settings.trackers.blutopia.mvr_title_colon_replace
+            ).value
+            blutopia_data["mvr_title_token_override"] = (
+                self.settings.trackers.blutopia.mvr_title_token_override
+            )
+            blutopia_data["mvr_title_replace_map"] = (
+                self.settings.trackers.blutopia.mvr_title_replace_map
+            )
+            blutopia_data["api_key"] = self.settings.trackers.blutopia.api_key
+            blutopia_data["anonymous"] = self.settings.trackers.blutopia.anonymous
+            blutopia_data["internal"] = self.settings.trackers.blutopia.internal
+            blutopia_data["personal_release"] = (
+                self.settings.trackers.blutopia.personal_release
+            )
+            blutopia_data["opt_in_to_mod_queue"] = (
+                self.settings.trackers.blutopia.opt_in_to_mod_queue
+            )
+            blutopia_data["image_width"] = self.settings.trackers.blutopia.image_width
+
+            # SeedPool tracker
+            seedpool_data = self._ensure_toml_table(tracker_data, "seedpool")
+            seedpool_data["upload_enabled"] = (
+                self.settings.trackers.seedpool.upload_enabled
+            )
+            seedpool_data["announce_url"] = self.settings.trackers.seedpool.announce_url
+            seedpool_data["enabled"] = self.settings.trackers.seedpool.enabled
+            seedpool_data["source"] = self.settings.trackers.seedpool.source
+            seedpool_data["comments"] = self.settings.trackers.seedpool.comments
+            seedpool_data["nfo_template"] = self.settings.trackers.seedpool.nfo_template
+            seedpool_data["max_piece_size"] = (
+                self.settings.trackers.seedpool.max_piece_size
+            )
+            seedpool_data["url_type"] = URLType(
+                self.settings.trackers.seedpool.url_type
+            ).value
+            seedpool_data["column_s"] = self.settings.trackers.seedpool.column_s
+            seedpool_data["column_space"] = self.settings.trackers.seedpool.column_space
+            seedpool_data["row_space"] = self.settings.trackers.seedpool.row_space
+            seedpool_data["mvr_title_override_enabled"] = (
+                self.settings.trackers.seedpool.mvr_title_override_enabled
+            )
+            seedpool_data["mvr_title_colon_replace"] = ColonReplace(
+                self.settings.trackers.seedpool.mvr_title_colon_replace
+            ).value
+            seedpool_data["mvr_title_token_override"] = (
+                self.settings.trackers.seedpool.mvr_title_token_override
+            )
+            seedpool_data["mvr_title_replace_map"] = (
+                self.settings.trackers.seedpool.mvr_title_replace_map
+            )
+            seedpool_data["api_key"] = self.settings.trackers.seedpool.api_key
+            seedpool_data["anonymous"] = self.settings.trackers.seedpool.anonymous
+            seedpool_data["internal"] = self.settings.trackers.seedpool.internal
+            seedpool_data["personal_release"] = (
+                self.settings.trackers.seedpool.personal_release
+            )
+            seedpool_data["image_width"] = self.settings.trackers.seedpool.image_width
+
+            # UTP tracker
+            utp_data = self._ensure_toml_table(tracker_data, "utp")
+            utp_data["upload_enabled"] = self.settings.trackers.utp.upload_enabled
+            utp_data["announce_url"] = self.settings.trackers.utp.announce_url
+            utp_data["enabled"] = self.settings.trackers.utp.enabled
+            utp_data["source"] = self.settings.trackers.utp.source
+            utp_data["comments"] = self.settings.trackers.utp.comments
+            utp_data["nfo_template"] = self.settings.trackers.utp.nfo_template
+            utp_data["max_piece_size"] = self.settings.trackers.utp.max_piece_size
+            utp_data["url_type"] = URLType(self.settings.trackers.utp.url_type).value
+            utp_data["column_s"] = self.settings.trackers.utp.column_s
+            utp_data["column_space"] = self.settings.trackers.utp.column_space
+            utp_data["row_space"] = self.settings.trackers.utp.row_space
+            utp_data["mvr_title_override_enabled"] = (
+                self.settings.trackers.utp.mvr_title_override_enabled
+            )
+            utp_data["mvr_title_colon_replace"] = ColonReplace(
+                self.settings.trackers.utp.mvr_title_colon_replace
+            ).value
+            utp_data["mvr_title_token_override"] = (
+                self.settings.trackers.utp.mvr_title_token_override
+            )
+            utp_data["mvr_title_replace_map"] = (
+                self.settings.trackers.utp.mvr_title_replace_map
+            )
+            utp_data["api_key"] = self.settings.trackers.utp.api_key
+            utp_data["anonymous"] = self.settings.trackers.utp.anonymous
+            utp_data["internal"] = self.settings.trackers.utp.internal
+            utp_data["personal_release"] = self.settings.trackers.utp.personal_release
+            utp_data["image_width"] = self.settings.trackers.utp.image_width
+
+            # Yu-scene tracker
+            yuscene_data = self._ensure_toml_table(tracker_data, "yuscene")
+            yuscene_data["upload_enabled"] = (
+                self.settings.trackers.yuscene.upload_enabled
+            )
+            yuscene_data["announce_url"] = self.settings.trackers.yuscene.announce_url
+            yuscene_data["enabled"] = self.settings.trackers.yuscene.enabled
+            yuscene_data["source"] = self.settings.trackers.yuscene.source
+            yuscene_data["comments"] = self.settings.trackers.yuscene.comments
+            yuscene_data["nfo_template"] = self.settings.trackers.yuscene.nfo_template
+            yuscene_data["max_piece_size"] = (
+                self.settings.trackers.yuscene.max_piece_size
+            )
+            yuscene_data["url_type"] = URLType(
+                self.settings.trackers.yuscene.url_type
+            ).value
+            yuscene_data["column_s"] = self.settings.trackers.yuscene.column_s
+            yuscene_data["column_space"] = self.settings.trackers.yuscene.column_space
+            yuscene_data["row_space"] = self.settings.trackers.yuscene.row_space
+            yuscene_data["mvr_title_override_enabled"] = (
+                self.settings.trackers.yuscene.mvr_title_override_enabled
+            )
+            yuscene_data["mvr_title_colon_replace"] = ColonReplace(
+                self.settings.trackers.yuscene.mvr_title_colon_replace
+            ).value
+            yuscene_data["mvr_title_token_override"] = (
+                self.settings.trackers.yuscene.mvr_title_token_override
+            )
+            yuscene_data["mvr_title_replace_map"] = (
+                self.settings.trackers.yuscene.mvr_title_replace_map
+            )
+            yuscene_data["api_key"] = self.settings.trackers.yuscene.api_key
+            yuscene_data["anonymous"] = self.settings.trackers.yuscene.anonymous
+            yuscene_data["internal"] = self.settings.trackers.yuscene.internal
+            yuscene_data["personal_release"] = (
+                self.settings.trackers.yuscene.personal_release
+            )
+            yuscene_data["image_width"] = self.settings.trackers.yuscene.image_width
+
+            # FearNoPeer tracker
+            fearnopeer_data = self._ensure_toml_table(tracker_data, "fearnopeer")
+            fearnopeer_data["upload_enabled"] = (
+                self.settings.trackers.fearnopeer.upload_enabled
+            )
+            fearnopeer_data["announce_url"] = (
+                self.settings.trackers.fearnopeer.announce_url
+            )
+            fearnopeer_data["enabled"] = self.settings.trackers.fearnopeer.enabled
+            fearnopeer_data["source"] = self.settings.trackers.fearnopeer.source
+            fearnopeer_data["comments"] = self.settings.trackers.fearnopeer.comments
+            fearnopeer_data["nfo_template"] = (
+                self.settings.trackers.fearnopeer.nfo_template
+            )
+            fearnopeer_data["max_piece_size"] = (
+                self.settings.trackers.fearnopeer.max_piece_size
+            )
+            fearnopeer_data["url_type"] = URLType(
+                self.settings.trackers.fearnopeer.url_type
+            ).value
+            fearnopeer_data["column_s"] = self.settings.trackers.fearnopeer.column_s
+            fearnopeer_data["column_space"] = (
+                self.settings.trackers.fearnopeer.column_space
+            )
+            fearnopeer_data["row_space"] = self.settings.trackers.fearnopeer.row_space
+            fearnopeer_data["mvr_title_override_enabled"] = (
+                self.settings.trackers.fearnopeer.mvr_title_override_enabled
+            )
+            fearnopeer_data["mvr_title_colon_replace"] = ColonReplace(
+                self.settings.trackers.fearnopeer.mvr_title_colon_replace
+            ).value
+            fearnopeer_data["mvr_title_token_override"] = (
+                self.settings.trackers.fearnopeer.mvr_title_token_override
+            )
+            fearnopeer_data["mvr_title_replace_map"] = (
+                self.settings.trackers.fearnopeer.mvr_title_replace_map
+            )
+            fearnopeer_data["api_key"] = self.settings.trackers.fearnopeer.api_key
+            fearnopeer_data["anonymous"] = self.settings.trackers.fearnopeer.anonymous
+            fearnopeer_data["internal"] = self.settings.trackers.fearnopeer.internal
+            fearnopeer_data["personal_release"] = (
+                self.settings.trackers.fearnopeer.personal_release
+            )
+            fearnopeer_data["image_width"] = (
+                self.settings.trackers.fearnopeer.image_width
+            )
+
             for tracker_key, tracker_info in (
                 ("more_than_tv", self.settings.trackers.more_than_tv),
                 ("torrent_leech", self.settings.trackers.torrent_leech),
@@ -717,6 +955,12 @@ class TypedTomlOperations:
                 ("shareisland", self.settings.trackers.share_island),
                 ("uploadcx", self.settings.trackers.upload_cx),
                 ("only_encodes", self.settings.trackers.only_encodes),
+                ("hdb", self.settings.trackers.hdb),
+                ("blutopia", self.settings.trackers.blutopia),
+                ("seedpool", self.settings.trackers.seedpool),
+                ("utp", self.settings.trackers.utp),
+                ("yuscene", self.settings.trackers.yuscene),
+                ("fearnopeer", self.settings.trackers.fearnopeer),
             ):
                 self._ensure_toml_table(tracker_data, tracker_key)[
                     "tvr_title_overrides"
@@ -1004,6 +1248,23 @@ class TypedTomlOperations:
             img_box_data["enabled"] = self.settings.image_hosts.image_box.enabled
             img_box_data["base_url"] = self.settings.image_hosts.image_box.base_url
 
+            # only image
+            only_image_data = self._ensure_toml_table(image_hosts, "only_image")
+            only_image_data["enabled"] = self.settings.image_hosts.only_image.enabled
+            only_image_data["base_url"] = self.settings.image_hosts.only_image.base_url
+            only_image_data["api_key"] = self.settings.image_hosts.only_image.api_key
+
+            # pixhost
+            pixhost_data = self._ensure_toml_table(image_hosts, "pixhost")
+            pixhost_data["enabled"] = self.settings.image_hosts.pixhost.enabled
+            pixhost_data["base_url"] = self.settings.image_hosts.pixhost.base_url
+
+            # lensdump
+            lensdump_data = self._ensure_toml_table(image_hosts, "lensdump")
+            lensdump_data["enabled"] = self.settings.image_hosts.lensdump.enabled
+            lensdump_data["base_url"] = self.settings.image_hosts.lensdump.base_url
+            lensdump_data["api_key"] = self.settings.image_hosts.lensdump.api_key
+
             # urls
             urls_settings = self._toml_table(self._toml_data, "urls")
             urls_settings["alt"] = self.settings.urls.alt
@@ -1032,9 +1293,24 @@ class TypedTomlOperations:
                 if self.settings.plugins.pre_upload
                 else ""
             )
+            plugins_settings["post_upload"] = (
+                self.settings.plugins.post_upload
+                if self.settings.plugins.post_upload
+                else ""
+            )
             plugins_settings["metadata_transformer"] = (
                 self.settings.plugins.metadata_transformer
                 if self.settings.plugins.metadata_transformer
+                else ""
+            )
+            plugins_settings["image_host_uploader"] = (
+                self.settings.plugins.image_host_uploader
+                if self.settings.plugins.image_host_uploader
+                else ""
+            )
+            plugins_settings["duplicate_checker"] = (
+                self.settings.plugins.duplicate_checker
+                if self.settings.plugins.duplicate_checker
                 else ""
             )
 
@@ -1568,6 +1844,197 @@ class TypedTomlOperations:
                 image_width=oe_tracker_data["image_width"],
             )
 
+            hdb_tracker_data = tracker_data["hdb"]
+            hdb_tracker = HDBInfo(
+                upload_enabled=hdb_tracker_data["upload_enabled"],
+                announce_url=hdb_tracker_data["announce_url"],
+                enabled=hdb_tracker_data["enabled"],
+                source=hdb_tracker_data["source"],
+                comments=hdb_tracker_data["comments"],
+                nfo_template=hdb_tracker_data["nfo_template"],
+                max_piece_size=hdb_tracker_data["max_piece_size"],
+                url_type=URLType(hdb_tracker_data["url_type"]),
+                column_s=hdb_tracker_data["column_s"],
+                column_space=hdb_tracker_data["column_space"],
+                row_space=hdb_tracker_data["row_space"],
+                mvr_title_override_enabled=hdb_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    hdb_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=hdb_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=hdb_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(hdb_tracker_data),
+                username=hdb_tracker_data["username"],
+                passkey=hdb_tracker_data["passkey"],
+                session_cookie=hdb_tracker_data["session_cookie"],
+                internal=hdb_tracker_data["internal"],
+                image_width=hdb_tracker_data["image_width"],
+            )
+
+            blutopia_tracker_data = tracker_data["blutopia"]
+            blutopia_tracker = BlutopiaInfo(
+                upload_enabled=blutopia_tracker_data["upload_enabled"],
+                announce_url=blutopia_tracker_data["announce_url"],
+                enabled=blutopia_tracker_data["enabled"],
+                source=blutopia_tracker_data["source"],
+                comments=blutopia_tracker_data["comments"],
+                nfo_template=blutopia_tracker_data["nfo_template"],
+                max_piece_size=blutopia_tracker_data["max_piece_size"],
+                url_type=URLType(blutopia_tracker_data["url_type"]),
+                column_s=blutopia_tracker_data["column_s"],
+                column_space=blutopia_tracker_data["column_space"],
+                row_space=blutopia_tracker_data["row_space"],
+                mvr_title_override_enabled=blutopia_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    blutopia_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=blutopia_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=blutopia_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    blutopia_tracker_data
+                ),
+                api_key=blutopia_tracker_data["api_key"],
+                anonymous=blutopia_tracker_data["anonymous"],
+                internal=blutopia_tracker_data["internal"],
+                personal_release=blutopia_tracker_data["personal_release"],
+                opt_in_to_mod_queue=blutopia_tracker_data["opt_in_to_mod_queue"],
+                image_width=blutopia_tracker_data["image_width"],
+            )
+
+            seedpool_tracker_data = tracker_data["seedpool"]
+            seedpool_tracker = SeedPoolInfo(
+                upload_enabled=seedpool_tracker_data["upload_enabled"],
+                announce_url=seedpool_tracker_data["announce_url"],
+                enabled=seedpool_tracker_data["enabled"],
+                source=seedpool_tracker_data["source"],
+                comments=seedpool_tracker_data["comments"],
+                nfo_template=seedpool_tracker_data["nfo_template"],
+                max_piece_size=seedpool_tracker_data["max_piece_size"],
+                url_type=URLType(seedpool_tracker_data["url_type"]),
+                column_s=seedpool_tracker_data["column_s"],
+                column_space=seedpool_tracker_data["column_space"],
+                row_space=seedpool_tracker_data["row_space"],
+                mvr_title_override_enabled=seedpool_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    seedpool_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=seedpool_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=seedpool_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    seedpool_tracker_data
+                ),
+                api_key=seedpool_tracker_data["api_key"],
+                anonymous=seedpool_tracker_data["anonymous"],
+                internal=seedpool_tracker_data["internal"],
+                personal_release=seedpool_tracker_data["personal_release"],
+                image_width=seedpool_tracker_data["image_width"],
+            )
+
+            utp_tracker_data = tracker_data["utp"]
+            utp_tracker = UTPInfo(
+                upload_enabled=utp_tracker_data["upload_enabled"],
+                announce_url=utp_tracker_data["announce_url"],
+                enabled=utp_tracker_data["enabled"],
+                source=utp_tracker_data["source"],
+                comments=utp_tracker_data["comments"],
+                nfo_template=utp_tracker_data["nfo_template"],
+                max_piece_size=utp_tracker_data["max_piece_size"],
+                url_type=URLType(utp_tracker_data["url_type"]),
+                column_s=utp_tracker_data["column_s"],
+                column_space=utp_tracker_data["column_space"],
+                row_space=utp_tracker_data["row_space"],
+                mvr_title_override_enabled=utp_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    utp_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=utp_tracker_data["mvr_title_token_override"],
+                mvr_title_replace_map=utp_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(utp_tracker_data),
+                api_key=utp_tracker_data["api_key"],
+                anonymous=utp_tracker_data["anonymous"],
+                internal=utp_tracker_data["internal"],
+                personal_release=utp_tracker_data["personal_release"],
+                image_width=utp_tracker_data["image_width"],
+            )
+
+            yuscene_tracker_data = tracker_data["yuscene"]
+            yuscene_tracker = YuSceneInfo(
+                upload_enabled=yuscene_tracker_data["upload_enabled"],
+                announce_url=yuscene_tracker_data["announce_url"],
+                enabled=yuscene_tracker_data["enabled"],
+                source=yuscene_tracker_data["source"],
+                comments=yuscene_tracker_data["comments"],
+                nfo_template=yuscene_tracker_data["nfo_template"],
+                max_piece_size=yuscene_tracker_data["max_piece_size"],
+                url_type=URLType(yuscene_tracker_data["url_type"]),
+                column_s=yuscene_tracker_data["column_s"],
+                column_space=yuscene_tracker_data["column_space"],
+                row_space=yuscene_tracker_data["row_space"],
+                mvr_title_override_enabled=yuscene_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    yuscene_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=yuscene_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=yuscene_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    yuscene_tracker_data
+                ),
+                api_key=yuscene_tracker_data["api_key"],
+                anonymous=yuscene_tracker_data["anonymous"],
+                internal=yuscene_tracker_data["internal"],
+                personal_release=yuscene_tracker_data["personal_release"],
+                image_width=yuscene_tracker_data["image_width"],
+            )
+
+            fearnopeer_tracker_data = tracker_data["fearnopeer"]
+            fearnopeer_tracker = FearNoPeerInfo(
+                upload_enabled=fearnopeer_tracker_data["upload_enabled"],
+                announce_url=fearnopeer_tracker_data["announce_url"],
+                enabled=fearnopeer_tracker_data["enabled"],
+                source=fearnopeer_tracker_data["source"],
+                comments=fearnopeer_tracker_data["comments"],
+                nfo_template=fearnopeer_tracker_data["nfo_template"],
+                max_piece_size=fearnopeer_tracker_data["max_piece_size"],
+                url_type=URLType(fearnopeer_tracker_data["url_type"]),
+                column_s=fearnopeer_tracker_data["column_s"],
+                column_space=fearnopeer_tracker_data["column_space"],
+                row_space=fearnopeer_tracker_data["row_space"],
+                mvr_title_override_enabled=fearnopeer_tracker_data[
+                    "mvr_title_override_enabled"
+                ],
+                mvr_title_colon_replace=ColonReplace(
+                    fearnopeer_tracker_data["mvr_title_colon_replace"]
+                ),
+                mvr_title_token_override=fearnopeer_tracker_data[
+                    "mvr_title_token_override"
+                ],
+                mvr_title_replace_map=fearnopeer_tracker_data["mvr_title_replace_map"],
+                tvr_title_overrides=self._load_series_title_overrides(
+                    fearnopeer_tracker_data
+                ),
+                api_key=fearnopeer_tracker_data["api_key"],
+                anonymous=fearnopeer_tracker_data["anonymous"],
+                internal=fearnopeer_tracker_data["internal"],
+                personal_release=fearnopeer_tracker_data["personal_release"],
+                image_width=fearnopeer_tracker_data["image_width"],
+            )
+
             # torrent clients
             torrent_client_data = self._toml_mapping(toml_data, "torrent_client")
 
@@ -1674,6 +2141,9 @@ class TypedTomlOperations:
             chevereto_v4 = CheveretoV4Payload(**image_hosts["chevereto_v4"])
             image_bb = ImageBBPayload(**image_hosts["image_bb"])
             image_box = ImageBoxPayload(**image_hosts["image_box"])
+            only_image = OnlyImagePayload(**image_hosts["only_image"])
+            pixhost = PixhostPayload(**image_hosts["pixhost"])
+            lensdump = LensdumpPayload(**image_hosts["lensdump"])
 
             # urls
             urls_settings = self._toml_mapping(toml_data, "urls")
@@ -1735,6 +2205,12 @@ class TypedTomlOperations:
                     share_island=shri_tracker,
                     upload_cx=ulcx_tracker,
                     only_encodes=oe_tracker,
+                    hdb=hdb_tracker,
+                    blutopia=blutopia_tracker,
+                    seedpool=seedpool_tracker,
+                    utp=utp_tracker,
+                    yuscene=yuscene_tracker,
+                    fearnopeer=fearnopeer_tracker,
                 ),
                 torrent_clients=TorrentClientSettings(
                     qbittorrent=qbittorrent,
@@ -1867,6 +2343,9 @@ class TypedTomlOperations:
                     chevereto_v4=chevereto_v4,
                     image_bb=image_bb,
                     image_box=image_box,
+                    only_image=only_image,
+                    pixhost=pixhost,
+                    lensdump=lensdump,
                 ),
                 urls=UrlSettings(
                     alt=str(urls_settings["alt"]),
@@ -1882,7 +2361,12 @@ class TypedTomlOperations:
                     wizard_page=str(plugins_settings["wizard_page"]) or None,
                     token_replacer=str(plugins_settings["token_replacer"]) or None,
                     pre_upload=str(plugins_settings["pre_upload"]) or None,
+                    post_upload=str(plugins_settings["post_upload"]) or None,
                     metadata_transformer=str(plugins_settings["metadata_transformer"])
+                    or None,
+                    image_host_uploader=str(plugins_settings["image_host_uploader"])
+                    or None,
+                    duplicate_checker=str(plugins_settings["duplicate_checker"])
                     or None,
                 ),
                 templates=TemplateSettings(

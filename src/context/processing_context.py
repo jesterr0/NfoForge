@@ -3,7 +3,7 @@ from pathlib import Path
 
 from src.enums.tracker_selection import TrackerSelection
 from src.nf_jinja2 import Jinja2TemplateEngine
-from src.packages.custom_types import ImageUploadData
+from src.packages.custom_types import ImageUploadData, RenameNormalization
 from src.payloads.clients import TorrentClientRunOptions
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
@@ -31,6 +31,8 @@ class ProcessingContext:
 
     jinja_engine: Jinja2TemplateEngine = field(default_factory=Jinja2TemplateEngine)
     flat_filters: dict[str, FlatFilter] = field(default_factory=dict)
+    custom_edition_info: tuple[RenameNormalization, ...] = field(default_factory=tuple)
+    custom_cut_names: frozenset[str] = field(default_factory=frozenset)
 
     def __post_init__(self) -> None:
         self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)

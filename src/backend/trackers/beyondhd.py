@@ -5,9 +5,8 @@ from typing import Any
 
 import niquests
 from niquests.typing import MultiPartFilesAltType
-import regex
 
-from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.trackers.utils import DISC_TITLE_REGEX, TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
@@ -368,20 +367,7 @@ class BHDUploader:
                 return BHDType.UHD_REMUX.value
 
         # disc
-        elif regex.search(
-            (
-                r"^(?!.*\b((?<!HD[._ -]|HD)DVD|BDRip|720p|MKV|XviD"
-                r"|WMV|d3g|(BD)?REMUX|^(?=.*1080p)(?=.*HEVC)|[xh][-_. ]"
-                r"?26[45]|German.*[DM]L|((?<=\d{4}).*German.*([DM]L)?)"
-                r"(?=.*\b(AVC|HEVC|VC[-_. ]?1|MVC|MPEG[-_. ]?2)\b))\b)(((?=.*\b(Blu[-_. ]?ray"
-                r"|BD|HD[-_. ]?DVD)\b)(?=.*\b(AVC|HEVC|VC[-_. ]?1|MVC|"
-                r"MPEG[-_. ]?2|BDMV|ISO)\b))|^((?=.*\b(((?=.*\b((.*_)?COMPLETE.*"
-                r"|Dis[ck])\b)(?=.*(Blu[-_. ]?ray|HD[-_. ]?DVD)))|3D[-_. ]?BD|"
-                r"BR[-_. ]?DISK|Full[-_. ]?Blu[-_. ]?ray|^((?=.*((BD|UHD)[-_. ]?(25"
-                r"|50|66|100|ISO)))))))).*"
-            ),
-            title_lowered,
-        ):
+        elif DISC_TITLE_REGEX.search(title_lowered):
             input_file_size = self.input_path.stat().st_size
             if input_file_size <= 26_843_545_600:
                 return BHDType.BD_25.value

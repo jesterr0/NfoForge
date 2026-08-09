@@ -3,7 +3,8 @@ from typing import Any
 
 from src.context.factory import create_processing_context
 from src.context.processing_context import ProcessingContext
-from src.plugins.api import PluginDefinition
+from src.packages.custom_types import RenameNormalization
+from src.plugins.api import CustomEditionContribution, PluginDefinition
 from src.plugins.manager import PluginManager
 
 
@@ -71,6 +72,12 @@ def test_factory_applies_settings_and_plugins() -> None:
             jinja2_filters={"plugin_filter": plugin_filter},
             jinja2_functions={"plugin_function": plugin_function},
             flat_filters={"flat_plugin_filter": flat_plugin_filter},
+            custom_editions=(
+                CustomEditionContribution(
+                    entry=RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),
+                    is_cut=True,
+                ),
+            ),
         ),
         "test",
     )
@@ -88,6 +95,8 @@ def test_factory_applies_settings_and_plugins() -> None:
     assert environment.filters["plugin_filter"] is plugin_filter
     assert environment.globals["plugin_function"] is plugin_function
     assert context.flat_filters["flat_plugin_filter"] is flat_plugin_filter
+    assert [item.normalized for item in context.custom_edition_info] == ["Fan Edit"]
+    assert context.custom_cut_names == frozenset({"Fan Edit"})
 
 
 def test_factory_does_not_apply_contributions_when_plugins_are_disabled() -> None:
@@ -99,6 +108,11 @@ def test_factory_does_not_apply_contributions_when_plugins_are_disabled() -> Non
             version="1.0.0",
             jinja2_filters={"external_filter": lambda value: value},
             flat_filters={"external_flat_filter": lambda value: value},  # type: ignore[reportArgumentType]
+            custom_editions=(
+                CustomEditionContribution(
+                    entry=RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),
+                ),
+            ),
         ),
         "test",
     )
@@ -109,3 +123,5 @@ def test_factory_does_not_apply_contributions_when_plugins_are_disabled() -> Non
 
     assert "external_filter" not in context.jinja_engine.environment.filters
     assert context.flat_filters == {}
+    assert context.custom_edition_info == ()
+    assert context.custom_cut_names == frozenset()

@@ -23,6 +23,7 @@
 | `{audio_language_dual}`                        | Audio language ('Dual Audio' will be returned if there are 2 or more tracks with unique languages) |
 | `{audio_language_multi}`                       | Audio languages ('Multi' will be returned if there are 3 or more tracks with unique languages)     |
 | `{audio_sample_rate}`                          | Audio sample rate (48.0 kHz)                                                                       |
+| `{cut}`                                        | Cut, e.g. Director's Cut/Extended/Unrated (subset of {edition})                                    |
 | `{edition}`                                    | Edition                                                                                            |
 | `{end_episode_number}`                         | End episode number for a multi-episode file (blank for single episodes).                           |
 | `{episode_air_date}`                           | Episode air date (UTC)                                                                             |

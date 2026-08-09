@@ -7,13 +7,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
+    from src.backend.image_host_uploading.base_image_host import BaseImageHostUploader
     from src.config.config import ConfigManager
     from src.context.processing_context import ProcessingContext
     from src.enums.media_type import MediaType
     from src.enums.tracker_selection import TrackerSelection
     from src.frontend.wizards.wizard_base_page import BaseWizardPage
-    from src.packages.custom_types import ImageUploadData
+    from src.packages.custom_types import ImageUploadData, RenameNormalization
+    from src.payloads.media_inputs import MediaInputPayload
     from src.payloads.media_search import MediaSearchPayload
+    from src.payloads.tracker_search_result import TrackerSearchResult
 
 
 PLUGIN_API_VERSION = 2
@@ -76,6 +79,32 @@ class PreUploadProcessor(Protocol):
     def __call__(self, request: PreUploadRequest, /) -> PreUploadDecision: ...
 
 
+class PostUploadOutcome(Enum):
+    """What happened to one tracker's upload-and-injection cycle."""
+
+    SUCCESS = "success"
+    UPLOAD_FAILED = "upload_failed"
+    INJECTION_FAILED = "injection_failed"
+    SKIPPED = "skipped"
+
+
+@dataclass(frozen=True, slots=True)
+class PostUploadRequest:
+    """Inputs supplied to a post-upload plugin, once per tracker."""
+
+    config: ConfigManager
+    context: ProcessingContext
+    tracker: TrackerSelection
+    torrent_file: Path
+    reporter: UploadReporter
+    outcome: PostUploadOutcome
+    error: str | None = None
+
+
+class PostUploadProcessor(Protocol):
+    def __call__(self, request: PostUploadRequest, /) -> None: ...
+
+
 @dataclass(frozen=True, slots=True)
 class MetadataInputContext:
     """Immutable media-input facts available to metadata transformers."""
@@ -115,6 +144,44 @@ class FlatFilter(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class DuplicateCheckRequest:
+    """Inputs supplied to a duplicate-checker plugin, once per tracker."""
+
+    config: ConfigManager
+    tracker: TrackerSelection
+    media_input: MediaInputPayload
+    media_search: MediaSearchPayload
+    timeout: int
+
+
+class DuplicateChecker(Protocol):
+    def __call__(
+        self, request: DuplicateCheckRequest, /
+    ) -> Sequence[TrackerSearchResult]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CustomEditionContribution:
+    """A plugin-contributed entry recognized by the `{edition}`/`{cut}` tokens.
+
+    Merged with the built-in `EDITION_INFO`/`CUT_EDITION_NAMES` tables
+    (`src.backend.utils.rename_normalizations`) that back those two tokens.
+    `entry.normalized` is the display value the token resolves to when this
+    entry matches; `entry.re_gex` are case-insensitive regexes checked
+    against the filename and guessit's parsed edition field, the same way
+    every built-in entry is. `is_cut` mirrors `CUT_EDITION_NAMES`: `True`
+    keeps this entry in `{cut}` (so it survives on trackers whose title
+    format switched to `{cut}`, e.g. Aither); `False` makes it Edition-only
+    -- it appears in `{edition}` but is omitted from `{cut}`, matching how
+    marketing-style built-in Editions (Criterion, Deluxe, Special, ...)
+    already behave.
+    """
+
+    entry: RenameNormalization
+    is_cut: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class PluginDefinition:
     """The single typed object exported by an NfoForge plugin."""
 
@@ -125,10 +192,14 @@ class PluginDefinition:
     wizard_page: type[BaseWizardPage] | None = None
     token_replacer: TokenReplacer | None = None
     pre_upload: PreUploadProcessor | None = None
+    post_upload: PostUploadProcessor | None = None
     metadata_transformer: MetadataTransformer | None = None
+    image_host_uploader: BaseImageHostUploader | None = None
+    duplicate_checker: DuplicateChecker | None = None
     jinja2_filters: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     jinja2_functions: Mapping[str, Callable[..., Any]] = field(default_factory=dict)
     flat_filters: Mapping[str, FlatFilter] = field(default_factory=dict)
+    custom_editions: Sequence[CustomEditionContribution] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
