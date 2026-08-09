@@ -1402,10 +1402,20 @@ def test_duplicate_checker_is_written_on_save(
 def test_locked_tracker_keeps_its_stale_user_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ReelFliX moved from FREE to REQUIRED. A user who had customized its
-    title override keeps that value on disk: it is no longer read or shown,
-    but it is not destroyed, so it returns intact if the policy is ever
-    reversed."""
+    """The config layer preserves a locked tracker's stored title override
+    across a save/reload cycle: ``ConfigManager.save()`` and
+    ``load_profile()`` round-trip every tracker's override fields
+    unconditionally, with no FREE/REQUIRED branching, so a value already
+    present on a settings object survives a disk round trip regardless of
+    policy.
+
+    This does not exercise the actual guard that keeps a locked tracker's
+    settings from being overwritten by its UI widget in the first place --
+    that is ``MoviesManagementSettings._save_settings`` skipping non-FREE
+    trackers, pinned separately by
+    ``test_required_tracker_movie_overrides_are_not_persisted`` in
+    ``tests/test_frontend/test_movies_management_settings.py``.
+    """
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
         lambda self, dependencies: None,

@@ -105,6 +105,26 @@ def test_reelflix_locked_and_ptp_shown_locked_in_movie_overrides(
     assert not ptp_widget.over_ride_format_title.isEnabled()
 
 
+def test_required_tracker_movie_overrides_are_not_persisted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale user value for a locked tracker stays in settings untouched:
+    the save path must skip REQUIRED (and UNSUPPORTED) trackers rather than
+    writing the widget's contents over them."""
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    live = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
+    live.mvr_title_override_enabled = True
+    live.mvr_title_token_override = "{title_clean} (stale user value)"  # noqa: S105
+
+    widget._save_settings()
+
+    assert live.mvr_title_override_enabled is True
+    assert (
+        live.mvr_title_token_override == "{title_clean} (stale user value)"  # noqa: S105
+    )
+
+
 def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
