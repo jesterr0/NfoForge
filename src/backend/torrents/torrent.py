@@ -66,6 +66,14 @@ def clone_torrent(
     torrent.private = True
     if tracker_info.announce_url:
         torrent.metainfo["announce"] = tracker_info.announce_url
+    else:
+        # The base torrent belongs to whichever tracker was hashed first, so
+        # leaving its announce in place would hand this tracker a torrent
+        # pointing at a different one. A tracker with no announce URL wants no
+        # announce at all -- UNIT3D stamps its own in server-side and returns
+        # that torrent on upload.
+        torrent.metainfo.pop("announce", None)
+        torrent.metainfo.pop("announce-list", None)
     if tracker_info.source:
         torrent.metainfo["info"]["source"] = tracker_info.source
     if tracker_info.comments:
@@ -100,10 +108,6 @@ def mkbrr_generate_torrent(
     max_piece_size: int | None,
     cb: Callable[[int], None],
 ) -> Torrent | None:
-    announce_url = tracker_info.announce_url
-    if not announce_url:
-        raise ValueError("Cannot create a torrent without a tracker announce URL")
-
     cmd_line = [
         str(mkbrr_path),
         "create",
@@ -111,9 +115,18 @@ def mkbrr_generate_torrent(
         "--output",
         str(output_path),
         "--private",
-        "--tracker",
-        announce_url,
     ]
+    # A growing number of UNIT3D trackers no longer hand out an announce URL --
+    # they stamp it into the torrent they generate server-side and hand that
+    # back on upload (see Unit3dBaseUploader._download_uploaded_torrent, which
+    # replaces the local file with it). mkbrr's --tracker is optional, so omit
+    # the flag rather than refusing to build the torrent; the result is a valid
+    # private torrent with no announce key, matching what torf produces from
+    # `trackers=None`. --output is always passed explicitly, so dropping the
+    # flag can't change the output filename either (mkbrr only derives a
+    # tracker-domain prefix when it picks the name itself).
+    if tracker_info.announce_url:
+        cmd_line.extend(("--tracker", tracker_info.announce_url))
     if max_piece_size:
         cmd_line.extend(
             ("--max-piece-length", str(_bytes_to_mkbrr_exponent(max_piece_size)))

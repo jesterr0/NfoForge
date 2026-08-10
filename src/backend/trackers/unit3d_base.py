@@ -438,9 +438,18 @@ class Unit3dBaseUploader:
         if self.media_type is MediaType.SERIES:
             if season_number is not None:
                 upload_payload["season_number"] = season_number
-            if not season_pack and episode_number is not None:
+            # UNIT3D requires episode_number on every tv_meta category upload --
+            # StoreTorrentRequest has no season-pack exemption, so omitting it
+            # gets the upload rejected outright. A pack is expressed as episode
+            # 0, which TorrentMeta renders as "Season Pack"; any non-zero value
+            # files the torrent under Episodes as "Episode N" instead.
+            if season_pack:
+                upload_payload["episode_number"] = 0
+            elif episode_number is not None:
                 upload_payload["episode_number"] = episode_number
             if season_pack:
+                # not in UNIT3D's documented upload fields and unread upstream;
+                # retained for forks that may consume it.
                 upload_payload["season_pack"] = 1
 
         # some trackers have different keys for different features, we'll handle that here

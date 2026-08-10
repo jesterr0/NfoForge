@@ -27,7 +27,7 @@ def test_pass_the_popcorn_is_unsupported() -> None:
 
 
 def test_trackers_shipping_a_default_override_are_required() -> None:
-    """The 9 trackers whose packaged default already ships
+    """The 10 trackers whose packaged default ships
     mvr_title_override_enabled = true must be locked (REQUIRED), matching
     default_config.toml."""
     required_trackers = {
@@ -40,6 +40,7 @@ def test_trackers_shipping_a_default_override_are_required() -> None:
         TrackerSelection.SHARE_ISLAND,
         TrackerSelection.UPLOAD_CX,
         TrackerSelection.ONLY_ENCODES,
+        TrackerSelection.REELFLIX,
     }
     for tracker in required_trackers:
         assert TRACKER_TITLE_FORMAT_POLICY[tracker] is TitleFormatPolicy.REQUIRED

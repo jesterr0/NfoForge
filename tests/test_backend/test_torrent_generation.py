@@ -91,3 +91,125 @@ def test_mkbrr_command_excludes_index_sidecars_and_validates_result(
         if value == "--exclude"
     ]
     assert tuple(exclude_values) == INDEX_SIDECAR_GLOBS
+
+
+def _fake_mkbrr(monkeypatch: pytest.MonkeyPatch, captured: list[str]) -> None:
+    """Stand in for the mkbrr binary, recording the argv it was handed."""
+    process = MagicMock()
+    process.__enter__.return_value = process
+    process.__exit__.return_value = False
+    process.stdout = StringIO("Wrote torrent\n")
+    process.returncode = 0
+
+    def fake_popen(command: list[str], **_kwargs: Any) -> MagicMock:
+        captured.extend(command)
+        return process
+
+    monkeypatch.setattr(torrent_module.subprocess, "Popen", fake_popen)
+
+
+@pytest.mark.parametrize(
+    ("announce_url", "expects_flag"),
+    [
+        ("https://tracker.invalid/announce", True),
+        (None, False),
+        ("", False),
+    ],
+)
+def test_mkbrr_omits_the_tracker_flag_when_there_is_no_announce_url(
+    announce_url: str | None,
+    expects_flag: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A growing number of UNIT3D trackers hand out no announce URL at all --
+    they stamp their own into the torrent they return on upload. mkbrr's
+    --tracker is optional (verified against mkbrr 1.21.0: it writes a valid
+    private torrent with no announce key), so NfoForge must drop the flag
+    rather than refuse to build the torrent."""
+    _, media = _release_with_indexes(tmp_path)
+    output_path = tmp_path / "output.torrent"
+    expected = Torrent(path=media)
+    expected.generate()
+    expected.write(output_path)
+    captured_command: list[str] = []
+    _fake_mkbrr(monkeypatch, captured_command)
+
+    result = mkbrr_generate_torrent(
+        mkbrr_path=tmp_path / "mkbrr.exe",
+        tracker_info=TrackerInfo(announce_url=announce_url),
+        path=media,
+        output_path=output_path,
+        max_piece_size=None,
+        cb=lambda _progress: None,
+    )
+
+    assert result is not None
+    assert ("--tracker" in captured_command) is expects_flag
+    if expects_flag:
+        assert captured_command[captured_command.index("--tracker") + 1] == announce_url
+    # --output is always explicit, so dropping --tracker cannot change where
+    # the torrent lands (mkbrr only derives a tracker-domain filename prefix
+    # when it picks the name itself)
+    assert captured_command[captured_command.index("--output") + 1] == str(output_path)
+
+
+def test_clone_strips_the_base_announce_for_a_tracker_without_one(
+    tmp_path: Path,
+) -> None:
+    """The base torrent belongs to whichever tracker was hashed first. Leaving
+    its announce in place would hand a tracker that has none a torrent pointing
+    at a different tracker -- which is what shipped before, since the announce
+    was only ever overwritten, never cleared."""
+    _, media = _release_with_indexes(tmp_path)
+    base_path = tmp_path / "base.torrent"
+    base = generate_torrent(
+        tracker_info=TrackerInfo(
+            announce_url="https://first.invalid/PASSKEY/announce", source="First"
+        ),
+        path=media,
+        max_piece_size=None,
+        cb=lambda *_args: None,
+    )
+    base.write(base_path, overwrite=True)
+    assert base.trackers
+
+    clone = torrent_module.clone_torrent(
+        tracker_info=TrackerInfo(announce_url=None, source="Second"),
+        torrent_path=tmp_path / "second.torrent",
+        base_torrent_file=base_path,
+    )
+
+    assert clone.trackers == []
+    assert "announce" not in clone.metainfo
+    assert "announce-list" not in clone.metainfo
+    # the rest of the clone must be untouched
+    assert clone.private is True
+    assert clone.metainfo["info"]["source"] == "Second"  # pyright: ignore[reportTypedDictNotRequiredAccess]
+
+
+def test_clone_still_overwrites_the_announce_when_the_tracker_has_one(
+    tmp_path: Path,
+) -> None:
+    """The normal path must be unaffected."""
+    _, media = _release_with_indexes(tmp_path)
+    base_path = tmp_path / "base.torrent"
+    base = generate_torrent(
+        tracker_info=TrackerInfo(
+            announce_url="https://first.invalid/PASSKEY/announce", source="First"
+        ),
+        path=media,
+        max_piece_size=None,
+        cb=lambda *_args: None,
+    )
+    base.write(base_path, overwrite=True)
+
+    clone = torrent_module.clone_torrent(
+        tracker_info=TrackerInfo(
+            announce_url="https://second.invalid/OTHERKEY/announce", source="Second"
+        ),
+        torrent_path=tmp_path / "second.torrent",
+        base_torrent_file=base_path,
+    )
+
+    assert clone.trackers == [["https://second.invalid/OTHERKEY/announce"]]

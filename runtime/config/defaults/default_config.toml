@@ -134,9 +134,18 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
-mvr_title_override_enabled = false
-mvr_title_token_override = ""
-mvr_title_replace_map = []
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
 mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
@@ -187,6 +196,51 @@ double_up = false
 sticky = false
 image_width = 350
 
+[tracker.aither.tvr_title_overrides.standard]
+enabled = true
+colon_replace = 3
+token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+
+[tracker.aither.tvr_title_overrides."daily / date"]
+enabled = true
+colon_replace = 3
+token = "{title_clean} {episode_air_date} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+
+[tracker.aither.tvr_title_overrides."anime / absolute"]
+enabled = true
+colon_replace = 3
+token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+
 [tracker.huno]
 upload_enabled = true
 announce_url = ""
@@ -231,7 +285,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -254,6 +308,51 @@ free = false
 double_up = false
 sticky = false
 image_width = 500
+
+[tracker.lst.tvr_title_overrides.standard]
+enabled = true
+colon_replace = 3
+token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+
+[tracker.lst.tvr_title_overrides."daily / date"]
+enabled = true
+colon_replace = 3
+token = "{title_clean} {episode_air_date} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+
+[tracker.lst.tvr_title_overrides."anime / absolute"]
+enabled = true
+colon_replace = 3
+token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
 
 [tracker.dark_peers]
 upload_enabled = true

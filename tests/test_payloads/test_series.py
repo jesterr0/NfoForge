@@ -19,7 +19,11 @@ from src.frontend.custom_widgets.series_episode_mapper import (
 )
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
-from src.payloads.series import SeriesReleaseInfo, build_series_release_info
+from src.payloads.series import (
+    SeriesReleaseInfo,
+    build_series_release_info,
+    describe_missing_upload_fields,
+)
 
 
 def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
@@ -1107,3 +1111,135 @@ def test_auto_match_files_does_not_daily_match_special_episode() -> None:
 
     mapping = mapper.file_episode_mappings.get(file_path)
     assert mapping is None or mapping["assignment_method"] != "daily"
+
+
+@pytest.mark.parametrize(
+    ("file_name", "expected_season", "expected_episode"),
+    [
+        # guessit reads the leading "0" of the absolute number "087" as a
+        # season; UNIT3D renders season 0 as "Special {episode}", so trusting
+        # it would upload absolute-numbered anime mis-categorized as a special
+        # rather than failing loudly. Season must come back unresolved instead.
+        ("Anime.Title.-.087.1080p.BluRay.x264-GROUP.mkv", None, 87),
+        # bracketed absolute forms give guessit no season at all
+        ("[Group] Anime Title - 087 [1080p][HEVC].mkv", None, 87),
+        ("[Group] Anime Title - 12 (1080p) [ABCD1234].mkv", None, 12),
+        # the conventional form survives the fallback intact
+        ("Anime.Title.S02E11.1080p.BluRay.x264-GROUP.mkv", 2, 11),
+        # ...and so does a genuine specials release, whose filename actually
+        # names the specials season
+        ("Show.Name.S00E03.1080p.WEB-DL.x264-GROUP.mkv", 0, 3),
+        # a date-based episode yields neither
+        ("The.Daily.Show.2024.01.15.1080p.WEB.h264-GROUP.mkv", None, None),
+    ],
+)
+def test_build_series_release_info_fallback_season_episode(
+    file_name: str, expected_season: int | None, expected_episode: int | None
+) -> None:
+    file_path = Path(file_name)
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == expected_season
+    assert release_info.episode_start == expected_episode
+
+
+def test_build_series_release_info_fallback_only_fills_missing_dimension() -> None:
+    # the mapping supplies seasons but no episode numbers. The filename-parsing
+    # fallback must backfill episodes only -- appending its own seasons on top
+    # of the mapped ones would widen season_end to a value the user never
+    # chose (here S03 from file_two's name, over the mapped S01).
+    file_one = Path("Show.S03E01.mkv")
+    file_two = Path("Show.S03E02.mkv")
+    media_input = MediaInputPayload(
+        input_path=Path("Show Season 1"),
+        media_type=MediaType.SERIES,
+        file_list=[file_one, file_two],
+        series_episode_map={
+            file_one: {"season": 1, "episode": None},
+            file_two: {"season": 1, "episode": None},
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+
+    release_info = build_series_release_info(media_input)
+
+    assert release_info.season == 1
+    assert release_info.season_end == 1
+    assert release_info.episode_start == 1
+    assert release_info.episode_end == 2
+
+
+def test_missing_upload_fields_pack_needs_only_a_season() -> None:
+    # UNIT3D expresses a pack as episode 0, so a pack with no resolvable
+    # episode number is complete as long as it has a season.
+    file_one = Path("Show.S02E03.mkv")
+    file_two = Path("Show.S02E04.mkv")
+    release_info = build_series_release_info(
+        MediaInputPayload(
+            input_path=Path("Show Season 2"),
+            media_type=MediaType.SERIES,
+            file_list=[file_one, file_two],
+            series_episode_map={
+                file_one: {"season": 2, "episode": 3},
+                file_two: {"season": 2, "episode": 4},
+            },
+            series_episode_format=EpisodeFormat.STANDARD,
+        )
+    )
+
+    assert release_info.is_pack is True
+    assert release_info.missing_upload_fields() == ()
+    assert describe_missing_upload_fields(release_info) is None
+
+
+def test_missing_upload_fields_single_episode_needs_both() -> None:
+    file_path = Path("Show.S01E01.mkv")
+    complete = build_series_release_info(
+        MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={file_path: {"season": 1, "episode": 1}},
+            series_episode_format=EpisodeFormat.STANDARD,
+        )
+    )
+    assert complete.missing_upload_fields() == ()
+
+    # a date-based episode the fallback can't read, mapped by neither season
+    # nor episode -- the exact shape that reached UNIT3D with the fields
+    # silently dropped from the payload.
+    unresolved_path = Path("The.Daily.Show.2024.01.15.1080p.WEB.h264-GROUP.mkv")
+    unresolved = build_series_release_info(
+        MediaInputPayload(
+            input_path=unresolved_path,
+            media_type=MediaType.SERIES,
+            file_list=[unresolved_path],
+            series_episode_map={unresolved_path: {"season": None, "episode": None}},
+            series_episode_format=EpisodeFormat.STANDARD,
+        )
+    )
+    assert unresolved.missing_upload_fields() == ("season", "episode")
+    message = describe_missing_upload_fields(unresolved)
+    assert message is not None
+    assert "season number and episode number" in message
+
+
+def test_missing_upload_fields_ignores_movies() -> None:
+    movie_path = Path("Example.Movie.2024.1080p.WEB-DL.H.264.mkv")
+    release_info = build_series_release_info(
+        MediaInputPayload(
+            input_path=movie_path,
+            media_type=MediaType.MOVIE,
+            file_list=[movie_path],
+        )
+    )
+
+    assert release_info.missing_upload_fields() == ()
+    assert describe_missing_upload_fields(release_info) is None
