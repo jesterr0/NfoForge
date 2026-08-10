@@ -135,7 +135,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_exact} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -146,7 +146,7 @@ mvr_title_replace_map = [
         "HDR10+",
     ],
 ]
-mvr_title_colon_replace = 3
+mvr_title_colon_replace = 1
 api_key = ""
 anonymous = false
 internal = false
@@ -172,7 +172,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_exact} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -183,7 +183,7 @@ mvr_title_replace_map = [
         "HDR10+",
     ],
 ]
-mvr_title_colon_replace = 3
+mvr_title_colon_replace = 1
 api_key = ""
 anonymous = false
 internal = false
@@ -198,8 +198,8 @@ image_width = 350
 
 [tracker.aither.tvr_title_overrides.standard]
 enabled = true
-colon_replace = 3
-token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_exact} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -213,8 +213,8 @@ replace_map = [
 
 [tracker.aither.tvr_title_overrides."daily / date"]
 enabled = true
-colon_replace = 3
-token = "{title_clean} {episode_air_date} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+colon_replace = 1
+token = "{title_exact} {episode_air_date} {episode_title_exact} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -228,8 +228,8 @@ replace_map = [
 
 [tracker.aither.tvr_title_overrides."anime / absolute"]
 enabled = true
-colon_replace = 3
-token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_exact} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -285,7 +285,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_token_override = "{title_exact} {release_year} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -296,7 +296,7 @@ mvr_title_replace_map = [
         "HDR10+",
     ],
 ]
-mvr_title_colon_replace = 3
+mvr_title_colon_replace = 1
 api_key = ""
 anonymous = false
 internal = false
@@ -311,8 +311,8 @@ image_width = 500
 
 [tracker.lst.tvr_title_overrides.standard]
 enabled = true
-colon_replace = 3
-token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_exact} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -326,8 +326,8 @@ replace_map = [
 
 [tracker.lst.tvr_title_overrides."daily / date"]
 enabled = true
-colon_replace = 3
-token = "{title_clean} {episode_air_date} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+colon_replace = 1
+token = "{title_exact} {episode_air_date} {episode_title_exact} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
@@ -341,8 +341,8 @@ replace_map = [
 
 [tracker.lst.tvr_title_overrides."anime / absolute"]
 enabled = true
-colon_replace = 3
-token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_exact} {frame_size} {cut} {re_release} {resolution} {source} {audio_codec_no_atmos} {audio_channel_s} {atmos} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',
