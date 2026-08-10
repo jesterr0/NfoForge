@@ -188,6 +188,78 @@ def test_clone_strips_the_base_announce_for_a_tracker_without_one(
     assert clone.metainfo["info"]["source"] == "Second"  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
+def test_clone_strips_the_base_comment_and_source_for_a_tracker_without_them(
+    tmp_path: Path,
+) -> None:
+    """Same leak as the announce, one field over. The comment and source belong
+    to whichever tracker was hashed first, so a tracker that configures neither
+    used to ship the first tracker's comment to its users -- visible in any
+    torrent client -- and its source tag, which changes the infohash."""
+    _, media = _release_with_indexes(tmp_path)
+    base_path = tmp_path / "base.torrent"
+    base = generate_torrent(
+        tracker_info=TrackerInfo(
+            announce_url="https://first.invalid/PASSKEY/announce",
+            source="First",
+            comments="Uploaded to First",
+        ),
+        path=media,
+        max_piece_size=None,
+        cb=lambda *_args: None,
+    )
+    base.write(base_path, overwrite=True)
+    assert base.comment == "Uploaded to First"
+
+    clone = torrent_module.clone_torrent(
+        tracker_info=TrackerInfo(
+            announce_url="https://second.invalid/OTHERKEY/announce",
+            source=None,
+            comments=None,
+        ),
+        torrent_path=tmp_path / "second.torrent",
+        base_torrent_file=base_path,
+    )
+
+    assert clone.comment is None
+    assert "comment" not in clone.metainfo
+    assert "source" not in clone.metainfo["info"]
+    # the rest of the clone must be untouched
+    assert clone.private is True
+    assert clone.trackers == [["https://second.invalid/OTHERKEY/announce"]]
+
+
+def test_clone_still_overwrites_the_comment_and_source_when_the_tracker_has_them(
+    tmp_path: Path,
+) -> None:
+    """The normal path must be unaffected."""
+    _, media = _release_with_indexes(tmp_path)
+    base_path = tmp_path / "base.torrent"
+    base = generate_torrent(
+        tracker_info=TrackerInfo(
+            announce_url="https://first.invalid/PASSKEY/announce",
+            source="First",
+            comments="Uploaded to First",
+        ),
+        path=media,
+        max_piece_size=None,
+        cb=lambda *_args: None,
+    )
+    base.write(base_path, overwrite=True)
+
+    clone = torrent_module.clone_torrent(
+        tracker_info=TrackerInfo(
+            announce_url="https://second.invalid/OTHERKEY/announce",
+            source="Second",
+            comments="Uploaded to Second",
+        ),
+        torrent_path=tmp_path / "second.torrent",
+        base_torrent_file=base_path,
+    )
+
+    assert clone.comment == "Uploaded to Second"
+    assert clone.metainfo["info"]["source"] == "Second"  # pyright: ignore[reportTypedDictNotRequiredAccess]
+
+
 def test_clone_still_overwrites_the_announce_when_the_tracker_has_one(
     tmp_path: Path,
 ) -> None:

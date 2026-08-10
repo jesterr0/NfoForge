@@ -74,10 +74,16 @@ def clone_torrent(
         # that torrent on upload.
         torrent.metainfo.pop("announce", None)
         torrent.metainfo.pop("announce-list", None)
+    # Source and comment carry the same hazard as the announce above: they
+    # belong to whichever tracker was hashed first, so a tracker that sets
+    # neither must have them cleared rather than inherited. A stale comment is
+    # visible to anyone who opens the torrent in a client, and a stale source
+    # tag changes the infohash -- both advertise the wrong tracker.
     if tracker_info.source:
         torrent.metainfo["info"]["source"] = tracker_info.source
-    if tracker_info.comments:
-        torrent.comment = tracker_info.comments
+    else:
+        torrent.metainfo["info"].pop("source", None)
+    torrent.comment = tracker_info.comments if tracker_info.comments else None
     clone = Torrent.copy(torrent)
     return clone
 
