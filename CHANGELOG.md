@@ -30,6 +30,17 @@
 
 ### Fixed
 
+- Trackers that hand out no announce URL are now fully supported. A growing number of
+  UNIT3D trackers (LST among them) issue none, stamping their own into the torrent they
+  return on upload. Two things got in the way:
+  - Torrent creation with mkbrr refused outright, reporting
+    `mkbrr failed: Cannot create a torrent without a tracker announce URL (falling back to torf)`.
+    The upload still worked via the fallback, but the red error was alarming and the
+    fast hasher was skipped. mkbrr's `--tracker` is optional, so the flag is now simply
+    omitted.
+  - When a torrent was cloned for a second tracker, a blank announce URL left the base
+    torrent's announce in place, so the tracker received a torrent pointing at whichever
+    tracker was hashed first. The announce is now cleared instead.
 - Season packs were rejected by every UNIT3D tracker (Aither, LST, HUNO, DarkPeers,
   ShareIsland, UploadCX, OnlyEncodes, Blutopia, Seedpool, UTP, Yu-Scene, FearNoPeer)
   with an error about a missing episode number. UNIT3D requires `episode_number` on
