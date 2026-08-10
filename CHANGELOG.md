@@ -8,9 +8,9 @@
   previously had no enforced format; LST's was incorrect, using `{edition}` where it
   should use `{cut}` and a flat audio token with no Atmos handling. Four consequences
   for existing users:
-  - ReelFliX movie titles change for every user, not only those who had set an
-    override. ReelFliX had no enforced format before, so its titles came from the
-    user's global movie template; an enforced token now governs instead.
+  - ReelFliX movie titles change for every user, not only those who had set an override.
+    ReelFliX had no enforced format before, so its titles came from the user's global
+    movie template; an enforced token now governs instead.
   - LST movie titles change. `{cut}` is a subset of `{edition}`, so marketing editions
     (Remastered, Criterion, Special, Collectors, Deluxe, Limited, Ultimate, Uncensored)
     no longer appear in the title, and neither does any other edition text NfoForge
@@ -30,12 +30,30 @@
 
 ### Fixed
 
+- Season packs were rejected by every UNIT3D tracker (Aither, LST, HUNO, DarkPeers,
+  ShareIsland, UploadCX, OnlyEncodes, Blutopia, Seedpool, UTP, Yu-Scene, FearNoPeer)
+  with an error about a missing episode number. UNIT3D requires `episode_number` on
+  every TV upload and expresses a pack as episode `0`; NfoForge was omitting the field
+  entirely for packs.
+- Absolute-numbered anime could upload mis-categorized as a special. When a release had
+  no episode mapping to fall back on, filenames like `Anime.Title.-.087.1080p...` were
+  read as season 0 (the leading zero of `087`), which UNIT3D files under "Special 87".
+  Season 0 is now only accepted when the filename actually names a specials season, so a
+  genuine `S00E03` release is unaffected.
+- A release whose season or episode number could not be determined — absolute-numbered
+  anime, or a date-based episode like `The.Daily.Show.2024.01.15...` with no episode
+  data to map against — reached the uploader with the fields silently dropped, and the
+  tracker rejected it. The Series Match page now refuses to advance and names the
+  missing value, with a backend guard covering the paths that skip that page.
+- When only some of the season/episode data was mapped, the filename-parsing fallback
+  appended its own guesses on top of the mapped values, which could widen a pack's
+  season range beyond what the user chose.
 - The series settings page let users edit and save title overrides for trackers that
-  dictate their own title format, including ones that ship no packaged series format
-  at all. Those values were never used. The page now locks every such tracker: Aither
-  and LST show their enforced series format read-only, matching the movies page; the
-  rest show a locked, empty field, since they enforce no series format and the global
-  series format applies instead.
+  dictate their own title format, including ones that ship no packaged series format at
+  all. Those values were never used. The page now locks every such tracker: Aither and
+  LST show their enforced series format read-only, matching the movies page; the rest
+  show a locked, empty field, since they enforce no series format and the global series
+  format applies instead.
 
 ## [1.1.0] - 2026-08-09
 

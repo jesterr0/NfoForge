@@ -85,7 +85,10 @@ from src.backend.trackers import (
 from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.health import ensure_tracker_health
-from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
+from src.backend.trackers.media_support import (
+    UNIT3D_TRACKERS,
+    UNSUPPORTED_SERIES_TRACKERS,
+)
 from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.title_format_policy import (
     TitleFormatPolicy,
@@ -130,7 +133,11 @@ from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
-from src.payloads.series import SeriesReleaseInfo, build_series_release_info
+from src.payloads.series import (
+    SeriesReleaseInfo,
+    build_series_release_info,
+    describe_missing_upload_fields,
+)
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
@@ -2193,6 +2200,14 @@ class ProcessBackEnd:
         media_type = context.media_input.require_media_type()
         if media_type is MediaType.SERIES and tracker in UNSUPPORTED_SERIES_TRACKERS:
             raise TrackerError(f"{tracker} does not support series uploads yet")
+        # backstop for paths that skip the Series Match wizard page (the sandbox
+        # wizard, restored jobs): UNIT3D rejects a TV upload outright when
+        # season_number/episode_number are absent, so fail here with the same
+        # explanation rather than letting the payload go out incomplete.
+        if media_type is MediaType.SERIES and tracker in UNIT3D_TRACKERS:
+            missing_message = describe_missing_upload_fields(release_info)
+            if missing_message:
+                raise TrackerError(f"{tracker}: {missing_message}")
         input_path = first_file
         if media_type is not MediaType.SERIES:
             input_path = context.media_input.require_input_path()

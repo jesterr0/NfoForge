@@ -53,3 +53,29 @@ UNSUPPORTED_MOVIE_TRACKERS = frozenset(
     for tracker in TRACKER_SUPPORTED_MEDIA
     if not supports_media(tracker, MediaType.MOVIE)
 )
+
+# Trackers running UNIT3D, i.e. every tracker whose uploader derives from
+# Unit3dBaseUploader. UNIT3D's StoreTorrentRequest makes season_number and
+# episode_number *required* on any TV-category upload, so these are the
+# trackers a series release must have both values resolved for. Other series
+# trackers treat them as optional (HDBits' tvdb_season/tvdb_episode) or don't
+# use them at all (MoreThanTV, TorrentLeech, BeyondHD). ReelFliX is listed for
+# completeness even though it is movie-only -- callers gate on MediaType.SERIES
+# first, so its presence is a no-op.
+UNIT3D_TRACKERS: frozenset[TrackerSelection] = frozenset(
+    {
+        TrackerSelection.AITHER,
+        TrackerSelection.BLUTOPIA,
+        TrackerSelection.DARK_PEERS,
+        TrackerSelection.FEAR_NO_PEER,
+        TrackerSelection.HUNO,
+        TrackerSelection.LST,
+        TrackerSelection.ONLY_ENCODES,
+        TrackerSelection.REELFLIX,
+        TrackerSelection.SEEDPOOL,
+        TrackerSelection.SHARE_ISLAND,
+        TrackerSelection.UPLOAD_CX,
+        TrackerSelection.UTOPIA,
+        TrackerSelection.YU_SCENE,
+    }
+)

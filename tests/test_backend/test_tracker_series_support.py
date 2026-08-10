@@ -18,6 +18,7 @@ from src.backend.trackers.huno import HunoUploader
 from src.backend.trackers.lst import LSTUploader
 from src.backend.trackers.media_support import (
     TRACKER_SUPPORTED_MEDIA,
+    UNIT3D_TRACKERS,
     UNSUPPORTED_MOVIE_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
     supports_media,
@@ -631,7 +632,7 @@ def test_unit3d_single_episode_payload_includes_episode_number(
     assert "season_pack" not in payload
 
 
-def test_unit3d_season_pack_payload_includes_season_pack(
+def test_unit3d_season_pack_payload_sends_episode_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(AitherUploader, "_get_resolution_id", lambda self: "1080p")
@@ -646,11 +647,12 @@ def test_unit3d_season_pack_payload_includes_season_pack(
         mediainfo_obj=cast(MediaInfo, object()),
     )
 
-    # process.py now always sends a real episode_number (release_info's
-    # episode_start) alongside season_pack, relying on the builder's guard
-    # (not season_pack and episode_number is not None) to drop it -- this
-    # proves that guard holds even when episode_number is populated, not
-    # just when it's None.
+    # UNIT3D requires episode_number on every TV-category upload -- there is no
+    # season-pack exemption in StoreTorrentRequest -- and expresses a pack as
+    # episode 0 (TorrentMeta renders 0 as "Season Pack", anything else as
+    # "Episode N"). process.py passes release_info.episode_start through, so
+    # this also proves the pack branch overrides a real episode number rather
+    # than letting it through and filing the pack under Episodes.
     payload = uploader._build_upload_payload(
         tracker_title=None,
         season_number=1,
@@ -659,8 +661,8 @@ def test_unit3d_season_pack_payload_includes_season_pack(
     )
 
     assert payload["season_number"] == 1
+    assert payload["episode_number"] == 0
     assert payload["season_pack"] == 1
-    assert "episode_number" not in payload
 
 
 def test_unit3d_movie_payload_excludes_series_fields(
@@ -873,3 +875,124 @@ def test_dupe_check_queues_a_placeholder_for_an_unsupported_series_tracker(
         False,
         "PassThePopcorn does not support series uploads yet",
     )
+
+
+@pytest.fixture
+def unresolved_series_context() -> _UploadFixture:
+    """A series whose season/episode could not be resolved from the mapping
+    *or* the filename -- the date-based shape that reached UNIT3D with both
+    fields silently absent from the payload."""
+    file_path = Path("The.Daily.Show.2024.01.15.1080p.WEB.h264-GRP.mkv")
+    media_input = MediaInputPayload(
+        input_path=file_path,
+        media_type=MediaType.SERIES,
+        file_list=[file_path],
+        file_list_mediainfo={file_path: _mediainfo_obj()},
+        series_episode_map={file_path: {"season": None, "episode": None}},
+    )
+    context = ProcessingContext(
+        media_input=media_input,
+        media_search=MediaSearchPayload(media_type=MediaType.SERIES),
+    )
+    return _UploadFixture(
+        torrent_file=Path("release.torrent"),
+        context=context,
+        release_info=build_series_release_info(media_input),
+    )
+
+
+@pytest.mark.parametrize(
+    "tracker",
+    sorted(UNIT3D_TRACKERS - UNSUPPORTED_SERIES_TRACKERS, key=str),
+)
+def test_unit3d_series_upload_is_refused_without_a_season_or_episode(
+    tracker: TrackerSelection, unresolved_series_context: _UploadFixture
+) -> None:
+    """UNIT3D marks season_number/episode_number required on every TV-category
+    upload, so an unresolved release must fail here rather than going out with
+    the fields dropped. Backstops the Series Match page guard for entry points
+    that skip it (the sandbox wizard, restored jobs)."""
+    backend = _process_backend()
+
+    with pytest.raises(TrackerError, match="Could not determine"):
+        backend.upload(
+            tracker=tracker,
+            torrent_file=unresolved_series_context.torrent_file,
+            nfo="",
+            tracker_title="The Daily Show",
+            context=unresolved_series_context.context,
+            release_info=unresolved_series_context.release_info,
+        )
+
+
+@pytest.mark.parametrize(
+    ("tracker", "dispatch"),
+    [
+        (TrackerSelection.TORRENT_LEECH, "src.backend.process.tl_upload"),
+        (TrackerSelection.BEYOND_HD, "src.backend.process.bhd_uploader"),
+        (TrackerSelection.HDB, "src.backend.process.hdb_uploader"),
+    ],
+)
+def test_non_unit3d_series_uploads_are_not_blocked_by_the_episode_guard(
+    tracker: TrackerSelection, dispatch: str, unresolved_series_context: _UploadFixture
+) -> None:
+    """These trackers either don't send a season/episode at all (TorrentLeech,
+    BeyondHD) or treat them as optional (HDBits' tvdb_season/tvdb_episode), so
+    the UNIT3D requirement must not regress uploads that work today without
+    one. Patching the dispatch proves the call reached the tracker rather than
+    inferring it from whichever downstream error happened to surface."""
+    backend = _process_backend()
+
+    with patch(dispatch, return_value=True) as dispatched:
+        backend.upload(
+            tracker=tracker,
+            torrent_file=unresolved_series_context.torrent_file,
+            nfo="",
+            tracker_title="The Daily Show",
+            context=unresolved_series_context.context,
+            release_info=unresolved_series_context.release_info,
+        )
+
+    assert dispatched.call_count == 1
+
+
+def test_a_resolved_series_upload_passes_the_episode_guard(
+    series_context: _UploadFixture,
+) -> None:
+    """The guard must not fire on the normal SxxExx path."""
+    backend = _process_backend()
+
+    with patch("src.backend.process.aither_uploader", return_value=True) as dispatched:
+        backend.upload(
+            tracker=TrackerSelection.AITHER,
+            torrent_file=series_context.torrent_file,
+            nfo="",
+            tracker_title="Show S01E01",
+            context=series_context.context,
+            release_info=series_context.release_info,
+        )
+
+    assert dispatched.call_count == 1
+    assert dispatched.call_args.kwargs["season_number"] == 1
+    assert dispatched.call_args.kwargs["episode_number"] == 1
+
+
+def test_unit3d_trackers_lists_every_unit3d_uploader(tmp_path: Path) -> None:
+    """UNIT3D_TRACKERS is hand-maintained (there is no tracker -> uploader
+    registry to derive it from), so a newly added UNIT3D tracker could be
+    silently omitted and skip the season/episode guard. Recover the truth from
+    the uploaders themselves: every Unit3dBaseUploader subclass names its own
+    TrackerSelection.
+    """
+    discovered = {
+        uploader_cls(
+            media_type=MediaType.MOVIE,
+            api_key="api-key",
+            torrent_file=tmp_path / "upload.torrent",
+            input_path=tmp_path / "Example.Movie.2024.1080p.WEB-DL.H.264.mkv",
+            mediainfo_obj=cast(MediaInfo, object()),
+        ).tracker_name
+        for uploader_cls in Unit3dBaseUploader.__subclasses__()
+    }
+
+    assert discovered == UNIT3D_TRACKERS

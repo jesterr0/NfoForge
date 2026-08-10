@@ -6,6 +6,10 @@ from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
+from src.payloads.series import (
+    build_series_release_info,
+    describe_missing_upload_fields,
+)
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
@@ -71,6 +75,19 @@ class SeriesMatch(BaseWizardPage):
         self.context.media_input.series_episode_format = (
             self.series_mapper.get_series_format()
         )
+
+        # is_valid() above only proves every file has *a* mapping -- a mapping
+        # whose episode (or season) is None still passes it. Resolve the
+        # release the same way the uploader will, so a gap the filename-parsing
+        # fallback can't cover (absolute-numbered anime, date-based episodes)
+        # is caught here with the mapper still on screen, rather than being
+        # silently dropped from the tracker payload much later.
+        missing_message = describe_missing_upload_fields(
+            build_series_release_info(self.context.media_input)
+        )
+        if missing_message:
+            QMessageBox.warning(self, "Missing Season/Episode Numbers", missing_message)
+            return False
 
         super().validatePage()
         return True

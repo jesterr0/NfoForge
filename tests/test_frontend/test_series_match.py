@@ -5,11 +5,15 @@ from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtWidgets import QMessageBox, QTreeWidget, QTreeWidgetItem
 import pytest
 
+from src.config.config import ConfigManager
+from src.config.paths import ConfigPaths
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.frontend.custom_widgets.series_episode_mapper import SeriesEpisodeMapper
-from src.frontend.wizards.series_match import _incomplete_mapping_message
+from src.frontend.wizards.series_match import SeriesMatch, _incomplete_mapping_message
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
+from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
 def _make_mapper_with_files(file_list: list[Path]) -> SeriesEpisodeMapper:
@@ -315,3 +319,130 @@ def test_every_coloured_cell_also_sets_a_foreground(qapp: QCoreApplication) -> N
         "no episodes_tree cell was coloured -- this test would otherwise "
         "pass vacuously for that surface"
     )
+
+
+def _paths(tmp_path: Path) -> ConfigPaths:
+    defaults = tmp_path / "defaults"
+    defaults.mkdir()
+    source_defaults = DEFAULT_CONFIG_DIR
+    default_config = defaults / "default_config.toml"
+    default_program = defaults / "default_program_conf.toml"
+    default_config.write_text(
+        (source_defaults / "default_config.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    default_program.write_text(
+        (source_defaults / "default_program_conf.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    return ConfigPaths(
+        default_config=default_config,
+        default_program=default_program,
+        program=tmp_path / "program/conf.toml",
+        user_configs=tmp_path / "user",
+        tracker_cookies=tmp_path / "cookies",
+    )
+
+
+def _make_series_match_page(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    file_list: list[Path],
+    mappings: dict[Path, dict[str, object]],
+) -> SeriesMatch:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    manager = ConfigManager("test", _paths(tmp_path))
+    media_input = MediaInputPayload(
+        input_path=Path("Show Season 1"),
+        media_type=MediaType.SERIES,
+        file_list=file_list,
+        # BaseWizardPage.validatePage() insists on a working dir, which the
+        # media-input page sets long before this one runs
+        working_dir=tmp_path / "working",
+    )
+    media_search = MediaSearchPayload(media_type=MediaType.SERIES, title="Show")
+    context = ProcessingContext(media_input=media_input, media_search=media_search)
+
+    page = SeriesMatch(config=manager, context=context, parent=None)  # type: ignore[reportArgumentType]
+    page.series_mapper.media_input_payload = media_input
+    page.series_mapper.file_episode_mappings = mappings
+    return page
+
+
+def test_validate_page_blocks_an_unresolvable_episode_number(
+    qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """is_valid() passes a lone file whose episode is None -- its duplicate
+    check has nothing to collide with -- and a date-based filename gives the
+    parsing fallback nothing to recover. That combination used to reach the
+    uploader with season_number/episode_number silently absent from the
+    payload, which UNIT3D rejects."""
+    file_path = Path("The.Daily.Show.2024.01.15.1080p.WEB.h264-GROUP.mkv")
+    page = _make_series_match_page(
+        tmp_path,
+        monkeypatch,
+        [file_path],
+        {file_path: {"season": None, "episode": None}},
+    )
+    assert page.series_mapper.is_valid() is True
+
+    shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, title, text: shown.append((title, text)),
+    )
+
+    assert page.validatePage() is False
+    assert len(shown) == 1
+    assert "season number and episode number" in shown[0][1]
+
+
+def test_validate_page_allows_a_normally_mapped_episode(
+    qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard must not fire on the normal path."""
+    file_path = Path("Show.S01E01.mkv")
+    page = _make_series_match_page(
+        tmp_path, monkeypatch, [file_path], {file_path: {"season": 1, "episode": 1}}
+    )
+
+    shown: list[object] = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a: shown.append(a))
+
+    assert page.validatePage() is True
+    assert shown == []
+    assert page.context.media_input.series_episode_map == {
+        file_path: {"season": 1, "episode": 1}
+    }
+
+
+def test_validate_page_blocks_absolute_numbered_anime_with_no_season(
+    qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Absolute-numbered anime carries an episode but no season, and the
+    bracketed release-group form gives the parsing fallback no season either.
+    Only the season is missing, so the message must say so and not also demand
+    an episode number the release already has."""
+    file_path = Path("[Group] Anime Title - 087 [1080p][HEVC].mkv")
+    page = _make_series_match_page(
+        tmp_path,
+        monkeypatch,
+        [file_path],
+        {file_path: {"season": None, "episode": 87}},
+    )
+
+    shown: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, title, text: shown.append((title, text)),
+    )
+
+    assert page.validatePage() is False
+    assert len(shown) == 1
+    assert "the season number for this release" in shown[0][1]
+    assert "and episode number" not in shown[0][1]
