@@ -828,9 +828,10 @@ def test_default_config_round_trips_without_key_drift(
     - orphan keys: a key ships in the default that ``save`` never writes
       (e.g. a leftover from a removed feature) -- these must not exist.
     - missing keys: ``save`` writes a key the default omits. The only
-      legitimate case is the per-tracker ``tvr_title_overrides`` tables,
-      which are intentionally not shipped and are seeded on save; anything
-      else means the default is behind the model.
+      legitimate case is the per-tracker ``tvr_title_overrides`` tables.
+      Trackers that enforce a series title ship them (Aither, LST); the
+      rest are seeded on save. Anything else means the default is behind
+      the model.
     """
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
@@ -1396,3 +1397,39 @@ def test_duplicate_checker_is_written_on_save(
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
     assert plugin_settings["duplicate_checker"] == "example.dupechecker"
+
+
+def test_locked_tracker_keeps_its_stale_user_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The config layer preserves a locked tracker's stored title override
+    across a save/reload cycle: ``ConfigManager.save()`` and
+    ``load_profile()`` round-trip every tracker's override fields
+    unconditionally, with no FREE/REQUIRED branching, so a value already
+    present on a settings object survives a disk round trip regardless of
+    policy.
+
+    This does not exercise the actual guard that keeps a locked tracker's
+    settings from being overwritten by its UI widget in the first place --
+    that is ``MoviesManagementSettings._save_settings`` skipping non-FREE
+    trackers, pinned separately by
+    ``test_required_tracker_movie_overrides_are_not_persisted`` in
+    ``tests/test_frontend/test_movies_management_settings.py``.
+    """
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    manager = ConfigManager("test", _paths(tmp_path))
+    manager.load_profile("test")
+
+    reelflix = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
+    reelflix.mvr_title_override_enabled = True
+    reelflix.mvr_title_token_override = "{title_clean} (user custom)"  # noqa: S105
+
+    manager.save()
+    manager.load_profile("test")
+
+    restored = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
+    assert restored.mvr_title_override_enabled is True
+    assert restored.mvr_title_token_override == "{title_clean} (user custom)"  # noqa: S105

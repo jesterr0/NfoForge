@@ -1,5 +1,42 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- LST and ReelFliX now use the same enforced release title format as Aither. ReelFliX
+  previously had no enforced format; LST's was incorrect, using `{edition}` where it
+  should use `{cut}` and a flat audio token with no Atmos handling. Four consequences
+  for existing users:
+  - ReelFliX movie titles change for every user, not only those who had set an
+    override. ReelFliX had no enforced format before, so its titles came from the
+    user's global movie template; an enforced token now governs instead.
+  - LST movie titles change. `{cut}` is a subset of `{edition}`, so marketing editions
+    (Remastered, Criterion, Special, Collectors, Deluxe, Limited, Ultimate, Uncensored)
+    no longer appear in the title, and neither does any other edition text NfoForge
+    can't classify as a Cut, including a manual edition override that matches no known
+    cut. The audio token also changes, from `{audio_codec} {audio_channel_s}` to
+    `{audio_codec_no_atmos} {audio_channel_s} {atmos}`, which reorders Atmos releases:
+    `TrueHD Atmos 7.1` becomes `TrueHD 7.1 Atmos`.
+  - Series titles change on Aither and LST. Both trackers enforced a movie title but not
+    a series one, so series uploads used the global series template. They now use the
+    tracker's enforced series format.
+  - ReelFliX's saved title override was being used and no longer is. LST's was already
+    ignored before this change, since LST already dictated its own title format, and is
+    now hidden from the settings page as well. Both stay in the config file rather than
+    being deleted.
+- Jobs saved before this release upload the titles stored with them. Saved jobs are
+  snapshots by design; re-run from the wizard to pick up the new format.
+
+### Fixed
+
+- The series settings page let users edit and save title overrides for trackers that
+  dictate their own title format, including ones that ship no packaged series format
+  at all. Those values were never used. The page now locks every such tracker: Aither
+  and LST show their enforced series format read-only, matching the movies page; the
+  rest show a locked, empty field, since they enforce no series format and the global
+  series format applies instead.
+
 ## [1.1.0] - 2026-08-09
 
 ### Added

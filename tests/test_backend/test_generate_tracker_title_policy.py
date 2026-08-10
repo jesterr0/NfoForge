@@ -16,11 +16,13 @@ from src.backend.utils.example_parsed_movie_data import (
 )
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
+from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace
 from src.enums.tracker_selection import TrackerSelection
-from src.payloads.series import build_series_release_info
-from src.payloads.trackers import TrackerInfo
+from src.payloads.series import SeriesReleaseInfo, build_series_release_info
+from src.payloads.trackers import TitleOverridePayload, TrackerInfo
 
 
 def _backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
@@ -126,3 +128,91 @@ def test_free_tracker_still_reads_the_live_override() -> None:
     )
 
     assert output == "Movie Name (user override)"
+
+
+def _series_backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
+    """Like _backend, but with the series token fields generate_tracker_title
+    reads on the is_series path."""
+    backend = object.__new__(ProcessBackEnd)
+    backend.config = cast(
+        ConfigManager,
+        SimpleNamespace(
+            settings=SimpleNamespace(
+                movie=SimpleNamespace(
+                    title_token="{title_clean} (global movie)",  # noqa: S106
+                    title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                ),
+                series=SimpleNamespace(
+                    multi_episode_style=MultiEpisodeStyle.RANGE,
+                    standard_title_token="{title_clean} (global series)",  # noqa: S106
+                    daily_title_token="{title_clean} (global daily)",  # noqa: S106
+                    anime_title_token="{title_clean} (global anime)",  # noqa: S106
+                    title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                ),
+                user_tokens=SimpleNamespace(tokens={}),
+                global_management=SimpleNamespace(
+                    title_clean_rules=None,
+                    video_dynamic_range=None,
+                ),
+            ),
+            defaults=SimpleNamespace(
+                trackers=SimpleNamespace(
+                    by_selection=lambda: {
+                        TrackerSelection.AITHER: packaged_default,
+                    }
+                )
+            ),
+        ),
+    )
+    return backend
+
+
+def _series_release_info(context: ProcessingContext) -> SeriesReleaseInfo:
+    return SeriesReleaseInfo(
+        media_type=MediaType.SERIES,
+        input_path=context.media_input.input_path,
+        primary_file=context.media_input.input_path,
+        title_path=context.media_input.input_path,
+        season=1,
+        episode_start=1,
+        episode_count=1,
+        episode_format=EpisodeFormat.STANDARD,
+    )
+
+
+def test_required_tracker_uses_the_packaged_series_override() -> None:
+    """Aither is REQUIRED. On the series path its packaged tvr_title_overrides
+    entry must win over both the live user override and the global series
+    template."""
+    context = _context()
+    packaged_default = TrackerInfo(
+        tvr_title_overrides={
+            EpisodeFormat.STANDARD: TitleOverridePayload(
+                enabled=True,
+                colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                token="{title_clean} (enforced series)",  # noqa: S106
+            )
+        }
+    )
+    backend = _series_backend(packaged_default)
+    tampered_live = TrackerInfo(
+        tvr_title_overrides={
+            EpisodeFormat.STANDARD: TitleOverridePayload(
+                enabled=True,
+                colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                token="{title_clean} (user override)",  # noqa: S106
+            )
+        }
+    )
+
+    output = backend.generate_tracker_title(
+        TrackerSelection.AITHER,
+        tampered_live,
+        context,
+        _series_release_info(context),
+    )
+
+    assert output is not None
+    assert "(enforced series)" in output
+    assert "(user override)" not in output
+    assert "(global series)" not in output
