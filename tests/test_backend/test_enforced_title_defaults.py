@@ -12,18 +12,37 @@ character rule instead: MTV rewrites spaces to dots, TorrentLeech does the
 reverse.
 """
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from src.backend.token_replacer import TokenReplacer
+from src.backend.tokens import FileToken
 from src.backend.trackers.title_format_policy import (
     TRACKER_TITLE_FORMAT_POLICY,
     TitleFormatPolicy,
 )
+from src.backend.utils.example_parsed_movie_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD as MOVIE_INPUT_PAYLOAD,
+    EXAMPLE_SEARCH_PAYLOAD as MOVIE_SEARCH_PAYLOAD,
+)
+from src.backend.utils.example_parsed_series_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD as SERIES_INPUT_PAYLOAD,
+    EXAMPLE_SEARCH_PAYLOAD as SERIES_SEARCH_PAYLOAD,
+)
 from src.config.config import ConfigManager
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from src.enums.media_type import MediaType
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
 from tests.test_config.config_tree import build_config_paths
+
+# Carries the punctuation these trackers name uploads after: a colon, a
+# hyphen, an apostrophe and an ampersand. The packaged title-clean rules
+# strip all four, so any one of them surviving proves the enforced token no
+# longer reads those rules.
+PUNCTUATED_TITLE = "Alice & Bob: A Placeholder's Tale - Part One"
 
 
 def _config_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
@@ -110,4 +129,105 @@ def test_aither_and_lst_enforce_a_series_title(
             entry = overrides.get(fmt)
             assert entry is not None and entry.enabled and entry.token.strip(), (
                 f"{tracker} ships no enforced series title for {fmt}"
+            )
+
+
+def _render_title(
+    token: str,
+    colon_replace: ColonReplace,
+    media_type: MediaType,
+    title_clean_rules: list[tuple[str, str]],
+) -> str | None:
+    """Render an enforced token the way generate_tracker_title renders it.
+
+    Built on the same example payloads the settings preview uses, so every
+    token in these templates resolves against realistic mediainfo instead of
+    a stub that half of them would crash on.
+    """
+    if media_type is MediaType.SERIES:
+        media_input = SERIES_INPUT_PAYLOAD
+        search = SERIES_SEARCH_PAYLOAD
+        series_kwargs: dict[str, object] = {"season_number": 1, "episode_number": 1}
+    else:
+        media_input = MOVIE_INPUT_PAYLOAD
+        search = MOVIE_SEARCH_PAYLOAD
+        series_kwargs = {}
+
+    return TokenReplacer(
+        media_input_obj=media_input,
+        media_search_obj=replace(search, title=PUNCTUATED_TITLE),
+        token_string=token,
+        colon_replace=colon_replace,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        # Passed live by generate_tracker_title whatever the policy says, so
+        # an enforced token that reads these is not really enforced.
+        title_clean_rules=title_clean_rules,
+        **series_kwargs,
+    ).get_output()
+
+
+def test_enforced_movie_title_keeps_source_punctuation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Aither, LST and ReelFliX name uploads after the database title, so the
+    punctuation in that title has to survive.
+
+    These templates used to open with ``{title_clean}``, which runs the
+    global, user-editable clean rules -- and the packaged rule set replaces
+    every non-alphanumeric character with a space. Feeding those same rules
+    in here is the point of the test: it fails again the moment an enforced
+    token starts reading them.
+    """
+    manager = _config_manager(tmp_path, monkeypatch)
+    packaged = manager.defaults.trackers.by_selection()
+    clean_rules = manager.defaults.global_management.title_clean_rules
+
+    for tracker in (
+        TrackerSelection.AITHER,
+        TrackerSelection.LST,
+        TrackerSelection.REELFLIX,
+    ):
+        info = packaged[tracker]
+        rendered = _render_title(
+            info.mvr_title_token_override,
+            info.mvr_title_colon_replace,
+            MediaType.MOVIE,
+            clean_rules,
+        )
+        assert rendered is not None
+        assert rendered.startswith(PUNCTUATED_TITLE), (
+            f"{tracker} rendered '{rendered}', which drops punctuation from "
+            f"'{PUNCTUATED_TITLE}'"
+        )
+
+
+def test_enforced_series_title_keeps_source_punctuation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The series templates carry the same guarantee as the movie one.
+
+    Without this a series name would render one way for a movie upload and
+    another for an episode on the same tracker.
+    """
+    manager = _config_manager(tmp_path, monkeypatch)
+    packaged = manager.defaults.trackers.by_selection()
+    clean_rules = manager.defaults.global_management.title_clean_rules
+
+    for tracker in (TrackerSelection.AITHER, TrackerSelection.LST):
+        overrides = packaged[tracker].tvr_title_overrides or {}
+        for fmt in SUPPORTED_TVR_FORMATS:
+            entry = overrides[fmt]
+            rendered = _render_title(
+                entry.token,
+                entry.colon_replace,
+                MediaType.SERIES,
+                clean_rules,
+            )
+            assert rendered is not None
+            assert rendered.startswith(PUNCTUATED_TITLE), (
+                f"{tracker} rendered '{rendered}' for {fmt}, which drops "
+                f"punctuation from '{PUNCTUATED_TITLE}'"
             )

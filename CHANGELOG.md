@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.2] - 2026-08-10
+
+### Changed
+
+- Aither, LST and ReelFliX now send the title with its punctuation intact. Their
+  enforced formats opened with `{title_clean}`, which runs the global title-clean
+  rules, and the packaged rules replace every non-alphanumeric character with a
+  space, so `Alice & Bob: A Tale - Part One` reached those trackers as
+  `Alice and Bob A Tale Part One`. The enforced formats now use `{title_exact}` and
+  `{episode_title_exact}`, with colon handling set to Keep. Three consequences:
+  - Titles change on these three trackers for every user, not only those who had
+    set an override. Colons, hyphens, apostrophes and ampersands now appear where
+    they previously became spaces.
+  - Titles are no longer folded to ASCII, so accented and non-Latin characters
+    reach these trackers as the metadata source spells them. Characters that are
+    illegal in a filename are no longer stripped either, since a tracker title is
+    not a path.
+  - Episode titles keep their punctuation apart from a colon, which
+    `{episode_title_exact}` still replaces with a space.
+- Renaming is unaffected. Filenames and season-pack folder names still use
+  `{title_clean}`, so they keep the stripped, dotted form.
+
 ## [1.1.1] - 2026-08-10
 
 ### Changed
