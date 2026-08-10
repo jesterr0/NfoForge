@@ -70,7 +70,13 @@ docs = ["mkdocs>=1.6.1", "mkdocs-material>=9.6.11", "pymdown-extensions"]
 
 [tool.ruff]
 line-length = 88
-include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py", "typings/**/*.py"]
+include = [
+    "pyproject.toml",
+    "src/**/*.py",
+    "scripts/**/*.py",
+    "tests/**/*.py",
+    "typings/**/*.py",
+]
 
 [tool.uv]
 constraint-dependencies = ["requests>=2.32.4"]
@@ -131,3 +137,4 @@ format-check = "ruff format . --check"
 format-code = "ruff format ."
 format.sequence = ["lint-fix", "format-code"]
 format-docs = "npm run format:md"
+sync-dev = "scripts/sync_dev.py"
