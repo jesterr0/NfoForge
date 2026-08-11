@@ -81,7 +81,7 @@ def test_a_raising_plugin_is_logged_and_does_not_propagate(
     process_backend.config.settings.plugins.post_upload = "test.explode"
 
     process_backend._run_post_upload_plugin(
-        cur_tracker=TrackerSelection.MORE_THAN_TV,
+        cur_tracker=TrackerSelection.BEYOND_HD,
         context=plugin_context,
         torrent_path=_any_torrent_path(),
         outcome=PostUploadOutcome.SUCCESS,
@@ -96,7 +96,7 @@ def test_no_configured_plugin_is_a_clean_no_op(
     process_backend.config.settings.plugins.post_upload = ""
 
     process_backend._run_post_upload_plugin(
-        cur_tracker=TrackerSelection.MORE_THAN_TV,
+        cur_tracker=TrackerSelection.BEYOND_HD,
         context=plugin_context,
         torrent_path=_any_torrent_path(),
         outcome=PostUploadOutcome.SUCCESS,
@@ -123,7 +123,7 @@ def test_plugins_disabled_skips_the_plugin_entirely(
     process_backend.config.settings.general.enable_plugins = False
 
     process_backend._run_post_upload_plugin(
-        cur_tracker=TrackerSelection.MORE_THAN_TV,
+        cur_tracker=TrackerSelection.BEYOND_HD,
         context=plugin_context,
         torrent_path=_any_torrent_path(),
         outcome=PostUploadOutcome.SUCCESS,

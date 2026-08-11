@@ -28,7 +28,6 @@ class TitleFormatPolicy(Enum):
 # (MoviesManagementSettings, SeriesManagementSettings) key off this dict, so
 # it's the only place a tracker's policy needs to change.
 TRACKER_TITLE_FORMAT_POLICY: dict[TrackerSelection, TitleFormatPolicy] = {
-    TrackerSelection.MORE_THAN_TV: TitleFormatPolicy.REQUIRED,
     TrackerSelection.TORRENT_LEECH: TitleFormatPolicy.REQUIRED,
     TrackerSelection.AITHER: TitleFormatPolicy.REQUIRED,
     TrackerSelection.HUNO: TitleFormatPolicy.REQUIRED,

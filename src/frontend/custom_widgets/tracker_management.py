@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
 
 from src.config.config import ConfigManager
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
-from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
@@ -166,129 +165,6 @@ class TrackerEditBase(QFrame):
             event.ignore()
             return True
         return bool(super().eventFilter(watched, event))
-
-
-class MTVTrackerEdit(TrackerEditBase):
-    def __init__(self, config: ConfigManager, parent: QWidget | None = None) -> None:
-        super().__init__(config, parent)
-
-        anonymous_lbl = QLabel("Anonymous", self)
-        self.anonymous = QCheckBox(self)
-
-        api_key_lbl = QLabel("API Key", self)
-        self.api_key = MaskedQLineEdit(parent=self, masked=True)
-
-        username_lbl = QLabel("Username", self)
-        self.username = MaskedQLineEdit(parent=self)
-
-        password_lbl = QLabel("Password", self)
-        self.password = MaskedQLineEdit(parent=self, masked=True)
-
-        totp_lbl = QLabel("TOTP Secret", self)
-        totp_lbl.setToolTip(
-            "If 2FA is enabled on your account and no TOTP secret is provided, "
-            "you will be prompted to enter your one-time password"
-        )
-        self.totp = MaskedQLineEdit(parent=self, masked=True)
-        self.totp.setToolTip(totp_lbl.toolTip())
-
-        group_description_lbl = QLabel("Group Description", self)
-        self.group_description = MaskedQLineEdit(parent=self)
-
-        additional_tags_lbl = QLabel("Additional Tags", self)
-        self.additional_tags = MaskedQLineEdit(parent=self)
-
-        source_origin_lbl = QLabel("Source Origin", self)
-        self.source_origin = CustomComboBox(
-            completer=True, disable_mouse_wheel=True, parent=self
-        )
-
-        image_width_lbl = QLabel("Image Width", self)
-        self.image_width = QSpinBox(self)
-        self.image_width.setRange(100, 2000)
-        self._disable_scrollwheel_spinbox(self.image_width)
-
-        self.add_pair_to_layout(anonymous_lbl, self.anonymous)
-        self.add_pair_to_layout(api_key_lbl, self.api_key)
-        self.add_pair_to_layout(username_lbl, self.username)
-        self.add_pair_to_layout(password_lbl, self.password)
-        self.add_pair_to_layout(totp_lbl, self.totp)
-        self.add_pair_to_layout(group_description_lbl, self.group_description)
-        self.add_pair_to_layout(additional_tags_lbl, self.additional_tags)
-        self.add_pair_to_layout(source_origin_lbl, self.source_origin)
-        self.add_pair_to_layout(image_width_lbl, self.image_width)
-        self.add_screen_shot_settings()
-
-    def load_settings(self) -> None:
-        tracker_data = self.config.settings.trackers.more_than_tv
-        self.upload_enabled.setChecked(tracker_data.upload_enabled)
-        self.announce_url.setText(
-            tracker_data.announce_url if tracker_data.announce_url else ""
-        )
-        self.comments.setText(tracker_data.comments if tracker_data.comments else "")
-        self.source.setText(tracker_data.source if tracker_data.source else "")
-        self.anonymous.setChecked(bool(tracker_data.anonymous))
-        self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
-        self.username.setText(tracker_data.username if tracker_data.username else "")
-        self.password.setText(tracker_data.password if tracker_data.password else "")
-        self.totp.setText(tracker_data.totp if tracker_data.totp else "")
-        self.group_description.setText(
-            tracker_data.group_description if tracker_data.group_description else ""
-        )
-        self.additional_tags.setText(
-            tracker_data.additional_tags if tracker_data.additional_tags else ""
-        )
-        self.load_combo_box(
-            self.source_origin, MTVSourceOrigin, tracker_data.source_origin
-        )
-        self.image_width.setValue(tracker_data.image_width)
-        if self.screen_shot_settings:
-            self.screen_shot_settings.load_settings(
-                url_type=URLType(tracker_data.url_type),
-                columns=tracker_data.column_s,
-                col_space=tracker_data.column_space,
-                row_space=tracker_data.row_space,
-            )
-
-    def save_settings(self) -> None:
-        self.config.settings.trackers.more_than_tv.upload_enabled = (
-            self.upload_enabled.isChecked()
-        )
-        self.config.settings.trackers.more_than_tv.announce_url = (
-            self.announce_url.text().strip()
-        )
-        self.config.settings.trackers.more_than_tv.comments = (
-            self.comments.text().strip()
-        )
-        self.config.settings.trackers.more_than_tv.source = self.source.text().strip()
-        self.config.settings.trackers.more_than_tv.anonymous = (
-            self.anonymous.isChecked()
-        )
-        self.config.settings.trackers.more_than_tv.api_key = self.api_key.text().strip()
-        self.config.settings.trackers.more_than_tv.username = (
-            self.username.text().strip()
-        )
-        self.config.settings.trackers.more_than_tv.password = (
-            self.password.text().strip()
-        )
-        self.config.settings.trackers.more_than_tv.totp = self.totp.text().strip()
-        self.config.settings.trackers.more_than_tv.group_description = (
-            self.group_description.text().strip()
-        )
-        self.config.settings.trackers.more_than_tv.additional_tags = (
-            self.additional_tags.text().strip()
-        )
-        self.config.settings.trackers.more_than_tv.source_origin = MTVSourceOrigin(
-            self.source_origin.currentData()
-        )
-        self.config.settings.trackers.more_than_tv.image_width = (
-            self.image_width.value()
-        )
-        if self.screen_shot_settings:
-            col_s, col_space, row_space = self.screen_shot_settings.current_settings()
-            self.config.settings.trackers.more_than_tv.column_s = col_s
-            self.config.settings.trackers.more_than_tv.column_space = col_space
-            self.config.settings.trackers.more_than_tv.row_space = row_space
 
 
 class TLTrackerEdit(TrackerEditBase):

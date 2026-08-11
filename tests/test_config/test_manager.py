@@ -23,7 +23,7 @@ from src.payloads.clients import (
     RTorrentConfig,
     TransmissionConfig,
 )
-from src.payloads.trackers import MoreThanTVInfo, TrackerInfo
+from src.payloads.trackers import BeyondHDInfo, TrackerInfo
 from tests.repo_paths import CONFIG_FIXTURE_DIR, DEFAULT_CONFIG_TOML
 from tests.test_config.config_tree import (
     build_config_paths as _paths,
@@ -43,7 +43,7 @@ def test_manager_loads_nested_typed_settings(
 
     assert manager.settings.general.timeout == 60
     assert manager.settings.series.standard_episode_token
-    assert manager.settings.trackers.more_than_tv.source == "MTV"
+    assert manager.settings.trackers.beyond_hd.source == "BHD"
     assert manager.settings.templates.newline_sequence == "\n"
 
 
@@ -251,12 +251,12 @@ def test_lookup_helpers_do_not_cache_replaced_objects(
         lambda self, dependencies: None,
     )
     manager = ConfigManager("test", _paths(tmp_path))
-    replacement = MoreThanTVInfo(source="replacement")
+    replacement = BeyondHDInfo(source="replacement")
 
-    manager.settings.trackers.more_than_tv = replacement
+    manager.settings.trackers.beyond_hd = replacement
 
     assert (
-        manager.settings.trackers.by_selection()[TrackerSelection.MORE_THAN_TV]
+        manager.settings.trackers.by_selection()[TrackerSelection.BEYOND_HD]
         is replacement
     )
 
@@ -672,7 +672,7 @@ def test_bool_tracker_flag_config_loads(
     app wrote the config back from its own model the value became a TOML
     `true`/`false`, and `validate_types` -- which deliberately refuses to
     treat `bool` as `int` -- then rejected the very config the app produced
-    with `Invalid type at tracker.more_than_tv.anonymous: expected int, got
+    with `Invalid type at tracker.beyond_hd.anonymous: expected int, got
     bool` on the next launch.
     """
     monkeypatch.setattr(
@@ -684,13 +684,13 @@ def test_bool_tracker_flag_config_loads(
     profile.parent.mkdir(parents=True)
     document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
     tracker = cast(MutableMapping[str, Any], document["tracker"])
-    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
-    more_than_tv["anonymous"] = True  # a real bool, as the app writes it
+    beyond_hd = cast(MutableMapping[str, Any], tracker["beyond_hd"])
+    beyond_hd["anonymous"] = True  # a real bool, as the app writes it
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     manager = ConfigManager("test", paths)  # must not raise
 
-    assert manager.settings.trackers.more_than_tv.anonymous is True
+    assert manager.settings.trackers.beyond_hd.anonymous is True
 
 
 def test_tracker_bool_flag_roundtrips_through_save(
@@ -706,17 +706,17 @@ def test_tracker_bool_flag_roundtrips_through_save(
     paths = _paths(tmp_path)
     manager = ConfigManager("test", paths)
 
-    manager.settings.trackers.more_than_tv.anonymous = True  # isChecked()
+    manager.settings.trackers.beyond_hd.anonymous = True  # isChecked()
     manager.save()
     manager.load_profile("test")  # must not raise
 
-    assert manager.settings.trackers.more_than_tv.anonymous is True
+    assert manager.settings.trackers.beyond_hd.anonymous is True
     saved = tomlkit.parse(
         (paths.user_configs / "test.toml").read_text(encoding="utf-8")
     )
     tracker = cast(MutableMapping[str, Any], saved["tracker"])
-    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
-    raw = more_than_tv["anonymous"]
+    beyond_hd = cast(MutableMapping[str, Any], tracker["beyond_hd"])
+    raw = beyond_hd["anonymous"]
     raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
     assert type(raw) is bool and raw is True
 
@@ -764,18 +764,18 @@ def test_int_tracker_flag_is_coerced_and_persisted_as_bool(
     profile.parent.mkdir(parents=True)
     document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
     tracker = cast(MutableMapping[str, Any], document["tracker"])
-    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
-    more_than_tv["anonymous"] = 0  # legacy int representation
+    beyond_hd = cast(MutableMapping[str, Any], tracker["beyond_hd"])
+    beyond_hd["anonymous"] = 0  # legacy int representation
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
 
     manager = ConfigManager("test", paths)  # must not raise
 
-    assert manager.settings.trackers.more_than_tv.anonymous is False
+    assert manager.settings.trackers.beyond_hd.anonymous is False
     # the healed value is persisted as a real TOML boolean, not an int
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
-    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
-    raw = saved_mtv["anonymous"]
+    saved_bhd = cast(MutableMapping[str, Any], saved_tracker["beyond_hd"])
+    raw = saved_bhd["anonymous"]
     raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
     assert type(raw) is bool
     ConfigManager("test", paths)  # a fresh load of the healed file is clean
@@ -788,7 +788,7 @@ def test_coerce_bool_flags_normalizes_int_flags() -> None:
     type error rather than being silently coerced)."""
     defaults = {
         "tracker": {
-            "more_than_tv": {
+            "beyond_hd": {
                 "anonymous": False,  # bool flag
                 "internal": False,  # bool flag
                 "row_space": 0,  # genuine int
@@ -798,7 +798,7 @@ def test_coerce_bool_flags_normalizes_int_flags() -> None:
     }
     document: dict[str, Any] = {
         "tracker": {
-            "more_than_tv": {
+            "beyond_hd": {
                 "anonymous": 1,  # legacy int for a bool flag -> True
                 "internal": 5,  # not 0/1 -> left for validate_types to reject
                 "row_space": 0,  # int default -> untouched
@@ -809,11 +809,11 @@ def test_coerce_bool_flags_normalizes_int_flags() -> None:
 
     TomlConfigCodec.coerce_bool_flags(document, defaults)
 
-    mtv = document["tracker"]["more_than_tv"]
-    assert mtv["anonymous"] is True
-    assert type(mtv["internal"]) is int and mtv["internal"] == 5
-    assert type(mtv["row_space"]) is int and mtv["row_space"] == 0
-    assert type(mtv["promo"]) is int and mtv["promo"] == 2
+    bhd = document["tracker"]["beyond_hd"]
+    assert bhd["anonymous"] is True
+    assert type(bhd["internal"]) is int and bhd["internal"] == 5
+    assert type(bhd["row_space"]) is int and bhd["row_space"] == 0
+    assert type(bhd["promo"]) is int and bhd["promo"] == 2
 
 
 def test_default_config_round_trips_without_key_drift(
@@ -970,8 +970,8 @@ def test_on_disk_dvd_title_override_is_ignored_cleanly(
     profile.parent.mkdir(parents=True)
     document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
     tracker = cast(MutableMapping[str, Any], document["tracker"])
-    more_than_tv = cast(MutableMapping[str, Any], tracker["more_than_tv"])
-    more_than_tv["tvr_title_overrides"] = {
+    beyond_hd = cast(MutableMapping[str, Any], tracker["beyond_hd"])
+    beyond_hd["tvr_title_overrides"] = {
         "dvd": {
             "enabled": True,
             "colon_replace": 3,
@@ -983,7 +983,7 @@ def test_on_disk_dvd_title_override_is_ignored_cleanly(
 
     manager = ConfigManager("test", paths)  # must not raise
 
-    overrides = manager.settings.trackers.more_than_tv.tvr_title_overrides
+    overrides = manager.settings.trackers.beyond_hd.tvr_title_overrides
     assert EpisodeFormat.DVD not in overrides
     assert set(overrides.keys()) == set(SUPPORTED_TVR_FORMATS)
 
@@ -991,8 +991,8 @@ def test_on_disk_dvd_title_override_is_ignored_cleanly(
 
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
-    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
-    saved_overrides = cast(MutableMapping[str, Any], saved_mtv["tvr_title_overrides"])
+    saved_bhd = cast(MutableMapping[str, Any], saved_tracker["beyond_hd"])
+    saved_overrides = cast(MutableMapping[str, Any], saved_bhd["tvr_title_overrides"])
     assert "dvd" not in saved_overrides
 
 
@@ -1028,7 +1028,7 @@ def test_load_profile_migrates_schema1_and_archives_original(
     assert len(backups) == 1
     assert backups[0].read_text(encoding="utf-8") == original_text
     assert manager.settings.movie.release_group == "CustomReleaseGroup"
-    assert manager.settings.trackers.more_than_tv.username == "custom_mtv_user"
+    assert manager.settings.trackers.torrent_leech.username == "custom_tl_user"
 
 
 def test_load_profile_migrates_schema2_to_current(
@@ -1076,7 +1076,7 @@ def test_load_profile_ignores_unknown_last_used_image_hosts(
     tracker = cast(MutableMapping[str, Any], document["tracker"])
     tracker_settings = cast(MutableMapping[str, Any], tracker["settings"])
     last_used_hosts = tomlkit.inline_table()
-    last_used_hosts["MoreThanTV"] = "FutureHost"
+    last_used_hosts["BeyondHD"] = "FutureHost"
     last_used_hosts["FutureTracker"] = "ImageBox"
     tracker_settings["last_used_img_host"] = last_used_hosts
     profile.write_text(tomlkit.dumps(document), encoding="utf-8")
@@ -1146,12 +1146,12 @@ def test_schema1_int_tracker_flags_load_as_bool(
 
     manager = ConfigManager("test", paths)  # must migrate + load, not raise
 
-    assert manager.settings.trackers.more_than_tv.anonymous is False
+    assert manager.settings.trackers.beyond_hd.anonymous is False
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     assert saved["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
     saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
-    saved_mtv = cast(MutableMapping[str, Any], saved_tracker["more_than_tv"])
-    raw = saved_mtv["anonymous"]
+    saved_bhd = cast(MutableMapping[str, Any], saved_tracker["beyond_hd"])
+    raw = saved_bhd["anonymous"]
     raw = raw.unwrap() if hasattr(raw, "unwrap") else raw
     assert type(raw) is bool
 

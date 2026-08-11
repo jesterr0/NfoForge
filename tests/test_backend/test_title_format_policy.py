@@ -27,11 +27,10 @@ def test_pass_the_popcorn_is_unsupported() -> None:
 
 
 def test_trackers_shipping_a_default_override_are_required() -> None:
-    """The 10 trackers whose packaged default ships
+    """The 9 trackers whose packaged default ships
     mvr_title_override_enabled = true must be locked (REQUIRED), matching
     default_config.toml."""
     required_trackers = {
-        TrackerSelection.MORE_THAN_TV,
         TrackerSelection.TORRENT_LEECH,
         TrackerSelection.AITHER,
         TrackerSelection.HUNO,

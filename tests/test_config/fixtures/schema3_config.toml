@@ -27,32 +27,6 @@ tmdb_api_key = ""
 tracker_order = []
 last_used_img_host = {}
 
-[tracker.more_than_tv]
-upload_enabled = true
-announce_url = ""
-enabled = false
-source = "MTV"
-comments = ""
-nfo_template = ""
-max_piece_size = 8000000
-url_type = 1
-column_s = 1
-column_space = 1
-row_space = 0
-mvr_title_override_enabled = true
-mvr_title_colon_replace = 3
-mvr_title_token_override = ""
-mvr_title_replace_map = [['''\s''', "."]]
-anonymous = false
-api_key = ""
-username = "schema_three_mtv_user"
-password = ""
-totp = ""
-group_description = ""
-additional_tags = ""
-source_origin = 1
-image_width = 350
-
 [tracker.torrent_leech]
 upload_enabled = true
 announce_url = ""
@@ -69,7 +43,7 @@ mvr_title_override_enabled = true
 mvr_title_token_override = ""
 mvr_title_replace_map = [["\\.", "[space]"]]
 mvr_title_colon_replace = 3
-username = ""
+username = "schema_three_tl_user"
 password = ""
 torrent_passkey = ""
 alt_2_fa_token = ""

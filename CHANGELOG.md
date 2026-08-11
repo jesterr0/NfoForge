@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Piece size is now chosen by one fixed curve based on release size alone, rather than
+  by whichever tracker happened to be hashed first. One hash is shared by every tracker
+  in a run, but mkbrr prescribes a different exact piece size per tracker, so the
+  torrent was previously shaped by one tracker's rules and handed to all the others. The
+  curve tops out at 16 MiB, which is at or below every supported tracker's limit, so it
+  is valid for any combination of trackers -- including a prepared job resumed with
+  trackers it was not built for. Two consequences:
+  - Piece sizes change for some releases. Trackers that permit larger pieces than 16 MiB
+    (TorrentLeech among them) now get more, smaller pieces on very large releases, and a
+    correspondingly larger `.torrent` file. This is legal everywhere and is the safer
+    direction to err.
+  - The torf fallback now produces a torrent identical to mkbrr's. Both are given the
+    same explicit piece size, so an mkbrr failure no longer silently changes the shape
+    of the torrent.
+- The per-tracker **Max Piece Size** setting is retired, since the curve is now the sole
+  source. It is removed from new configs and dropped from existing ones the next time
+  settings are saved; no action is needed.
+
 ### Fixed
 
 - Torrents no longer inherit another tracker's identity. A run hashes the media once and
@@ -27,25 +47,15 @@
   identified neither, and quoted the offending value back in full -- unreadable when
   what had been saved into the field was something like an NFO template.
 
-### Changed
+### Removed
 
-- Piece size is now chosen by one fixed curve based on release size alone, rather than
-  by whichever tracker happened to be hashed first. One hash is shared by every tracker
-  in a run, but mkbrr prescribes a different exact piece size per tracker, so the
-  torrent was previously shaped by one tracker's rules and handed to all the others. The
-  curve tops out at 16 MiB, which is at or below every supported tracker's limit, so it
-  is valid for any combination of trackers -- including a prepared job resumed with
-  trackers it was not built for. Two consequences:
-  - Piece sizes change for some releases. Trackers that permit larger pieces than 16 MiB
-    (TorrentLeech among them) now get more, smaller pieces on very large releases, and a
-    correspondingly larger `.torrent` file. This is legal everywhere and is the safer
-    direction to err.
-  - The torf fallback now produces a torrent identical to mkbrr's. Both are given the
-    same explicit piece size, so an mkbrr failure no longer silently changes the shape
-    of the torrent.
-- The per-tracker **Max Piece Size** setting is retired, since the curve is now the sole
-  source. It is removed from new configs and dropped from existing ones the next time
-  settings are saved; no action is needed.
+- MoreThanTV support is removed. The tracker no longer appears in the tracker list, the
+  settings pages, the duplicate checker or the upload flow, and its uploader, search
+  client and title formatting are gone from the codebase. No config migration is needed:
+  an existing profile keeps its `[tracker.more_than_tv]` section as an inert block that
+  the app never reads or rewrites, and a stale `MoreThanTV` entry in the tracker order
+  or the last-used image hosts is ignored on load. Delete the section by hand if you
+  would rather not leave its saved credentials on disk.
 
 ## [1.1.2] - 2026-08-10
 

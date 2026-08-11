@@ -87,12 +87,12 @@ def test_migration_preserves_untouched_sections() -> None:
     # here), even if that shared object were later mutated in place. Only a
     # pre-migration snapshot can actually catch an accidental mutation.
     before_api_keys = tomlkit.dumps(old["api_keys"])  # type: ignore[reportArgumentType]
-    before_mtv = tomlkit.dumps(old["tracker"]["more_than_tv"])  # type: ignore[reportArgumentType]
+    before_tl = tomlkit.dumps(old["tracker"]["torrent_leech"])  # type: ignore[reportArgumentType]
 
     new, _ = migrate_unversioned_to_v2(old)
 
     assert tomlkit.dumps(new["api_keys"]) == before_api_keys
-    assert tomlkit.dumps(new["tracker"]["more_than_tv"]) == before_mtv
+    assert tomlkit.dumps(new["tracker"]["torrent_leech"]) == before_tl
 
 
 def test_migration_renames_tokens_in_tracker_title_overrides() -> None:
@@ -125,8 +125,8 @@ def test_migration_renames_tokens_in_tracker_title_overrides() -> None:
         assert "{title_clean}" in override, tracker_name
 
     # trackers with an empty override are left alone
-    assert new["tracker"]["more_than_tv"]["mvr_title_token_override"] == ""
     assert new["tracker"]["torrent_leech"]["mvr_title_token_override"] == ""
+    assert new["tracker"]["beyond_hd"]["mvr_title_token_override"] == ""
 
     # non-token keys in a rewritten tracker section are untouched
     assert (
@@ -150,7 +150,7 @@ def test_migration_preserves_custom_user_values() -> None:
     assert not unmapped
     assert new["movie_management"]["mvr_release_group"] == "CustomReleaseGroup"
     assert "CUSTOM" in new["movie_management"]["mvr_token"]
-    assert new["tracker"]["more_than_tv"]["username"] == "custom_mtv_user"
+    assert new["tracker"]["torrent_leech"]["username"] == "custom_tl_user"
     assert ["_custom_user_rule_", "[space]"] in [
         list(rule) for rule in new["global_management"]["title_clean_rules"]
     ]

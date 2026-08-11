@@ -35,7 +35,7 @@ about_txt = f"""\
     <li>Output file organization, saving .torrent and .NFO files to disk.</li>
     <li>Torrent cloning support for multi-tracker releases without re-generation.</li>
     <li>Duplicate release checker - checks trackers for duplicates pre-upload.</li>
-    <li>Support for BeyondHD, MoreThanTV, and TorrentLeech, with more trackers coming soon.</li>
+    <li>Support for BeyondHD and TorrentLeech, with more trackers coming soon.</li>
     <li>Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.</li>
     <li>Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files requires the same python version as NfoForge).</li>
     <li>Support for movie files in MKV and MP4 format</li>

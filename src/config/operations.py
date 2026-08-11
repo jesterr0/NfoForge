@@ -47,7 +47,6 @@ from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
-from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
 from src.exceptions import ConfigError
 from src.payloads.clients import (
@@ -74,7 +73,6 @@ from src.payloads.trackers import (
     HDBInfo,
     HunoInfo,
     LSTInfo,
-    MoreThanTVInfo,
     OnlyEncodesInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
@@ -194,50 +192,6 @@ class TypedTomlOperations:
             ) in self.settings.trackers.last_used_image_host.items():
                 last_used_img_host[str(tracker)] = str(image_host)
             tracker_settings["last_used_img_host"] = last_used_img_host
-
-            # more_than_tv tracker
-            mtv_data = self._ensure_toml_table(tracker_data, "more_than_tv")
-            mtv_data["upload_enabled"] = (
-                self.settings.trackers.more_than_tv.upload_enabled
-            )
-            mtv_data["announce_url"] = self.settings.trackers.more_than_tv.announce_url
-            mtv_data["enabled"] = self.settings.trackers.more_than_tv.enabled
-            mtv_data["source"] = self.settings.trackers.more_than_tv.source
-            mtv_data["comments"] = self.settings.trackers.more_than_tv.comments
-            mtv_data["nfo_template"] = self.settings.trackers.more_than_tv.nfo_template
-            mtv_data["url_type"] = URLType(
-                self.settings.trackers.more_than_tv.url_type
-            ).value
-            mtv_data["column_s"] = self.settings.trackers.more_than_tv.column_s
-            mtv_data["column_space"] = self.settings.trackers.more_than_tv.column_space
-            mtv_data["row_space"] = self.settings.trackers.more_than_tv.row_space
-            mtv_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.more_than_tv.mvr_title_override_enabled
-            )
-            mtv_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.more_than_tv.mvr_title_colon_replace
-            ).value
-            mtv_data["mvr_title_token_override"] = (
-                self.settings.trackers.more_than_tv.mvr_title_token_override
-            )
-            mtv_data["mvr_title_replace_map"] = (
-                self.settings.trackers.more_than_tv.mvr_title_replace_map
-            )
-            mtv_data["anonymous"] = self.settings.trackers.more_than_tv.anonymous
-            mtv_data["api_key"] = self.settings.trackers.more_than_tv.api_key
-            mtv_data["username"] = self.settings.trackers.more_than_tv.username
-            mtv_data["password"] = self.settings.trackers.more_than_tv.password
-            mtv_data["totp"] = self.settings.trackers.more_than_tv.totp
-            mtv_data["group_description"] = (
-                self.settings.trackers.more_than_tv.group_description
-            )
-            mtv_data["additional_tags"] = (
-                self.settings.trackers.more_than_tv.additional_tags
-            )
-            mtv_data["source_origin"] = MTVSourceOrigin(
-                self.settings.trackers.more_than_tv.source_origin
-            ).value
-            mtv_data["image_width"] = self.settings.trackers.more_than_tv.image_width
 
             # torrent_leech tracker
             tl_data = self._ensure_toml_table(tracker_data, "torrent_leech")
@@ -903,7 +857,6 @@ class TypedTomlOperations:
             )
 
             for tracker_key, tracker_info in (
-                ("more_than_tv", self.settings.trackers.more_than_tv),
                 ("torrent_leech", self.settings.trackers.torrent_leech),
                 ("beyond_hd", self.settings.trackers.beyond_hd),
                 ("pass_the_popcorn", self.settings.trackers.pass_the_popcorn),
@@ -1423,38 +1376,6 @@ class TypedTomlOperations:
                         continue
 
             # tracker data
-            mtv_tracker_data = tracker_data["more_than_tv"]
-            mtv_tracker = MoreThanTVInfo(
-                upload_enabled=mtv_tracker_data["upload_enabled"],
-                announce_url=mtv_tracker_data["announce_url"],
-                enabled=mtv_tracker_data["enabled"],
-                source=mtv_tracker_data["source"],
-                comments=mtv_tracker_data["comments"],
-                nfo_template=mtv_tracker_data["nfo_template"],
-                url_type=URLType(mtv_tracker_data["url_type"]),
-                column_s=mtv_tracker_data["column_s"],
-                column_space=mtv_tracker_data["column_space"],
-                row_space=mtv_tracker_data["row_space"],
-                mvr_title_override_enabled=mtv_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    mtv_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=mtv_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=mtv_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(mtv_tracker_data),
-                anonymous=mtv_tracker_data["anonymous"],
-                api_key=mtv_tracker_data["api_key"],
-                username=mtv_tracker_data["username"],
-                password=mtv_tracker_data["password"],
-                totp=mtv_tracker_data["totp"],
-                group_description=mtv_tracker_data["group_description"],
-                additional_tags=mtv_tracker_data["additional_tags"],
-                source_origin=MTVSourceOrigin(mtv_tracker_data["source_origin"]),
-                image_width=mtv_tracker_data["image_width"],
-            )
-
             tl_tracker_data = tracker_data["torrent_leech"]
             tl_tracker = TorrentLeechInfo(
                 upload_enabled=tl_tracker_data["upload_enabled"],
@@ -2144,7 +2065,6 @@ class TypedTomlOperations:
                 trackers=TrackerSettings(
                     order=tracker_order,
                     last_used_image_host=last_used_img_host,
-                    more_than_tv=mtv_tracker,
                     torrent_leech=tl_tracker,
                     beyond_hd=bhd_tracker,
                     pass_the_popcorn=ptp_tracker,

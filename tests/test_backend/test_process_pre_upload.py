@@ -82,7 +82,7 @@ def test_a_raising_plugin_returns_an_error_instead_of_propagating(
     process_backend.config.settings.plugins.pre_upload = "test.explode"
 
     decision, error = process_backend._run_pre_upload_plugin(
-        cur_tracker=TrackerSelection.MORE_THAN_TV,
+        cur_tracker=TrackerSelection.BEYOND_HD,
         context=plugin_context,
         torrent_path=_any_torrent_path(),
         queued_text_update=lambda _text: None,
@@ -114,7 +114,7 @@ def test_a_failure_on_one_tracker_leaves_the_next_one_working(
     process_backend.config.settings.plugins.pre_upload = "test.flaky"
 
     first_decision, first_error = process_backend._run_pre_upload_plugin(
-        cur_tracker=TrackerSelection.MORE_THAN_TV,
+        cur_tracker=TrackerSelection.BEYOND_HD,
         context=plugin_context,
         torrent_path=_any_torrent_path(),
         queued_text_update=lambda _text: None,
@@ -141,7 +141,7 @@ def test_no_configured_plugin_is_a_clean_no_op(
     process_backend.config.settings.plugins.pre_upload = ""
 
     decision, error = process_backend._run_pre_upload_plugin(
-        cur_tracker=TrackerSelection.MORE_THAN_TV,
+        cur_tracker=TrackerSelection.BEYOND_HD,
         context=plugin_context,
         torrent_path=_any_torrent_path(),
         queued_text_update=lambda _text: None,
@@ -171,7 +171,7 @@ def test_plugins_disabled_skips_the_plugin_entirely(
     process_backend.config.settings.general.enable_plugins = False
 
     decision, error = process_backend._run_pre_upload_plugin(
-        cur_tracker=TrackerSelection.MORE_THAN_TV,
+        cur_tracker=TrackerSelection.BEYOND_HD,
         context=plugin_context,
         torrent_path=_any_torrent_path(),
         queued_text_update=lambda _text: None,
