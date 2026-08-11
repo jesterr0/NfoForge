@@ -36,7 +36,6 @@ tracker-specific series paths are still limited; see
 ## Supported Trackers
 
 - BeyondHD
-- MoreThanTV
 - TorrentLeech
 - PassThePopcorn
 - ReelFliX

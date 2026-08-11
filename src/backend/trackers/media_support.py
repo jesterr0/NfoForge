@@ -10,7 +10,6 @@ _MOVIE_ONLY = frozenset({MediaType.MOVIE})
 # omitted. List a narrower set only for trackers that genuinely can't take a
 # media type.
 TRACKER_SUPPORTED_MEDIA: dict[TrackerSelection, frozenset[MediaType]] = {
-    TrackerSelection.MORE_THAN_TV: _MOVIE_AND_SERIES,
     TrackerSelection.TORRENT_LEECH: _MOVIE_AND_SERIES,
     TrackerSelection.BEYOND_HD: _MOVIE_AND_SERIES,
     TrackerSelection.PASS_THE_POPCORN: _MOVIE_ONLY,
@@ -59,7 +58,7 @@ UNSUPPORTED_MOVIE_TRACKERS = frozenset(
 # episode_number *required* on any TV-category upload, so these are the
 # trackers a series release must have both values resolved for. Other series
 # trackers treat them as optional (HDBits' tvdb_season/tvdb_episode) or don't
-# use them at all (MoreThanTV, TorrentLeech, BeyondHD). ReelFliX is listed for
+# use them at all (TorrentLeech, BeyondHD). ReelFliX is listed for
 # completeness even though it is movie-only -- callers gate on MediaType.SERIES
 # first, so its presence is a no-op.
 UNIT3D_TRACKERS: frozenset[TrackerSelection] = frozenset(

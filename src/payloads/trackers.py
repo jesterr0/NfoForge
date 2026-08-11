@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
-from src.enums.trackers.morethantv import MTVSourceOrigin
 from src.enums.url_type import URLType
 
 
@@ -27,9 +26,6 @@ class TrackerInfo:
     comments: str | None = None
     nfo_template: str | None = None
 
-    # hard coded values
-    max_piece_size: int = 0
-
     # screenshot settings
     url_type: URLType = URLType.BBCODE
     column_s: int = 1
@@ -46,19 +42,6 @@ class TrackerInfo:
     tvr_title_overrides: dict[EpisodeFormat, TitleOverridePayload] = field(
         default_factory=dict
     )
-
-
-@dataclass(slots=True)
-class MoreThanTVInfo(TrackerInfo):
-    anonymous: bool = False
-    api_key: str | None = None
-    username: str | None = None
-    password: str | None = None
-    totp: str | None = None
-    group_description: str | None = None
-    additional_tags: str | None = None
-    source_origin: MTVSourceOrigin = MTVSourceOrigin.UNDEFINED
-    image_width: int = 350
 
 
 @dataclass(slots=True)

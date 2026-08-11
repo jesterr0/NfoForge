@@ -7,7 +7,6 @@ from src.enums import CaseInsensitiveEnum
 
 
 class TrackerSelection(CaseInsensitiveEnum):
-    MORE_THAN_TV = "MoreThanTV"
     TORRENT_LEECH = "TorrentLeech"
     BEYOND_HD = "BeyondHD"
     PASS_THE_POPCORN = "PassThePopcorn"  # noqa: S105 - tracker name, not a credential
@@ -38,7 +37,6 @@ class TrackerSelection(CaseInsensitiveEnum):
 # immutable mapping from tracker selection to its root URL.
 TRACKER_ROOT_URLS: Mapping[TrackerSelection, str] = MappingProxyType(
     {
-        TrackerSelection.MORE_THAN_TV: "https://www.morethantv.me/",
         TrackerSelection.TORRENT_LEECH: "https://www.torrentleech.org/",
         TrackerSelection.BEYOND_HD: "https://beyond-hd.me/",
         TrackerSelection.PASS_THE_POPCORN: "https://passthepopcorn.me/",

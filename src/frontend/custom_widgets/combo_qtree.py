@@ -221,7 +221,7 @@ if __name__ == "__main__":
         headers=("Tracker", "Image Host", "Status"),
         rows=[
             (
-                ["MTV", "", "Queued"],
+                ["BHD", "", "Queued"],
                 [(1, [("Option1", 1), ("Option2", 2), ("OptionC", "data")])],
             ),
             (

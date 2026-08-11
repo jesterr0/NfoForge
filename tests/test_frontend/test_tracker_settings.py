@@ -10,7 +10,7 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.tracker_management import (
-    MTVTrackerEdit,
+    BHDTrackerEdit,
 )
 from src.frontend.custom_widgets.tracker_settings import (
     TrackerListDelegate,
@@ -130,16 +130,16 @@ def test_editor_values_save_without_overwriting_other_tracker_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     widget, manager = _make_tracker_settings(tmp_path, monkeypatch)
-    tracker = TrackerSelection.MORE_THAN_TV
-    editor = cast(MTVTrackerEdit, widget._editor_map[tracker])
+    tracker = TrackerSelection.BEYOND_HD
+    editor = cast(BHDTrackerEdit, widget._editor_map[tracker])
     editor.api_key.setText("new-api-key")
 
-    manager.settings.trackers.more_than_tv.mvr_title_token_override = "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
+    manager.settings.trackers.beyond_hd.mvr_title_token_override = "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
     widget._save_settings()
 
-    assert manager.settings.trackers.more_than_tv.api_key == "new-api-key"
+    assert manager.settings.trackers.beyond_hd.api_key == "new-api-key"
     assert (
-        manager.settings.trackers.more_than_tv.mvr_title_token_override == "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
+        manager.settings.trackers.beyond_hd.mvr_title_token_override == "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
     )
 
 
@@ -147,15 +147,13 @@ def test_reset_loads_tracker_defaults_into_controls(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     widget, manager = _make_tracker_settings(tmp_path, monkeypatch)
-    tracker = TrackerSelection.MORE_THAN_TV
-    editor = cast(MTVTrackerEdit, widget._editor_map[tracker])
+    tracker = TrackerSelection.BEYOND_HD
+    editor = cast(BHDTrackerEdit, widget._editor_map[tracker])
     editor.api_key.setText("temporary")
 
     widget.apply_defaults()
 
-    assert editor.api_key.text() == (
-        manager.defaults.trackers.more_than_tv.api_key or ""
-    )
+    assert editor.api_key.text() == (manager.defaults.trackers.beyond_hd.api_key or "")
 
 
 def test_wizard_tracker_selector_keeps_series_filtering(
@@ -189,7 +187,7 @@ def test_tracker_editor_uses_open_bounded_form_sections(
     tuning the layout turns the suite red.
     """
     _, manager = _make_tracker_settings(tmp_path, monkeypatch)
-    editor = MTVTrackerEdit(manager)
+    editor = BHDTrackerEdit(manager)
 
     assert not hasattr(editor, "common_section")
     assert not hasattr(editor, "options_section")

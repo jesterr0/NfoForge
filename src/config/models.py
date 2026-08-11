@@ -42,7 +42,6 @@ from src.payloads.trackers import (
     HDBInfo,
     HunoInfo,
     LSTInfo,
-    MoreThanTVInfo,
     OnlyEncodesInfo,
     PassThePopcornInfo,
     ReelFlixInfo,
@@ -119,7 +118,6 @@ class DependencySettings:
 class TrackerSettings:
     order: list[TrackerSelection]
     last_used_image_host: dict[TrackerSelection, ImageHost | ImageSource]
-    more_than_tv: MoreThanTVInfo
     torrent_leech: TorrentLeechInfo
     beyond_hd: BeyondHDInfo
     pass_the_popcorn: PassThePopcornInfo
@@ -140,7 +138,6 @@ class TrackerSettings:
 
     def by_selection(self) -> dict[TrackerSelection, TrackerInfo]:
         return {
-            TrackerSelection.MORE_THAN_TV: self.more_than_tv,
             TrackerSelection.TORRENT_LEECH: self.torrent_leech,
             TrackerSelection.BEYOND_HD: self.beyond_hd,
             TrackerSelection.PASS_THE_POPCORN: self.pass_the_popcorn,

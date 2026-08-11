@@ -93,8 +93,8 @@ Select **Next** to continue.
 ![Trackers](../../images/wizard/trackers.png){ width=100%, style="max-width: 500px;" }
 
 This page gives you a final chance to configure trackers and select which trackers you'd
-like to upload this release to. For this example, I'm going to use **MoreThanTV** with
-upload disabled (you can toggle this by expanding the tracker).
+like to upload this release to. For this example, I'm going to pick a single tracker
+with upload disabled (you can toggle this by expanding the tracker).
 
 Select **Next** to continue.
 

@@ -31,7 +31,6 @@ from src.frontend.custom_widgets.tracker_management import (
     HDBTrackerEdit,
     HunoTrackerEdit,
     LSTTrackerEdit,
-    MTVTrackerEdit,
     OnlyEncodesEdit,
     PTPTrackerEdit,
     RFTrackerEdit,
@@ -47,7 +46,6 @@ from src.frontend.custom_widgets.tracker_management import (
 TrackerEditorType = type[TrackerEditBase]
 
 TRACKER_EDITOR_TYPES: Mapping[TrackerSelection, TrackerEditorType] = {
-    TrackerSelection.MORE_THAN_TV: MTVTrackerEdit,
     TrackerSelection.TORRENT_LEECH: TLTrackerEdit,
     TrackerSelection.BEYOND_HD: BHDTrackerEdit,
     TrackerSelection.PASS_THE_POPCORN: PTPTrackerEdit,

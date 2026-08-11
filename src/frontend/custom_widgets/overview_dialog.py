@@ -139,7 +139,7 @@ if __name__ == "__main__":
     app.setStyle("fusion")
 
     tracker_nfos: dict[TrackerSelection, dict[str, str | None]] = {
-        TrackerSelection.MORE_THAN_TV: {"title": "SomeTitleA", "nfo": "Some Nfo A"},
+        TrackerSelection.BEYOND_HD: {"title": "SomeTitleA", "nfo": "Some Nfo A"},
         TrackerSelection.TORRENT_LEECH: {"title": "SomeTitleB", "nfo": "Some Nfo B"},
         TrackerSelection.PASS_THE_POPCORN: {"nfo": "Some Nfo B"},
         TrackerSelection.REELFLIX: {},

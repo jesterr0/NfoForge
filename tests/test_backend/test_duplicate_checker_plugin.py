@@ -55,7 +55,7 @@ def test_returns_empty_when_no_plugin_is_configured() -> None:
 
     result = asyncio.run(
         backend._run_duplicate_checker_plugin(
-            TrackerSelection.MORE_THAN_TV, _movie_input(), MediaSearchPayload()
+            TrackerSelection.PASS_THE_POPCORN, _movie_input(), MediaSearchPayload()
         )
     )
 
@@ -68,7 +68,7 @@ def test_returns_empty_when_the_configured_plugin_is_unavailable() -> None:
 
     result = asyncio.run(
         backend._run_duplicate_checker_plugin(
-            TrackerSelection.MORE_THAN_TV, _movie_input(), MediaSearchPayload()
+            TrackerSelection.PASS_THE_POPCORN, _movie_input(), MediaSearchPayload()
         )
     )
 
@@ -91,7 +91,7 @@ def test_returns_the_plugins_results() -> None:
 
     result = asyncio.run(
         backend._run_duplicate_checker_plugin(
-            TrackerSelection.MORE_THAN_TV, _movie_input(), MediaSearchPayload()
+            TrackerSelection.PASS_THE_POPCORN, _movie_input(), MediaSearchPayload()
         )
     )
 
@@ -114,7 +114,7 @@ def test_a_raising_plugin_is_logged_and_returns_empty() -> None:
 
     result = asyncio.run(
         backend._run_duplicate_checker_plugin(
-            TrackerSelection.MORE_THAN_TV, _movie_input(), MediaSearchPayload()
+            TrackerSelection.PASS_THE_POPCORN, _movie_input(), MediaSearchPayload()
         )
     )
 
@@ -126,16 +126,16 @@ def test_a_raising_plugin_is_logged_and_returns_empty() -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _stub_dupe_mtv_success(
+async def _stub_dupe_ptp_success(
     *, tracker_sel: TrackerSelection, file_input: Path, media_search_payload: object
 ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult]]:
     return (tracker_sel, True, [TrackerSearchResult(name="Built-in hit")])
 
 
-async def _stub_dupe_mtv_failure(
+async def _stub_dupe_ptp_failure(
     *, tracker_sel: TrackerSelection, file_input: Path, media_search_payload: object
 ) -> tuple[TrackerSelection, bool, str]:
-    return (tracker_sel, False, "MTV API key missing")
+    return (tracker_sel, False, "PTP API key missing")
 
 
 def test_plugin_results_are_appended_when_the_built_in_check_succeeded() -> None:
@@ -151,17 +151,17 @@ def test_plugin_results_are_appended_when_the_built_in_check_succeeded() -> None
         "test",
     )
     backend = _backend(plugin_id="test.dupechecker", manager=manager)
-    backend._dupe_mtv = _stub_dupe_mtv_success  # type: ignore[method-assign]
+    backend._dupe_ptp = _stub_dupe_ptp_success  # type: ignore[method-assign]
 
     results = asyncio.run(
         backend.dupe_checks(
-            processing_queue=[TrackerSelection.MORE_THAN_TV],
+            processing_queue=[TrackerSelection.PASS_THE_POPCORN],
             media_input_payload=_movie_input(),
             media_search_payload=MediaSearchPayload(),
         )
     )
 
-    _, success, data = results[TrackerSelection.MORE_THAN_TV]
+    _, success, data = results[TrackerSelection.PASS_THE_POPCORN]
     assert success is True
     assert isinstance(data, list)
     assert [item.name for item in data] == ["Built-in hit", "Plugin hit"]
@@ -179,20 +179,20 @@ def test_plugin_results_are_not_merged_when_the_built_in_check_failed() -> None:
         "test",
     )
     backend = _backend(plugin_id="test.dupechecker", manager=manager)
-    backend._dupe_mtv = _stub_dupe_mtv_failure  # type: ignore[method-assign]
+    backend._dupe_ptp = _stub_dupe_ptp_failure  # type: ignore[method-assign]
 
     results = asyncio.run(
         backend.dupe_checks(
-            processing_queue=[TrackerSelection.MORE_THAN_TV],
+            processing_queue=[TrackerSelection.PASS_THE_POPCORN],
             media_input_payload=_movie_input(),
             media_search_payload=MediaSearchPayload(),
         )
     )
 
-    assert results[TrackerSelection.MORE_THAN_TV] == (
-        TrackerSelection.MORE_THAN_TV,
+    assert results[TrackerSelection.PASS_THE_POPCORN] == (
+        TrackerSelection.PASS_THE_POPCORN,
         False,
-        "MTV API key missing",
+        "PTP API key missing",
     )
 
 
@@ -208,17 +208,17 @@ def test_an_empty_plugin_contribution_changes_nothing() -> None:
         "test",
     )
     backend = _backend(plugin_id="test.dupechecker", manager=manager)
-    backend._dupe_mtv = _stub_dupe_mtv_success  # type: ignore[method-assign]
+    backend._dupe_ptp = _stub_dupe_ptp_success  # type: ignore[method-assign]
 
     results = asyncio.run(
         backend.dupe_checks(
-            processing_queue=[TrackerSelection.MORE_THAN_TV],
+            processing_queue=[TrackerSelection.PASS_THE_POPCORN],
             media_input_payload=_movie_input(),
             media_search_payload=MediaSearchPayload(),
         )
     )
 
-    _, success, data = results[TrackerSelection.MORE_THAN_TV]
+    _, success, data = results[TrackerSelection.PASS_THE_POPCORN]
     assert success is True
     assert [item.name for item in data] == ["Built-in hit"]  # type: ignore[reportAttributeAccessIssue]
 
@@ -226,16 +226,16 @@ def test_an_empty_plugin_contribution_changes_nothing() -> None:
 def test_no_plugin_configured_leaves_built_in_results_untouched() -> None:
     manager = PluginManager()
     backend = _backend(plugin_id=None, manager=manager)
-    backend._dupe_mtv = _stub_dupe_mtv_success  # type: ignore[method-assign]
+    backend._dupe_ptp = _stub_dupe_ptp_success  # type: ignore[method-assign]
 
     results = asyncio.run(
         backend.dupe_checks(
-            processing_queue=[TrackerSelection.MORE_THAN_TV],
+            processing_queue=[TrackerSelection.PASS_THE_POPCORN],
             media_input_payload=_movie_input(),
             media_search_payload=MediaSearchPayload(),
         )
     )
 
-    _, success, data = results[TrackerSelection.MORE_THAN_TV]
+    _, success, data = results[TrackerSelection.PASS_THE_POPCORN]
     assert success is True
     assert [item.name for item in data] == ["Built-in hit"]  # type: ignore[reportAttributeAccessIssue]

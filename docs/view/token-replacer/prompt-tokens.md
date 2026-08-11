@@ -43,7 +43,7 @@ Source                  : {{ prompt_source }}
 
 Suppose you are releasing to multiple trackers simultaneously.
 
-**MoreThanTV:**
+**Aither:**
 
 ```jinja {.scrollable-code-block}
 ...
@@ -87,7 +87,7 @@ If the user provides the following values:
 - prompt_source_type = BluRay
 - prompt_sources = Some Group 1, Some Group 2, Some Group 3
 
-**MoreThanTV:**
+**Aither:**
 
 ```jinja {.scrollable-code-block}
 ...
