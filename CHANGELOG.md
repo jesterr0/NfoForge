@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Updated dependencies:
+  - platformdirs
+
 ### Fixed
 
 - Fixed audio channel layouts such as `5.1` and `7.1.4` being mangled in tracker titles.
