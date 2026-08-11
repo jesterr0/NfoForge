@@ -39,9 +39,13 @@ from src.backend.torrent_clients.qbittorrent.save_path import (
 from src.backend.torrent_clients.rtorrent import RTorrentClient
 from src.backend.torrent_clients.transmission import TransmissionClient
 from src.backend.torrents import (
+    BASE_TORRENT_SUFFIX,
     clone_torrent,
+    content_size,
     generate_torrent,
     mkbrr_generate_torrent,
+    neutralize_base,
+    piece_exponent,
     write_torrent,
 )
 from src.backend.trackers import (
@@ -1019,14 +1023,6 @@ class ProcessBackEnd:
             )
         tracker_health_cache: dict[TrackerSelection, bool] = {}
 
-        # determine maximum piece size for the current tracker(s)
-        max_piece_size = self.determine_max_piece_size(process_dict)
-        if max_piece_size:
-            queued_text_update(
-                '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🔎 Detected maximum piece size:</h3>'
-            )
-            queued_text_update(f"<br /><span>{max_piece_size} (bytes)</span>")
-
         # get media input - use context instead of config
         media_input = context.media_input.require_input_path()
         release_info = build_series_release_info(context.media_input)
@@ -1224,6 +1220,18 @@ class ProcessBackEnd:
         if not already_prepared:
             self._record_template_fingerprints(process_dict, context)
 
+        # Hash once, here, before any tracker is touched. This runs after the
+        # overview prompt so the user is never left waiting on a dialog partway
+        # through hashing, and only when there is at least one tracker to stamp
+        # for -- with none, there is nothing to hash for.
+        if process_dict:
+            base_torrent_file = self._prepare_base_torrent(
+                working_dir=context.media_input.require_working_dir(),
+                media_input=media_input,
+                carried_torrent=base_torrent_file,
+                queued_text_update=queued_text_update,
+            )
+
         # loop from the start and process jobs
         for idx, (tracker_name, path_data) in enumerate(process_dict.items()):
             queued_status_update(tracker_name, "▶️ Processing")
@@ -1253,67 +1261,25 @@ class ProcessBackEnd:
             if cur_tracker_title:
                 queued_text_update(f"<br />Release title: {cur_tracker_title}")
 
-            # torrent file: hash once, then clone for everyone else. A resumed
-            # job can supply an already-hashed base, which is why this keys off
-            # "do we have a base yet" rather than "is this the first tracker" --
-            # re-hashing tens of gigabytes is the most expensive thing here.
-            if base_torrent_file is None:
-                # try mkbrr first if enabled, fallback to torf if not available or on error
-                try:
-                    if self.config.settings.general.enable_mkbrr and (
-                        self.config.settings.dependencies.mkbrr
-                        and self.config.settings.dependencies.mkbrr.exists()
-                    ):
-                        queued_text_update(
-                            '<br /><span>Generating torrent with <span style="font-weight: bold;">'
-                            "mkbrr</span></span>"
-                        )
-                        torrent = mkbrr_generate_torrent(
-                            mkbrr_path=self.config.settings.dependencies.mkbrr,
-                            tracker_info=tracker_info,
-                            path=media_input,
-                            output_path=torrent_path,
-                            max_piece_size=max_piece_size,
-                            cb=self.mkbrr_torrent_gen_cb,
-                        )
-                        base_torrent_file = torrent_path
-                    else:
-                        raise Exception("mkbrr not configured or not found")
-                except Exception as mkbrr_error:
-                    # only show error if mkbrr was available but failed
-                    if (
-                        self.config.settings.general.enable_mkbrr
-                        and self.config.settings.dependencies.mkbrr
-                    ):
-                        queued_text_update(
-                            f'<br /><span style="color: red;">mkbrr failed: {mkbrr_error} '
-                            "(falling back to torf)</span>"
-                        )
-
-                    queued_text_update(
-                        '<br /><span>Generating torrent with <span style="font-weight: bold;">'
-                        "torf</span></span>"
-                    )
-                    torrent = generate_torrent(
-                        tracker_info=tracker_info,
-                        path=media_input,
-                        max_piece_size=max_piece_size,
-                        cb=self.torrent_gen_cb,
-                    )
-                    write_to_disk = write_torrent(torrent, torrent_path)
-                    base_torrent_file = write_to_disk
-            else:
-                queued_text_update("<br /><span>Cloning torrent</span>")
-                if not base_torrent_file:
-                    raise FileNotFoundError(
-                        "Failed to determine base torrent file to clone"
-                    )
-                clone = clone_torrent(
-                    tracker_info=tracker_info,
-                    torrent_path=torrent_path,
-                    base_torrent_file=base_torrent_file,
+            # Torrent file: every tracker gets a stamped clone of the neutral
+            # base, the first one included. No tracker's artifact is ever
+            # another tracker's clone source, so a UNIT3D upload replacing this
+            # file with the server's rewritten copy (see
+            # Unit3dBaseUploader._download_uploaded_torrent) cannot leak that
+            # tracker's announce, source, comment or "created by" into anyone
+            # else's torrent.
+            queued_text_update("<br /><span>Cloning torrent</span>")
+            if not base_torrent_file:
+                raise FileNotFoundError(
+                    "Failed to determine base torrent file to clone"
                 )
-                _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
+            clone = clone_torrent(
+                tracker_info=tracker_info,
+                torrent_path=torrent_path,
+                base_torrent_file=base_torrent_file,
+                tracker_name=tracker_name,
+            )
+            _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
 
             nfo = cur_tracker_release_data.get("nfo") or ""
             if nfo:
@@ -2160,30 +2126,93 @@ class ProcessBackEnd:
         """
         return {tracker: results[job_id] for tracker, job_id in host_to_job.items()}
 
-    def determine_max_piece_size(self, process_dict: dict[str, Path]) -> int | None:
+    def _prepare_base_torrent(
+        self,
+        working_dir: Path,
+        media_input: Path,
+        carried_torrent: Path | None,
+        queued_text_update: Callable[[str], None],
+    ) -> Path:
+        """Put a neutral base torrent in place for every tracker to clone.
+
+        The base lives at the run folder's root rather than in a tracker's
+        directory, both because it belongs to no tracker and because tracker
+        artifacts sit one level down (see `tracker_run_data.tracker_output_dir`)
+        -- keeping it out of the `*/<stem>.torrent` glob that a saved job uses
+        to find its clone source.
+
+        A carried base is copied in and neutralized rather than used where it
+        lies, so this path is the single answer to "where is the base": a
+        resumed job that gets re-saved keeps one, and the job's own stored file
+        is never mutated.
         """
-        Determines the max piece size across a dictionary of trackers.
-        Ensures that the piece size is is divisible by 16 KiB and
-        rounds down to the nearest divisible value.
+        base_path = working_dir / f"{media_input.stem}{BASE_TORRENT_SUFFIX}"
 
-        Args:
-            process_dict (dict[str, Path]): Dictionary of trackers.
+        if carried_torrent:
+            try:
+                return neutralize_base(carried_torrent, base_path)
+            except Exception as neutralize_error:
+                # Better to spend the hash than to stamp from a base we could
+                # not confirm is free of another tracker's identity.
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Could not reuse the torrent saved with this job "
+                    f"({neutralize_error}); re-hashing instead",
+                )
+                queued_text_update(
+                    '<br /><span style="color: red;">Could not reuse the saved '
+                    f"torrent: {neutralize_error} (re-hashing)</span>"
+                )
 
-        Returns:
-            int | None
-        """
-        piece_sizes = set()
-        for tracker in process_dict.keys():
-            max_piece_size = self.config.settings.trackers.by_selection()[
-                TrackerSelection(tracker)
-            ].max_piece_size
-            if max_piece_size > 0:
-                piece_sizes.add(max_piece_size)
+        exponent = piece_exponent(content_size(media_input))
+        queued_text_update(
+            f"<br /><span>Piece size: {1 << exponent} bytes (2^{exponent})</span>"
+        )
 
-        calculated_size = min(piece_sizes, default=None)
-        if calculated_size:
-            calculated_size = calculated_size - (calculated_size % 16384)
-        return calculated_size
+        # try mkbrr first if enabled, fallback to torf if not available or on error
+        try:
+            if self.config.settings.general.enable_mkbrr and (
+                self.config.settings.dependencies.mkbrr
+                and self.config.settings.dependencies.mkbrr.exists()
+            ):
+                queued_text_update(
+                    '<br /><span>Generating torrent with <span style="font-weight: bold;">'
+                    "mkbrr</span></span>"
+                )
+                mkbrr_generate_torrent(
+                    mkbrr_path=self.config.settings.dependencies.mkbrr,
+                    path=media_input,
+                    output_path=base_path,
+                    piece_exponent=exponent,
+                    cb=self.mkbrr_torrent_gen_cb,
+                )
+                return base_path
+            else:
+                raise Exception("mkbrr not configured or not found")
+        except Exception as mkbrr_error:
+            # only show error if mkbrr was available but failed
+            if (
+                self.config.settings.general.enable_mkbrr
+                and self.config.settings.dependencies.mkbrr
+            ):
+                queued_text_update(
+                    f'<br /><span style="color: red;">mkbrr failed: {mkbrr_error} '
+                    "(falling back to torf)</span>"
+                )
+
+            queued_text_update(
+                '<br /><span>Generating torrent with <span style="font-weight: bold;">'
+                "torf</span></span>"
+            )
+            # Same explicit exponent as mkbrr would have used, so the fallback
+            # produces an identically shaped torrent rather than a differently
+            # shaped one.
+            torrent = generate_torrent(
+                path=media_input,
+                piece_exponent=exponent,
+                cb=self.torrent_gen_cb,
+            )
+            return write_torrent(torrent, base_path)
 
     def upload(
         self,

@@ -205,9 +205,6 @@ class TypedTomlOperations:
             mtv_data["source"] = self.settings.trackers.more_than_tv.source
             mtv_data["comments"] = self.settings.trackers.more_than_tv.comments
             mtv_data["nfo_template"] = self.settings.trackers.more_than_tv.nfo_template
-            mtv_data["max_piece_size"] = (
-                self.settings.trackers.more_than_tv.max_piece_size
-            )
             mtv_data["url_type"] = URLType(
                 self.settings.trackers.more_than_tv.url_type
             ).value
@@ -252,9 +249,6 @@ class TypedTomlOperations:
             tl_data["source"] = self.settings.trackers.torrent_leech.source
             tl_data["comments"] = self.settings.trackers.torrent_leech.comments
             tl_data["nfo_template"] = self.settings.trackers.torrent_leech.nfo_template
-            tl_data["max_piece_size"] = (
-                self.settings.trackers.torrent_leech.max_piece_size
-            )
             tl_data["url_type"] = URLType(
                 self.settings.trackers.torrent_leech.url_type
             ).value
@@ -290,7 +284,6 @@ class TypedTomlOperations:
             bhd_data["source"] = self.settings.trackers.beyond_hd.source
             bhd_data["comments"] = self.settings.trackers.beyond_hd.comments
             bhd_data["nfo_template"] = self.settings.trackers.beyond_hd.nfo_template
-            bhd_data["max_piece_size"] = self.settings.trackers.beyond_hd.max_piece_size
             bhd_data["url_type"] = URLType(
                 self.settings.trackers.beyond_hd.url_type
             ).value
@@ -339,9 +332,6 @@ class TypedTomlOperations:
             ptp_data["nfo_template"] = (
                 self.settings.trackers.pass_the_popcorn.nfo_template
             )
-            ptp_data["max_piece_size"] = (
-                self.settings.trackers.pass_the_popcorn.max_piece_size
-            )
             ptp_data["url_type"] = URLType(
                 self.settings.trackers.pass_the_popcorn.url_type
             ).value
@@ -376,7 +366,6 @@ class TypedTomlOperations:
             rf_data["source"] = self.settings.trackers.reelflix.source
             rf_data["comments"] = self.settings.trackers.reelflix.comments
             rf_data["nfo_template"] = self.settings.trackers.reelflix.nfo_template
-            rf_data["max_piece_size"] = self.settings.trackers.reelflix.max_piece_size
             rf_data["url_type"] = URLType(
                 self.settings.trackers.reelflix.url_type
             ).value
@@ -421,7 +410,6 @@ class TypedTomlOperations:
             aither_data["source"] = self.settings.trackers.aither.source
             aither_data["comments"] = self.settings.trackers.aither.comments
             aither_data["nfo_template"] = self.settings.trackers.aither.nfo_template
-            aither_data["max_piece_size"] = self.settings.trackers.aither.max_piece_size
             aither_data["url_type"] = URLType(
                 self.settings.trackers.aither.url_type
             ).value
@@ -466,7 +454,6 @@ class TypedTomlOperations:
             huno_data["source"] = self.settings.trackers.huno.source
             huno_data["comments"] = self.settings.trackers.huno.comments
             huno_data["nfo_template"] = self.settings.trackers.huno.nfo_template
-            huno_data["max_piece_size"] = self.settings.trackers.huno.max_piece_size
             huno_data["url_type"] = URLType(self.settings.trackers.huno.url_type).value
             huno_data["column_s"] = self.settings.trackers.huno.column_s
             huno_data["column_space"] = self.settings.trackers.huno.column_space
@@ -497,7 +484,6 @@ class TypedTomlOperations:
             lst_data["source"] = self.settings.trackers.lst.source
             lst_data["comments"] = self.settings.trackers.lst.comments
             lst_data["nfo_template"] = self.settings.trackers.lst.nfo_template
-            lst_data["max_piece_size"] = self.settings.trackers.lst.max_piece_size
             lst_data["url_type"] = URLType(self.settings.trackers.lst.url_type).value
             lst_data["column_s"] = self.settings.trackers.lst.column_s
             lst_data["column_space"] = self.settings.trackers.lst.column_space
@@ -542,9 +528,6 @@ class TypedTomlOperations:
             dark_peers_data["nfo_template"] = (
                 self.settings.trackers.dark_peers.nfo_template
             )
-            dark_peers_data["max_piece_size"] = (
-                self.settings.trackers.dark_peers.max_piece_size
-            )
             dark_peers_data["url_type"] = URLType(
                 self.settings.trackers.dark_peers.url_type
             ).value
@@ -588,9 +571,6 @@ class TypedTomlOperations:
             shareisland_data["comments"] = self.settings.trackers.share_island.comments
             shareisland_data["nfo_template"] = (
                 self.settings.trackers.share_island.nfo_template
-            )
-            shareisland_data["max_piece_size"] = (
-                self.settings.trackers.share_island.max_piece_size
             )
             shareisland_data["url_type"] = URLType(
                 self.settings.trackers.share_island.url_type
@@ -643,9 +623,6 @@ class TypedTomlOperations:
             uploadcx_data["nfo_template"] = (
                 self.settings.trackers.upload_cx.nfo_template
             )
-            uploadcx_data["max_piece_size"] = (
-                self.settings.trackers.upload_cx.max_piece_size
-            )
             uploadcx_data["url_type"] = URLType(
                 self.settings.trackers.upload_cx.url_type
             ).value
@@ -684,9 +661,6 @@ class TypedTomlOperations:
             oe_data["source"] = self.settings.trackers.only_encodes.source
             oe_data["comments"] = self.settings.trackers.only_encodes.comments
             oe_data["nfo_template"] = self.settings.trackers.only_encodes.nfo_template
-            oe_data["max_piece_size"] = (
-                self.settings.trackers.only_encodes.max_piece_size
-            )
             oe_data["url_type"] = URLType(
                 self.settings.trackers.only_encodes.url_type
             ).value
@@ -721,7 +695,6 @@ class TypedTomlOperations:
             hdb_data["source"] = self.settings.trackers.hdb.source
             hdb_data["comments"] = self.settings.trackers.hdb.comments
             hdb_data["nfo_template"] = self.settings.trackers.hdb.nfo_template
-            hdb_data["max_piece_size"] = self.settings.trackers.hdb.max_piece_size
             hdb_data["url_type"] = URLType(self.settings.trackers.hdb.url_type).value
             hdb_data["column_s"] = self.settings.trackers.hdb.column_s
             hdb_data["column_space"] = self.settings.trackers.hdb.column_space
@@ -754,9 +727,6 @@ class TypedTomlOperations:
             blutopia_data["source"] = self.settings.trackers.blutopia.source
             blutopia_data["comments"] = self.settings.trackers.blutopia.comments
             blutopia_data["nfo_template"] = self.settings.trackers.blutopia.nfo_template
-            blutopia_data["max_piece_size"] = (
-                self.settings.trackers.blutopia.max_piece_size
-            )
             blutopia_data["url_type"] = URLType(
                 self.settings.trackers.blutopia.url_type
             ).value
@@ -796,9 +766,6 @@ class TypedTomlOperations:
             seedpool_data["source"] = self.settings.trackers.seedpool.source
             seedpool_data["comments"] = self.settings.trackers.seedpool.comments
             seedpool_data["nfo_template"] = self.settings.trackers.seedpool.nfo_template
-            seedpool_data["max_piece_size"] = (
-                self.settings.trackers.seedpool.max_piece_size
-            )
             seedpool_data["url_type"] = URLType(
                 self.settings.trackers.seedpool.url_type
             ).value
@@ -833,7 +800,6 @@ class TypedTomlOperations:
             utp_data["source"] = self.settings.trackers.utp.source
             utp_data["comments"] = self.settings.trackers.utp.comments
             utp_data["nfo_template"] = self.settings.trackers.utp.nfo_template
-            utp_data["max_piece_size"] = self.settings.trackers.utp.max_piece_size
             utp_data["url_type"] = URLType(self.settings.trackers.utp.url_type).value
             utp_data["column_s"] = self.settings.trackers.utp.column_s
             utp_data["column_space"] = self.settings.trackers.utp.column_space
@@ -866,9 +832,6 @@ class TypedTomlOperations:
             yuscene_data["source"] = self.settings.trackers.yuscene.source
             yuscene_data["comments"] = self.settings.trackers.yuscene.comments
             yuscene_data["nfo_template"] = self.settings.trackers.yuscene.nfo_template
-            yuscene_data["max_piece_size"] = (
-                self.settings.trackers.yuscene.max_piece_size
-            )
             yuscene_data["url_type"] = URLType(
                 self.settings.trackers.yuscene.url_type
             ).value
@@ -908,9 +871,6 @@ class TypedTomlOperations:
             fearnopeer_data["comments"] = self.settings.trackers.fearnopeer.comments
             fearnopeer_data["nfo_template"] = (
                 self.settings.trackers.fearnopeer.nfo_template
-            )
-            fearnopeer_data["max_piece_size"] = (
-                self.settings.trackers.fearnopeer.max_piece_size
             )
             fearnopeer_data["url_type"] = URLType(
                 self.settings.trackers.fearnopeer.url_type
@@ -962,9 +922,18 @@ class TypedTomlOperations:
                 ("yuscene", self.settings.trackers.yuscene),
                 ("fearnopeer", self.settings.trackers.fearnopeer),
             ):
-                self._ensure_toml_table(tracker_data, tracker_key)[
-                    "tvr_title_overrides"
-                ] = self._serialize_series_title_overrides(tracker_info)
+                tracker_table = self._ensure_toml_table(tracker_data, tracker_key)
+                tracker_table["tvr_title_overrides"] = (
+                    self._serialize_series_title_overrides(tracker_info)
+                )
+                # Retired: piece size now comes from one hardcoded curve that is
+                # the same for every tracker (see
+                # src/backend/torrents/piece_size.py), so a per-tracker maximum
+                # has nothing left to constrain. Dropped here rather than in a
+                # migration because a removed key needs no schema bump -- see the
+                # policy in src/config/migrations.py -- and this cleans the key
+                # out of a user's profile the next time it is written.
+                tracker_table.pop("max_piece_size", None)
 
             # torrent client
             torrent_client_data = self._toml_table(self._toml_data, "torrent_client")
@@ -1462,7 +1431,6 @@ class TypedTomlOperations:
                 source=mtv_tracker_data["source"],
                 comments=mtv_tracker_data["comments"],
                 nfo_template=mtv_tracker_data["nfo_template"],
-                max_piece_size=mtv_tracker_data["max_piece_size"],
                 url_type=URLType(mtv_tracker_data["url_type"]),
                 column_s=mtv_tracker_data["column_s"],
                 column_space=mtv_tracker_data["column_space"],
@@ -1495,7 +1463,6 @@ class TypedTomlOperations:
                 source=tl_tracker_data["source"],
                 comments=tl_tracker_data["comments"],
                 nfo_template=tl_tracker_data["nfo_template"],
-                max_piece_size=tl_tracker_data["max_piece_size"],
                 url_type=URLType(tl_tracker_data["url_type"]),
                 column_s=tl_tracker_data["column_s"],
                 column_space=tl_tracker_data["column_space"],
@@ -1523,7 +1490,6 @@ class TypedTomlOperations:
                 source=bhd_tracker_data["source"],
                 comments=bhd_tracker_data["comments"],
                 nfo_template=bhd_tracker_data["nfo_template"],
-                max_piece_size=bhd_tracker_data["max_piece_size"],
                 url_type=URLType(bhd_tracker_data["url_type"]),
                 column_s=bhd_tracker_data["column_s"],
                 column_space=bhd_tracker_data["column_space"],
@@ -1558,7 +1524,6 @@ class TypedTomlOperations:
                 source=ptp_tracker_data["source"],
                 comments=ptp_tracker_data["comments"],
                 nfo_template=ptp_tracker_data["nfo_template"],
-                max_piece_size=ptp_tracker_data["max_piece_size"],
                 url_type=URLType(ptp_tracker_data["url_type"]),
                 column_s=ptp_tracker_data["column_s"],
                 column_space=ptp_tracker_data["column_space"],
@@ -1587,7 +1552,6 @@ class TypedTomlOperations:
                 source=rf_tracker_data["source"],
                 comments=rf_tracker_data["comments"],
                 nfo_template=rf_tracker_data["nfo_template"],
-                max_piece_size=rf_tracker_data["max_piece_size"],
                 url_type=URLType(rf_tracker_data["url_type"]),
                 column_s=rf_tracker_data["column_s"],
                 column_space=rf_tracker_data["column_space"],
@@ -1622,7 +1586,6 @@ class TypedTomlOperations:
                 source=aither_tracker_data["source"],
                 comments=aither_tracker_data["comments"],
                 nfo_template=aither_tracker_data["nfo_template"],
-                max_piece_size=aither_tracker_data["max_piece_size"],
                 url_type=URLType(aither_tracker_data["url_type"]),
                 column_s=aither_tracker_data["column_s"],
                 column_space=aither_tracker_data["column_space"],
@@ -1661,7 +1624,6 @@ class TypedTomlOperations:
                 source=huno_tracker_data["source"],
                 comments=huno_tracker_data["comments"],
                 nfo_template=huno_tracker_data["nfo_template"],
-                max_piece_size=huno_tracker_data["max_piece_size"],
                 url_type=URLType(huno_tracker_data["url_type"]),
                 column_s=huno_tracker_data["column_s"],
                 column_space=huno_tracker_data["column_space"],
@@ -1692,7 +1654,6 @@ class TypedTomlOperations:
                 source=lst_tracker_data["source"],
                 comments=lst_tracker_data["comments"],
                 nfo_template=lst_tracker_data["nfo_template"],
-                max_piece_size=lst_tracker_data["max_piece_size"],
                 url_type=URLType(lst_tracker_data["url_type"]),
                 column_s=lst_tracker_data["column_s"],
                 column_space=lst_tracker_data["column_space"],
@@ -1727,7 +1688,6 @@ class TypedTomlOperations:
                 source=darkpeers_tracker_data["source"],
                 comments=darkpeers_tracker_data["comments"],
                 nfo_template=darkpeers_tracker_data["nfo_template"],
-                max_piece_size=darkpeers_tracker_data["max_piece_size"],
                 url_type=URLType(darkpeers_tracker_data["url_type"]),
                 column_s=darkpeers_tracker_data["column_s"],
                 column_space=darkpeers_tracker_data["column_space"],
@@ -1760,7 +1720,6 @@ class TypedTomlOperations:
                 source=shri_tracker_data["source"],
                 comments=shri_tracker_data["comments"],
                 nfo_template=shri_tracker_data["nfo_template"],
-                max_piece_size=shri_tracker_data["max_piece_size"],
                 url_type=URLType(shri_tracker_data["url_type"]),
                 column_s=shri_tracker_data["column_s"],
                 column_space=shri_tracker_data["column_space"],
@@ -1792,7 +1751,6 @@ class TypedTomlOperations:
                 source=ulcx_tracker_data["source"],
                 comments=ulcx_tracker_data["comments"],
                 nfo_template=ulcx_tracker_data["nfo_template"],
-                max_piece_size=ulcx_tracker_data["max_piece_size"],
                 url_type=URLType(ulcx_tracker_data["url_type"]),
                 column_s=ulcx_tracker_data["column_s"],
                 column_space=ulcx_tracker_data["column_space"],
@@ -1823,7 +1781,6 @@ class TypedTomlOperations:
                 source=oe_tracker_data["source"],
                 comments=oe_tracker_data["comments"],
                 nfo_template=oe_tracker_data["nfo_template"],
-                max_piece_size=oe_tracker_data["max_piece_size"],
                 url_type=URLType(oe_tracker_data["url_type"]),
                 column_s=oe_tracker_data["column_s"],
                 column_space=oe_tracker_data["column_space"],
@@ -1852,7 +1809,6 @@ class TypedTomlOperations:
                 source=hdb_tracker_data["source"],
                 comments=hdb_tracker_data["comments"],
                 nfo_template=hdb_tracker_data["nfo_template"],
-                max_piece_size=hdb_tracker_data["max_piece_size"],
                 url_type=URLType(hdb_tracker_data["url_type"]),
                 column_s=hdb_tracker_data["column_s"],
                 column_space=hdb_tracker_data["column_space"],
@@ -1881,7 +1837,6 @@ class TypedTomlOperations:
                 source=blutopia_tracker_data["source"],
                 comments=blutopia_tracker_data["comments"],
                 nfo_template=blutopia_tracker_data["nfo_template"],
-                max_piece_size=blutopia_tracker_data["max_piece_size"],
                 url_type=URLType(blutopia_tracker_data["url_type"]),
                 column_s=blutopia_tracker_data["column_s"],
                 column_space=blutopia_tracker_data["column_space"],
@@ -1915,7 +1870,6 @@ class TypedTomlOperations:
                 source=seedpool_tracker_data["source"],
                 comments=seedpool_tracker_data["comments"],
                 nfo_template=seedpool_tracker_data["nfo_template"],
-                max_piece_size=seedpool_tracker_data["max_piece_size"],
                 url_type=URLType(seedpool_tracker_data["url_type"]),
                 column_s=seedpool_tracker_data["column_s"],
                 column_space=seedpool_tracker_data["column_space"],
@@ -1948,7 +1902,6 @@ class TypedTomlOperations:
                 source=utp_tracker_data["source"],
                 comments=utp_tracker_data["comments"],
                 nfo_template=utp_tracker_data["nfo_template"],
-                max_piece_size=utp_tracker_data["max_piece_size"],
                 url_type=URLType(utp_tracker_data["url_type"]),
                 column_s=utp_tracker_data["column_s"],
                 column_space=utp_tracker_data["column_space"],
@@ -1977,7 +1930,6 @@ class TypedTomlOperations:
                 source=yuscene_tracker_data["source"],
                 comments=yuscene_tracker_data["comments"],
                 nfo_template=yuscene_tracker_data["nfo_template"],
-                max_piece_size=yuscene_tracker_data["max_piece_size"],
                 url_type=URLType(yuscene_tracker_data["url_type"]),
                 column_s=yuscene_tracker_data["column_s"],
                 column_space=yuscene_tracker_data["column_space"],
@@ -2010,7 +1962,6 @@ class TypedTomlOperations:
                 source=fearnopeer_tracker_data["source"],
                 comments=fearnopeer_tracker_data["comments"],
                 nfo_template=fearnopeer_tracker_data["nfo_template"],
-                max_piece_size=fearnopeer_tracker_data["max_piece_size"],
                 url_type=URLType(fearnopeer_tracker_data["url_type"]),
                 column_s=fearnopeer_tracker_data["column_s"],
                 column_space=fearnopeer_tracker_data["column_space"],

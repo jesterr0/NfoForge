@@ -210,9 +210,6 @@ def test_a_carried_torrent_is_announced_and_seeds_the_run(
         backend, "handle_images_for_trackers", lambda *_a, **_k: {}, raising=False
     )
     monkeypatch.setattr(
-        backend, "determine_max_piece_size", lambda *_a, **_k: None, raising=False
-    )
-    monkeypatch.setattr(
         backend, "disconnect_from_clients", lambda *_a, **_k: None, raising=False
     )
 
@@ -235,9 +232,6 @@ def test_a_missing_carried_torrent_is_ignored(
     backend = _backend_for_torrent_seed()
     monkeypatch.setattr(
         backend, "handle_images_for_trackers", lambda *_a, **_k: {}, raising=False
-    )
-    monkeypatch.setattr(
-        backend, "determine_max_piece_size", lambda *_a, **_k: None, raising=False
     )
     monkeypatch.setattr(
         backend, "disconnect_from_clients", lambda *_a, **_k: None, raising=False
