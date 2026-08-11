@@ -4,11 +4,12 @@ import re
 import shutil
 import subprocess
 from typing import Any
+import urllib.parse
 
 from torf import Torrent
 
 from src.backend.utils.subprocess_flags import get_subprocess_creation_flags
-from src.exceptions import MkbrrTorrentError
+from src.exceptions import MkbrrTorrentError, ProcessError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.trackers import TrackerInfo
 from src.version import __version__, program_name
@@ -116,10 +117,33 @@ def neutralize_base(source: Path, destination: Path) -> Path:
     return write_torrent(Torrent.copy(torrent), destination)
 
 
+def _is_announce_url(value: str) -> bool:
+    """Whether torf will accept `value` as an announce URL.
+
+    Mirrors torf's own `is_url` (see `torf/_utils.py`) rather than importing it,
+    since that lives in a private module. Matching it matters: a value that
+    passes here and fails there would only move the failure later, to the point
+    where torf validates on write.
+    """
+    try:
+        parsed = urllib.parse.urlparse(value)
+        parsed.port  # noqa: B018 - attribute access is what raises on a bad port
+    except Exception:
+        return False
+    return bool(parsed.scheme and parsed.netloc)
+
+
+def _shorten(value: str, limit: int = 60) -> str:
+    """A one-line, bounded form of a config value, safe to put in an error."""
+    collapsed = " ".join(value.split())
+    return collapsed if len(collapsed) <= limit else f"{collapsed[:limit]}..."
+
+
 def clone_torrent(
     tracker_info: TrackerInfo,
     torrent_path: Path,
     base_torrent_file: Path,
+    tracker_name: str | None = None,
 ) -> Torrent:
     """Stamp one tracker's identity onto a copy of the neutral base.
 
@@ -127,9 +151,24 @@ def clone_torrent(
     is ever another tracker's clone source. `created_by` is deliberately left
     alone: it names whichever tool hashed the base, and the base is never
     uploaded, so nothing can append an "Edited by" to it.
+
+    `tracker_name` is only used to make a configuration error legible.
     """
     if not base_torrent_file or not base_torrent_file.exists():
         raise FileNotFoundError(f"Cannot find file: {base_torrent_file}")
+
+    # Checked before any file work, and before torf gets the chance to fail on
+    # it with a MetainfoError that names neither the tracker nor the setting --
+    # and that quotes the offending value in full, which is unreadable when
+    # what landed in the field is something like an NFO template.
+    if tracker_info.announce_url and not _is_announce_url(tracker_info.announce_url):
+        who = f"{tracker_name}: t" if tracker_name else "T"
+        where = f" ({tracker_name} -> Announce URL)" if tracker_name else ""
+        raise ProcessError(
+            f"{who}he configured announce URL is not a valid URL: "
+            f"'{_shorten(tracker_info.announce_url)}'. "
+            f"Check Settings -> Trackers{where}."
+        )
 
     shutil.copy(base_torrent_file, torrent_path)
     torrent = Torrent.read(torrent_path)

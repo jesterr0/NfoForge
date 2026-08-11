@@ -1277,6 +1277,7 @@ class ProcessBackEnd:
                 tracker_info=tracker_info,
                 torrent_path=torrent_path,
                 base_torrent_file=base_torrent_file,
+                tracker_name=tracker_name,
             )
             _ = write_torrent(torrent_instance=clone, torrent_path=torrent_path)
 

@@ -17,6 +17,7 @@ from src.backend.torrents.torrent import (
     neutralize_base,
     write_torrent,
 )
+from src.exceptions import ProcessError
 from src.payloads.trackers import TrackerInfo
 
 # small enough to hash instantly, large enough to span several pieces at 2^16
@@ -290,6 +291,101 @@ def test_clone_still_overwrites_the_announce_when_the_tracker_has_one(
     )
 
     assert clone.trackers == [["https://second.invalid/OTHERKEY/announce"]]
+
+
+# an announce URL that is not a URL
+# --------------------------------------------------------------------------
+# Seen in the wild: an NFO template had been saved into a tracker's Announce URL
+# field. torf rejects it, but only once it validates on read or write, and its
+# MetainfoError names neither the tracker nor the setting -- it just quotes the
+# whole template back, which is unreadable and leaves the user guessing which of
+# eighteen trackers is at fault.
+_NOT_A_URL = (
+    "Info\nTitle:                  : {{ title_exact }} "
+    "{{ release_year_parentheses }}\nSeason                  : {{ season_number }}\n"
+)
+
+
+@pytest.mark.parametrize(
+    "announce_url",
+    [_NOT_A_URL, "not a url at all", "example.invalid/announce", "http://"],
+)
+def test_clone_rejects_an_announce_url_that_is_not_a_url(
+    announce_url: str, tmp_path: Path
+) -> None:
+    _, media = _release_with_indexes(tmp_path)
+    base_path = _base_torrent(tmp_path, media)
+
+    with pytest.raises(ProcessError, match="not a valid URL"):
+        torrent_module.clone_torrent(
+            tracker_info=TrackerInfo(announce_url=announce_url),
+            torrent_path=tmp_path / "second.torrent",
+            base_torrent_file=base_path,
+            tracker_name="BeyondHD",
+        )
+
+
+def test_the_invalid_announce_error_names_the_tracker_and_stays_short(
+    tmp_path: Path,
+) -> None:
+    """The whole point of the guard: say which tracker and which setting,
+    without quoting an entire NFO template back at the user."""
+    _, media = _release_with_indexes(tmp_path)
+    base_path = _base_torrent(tmp_path, media)
+
+    with pytest.raises(ProcessError) as caught:
+        torrent_module.clone_torrent(
+            tracker_info=TrackerInfo(announce_url=_NOT_A_URL),
+            torrent_path=tmp_path / "second.torrent",
+            base_torrent_file=base_path,
+            tracker_name="BeyondHD",
+        )
+
+    message = str(caught.value)
+    assert "BeyondHD" in message
+    assert "Announce URL" in message
+    assert "\n" not in message
+    assert len(message) < 200
+
+
+def test_clone_accepts_the_announce_urls_torf_accepts(tmp_path: Path) -> None:
+    """The guard mirrors torf's own `is_url`, so anything it lets through must
+    survive torf validating it on write -- otherwise it only moves the failure."""
+    _, media = _release_with_indexes(tmp_path)
+    base_path = _base_torrent(tmp_path, media)
+
+    for announce_url in (
+        "https://tracker.invalid/PASSKEY/announce",
+        "http://tracker.invalid:2710/announce",
+        "udp://tracker.invalid:6969",
+    ):
+        clone = torrent_module.clone_torrent(
+            tracker_info=TrackerInfo(announce_url=announce_url),
+            torrent_path=tmp_path / "second.torrent",
+            base_torrent_file=base_path,
+            tracker_name="BeyondHD",
+        )
+        # write_torrent is where torf validates, so this is the real assertion
+        write_torrent(clone, tmp_path / "second.torrent")
+        assert clone.trackers == [[announce_url]]
+
+
+def test_a_tracker_without_an_announce_url_is_not_caught_by_the_guard(
+    tmp_path: Path,
+) -> None:
+    """Trackers that stamp their own announce server-side configure none, and
+    that must stay legal."""
+    _, media = _release_with_indexes(tmp_path)
+    base_path = _base_torrent(tmp_path, media)
+
+    clone = torrent_module.clone_torrent(
+        tracker_info=TrackerInfo(announce_url=None),
+        torrent_path=tmp_path / "second.torrent",
+        base_torrent_file=base_path,
+        tracker_name="LST",
+    )
+
+    assert clone.trackers == []
 
 
 def test_clone_leaves_created_by_alone(tmp_path: Path) -> None:

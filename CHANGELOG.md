@@ -22,6 +22,10 @@
   server-rewritten torrent. Jobs now store the neutral base, and a base saved by an
   earlier release is stripped of its announce, source, comment and `created by` when it
   loads, rather than being used as-is or thrown away.
+- A tracker whose configured announce URL is not a URL now fails with a message naming
+  the tracker and the setting. Previously the run stopped on a raw validation error that
+  identified neither, and quoted the offending value back in full -- unreadable when
+  what had been saved into the field was something like an NFO template.
 
 ### Changed
 
