@@ -10,10 +10,8 @@ In NfoForge, open **Settings → User Tokens** to manage user tokens.
 
 To add a new token, select **Add**.
 
-- **Double click** the cell in the **Token** column that you just created to modify the
-  token name.
-- **Double click** the cell in the **Type** column that you just created to select the
-  desired token type.
+- **Double click** the cell in the **Token** column that you just created to modify the token name.
+- **Double click** the cell in the **Type** column that you just created to select the desired token type.
 
 <!-- prettier-ignore -->
 !!! question "What is the difference between FileTokens and NfoTokens?"
@@ -24,47 +22,37 @@ Below are two newly created tokens.
 
 #### User NfoToken
 
-![User Tokens NfoToken](../../images/tokens/user-tokens-nfo.png){ width=100%,
-style="max-width: 500px;" }
+![User Tokens NfoToken](../../images/tokens/user-tokens-nfo.png){ width=100%, style="max-width: 500px;" }
 
 #### User FileToken
 
-![User Tokens FileToken](../../images/tokens/user-tokens-ft.png){ width=100%,
-style="max-width: 500px;" }
+![User Tokens FileToken](../../images/tokens/user-tokens-ft.png){ width=100%, style="max-width: 500px;" }
 
 #### Example Usage
 
 Below is an **NFO** template using our two example tokens.
 
-![User Tokens Example](../../images/tokens/user-tokens-example.png){ width=100%,
-style="max-width: 500px;" }
+![User Tokens Example](../../images/tokens/user-tokens-example.png){ width=100%, style="max-width: 500px;" }
 
 Output
 
-![User Tokens Example](../../images/tokens/user-tokens-example-2.png){ width=100%,
-style="max-width: 500px;" }
+![User Tokens Example](../../images/tokens/user-tokens-example-2.png){ width=100%, style="max-width: 500px;" }
 
 Example of **file path** token.
 
-![User Tokens Example](../../images/tokens/user-tokens-example-3.png){ width=100%,
-style="max-width: 500px;" }
+![User Tokens Example](../../images/tokens/user-tokens-example-3.png){ width=100%, style="max-width: 500px;" }
 
 ### Global Tokens
 
-These tokens are meant to be used in NFO templates. Each global token is prefixed with
-`nf_`.
+These tokens are meant to be used in NFO templates. Each global token is prefixed with `nf_`.
 
 #### Token Objects
 
-All token objects resets to empty on **Start Over** or wizard reset. These tokens are
-updated dynamically throughout the flow of the program. Having this data available can
-be very powerful for advanced users.
+All token objects resets to empty on **Start Over** or wizard reset. These tokens are updated dynamically throughout the flow of the program. Having this data available can be very powerful for advanced users.
 
 ###### {{ nf_shared_data }}
 
-This token gives the user access to the **SharedPayload** dataclass. The field
-**dynamic_data** is specifically designed for **plugins** and numerous other functions
-that get filled throughout the workflow.
+This token gives the user access to the **SharedPayload** dataclass. The field **dynamic_data** is specifically designed for **plugins** and numerous other functions that get filled throughout the workflow.
 
 ```python
 @dataclass(slots=True)
@@ -183,8 +171,7 @@ class MediaInputPayload:
 
 ###### Example Usage
 
-The payload now exposes the selected input path, the discovered file list, and cached
-MediaInfo objects keyed by file path.
+The payload now exposes the selected input path, the discovered file list, and cached MediaInfo objects keyed by file path.
 
 You can pull the first discovered file and its MediaInfo from the payload in a template.
 
@@ -200,9 +187,7 @@ You can pull the first discovered file and its MediaInfo from the payload in a t
 --8<-- "docs/snippets/bbb_pymediainfo.txt"
 ```
 
-To display the **duration** of the loaded object, first check that the object exists.
-Then, set a variable named `general_track` to the first general track, and access the
-first value in its `other_duration` list:
+To display the **duration** of the loaded object, first check that the object exists. Then, set a variable named `general_track` to the first general track, and access the first value in its `other_duration` list:
 
 ```jinja
 {% set first_file = nf_media_input_payload.require_first_file() %}
