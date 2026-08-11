@@ -226,8 +226,8 @@ def test_pre_upload_page_applies_release_notes_and_hides_disabled_client(
     )
     config = ConfigManager("test", _paths(tmp_path))
     config.settings.torrent_clients.qbittorrent.enabled = False
-    tracker = TrackerSelection.MORE_THAN_TV
-    config.settings.trackers.more_than_tv.nfo_template = "movie"
+    tracker = TrackerSelection.BEYOND_HD
+    config.settings.trackers.beyond_hd.nfo_template = "movie"
 
     context = ProcessingContext(
         media_input=MediaInputPayload(working_dir=tmp_path),
@@ -255,8 +255,8 @@ def test_pre_upload_page_blocks_missing_template_assignment(
     )
     config = ConfigManager("test", _paths(tmp_path))
     config.settings.torrent_clients.qbittorrent.enabled = False
-    tracker = TrackerSelection.MORE_THAN_TV
-    config.settings.trackers.more_than_tv.nfo_template = ""
+    tracker = TrackerSelection.BEYOND_HD
+    config.settings.trackers.beyond_hd.nfo_template = ""
 
     context = ProcessingContext(
         media_input=MediaInputPayload(working_dir=tmp_path),

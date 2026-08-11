@@ -27,31 +27,6 @@ tmdb_api_key = ""
 tracker_order = []
 last_used_img_host = {}
 
-[tracker.more_than_tv]
-upload_enabled = true
-announce_url = ""
-enabled = false
-source = "MTV"
-comments = ""
-nfo_template = ""
-url_type = 1
-column_s = 1
-column_space = 1
-row_space = 0
-mvr_title_override_enabled = true
-mvr_title_colon_replace = 3
-mvr_title_token_override = ""
-mvr_title_replace_map = [['''\s''', "."]]
-anonymous = false
-api_key = ""
-username = ""
-password = ""
-totp = ""
-group_description = ""
-additional_tags = ""
-source_origin = 1
-image_width = 350
-
 [tracker.torrent_leech]
 upload_enabled = true
 announce_url = ""

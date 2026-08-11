@@ -4,7 +4,7 @@ from html import escape
 from pathlib import Path
 import shutil
 import traceback
-from typing import Any, cast
+from typing import Any
 
 from PySide6.QtCore import SignalInstance
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
@@ -57,7 +57,6 @@ from src.backend.trackers import (
     HDBSearch,
     HunoSearch,
     LSTSearch,
-    MTVSearch,
     OnlyEncodesSearch,
     PTPSearch,
     ReelFlixSearch,
@@ -75,7 +74,6 @@ from src.backend.trackers import (
     hdb_uploader,
     huno_uploader,
     lst_uploader,
-    mtv_uploader,
     oe_uploader,
     ptp_uploader,
     rf_uploader,
@@ -93,7 +91,6 @@ from src.backend.trackers.media_support import (
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
-from src.backend.trackers.morethantv import MTVUploader
 from src.backend.trackers.title_format_policy import (
     TitleFormatPolicy,
     title_format_policy,
@@ -196,17 +193,7 @@ class ProcessBackEnd:
                 continue
             file_input = media_input_payload.require_first_file()
             search_input = release_info.search_path or file_input
-            if tracker_sel is TrackerSelection.MORE_THAN_TV:
-                tasks.append(
-                    self._dupe_mtv(
-                        tracker_sel=tracker_sel,
-                        # file_input prioritizes folder name > file since the api doesn't
-                        # support directly looking for files
-                        file_input=search_input,
-                        media_search_payload=media_search_payload,
-                    )
-                )
-            elif tracker_sel is TrackerSelection.TORRENT_LEECH:
+            if tracker_sel is TrackerSelection.TORRENT_LEECH:
                 tasks.append(
                     self._dupe_tl(tracker_sel=tracker_sel, file_input=search_input)
                 )
@@ -380,41 +367,6 @@ class ProcessBackEnd:
         self, tracker_sel: TrackerSelection
     ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
         return tracker_sel, False, f"{tracker_sel} does not support series uploads yet"
-
-    async def _dupe_mtv(
-        self,
-        tracker_sel: TrackerSelection,
-        file_input: Path,
-        media_search_payload: MediaSearchPayload,
-    ) -> tuple[TrackerSelection, bool, list[TrackerSearchResult] | str]:
-        api_key = self.config.settings.trackers.more_than_tv.api_key
-        if not api_key:
-            return tracker_sel, False, "MTV API key missing"
-        try:
-            imdb_id = media_search_payload.imdb_id
-            tmdb_id = media_search_payload.tmdb_id
-            tvdb_id = media_search_payload.tvdb_id
-            if not file_input or not imdb_id or (not tmdb_id and not tvdb_id):
-                return (
-                    tracker_sel,
-                    False,
-                    "Required MTV search parameters missing",
-                )
-            mtv_search = MTVSearch(
-                api_key,
-                timeout=self.config.settings.general.timeout,
-            ).search(
-                title=file_input.stem,  # must not have an extension
-                imdb_id=imdb_id,
-                tmdb_id=tmdb_id,
-                tvdb_id=tvdb_id,
-            )
-            if mtv_search:
-                return tracker_sel, True, mtv_search
-            else:
-                return tracker_sel, True, []
-        except Exception as e:
-            return tracker_sel, False, str(e)
 
     async def _dupe_tl(
         self, tracker_sel: TrackerSelection, file_input: Path
@@ -2241,32 +2193,7 @@ class ProcessBackEnd:
         if media_type is not MediaType.SERIES:
             input_path = context.media_input.require_input_path()
 
-        if tracker is TrackerSelection.MORE_THAN_TV:
-            tracker_payload = self.config.settings.trackers.more_than_tv
-            if not tracker_payload.username or not tracker_payload.password:
-                raise TrackerError("Username and password is required for MoreThanTV")
-            return cast(
-                Path | bool | str | None,
-                mtv_uploader(
-                    username=tracker_payload.username,
-                    password=tracker_payload.password,
-                    totp=tracker_payload.totp,
-                    nfo=nfo,
-                    group_desc=tracker_payload.group_description,
-                    torrent_file=torrent_file,
-                    input_path=input_path,
-                    tracker_title=tracker_title,
-                    mediainfo_obj=mediainfo_obj,
-                    genre_ids=media_search_obj.genres,
-                    media_type=media_type,
-                    is_pack=release_info.is_pack,
-                    anonymous=bool(tracker_payload.anonymous),
-                    source_origin=tracker_payload.source_origin,
-                    cookie_dir=self.config.paths.tracker_cookies,
-                    timeout=self.config.settings.general.timeout,
-                ),
-            )
-        elif tracker is TrackerSelection.TORRENT_LEECH:
+        if tracker is TrackerSelection.TORRENT_LEECH:
             announce_key = self.config.settings.trackers.torrent_leech.torrent_passkey
             if not announce_key:
                 raise TrackerError("Missing announce key for TorrentLeech")
@@ -2800,9 +2727,7 @@ class ProcessBackEnd:
 
     def tracker_title_formatting(self, tracker: TrackerSelection, title: str) -> str:
         """Apply tracker specific formatting if it has any, else return the title as it is."""
-        if tracker is TrackerSelection.MORE_THAN_TV:
-            return MTVUploader.generate_release_title(title)
-        elif tracker is TrackerSelection.TORRENT_LEECH:
+        if tracker is TrackerSelection.TORRENT_LEECH:
             return TLUploader.generate_release_title(title)
         elif tracker is TrackerSelection.BEYOND_HD:
             return BHDUploader.generate_release_title(title)

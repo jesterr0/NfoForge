@@ -6,7 +6,7 @@ from src.packages.custom_types import ImageUploadFromTo
 def _tree_with_payload(payload: object) -> ComboBoxTreeWidget:
     tree = ComboBoxTreeWidget(headers=("Tracker", "", "Status"))
     tree.add_row(
-        headers=("MoreThanTV", "", "Queued"),
+        headers=("BeyondHD", "", "Queued"),
         combo_data=[(1, [("IMGs ➔ Chevereto v4", payload)])],
     )
     return tree
@@ -58,9 +58,9 @@ def test_get_item_values_preserves_none_payload() -> None:
 
 def test_get_item_values_reads_plain_columns() -> None:
     tree = ComboBoxTreeWidget(headers=("Tracker", "Status"))
-    tree.add_row(headers=("MoreThanTV", "Queued"))
+    tree.add_row(headers=("BeyondHD", "Queued"))
 
-    assert tree.get_item_values() == [("MoreThanTV", "Queued")]
+    assert tree.get_item_values() == [("BeyondHD", "Queued")]
 
 
 def test_combo_changed_sees_a_resolvable_combo_on_the_very_first_item() -> None:

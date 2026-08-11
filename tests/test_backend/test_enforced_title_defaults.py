@@ -6,10 +6,9 @@ that packaged default enforces nothing, the lock is config that does
 nothing: the user loses control and gains no guarantee in exchange.
 
 What gets enforced varies by tracker, and both forms count. Aither, LST and
-ReelFliX enforce a token. MoreThanTV and TorrentLeech ship an empty token --
-so the user's global movie template supplies the wording -- and enforce a
-character rule instead: MTV rewrites spaces to dots, TorrentLeech does the
-reverse.
+ReelFliX enforce a token. TorrentLeech ships an empty token -- so the user's
+global movie template supplies the wording -- and enforces a character rule
+instead, rewriting dots to spaces.
 """
 
 from dataclasses import replace

@@ -86,7 +86,6 @@ def _beyond_hd_formatting(url: str, image_size: int) -> str:
 
 
 _TRACKER_MAP = {
-    TrackerSelection.MORE_THAN_TV: _basic_bbcode_formatting,
     # TrackerSelection.TORRENT_LEECH: "", # doesn't support image resizing
     TrackerSelection.BEYOND_HD: _beyond_hd_formatting,
     # TrackerSelection.PASS_THE_POPCORN: "", # doesn't support image resizing

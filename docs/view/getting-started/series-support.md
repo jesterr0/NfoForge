@@ -26,7 +26,6 @@ the wizard where possible.
 
 | Tracker                                                          | Series status                        | Notes                                                               |
 | ---------------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
-| MoreThanTV                                                       | Supported                            | Uses TV episode/season categories and series tags.                  |
 | TorrentLeech                                                     | Supported                            | Uses TV episode HD/SD categories and TV box set category for packs. |
 | BeyondHD                                                         | Supported                            | Uses TV category plus pack and special flags where applicable.      |
 | Aither, HUNO, LST, DarkPeers, ShareIsland, UploadCX, OnlyEncodes | Supported through UNIT3D upload flow | Sends TV category and TVDB metadata when available.                 |
