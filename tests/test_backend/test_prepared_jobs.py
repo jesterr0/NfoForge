@@ -13,6 +13,7 @@ import pytest
 
 import src.backend.process as process_module
 from src.backend.process import ProcessBackEnd
+from src.backend.torrents import generate_torrent
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import RunPhase
@@ -25,7 +26,6 @@ def _tracker_info() -> Any:
         announce_url="https://tracker.test/announce",
         source="TEST",
         comments=None,
-        max_piece_size=None,
     )
 
 
@@ -69,9 +69,6 @@ def _backend(monkeypatch: pytest.MonkeyPatch) -> ProcessBackEnd:
         backend, "handle_images_for_trackers", lambda *_a, **_k: {}, raising=False
     )
     monkeypatch.setattr(
-        backend, "determine_max_piece_size", lambda *_a, **_k: None, raising=False
-    )
-    monkeypatch.setattr(
         backend, "disconnect_from_clients", lambda *_a, **_k: None, raising=False
     )
     return cast(ProcessBackEnd, backend)
@@ -79,14 +76,18 @@ def _backend(monkeypatch: pytest.MonkeyPatch) -> ProcessBackEnd:
 
 def _context(tmp_path: Path) -> ProcessingContext:
     context = ProcessingContext()
-    context.media_input.input_path = tmp_path / "media.mkv"
+    media = tmp_path / "media.mkv"
+    media.write_bytes(b"media")
+    context.media_input.input_path = media
     context.media_input.working_dir = tmp_path
     # the real flow creates each tracker's output dir when building the paths
     (tmp_path / "aither").mkdir(parents=True, exist_ok=True)
-    # carrying a base torrent puts every tracker on the clone path, which is
-    # what a prepared job does and keeps these tests off real hashing
-    base = tmp_path / "base.torrent"
-    base.write_bytes(b"d8:announce")
+    # carrying a base torrent keeps these tests off real hashing, which is also
+    # what a resumed prepared job does
+    base = tmp_path / "carried.torrent"
+    generate_torrent(path=media, piece_exponent=16, cb=lambda *_a: None).write(
+        base, overwrite=True
+    )
     context.shared_data.base_torrent = base
     return context
 

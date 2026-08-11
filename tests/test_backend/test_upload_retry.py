@@ -390,9 +390,11 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
     `disconnect_from_clients()`.
     """
     monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    monkeypatch.setattr(process_module, "content_size", lambda _path: 1024)
     monkeypatch.setattr(
         process_module, "generate_torrent", lambda **_kwargs: MagicMock()
     )
+    monkeypatch.setattr(process_module, "clone_torrent", lambda **_kwargs: MagicMock())
     monkeypatch.setattr(
         process_module,
         "write_torrent",
@@ -434,7 +436,6 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
         load_templates=lambda: None, read_template=lambda name=None: None
     )
     backend.handle_images_for_trackers = MagicMock(return_value={})  # type: ignore[method-assign]
-    backend.determine_max_piece_size = MagicMock(return_value=None)  # type: ignore[method-assign]
     backend.generate_tracker_title = MagicMock(return_value=None)  # type: ignore[method-assign]
     backend.upload = MagicMock(return_value=True)  # type: ignore[method-assign]
     backend._handle_injection = MagicMock(  # type: ignore[method-assign]
@@ -446,7 +447,8 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
         ProcessingContext,
         SimpleNamespace(
             media_input=SimpleNamespace(
-                require_input_path=lambda: tmp_path / "media.mkv"
+                require_input_path=lambda: tmp_path / "media.mkv",
+                require_working_dir=lambda: tmp_path,
             ),
             shared_data=SharedPayload(),
         ),
@@ -477,9 +479,11 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
 
 def _patch_torrent_pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(process_module, "ensure_tracker_health", lambda **_kwargs: None)
+    monkeypatch.setattr(process_module, "content_size", lambda _path: 1024)
     monkeypatch.setattr(
         process_module, "generate_torrent", lambda **_kwargs: MagicMock()
     )
+    monkeypatch.setattr(process_module, "clone_torrent", lambda **_kwargs: MagicMock())
     monkeypatch.setattr(
         process_module,
         "write_torrent",
@@ -563,7 +567,6 @@ def _process_trackers_backend(
         load_templates=lambda: None, read_template=lambda name=None: None
     )
     backend.handle_images_for_trackers = MagicMock(return_value={})  # type: ignore[method-assign]
-    backend.determine_max_piece_size = MagicMock(return_value=None)  # type: ignore[method-assign]
     backend.generate_tracker_title = MagicMock(return_value=None)  # type: ignore[method-assign]
     backend.upload = MagicMock(return_value=upload_return)  # type: ignore[method-assign]
     backend.progress_bar_cb = None
@@ -584,7 +587,8 @@ def _run_process_trackers(
         ProcessingContext,
         SimpleNamespace(
             media_input=SimpleNamespace(
-                require_input_path=lambda: tmp_path / "media.mkv"
+                require_input_path=lambda: tmp_path / "media.mkv",
+                require_working_dir=lambda: tmp_path,
             ),
             shared_data=SharedPayload(),
         ),

@@ -27,9 +27,6 @@ class TrackerInfo:
     comments: str | None = None
     nfo_template: str | None = None
 
-    # hard coded values
-    max_piece_size: int = 0
-
     # screenshot settings
     url_type: URLType = URLType.BBCODE
     column_s: int = 1

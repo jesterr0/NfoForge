@@ -1,22 +1,64 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Torrents no longer inherit another tracker's identity. A run hashes the media once and
+  clones that torrent for every other tracker, but the file it cloned from was the
+  _first tracker's own torrent_ -- and for a UNIT3D tracker, uploading replaces that
+  file in place with the copy the tracker's server hands back, before the next tracker
+  is cloned. Every later tracker therefore cloned from a torrent a tracker's server had
+  already edited. On a real LST, ReelFliX, TorrentLeech job this produced a ReelFliX
+  torrent whose `created by` read `Edited by LST.GG. Edited by ReelFliX`, and a
+  TorrentLeech torrent reading `Edited by LST.GG` with no edit of its own --
+  TorrentLeech is not UNIT3D, so it never redownloads and the wrong value reached its
+  users. The run now hashes into a neutral base torrent that carries no announce, source
+  or comment, is never uploaded, and lives outside every tracker's folder. Every
+  tracker, the first included, gets a stamped clone of it, so no tracker's artifact is
+  ever another tracker's clone source.
+- A saved job no longer carries a stamped torrent forward. Jobs stored whichever tracker
+  folder sorted first, so a resumed job could seed an entire run from one tracker's
+  server-rewritten torrent. Jobs now store the neutral base, and a base saved by an
+  earlier release is stripped of its announce, source, comment and `created by` when it
+  loads, rather than being used as-is or thrown away.
+
+### Changed
+
+- Piece size is now chosen by one fixed curve based on release size alone, rather than
+  by whichever tracker happened to be hashed first. One hash is shared by every tracker
+  in a run, but mkbrr prescribes a different exact piece size per tracker, so the
+  torrent was previously shaped by one tracker's rules and handed to all the others. The
+  curve tops out at 16 MiB, which is at or below every supported tracker's limit, so it
+  is valid for any combination of trackers -- including a prepared job resumed with
+  trackers it was not built for. Two consequences:
+  - Piece sizes change for some releases. Trackers that permit larger pieces than 16 MiB
+    (TorrentLeech among them) now get more, smaller pieces on very large releases, and a
+    correspondingly larger `.torrent` file. This is legal everywhere and is the safer
+    direction to err.
+  - The torf fallback now produces a torrent identical to mkbrr's. Both are given the
+    same explicit piece size, so an mkbrr failure no longer silently changes the shape
+    of the torrent.
+- The per-tracker **Max Piece Size** setting is retired, since the curve is now the sole
+  source. It is removed from new configs and dropped from existing ones the next time
+  settings are saved; no action is needed.
+
 ## [1.1.2] - 2026-08-10
 
 ### Changed
 
 - Aither, LST and ReelFliX now send the title with its punctuation intact. Their
-  enforced formats opened with `{title_clean}`, which runs the global title-clean
-  rules, and the packaged rules replace every non-alphanumeric character with a
-  space, so `Alice & Bob: A Tale - Part One` reached those trackers as
+  enforced formats opened with `{title_clean}`, which runs the global title-clean rules,
+  and the packaged rules replace every non-alphanumeric character with a space, so
+  `Alice & Bob: A Tale - Part One` reached those trackers as
   `Alice and Bob A Tale Part One`. The enforced formats now use `{title_exact}` and
   `{episode_title_exact}`, with colon handling set to Keep. Three consequences:
-  - Titles change on these three trackers for every user, not only those who had
-    set an override. Colons, hyphens, apostrophes and ampersands now appear where
-    they previously became spaces.
-  - Titles are no longer folded to ASCII, so accented and non-Latin characters
-    reach these trackers as the metadata source spells them. Characters that are
-    illegal in a filename are no longer stripped either, since a tracker title is
-    not a path.
+  - Titles change on these three trackers for every user, not only those who had set an
+    override. Colons, hyphens, apostrophes and ampersands now appear where they
+    previously became spaces.
+  - Titles are no longer folded to ASCII, so accented and non-Latin characters reach
+    these trackers as the metadata source spells them. Characters that are illegal in a
+    filename are no longer stripped either, since a tracker title is not a path.
   - Episode titles keep their punctuation apart from a colon, which
     `{episode_title_exact}` still replaces with a space.
 - Renaming is unaffected. Filenames and season-pack folder names still use

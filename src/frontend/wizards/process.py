@@ -43,6 +43,7 @@ from src.backend.jobs import (
     torrent_content_files,
 )
 from src.backend.process import ProcessBackEnd
+from src.backend.torrents import BASE_TORRENT_SUFFIX
 from src.backend.tracker_run_data import build_tracker_data, image_host_label
 from src.backend.upload_retry import (
     TrackerRunOutcome,
@@ -569,19 +570,25 @@ class ProcessPage(BaseWizardPage):
         return document
 
     def _first_generated_torrent(self) -> Path | None:
-        """A torrent this run already produced, usable as a clone source.
+        """The neutral base this run hashed, usable as a clone source.
 
         Hashing the media is the single most expensive step, so a job that can
         carry a finished torrent lets a later run skip it entirely.
+
+        Only the base will do. The tracker torrents one level down are stamped
+        with a tracker's announce, source and comment, and a UNIT3D one is
+        additionally whatever that tracker's server handed back on upload --
+        carrying any of those forward would seed the next run from one
+        tracker's artifact. `_prepare_base_torrent` always writes the base
+        here, including when the run itself reused a carried one, so this is
+        the single place to look.
         """
         working_dir = self.context.media_input.working_dir
         input_path = self.context.media_input.input_path
         if not working_dir or not input_path:
             return None
-        for candidate in sorted(working_dir.glob(f"*/{input_path.stem}.torrent")):
-            if candidate.is_file():
-                return candidate
-        return None
+        base = working_dir / f"{input_path.stem}{BASE_TORRENT_SUFFIX}"
+        return base if base.is_file() else None
 
     def _default_job_name(self) -> str:
         """Best available human name for this release."""
