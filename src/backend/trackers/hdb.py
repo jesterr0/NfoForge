@@ -13,6 +13,7 @@ from src.backend.trackers.utils import (
     DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
+    strip_title_dots,
 )
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -393,8 +394,7 @@ class HDBUploader:
 
     @staticmethod
     def generate_release_title(release_title: str) -> str:
-        name = release_title.replace(".", " ")
-        name = re.sub(r"\s{2,}", " ", name)
+        name = strip_title_dots(release_title)
         name = re.sub(r"\bH\s?265\b", "HEVC", name)
         name = re.sub(r"(?<!\S)DV(?!\S)", "DoVi", name)
         if "HDR10+" not in name:

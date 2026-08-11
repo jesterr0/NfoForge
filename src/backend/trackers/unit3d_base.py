@@ -16,7 +16,7 @@ from src.backend.trackers.utils import (
     DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
-    tracker_string_replace_map,
+    strip_title_dots,
 )
 from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -402,9 +402,12 @@ class Unit3dBaseUploader:
         season_pack: bool = False,
     ) -> dict[str, Any]:
         upload_payload: dict[str, Any] = {
-            "name": tracker_title
-            if tracker_title
-            else self.generate_release_title(self.input_path.stem),
+            # applied to a supplied title as well, not only to the filename
+            # fallback -- a title edited in the overview dialog would otherwise
+            # ship its periods verbatim, which is not what that dialog promises
+            "name": self.generate_release_title(
+                tracker_title if tracker_title else self.input_path.stem
+            ),
             "description": nfo,
             "mediainfo": MinimalMediaInfo(self.input_path).get_full_mi_str(
                 cleansed=True
@@ -595,11 +598,7 @@ class Unit3dBaseUploader:
 
     @staticmethod
     def generate_release_title(release_title: str) -> str:
-        name = release_title.replace(".", " ")
-        name = re.sub(r"\s{2,}", " ", name)
-        for replace_key, replace_val in tracker_string_replace_map().items():
-            name = name.replace(replace_key, replace_val)
-        return name
+        return strip_title_dots(release_title)
 
 
 class Unit3dBaseSearch:

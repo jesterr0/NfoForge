@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed audio channel layouts such as `5.1` and `7.1.4` being mangled in tracker titles.
+- Fixed edited UNIT3D titles bypassing automatic title formatting.
+
 ## [1.1.3] - 2026-08-10
 
 ### Changed

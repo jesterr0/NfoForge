@@ -1,6 +1,5 @@
 from datetime import datetime
 from pathlib import Path
-import re
 from typing import Any
 
 import niquests
@@ -8,7 +7,7 @@ from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.cookie_storage import load_cookies, save_cookies
-from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.trackers.utils import TRACKER_HEADERS, strip_title_dots
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -187,19 +186,19 @@ class TLUploader:
     @staticmethod
     def generate_release_title(release_title: str) -> str:
         """Force release title to be in a format that TL requires"""
-        if "." in release_title:
+        # audio channel layouts (2.0, 5.1, ...) keep their period; a title whose
+        # only periods are channels is already correct, so nothing is logged
+        corrected = strip_title_dots(release_title)
+        if corrected != release_title:
             LOG.warning(
                 LOG.LOG_SOURCE.BE,
                 "Periods found in TL release title, automatically correcting.",
             )
-            incoming_title = release_title
-            release_title = re.sub(r"\.", " ", release_title)
-            release_title = re.sub(r"\s{2,}", " ", release_title)
             LOG.info(
                 LOG.LOG_SOURCE.BE,
-                f"Periods corrected in TL release title ({incoming_title} -> {release_title}).",
+                f"Periods corrected in TL release title ({release_title} -> {corrected}).",
             )
-        return release_title
+        return corrected
 
 
 class TLSearch:

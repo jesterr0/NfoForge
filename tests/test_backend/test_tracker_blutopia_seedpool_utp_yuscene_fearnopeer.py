@@ -222,6 +222,26 @@ def test_only_blutopia_and_lst_and_shareisland_get_mod_queue_field(
     assert "opt_in_to_mod_queue" not in payload
 
 
+def test_supplied_tracker_title_is_formatted_in_the_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A title the user edited in the overview dialog goes through
+    generate_release_title too, rather than reaching the tracker verbatim --
+    the dialog tells the user required formatting is applied automatically,
+    and TorrentLeech already re-applied it at upload time."""
+    monkeypatch.setattr(BlutopiaUploader, "_standard_definition", lambda self: False)
+    uploader = _uploader_with_real_mediainfo(
+        BlutopiaUploader, tmp_path, "Example.Movie.2026.1080p.WEB-DL.H264.mkv"
+    )
+
+    payload = uploader._build_upload_payload(
+        tracker_title="Example.Movie.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP",
+    )
+
+    # separators converted, audio channel layout kept intact
+    assert payload["name"] == "Example Movie 2026 1080p WEB-DL AAC 2.0 H 264-GRP"
+
+
 @pytest.mark.parametrize(
     ("wrapper", "uploader_cls_path"),
     [
