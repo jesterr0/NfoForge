@@ -19,6 +19,7 @@ from src.backend.trackers.utils import (
     strip_title_dots,
 )
 from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
+from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -406,7 +407,7 @@ class Unit3dBaseUploader:
             # fallback -- a title edited in the overview dialog would otherwise
             # ship its periods verbatim, which is not what that dialog promises
             "name": self.generate_release_title(
-                tracker_title if tracker_title else self.input_path.stem
+                tracker_title if tracker_title else release_stem(self.input_path)
             ),
             "description": nfo,
             "mediainfo": MinimalMediaInfo(self.input_path).get_full_mi_str(
@@ -491,7 +492,7 @@ class Unit3dBaseUploader:
         return str(self.cat_enum(category).value)
 
     def _get_type_id(self) -> str:
-        title_lowered = str(self.input_path.stem).lower()
+        title_lowered = release_stem(self.input_path).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # remux
@@ -567,7 +568,7 @@ class Unit3dBaseUploader:
             ).value
             return str(resolution)
         except ValueError:
-            title_lowered = self.input_path.stem.lower()
+            title_lowered = release_stem(self.input_path).lower()
             res_map = {
                 "4320p": "RES_4320P",
                 "2160p": "RES_2160P",

@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from src.backend.utils.file_utilities import release_stem
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
 from src.packages.custom_types import ImageUploadFromTo
@@ -60,7 +61,7 @@ def build_tracker_data(
             output_dir.mkdir(parents=True, exist_ok=True)
 
         tracker_data[str(tracker)] = {
-            "path": output_dir / f"{input_path.stem}.torrent",
+            "path": output_dir / f"{release_stem(input_path)}.torrent",
             "image_host": image_host_label(
                 image_host_data.img_from, image_host_data.img_to
             ),

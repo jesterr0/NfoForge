@@ -8,6 +8,7 @@ from niquests.typing import MultiPartFilesAltType
 
 from src.backend.trackers.utils import DISC_TITLE_REGEX, TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
+from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -280,7 +281,7 @@ class BHDUploader:
         upload_payload: dict[str, Any] = {
             "name": tracker_title
             if tracker_title
-            else self.generate_release_title(self.input_path.stem),
+            else self.generate_release_title(release_stem(self.input_path)),
             "category_id": self._category_id(),
             "type": self._type(),
             "source": self._source(),
@@ -354,7 +355,7 @@ class BHDUploader:
         return None
 
     def _type(self) -> str:
-        title_lowered = str(self.input_path.stem).lower()
+        title_lowered = release_stem(self.input_path).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # remux
@@ -415,7 +416,7 @@ class BHDUploader:
         return BHDType.OTHER.value
 
     def _source(self) -> str:
-        title_lowered = str(self.input_path.stem).lower()
+        title_lowered = release_stem(self.input_path).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
         if "bluray" in title_lowered:

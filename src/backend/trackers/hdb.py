@@ -16,6 +16,7 @@ from src.backend.trackers.utils import (
     strip_title_dots,
 )
 from src.backend.upload_retry import classify_upload_post_error
+from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -63,7 +64,7 @@ def hdb_codec_id(mediainfo_obj: MediaInfo) -> int:
 
 def hdb_medium_id(input_path: Path) -> int:
     """HDBits requires this to resolve or refuses the upload/search."""
-    title_lowered = str(input_path.stem).lower()
+    title_lowered = release_stem(input_path).lower()
     title_lowered_strip_periods = title_lowered.replace(".", "")
 
     if "remux" in title_lowered:
@@ -237,7 +238,7 @@ class HDBUploader:
         upload_payload: dict[str, Any] = {
             "name": tracker_title
             if tracker_title
-            else self.generate_release_title(self.input_path.stem),
+            else self.generate_release_title(release_stem(self.input_path)),
             "category": category_id,
             "codec": codec_id,
             "medium": medium_id,
@@ -453,7 +454,7 @@ class HDBSearch:
         elif tvdb_id:
             payload["tvdb"] = {"id": tvdb_id}
         else:
-            payload["search"] = input_path.stem
+            payload["search"] = release_stem(input_path)
 
         results: list[TrackerSearchResult] = []
         try:

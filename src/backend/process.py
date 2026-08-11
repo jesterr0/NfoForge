@@ -106,6 +106,7 @@ from src.backend.upload_retry import (
     UploadRetryAction,
 )
 from src.backend.utils.anime import is_anime_release
+from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
     format_image_data_to_comparison,
@@ -443,7 +444,9 @@ class ProcessBackEnd:
             ).search(
                 movie_title=title,
                 movie_year=year,
-                file_name=file_input.stem if file_input.is_dir() else file_input.name,
+                # a pack folder's whole name is the release name; `.stem` would
+                # read its last dotted segment as an extension and drop it
+                file_name=file_input.name,
                 imdb_id=imdb_id,
             )
             if ptp_search:
@@ -2098,7 +2101,7 @@ class ProcessBackEnd:
         resumed job that gets re-saved keeps one, and the job's own stored file
         is never mutated.
         """
-        base_path = working_dir / f"{media_input.stem}{BASE_TORRENT_SUFFIX}"
+        base_path = working_dir / f"{release_stem(media_input)}{BASE_TORRENT_SUFFIX}"
 
         if carried_torrent:
             try:

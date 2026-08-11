@@ -6,6 +6,8 @@
 
 - Fixed audio channel layouts such as `5.1` and `7.1.4` being mangled in tracker titles.
 - Fixed edited UNIT3D titles bypassing automatic title formatting.
+- Fixed generated `.torrent` and `.nfo` files losing the end of the release name for season packs and any release opened as a folder. A folder named `Show.S01.1080p.BluRay.x264-Group` produced `Show.S01.1080p.BluRay.torrent`, dropping the codec and release group.
+- Fixed the same truncation affecting trackers that read the release name off the input path, which could give a pack the wrong type, source or codec, and could shorten a duplicate-check search.
 
 ## [1.1.3] - 2026-08-10
 
