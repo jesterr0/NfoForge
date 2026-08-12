@@ -12,6 +12,7 @@
 ### Fixed
 
 - Fixed audio channel layouts such as `5.1` and `7.1.4` being mangled in tracker titles.
+- Fixed HUNO titles ending in a stray `- )` when a release has no group tag.
 - Fixed SeedPool uploads being named in prose rather than after the release. SeedPool wants the dot-separated release name (`Show.S01E02.1080p.WEB-DL.H.264-GRP`), but it was sharing the spaced formatting the other UNIT3D trackers use.
 - Fixed TorrentLeech titles still mangling those layouts (`TrueHD Atmos 7.1` became `TrueHD Atmos 7 1`). Its packaged title rule replaced every period with a space before the layout-aware formatting could run.
 - Fixed edited UNIT3D titles bypassing automatic title formatting.
