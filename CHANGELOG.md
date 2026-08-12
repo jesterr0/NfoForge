@@ -6,11 +6,13 @@
 
 - Series title overrides are now editable for trackers that don't actually enforce a series title format (TorrentLeech, HUNO, ReelFliX, DarkPeers, ShareIsland, UploadCX, OnlyEncodes). These were greyed out on the Series Config screen while nothing was being enforced behind the lock. Aither and LST stay locked, since they do enforce one. Titles are unchanged unless you choose to set an override.
 - TorrentLeech's title override is no longer locked on either screen. TorrentLeech dictates no title format -- the space-separated naming it wants is applied automatically to every upload -- so the override is yours to use like any other tracker's. Existing configs have the old setting cleared on first load.
+- Token filters now apply to user tokens and to values overridden on the rename page, which previously ignored them -- `{usr_something|upper}` starts being honoured. An optional `:opt=` string is a literal and is no longer altered by the token's filters, so `{:opt=ep :episode_number|upper}` renders `ep 2` rather than `EP 2`.
 - Updated dependencies:
   - platformdirs
 
 ### Fixed
 
+- Fixed Aither and LST single-episode titles rendering as `S01E2` instead of `S01E02`. An optional prefix such as the `E` in `{:opt=E:episode_number|zfill(2)}` was attached before the token's own filters ran, so `zfill(2)` saw a value that was already two characters and padded nothing. Season packs and multi-episode files were unaffected.
 - Fixed audio channel layouts such as `5.1` and `7.1.4` being mangled in tracker titles.
 - Fixed HUNO titles ending in a stray `- )` when a release has no group tag.
 - Fixed SeedPool uploads being named in prose rather than after the release. SeedPool wants the dot-separated release name (`Show.S01E02.1080p.WEB-DL.H.264-GRP`), but it was sharing the spaced formatting the other UNIT3D trackers use.

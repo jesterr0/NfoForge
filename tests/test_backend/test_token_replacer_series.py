@@ -596,6 +596,38 @@ def test_episode_number_single_episode_still_honors_template_zfill() -> None:
     assert output == "S01E01"
 
 
+def test_optional_prefix_does_not_consume_the_zfill_filter() -> None:
+    """The shipped Aither/LST tokens write the "E" as an optional prefix, not
+    as a literal, so it disappears on a season pack.
+
+    Filters used to run after that prefix was already glued on, so zfill(2)
+    was handed "E2" -- two characters, so it padded nothing -- and every
+    single-episode upload to those trackers shipped as "S01E2". The test above
+    missed it by using a literal "E" instead of the ``:opt=`` form.
+    """
+    padded = _multi_episode_replacer(
+        "S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)}",
+        MultiEpisodeStyle.RANGE,
+        episode=2,
+        episode_end=2,
+    ).get_output()
+
+    assert padded == "S01E02"
+
+
+def test_optional_prefix_is_not_itself_filtered() -> None:
+    """A filter describes the token's value; the optional string is a literal
+    the user typed and must survive it unchanged."""
+    output = _multi_episode_replacer(
+        "{:opt=ep :episode_number|upper}",
+        MultiEpisodeStyle.RANGE,
+        episode=2,
+        episode_end=2,
+    ).get_output()
+
+    assert output == "ep 2"
+
+
 def test_episode_number_range_style_end_to_end_template() -> None:
     # end-to-end proof using the shape of the default standard episode token
     # ("S{season_number|zfill(2)}E{episode_number|zfill(2)}"): a RANGE-styled
