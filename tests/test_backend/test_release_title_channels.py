@@ -28,6 +28,7 @@ import pytest
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
 from src.backend.trackers.hdb import HDBUploader
+from src.backend.trackers.seedpool import SeedPoolUploader
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.utils import strip_title_dots
@@ -228,3 +229,28 @@ def test_no_packaged_title_rule_destroys_a_layout(
                 f"{tracker}'s packaged {label} replace_map turned "
                 f"{layout} into something else: {output}"
             )
+
+
+@pytest.mark.parametrize("codec", CODECS)
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_seedpool_keeps_every_codec_and_layout(codec: str, layout: str) -> None:
+    """SeedPool converts the other way -- spaces to periods -- so a layout
+    needs no protection to survive. Pinned across the same grid anyway, since
+    the separator it emits is the one a layout is made of."""
+    title = f"Example Movie 2026 1080p BluRay {codec} {layout} AVC-GRP"
+
+    assert f".{layout}." in SeedPoolUploader.generate_release_title(title)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Example Movie 2026 1080p BluRay DTS-HD MA 5.1 x264-GRP",
+        "Example.Movie.2026.1080p.BluRay.DTS-HD.MA.5.1.x264-GRP",
+        "Example  Movie   2026 1080p AAC 2.0",
+    ],
+)
+def test_seedpool_release_title_is_idempotent(title: str) -> None:
+    once = SeedPoolUploader.generate_release_title(title)
+
+    assert SeedPoolUploader.generate_release_title(once) == once

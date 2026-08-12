@@ -242,6 +242,68 @@ def test_supplied_tracker_title_is_formatted_in_the_payload(
     assert payload["name"] == "Example Movie 2026 1080p WEB-DL AAC 2.0 H 264-GRP"
 
 
+def test_seedpool_names_the_upload_after_the_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SeedPool is the one UNIT3D tracker here that wants the dotted form.
+
+    Both reference implementations agree: Upload Assistant sends the input's
+    own name with spaces turned into periods, and upbrr resolves the source
+    release name. The base class was flattening it to the spaced form the rest
+    of the family wants.
+    """
+    monkeypatch.setattr(SeedPoolUploader, "_standard_definition", lambda self: False)
+    uploader = _uploader_with_real_mediainfo(
+        SeedPoolUploader, tmp_path, "Example.Movie.2026.1080p.WEB-DL.H264.mkv"
+    )
+
+    payload = uploader._build_upload_payload(
+        tracker_title="Example Movie 2026 1080p WEB-DL AAC 2.0 H.264-GRP",
+    )
+
+    assert payload["name"] == "Example.Movie.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP"
+
+
+def test_seedpool_leaves_the_filename_fallback_dotted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no tracker title the payload falls back to the input's own name,
+    which is the release name already -- it must survive untouched rather than
+    be round-tripped through the spaced form."""
+    monkeypatch.setattr(SeedPoolUploader, "_standard_definition", lambda self: False)
+    uploader = _uploader_with_real_mediainfo(
+        SeedPoolUploader,
+        tmp_path,
+        "Example.Movie.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP.mkv",
+    )
+
+    payload = uploader._build_upload_payload(tracker_title=None)
+
+    assert payload["name"] == "Example.Movie.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP"
+
+
+@pytest.mark.parametrize(
+    "uploader_cls",
+    [BlutopiaUploader, UTPUploader, YuSceneUploader, FearNoPeerUploader],
+)
+def test_the_other_unit3d_trackers_still_want_the_spaced_form(
+    uploader_cls: Callable[..., Unit3dBaseUploader],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SeedPool's override must not leak into its siblings."""
+    monkeypatch.setattr(uploader_cls, "_standard_definition", lambda self: False)
+    uploader = _uploader_with_real_mediainfo(
+        uploader_cls, tmp_path, "Example.Movie.2026.1080p.WEB-DL.H264.mkv"
+    )
+
+    payload = uploader._build_upload_payload(
+        tracker_title="Example.Movie.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP",
+    )
+
+    assert payload["name"] == "Example Movie 2026 1080p WEB-DL AAC 2.0 H 264-GRP"
+
+
 @pytest.mark.parametrize(
     ("wrapper", "uploader_cls_path"),
     [

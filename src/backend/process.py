@@ -91,6 +91,7 @@ from src.backend.trackers.media_support import (
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
+from src.backend.trackers.seedpool import SeedPoolUploader
 from src.backend.trackers.title_format_policy import (
     TitleFormatPolicy,
     resolve_title_format_policy,
@@ -2751,6 +2752,10 @@ class ProcessBackEnd:
             return BHDUploader.generate_release_title(title)
         elif tracker is TrackerSelection.HDB:
             return HDBUploader.generate_release_title(title)
+        # SeedPool is UNIT3D but names uploads after the release, so it wants
+        # the dotted form the rest of the family strips
+        elif tracker is TrackerSelection.SEEDPOOL:
+            return SeedPoolUploader.generate_release_title(title)
         # Unit3d trackers
         elif tracker in {
             TrackerSelection.REELFLIX,
@@ -2762,7 +2767,6 @@ class ProcessBackEnd:
             TrackerSelection.UPLOAD_CX,
             TrackerSelection.ONLY_ENCODES,
             TrackerSelection.BLUTOPIA,
-            TrackerSelection.SEEDPOOL,
             TrackerSelection.UTOPIA,
             TrackerSelection.YU_SCENE,
             TrackerSelection.FEAR_NO_PEER,

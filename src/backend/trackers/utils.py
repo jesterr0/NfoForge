@@ -50,6 +50,7 @@ DISC_TITLE_REGEX = regex.compile(
 _CHANNEL_LAYOUT_REGEX = re.compile(r"(?<!\d)[1-9]\.[01](?:\.[0-9])?(?!\d)")
 _CHANNEL_LAYOUT_SENTINEL = "\x00"
 _REPEATED_WHITESPACE_REGEX = re.compile(r"\s{2,}")
+_REPEATED_PERIOD_REGEX = re.compile(r"\.{2,}")
 
 
 def strip_title_dots(release_title: str) -> str:
@@ -69,6 +70,25 @@ def strip_title_dots(release_title: str) -> str:
     name = name.replace(".", " ")
     name = _REPEATED_WHITESPACE_REGEX.sub(" ", name)
     return name.replace(_CHANNEL_LAYOUT_SENTINEL, ".")
+
+
+def dot_separate_title(release_title: str) -> str:
+    """
+    Convert a space separated release title into a dot separated one.
+
+    The inverse of `strip_title_dots`, for trackers that name uploads after the
+    release itself rather than in prose. No channel-layout protection is needed
+    going this way: only spaces become periods, so a layout that is already
+    "5.1" simply passes through.
+
+    Idempotent, so a title that arrives dot separated -- the filename fallback,
+    which is the release name already -- is returned unchanged instead of being
+    round-tripped through the spaced form.
+    """
+    name = _REPEATED_WHITESPACE_REGEX.sub(" ", release_title.strip())
+    name = name.replace(" ", ".")
+    name = _REPEATED_PERIOD_REGEX.sub(".", name)
+    return name.strip(".")
 
 
 def _basic_bbcode_formatting(url: str, image_size: int) -> str:
