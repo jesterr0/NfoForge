@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Some minor bugs (UI only) for users edit from overview
+
 ## [1.1.4] - 2026-08-11
 
 ### Changed
