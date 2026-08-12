@@ -31,6 +31,18 @@ def test_each_tracker_gets_its_own_output_path(tmp_path: Path) -> None:
     assert data["HUNO"]["path"] == tmp_path / "huno" / "Release.2024.torrent"
 
 
+def test_season_pack_directory_keeps_its_full_name(tmp_path: Path) -> None:
+    """A pack folder has no extension, so `.stem` would eat the release group."""
+    pack = tmp_path / "Show.Name.S01.1080p.BluRay.AAC.2.0.x264-Group"
+    pack.mkdir()
+
+    data = build_tracker_data(tmp_path, pack, _hosts())
+
+    assert data["Aither"]["path"] == (
+        tmp_path / "aither" / "Show.Name.S01.1080p.BluRay.AAC.2.0.x264-Group.torrent"
+    )
+
+
 def test_output_directories_are_created(tmp_path: Path) -> None:
     """The run writes .torrent/.nfo straight in and does not create these."""
     build_tracker_data(tmp_path, tmp_path / "Release.mkv", _hosts())

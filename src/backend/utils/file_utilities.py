@@ -23,6 +23,18 @@ def find_largest_file_in_directory(
     return largest_file
 
 
+def release_stem(path: Path) -> str:
+    """Name a run's artifacts (.torrent/.nfo) after the release.
+
+    `Path.stem` is only correct for a single file. A season pack is a directory
+    whose dotted name has no extension, so `.stem` treats the trailing segment
+    as one and drops it -- "Show.S01.1080p.BluRay.x264-Group" becomes
+    "Show.S01.1080p.BluRay", silently losing the codec and release group from
+    every artifact named after it.
+    """
+    return path.name if path.is_dir() else path.stem
+
+
 def generate_unique_date_name(
     file_name: str, max_len: int = 25, date_format: str = "%m.%d.%Y_%I.%M.%S"
 ) -> str:

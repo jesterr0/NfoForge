@@ -505,10 +505,6 @@ class TokenReplacer:
         if not raw_value:
             return ""
 
-        # apply custom filters only for flatten mode (filename generation)
-        if self.flatten and token_data.filters and isinstance(raw_value, str):
-            raw_value = self._apply_custom_filters(raw_value, token_data.filters)
-
         return raw_value
 
     def _get_raw_token_value(self, token_data: TokenData) -> str | Sequence[Any] | None:
@@ -3045,6 +3041,12 @@ class TokenReplacer:
     def _optional_user_input(self, token_str: str | None, token_data: TokenData) -> str:
         output = ""
         if token_str:
+            # Filters describe the value, so they run before the optional
+            # pre/post strings are wrapped around it. Applied after the wrap,
+            # `{:opt=E:episode_number|zfill(2)}` handed "E2" to zfill -- already
+            # two characters -- and single episodes shipped as "S01E2".
+            if self.flatten and token_data.filters and isinstance(token_str, str):
+                token_str = self._apply_custom_filters(token_str, token_data.filters)
             pre = token_data.pre_token
             post = token_data.post_token
             output = f"{pre}{token_str}{post}"

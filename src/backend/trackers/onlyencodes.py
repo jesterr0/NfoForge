@@ -4,6 +4,7 @@ from pymediainfo import MediaInfo
 from typing_extensions import override
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
+from src.backend.utils.file_utilities import release_stem
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.onlyencodes import (
@@ -95,7 +96,7 @@ class OnlyEncodesUploader(Unit3dBaseUploader):
             pass
 
         # fallback by checking the file name for known codecs
-        lowered_file_input = self.input_path.stem.lower()
+        lowered_file_input = release_stem(self.input_path).lower()
         for codec, enum in [
             ("x265", OnlyEncodesType.ENCODE_X265),
             ("av1", OnlyEncodesType.ENCODE_AV1),

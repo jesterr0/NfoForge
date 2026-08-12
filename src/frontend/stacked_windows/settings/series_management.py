@@ -20,8 +20,8 @@ from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.trackers.title_format_policy import (
-    TRACKER_TITLE_FORMAT_POLICY,
     TitleFormatPolicy,
+    resolve_title_format_policy,
 )
 from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_FILE_NAME_1,
@@ -497,37 +497,26 @@ class SeriesManagementSettings(BaseSettings):
 
             for idx, tracker in enumerate(w["tracker_override_map"].keys()):
                 tfo = w["tracker_override_map"][tracker]
-                policy = TRACKER_TITLE_FORMAT_POLICY[tracker]
+                default_info = self.config.defaults.trackers.by_selection()[tracker]
+                policy = resolve_title_format_policy(tracker, default_info, fmt)
                 if policy is not TitleFormatPolicy.FREE:
                     # REQUIRED/UNSUPPORTED: always shows the packaged default,
                     # disabled -- never the live (possibly stale) settings
                     # value. An UNSUPPORTED tracker has no packaged entry, so
                     # this yields the blank TitleOverridePayload() it had
-                    # before. A REQUIRED tracker can also have no packaged
-                    # entry for this format -- most REQUIRED trackers ship no
-                    # tvr_title_overrides at all -- in which case the upload
-                    # actually falls back to the global series template, so
-                    # the reason must not claim an enforced format either.
-                    default_override = (
-                        self.config.defaults.trackers.by_selection()[
-                            tracker
-                        ].tvr_title_overrides
-                        or {}
-                    ).get(fmt, TitleOverridePayload())
-                    if policy is TitleFormatPolicy.REQUIRED:
-                        if default_override.token or default_override.replace_map:
-                            reason = (
-                                f"{tracker} enforces its own title format "
-                                "and cannot be customized."
-                            )
-                        else:
-                            reason = (
-                                f"{tracker} does not enforce a series title "
-                                "format; the global series format is used "
-                                "instead."
-                            )
-                    else:
-                        reason = f"{tracker} does not support a custom title format."
+                    # before. A REQUIRED tracker that ships no format for this
+                    # episode format never reaches here -- it resolves to FREE
+                    # (see resolve_title_format_policy), so a locked row always
+                    # has an enforced format to show.
+                    default_override = (default_info.tvr_title_overrides or {}).get(
+                        fmt, TitleOverridePayload()
+                    )
+                    reason = (
+                        f"{tracker} enforces its own title format "
+                        "and cannot be customized."
+                        if policy is TitleFormatPolicy.REQUIRED
+                        else f"{tracker} does not support a custom title format."
+                    )
                     tfo.set_locked(
                         reason,
                         override_enabled=default_override.enabled,
@@ -545,12 +534,9 @@ class SeriesManagementSettings(BaseSettings):
                 tfo.enabled_checkbox.setChecked(override.enabled)
                 tfo.set_colon_replace(str(override.colon_replace))
                 self._update_qline_cursor_0(tfo.over_ride_format_title, override.token)
-                default_override = (
-                    self.config.defaults.trackers.by_selection()[
-                        tracker
-                    ].tvr_title_overrides
-                    or {}
-                ).get(fmt, TitleOverridePayload())
+                default_override = (default_info.tvr_title_overrides or {}).get(
+                    fmt, TitleOverridePayload()
+                )
                 tfo.over_ride_replacement_table.set_default_rules(
                     default_override.replace_map
                 )
@@ -613,7 +599,11 @@ class SeriesManagementSettings(BaseSettings):
                 # default, so there is nothing user-driven to persist. Any
                 # existing settings value is left untouched rather than
                 # overwritten.
-                if TRACKER_TITLE_FORMAT_POLICY[tracker] is not TitleFormatPolicy.FREE:
+                default_info = self.config.defaults.trackers.by_selection()[tracker]
+                if (
+                    resolve_title_format_policy(tracker, default_info, fmt)
+                    is not TitleFormatPolicy.FREE
+                ):
                     continue
                 existing = self.config.settings.trackers.by_selection()[
                     tracker

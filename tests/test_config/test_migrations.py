@@ -6,9 +6,67 @@ from src.config.migrations import (
     migrate_unversioned_to_v2,
     migrate_v2_to_v3,
     migrate_v3_to_v4,
+    migrate_v4_to_v5,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def test_v4_to_v5_clears_the_seeded_torrentleech_title_rule() -> None:
+    old = _load_fixture("schema4_config.toml")
+    assert old["tracker"]["torrent_leech"]["mvr_title_replace_map"]  # pyright: ignore[reportIndexIssue]
+
+    new, unmapped = migrate_v4_to_v5(old, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 5
+    torrent_leech = new["tracker"]["torrent_leech"]
+    assert torrent_leech["mvr_title_replace_map"] == []
+    assert torrent_leech["mvr_title_override_enabled"] is False
+    # only TorrentLeech's title override is touched
+    assert torrent_leech["source"] == "TorrentLeech.org"
+    assert new["tracker"]["aither"]["mvr_title_token_override"]
+    assert new["tracker"]["aither"]["mvr_title_replace_map"]
+
+
+def test_v4_to_v5_leaves_a_hand_edited_torrentleech_rule_alone() -> None:
+    """The seeded rule is matched exactly, so a profile someone customized is
+    carried forward rather than assumed to be the default."""
+    document = tomlkit.parse(
+        "schema_version = 4\n"
+        "[tracker.torrent_leech]\n"
+        "mvr_title_override_enabled = true\n"
+        'mvr_title_token_override = ""\n'
+        'mvr_title_replace_map = [["(?i)hdr10plus", "HDR10+"]]\n'
+    )
+
+    new, unmapped = migrate_v4_to_v5(document, None)
+
+    assert not unmapped
+    assert new["tracker"]["torrent_leech"]["mvr_title_replace_map"] == [
+        ["(?i)hdr10plus", "HDR10+"]
+    ]
+    assert new["tracker"]["torrent_leech"]["mvr_title_override_enabled"] is True
+
+
+def test_v4_to_v5_does_not_mutate_the_document_it_is_given() -> None:
+    old = _load_fixture("schema4_config.toml")
+
+    migrate_v4_to_v5(old, None)
+
+    assert old["tracker"]["torrent_leech"]["mvr_title_replace_map"] == [  # pyright: ignore[reportIndexIssue]
+        ["\\.", "[space]"]
+    ]
+
+
+def test_v4_to_v5_survives_a_profile_with_no_tracker_section() -> None:
+    document = tomlkit.parse("schema_version = 4\n[general]\nsuffix = 1\n")
+
+    new, unmapped = migrate_v4_to_v5(document, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 5
+    assert new["general"]["suffix"] == 1
 
 
 def test_v3_to_v4_resets_display_name_plugin_selections() -> None:
@@ -68,7 +126,7 @@ def test_migration_moves_and_renames_movie_sections() -> None:
 
 def test_v2_to_v3_removes_retired_ptpimg_selections() -> None:
     old = _load_fixture("schema2_config.toml")
-    old["tracker"]["settings"]["last_used_img_host"]["Aither"] = "ImageBox"
+    old["tracker"]["settings"]["last_used_img_host"]["Aither"] = "ImageBox"  # pyright: ignore[reportIndexIssue]
 
     new, unmapped = migrate_v2_to_v3(old)
 

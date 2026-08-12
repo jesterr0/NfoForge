@@ -1,9 +1,6 @@
 # Prompt Tokens
 
-Prompt tokens are **single-use** tokens that prompt the user for input during the
-workflow, allowing you to format NFO templates wherever a prompt token appears. They are
-considered a type of **NfoToken**, but are only defined at runtime and are not retained
-for your next workflow.
+Prompt tokens are **single-use** tokens that prompt the user for input during the workflow, allowing you to format NFO templates wherever a prompt token appears. They are considered a type of **NfoToken**, but are only defined at runtime and are not retained for your next workflow.
 
 <!-- prettier-ignore -->
 !!! tip
@@ -11,19 +8,16 @@ for your next workflow.
 
 ### Format and Information
 
-Prompt tokens are formatted identically to [multi-line tokens](multi-line.md#format),
-with a few key differences:
+Prompt tokens are formatted identically to [multi-line tokens](multi-line.md#format), with a few key differences:
 
 - They must be prefixed with **prompt\_**.
 - Tokens are only defined in the NFO template.
 - Tokens should consist of all lowercase word characters.
-- Tokens are used **exactly** as the user inputs them; no whitespace or additional new
-  lines will be stripped, and no other formatting will be applied.
+- Tokens are used **exactly** as the user inputs them; no whitespace or additional new lines will be stripped, and no other formatting will be applied.
 
 ### Usage
 
-See the example below, where the token **{{ prompt_source }}** is defined in the
-template.
+See the example below, where the token **{{ prompt_source }}** is defined in the template.
 
 ```jinja {.scrollable-code-block}
 Title                   : {{ title_exact }} {{ release_year_parentheses }}
@@ -76,10 +70,7 @@ Sources                 : {{ prompt_sources }}
 ...
 ```
 
-Across these three templates, there are **three** prompt tokens defined, of which
-**two** are unique. During the workflow, you will be prompted once to fill in all the
-tokens. Tokens that are **identical** will be filled with the same value provided by the
-user.
+Across these three templates, there are **three** prompt tokens defined, of which **two** are unique. During the workflow, you will be prompted once to fill in all the tokens. Tokens that are **identical** will be filled with the same value provided by the user.
 
 If the user provides the following values:
 
@@ -128,8 +119,7 @@ Sources                 : Some Group 1, Some Group 2, Some Group 3
 
 **Editor:**
 
-![Token Example Pre](../../images/tokens/prompt-tokens.png){ width=100%,
-style="max-width: 500px;" }
+![Token Example Pre](../../images/tokens/prompt-tokens.png){ width=100%, style="max-width: 500px;" }
 
 <!-- prettier-ignore -->
 !!! info

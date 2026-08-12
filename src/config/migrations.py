@@ -20,6 +20,9 @@ The versions so far:
   stale last-used selections.
 - 3 -> 4: plugin selections changed from display names to stable plugin IDs;
   selections are reset and the metadata slot is renamed.
+- 4 -> 5: TorrentLeech's seeded movie title override is cleared. Its blind
+  ``\\.`` -> space rule mangled audio channel layouts, and TorrentLeech's
+  actual requirement is applied in code on every upload.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -64,6 +67,7 @@ SCHEMA_1_VERSION = 1
 SCHEMA_2_VERSION = 2
 SCHEMA_3_VERSION = 3
 SCHEMA_4_VERSION = 4
+SCHEMA_5_VERSION = 5
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -445,6 +449,59 @@ def migrate_v3_to_v4(
     return new_doc, []
 
 
+# The rule TorrentLeech's override was seeded with: replace every period with
+# a space. Matched exactly so a profile whose rules were edited by hand is
+# carried forward untouched rather than assumed to be the seeded value.
+_TL_STALE_REPLACE_MAP = [["\\.", "[space]"]]
+
+
+def migrate_v4_to_v5(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Clear TorrentLeech's seeded movie title override.
+
+    TorrentLeech dictates no title format, so the override was locked in
+    Settings and shipped enabled with a single blind rule: `\\.` -> space. It
+    ran at title generation, ahead of `TLUploader.generate_release_title`,
+    which applies the same rule at upload but protects audio channel layouts
+    while doing it. The seeded rule got there first and shipped titles reading
+    "TrueHD Atmos 7 1".
+
+    The override was never user-editable, so a profile carrying the seeded
+    rule carries it by default rather than by choice. Anything else -- a
+    different rule set, or a token someone put there by hand -- is left alone.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_5_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    tracker_table = new_doc.get("tracker")
+    if not isinstance(tracker_table, Mapping):
+        return new_doc, []
+    torrent_leech = tracker_table.get("torrent_leech")
+    if not isinstance(torrent_leech, Mapping):
+        return new_doc, []
+
+    replace_map = _unwrap(torrent_leech.get("mvr_title_replace_map"))
+    token = _unwrap(torrent_leech.get("mvr_title_token_override"))
+    if replace_map != _TL_STALE_REPLACE_MAP or (token or "").strip():
+        return new_doc, []
+
+    # rebuilt rather than assigned into, so the caller's document is not
+    # altered underneath it if this hop ever stops being the last one
+    cleared = dict(torrent_leech)
+    cleared["mvr_title_replace_map"] = []
+    cleared["mvr_title_override_enabled"] = False
+    new_tracker = dict(tracker_table)
+    new_tracker["torrent_leech"] = cleared
+    new_doc["tracker"] = new_tracker
+    return new_doc, []
+
+
 # Keyed by the schema version each migration accepts; each produces the next
 # version up. Add an entry here for every `SCHEMA_VERSION` bump -- see the
 # bump policy in this module's docstring.
@@ -452,6 +509,7 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
     SCHEMA_3_VERSION: migrate_v3_to_v4,
+    SCHEMA_4_VERSION: migrate_v4_to_v5,
 }
 
 

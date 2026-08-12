@@ -1,17 +1,12 @@
 # NfoForge
 
-A powerful media upload assistant featuring a step-by-step
-[wizard](view/getting-started/using-the-wizard.md).
+A powerful media upload assistant featuring a step-by-step [wizard](view/getting-started/using-the-wizard.md).
 
 ## Information
 
-NfoForge is currently under active development, and I’m excited to share it with the
-community now that it has reached a stable stage.
+NfoForge is currently under active development, and I’m excited to share it with the community now that it has reached a stable stage.
 
-Movies are supported, and series support is now available for standard TV episodes,
-daily/date releases, anime/absolute-numbered releases, and episode packs. Some
-tracker-specific series paths are still limited; see
-[Series Support](view/getting-started/series-support.md).
+Movies are supported, and series support is now available for standard TV episodes, daily/date releases, anime/absolute-numbered releases, and episode packs. Some tracker-specific series paths are still limited; see [Series Support](view/getting-started/series-support.md).
 
 ## Key Features
 
@@ -23,14 +18,11 @@ tracker-specific series paths are still limited; see
 - Output file organization, saving .torrent and NFO files to disk.
 - Torrent cloning support for multi-tracker releases without re-generation.
 - Duplicate release checker - checks trackers for duplicates pre-upload.
-- Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as
-  well as fast resume support.
-- Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require
-  the same Python version as NfoForge).
+- Integration with Deluge, qBittorrent, Transmission, rTorrent, and watch folders, as well as fast resume support.
+- Plugin support for Python (.py) and compiled (.pyd) files (.pyd compiled files require the same Python version as NfoForge).
 - Support for movie files in MKV and MP4 format.
 - Series matching, renaming, NFO generation, and supported tracker uploads.
-- Automatic detection for light/dark mode (with a manual override if desired) _Windows
-  only_.
+- Automatic detection for light/dark mode (with a manual override if desired) _Windows only_.
 - Additional format support and features coming soon!
 
 ## Supported Trackers
@@ -74,35 +66,28 @@ tracker-specific series paths are still limited; see
 
 ## Requirements
 
-- FFMPEG and/or [FrameForge **1.4.0+**](https://github.com/jessielw/FrameForge/)
-  depending on your preferred image generation type
+- FFMPEG and/or [FrameForge **1.4.0+**](https://github.com/jessielw/FrameForge/) depending on your preferred image generation type
 
 ## Support
 
-If you have questions, need support, or want a new feature, please open an issue on
-[GitHub](https://github.com/jesterr0/NfoForge).
+If you have questions, need support, or want a new feature, please open an issue on [GitHub](https://github.com/jesterr0/NfoForge).
 
 ## Attribution
 
 ![TMDB](images/misc/tmdb_med.png){ width=100%, style="max-width: 64px;" }  
 Metadata provided by [TMDB](https://www.themoviedb.org/).
 
-![TVDB](images/misc/tvdb.png){ width=100%, style="max-width: 64px; background-color:
-#ffffff47; border-radius: 5px; padding: 3px;" }  
-Metadata provided by [TVDB](https://www.thetvdb.com/). Please consider adding missing
-information or [subscribing](https://thetvdb.com/subscribe).
+![TVDB](images/misc/tvdb.png){ width=100%, style="max-width: 64px; background-color: #ffffff47; border-radius: 5px; padding: 3px;" }  
+Metadata provided by [TVDB](https://www.thetvdb.com/). Please consider adding missing information or [subscribing](https://thetvdb.com/subscribe).
 
 ## Donations
 
-NfoForge is a free application. Donations of any size are greatly appreciated and will
-support NfoForge's active development. Thank you!
+NfoForge is a free application. Donations of any size are greatly appreciated and will support NfoForge's active development. Thank you!
 
 #### Bitcoin
 
-<img src="https://github.com/user-attachments/assets/88b7643f-8567-4d6d-ade4-13d725490062" alt="bitcoin:bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc" width="140"><br />
-BTC: `bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc`
+<img src="https://github.com/user-attachments/assets/88b7643f-8567-4d6d-ade4-13d725490062" alt="bitcoin:bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc" width="140"><br /> BTC: `bc1qwkhxfea0zmnuatt9fe784q87w0mwl72wd24xxc`
 
 #### Ethereum
 
-<img src="https://github.com/user-attachments/assets/e34fa9d4-531f-4586-9deb-47413861279a" alt="ethereum:0x86a726C7158b852C8001Fb6762f3a263742529e6" width="140"><br />
-ETH: `0x86a726C7158b852C8001Fb6762f3a263742529e6`
+<img src="https://github.com/user-attachments/assets/e34fa9d4-531f-4586-9deb-47413861279a" alt="ethereum:0x86a726C7158b852C8001Fb6762f3a263742529e6" width="140"><br /> ETH: `0x86a726C7158b852C8001Fb6762f3a263742529e6`

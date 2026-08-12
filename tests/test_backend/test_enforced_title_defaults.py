@@ -5,14 +5,14 @@ default govern (see generate_tracker_title in src/backend/process.py). If
 that packaged default enforces nothing, the lock is config that does
 nothing: the user loses control and gains no guarantee in exchange.
 
-What gets enforced varies by tracker, and both forms count. Aither, LST and
-ReelFliX enforce a token. TorrentLeech ships an empty token -- so the user's
-global movie template supplies the wording -- and enforces a character rule
-instead, rewriting dots to spaces.
+What gets enforced varies by tracker, and both forms count: a token (Aither,
+LST, ReelFliX), or a character rule with no token, leaving the user's global
+template to supply the wording.
 """
 
 from dataclasses import replace
 from pathlib import Path
+import re
 
 import pytest
 
@@ -21,6 +21,9 @@ from src.backend.tokens import FileToken
 from src.backend.trackers.title_format_policy import (
     TRACKER_TITLE_FORMAT_POLICY,
     TitleFormatPolicy,
+    enforces_movie_title,
+    enforces_series_title,
+    resolve_title_format_policy,
 )
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as MOVIE_INPUT_PAYLOAD,
@@ -78,6 +81,35 @@ def test_required_trackers_enforce_something(
         )
 
 
+def test_a_locked_row_always_enforces_something(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The invariant that keeps Movies and TV consistent as trackers are added.
+
+    Whichever page a row appears on, it is locked only when the packaged
+    default actually enforces a format for that media type. A tracker may
+    legitimately enforce movies and not series -- most REQUIRED trackers do --
+    but it may never be locked with nothing behind the lock.
+    """
+    manager = _config_manager(tmp_path, monkeypatch)
+    packaged = manager.defaults.trackers.by_selection()
+
+    for tracker in TRACKER_TITLE_FORMAT_POLICY:
+        info = packaged[tracker]
+        if resolve_title_format_policy(tracker, info) is TitleFormatPolicy.REQUIRED:
+            assert enforces_movie_title(info), (
+                f"{tracker}'s movie row is locked but enforces nothing"
+            )
+        for fmt in SUPPORTED_TVR_FORMATS:
+            if (
+                resolve_title_format_policy(tracker, info, fmt)
+                is TitleFormatPolicy.REQUIRED
+            ):
+                assert enforces_series_title(info, fmt), (
+                    f"{tracker}'s {fmt} row is locked but enforces nothing"
+                )
+
+
 def test_series_title_enforcement_is_all_or_nothing_per_tracker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -95,13 +127,10 @@ def test_series_title_enforcement_is_all_or_nothing_per_tracker(
     packaged = manager.defaults.trackers.by_selection()
 
     for tracker in TRACKER_TITLE_FORMAT_POLICY:
-        overrides = packaged[tracker].tvr_title_overrides or {}
         enforced = {
             fmt
             for fmt in SUPPORTED_TVR_FORMATS
-            if (entry := overrides.get(fmt)) is not None
-            and entry.enabled
-            and entry.token.strip()
+            if enforces_series_title(packaged[tracker], fmt)
         }
         assert enforced in (set(), set(SUPPORTED_TVR_FORMATS)), (
             f"{tracker} enforces a series title for {sorted(map(str, enforced))} "
@@ -136,6 +165,7 @@ def _render_title(
     colon_replace: ColonReplace,
     media_type: MediaType,
     title_clean_rules: list[tuple[str, str]],
+    override_tokens: dict[str, str] | None = None,
 ) -> str | None:
     """Render an enforced token the way generate_tracker_title renders it.
 
@@ -164,8 +194,64 @@ def _render_title(
         # Passed live by generate_tracker_title whatever the policy says, so
         # an enforced token that reads these is not really enforced.
         title_clean_rules=title_clean_rules,
+        override_tokens=override_tokens,
         **series_kwargs,
     ).get_output()
+
+
+# A separator left stranded once a token resolves to nothing: "- )" before a
+# closing bracket, or a title trailing off in "-" / "- ".
+_DANGLING_SEPARATOR = re.compile(r"-\s*\)|\(\s*-|-\s*$")
+
+
+def test_no_packaged_title_dangles_a_separator_without_a_release_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A separator has to belong to the token it separates.
+
+    Written as `{:opt=-:release_group}` the hyphen is part of the token and
+    disappears with it, but written as a literal it survives an untagged
+    release and ships a stranded "- )". HUNO's movie title did exactly that.
+    """
+    manager = _config_manager(tmp_path, monkeypatch)
+    packaged = manager.defaults.trackers.by_selection()
+    no_group = {"release_group": ""}
+    checked = 0
+
+    for tracker in TRACKER_TITLE_FORMAT_POLICY:
+        info = packaged[tracker]
+        tokens: list[tuple[str, str, ColonReplace, MediaType]] = []
+        if info.mvr_title_token_override.strip():
+            tokens.append(
+                (
+                    "movie",
+                    info.mvr_title_token_override,
+                    info.mvr_title_colon_replace,
+                    MediaType.MOVIE,
+                )
+            )
+        tokens.extend(
+            (str(fmt), entry.token, entry.colon_replace, MediaType.SERIES)
+            for fmt, entry in (info.tvr_title_overrides or {}).items()
+            if entry.token.strip()
+        )
+
+        for label, token, colon_replace, media_type in tokens:
+            rendered = _render_title(
+                token,
+                colon_replace,
+                media_type,
+                manager.settings.global_management.title_clean_rules,
+                override_tokens=no_group,
+            )
+            assert rendered is not None
+            checked += 1
+            assert not _DANGLING_SEPARATOR.search(rendered.strip()), (
+                f"{tracker}'s {label} title strands a separator when the "
+                f"release has no group: {rendered.strip()!r}"
+            )
+
+    assert checked, "no packaged titles were rendered, so nothing was checked"
 
 
 def test_enforced_movie_title_keeps_source_punctuation(

@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 import platform
+import re
 
 import flatbencode as bencode
 from niquests.structures import CaseInsensitiveDict
@@ -39,42 +40,55 @@ DISC_TITLE_REGEX = regex.compile(
 )
 
 
-def tracker_string_replace_map() -> dict[str, str]:
-    # audio codecs
-    codec_s = (
-        "DD",
-        "DD-EX",
-        "DD+",
-        "DDP",
-        "TrueHD",
-        "DTS",
-        "DTS-ES",
-        "DTS-HD MA",
-        "DTS-HD HRA",
-        "DTS:X",
-        "FLAC",
-    )
-    channel_s = (
-        "1.0",
-        "2.0",
-        "2.1",
-        "3.0",
-        "3.1",
-        "4.0",
-        "4.1",
-        "5.0",
-        "5.1",
-        "6.1",
-        "7.1",
-    )
-    str_replace_map = {}
-    for codec in codec_s:
-        for channel in channel_s:
-            str_replace_map[f"{codec} {channel.replace('.', ' ')}"] = (
-                f"{codec} {channel}"
-            )
+# Audio channel layout -- 1.0, 2.0, 2.1 ... 7.1, 8.1, plus Atmos-style height
+# groups such as 7.1.4. Matched by shape rather than against an enumerated list of
+# codecs and layouts, so a codec or layout the audio conventions gain later is
+# covered for free: a digit 1-9, the LFE digit (only ever 0 or 1), and no digit on
+# either outer side, so a year/resolution boundary such as "2019.1080p" is never
+# mistaken for a layout. A true decimal like "9.5 Weeks" is likewise left alone --
+# .5 is not an LFE digit.
+_CHANNEL_LAYOUT_REGEX = re.compile(r"(?<!\d)[1-9]\.[01](?:\.[0-9])?(?!\d)")
+_CHANNEL_LAYOUT_SENTINEL = "\x00"
+_REPEATED_WHITESPACE_REGEX = re.compile(r"\s{2,}")
+_REPEATED_PERIOD_REGEX = re.compile(r"\.{2,}")
 
-    return str_replace_map
+
+def strip_title_dots(release_title: str) -> str:
+    """
+    Convert a dot separated release title into a space separated one, keeping
+    audio channel layouts (2.0, 5.1, 7.1.4, ...) intact.
+
+    The channel layout is protected before the periods are stripped rather than
+    reconstructed afterwards. Reconstruction requires knowing every codec that can
+    precede the channels, and anything the list missed (AAC, Opus, LPCM, an Atmos
+    suffix between the codec and the channels, ...) silently shipped as "5 1".
+    """
+    name = _CHANNEL_LAYOUT_REGEX.sub(
+        lambda match: match.group(0).replace(".", _CHANNEL_LAYOUT_SENTINEL),
+        release_title,
+    )
+    name = name.replace(".", " ")
+    name = _REPEATED_WHITESPACE_REGEX.sub(" ", name)
+    return name.replace(_CHANNEL_LAYOUT_SENTINEL, ".")
+
+
+def dot_separate_title(release_title: str) -> str:
+    """
+    Convert a space separated release title into a dot separated one.
+
+    The inverse of `strip_title_dots`, for trackers that name uploads after the
+    release itself rather than in prose. No channel-layout protection is needed
+    going this way: only spaces become periods, so a layout that is already
+    "5.1" simply passes through.
+
+    Idempotent, so a title that arrives dot separated -- the filename fallback,
+    which is the release name already -- is returned unchanged instead of being
+    round-tripped through the spaced form.
+    """
+    name = _REPEATED_WHITESPACE_REGEX.sub(" ", release_title.strip())
+    name = name.replace(" ", ".")
+    name = _REPEATED_PERIOD_REGEX.sub(".", name)
+    return name.strip(".")
 
 
 def _basic_bbcode_formatting(url: str, image_size: int) -> str:

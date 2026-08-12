@@ -115,6 +115,9 @@ def test_hdb_medium_id_raises_when_unmappable() -> None:
         ("Example.2026.1080p.HDR.HEVC-GRP", "HDR10"),
         ("Example.2026.1080p.HDR10+.HEVC-GRP", "HDR10+"),
         ("Example.2026.1080p.BluRay.REMUX-GRP", "Remux"),
+        # the audio channel layout must survive the period stripping
+        ("Example.2026.1080p.BluRay.DTS-HD.MA.5.1.x264-GRP", "DTS-HD MA 5.1"),
+        ("Example.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP", "AAC 2.0"),
     ],
 )
 def test_generate_release_title_substitutions(

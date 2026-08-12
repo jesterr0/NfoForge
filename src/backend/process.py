@@ -91,8 +91,10 @@ from src.backend.trackers.media_support import (
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
+from src.backend.trackers.seedpool import SeedPoolUploader
 from src.backend.trackers.title_format_policy import (
     TitleFormatPolicy,
+    resolve_title_format_policy,
     title_format_policy,
 )
 from src.backend.trackers.torrentleech import TLUploader
@@ -106,6 +108,7 @@ from src.backend.upload_retry import (
     UploadRetryAction,
 )
 from src.backend.utils.anime import is_anime_release
+from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
     format_image_data_to_comparison,
@@ -443,7 +446,9 @@ class ProcessBackEnd:
             ).search(
                 movie_title=title,
                 movie_year=year,
-                file_name=file_input.stem if file_input.is_dir() else file_input.name,
+                # a pack folder's whole name is the release name; `.stem` would
+                # read its last dotted segment as an extension and drop it
+                file_name=file_input.name,
                 imdb_id=imdb_id,
             )
             if ptp_search:
@@ -2098,7 +2103,7 @@ class ProcessBackEnd:
         resumed job that gets re-saved keeps one, and the job's own stored file
         is never mutated.
         """
-        base_path = working_dir / f"{media_input.stem}{BASE_TORRENT_SUFFIX}"
+        base_path = working_dir / f"{release_stem(media_input)}{BASE_TORRENT_SUFFIX}"
 
         if carried_torrent:
             try:
@@ -2604,15 +2609,29 @@ class ProcessBackEnd:
         # (so a user disabling/blanking the override in Settings can't defeat
         # it), and an UNSUPPORTED tracker sources from nothing at all, falling
         # through to the global template. See title_format_policy.py.
+        #
+        # REQUIRED is resolved against the media type being uploaded: a tracker
+        # that dictates a movie format but ships no series format enforces
+        # nothing here, so its series title comes from the live override like
+        # any FREE tracker's.
         policy = title_format_policy(tracker)
-        if policy is TitleFormatPolicy.REQUIRED:
-            override_source: TrackerInfo | None = (
-                self.config.defaults.trackers.by_selection()[tracker]
-            )
-        elif policy is TitleFormatPolicy.UNSUPPORTED:
+        override_source: TrackerInfo | None
+        if policy is TitleFormatPolicy.UNSUPPORTED:
             override_source = None
-        else:
+        elif policy is TitleFormatPolicy.FREE:
             override_source = tracker_info
+        else:
+            # only REQUIRED needs the packaged default, so nothing else in this
+            # method depends on one being present
+            packaged = self.config.defaults.trackers.by_selection()[tracker]
+            resolved = resolve_title_format_policy(
+                tracker,
+                packaged,
+                release_info.episode_format if release_info.is_series else None,
+            )
+            override_source = (
+                packaged if resolved is TitleFormatPolicy.REQUIRED else tracker_info
+            )
 
         if release_info.is_series:
             default_title = get_tvr_title_token(
@@ -2733,6 +2752,10 @@ class ProcessBackEnd:
             return BHDUploader.generate_release_title(title)
         elif tracker is TrackerSelection.HDB:
             return HDBUploader.generate_release_title(title)
+        # SeedPool is UNIT3D but names uploads after the release, so it wants
+        # the dotted form the rest of the family strips
+        elif tracker is TrackerSelection.SEEDPOOL:
+            return SeedPoolUploader.generate_release_title(title)
         # Unit3d trackers
         elif tracker in {
             TrackerSelection.REELFLIX,
@@ -2744,7 +2767,6 @@ class ProcessBackEnd:
             TrackerSelection.UPLOAD_CX,
             TrackerSelection.ONLY_ENCODES,
             TrackerSelection.BLUTOPIA,
-            TrackerSelection.SEEDPOOL,
             TrackerSelection.UTOPIA,
             TrackerSelection.YU_SCENE,
             TrackerSelection.FEAR_NO_PEER,

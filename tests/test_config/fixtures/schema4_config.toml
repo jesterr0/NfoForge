@@ -1,4 +1,4 @@
-schema_version = 5
+schema_version = 4
 
 [general]
 ui_suffix = ""
@@ -38,9 +38,9 @@ url_type = 2
 column_s = 1
 column_space = 1
 row_space = 0
-mvr_title_override_enabled = false
+mvr_title_override_enabled = true
 mvr_title_token_override = ""
-mvr_title_replace_map = []
+mvr_title_replace_map = [["\\.", "[space]"]]
 mvr_title_colon_replace = 3
 username = ""
 password = ""
@@ -222,7 +222,7 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-mvr_title_token_override = "{title_clean} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {video_codec} {video_dynamic_range} {audio_codec} {audio_channel_s} {audio_language_1_full}{:opt= - :release_group}) {:opt=[:re_release:opt=]:}"
+mvr_title_token_override = "{title_clean} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {video_codec} {video_dynamic_range} {audio_codec} {audio_channel_s} {audio_language_1_full} - {release_group}) {:opt=[:re_release:opt=]:}"
 mvr_title_replace_map = [
     [
         '''(?<=\s)DDP(?=\s\d)''',

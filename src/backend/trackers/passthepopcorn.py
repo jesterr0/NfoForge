@@ -16,6 +16,7 @@ from src.backend.image_host_uploading.img_box import ImageBoxUploader
 from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import DISC_TITLE_REGEX, TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
+from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -440,7 +441,7 @@ class PTPUploader:
 
     def _remaster_title(self, input_path: Path) -> str:
         remaster_title = set()
-        title_lowered = input_path.stem.lower()
+        title_lowered = release_stem(input_path).lower()
 
         # editions
         def collect_editions(source: dict[str, Any], key: str) -> list[Any]:
@@ -562,7 +563,7 @@ class PTPUploader:
         return str(ptp_type.value)
 
     def _get_codec(self, input_path: Path) -> str:
-        title_lowered = str(input_path.stem).lower()
+        title_lowered = release_stem(input_path).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # disc
@@ -614,7 +615,7 @@ class PTPUploader:
         return str(PTPContainer.AUTO_DETECT.value)
 
     def _source(self, input_path: Path) -> str:
-        title_lowered = str(input_path.stem).lower()
+        title_lowered = release_stem(input_path).lower()
         title_lowered = re.sub(r"\W", ".", title_lowered)
         title_lowered = re.sub(r"\.{2,}", ".", title_lowered)
         if "bluray" in title_lowered:
