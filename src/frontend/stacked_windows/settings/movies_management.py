@@ -20,8 +20,8 @@ from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.trackers.media_support import UNSUPPORTED_MOVIE_TRACKERS
 from src.backend.trackers.title_format_policy import (
-    TRACKER_TITLE_FORMAT_POLICY,
     TitleFormatPolicy,
+    resolve_title_format_policy,
 )
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
@@ -412,7 +412,8 @@ class MoviesManagementSettings(BaseSettings):
         # load saved tracker overrides
         for idx, tracker in enumerate(self.tracker_override_map.keys()):
             over_ride_widget = self.tracker_override_map[tracker]
-            policy = TRACKER_TITLE_FORMAT_POLICY[tracker]
+            default_info = self.config.defaults.trackers.by_selection()[tracker]
+            policy = resolve_title_format_policy(tracker, default_info)
             if policy is TitleFormatPolicy.FREE:
                 tracker_info = self.config.settings.trackers.by_selection()[tracker]
                 over_ride_widget.enabled_checkbox.setChecked(
@@ -438,7 +439,6 @@ class MoviesManagementSettings(BaseSettings):
             else:
                 # REQUIRED/UNSUPPORTED: always shows the packaged default,
                 # disabled -- never the live (possibly stale) settings value.
-                default_info = self.config.defaults.trackers.by_selection()[tracker]
                 reason = (
                     f"{tracker} enforces its own title format and cannot be customized."
                     if policy is TitleFormatPolicy.REQUIRED
@@ -495,7 +495,11 @@ class MoviesManagementSettings(BaseSettings):
         # to the packaged default (see generate_tracker_title) and their
         # widgets are disabled, so nothing user-driven to persist for them.
         for tracker in self.tracker_override_map.keys():
-            if TRACKER_TITLE_FORMAT_POLICY[tracker] is not TitleFormatPolicy.FREE:
+            default_info = self.config.defaults.trackers.by_selection()[tracker]
+            if (
+                resolve_title_format_policy(tracker, default_info)
+                is not TitleFormatPolicy.FREE
+            ):
                 continue
             over_ride_widget = self.tracker_override_map[tracker]
             self.config.settings.trackers.by_selection()[

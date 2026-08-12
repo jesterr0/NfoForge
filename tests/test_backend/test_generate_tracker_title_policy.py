@@ -2,7 +2,11 @@
 REQUIRED tracker (e.g. Aither) always uses the packaged default even if the
 live, user-editable tracker_info has been tampered with, and an UNSUPPORTED
 tracker (PTP) never applies an override at all, no matter what the live
-tracker_info claims. See src/backend/trackers/title_format_policy.py.
+tracker_info claims.
+
+REQUIRED is resolved per media type, so a tracker that dictates a movie format
+but ships no series format (HUNO) enforces nothing on the series path and reads
+the live override there. See src/backend/trackers/title_format_policy.py.
 """
 
 from copy import deepcopy
@@ -159,6 +163,11 @@ def _series_backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
                 trackers=SimpleNamespace(
                     by_selection=lambda: {
                         TrackerSelection.AITHER: packaged_default,
+                        # REQUIRED, but ships no series format
+                        TrackerSelection.HUNO: TrackerInfo(
+                            mvr_title_override_enabled=True,
+                            mvr_title_token_override="{title_clean} (enforced movie)",  # noqa: S106 - template token string, not a credential
+                        ),
                     }
                 )
             ),
@@ -216,3 +225,48 @@ def test_required_tracker_uses_the_packaged_series_override() -> None:
     assert "(enforced series)" in output
     assert "(user override)" not in output
     assert "(global series)" not in output
+
+
+def test_required_tracker_without_a_series_format_reads_the_live_override() -> None:
+    """HUNO is REQUIRED and dictates a movie format, but ships no
+    tvr_title_overrides. There is nothing to enforce on the series path, so
+    locking the user out would gain nothing -- the live override wins."""
+    context = _context()
+    backend = _series_backend(TrackerInfo())
+    live = TrackerInfo(
+        tvr_title_overrides={
+            EpisodeFormat.STANDARD: TitleOverridePayload(
+                enabled=True,
+                colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                token="{title_clean} (user override)",  # noqa: S106 - template token string, not a credential
+            )
+        }
+    )
+
+    output = backend.generate_tracker_title(
+        TrackerSelection.HUNO,
+        live,
+        context,
+        _series_release_info(context),
+    )
+
+    assert output is not None
+    assert "(user override)" in output
+    assert "(global series)" not in output
+
+
+def test_required_tracker_without_a_series_format_falls_back_to_the_global() -> None:
+    """Same tracker, no live override: the global series template, exactly as
+    before this resolved per media type."""
+    context = _context()
+    backend = _series_backend(TrackerInfo())
+
+    output = backend.generate_tracker_title(
+        TrackerSelection.HUNO,
+        TrackerInfo(),
+        context,
+        _series_release_info(context),
+    )
+
+    assert output is not None
+    assert "(global series)" in output

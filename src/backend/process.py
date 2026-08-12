@@ -93,6 +93,7 @@ from src.backend.trackers.media_support import (
 )
 from src.backend.trackers.title_format_policy import (
     TitleFormatPolicy,
+    resolve_title_format_policy,
     title_format_policy,
 )
 from src.backend.trackers.torrentleech import TLUploader
@@ -2607,15 +2608,29 @@ class ProcessBackEnd:
         # (so a user disabling/blanking the override in Settings can't defeat
         # it), and an UNSUPPORTED tracker sources from nothing at all, falling
         # through to the global template. See title_format_policy.py.
+        #
+        # REQUIRED is resolved against the media type being uploaded: a tracker
+        # that dictates a movie format but ships no series format enforces
+        # nothing here, so its series title comes from the live override like
+        # any FREE tracker's.
         policy = title_format_policy(tracker)
-        if policy is TitleFormatPolicy.REQUIRED:
-            override_source: TrackerInfo | None = (
-                self.config.defaults.trackers.by_selection()[tracker]
-            )
-        elif policy is TitleFormatPolicy.UNSUPPORTED:
+        override_source: TrackerInfo | None
+        if policy is TitleFormatPolicy.UNSUPPORTED:
             override_source = None
-        else:
+        elif policy is TitleFormatPolicy.FREE:
             override_source = tracker_info
+        else:
+            # only REQUIRED needs the packaged default, so nothing else in this
+            # method depends on one being present
+            packaged = self.config.defaults.trackers.by_selection()[tracker]
+            resolved = resolve_title_format_policy(
+                tracker,
+                packaged,
+                release_info.episode_format if release_info.is_series else None,
+            )
+            override_source = (
+                packaged if resolved is TitleFormatPolicy.REQUIRED else tracker_info
+            )
 
         if release_info.is_series:
             default_title = get_tvr_title_token(

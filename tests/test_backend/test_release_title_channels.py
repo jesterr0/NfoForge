@@ -21,13 +21,23 @@ stripped, so these tests lock in the full codec x layout grid.
 """
 
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
+from src.backend.token_replacer import TokenReplacer
+from src.backend.tokens import FileToken
 from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.utils import strip_title_dots
+from src.backend.utils.example_parsed_movie_data import (
+    EXAMPLE_MEDIA_INPUT_PAYLOAD,
+    EXAMPLE_SEARCH_PAYLOAD,
+)
+from src.config.config import ConfigManager
+from src.enums.token_replacer import UnfilledTokenRemoval
+from tests.test_config.config_tree import build_config_paths
 
 # every codec runtime/config/audio_conventions/default.json can emit
 CODECS = (
@@ -156,3 +166,65 @@ def test_generate_release_title_is_idempotent(
     once = generate(title)
 
     assert generate(once) == once
+
+
+def _config_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigManager:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    return ConfigManager("test", build_config_paths(tmp_path))
+
+
+def _apply_title_rules(title: str, rules: list[tuple[str, str]]) -> str | None:
+    """Run a packaged replace_map the way generate_tracker_title runs it.
+
+    The token string is a finished title with no tokens in it, so this
+    exercises only the final title formatting -- which is where
+    `override_title_rules` is applied.
+    """
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        token_string=title,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        override_title_rules=rules,
+    ).get_output()
+
+
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_no_packaged_title_rule_destroys_a_layout(
+    layout: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tracker formatters above are the last step, not the only one.
+
+    A tracker's packaged `replace_map` runs earlier, at title generation, and
+    is a plain regex substitution with none of `strip_title_dots`' layout
+    protection. TorrentLeech shipped a bare escaped-dot-to-space rule, so its
+    titles reached the safe formatter already reading "7 1" and there was
+    nothing left to protect -- the fix in `strip_title_dots` could never have
+    covered it.
+    """
+    manager = _config_manager(tmp_path, monkeypatch)
+    title = f"Example Movie 2026 1080p BluRay TrueHD Atmos {layout} x264-GRP"
+
+    for tracker, info in manager.defaults.trackers.by_selection().items():
+        rule_sets: list[tuple[str, list[tuple[str, str]] | None]] = [
+            ("movie", info.mvr_title_replace_map)
+        ]
+        rule_sets.extend(
+            (str(fmt), entry.replace_map)
+            for fmt, entry in (info.tvr_title_overrides or {}).items()
+        )
+        for label, rules in rule_sets:
+            if not rules:
+                continue
+            output = _apply_title_rules(title, rules)
+            assert output is not None
+            assert f" {layout} " in output, (
+                f"{tracker}'s packaged {label} replace_map turned "
+                f"{layout} into something else: {output}"
+            )

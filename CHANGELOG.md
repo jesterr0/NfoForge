@@ -4,12 +4,15 @@
 
 ### Changed
 
+- Series title overrides are now editable for trackers that don't actually enforce a series title format (TorrentLeech, HUNO, ReelFliX, DarkPeers, ShareIsland, UploadCX, OnlyEncodes). These were greyed out on the Series Config screen while nothing was being enforced behind the lock. Aither and LST stay locked, since they do enforce one. Titles are unchanged unless you choose to set an override.
+- TorrentLeech's title override is no longer locked on either screen. TorrentLeech dictates no title format -- the space-separated naming it wants is applied automatically to every upload -- so the override is yours to use like any other tracker's. Existing configs have the old setting cleared on first load.
 - Updated dependencies:
   - platformdirs
 
 ### Fixed
 
 - Fixed audio channel layouts such as `5.1` and `7.1.4` being mangled in tracker titles.
+- Fixed TorrentLeech titles still mangling those layouts (`TrueHD Atmos 7.1` became `TrueHD Atmos 7 1`). Its packaged title rule replaced every period with a space before the layout-aware formatting could run.
 - Fixed edited UNIT3D titles bypassing automatic title formatting.
 - Fixed generated `.torrent` and `.nfo` files losing the end of the release name for season packs and any release opened as a folder. A folder named `Show.S01.1080p.BluRay.x264-Group` produced `Show.S01.1080p.BluRay.torrent`, dropping the codec and release group.
 - Fixed the same truncation affecting trackers that read the release name off the input path, which could give a pack the wrong type, source or codec, and could shorten a duplicate-check search.

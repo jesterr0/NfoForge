@@ -5,10 +5,9 @@ default govern (see generate_tracker_title in src/backend/process.py). If
 that packaged default enforces nothing, the lock is config that does
 nothing: the user loses control and gains no guarantee in exchange.
 
-What gets enforced varies by tracker, and both forms count. Aither, LST and
-ReelFliX enforce a token. TorrentLeech ships an empty token -- so the user's
-global movie template supplies the wording -- and enforces a character rule
-instead, rewriting dots to spaces.
+What gets enforced varies by tracker, and both forms count: a token (Aither,
+LST, ReelFliX), or a character rule with no token, leaving the user's global
+template to supply the wording.
 """
 
 from dataclasses import replace
@@ -21,6 +20,9 @@ from src.backend.tokens import FileToken
 from src.backend.trackers.title_format_policy import (
     TRACKER_TITLE_FORMAT_POLICY,
     TitleFormatPolicy,
+    enforces_movie_title,
+    enforces_series_title,
+    resolve_title_format_policy,
 )
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as MOVIE_INPUT_PAYLOAD,
@@ -78,6 +80,35 @@ def test_required_trackers_enforce_something(
         )
 
 
+def test_a_locked_row_always_enforces_something(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The invariant that keeps Movies and TV consistent as trackers are added.
+
+    Whichever page a row appears on, it is locked only when the packaged
+    default actually enforces a format for that media type. A tracker may
+    legitimately enforce movies and not series -- most REQUIRED trackers do --
+    but it may never be locked with nothing behind the lock.
+    """
+    manager = _config_manager(tmp_path, monkeypatch)
+    packaged = manager.defaults.trackers.by_selection()
+
+    for tracker in TRACKER_TITLE_FORMAT_POLICY:
+        info = packaged[tracker]
+        if resolve_title_format_policy(tracker, info) is TitleFormatPolicy.REQUIRED:
+            assert enforces_movie_title(info), (
+                f"{tracker}'s movie row is locked but enforces nothing"
+            )
+        for fmt in SUPPORTED_TVR_FORMATS:
+            if (
+                resolve_title_format_policy(tracker, info, fmt)
+                is TitleFormatPolicy.REQUIRED
+            ):
+                assert enforces_series_title(info, fmt), (
+                    f"{tracker}'s {fmt} row is locked but enforces nothing"
+                )
+
+
 def test_series_title_enforcement_is_all_or_nothing_per_tracker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -95,13 +126,10 @@ def test_series_title_enforcement_is_all_or_nothing_per_tracker(
     packaged = manager.defaults.trackers.by_selection()
 
     for tracker in TRACKER_TITLE_FORMAT_POLICY:
-        overrides = packaged[tracker].tvr_title_overrides or {}
         enforced = {
             fmt
             for fmt in SUPPORTED_TVR_FORMATS
-            if (entry := overrides.get(fmt)) is not None
-            and entry.enabled
-            and entry.token.strip()
+            if enforces_series_title(packaged[tracker], fmt)
         }
         assert enforced in (set(), set(SUPPORTED_TVR_FORMATS)), (
             f"{tracker} enforces a series title for {sorted(map(str, enforced))} "
