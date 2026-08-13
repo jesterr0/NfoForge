@@ -53,6 +53,13 @@ class OverviewDialog(QDialog):
         self.title_edits: dict[TrackerSelection, QLineEdit] = {}
         self.nfo_edits: dict[TrackerSelection, CodeEditor] = {}
 
+        # Qt rewrites some characters on the way into its editors (CRLF/CR and
+        # U+2028/U+2029 collapse to "\n", non breaking spaces become plain
+        # spaces). Record what each widget actually holds after being seeded so
+        # `get_results` can tell a real user edit apart from Qt's own rewriting.
+        self._title_baseline: dict[TrackerSelection, str] = {}
+        self._nfo_baseline: dict[TrackerSelection, str] = {}
+
         for tracker, data in tracker_nfos.items():
             title = data.get("title")
             nfo = data.get("nfo")
@@ -65,9 +72,6 @@ class OverviewDialog(QDialog):
             group_layout = QVBoxLayout(group_box)
             group_layout.setSpacing(0)
 
-            title = data.get("title")
-            nfo = data.get("nfo")
-
             if title:
                 title_label = QLabel("Tracker Title:", group_box)
                 group_layout.addWidget(title_label)
@@ -76,6 +80,7 @@ class OverviewDialog(QDialog):
                 title_edit.setPlaceholderText("Release title")
                 group_layout.addWidget(title_edit)
                 self.title_edits[tracker] = title_edit
+                self._title_baseline[tracker] = title_edit.text()
 
                 if nfo:
                     group_layout.addSpacing(6)
@@ -87,9 +92,10 @@ class OverviewDialog(QDialog):
                     pop_out_name=f"NFO ({tracker})",
                     parent=group_box,
                 )
-                nfo_edit.setPlainText(data.get("nfo") or "")
+                nfo_edit.setPlainText(nfo)
                 nfo_edit.setMinimumHeight(450)
                 self.nfo_edits[tracker] = nfo_edit
+                self._nfo_baseline[tracker] = nfo_edit.toPlainText()
 
                 group_layout.addWidget(nfo_label)
                 group_layout.addWidget(nfo_edit)
@@ -119,15 +125,32 @@ class OverviewDialog(QDialog):
         self.main_layout.addLayout(btn_layout)
 
     def get_results(self) -> dict[TrackerSelection, dict[str, str | None]]:
-        if self.result() == QDialog.DialogCode.Accepted:
-            return {
-                tracker: {
-                    "title": self.title_edits[tracker].text(),
-                    "nfo": self.nfo_edits[tracker].toPlainText(),
-                }
-                for tracker in self.title_edits
-            }
-        return self._original
+        if self.result() != QDialog.DialogCode.Accepted:
+            return self._original
+
+        # Iterate the original data rather than the widgets so trackers without
+        # a title (or without an NFO) are carried through instead of dropped.
+        results: dict[TrackerSelection, dict[str, str | None]] = {}
+        for tracker, data in self._original.items():
+            entry = dict(data)
+
+            title_edit = self.title_edits.get(tracker)
+            if title_edit is not None:
+                title = title_edit.text()
+                # only an actual user edit overwrites the original, otherwise
+                # the original is kept verbatim so Qt's normalization of
+                # untouched text never reaches the tracker
+                if title != self._title_baseline[tracker]:
+                    entry["title"] = title
+
+            nfo_edit = self.nfo_edits.get(tracker)
+            if nfo_edit is not None:
+                nfo = nfo_edit.toPlainText()
+                if nfo != self._nfo_baseline[tracker]:
+                    entry["nfo"] = nfo
+
+            results[tracker] = entry
+        return results
 
 
 if __name__ == "__main__":

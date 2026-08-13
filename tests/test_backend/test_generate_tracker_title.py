@@ -1,12 +1,10 @@
-"""Proves generate_tracker_title's title-format-policy enforcement: a
-REQUIRED tracker (e.g. Aither) always uses the packaged default even if the
-live, user-editable tracker_info has been tampered with, and an UNSUPPORTED
-tracker (PTP) never applies an override at all, no matter what the live
-tracker_info claims.
+"""Where generate_tracker_title sources a title from.
 
-REQUIRED is resolved per media type, so a tracker that dictates a movie format
-but ships no series format (HUNO) enforces nothing on the series path and reads
-the live override there. See src/backend/trackers/title_format_policy.py.
+The user's own override governs, for every tracker without exception. Some
+were once locked to the packaged default, and PassThePopcorn was excluded
+entirely; both carve-outs were removed. A locked template cannot differ
+between profiles, and what a tracker actually demands is applied in code at
+upload anyway (see `tracker_title_formatting`).
 """
 
 from copy import deepcopy
@@ -38,9 +36,11 @@ def _backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
                 movie=SimpleNamespace(
                     title_token="{title_clean} (global)",  # noqa: S106
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                    parse_filename_attributes=True,
                 ),
                 series=SimpleNamespace(
                     multi_episode_style=MultiEpisodeStyle.RANGE,
+                    parse_filename_attributes=True,
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
                 global_management=SimpleNamespace(
@@ -68,44 +68,51 @@ def _context() -> ProcessingContext:
     )
 
 
-def test_required_tracker_ignores_a_tampered_live_override() -> None:
-    """Aither is REQUIRED: even if the live tracker_info has the override
-    disabled and its token blanked, the packaged default must still win."""
+def test_the_live_override_governs_even_where_a_packaged_default_exists() -> None:
+    """Aither ships a packaged title, and used to be locked to it. Now the
+    profile's own value wins -- which is what lets one profile name encodes
+    and another name discs."""
     context = _context()
     packaged_default = TrackerInfo(
         mvr_title_override_enabled=True,
-        mvr_title_token_override="{title_clean} (enforced)",  # noqa: S106
+        mvr_title_token_override="{title_clean} (packaged)",  # noqa: S106
         mvr_title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
     )
     backend = _backend(packaged_default)
-    tampered_live = TrackerInfo(
-        mvr_title_override_enabled=False,
-        mvr_title_token_override="",
+    live = TrackerInfo(
+        mvr_title_override_enabled=True,
+        mvr_title_token_override="{title_clean} (user override)",  # noqa: S106
+        mvr_title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
     )
 
     output = backend.generate_tracker_title(
         TrackerSelection.AITHER,
-        tampered_live,
+        live,
         context,
         build_series_release_info(context.media_input),
     )
 
-    assert output == "Movie Name (enforced)"
+    assert output == "Movie Name (user override)"
 
 
-def test_unsupported_tracker_ignores_a_faked_live_override() -> None:
-    """PTP is UNSUPPORTED: even if the live tracker_info fakes an enabled
-    override, it must be ignored in favor of the global template."""
+def test_disabling_the_override_falls_through_to_the_global_template() -> None:
+    """Turning an override off has to mean something now that it is the
+    user's to turn off. It used to be ignored for a locked tracker."""
     context = _context()
-    backend = _backend(TrackerInfo())
-    faked_live = TrackerInfo(
-        mvr_title_override_enabled=True,
-        mvr_title_token_override="{title_clean} (should be ignored)",  # noqa: S106
+    backend = _backend(
+        TrackerInfo(
+            mvr_title_override_enabled=True,
+            mvr_title_token_override="{title_clean} (packaged)",  # noqa: S106
+        )
+    )
+    disabled_live = TrackerInfo(
+        mvr_title_override_enabled=False,
+        mvr_title_token_override="{title_clean} (user override)",  # noqa: S106
     )
 
     output = backend.generate_tracker_title(
-        TrackerSelection.PASS_THE_POPCORN,
-        faked_live,
+        TrackerSelection.AITHER,
+        disabled_live,
         context,
         build_series_release_info(context.media_input),
     )
@@ -113,9 +120,35 @@ def test_unsupported_tracker_ignores_a_faked_live_override() -> None:
     assert output == "Movie Name (global)"
 
 
-def test_free_tracker_still_reads_the_live_override() -> None:
-    """A FREE tracker (e.g. BeyondHD) is unaffected by this policy -- its
-    live tracker_info is used exactly as before."""
+def test_pass_the_popcorn_reads_its_override_like_any_other_tracker() -> None:
+    """PTP was the last tracker excluded here, on the grounds that its upload
+    form has no release-name field (see `ptp_uploader`).
+
+    That is still true -- what is generated shapes what NfoForge shows and
+    records for the upload rather than what PTP receives -- but it is no
+    reason to special-case the title here. Every tracker reads its own
+    override.
+    """
+    context = _context()
+    backend = _backend(TrackerInfo())
+    live = TrackerInfo(
+        mvr_title_override_enabled=True,
+        mvr_title_token_override="{title_clean} (user override)",  # noqa: S106
+        mvr_title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+    )
+
+    output = backend.generate_tracker_title(
+        TrackerSelection.PASS_THE_POPCORN,
+        live,
+        context,
+        build_series_release_info(context.media_input),
+    )
+
+    assert output == "Movie Name (user override)"
+
+
+def test_a_tracker_that_was_always_editable_is_unchanged() -> None:
+    """BeyondHD was never locked, so nothing about it changed."""
     context = _context()
     backend = _backend(TrackerInfo())
     live = TrackerInfo(
@@ -145,6 +178,7 @@ def _series_backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
                 movie=SimpleNamespace(
                     title_token="{title_clean} (global movie)",  # noqa: S106
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                    parse_filename_attributes=True,
                 ),
                 series=SimpleNamespace(
                     multi_episode_style=MultiEpisodeStyle.RANGE,
@@ -152,6 +186,7 @@ def _series_backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
                     daily_title_token="{title_clean} (global daily)",  # noqa: S106
                     anime_title_token="{title_clean} (global anime)",  # noqa: S106
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                    parse_filename_attributes=True,
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
                 global_management=SimpleNamespace(
@@ -189,22 +224,21 @@ def _series_release_info(context: ProcessingContext) -> SeriesReleaseInfo:
     )
 
 
-def test_required_tracker_uses_the_packaged_series_override() -> None:
-    """Aither is REQUIRED. On the series path its packaged tvr_title_overrides
-    entry must win over both the live user override and the global series
-    template."""
+def test_the_live_series_override_governs() -> None:
+    """The series path follows the movie path: the profile's own entry wins
+    over the packaged one and over the global series template."""
     context = _context()
     packaged_default = TrackerInfo(
         tvr_title_overrides={
             EpisodeFormat.STANDARD: TitleOverridePayload(
                 enabled=True,
                 colon_replace=ColonReplace.REPLACE_WITH_DASH,
-                token="{title_clean} (enforced series)",  # noqa: S106
+                token="{title_clean} (packaged series)",  # noqa: S106
             )
         }
     )
     backend = _series_backend(packaged_default)
-    tampered_live = TrackerInfo(
+    live = TrackerInfo(
         tvr_title_overrides={
             EpisodeFormat.STANDARD: TitleOverridePayload(
                 enabled=True,
@@ -216,21 +250,20 @@ def test_required_tracker_uses_the_packaged_series_override() -> None:
 
     output = backend.generate_tracker_title(
         TrackerSelection.AITHER,
-        tampered_live,
+        live,
         context,
         _series_release_info(context),
     )
 
     assert output is not None
-    assert "(enforced series)" in output
-    assert "(user override)" not in output
+    assert "(user override)" in output
+    assert "(packaged series)" not in output
     assert "(global series)" not in output
 
 
-def test_required_tracker_without_a_series_format_reads_the_live_override() -> None:
-    """HUNO is REQUIRED and dictates a movie format, but ships no
-    tvr_title_overrides. There is nothing to enforce on the series path, so
-    locking the user out would gain nothing -- the live override wins."""
+def test_a_tracker_with_a_movie_format_only_reads_the_live_series_override() -> None:
+    """HUNO ships a movie title and no tvr_title_overrides. Its series title
+    comes from the profile like any other."""
     context = _context()
     backend = _series_backend(TrackerInfo())
     live = TrackerInfo(
@@ -255,9 +288,8 @@ def test_required_tracker_without_a_series_format_reads_the_live_override() -> N
     assert "(global series)" not in output
 
 
-def test_required_tracker_without_a_series_format_falls_back_to_the_global() -> None:
-    """Same tracker, no live override: the global series template, exactly as
-    before this resolved per media type."""
+def test_no_live_series_override_falls_back_to_the_global() -> None:
+    """Same tracker, nothing set in the profile: the global series template."""
     context = _context()
     backend = _series_backend(TrackerInfo())
 
@@ -270,3 +302,59 @@ def test_required_tracker_without_a_series_format_falls_back_to_the_global() -> 
 
     assert output is not None
     assert "(global series)" in output
+
+
+_ATTRIBUTE_TOKEN = "{title_clean}{:opt= :re_release}{:opt= :remux}"  # noqa: S105
+
+
+def _parse_attributes_backend(enabled: bool) -> ProcessBackEnd:
+    """A _backend whose movie config carries the given
+    parse_filename_attributes setting."""
+    backend = _backend(TrackerInfo())
+    backend.config.settings.movie.parse_filename_attributes = enabled
+    return backend
+
+
+def _attribute_live_info() -> TrackerInfo:
+    return TrackerInfo(
+        mvr_title_override_enabled=True,
+        mvr_title_token_override=_ATTRIBUTE_TOKEN,
+        mvr_title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+    )
+
+
+def test_filename_attributes_reach_the_tracker_title() -> None:
+    """{re_release}, {remux} and {hybrid} are gated on
+    parse_filename_attributes, and generate_tracker_title never passed it --
+    so those tokens resolved to nothing on every upload, even though the
+    packaged Aither/LST/ReelFliX templates ask for {re_release} and the
+    rename page (which does pass it) displayed the value.
+
+    The example payload's filename carries both REPACK and REMUX.
+    """
+    context = _context()
+
+    output = _parse_attributes_backend(True).generate_tracker_title(
+        TrackerSelection.AITHER,
+        _attribute_live_info(),
+        context,
+        build_series_release_info(context.media_input),
+    )
+
+    assert output == "Movie Name REPACK REMUX"
+
+
+def test_the_user_setting_is_honored_rather_than_forced_on() -> None:
+    """Turning the setting off means "do not infer these from the filename",
+    and a tracker title has to respect that the same way a rename does --
+    otherwise the two disagree about the same release."""
+    context = _context()
+
+    output = _parse_attributes_backend(False).generate_tracker_title(
+        TrackerSelection.AITHER,
+        _attribute_live_info(),
+        context,
+        build_series_release_info(context.media_input),
+    )
+
+    assert output == "Movie Name"

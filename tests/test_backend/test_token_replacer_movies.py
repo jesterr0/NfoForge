@@ -577,3 +577,163 @@ def test_flat_filter_that_raises_is_logged_and_value_passes_through(
         "boom" in record.message and "unfiltered" in record.message
         for record in caplog.records
     )
+
+
+def _title_replacer(
+    token: str,
+    *,
+    title: str = "Movie Name",
+    override_tokens: dict[str, str] | None = None,
+    parse_filename_attributes: bool = True,
+) -> TokenReplacer:
+    """Render in title mode, the way generate_tracker_title does.
+
+    The example payload's filename is a REMUX, so `{remux}` resolves truthy
+    unless the caller turns filename-attribute parsing off or overrides it.
+    """
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string=token,
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE, title=title),
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        parse_filename_attributes=parse_filename_attributes,
+        override_tokens=override_tokens,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    )
+
+
+def test_one_token_used_twice_keeps_each_occurrences_own_filter() -> None:
+    """Values are resolved per occurrence, not per token name.
+
+    Substitution used to key on the bare token name and normalize every
+    occurrence back to `{token}` first, so two occurrences collapsed into one
+    value and both spots received it -- `A={title|upper} B={title|lower}`
+    rendered "A=MOVIE NAME B=MOVIE NAME". Aither's and LST's packaged titles
+    depend on this working: they carry `{video_codec}` twice, under opposing
+    conditions.
+    """
+    output = _title_replacer("A={title|upper} B={title|lower}").get_output()
+
+    assert output == "A=MOVIE NAME B=movie name"
+
+
+def test_only_if_keeps_the_value_when_the_named_token_resolves() -> None:
+    assert _title_replacer("[{video_codec|only_if(remux)}]").get_output() == "[HEVC]"
+
+
+def test_only_if_drops_the_value_when_the_named_token_is_empty() -> None:
+    assert (
+        _title_replacer(
+            "[{video_codec|only_if(remux)}]", parse_filename_attributes=False
+        ).get_output()
+        == "[]"
+    )
+
+
+def test_unless_is_the_inverse_of_only_if() -> None:
+    assert _title_replacer("[{video_codec|unless(remux)}]").get_output() == "[]"
+    assert (
+        _title_replacer(
+            "[{video_codec|unless(remux)}]", parse_filename_attributes=False
+        ).get_output()
+        == "[x265]"
+    )
+
+
+def test_conditional_filters_pick_one_of_two_component_orders() -> None:
+    """The reason the filters exist.
+
+    Aither and LST put audio last for a remux and first for an encode. One
+    token string carries both orders and emits whichever fits.
+    """
+    template = (
+        "{resolution} {source}{:opt= :remux}"
+        "{:opt= :video_dynamic_range_type|only_if(remux)}"
+        "{:opt= :video_codec|only_if(remux)}"
+        "{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}"
+        "{:opt= :video_dynamic_range_type|unless(remux)}"
+        "{:opt= :video_codec|unless(remux)}"
+    )
+
+    remux = _title_replacer(template, override_tokens={"source": "UHD BluRay"})
+    encode = _title_replacer(
+        template, override_tokens={"source": "BluRay"}, parse_filename_attributes=False
+    )
+
+    assert remux.get_output() == "2160p UHD BluRay REMUX DV HDR HEVC TrueHD 7.1"
+    assert encode.get_output() == "2160p BluRay TrueHD 7.1 DV HDR x265"
+
+
+def test_only_if_accepts_several_tokens_and_requires_all_of_them() -> None:
+    assert (
+        _title_replacer("[{video_codec|only_if(remux, hybrid)}]").get_output()
+        == "[HEVC]"
+    )
+    # `release_group` resolves, `episode_number` does not (this is a movie)
+    assert (
+        _title_replacer(
+            "[{video_codec|only_if(release_group, episode_number)}]"
+        ).get_output()
+        == "[]"
+    )
+
+
+def test_unless_drops_the_value_if_any_named_token_resolves() -> None:
+    assert (
+        _title_replacer("[{video_codec|unless(episode_number, remux)}]").get_output()
+        == "[]"
+    )
+
+
+def test_a_filter_that_blanks_a_value_takes_its_opt_wrapper_with_it() -> None:
+    """A separator belongs to the token it separates.
+
+    The optional strings used to be wrapped around whatever the filters
+    returned, including nothing -- so a conditional that dropped its value
+    still shipped the bare "-" that was meant to precede it.
+    """
+    assert _title_replacer("X{:opt=-:video_codec|unless(remux)}Y").get_output() == "XY"
+
+
+def test_conditional_filter_with_an_unknown_token_is_ignored_and_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Graceful degradation: a typo must not silently delete a component."""
+    with caplog.at_level("WARNING"):
+        output = _title_replacer("[{video_codec|only_if(nonsense)}]").get_output()
+
+    assert output == "[HEVC]"
+    assert any("nonsense" in record.message for record in caplog.records)
+
+
+def test_default_supplies_a_value_only_when_the_token_has_none() -> None:
+    """BeyondHD requires "-NOGROUP" on an untagged remux/encode/web-dl."""
+    token = "{title}{:opt=-:release_group|default('NOGROUP')}"  # noqa: S105 - a title template, not a credential
+
+    assert _title_replacer(token).get_output() == "Movie Name-SomeGroup"
+    assert (
+        _title_replacer(token, override_tokens={"release_group": ""}).get_output()
+        == "Movie Name-NOGROUP"
+    )
+
+
+def test_filters_after_default_see_the_value_it_supplied() -> None:
+    output = _title_replacer(
+        "{release_group|default('nogroup')|upper}",
+        override_tokens={"release_group": ""},
+    ).get_output()
+
+    assert output == "NOGROUP"
+
+
+def test_an_empty_value_still_skips_the_filters_that_describe_one() -> None:
+    """`default` is the only filter that may act on an empty value.
+
+    Running the rest on "" would invent output: zfill(2) on a missing episode
+    number returns "00", which would ship as a real episode number.
+    """
+    output = _title_replacer("S{:opt=E:episode_number|zfill(2)}").get_output()
+
+    assert output == "S"

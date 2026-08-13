@@ -51,6 +51,19 @@ def ptp_uploader(
     totp: str | None = None,
     timeout: int = 60,
 ) -> bool | None:
+    """Upload to PassThePopcorn.
+
+    The one uploader that takes no ``tracker_title``. PTP's form has no
+    release-name field: it derives the release from structured values --
+    ``resolution``, ``other_codec``, ``other_container``, ``other_source`` and
+    ``remaster_title`` -- plus the name inside the .torrent itself. The only
+    "title" it accepts is the *film's* name (with year, poster, tags and plot)
+    when a new group has to be created, which comes from the metadata search
+    rather than from a naming template.
+
+    A title override configured for PTP therefore shapes what NfoForge shows
+    and records for the upload, not what PTP receives.
+    """
     torrent_file = Path(torrent_file)
     uploader = PTPUploader(
         username=username,

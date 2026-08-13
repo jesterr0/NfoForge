@@ -78,3 +78,16 @@ UNIT3D_TRACKERS: frozenset[TrackerSelection] = frozenset(
         TrackerSelection.YU_SCENE,
     }
 )
+
+# Trackers whose upload has no release-name field at all -- there is nothing
+# for a title override to shape, so the Movies/Series Management settings
+# pages don't offer one. PassThePopcorn derives its release from structured
+# fields (resolution, codec, container, source, remaster_title) plus the name
+# already inside the .torrent; see `ptp_uploader` in
+# src/backend/trackers/passthepopcorn.py. This is about the upload payload,
+# not media-type support, so it is independent of TRACKER_SUPPORTED_MEDIA
+# above -- a tracker could in principle lack a title field for movies but
+# have one for series, though none does today.
+NO_RELEASE_NAME_FIELD: frozenset[TrackerSelection] = frozenset(
+    {TrackerSelection.PASS_THE_POPCORN}
+)

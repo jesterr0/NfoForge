@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
+import inspect
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,7 @@ from src.backend.trackers.fearnopeer import FearNoPeerUploader
 from src.backend.trackers.huno import HunoUploader
 from src.backend.trackers.lst import LSTUploader
 from src.backend.trackers.media_support import (
+    NO_RELEASE_NAME_FIELD,
     TRACKER_SUPPORTED_MEDIA,
     UNIT3D_TRACKERS,
     UNSUPPORTED_MOVIE_TRACKERS,
@@ -25,6 +27,7 @@ from src.backend.trackers.media_support import (
     supports_series_upload,
 )
 from src.backend.trackers.onlyencodes import OnlyEncodesUploader
+from src.backend.trackers.passthepopcorn import ptp_uploader
 from src.backend.trackers.reelflix import ReelFlixUploader
 from src.backend.trackers.seedpool import SeedPoolUploader
 from src.backend.trackers.shareisland import ShareIslandUploader
@@ -743,3 +746,14 @@ def test_unit3d_trackers_lists_every_unit3d_uploader(tmp_path: Path) -> None:
     }
 
     assert discovered == UNIT3D_TRACKERS
+
+
+def test_no_release_name_field_matches_ptp_uploaders_signature() -> None:
+    """PTP is excluded from the Movies/Series Management title-override rows
+    because `ptp_uploader` takes no `tracker_title` parameter at all -- every
+    other tracker's upload function does. Tied to the signature so that if PTP
+    ever gains a release-name field, this fails instead of leaving a stale
+    exclusion (or the settings pages) unnoticed.
+    """
+    assert "tracker_title" not in inspect.signature(ptp_uploader).parameters
+    assert NO_RELEASE_NAME_FIELD == frozenset({TrackerSelection.PASS_THE_POPCORN})

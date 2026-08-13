@@ -92,11 +92,6 @@ from src.backend.trackers.media_support import (
     UNSUPPORTED_SERIES_TRACKERS,
 )
 from src.backend.trackers.seedpool import SeedPoolUploader
-from src.backend.trackers.title_format_policy import (
-    TitleFormatPolicy,
-    resolve_title_format_policy,
-    title_format_policy,
-)
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import format_image_tag
@@ -2602,36 +2597,13 @@ class ProcessBackEnd:
         context: ProcessingContext,
         release_info: SeriesReleaseInfo,
     ) -> str | None:
-        # Some trackers enforce their own title format (rejected/miscategorized
-        # uploads otherwise) or don't support an override at all. For those,
-        # the live, user-editable `tracker_info` is not trusted here -- a
-        # REQUIRED tracker always sources from the packaged default instead
-        # (so a user disabling/blanking the override in Settings can't defeat
-        # it), and an UNSUPPORTED tracker sources from nothing at all, falling
-        # through to the global template. See title_format_policy.py.
-        #
-        # REQUIRED is resolved against the media type being uploaded: a tracker
-        # that dictates a movie format but ships no series format enforces
-        # nothing here, so its series title comes from the live override like
-        # any FREE tracker's.
-        policy = title_format_policy(tracker)
-        override_source: TrackerInfo | None
-        if policy is TitleFormatPolicy.UNSUPPORTED:
-            override_source = None
-        elif policy is TitleFormatPolicy.FREE:
-            override_source = tracker_info
-        else:
-            # only REQUIRED needs the packaged default, so nothing else in this
-            # method depends on one being present
-            packaged = self.config.defaults.trackers.by_selection()[tracker]
-            resolved = resolve_title_format_policy(
-                tracker,
-                packaged,
-                release_info.episode_format if release_info.is_series else None,
-            )
-            override_source = (
-                packaged if resolved is TitleFormatPolicy.REQUIRED else tracker_info
-            )
+        # The user's own override governs, for every tracker. Some were once
+        # locked to the packaged default here instead; that was dropped,
+        # because a locked template cannot differ between profiles (an encode
+        # profile and a disc profile want different titles) and what a tracker
+        # actually demands is applied in code at upload regardless -- see
+        # `tracker_title_formatting`.
+        override_source: TrackerInfo | None = tracker_info
 
         if release_info.is_series:
             default_title = get_tvr_title_token(
@@ -2700,6 +2672,16 @@ class ProcessBackEnd:
             for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
+        # The same setting the rename pages pass. Without it {remux}, {hybrid}
+        # and {re_release} cannot resolve at all here, so a tracker title
+        # silently dropped REPACK/REMUX even when the release name carried it
+        # and the rename page displayed it -- and every REQUIRED tracker's
+        # packaged token already asks for {re_release}.
+        parse_filename_attributes = (
+            self.config.settings.series.parse_filename_attributes
+            if release_info.is_series
+            else self.config.settings.movie.parse_filename_attributes
+        )
         format_str = TokenReplacer(
             media_input_obj=context.media_input,
             token_string=token_string,
@@ -2708,6 +2690,7 @@ class ProcessBackEnd:
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
+            parse_filename_attributes=parse_filename_attributes,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             edition_override=context.shared_data.dynamic_data.get("edition_override"),
             frame_size_override=context.shared_data.dynamic_data.get(

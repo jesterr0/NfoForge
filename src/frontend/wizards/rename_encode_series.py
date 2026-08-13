@@ -37,6 +37,10 @@ from src.backend.utils.rename_normalizations import (
     RE_RELEASE_INFO,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.backend.utils.streaming_services import (
+    STREAMING_SERVICE_CHOICES,
+    detect_streaming_service,
+)
 from src.config.config import ConfigManager
 from src.config.tv_tokens import get_tvr_episode_token
 from src.context.processing_context import ProcessingContext
@@ -212,6 +216,21 @@ class RenameEncodeSeries(BaseWizardPage):
         self.quality_combo.addItems([str(q) for q in QualitySelection])
         self.quality_combo.currentIndexChanged.connect(self._update_quality_combo)
 
+        service_combo_lbl = QLabel("Service", self)
+        self.service_combo = CustomComboBox(
+            completer=True,
+            completer_strict=True,
+            disable_mouse_wheel=True,
+            parent=self,
+        )
+        self.service_combo.setToolTip(
+            "Streaming service abbreviation, for web sources "
+            "(Aither and LST require it)"
+        )
+        self.service_combo.addItem("")
+        self.service_combo.addItems(STREAMING_SERVICE_CHOICES)
+        self.service_combo.currentIndexChanged.connect(self._update_service_combo)
+
         # REMUX/HYBRID checkboxes
         self.remux_checkbox = QCheckBox("REMUX", self)
         self.remux_checkbox.setToolTip("Toggle REMUX token")
@@ -281,6 +300,8 @@ class RenameEncodeSeries(BaseWizardPage):
         options_layout.addWidget(self.proper_reason_combo, 3, 1, 1, 2)
         options_layout.addWidget(quality_combo_lbl, 4, 0)
         options_layout.addWidget(self.quality_combo, 5, 0)
+        options_layout.addWidget(service_combo_lbl, 4, 1)
+        options_layout.addWidget(self.service_combo, 5, 1)
         options_layout.addLayout(checkboxes_layout, 6, 0, 1, 1)
         options_layout.addWidget(build_h_line((6, 4, 6, 4)), 18, 0, 1, 3)
         options_layout.addWidget(release_group_lbl, 19, 0)
@@ -599,6 +620,13 @@ class RenameEncodeSeries(BaseWizardPage):
         select_common_value(LOCALIZATION_INFO, self.localization_combo)
         select_common_value(RE_RELEASE_INFO, self.re_release_combo)
 
+        # Same pack-wide rule as the tables above: a service is only
+        # preselected when every episode in the pack carries the same one.
+        services = {detect_streaming_service(filename) for filename in filenames}
+        common_service = next(iter(services)) if len(services) == 1 else ""
+        idx = self.service_combo.findText(common_service)
+        self.service_combo.setCurrentIndex(idx if idx > -1 else 0)
+
     def _auto_check_remux_checkbox(self) -> None:
         """Auto-check REMUX only when every file in the pack is a remux."""
         media_files = self.context.media_input.file_list
@@ -758,8 +786,35 @@ class RenameEncodeSeries(BaseWizardPage):
             self.remux_checkbox.setEnabled(True)
             self._auto_check_remux_checkbox()
 
+        self._sync_service_combo_to_quality(cur_text)
+
         # Update override
         self._update_override_tokens("source", cur_text, False if cur_text else True)
+
+    def _sync_service_combo_to_quality(self, quality_text: str) -> None:
+        """Only a web source can carry a streaming service.
+
+        The same rule the token applies, surfaced in the UI: switching a
+        pack to BluRay clears and disables Service rather than leaving a
+        stale "AMZN" selected next to a disc source.
+        """
+        if not quality_text:
+            self.service_combo.setEnabled(True)
+            return
+
+        is_web = QualitySelection(quality_text) in {
+            QualitySelection.WEB_DL,
+            QualitySelection.WEB_RIP,
+        }
+        if not is_web:
+            self.service_combo.setCurrentIndex(0)
+        self.service_combo.setEnabled(is_web)
+
+    @Slot(int)
+    def _update_service_combo(self, _: int) -> None:
+        self._update_override_tokens(
+            "streaming_service", self.service_combo.currentText()
+        )
 
     @Slot(int)
     def _update_re_release_combo(self, _: int) -> None:

@@ -33,9 +33,11 @@ def test_tracker_title_applies_processing_context_flat_filters() -> None:
                 movie=SimpleNamespace(
                     title_token="{title_clean|append_marker}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+                    parse_filename_attributes=True,
                 ),
                 series=SimpleNamespace(
                     multi_episode_style=MultiEpisodeStyle.RANGE,
+                    parse_filename_attributes=True,
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
                 global_management=SimpleNamespace(

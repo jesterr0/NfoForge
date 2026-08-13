@@ -9,12 +9,10 @@ from src.config.paths import ConfigPaths
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
-from src.enums.token_replacer import ColonReplace
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.series_management import (
     SeriesManagementSettings,
 )
-from src.payloads.trackers import TitleOverridePayload
 from tests.repo_paths import DEFAULT_CONFIG_DIR
 
 
@@ -143,39 +141,36 @@ def test_multi_episode_style_round_trips_through_reload(
     )
 
 
-def test_required_trackers_are_locked_on_the_series_page(
+def test_every_tracker_with_a_title_field_is_editable_on_the_series_page(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Aither and LST are REQUIRED and enforce a series format, so their
-    widgets show the packaged value with every control disabled, and the
-    reason shown to the user claims the enforced format."""
+    """Aither and LST ship a packaged series format and used to be locked to
+    it on every episode-format tab. Unlocked now, so a profile can carry a
+    different series title -- and the row shows the profile's value, not the
+    packaged one.
+    """
     widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
 
     for tracker in (TrackerSelection.AITHER, TrackerSelection.LST):
-        packaged = manager.defaults.trackers.by_selection()[tracker]
+        live = manager.settings.trackers.by_selection()[tracker]
         for fmt in SUPPORTED_TVR_FORMATS:
             tfo = widget._format_widgets[fmt]["tracker_override_map"][tracker]
-            expected = (packaged.tvr_title_overrides or {})[fmt]
+            expected = (live.tvr_title_overrides or {})[fmt]
             assert tfo.over_ride_format_title.text() == expected.token
-            assert not tfo.enabled_checkbox.isEnabled()
-            assert not tfo.over_ride_format_title.isEnabled()
-            assert not tfo.title_colon_replace.isEnabled()
-
-            reason = tfo.over_ride_format_title.toolTip()
-            assert "enforces its own title format" in reason
-            assert str(tracker) in reason
+            assert tfo.enabled_checkbox.isEnabled()
+            assert tfo.over_ride_format_title.isEnabled()
+            assert tfo.title_colon_replace.isEnabled()
 
 
-def test_required_tracker_with_no_packaged_entry_is_editable(
+def test_a_tracker_with_no_packaged_series_entry_is_still_editable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """HUNO is REQUIRED but ships no packaged `tvr_title_overrides`, so the
+    """HUNO ships a movie title but no packaged `tvr_title_overrides`, so an
     upload falls back to the global series template.
 
-    Locking that row would take the override away from the user and enforce
-    nothing in return, so it must be editable -- the lock follows the packaged
-    data, not the tracker-wide declaration. Unticked by default, which is the
-    same generated title as before it was editable.
+    Shipping nothing is not a reason to offer nothing: the row is editable
+    and unticked, so the generated title is unchanged until the user fills
+    it in.
     """
     widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
 
@@ -218,26 +213,23 @@ def test_required_tracker_with_no_packaged_entry_persists_a_user_override(
     assert saved.token == "{title_clean} (user series)"  # noqa: S105 - template token string, not a credential
 
 
-def test_required_tracker_series_overrides_are_not_persisted(
+def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A stale user value for a locked tracker stays in settings untouched:
-    the save path must skip REQUIRED trackers rather than writing the
-    widget's contents over them."""
+    """The save path used to skip these trackers on every episode-format tab.
+    Now the widget contents are what gets stored."""
     widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
 
-    live = manager.settings.trackers.by_selection()[TrackerSelection.AITHER]
-    stale = TitleOverridePayload(
-        enabled=True,
-        colon_replace=ColonReplace.REPLACE_WITH_DASH,
-        token="{title_clean} (stale user value)",  # noqa: S106
-    )
-    live.tvr_title_overrides = dict(live.tvr_title_overrides or {})
-    live.tvr_title_overrides[EpisodeFormat.STANDARD] = stale
+    tfo = widget._format_widgets[EpisodeFormat.STANDARD]["tracker_override_map"][
+        TrackerSelection.AITHER
+    ]
+    tfo.enabled_checkbox.setChecked(True)
+    tfo.over_ride_format_title.setText("{title_clean} (my own)")
 
     widget._save_settings()
 
-    assert (
-        live.tvr_title_overrides[EpisodeFormat.STANDARD].token
-        == "{title_clean} (stale user value)"  # noqa: S105
-    )
+    live = manager.settings.trackers.by_selection()[TrackerSelection.AITHER]
+    assert live.tvr_title_overrides is not None
+    stored = live.tvr_title_overrides[EpisodeFormat.STANDARD]
+    assert stored.enabled is True
+    assert stored.token == "{title_clean} (my own)"  # noqa: S105
