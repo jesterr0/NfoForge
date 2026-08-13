@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import tomlkit
 
@@ -7,6 +8,7 @@ from src.config.migrations import (
     migrate_v2_to_v3,
     migrate_v3_to_v4,
     migrate_v4_to_v5,
+    migrate_v5_to_v6,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -313,3 +315,114 @@ def test_migration_renames_tokens_in_template_settings() -> None:
     )
     # non-token config is left untouched
     assert new["template_settings"]["block_syntax_color"] == "#89689d"
+
+
+# ---------------------------------------------------------------------------
+# 5 -> 6: title overrides stopped being locked
+# ---------------------------------------------------------------------------
+
+
+def _v5_doc(stored_token: str, bhd_token: str = "") -> dict[str, Any]:
+    return {
+        "schema_version": 5,
+        "tracker": {
+            "aither": {
+                "source": "Aither",
+                "mvr_title_override_enabled": True,
+                "mvr_title_token_override": stored_token,
+                "mvr_title_colon_replace": 1,
+                "mvr_title_replace_map": [["stale", "rule"]],
+            },
+            "beyond_hd": {
+                "source": "BHD",
+                "mvr_title_override_enabled": True,
+                "mvr_title_token_override": bhd_token,
+                "mvr_title_colon_replace": 3,
+                "mvr_title_replace_map": [],
+            },
+        },
+    }
+
+
+_V6_DEFAULTS = {
+    "tracker": {
+        "aither": {
+            "mvr_title_override_enabled": True,
+            "mvr_title_token_override": "{title_exact} (packaged)",
+            "mvr_title_colon_replace": 1,
+            "mvr_title_replace_map": [["(?i)hdr10plus", "HDR10+"]],
+            "tvr_title_overrides": {"Standard": {"token": "{title_exact} S01"}},
+        },
+        "beyond_hd": {
+            "mvr_title_override_enabled": True,
+            "mvr_title_token_override": "{title_exact} (packaged bhd)",
+            "mvr_title_colon_replace": 1,
+            "mvr_title_replace_map": [],
+        },
+    }
+}
+
+
+def test_v5_to_v6_refreshes_a_formerly_locked_tracker() -> None:
+    """Aither's stored value was never editable, so it is the packaged default
+    from whenever the profile was created -- and stale, because merge_defaults
+    only backfills *missing* keys. Unlocking makes it govern, so it has to be
+    brought up to date or every existing profile silently reverts."""
+    new, unmapped = migrate_v5_to_v6(_v5_doc("{title_exact} (stale)"), _V6_DEFAULTS)
+
+    assert not unmapped
+    assert new["schema_version"] == 6
+    aither = new["tracker"]["aither"]
+    assert aither["mvr_title_token_override"] == "{title_exact} (packaged)"  # noqa: S105 - a title template, not a credential
+    assert aither["mvr_title_replace_map"] == [["(?i)hdr10plus", "HDR10+"]]
+    assert aither["tvr_title_overrides"] == {"Standard": {"token": "{title_exact} S01"}}
+    # unrelated keys in the same section survive
+    assert aither["source"] == "Aither"
+
+
+def test_v5_to_v6_leaves_an_always_editable_tracker_alone() -> None:
+    """BeyondHD was never locked, so whatever it stores is a choice the user
+    made. Overwriting it would discard real customization."""
+    new, _ = migrate_v5_to_v6(
+        _v5_doc(
+            "{title_exact} (stale)",
+            bhd_token="{title_exact} (my own)",  # noqa: S106 - a title template
+        ),
+        _V6_DEFAULTS,
+    )
+
+    assert new["tracker"]["beyond_hd"]["mvr_title_token_override"] == (
+        "{title_exact} (my own)"  # noqa: S105 - a title template, not a credential
+    )
+    assert new["tracker"]["beyond_hd"]["mvr_title_colon_replace"] == 3
+
+
+def test_v5_to_v6_drops_a_stale_key_the_packaged_default_no_longer_ships() -> None:
+    """A movie-only tracker that once shipped series overrides must not keep
+    governing from the stale copy."""
+    doc = _v5_doc("{title_exact} (stale)")
+    doc["tracker"]["aither"]["tvr_title_overrides"] = {"Standard": {"token": "old"}}
+    defaults = {"tracker": {"aither": {"mvr_title_token_override": "{title_exact}"}}}
+
+    new, _ = migrate_v5_to_v6(doc, defaults)
+
+    assert "tvr_title_overrides" not in new["tracker"]["aither"]
+
+
+def test_v5_to_v6_survives_a_document_with_no_tracker_table() -> None:
+    new, unmapped = migrate_v5_to_v6({"schema_version": 5}, _V6_DEFAULTS)
+
+    assert not unmapped
+    assert new == {"schema_version": 6}
+
+
+def test_v5_to_v6_does_not_mutate_the_document_it_was_given() -> None:
+    """The hop may not be the last one forever; a later hop must not find the
+    caller's document altered underneath it."""
+    doc = _v5_doc("{title_exact} (stale)")
+
+    migrate_v5_to_v6(doc, _V6_DEFAULTS)
+
+    assert doc["tracker"]["aither"]["mvr_title_token_override"] == (
+        "{title_exact} (stale)"  # noqa: S105 - a title template, not a credential
+    )

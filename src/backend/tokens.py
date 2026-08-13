@@ -194,6 +194,10 @@ class Tokens:
     RESOLUTION = FileToken("{resolution}", "Resolution (1080p)")
     REMUX = FileToken("{remux}", "REMUX")
     SOURCE = FileToken("{source}", "Source media (BluRay/DVD)")
+    STREAMING_SERVICE = FileToken(
+        "{streaming_service}",
+        "Streaming service abbreviation, web sources only (NF/AMZN/ATVP)",
+    )
     # series exclusive FileTokens
     AIR_DATE = FileToken("{air_date}", "Air date (series first aired - UTC)")
     SEASON_NUMBER = FileToken("{season_number}", "Season number (1, 2, 3, etc.)")

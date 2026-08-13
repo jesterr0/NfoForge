@@ -70,59 +70,87 @@ def _make_movies_management_settings(
     return widget, manager
 
 
-def test_reelflix_locked_and_ptp_shown_locked_in_movie_overrides(
+def test_every_offered_tracker_is_editable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """ReelFliX now enforces its own movie title format (REQUIRED) and must
-    be offered as a locked title override target showing the packaged
-    default, not a fully editable one. PassThePopcorn supports movies but
-    not the override feature at all (UNSUPPORTED) -- it still gets a widget
-    (for UI consistency with locked/REQUIRED trackers) but disabled, not
-    hidden from the dropdown."""
+    """No tracker's title override is locked any more.
+
+    Overrides used to be locked for the trackers that ship a packaged format.
+    That lock is gone: a locked template cannot differ between profiles, so a
+    user with separate encode and disc profiles could not give a tracker the
+    right title for each. ReelFliX stands in for that group -- it ships a
+    packaged format and used to be locked to it.
+    """
     widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
 
-    override_trackers = set(widget.tracker_override_map.keys())
+    for tracker, override_widget in widget.tracker_override_map.items():
+        assert override_widget.enabled_checkbox.isEnabled(), f"{tracker} is locked"
+        assert override_widget.over_ride_format_title.isEnabled(), (
+            f"{tracker}'s token field is locked"
+        )
+
     combo = widget.tracker_selection
     combo_trackers = {combo.itemData(i) for i in range(combo.count())}
-
-    assert TrackerSelection.REELFLIX in override_trackers
+    assert TrackerSelection.REELFLIX in widget.tracker_override_map
     assert TrackerSelection.REELFLIX in combo_trackers
-    reelflix_widget = widget.tracker_override_map[TrackerSelection.REELFLIX]
-    assert not reelflix_widget.enabled_checkbox.isEnabled()
-    assert not reelflix_widget.over_ride_format_title.isEnabled()
-    packaged_reelflix = manager.defaults.trackers.by_selection()[
-        TrackerSelection.REELFLIX
-    ]
+
+    live_reelflix = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
     assert (
-        reelflix_widget.over_ride_format_title.text()
-        == packaged_reelflix.mvr_title_token_override
+        widget.tracker_override_map[
+            TrackerSelection.REELFLIX
+        ].over_ride_format_title.text()
+        == live_reelflix.mvr_title_token_override
     )
 
-    assert TrackerSelection.PASS_THE_POPCORN in override_trackers
-    assert TrackerSelection.PASS_THE_POPCORN in combo_trackers
-    ptp_widget = widget.tracker_override_map[TrackerSelection.PASS_THE_POPCORN]
-    assert not ptp_widget.enabled_checkbox.isEnabled()
-    assert not ptp_widget.over_ride_format_title.isEnabled()
 
-
-def test_required_tracker_movie_overrides_are_not_persisted(
+def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A stale user value for a locked tracker stays in settings untouched:
-    the save path must skip REQUIRED (and UNSUPPORTED) trackers rather than
-    writing the widget's contents over them."""
+    """The save path used to skip these trackers entirely. Now their widget
+    contents are what gets stored -- otherwise unlocking the control would
+    change nothing."""
     widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
 
+    reelflix = widget.tracker_override_map[TrackerSelection.REELFLIX]
+    reelflix.enabled_checkbox.setChecked(True)
+    reelflix.over_ride_format_title.setText("{title_clean} (my own)")
+
+    widget._save_settings()
+
     live = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
+    assert live.mvr_title_override_enabled is True
+    assert live.mvr_title_token_override == "{title_clean} (my own)"  # noqa: S105
+
+
+def test_pass_the_popcorn_offers_no_title_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PTP's upload has no release-name field at all (see `ptp_uploader`) --
+    unlike every other tracker, there is nothing here for a title override to
+    shape, so it gets no row rather than an editable control that does
+    nothing.
+
+    Its own title is still generated and shown in the process log, the saved
+    job, and the overview/edit dialog (which has its own per-job title
+    field) -- this is only about the Settings-level template.
+    """
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    assert TrackerSelection.PASS_THE_POPCORN not in widget.tracker_override_map
+    combo = widget.tracker_selection
+    combo_trackers = {combo.itemData(i) for i in range(combo.count())}
+    assert TrackerSelection.PASS_THE_POPCORN not in combo_trackers
+
+    # nothing to persist for it, so an existing settings value (there
+    # shouldn't be one, but just in case) is left untouched by save
+    live = manager.settings.trackers.by_selection()[TrackerSelection.PASS_THE_POPCORN]
     live.mvr_title_override_enabled = True
-    live.mvr_title_token_override = "{title_clean} (stale user value)"  # noqa: S105
+    live.mvr_title_token_override = "{title_clean} (untouched)"  # noqa: S105
 
     widget._save_settings()
 
     assert live.mvr_title_override_enabled is True
-    assert (
-        live.mvr_title_token_override == "{title_clean} (stale user value)"  # noqa: S105
-    )
+    assert live.mvr_title_token_override == "{title_clean} (untouched)"  # noqa: S105
 
 
 def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(

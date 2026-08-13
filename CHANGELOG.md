@@ -2,9 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- `{streaming_service}` token and a Service combo on the rename pages, for the streaming-service abbreviation (`NF`, `AMZN`, etc.) that Aither and LST require on web releases.
+- `only_if`, `unless` and `default` token filters, documented under Token Replacer -> Flat Strings.
+
+### Changed
+
+- Per-tracker title overrides are no longer locked. Aither, LST, ReelFliX, HUNO, DarkPeers, ShareIsland, UploadCX and OnlyEncodes previously showed a read-only enforced title; every tracker's title is now the user's to edit, since what a tracker's site actually requires is still applied automatically at upload regardless. Existing profiles have the previously-locked value refreshed to the corrected packaged default on first load.
+- PassThePopcorn no longer offers a title-override row -- its upload has no release-name field for one to fill.
+- Aither, LST, ReelFliX and BeyondHD's packaged titles now match each tracker's published naming rules (correct component order for a remux/full disc vs. an encode/web release, REPACK/HYBRID, HDR omitted for SDR, BeyondHD's `-NOGROUP` for an untagged release). BeyondHD ships a packaged title for the first time.
+
 ### Fixed
 
 - Some minor bugs (UI only) for users edit from overview
+- Tracker titles could silently drop REPACK, REMUX and HYBRID.
+- A remux's video codec could render as an encode's (`x264`/`x265` instead of `AVC`/`HEVC`).
+- `{source}` rendered `WEBDL` instead of `WEB-DL`.
+- The same token used twice with different filters in one template collapsed to a single value instead of resolving independently.
 
 ## [1.1.4] - 2026-08-11
 

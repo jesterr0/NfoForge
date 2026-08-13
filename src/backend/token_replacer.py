@@ -35,6 +35,7 @@ from src.backend.utils.rename_normalizations import (
     is_imax,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.backend.utils.streaming_services import abbreviate_streaming_service
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
 from src.enums.media_type import MediaType
@@ -55,6 +56,17 @@ from src.version import __version__, program_name, program_url
 _INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _RESERVED_DEVICE_NAMES = frozenset({"CON", "PRN", "AUX", "NUL"})
 
+# Parks a '*title_clean' value while the colon pass runs over everything else.
+# A control character so it cannot collide with template text, and stripped
+# again before _format_token_string returns.
+_TITLE_CLEAN_SENTINEL = "\x00"
+
+# Source-override spellings that no longer match a QualitySelection value.
+# `dynamic_data` (which carries the override tokens) is persisted with a saved
+# job, so a job created before WEB_DL became "WEB-DL" replays the old text and
+# still has to resolve to the right source.
+_LEGACY_SOURCE_OVERRIDES = {"webdl": QualitySelection.WEB_DL}
+
 # Characters that cannot appear in a Windows path component. Shared by the
 # standard title formatter and the exact-episode-title token so the two
 # cannot drift apart.
@@ -64,6 +76,14 @@ _REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 
 class TokenReplacer:
     FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
+
+    # Overrides that must not be emitted verbatim. `source` comes from the
+    # wizard's Quality combo, whose item text is a QualitySelection value, and
+    # is also replayed from jobs saved by earlier versions -- where it is the
+    # pre-rename "WEBDL" spelling. Routing it back through its own token
+    # handler re-maps it to the canonical name instead of printing whatever
+    # string happens to be stored.
+    CANONICALIZED_OVERRIDES = frozenset({"source"})
 
     # TVDB placeholder episode titles that should render as empty rather
     # than landing in output verbatim: exactly "TBA", or "Episode" followed
@@ -373,15 +393,26 @@ class TokenReplacer:
         """
         if self.flatten:
             tokens = self._parse_user_input()
-            flattened_tokens: dict[str, str] = {}
+            # Keyed by the *occurrence* -- the literal `{token|filter}` text as
+            # written -- not by the base token name. A template may use the same
+            # token twice with different filters (`{video_codec|only_if(remux)}`
+            # alongside `{video_codec|unless(remux)}`), and a base-name key made
+            # the second occurrence overwrite the first, then substituted that
+            # single value into both spots.
+            flattened_tokens: dict[str, tuple[str, str]] = {}
+            # `token_data` is a dataclass whose fields are the bare token names,
+            # so its update still needs base-name keys. Later occurrences of a
+            # token overwrite earlier ones here, which is the pre-existing
+            # behaviour for a name that can only hold one value.
+            token_data_values: dict[str, str] = {}
             for token in tokens:
-                if token.token is None:
+                if token.token is None or token.full_match is None:
                     continue
                 token_value = self._get_token_value(token)
-                flattened_tokens[token.token] = (
-                    token_value if isinstance(token_value, str) else ""
-                )
-            self._update_token_data(flattened_tokens)
+                resolved = token_value if isinstance(token_value, str) else ""
+                flattened_tokens[token.full_match] = (token.token, resolved)
+                token_data_values[token.token] = resolved
+            self._update_token_data(token_data_values)
             return self._format_token_string(flattened_tokens)
         else:
             jinja_tokens: dict[str, object] = {}
@@ -495,7 +526,11 @@ class TokenReplacer:
             )
 
         # handle override tokens
-        if self.override_tokens and token_data.token in self.override_tokens:
+        if (
+            self.override_tokens
+            and token_data.token in self.override_tokens
+            and token_data.token not in self.CANONICALIZED_OVERRIDES
+        ):
             return self._optional_user_input(
                 self.override_tokens[token_data.token], token_data
             )
@@ -538,10 +573,27 @@ class TokenReplacer:
         return ""
 
     def _apply_custom_filters(self, value: str, filters: tuple[str, ...]) -> str:
-        """Apply custom filters to a string value."""
+        """Apply custom filters to a string value.
+
+        Filters run left to right. Most of them *describe* a value, so with
+        nothing to describe they are skipped rather than run on an empty string
+        -- otherwise a missing episode number would come back from `zfill(2)`
+        as "00". `default` is the deliberate exception: it exists to supply a
+        value where the release has none, and any filter written after it sees
+        the value it supplied.
+        """
         for f in filters:
             f_lowered = f.lower()
-            if f_lowered == "upper":
+            if not value and not f_lowered.startswith("default("):
+                continue
+            if f_lowered.startswith("default(") and f_lowered.endswith(")"):
+                if not value:
+                    value = self._parse_filter_argument(f) or value
+            elif f_lowered.startswith(("only_if(", "unless(")) and f_lowered.endswith(
+                ")"
+            ):
+                value = self._apply_conditional_filter(value, f)
+            elif f_lowered == "upper":
                 value = value.upper()
             elif f_lowered == "lower":
                 value = value.lower()
@@ -577,6 +629,77 @@ class TokenReplacer:
                 value = self._apply_extensible_filter(value, f)
 
         return value
+
+    @staticmethod
+    def _parse_filter_argument(filter_expr: str) -> str:
+        """Return a single-argument filter's argument, unquoted.
+
+        `default('NOGROUP')`, `default("NOGROUP")` and `default(NOGROUP)` all
+        yield "NOGROUP".
+        """
+        arg = filter_expr[filter_expr.index("(") + 1 : -1].strip()
+        if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in "\"'":
+            return arg[1:-1]
+        return arg
+
+    def _apply_conditional_filter(self, value: str, filter_expr: str) -> str:
+        """Blank ``value`` based on whether other tokens resolve to anything.
+
+        ``only_if(a, b)`` keeps the value only when *every* named token
+        resolves truthy; ``unless(a, b)`` drops it when *any* of them does.
+        Together they let one template carry two component orders and emit the
+        one that fits the release -- Aither and LST put audio last for a remux
+        and first for an encode, which is otherwise inexpressible in a single
+        token string.
+
+        Conditions resolve through the same machinery that renders the tokens
+        themselves, so a condition can never disagree with what is printed:
+        whatever makes `{remux}` render is exactly what flips the order.
+        """
+        name = filter_expr[: filter_expr.index("(")].lower()
+        raw_args = self._parse_filter_argument(filter_expr)
+        conditions = [
+            part.strip().strip("\"'") for part in raw_args.split(",") if part.strip()
+        ]
+        if not conditions:
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Ignoring '{name}' filter with no token to test: {filter_expr}",
+            )
+            return value
+
+        valid_tokens = Tokens.get_tokens()
+        results: list[bool] = []
+        for condition in conditions:
+            if condition not in valid_tokens:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Ignoring '{name}' filter: '{condition}' is not a token.",
+                )
+                return value
+            results.append(bool(self._resolve_condition_token(condition)))
+
+        met = all(results) if name == "only_if" else not any(results)
+        return value if met else ""
+
+    def _resolve_condition_token(self, token: str) -> str:
+        """Resolve ``token`` to its plain value, for use as a condition.
+
+        Deliberately filterless and without any `:opt=` wrapper: a condition
+        asks whether the token has a value at all, so re-entering
+        `_apply_conditional_filter` (and a template able to make a token depend
+        on itself) is impossible.
+        """
+        value = self._get_token_value(
+            TokenData(
+                pre_token="",
+                token=token,
+                bracket_token=f"{{{token}}}",
+                post_token="",
+                full_match=f"{{{token}}}",
+            )
+        )
+        return value if isinstance(value, str) else ""
 
     def _apply_extensible_filter(self, value: str, filter_expr: str) -> str:
         """Apply extensible filters with argument parsing."""
@@ -835,6 +958,9 @@ class TokenReplacer:
         elif token_data.bracket_token == Tokens.SOURCE.token:
             return self._source(token_data)
 
+        elif token_data.bracket_token == Tokens.STREAMING_SERVICE.token:
+            return self._streaming_service(token_data)
+
         elif token_data.bracket_token == Tokens.AIR_DATE.token:
             return self._air_date(token_data)
 
@@ -1003,32 +1129,45 @@ class TokenReplacer:
 
         return ""
 
-    def _format_token_string(self, filled_tokens: dict[str, str]) -> str | None:
+    def _format_token_string(
+        self, filled_tokens: dict[str, tuple[str, str]]
+    ) -> str | None:
+        """Substitute resolved values back into the token string.
+
+        ``filled_tokens`` maps each token's literal occurrence -- the exact
+        ``{token}``/``{token|filter}``/``{:opt=x:token}`` text as written -- to
+        its base token name and its resolved value. Keying on the occurrence is
+        what lets the same token appear twice with different filters and keep
+        two distinct values.
+        """
         try:
             formatted_title = self.token_string
-            for key, value in filled_tokens.items():
-                if "title_clean" not in key:  # this covers all '*title_clean' tokens
-                    formatted_title = formatted_title.replace(f"{{{key}}}", value)
-                    formatted_title = self._colon_replace(
-                        self.colon_replace, formatted_title
-                    )
 
-            # apply specific formatting for '*title_clean' tokens (match braced literals)
-            if filled_tokens:
-                if "{title_clean}" in formatted_title:
-                    formatted_title = formatted_title.replace(
-                        "{title_clean}", filled_tokens.get("title_clean", "")
-                    )
-                if "{episode_title_clean}" in formatted_title:
-                    formatted_title = formatted_title.replace(
-                        "{episode_title_clean}",
-                        filled_tokens.get("episode_title_clean", ""),
-                    )
-                if "{original_title_fallback_title_clean}" in formatted_title:
-                    formatted_title = formatted_title.replace(
-                        "{original_title_fallback_title_clean}",
-                        filled_tokens.get("original_title_fallback_title_clean", ""),
-                    )
+            # '*title_clean' values must not go through _colon_replace -- the
+            # clean rules have already dealt with punctuation. Park them behind
+            # a colon-free sentinel rather than substituting them afterwards:
+            # an occurrence can carry its own `:opt=` wrapper, and leaving that
+            # text in place while the colon pass runs would rewrite the very
+            # colons the substitution still has to match on.
+            clean_values: dict[str, str] = {}
+            for occurrence, (name, value) in filled_tokens.items():
+                if "title_clean" in name:  # covers all '*title_clean' tokens
+                    sentinel = f"{_TITLE_CLEAN_SENTINEL}{len(clean_values)}{_TITLE_CLEAN_SENTINEL}"
+                    clean_values[sentinel] = value
+                    formatted_title = formatted_title.replace(occurrence, sentinel)
+
+            for occurrence, (name, value) in filled_tokens.items():
+                if "title_clean" not in name:
+                    formatted_title = formatted_title.replace(occurrence, value)
+
+            # One pass over the fully substituted string. _colon_replace is a
+            # plain str.replace, so running it once here is equivalent to the
+            # per-substitution pass this used to make -- and it can no longer
+            # corrupt a token that has not been substituted yet.
+            formatted_title = self._colon_replace(self.colon_replace, formatted_title)
+
+            for sentinel, value in clean_values.items():
+                formatted_title = formatted_title.replace(sentinel, value)
 
             # remove unfilled tokens if needed
             formatted_title = self._remove_unfilled_tokens(formatted_title)
@@ -1361,8 +1500,8 @@ class TokenReplacer:
     def _atmos(self, token_data: TokenData) -> str:
         # reads the same resolved codec the other two audio tokens use, so the
         # three can never disagree. The empty case still routes through
-        # _optional_user_input because that call also normalizes token_string
-        # (stripping any :opt= wrapper or |filter suffix) for _format_token_string.
+        # _optional_user_input so that any filters on the token are applied and
+        # its `:opt=` wrapper is dropped along with the missing value.
         atmos = "Atmos" if self._ATMOS_RE.search(self._resolved_audio_codec()) else ""
         return self._optional_user_input(atmos, token_data)
 
@@ -1600,8 +1739,9 @@ class TokenReplacer:
         if not (self.media_info_obj and self.media_info_obj.video_tracks):
             return ""
 
-        # we'll check to see if we have a remux in the filename or in the override tokens
-        is_remux = self.override_tokens and "remux" in self.override_tokens
+        # a remux keeps the container's codec name (AVC/HEVC); only an encode
+        # is reported as x264/x265
+        is_remux = bool(self._detect_remux())
 
         track = self.media_info_obj.video_tracks[0]
         detect_video_codec = track.format
@@ -2025,9 +2165,23 @@ class TokenReplacer:
         )
 
     def _remux(self, token_data: TokenData) -> str:
-        return self._optional_user_input(
-            "REMUX" if "remux" in self.media_input.stem.lower() else "", token_data
-        )
+        return self._optional_user_input(self._detect_remux(), token_data)
+
+    def _detect_remux(self) -> str:
+        """Return "REMUX" when this release is one, otherwise "".
+
+        The single answer every caller uses -- the `{remux}` token, the codec
+        picker (a remux keeps the container codec name, AVC/HEVC, where an
+        encode reports x264/x265), and the `only_if(remux)`/`unless(remux)`
+        filters that pick a component order. They used to disagree: the codec
+        picker looked only at the override, so a remux with no override was
+        given an encode's codec name.
+        """
+        if self.override_tokens and "remux" in self.override_tokens:
+            return self.override_tokens["remux"]
+        if self.parse_filename_attributes and "remux" in self.media_input.stem.lower():
+            return "REMUX"
+        return ""
 
     def _re_release(self, token_data: TokenData) -> str:
         search_re_release = re.findall(
@@ -2041,20 +2195,22 @@ class TokenReplacer:
         """Get the detected source quality."""
         # check if source is being overridden first
         if self.override_tokens and "source" in self.override_tokens:
-            override_source = self.override_tokens["source"].lower()
-            # map the override value to QualitySelection
-            if override_source == "webdl":
-                return QualitySelection.WEB_DL
-            elif override_source == "webrip":
-                return QualitySelection.WEB_RIP
-            elif override_source == "bluray":
-                return QualitySelection.BLURAY
-            elif override_source == "uhd bluray":
-                return QualitySelection.UHD_BLURAY
-            elif override_source == "dvd":
-                return QualitySelection.DVD
-            elif override_source == "hdtv":
-                return QualitySelection.HDTV
+            override_source = self.override_tokens["source"].strip()
+            legacy = _LEGACY_SOURCE_OVERRIDES.get(override_source.lower())
+            if legacy is not None:
+                return legacy
+            try:
+                # QualitySelection matches case-insensitively on both the value
+                # and the member name, so this covers every spelling the
+                # wizard's Quality combo can produce without a parallel list
+                # here that a new member could be left out of.
+                return QualitySelection(override_source)
+            except ValueError:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Ignoring unrecognized source override '{override_source}'; "
+                    "falling back to detection.",
+                )
 
         # base source
         source_quality = self.guess_name.get("source", "").lower()
@@ -2115,6 +2271,30 @@ class TokenReplacer:
 
     def _source(self, token_data: TokenData) -> str:
         return self._optional_user_input(str(self._get_source_quality()), token_data)
+
+    def _streaming_service(self, token_data: TokenData) -> str:
+        """The service abbreviation, for web sources only.
+
+        Both trackers that require this scope it to web content -- Aither's
+        component table says "Web content only", and LST lists it as the
+        *source* for WEB-DLs and WEBRips. Emitting it for a disc or an encode
+        would put a service in a title that never came from one, so a
+        non-web release resolves to nothing here.
+
+        A user's explicit choice on the rename page never reaches this method:
+        `_get_token_value` returns an override before the token is resolved, so
+        picking a service by hand is always honoured.
+        """
+        if self._get_source_quality() not in (
+            QualitySelection.WEB_DL,
+            QualitySelection.WEB_RIP,
+        ):
+            return self._optional_user_input("", token_data)
+
+        return self._optional_user_input(
+            abbreviate_streaming_service(self.guess_name.get("streaming_service", "")),
+            token_data,
+        )
 
     def _season_number(self, token_data: TokenData) -> str:
         season = self._validate_int_var(self.season_number)
@@ -3039,25 +3219,25 @@ class TokenReplacer:
         )
 
     def _optional_user_input(self, token_str: str | None, token_data: TokenData) -> str:
-        output = ""
-        if token_str:
-            # Filters describe the value, so they run before the optional
-            # pre/post strings are wrapped around it. Applied after the wrap,
-            # `{:opt=E:episode_number|zfill(2)}` handed "E2" to zfill -- already
-            # two characters -- and single episodes shipped as "S01E2".
-            if self.flatten and token_data.filters and isinstance(token_str, str):
-                token_str = self._apply_custom_filters(token_str, token_data.filters)
-            pre = token_data.pre_token
-            post = token_data.post_token
-            output = f"{pre}{token_str}{post}"
+        # Filters describe the value, so they run before the optional pre/post
+        # strings are wrapped around it. Applied after the wrap,
+        # `{:opt=E:episode_number|zfill(2)}` handed "E2" to zfill -- already two
+        # characters -- and single episodes shipped as "S01E2".
+        #
+        # They also run on an empty value, because some filters exist precisely
+        # to act on one: `default('NOGROUP')` supplies a value where the release
+        # has none.
+        if self.flatten and token_data.filters:
+            token_str = self._apply_custom_filters(token_str or "", token_data.filters)
 
-        # strip optional strings from user token
-        if token_data.full_match and token_data.bracket_token:
-            self.token_string = self.token_string.replace(
-                token_data.full_match, token_data.bracket_token
-            )
+        # Emptiness is re-checked *after* filtering: a filter can blank a value
+        # it was handed (`only_if`/`unless` do exactly that), and wrapping the
+        # pre/post strings around nothing strands the separator they carry --
+        # `{:opt=-:video_codec|only_if(remux)}` would ship a bare "-".
+        if not token_str:
+            return ""
 
-        return output if output else ""
+        return f"{token_data.pre_token}{token_str}{token_data.post_token}"
 
     def _detect_resolution(self, mi_obj: MediaInfo | None, remove_scan: bool) -> str:
         resolution = str(self.guess_name.get("screen_size", ""))

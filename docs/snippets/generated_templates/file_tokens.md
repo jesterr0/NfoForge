@@ -54,6 +54,7 @@
 | `{resolution}` | Resolution (1080p) |
 | `{season_number}` | Season number (1, 2, 3, etc.) |
 | `{source}` | Source media (BluRay/DVD) |
+| `{streaming_service}` | Streaming service abbreviation, web sources only (NF/AMZN/ATVP) |
 | `{title}` | Title parsed from media databases with minimal formatting |
 | `{title_clean}` | Clean title parsed from media databases |
 | `{title_exact}` | Title parsed from media databases with no modifications |

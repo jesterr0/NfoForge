@@ -124,41 +124,6 @@ class TrackerFormatOverride(QWidget):
         if selection > -1:
             self.title_colon_replace.setCurrentIndex(selection)
 
-    def set_locked(
-        self,
-        reason: str,
-        *,
-        override_enabled: bool,
-        token: str,
-        colon_replace: str,
-        replace_map: list[tuple[str, str]] | None,
-    ) -> None:
-        """Pre-fill with a tracker-enforced (or tracker-unsupported) value and
-        make every control non-interactive, with ``reason`` explaining why.
-
-        Used for trackers whose title format is dictated by the site itself
-        (REQUIRED) or that don't support an override at all (UNSUPPORTED) --
-        see ``TitleFormatPolicy``. Unlike a normal load, ``over_ride_inner_widget``
-        is always shown so the enforced value stays visible regardless of the
-        (now disabled) checkbox state.
-        """
-        self.enabled_checkbox.setChecked(override_enabled)
-        self.set_colon_replace(colon_replace)
-        self.over_ride_format_title.setText(token)
-        self.over_ride_replacement_table.reset()
-        if replace_map:
-            self.over_ride_replacement_table.add_rows(replace_map)
-        self.over_ride_inner_widget.show()
-
-        for widget in (
-            self.enabled_checkbox,
-            self.title_colon_replace,
-            self.over_ride_format_title,
-            self.over_ride_replacement_table,
-        ):
-            widget.setEnabled(False)
-            widget.setToolTip(reason)
-
     @staticmethod
     def _build_colon_replace_combo(
         lbl_txt: str,

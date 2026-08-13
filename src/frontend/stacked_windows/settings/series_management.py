@@ -18,10 +18,9 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
-from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
-from src.backend.trackers.title_format_policy import (
-    TitleFormatPolicy,
-    resolve_title_format_policy,
+from src.backend.trackers.media_support import (
+    NO_RELEASE_NAME_FIELD,
+    UNSUPPORTED_SERIES_TRACKERS,
 )
 from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_FILE_NAME_1,
@@ -273,7 +272,10 @@ class SeriesManagementSettings(BaseSettings):
         tracker_stacked = ResizableStackedWidget(container)
 
         for tracker in self.config.settings.trackers.by_selection().keys():
-            if tracker in UNSUPPORTED_SERIES_TRACKERS:
+            if (
+                tracker in UNSUPPORTED_SERIES_TRACKERS
+                or tracker in NO_RELEASE_NAME_FIELD
+            ):
                 continue
             tfo = TrackerFormatOverride(container)
             tfo.setting_changed.connect(
@@ -498,35 +500,6 @@ class SeriesManagementSettings(BaseSettings):
             for idx, tracker in enumerate(w["tracker_override_map"].keys()):
                 tfo = w["tracker_override_map"][tracker]
                 default_info = self.config.defaults.trackers.by_selection()[tracker]
-                policy = resolve_title_format_policy(tracker, default_info, fmt)
-                if policy is not TitleFormatPolicy.FREE:
-                    # REQUIRED/UNSUPPORTED: always shows the packaged default,
-                    # disabled -- never the live (possibly stale) settings
-                    # value. An UNSUPPORTED tracker has no packaged entry, so
-                    # this yields the blank TitleOverridePayload() it had
-                    # before. A REQUIRED tracker that ships no format for this
-                    # episode format never reaches here -- it resolves to FREE
-                    # (see resolve_title_format_policy), so a locked row always
-                    # has an enforced format to show.
-                    default_override = (default_info.tvr_title_overrides or {}).get(
-                        fmt, TitleOverridePayload()
-                    )
-                    reason = (
-                        f"{tracker} enforces its own title format "
-                        "and cannot be customized."
-                        if policy is TitleFormatPolicy.REQUIRED
-                        else f"{tracker} does not support a custom title format."
-                    )
-                    tfo.set_locked(
-                        reason,
-                        override_enabled=default_override.enabled,
-                        token=default_override.token,
-                        colon_replace=str(default_override.colon_replace),
-                        replace_map=default_override.replace_map,
-                    )
-                    if idx == 0:
-                        self._update_tracker_override_example(fmt, tfo)
-                    continue
                 tracker_info = self.config.settings.trackers.by_selection()[tracker]
                 override = (tracker_info.tvr_title_overrides or {}).get(
                     fmt, TitleOverridePayload()
@@ -595,16 +568,6 @@ class SeriesManagementSettings(BaseSettings):
             )
 
             for tracker, tfo in w["tracker_override_map"].items():
-                # REQUIRED/UNSUPPORTED widgets are locked to the packaged
-                # default, so there is nothing user-driven to persist. Any
-                # existing settings value is left untouched rather than
-                # overwritten.
-                default_info = self.config.defaults.trackers.by_selection()[tracker]
-                if (
-                    resolve_title_format_policy(tracker, default_info, fmt)
-                    is not TitleFormatPolicy.FREE
-                ):
-                    continue
                 existing = self.config.settings.trackers.by_selection()[
                     tracker
                 ].tvr_title_overrides

@@ -157,6 +157,43 @@ You can use single or double quotes for the arguments, and any character (includ
 {:opt=hi :example_token|replace('foo,bar', 'baz,qux')}
 ```
 
+#### default
+
+Supplies a value when the token resolves to nothing. Every other filter describes a value it was given, so it is skipped when there is nothing to describe; `default` is the one filter that acts on an empty token.
+
+{release_group} = (no release group)
+
+```text
+{:opt=-:release_group|default('NOGROUP')}
+```
+
+```text
+-NOGROUP
+```
+
+When the token does have a value, `default` leaves it alone.
+
+#### only_if / unless
+
+Keeps or drops a value depending on whether _other_ tokens resolve to anything. `only_if` keeps the value only when every token it names has a value; `unless` drops the value when any of them does. Both take one or more comma-separated token names.
+
+This is how one template can carry two component orders and emit whichever fits the release. Several trackers order a remux differently from an encode — audio last for a remux, audio first for an encode:
+
+```text
+{resolution} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec}{:opt= :audio_channel_s}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}
+```
+
+```text
+2160p UHD BluRay REMUX DV HDR HEVC TrueHD 7.1
+1080p BluRay TrueHD 7.1 DV HDR x265
+```
+
+Naming a token that does not exist leaves the value untouched and logs a warning, so a typo cannot silently delete a component.
+
+<!-- prettier-ignore -->
+!!! tip
+    Write the separator as part of the token (`{:opt= :token}`) rather than as a literal space between tokens. The optional string disappears along with the value, so a filter that blanks a token cannot leave a stray space or a dangling `-` behind.
+
 ### Chained Filters
 
 You can chain multiple filters together by separating them with `|`. Filters are applied in order from left to right.

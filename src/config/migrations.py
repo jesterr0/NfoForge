@@ -23,6 +23,11 @@ The versions so far:
 - 4 -> 5: TorrentLeech's seeded movie title override is cleared. Its blind
   ``\\.`` -> space rule mangled audio channel layouts, and TorrentLeech's
   actual requirement is applied in code on every upload.
+- 5 -> 6: per-tracker title overrides stopped being locked, so the value a
+  profile stores now governs where the packaged default used to. The
+  formerly locked trackers' stored values are necessarily stale (they were
+  never editable, and `merge_defaults` only backfills *missing* keys), so
+  they are refreshed from the packaged default.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -68,6 +73,7 @@ SCHEMA_2_VERSION = 2
 SCHEMA_3_VERSION = 3
 SCHEMA_4_VERSION = 4
 SCHEMA_5_VERSION = 5
+SCHEMA_6_VERSION = 6
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -505,11 +511,95 @@ def migrate_v4_to_v5(
 # Keyed by the schema version each migration accepts; each produces the next
 # version up. Add an entry here for every `SCHEMA_VERSION` bump -- see the
 # bump policy in this module's docstring.
+# The trackers whose title override used to be locked: the settings widgets
+# were disabled and the save path skipped them, so whatever a profile has
+# stored for these is the packaged default from whenever that profile was
+# created -- never a choice the user made.
+_FORMERLY_LOCKED_TRACKER_SECTIONS = (
+    "aither",
+    "dark_peers",
+    "huno",
+    "lst",
+    "only_encodes",
+    "reelflix",
+    "shareisland",
+    "uploadcx",
+)
+
+# The keys that carry a tracker's title format.
+_TITLE_OVERRIDE_KEYS = (
+    "mvr_title_override_enabled",
+    "mvr_title_colon_replace",
+    "mvr_title_token_override",
+    "mvr_title_replace_map",
+    "tvr_title_overrides",
+)
+
+
+def migrate_v5_to_v6(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Refresh the title overrides that used to be locked.
+
+    Those trackers' titles were governed by the packaged default at upload
+    time, so a stale value stored in a profile never mattered. Unlocking them
+    makes the stored value govern instead -- and it is stale, because
+    `TomlConfigCodec.merge_defaults` only backfills keys a profile is missing
+    and these have been present since the profile was created.
+
+    Left alone, every existing profile would silently go back to the title
+    format it had before the tracker naming rules were corrected. Copying the
+    packaged default over it loses nothing: the user could not edit these
+    fields, so there is no customization here to overwrite. Trackers that were
+    always editable are untouched, because for those the stored value *is* a
+    choice.
+    """
+
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_6_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    tracker_table = new_doc.get("tracker")
+    if not isinstance(tracker_table, Mapping):
+        return new_doc, []
+
+    defaults = (
+        default_document if default_document is not None else _load_packaged_default()
+    )
+    default_trackers = defaults.get("tracker")
+    if not isinstance(default_trackers, Mapping):
+        return new_doc, []
+
+    new_tracker = dict(tracker_table)
+    for section in _FORMERLY_LOCKED_TRACKER_SECTIONS:
+        stored = new_tracker.get(section)
+        packaged = default_trackers.get(section)
+        if not isinstance(stored, Mapping) or not isinstance(packaged, Mapping):
+            continue
+
+        refreshed = dict(stored)
+        for key in _TITLE_OVERRIDE_KEYS:
+            if key in packaged:
+                refreshed[key] = _unwrap(packaged[key])
+            else:
+                # the packaged default no longer ships this key (e.g. a
+                # movie-only tracker's series overrides); drop the stale copy
+                # rather than leaving it to govern
+                refreshed.pop(key, None)
+        new_tracker[section] = refreshed
+
+    new_doc["tracker"] = new_tracker
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
     SCHEMA_3_VERSION: migrate_v3_to_v4,
     SCHEMA_4_VERSION: migrate_v4_to_v5,
+    SCHEMA_5_VERSION: migrate_v5_to_v6,
 }
 
 

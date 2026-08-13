@@ -1,13 +1,14 @@
-"""A REQUIRED tracker must actually enforce something.
+"""Quality bar for the packaged per-tracker title defaults.
 
-REQUIRED locks the user out of the title override and makes the packaged
-default govern (see generate_tracker_title in src/backend/process.py). If
-that packaged default enforces nothing, the lock is config that does
-nothing: the user loses control and gains no guarantee in exchange.
+These defaults are now a *starting point*, not a lock -- every tracker's title
+override is the user's to edit (see title_override_support.py). That makes
+them more important, not less: they are what a fresh profile uploads with, and
+what the schema 5 -> 6 migration puts back onto profiles that never got to
+choose. A default that renders a malformed title ships that title to whoever
+did not think to look.
 
-What gets enforced varies by tracker, and both forms count: a token (Aither,
-LST, ReelFliX), or a character rule with no token, leaving the user's global
-template to supply the wording.
+This file checks they are well formed. `test_tracker_naming_rules.py` checks
+that the four trackers whose rules were audited match those rules exactly.
 """
 
 from dataclasses import replace
@@ -18,13 +19,6 @@ import pytest
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
-from src.backend.trackers.title_format_policy import (
-    TRACKER_TITLE_FORMAT_POLICY,
-    TitleFormatPolicy,
-    enforces_movie_title,
-    enforces_series_title,
-    resolve_title_format_policy,
-)
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as MOVIE_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD as MOVIE_SEARCH_PAYLOAD,
@@ -36,13 +30,15 @@ from src.backend.utils.example_parsed_series_data import (
 from src.config.config import ConfigManager
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.media_type import MediaType
+from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
+from src.payloads.trackers import TrackerInfo
 from tests.test_config.config_tree import build_config_paths
 
 # Carries the punctuation these trackers name uploads after: a colon, a
 # hyphen, an apostrophe and an ampersand. The packaged title-clean rules
-# strip all four, so any one of them surviving proves the enforced token no
+# strip all four, so any one of them surviving proves the packaged token no
 # longer reads those rules.
 PUNCTUATED_TITLE = "Alice & Bob: A Placeholder's Tale - Part One"
 
@@ -61,103 +57,76 @@ def _config_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ConfigMa
     return ConfigManager("test", build_config_paths(tmp_path))
 
 
-def test_required_trackers_enforce_something(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    manager = _config_manager(tmp_path, monkeypatch)
-    packaged = manager.defaults.trackers.by_selection()
+def _ships_movie_title(packaged: TrackerInfo) -> bool:
+    """Does the packaged default supply a movie title?
 
-    for tracker, policy in TRACKER_TITLE_FORMAT_POLICY.items():
-        if policy is not TitleFormatPolicy.REQUIRED:
-            continue
-        info = packaged[tracker]
-        assert info.mvr_title_override_enabled, (
-            f"{tracker} is REQUIRED but its packaged override is disabled, "
-            "so the lock enforces nothing"
-        )
-        assert info.mvr_title_token_override.strip() or info.mvr_title_replace_map, (
-            f"{tracker} is REQUIRED but ships neither a title token nor a "
-            "replace rule, so the lock enforces nothing"
-        )
-
-
-def test_a_locked_row_always_enforces_something(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The invariant that keeps Movies and TV consistent as trackers are added.
-
-    Whichever page a row appears on, it is locked only when the packaged
-    default actually enforces a format for that media type. A tracker may
-    legitimately enforce movies and not series -- most REQUIRED trackers do --
-    but it may never be locked with nothing behind the lock.
+    Both forms count: a token, or a character rule with no token, which leaves
+    the user's global movie template to supply the wording.
     """
-    manager = _config_manager(tmp_path, monkeypatch)
-    packaged = manager.defaults.trackers.by_selection()
-
-    for tracker in TRACKER_TITLE_FORMAT_POLICY:
-        info = packaged[tracker]
-        if resolve_title_format_policy(tracker, info) is TitleFormatPolicy.REQUIRED:
-            assert enforces_movie_title(info), (
-                f"{tracker}'s movie row is locked but enforces nothing"
-            )
-        for fmt in SUPPORTED_TVR_FORMATS:
-            if (
-                resolve_title_format_policy(tracker, info, fmt)
-                is TitleFormatPolicy.REQUIRED
-            ):
-                assert enforces_series_title(info, fmt), (
-                    f"{tracker}'s {fmt} row is locked but enforces nothing"
-                )
+    return bool(
+        packaged.mvr_title_override_enabled
+        and (
+            packaged.mvr_title_token_override.strip() or packaged.mvr_title_replace_map
+        )
+    )
 
 
-def test_series_title_enforcement_is_all_or_nothing_per_tracker(
+def _ships_series_title(packaged: TrackerInfo, episode_format: EpisodeFormat) -> bool:
+    entry = (packaged.tvr_title_overrides or {}).get(episode_format)
+    return bool(entry and entry.enabled and (entry.token.strip() or entry.replace_map))
+
+
+def test_series_defaults_are_all_or_nothing_per_tracker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A tracker either enforces a series title for every supported episode
+    """A tracker either ships a series title for every supported episode
     format or for none of them.
 
     A partially filled tracker is the dangerous state: Standard uploads get
-    the enforced format while Daily and Anime fall through to the global
-    series template, with nothing to signal the inconsistency. Framed as a
-    per-tracker invariant rather than a list of which trackers enforce
-    series titles, so a tracker gaining or losing series enforcement needs
-    no edit here.
+    the packaged format while Daily and Anime fall through to the global
+    series template, with nothing to signal the inconsistency.
     """
     manager = _config_manager(tmp_path, monkeypatch)
     packaged = manager.defaults.trackers.by_selection()
 
-    for tracker in TRACKER_TITLE_FORMAT_POLICY:
-        enforced = {
+    for tracker in TrackerSelection:
+        shipped = {
             fmt
             for fmt in SUPPORTED_TVR_FORMATS
-            if enforces_series_title(packaged[tracker], fmt)
+            if _ships_series_title(packaged[tracker], fmt)
         }
-        assert enforced in (set(), set(SUPPORTED_TVR_FORMATS)), (
-            f"{tracker} enforces a series title for {sorted(map(str, enforced))} "
-            f"but not for {sorted(map(str, set(SUPPORTED_TVR_FORMATS) - enforced))}; "
-            "series enforcement must cover every format or none"
+        assert shipped in (set(), set(SUPPORTED_TVR_FORMATS)), (
+            f"{tracker} ships a series title for {sorted(map(str, shipped))} "
+            f"but not for {sorted(map(str, set(SUPPORTED_TVR_FORMATS) - shipped))}; "
+            "series defaults must cover every format or none"
         )
 
 
-def test_aither_and_lst_enforce_a_series_title(
+def test_the_audited_trackers_ship_a_title_for_both_media_types(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The two trackers this change targets actually ship what it promises.
+    """Aither, LST and BeyondHD had their naming rules audited for both movies
+    and series, so both must be seeded. ReelFliX is movie-only.
 
-    Deliberately narrow: this pins the intended outcome of this change, and
-    is expected to need editing if either tracker's rules change. The
-    invariant above is the one that generalizes.
+    Deliberately narrow: this pins the intended outcome of that work and is
+    expected to need editing if a tracker's rules change. The invariant above
+    is the one that generalizes.
     """
     manager = _config_manager(tmp_path, monkeypatch)
     packaged = manager.defaults.trackers.by_selection()
 
-    for tracker in (TrackerSelection.AITHER, TrackerSelection.LST):
-        overrides = packaged[tracker].tvr_title_overrides or {}
+    for tracker in (
+        TrackerSelection.AITHER,
+        TrackerSelection.LST,
+        TrackerSelection.BEYOND_HD,
+    ):
+        assert _ships_movie_title(packaged[tracker]), f"{tracker} ships no movie title"
         for fmt in SUPPORTED_TVR_FORMATS:
-            entry = overrides.get(fmt)
-            assert entry is not None and entry.enabled and entry.token.strip(), (
-                f"{tracker} ships no enforced series title for {fmt}"
+            assert _ships_series_title(packaged[tracker], fmt), (
+                f"{tracker} ships no series title for {fmt}"
             )
+
+    assert _ships_movie_title(packaged[TrackerSelection.REELFLIX])
 
 
 def _render_title(
@@ -167,7 +136,7 @@ def _render_title(
     title_clean_rules: list[tuple[str, str]],
     override_tokens: dict[str, str] | None = None,
 ) -> str | None:
-    """Render an enforced token the way generate_tracker_title renders it.
+    """Render a packaged token the way generate_tracker_title renders it.
 
     Built on the same example payloads the settings preview uses, so every
     token in these templates resolves against realistic mediainfo instead of
@@ -190,9 +159,10 @@ def _render_title(
         flatten=True,
         file_name_mode=False,
         token_type=FileToken,
+        parse_filename_attributes=True,
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-        # Passed live by generate_tracker_title whatever the policy says, so
-        # an enforced token that reads these is not really enforced.
+        # Passed live by generate_tracker_title, so a packaged token that
+        # reads these renders differently per user.
         title_clean_rules=title_clean_rules,
         override_tokens=override_tokens,
         **series_kwargs,
@@ -218,7 +188,7 @@ def test_no_packaged_title_dangles_a_separator_without_a_release_group(
     no_group = {"release_group": ""}
     checked = 0
 
-    for tracker in TRACKER_TITLE_FORMAT_POLICY:
+    for tracker in TrackerSelection:
         info = packaged[tracker]
         tokens: list[tuple[str, str, ColonReplace, MediaType]] = []
         if info.mvr_title_token_override.strip():
@@ -254,7 +224,7 @@ def test_no_packaged_title_dangles_a_separator_without_a_release_group(
     assert checked, "no packaged titles were rendered, so nothing was checked"
 
 
-def test_enforced_movie_title_keeps_source_punctuation(
+def test_packaged_movie_titles_keep_source_punctuation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Aither, LST and ReelFliX name uploads after the database title, so the
@@ -263,7 +233,7 @@ def test_enforced_movie_title_keeps_source_punctuation(
     These templates used to open with ``{title_clean}``, which runs the
     global, user-editable clean rules -- and the packaged rule set replaces
     every non-alphanumeric character with a space. Feeding those same rules
-    in here is the point of the test: it fails again the moment an enforced
+    in here is the point of the test: it fails again the moment a packaged
     token starts reading them.
     """
     manager = _config_manager(tmp_path, monkeypatch)
@@ -289,7 +259,7 @@ def test_enforced_movie_title_keeps_source_punctuation(
         )
 
 
-def test_enforced_series_title_keeps_source_punctuation(
+def test_packaged_series_titles_keep_source_punctuation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The series templates carry the same guarantee as the movie one.
