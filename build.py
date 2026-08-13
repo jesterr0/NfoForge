@@ -26,6 +26,57 @@ PLUGIN_API_MODULES: list[str] = [
 ]
 
 
+# Directories in the bundled runtime that hold nothing but local state. The
+# runtime is seeded from `runtime/` on the build machine rather than from a
+# clean template, so each of these arrives holding whatever that machine
+# accumulated. They are cleared wholesale rather than by file extension: the
+# old patterns matched NfoForge's own `.toml` and `.log` names, which let a
+# plugin's JSON credentials and a rotated `.log.1` reach a build.
+#
+# `docs` is deliberately absent. It is untracked like these are, but the build
+# generates it, so clearing it would ship a release with no documentation.
+LOCAL_STATE_DIRS = ("apps", "cookies", "logs", "templates", "user_packages")
+
+# Under `config`, everything is the user's own except these two, which are the
+# packaged defaults a release starts from.
+PACKAGED_CONFIG_DIRS = ("audio_conventions", "defaults")
+
+
+def _clear_directory(directory: Path) -> None:
+    """Empty a directory, leaving it in place, if it is there at all."""
+    if not directory.is_dir():
+        return
+    for item in directory.iterdir():
+        if item.is_dir():
+            shutil.rmtree(item, ignore_errors=True)
+        else:
+            item.unlink(missing_ok=True)
+
+
+def strip_local_state(bundled_runtime: Path) -> None:
+    """Remove the build machine's own data from the runtime a release ships.
+
+    Credentials, saved configuration, logs and cookies all live under the
+    runtime directory this build copies verbatim, so without this a release
+    carries whatever the maintainer's install happened to hold.
+    """
+    for name in LOCAL_STATE_DIRS:
+        _clear_directory(bundled_runtime / name)
+
+    config = bundled_runtime / "config"
+    if config.is_dir():
+        for item in config.iterdir():
+            if item.name in PACKAGED_CONFIG_DIRS:
+                continue
+            if item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+            else:
+                item.unlink(missing_ok=True)
+
+    # local plugin installs, which are not part of a release
+    shutil.rmtree(bundled_runtime / "plugins", ignore_errors=True)
+
+
 def get_std_lib() -> list:
     """Return all standard library modules removing 'this' and 'antigravity'"""
     standard_lib = stdlib_list()
@@ -282,32 +333,7 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     )
 
     # remove dev files
-    bundled_runtime = Path(exe_path.parent / "bundle" / "runtime")
-
-    # remove all config files from config directory
-    for cfg_file in Path(bundled_runtime / "config").rglob("*.toml"):
-        if not str(cfg_file.parent).endswith("defaults"):
-            cfg_file.unlink(missing_ok=True)
-
-    # remove templates
-    for template_file in Path(bundled_runtime / "templates").glob("*.txt"):
-        template_file.unlink(missing_ok=True)
-
-    # remove user packages
-    user_packages = bundled_runtime / "user_packages"
-    if user_packages.exists():
-        shutil.rmtree(bundled_runtime / "user_packages", ignore_errors=True)
-
-    # remove logs
-    for log_file in Path(bundled_runtime / "logs").glob("*.log"):
-        log_file.unlink(missing_ok=True)
-
-    # remove cookies
-    for cookie_file in Path(bundled_runtime / "cookies").glob("*.pkl"):
-        cookie_file.unlink(missing_ok=True)
-
-    # remove plugins folder
-    shutil.rmtree(bundled_runtime / "plugins", ignore_errors=True)
+    strip_local_state(Path(exe_path.parent / "bundle" / "runtime"))
 
     # Return a success message
     return success
