@@ -10,6 +10,72 @@ from stdlib_list import stdlib_list
 
 from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
 
+# Modules that exist for external plugins to import rather than for NfoForge's
+# own use. Nothing here imports them, so PyInstaller's walk from the entry
+# script never reaches them and they are left out of the frozen build -- which
+# a plugin discovers only as `No module named ...` once a user runs a release,
+# since running from source resolves them off the filesystem regardless.
+#
+# The build cannot infer this set for itself: plugins are copied in after the
+# freeze, are not present on the build machine, and may be compiled, so their
+# imports are beyond static analysis. Naming them here stands in for the import
+# edge PyInstaller has no way to see.
+PLUGIN_API_MODULES: list[str] = [
+    # `WizardPluginBase`, which a wizard plugin subclasses
+    "src.plugins.plugin_wizard_base",
+]
+
+
+# Directories in the bundled runtime that hold nothing but local state. The
+# runtime is seeded from `runtime/` on the build machine rather than from a
+# clean template, so each of these arrives holding whatever that machine
+# accumulated. They are cleared wholesale rather than by file extension: the
+# old patterns matched NfoForge's own `.toml` and `.log` names, which let a
+# plugin's JSON credentials and a rotated `.log.1` reach a build.
+#
+# `docs` is deliberately absent. It is untracked like these are, but the build
+# generates it, so clearing it would ship a release with no documentation.
+LOCAL_STATE_DIRS = ("apps", "cookies", "logs", "templates", "user_packages")
+
+# Under `config`, everything is the user's own except these two, which are the
+# packaged defaults a release starts from.
+PACKAGED_CONFIG_DIRS = ("audio_conventions", "defaults")
+
+
+def _clear_directory(directory: Path) -> None:
+    """Empty a directory, leaving it in place, if it is there at all."""
+    if not directory.is_dir():
+        return
+    for item in directory.iterdir():
+        if item.is_dir():
+            shutil.rmtree(item, ignore_errors=True)
+        else:
+            item.unlink(missing_ok=True)
+
+
+def strip_local_state(bundled_runtime: Path) -> None:
+    """Remove the build machine's own data from the runtime a release ships.
+
+    Credentials, saved configuration, logs and cookies all live under the
+    runtime directory this build copies verbatim, so without this a release
+    carries whatever the maintainer's install happened to hold.
+    """
+    for name in LOCAL_STATE_DIRS:
+        _clear_directory(bundled_runtime / name)
+
+    config = bundled_runtime / "config"
+    if config.is_dir():
+        for item in config.iterdir():
+            if item.name in PACKAGED_CONFIG_DIRS:
+                continue
+            if item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+            else:
+                item.unlink(missing_ok=True)
+
+    # local plugin installs, which are not part of a release
+    shutil.rmtree(bundled_runtime / "plugins", ignore_errors=True)
+
 
 def get_std_lib() -> list:
     """Return all standard library modules removing 'this' and 'antigravity'"""
@@ -17,6 +83,19 @@ def get_std_lib() -> list:
     standard_lib.remove("this")
     standard_lib.remove("antigravity")
     return standard_lib
+
+
+def spec_hiddenimports(include_std_lib: bool) -> list[str]:
+    """Modules to name in the spec that PyInstaller's own walk would not find.
+
+    The plugin API is always included. The standard library is per-build, and
+    the plugin API must not be gated on that choice: a build without the
+    standard library is still a build external plugins load into.
+    """
+    hiddenimports: list[str] = list(PLUGIN_API_MODULES)
+    if include_std_lib:
+        hiddenimports += get_std_lib()
+    return hiddenimports
 
 
 def modify_spec_file(spec_file_path: Path, hiddenimports: list):
@@ -183,10 +262,8 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # modify the generated spec file
     spec_file_path = pyinstaller_folder / "NfoForge.spec"
 
-    # add standard lib to bundle if needed
-    if include_std_lib:
-        hiddenimports = get_std_lib()
-        modify_spec_file(spec_file_path, hiddenimports)
+    # name the modules PyInstaller's own import walk cannot reach
+    modify_spec_file(spec_file_path, spec_hiddenimports(include_std_lib))
 
     # modify the generated spec file to include two executables
     modify_spec_file_for_dual_exe(spec_file_path)
@@ -256,32 +333,7 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     )
 
     # remove dev files
-    bundled_runtime = Path(exe_path.parent / "bundle" / "runtime")
-
-    # remove all config files from config directory
-    for cfg_file in Path(bundled_runtime / "config").rglob("*.toml"):
-        if not str(cfg_file.parent).endswith("defaults"):
-            cfg_file.unlink(missing_ok=True)
-
-    # remove templates
-    for template_file in Path(bundled_runtime / "templates").glob("*.txt"):
-        template_file.unlink(missing_ok=True)
-
-    # remove user packages
-    user_packages = bundled_runtime / "user_packages"
-    if user_packages.exists():
-        shutil.rmtree(bundled_runtime / "user_packages", ignore_errors=True)
-
-    # remove logs
-    for log_file in Path(bundled_runtime / "logs").glob("*.log"):
-        log_file.unlink(missing_ok=True)
-
-    # remove cookies
-    for cookie_file in Path(bundled_runtime / "cookies").glob("*.pkl"):
-        cookie_file.unlink(missing_ok=True)
-
-    # remove plugins folder
-    shutil.rmtree(bundled_runtime / "plugins", ignore_errors=True)
+    strip_local_state(Path(exe_path.parent / "bundle" / "runtime"))
 
     # Return a success message
     return success

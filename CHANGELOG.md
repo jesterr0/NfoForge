@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.6] - 2026-08-13
+
+### Changed
+
+- Improved plugin collection for frozen builds (i.e. exe)
+- Strip local state from local builds (not a issue with CI builder)
+
 ## [1.1.5] - 2026-08-13
 
 ### Added
