@@ -10,6 +10,21 @@ from stdlib_list import stdlib_list
 
 from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
 
+# Modules that exist for external plugins to import rather than for NfoForge's
+# own use. Nothing here imports them, so PyInstaller's walk from the entry
+# script never reaches them and they are left out of the frozen build -- which
+# a plugin discovers only as `No module named ...` once a user runs a release,
+# since running from source resolves them off the filesystem regardless.
+#
+# The build cannot infer this set for itself: plugins are copied in after the
+# freeze, are not present on the build machine, and may be compiled, so their
+# imports are beyond static analysis. Naming them here stands in for the import
+# edge PyInstaller has no way to see.
+PLUGIN_API_MODULES: list[str] = [
+    # `WizardPluginBase`, which a wizard plugin subclasses
+    "src.plugins.plugin_wizard_base",
+]
+
 
 def get_std_lib() -> list:
     """Return all standard library modules removing 'this' and 'antigravity'"""
@@ -17,6 +32,19 @@ def get_std_lib() -> list:
     standard_lib.remove("this")
     standard_lib.remove("antigravity")
     return standard_lib
+
+
+def spec_hiddenimports(include_std_lib: bool) -> list[str]:
+    """Modules to name in the spec that PyInstaller's own walk would not find.
+
+    The plugin API is always included. The standard library is per-build, and
+    the plugin API must not be gated on that choice: a build without the
+    standard library is still a build external plugins load into.
+    """
+    hiddenimports: list[str] = list(PLUGIN_API_MODULES)
+    if include_std_lib:
+        hiddenimports += get_std_lib()
+    return hiddenimports
 
 
 def modify_spec_file(spec_file_path: Path, hiddenimports: list):
@@ -183,10 +211,8 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # modify the generated spec file
     spec_file_path = pyinstaller_folder / "NfoForge.spec"
 
-    # add standard lib to bundle if needed
-    if include_std_lib:
-        hiddenimports = get_std_lib()
-        modify_spec_file(spec_file_path, hiddenimports)
+    # name the modules PyInstaller's own import walk cannot reach
+    modify_spec_file(spec_file_path, spec_hiddenimports(include_std_lib))
 
     # modify the generated spec file to include two executables
     modify_spec_file_for_dual_exe(spec_file_path)
