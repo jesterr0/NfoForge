@@ -71,6 +71,8 @@ jobs:
             platform: macos
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.platform == 'macos' }}
+    env:
+      URLLIB3_NO_OVERRIDE: "true"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

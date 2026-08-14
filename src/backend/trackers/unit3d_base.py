@@ -4,15 +4,17 @@ import os
 from pathlib import Path
 import re
 from tempfile import mkstemp
-from typing import Any, TypeAlias
+from typing import Any, BinaryIO, TypeAlias
 from urllib.parse import urlparse
 
 import niquests
+from niquests.typing import MultiPartFilesAltType
 from pymediainfo import MediaInfo
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_exponential
 
 from src.backend.trackers.utils import (
+    API_TRACKER_HEADERS,
     DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
@@ -159,7 +161,8 @@ class Unit3dBaseUploader:
         timeout: int = 60,
     ) -> None:
         self.tracker_name = tracker_name
-        self.upload_url = f"{cleanse_base_url(base_url)}/api/torrents/upload"
+        self.base_url = cleanse_base_url(base_url)
+        self.upload_url = f"{self.base_url}/api/torrents/upload"
         self.media_type = media_type
         self.api_key = api_key
         self.torrent_file = torrent_file
@@ -187,11 +190,12 @@ class Unit3dBaseUploader:
         opt_in_to_mod_queue: bool | None = False,
         draft_queue_opt_in: bool | None = False,
         featured: bool | None = False,
-        free: bool | None = False,
+        free: bool | int | None = False,
         double_up: bool | None = False,
         sticky: bool | None = False,
         season_number: int | None = None,
         episode_number: int | None = None,
+        episode_number_end: int | None = None,
         season_pack: bool = False,
     ) -> bool | None:
         params = {"api_token": self.api_key}
@@ -214,19 +218,26 @@ class Unit3dBaseUploader:
             sticky=sticky,
             season_number=season_number,
             episode_number=episode_number,
+            episode_number_end=episode_number_end,
             season_pack=season_pack,
         )
 
-        LOG.debug(LOG.LOG_SOURCE.BE, f"{self.tracker_name} payload: {upload_payload}")
-
+        response_context: Any = None
         try:
             with self.torrent_file.open(mode="rb") as open_torrent:
+                request_data, request_files = self._prepare_upload_request(
+                    upload_payload, open_torrent
+                )
+                LOG.debug(
+                    LOG.LOG_SOURCE.BE,
+                    f"{self.tracker_name} payload: {request_data}",
+                )
                 with niquests.post(
                     url=self.upload_url,
-                    files={"torrent": open_torrent},
+                    files=request_files,
                     params=params,
-                    data=upload_payload,
-                    headers=TRACKER_HEADERS,
+                    data=request_data,
+                    headers=API_TRACKER_HEADERS,
                     timeout=self.timeout,
                 ) as response:
                     response_json = response.json()
@@ -238,14 +249,7 @@ class Unit3dBaseUploader:
                         and isinstance(message, str)
                         and "successfully" in message
                     ):
-                        if not isinstance(context, str) or not context:
-                            raise TrackerError(
-                                "Tracker did not return a torrent download URL",
-                                retryable=False,
-                                server_accepted=True,
-                                phase="download",
-                            )
-                        download_url = context
+                        response_context = context
                     else:
                         error_msg = f"Message='{message}' Context='{context}'"
                         status_code = getattr(response, "status_code", None)
@@ -272,6 +276,9 @@ class Unit3dBaseUploader:
                         )
 
             # The source torrent must be closed before replacing it on Windows.
+            download_url = self._resolve_uploaded_torrent_download_url_with_retry(
+                response_context
+            )
             self._download_uploaded_torrent_with_retry(download_url)
             return True
         except TrackerError as error:
@@ -293,6 +300,43 @@ class Unit3dBaseUploader:
                 retryable=retryable,
                 server_accepted=server_accepted,
             ) from error
+
+    def _prepare_upload_request(
+        self, upload_payload: dict[str, Any], open_torrent: BinaryIO
+    ) -> tuple[dict[str, Any], MultiPartFilesAltType]:
+        """Return the form fields and files for one UNIT3D upload.
+
+        Most UNIT3D sites accept description and MediaInfo as ordinary form
+        fields. Trackers whose API diverges can override this hook without
+        changing the wire format used by every sibling tracker.
+        """
+        return upload_payload, {"torrent": open_torrent}
+
+    def _resolve_uploaded_torrent_download_url(self, context: Any) -> str:
+        """Extract the registered-torrent URL from a successful response."""
+        if isinstance(context, str) and context:
+            return context
+        raise TrackerError(
+            "Tracker did not return a torrent download URL",
+            retryable=False,
+            server_accepted=True,
+            phase="download",
+        )
+
+    def _resolve_uploaded_torrent_download_url_with_retry(self, context: Any) -> str:
+        """Resolve an artifact URL without ever repeating the upload POST."""
+        return Retrying(
+            retry=retry_if_exception(
+                lambda error: (
+                    isinstance(error, TrackerError)
+                    and bool(getattr(error, "server_accepted", False))
+                    and bool(getattr(error, "retryable", False))
+                )
+            ),
+            stop=stop_after_attempt(RETRY_ATTEMPTS),
+            wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
+            reraise=True,
+        )(lambda: self._resolve_uploaded_torrent_download_url(context))
 
     def _download_uploaded_torrent(self, download_url: str) -> Path:
         """Stream the tracker-generated torrent to its final path atomically."""
@@ -395,11 +439,12 @@ class Unit3dBaseUploader:
         opt_in_to_mod_queue: bool | None = False,
         draft_queue_opt_in: bool | None = False,
         featured: bool | None = False,
-        free: bool | None = False,
+        free: bool | int | None = False,
         double_up: bool | None = False,
         sticky: bool | None = False,
         season_number: int | None = None,
         episode_number: int | None = None,
+        episode_number_end: int | None = None,
         season_pack: bool = False,
     ) -> dict[str, Any]:
         upload_payload: dict[str, Any] = {
@@ -451,6 +496,11 @@ class Unit3dBaseUploader:
                 upload_payload["episode_number"] = 0
             elif episode_number is not None:
                 upload_payload["episode_number"] = episode_number
+                if (
+                    episode_number_end is not None
+                    and episode_number_end != episode_number
+                ):
+                    upload_payload["episode_number_end"] = episode_number_end
             if season_pack:
                 # not in UNIT3D's documented upload fields and unread upstream;
                 # retained for forks that may consume it.

@@ -28,6 +28,10 @@ The versions so far:
   formerly locked trackers' stored values are necessarily stale (they were
   never editable, and `merge_defaults` only backfills *missing* keys), so
   they are refreshed from the packaged default.
+- 6 -> 7: LST's `free` upload option changed from a boolean to the API's
+  0--100 freeleech percentage. Disabled migrates to 0 and enabled to 100.
+- 7 -> 8: LST's torrent source flag changed from the incorrect ``LST`` to
+  the tracker-required ``LST.GG``. Other user-configured values are preserved.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -74,6 +78,8 @@ SCHEMA_3_VERSION = 3
 SCHEMA_4_VERSION = 4
 SCHEMA_5_VERSION = 5
 SCHEMA_6_VERSION = 6
+SCHEMA_7_VERSION = 7
+SCHEMA_8_VERSION = 8
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -594,12 +600,83 @@ def migrate_v5_to_v6(
     return new_doc, []
 
 
+def migrate_v6_to_v7(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Convert LST's legacy freeleech toggle to a percentage.
+
+    The old checkbox could only send ``0`` or ``1``. Under LST's current API,
+    that means 0% or 1%, while the enabled checkbox meant a fully freeleech
+    upload. Preserve that intent as 100%. Integer 0/1 values are handled too,
+    since older profiles sometimes persisted boolean flags that way. A
+    hand-edited percentage from 2 through 100 is retained.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_7_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    tracker_table = new_doc.get("tracker")
+    if not isinstance(tracker_table, Mapping):
+        return new_doc, []
+    lst = tracker_table.get("lst")
+    if not isinstance(lst, Mapping) or "free" not in lst:
+        return new_doc, []
+
+    legacy_free = _unwrap(lst["free"])
+    if type(legacy_free) is bool:
+        percentage = 100 if legacy_free else 0
+    elif type(legacy_free) is int and legacy_free in (0, 1):
+        percentage = 100 if legacy_free else 0
+    else:
+        percentage = legacy_free
+
+    migrated_lst = dict(lst)
+    migrated_lst["free"] = percentage
+    migrated_trackers = dict(tracker_table)
+    migrated_trackers["lst"] = migrated_lst
+    new_doc["tracker"] = migrated_trackers
+    return new_doc, []
+
+
+def migrate_v7_to_v8(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Correct LST's legacy torrent source flag without clobbering edits."""
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_8_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    tracker_table = new_doc.get("tracker")
+    if not isinstance(tracker_table, Mapping):
+        return new_doc, []
+    lst = tracker_table.get("lst")
+    if not isinstance(lst, Mapping) or _unwrap(lst.get("source")) != "LST":
+        return new_doc, []
+
+    migrated_lst = dict(lst)
+    migrated_lst["source"] = "LST.GG"
+    migrated_trackers = dict(tracker_table)
+    migrated_trackers["lst"] = migrated_lst
+    new_doc["tracker"] = migrated_trackers
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
     SCHEMA_3_VERSION: migrate_v3_to_v4,
     SCHEMA_4_VERSION: migrate_v4_to_v5,
     SCHEMA_5_VERSION: migrate_v5_to_v6,
+    SCHEMA_6_VERSION: migrate_v6_to_v7,
+    SCHEMA_7_VERSION: migrate_v7_to_v8,
 }
 
 

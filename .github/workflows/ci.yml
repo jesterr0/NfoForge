@@ -10,6 +10,8 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      URLLIB3_NO_OVERRIDE: "true"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4

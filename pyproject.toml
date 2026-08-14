@@ -1,6 +1,6 @@
 [project]
 name = "NfoForge"
-version = "1.1.6"
+version = "1.1.7"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -17,7 +17,7 @@ dependencies = [
     "shortuuid>=1.0.13",
     "torf>=4.3.0",
     "pillow>=12.3.0",
-    "platformdirs>=4.11.2",
+    "platformdirs>=4.11.3",
     "pyside6-essentials==6.11.1",
     "psutil>=7.2.0",
     "pyimgbox>=1.0.7",
@@ -80,6 +80,10 @@ include = [
 
 [tool.uv]
 constraint-dependencies = ["requests>=2.32.4"]
+# urllib3-future intentionally shares urllib3's import namespace when its
+# wheel is installed. Build it from source so Niquests can use its separate
+# urllib3_future namespace alongside the upstream urllib3 used by Requests.
+no-binary-package = ["urllib3-future"]
 
 [tool.ruff.lint]
 # `select` replaces ruff's defaults rather than extending them, so "F"

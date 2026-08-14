@@ -24,7 +24,7 @@ def lst_uploader(
     opt_in_to_mod_queue: bool,
     draft_queue_opt_in: bool,
     featured: bool,
-    free: bool,
+    free: int,
     double_up: bool,
     sticky: bool,
     mediainfo_obj: MediaInfo,

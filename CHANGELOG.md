@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.7] - 2026-08-14
+
+### Changed
+
+- Updated dependency platformdirs
+
+### Fixed
+
+- LST torrents now use the tracker-required `LST.GG` source flag instead of `LST`.
+- JSON tracker API uploads now explicitly request `application/json`, preventing validation failures from being returned as HTML redirects that obscure the API error.
+- Updated HUNO uploads for its new auto-mode API: descriptions and MediaInfo are uploaded as `.txt` files, season packs omit the episode field, and the registered torrent is resolved from HUNO's nested response before download. HUNO title overrides are no longer offered because auto mode generates the name from the torrent filename, MediaInfo and TMDB rather than accepting one; its Stream Optimized toggle is also removed because HUNO now detects that value from the audio format.
+- LST's staff freeleech option now accepts and uploads the API's required 0–100 percentage instead of sending a boolean as 0 or 1. Existing enabled settings migrate to 100% automatically.
+
+### Removed
+
+- NFO template validation, this is up to the users to ensure they have a proper template per tracker
+
 ## [1.1.6] - 2026-08-13
 
 ### Changed

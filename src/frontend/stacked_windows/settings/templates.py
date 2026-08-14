@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
-from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import HighlightKeywords
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -383,9 +382,6 @@ class TemplatesSettings(BaseSettings):
     def _save_settings(self) -> None:
         self._save_template_edited()
 
-        if not self._validate_tracker_templates():
-            return
-
         if not self._save_inputs_valid():
             return
 
@@ -429,59 +425,6 @@ class TemplatesSettings(BaseSettings):
                 is QMessageBox.StandardButton.Yes
             ):
                 self.template_selector.save_template()
-
-    def _validate_tracker_templates(self) -> bool:
-        for tracker in self.template_selector.popup_button.get_checked_items():
-            cur_tracker = TrackerSelection(tracker)
-            if cur_tracker is TrackerSelection.PASS_THE_POPCORN:
-                ptp_template = self.template_selector.backend.read_template(
-                    self.config.settings.trackers.pass_the_popcorn.nfo_template
-                )
-                if ptp_template:
-                    ptp_match_rule = r"^\n*?\s*?\{\{\s?media_info\s?\}\}\n*?\s*\{\{\s?screen_shots\s?\}\}"
-                    if not re.search(ptp_match_rule, ptp_template, flags=re.MULTILINE):
-                        if (
-                            QMessageBox.question(
-                                self,
-                                "Warning",
-                                "PassThePopcorn requires MediaInfo first followed by at least three screenshots. "
-                                "The start of your template should be:\n{{ media_info }}\n{{ screen_shots }}\n...\n\n"
-                                "Would you like to fix this now?",
-                            )
-                            is QMessageBox.StandardButton.Yes
-                        ):
-                            return False
-            elif cur_tracker in (
-                TrackerSelection.REELFLIX,
-                TrackerSelection.AITHER,
-                TrackerSelection.LST,
-                TrackerSelection.DARK_PEERS,
-                TrackerSelection.SHARE_ISLAND,
-                TrackerSelection.UPLOAD_CX,
-                TrackerSelection.ONLY_ENCODES,
-            ):
-                unit3d_template = self.template_selector.backend.read_template(
-                    self.config.settings.trackers.by_selection()[
-                        cur_tracker
-                    ].nfo_template
-                )
-                if unit3d_template:
-                    rf_match_rule = r"\{\{\s?screen_shots\s?\}\}"
-                    if not re.search(
-                        rf_match_rule, unit3d_template, flags=re.MULTILINE
-                    ):
-                        if (
-                            QMessageBox.question(
-                                self,
-                                "Warning",
-                                f"{cur_tracker} requires at least three screenshots in BBCode format. You "
-                                "should assign a template with {{ screen_shots }} and ensure you utilize "
-                                "the screenshot feature.\n\nWould you like to fix this now?",
-                            )
-                            is QMessageBox.StandardButton.Yes
-                        ):
-                            return False
-        return True
 
     def _save_inputs_valid(self) -> bool:
         inputs_to_validate = (

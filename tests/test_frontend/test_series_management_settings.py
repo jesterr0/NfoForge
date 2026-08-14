@@ -3,7 +3,10 @@ from pathlib import Path
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
+from src.backend.trackers.media_support import (
+    NO_RELEASE_NAME_FIELD,
+    UNSUPPORTED_SERIES_TRACKERS,
+)
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
@@ -60,14 +63,14 @@ def _make_series_management_settings(
 def test_movie_only_trackers_are_not_offered_as_series_overrides(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Movie-only trackers (ReelFliX, PassThePopcorn) can't upload series, so
-    they must not be selectable as per-format title override targets on the
-    Series Config screen. Every series-capable tracker must still be offered."""
+    """Only series-capable trackers that accept a name are offered."""
     widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
 
     assert UNSUPPORTED_SERIES_TRACKERS, "expected at least one movie-only tracker"
     all_trackers = set(manager.settings.trackers.by_selection().keys())
-    expected_offered = all_trackers - UNSUPPORTED_SERIES_TRACKERS
+    expected_offered = (
+        all_trackers - UNSUPPORTED_SERIES_TRACKERS - NO_RELEASE_NAME_FIELD
+    )
 
     for fmt, fmt_widgets in widget._format_widgets.items():
         override_trackers = set(fmt_widgets["tracker_override_map"].keys())
@@ -162,16 +165,10 @@ def test_every_tracker_with_a_title_field_is_editable_on_the_series_page(
             assert tfo.title_colon_replace.isEnabled()
 
 
-def test_a_tracker_with_no_packaged_series_entry_is_still_editable(
+def test_huno_auto_mode_offers_no_series_title_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """HUNO ships a movie title but no packaged `tvr_title_overrides`, so an
-    upload falls back to the global series template.
-
-    Shipping nothing is not a reason to offer nothing: the row is editable
-    and unticked, so the generated title is unchanged until the user fills
-    it in.
-    """
+    """HUNO generates its name and has no auto-mode name input to override."""
     widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
 
     packaged = manager.defaults.trackers.by_selection()[TrackerSelection.HUNO]
@@ -181,36 +178,30 @@ def test_a_tracker_with_no_packaged_series_entry_is_still_editable(
         assert not entry.replace_map
 
     for fmt in SUPPORTED_TVR_FORMATS:
-        tfo = widget._format_widgets[fmt]["tracker_override_map"][TrackerSelection.HUNO]
-        assert tfo.enabled_checkbox.isEnabled()
-        assert tfo.over_ride_format_title.isEnabled()
-        assert tfo.title_colon_replace.isEnabled()
-        assert not tfo.enabled_checkbox.isChecked()
-        assert not tfo.over_ride_format_title.toolTip()
+        controls = widget._format_widgets[fmt]
+        assert TrackerSelection.HUNO not in controls["tracker_override_map"]
+        combo = controls["tracker_selection"]
+        combo_trackers = {combo.itemData(i) for i in range(combo.count())}
+        assert TrackerSelection.HUNO not in combo_trackers
 
 
-def test_required_tracker_with_no_packaged_entry_persists_a_user_override(
+def test_huno_existing_series_override_is_left_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The other half of being editable: the save path must no longer skip it."""
+    """Hiding the inert control must not destructively rewrite old profiles."""
     widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
 
-    tfo = widget._format_widgets[EpisodeFormat.STANDARD]["tracker_override_map"][
-        TrackerSelection.HUNO
-    ]
-    tfo.enabled_checkbox.setChecked(True)
-    tfo.over_ride_format_title.setText("{title_clean} (user series)")
+    live = manager.settings.trackers.by_selection()[TrackerSelection.HUNO]
+    assert live.tvr_title_overrides is not None
+    existing = live.tvr_title_overrides[EpisodeFormat.STANDARD]
+    existing.enabled = True
+    existing.token = "{title_clean} (untouched)"  # noqa: S105
 
     widget._save_settings()
 
-    saved = (
-        manager.settings.trackers.by_selection()[
-            TrackerSelection.HUNO
-        ].tvr_title_overrides
-        or {}
-    )[EpisodeFormat.STANDARD]
-    assert saved.enabled
-    assert saved.token == "{title_clean} (user series)"  # noqa: S105 - template token string, not a credential
+    saved = (live.tvr_title_overrides or {})[EpisodeFormat.STANDARD]
+    assert saved.enabled is True
+    assert saved.token == "{title_clean} (untouched)"  # noqa: S105
 
 
 def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(

@@ -132,7 +132,7 @@ class LSTInfo(TrackerInfo):
 
     # below is only available to staff and internal users
     featured: bool = False
-    free: bool = False
+    free: int = 0
     double_up: bool = False
     sticky: bool = False
 

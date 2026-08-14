@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+import pytest
 import tomlkit
 
 from src.config.migrations import (
@@ -9,6 +10,8 @@ from src.config.migrations import (
     migrate_v3_to_v4,
     migrate_v4_to_v5,
     migrate_v5_to_v6,
+    migrate_v6_to_v7,
+    migrate_v7_to_v8,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -426,3 +429,59 @@ def test_v5_to_v6_does_not_mutate_the_document_it_was_given() -> None:
     assert doc["tracker"]["aither"]["mvr_title_token_override"] == (
         "{title_exact} (stale)"  # noqa: S105 - a title template, not a credential
     )
+
+
+@pytest.mark.parametrize(
+    ("legacy", "expected"),
+    [(False, 0), (True, 100), (0, 0), (1, 100), (50, 50)],
+)
+def test_v6_to_v7_converts_lst_freeleech_to_percentage(
+    legacy: bool | int, expected: int
+) -> None:
+    old = {"schema_version": 6, "tracker": {"lst": {"free": legacy}}}
+
+    new, unmapped = migrate_v6_to_v7(old, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 7
+    assert new["tracker"]["lst"]["free"] == expected
+    assert old["tracker"]["lst"]["free"] == legacy
+
+
+def test_v6_to_v7_survives_a_document_with_no_lst_table() -> None:
+    new, unmapped = migrate_v6_to_v7({"schema_version": 6}, None)
+
+    assert not unmapped
+    assert new == {"schema_version": 7}
+
+
+def test_v7_to_v8_corrects_lst_source_flag() -> None:
+    old = {
+        "schema_version": 7,
+        "tracker": {"lst": {"source": "LST", "free": 100}},
+    }
+
+    new, unmapped = migrate_v7_to_v8(old, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 8
+    assert new["tracker"]["lst"] == {"source": "LST.GG", "free": 100}
+    assert old["tracker"]["lst"]["source"] == "LST"
+
+
+@pytest.mark.parametrize("source", ["CUSTOM", "", None])
+def test_v7_to_v8_preserves_nonlegacy_lst_source(source: str | None) -> None:
+    old = {"schema_version": 7, "tracker": {"lst": {"source": source}}}
+
+    new, unmapped = migrate_v7_to_v8(old, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 8
+    assert new["tracker"]["lst"]["source"] == source
+
+
+def test_v7_to_v8_survives_a_document_with_no_lst_table() -> None:
+    new, unmapped = migrate_v7_to_v8({"schema_version": 7}, None)
+
+    assert not unmapped
+    assert new == {"schema_version": 8}
