@@ -11,6 +11,7 @@ from src.config.paths import ConfigPaths
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.tracker_management import (
     BHDTrackerEdit,
+    LSTTrackerEdit,
 )
 from src.frontend.custom_widgets.tracker_settings import (
     TrackerListDelegate,
@@ -210,3 +211,20 @@ def test_tracker_list_exposes_hover_drag_grip(
 
     assert isinstance(selector.tracker_list.itemDelegate(), TrackerListDelegate)
     assert selector.tracker_list.hasMouseTracking()
+
+
+def test_lst_freeleech_percentage_loads_and_saves(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    manager.settings.trackers.lst.free = 50
+    editor = LSTTrackerEdit(manager)
+
+    editor.load_settings()
+    assert editor.free.minimum() == 0
+    assert editor.free.maximum() == 100
+    assert editor.free.value() == 50
+
+    editor.free.setValue(75)
+    editor.save_settings()
+    assert manager.settings.trackers.lst.free == 75

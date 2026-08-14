@@ -1595,7 +1595,7 @@ class TypedTomlOperations:
                 mod_queue_opt_in=lst_tracker_data["mod_queue_opt_in"],
                 draft_queue_opt_in=lst_tracker_data["draft_queue_opt_in"],
                 featured=lst_tracker_data["featured"],
-                free=lst_tracker_data["free"],
+                free=int(lst_tracker_data["free"]),
                 double_up=lst_tracker_data["double_up"],
                 sticky=lst_tracker_data["sticky"],
                 image_width=lst_tracker_data["image_width"],

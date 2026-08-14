@@ -799,8 +799,11 @@ class LSTTrackerEdit(TrackerEditBase):
         featured_lbl = QLabel("Featured", self)
         self.featured = QCheckBox(self)
 
-        free_lbl = QLabel("Free", self)
-        self.free = QCheckBox(self)
+        free_lbl = QLabel("Freeleech", self)
+        self.free = QSpinBox(self)
+        self.free.setRange(0, 100)
+        self.free.setSuffix("%")
+        self._disable_scrollwheel_spinbox(self.free)
 
         double_up_lbl = QLabel("Double Up", self)
         self.double_up = QCheckBox(self)
@@ -841,7 +844,7 @@ class LSTTrackerEdit(TrackerEditBase):
         self.draft_queue_opt_in.setChecked(bool(tracker_data.draft_queue_opt_in))
         self.image_width.setValue(tracker_data.image_width)
         self.featured.setChecked(bool(tracker_data.featured))
-        self.free.setChecked(bool(tracker_data.free))
+        self.free.setValue(tracker_data.free)
         self.double_up.setChecked(bool(tracker_data.double_up))
         self.sticky.setChecked(bool(tracker_data.sticky))
         if self.screen_shot_settings:
@@ -875,7 +878,7 @@ class LSTTrackerEdit(TrackerEditBase):
         )
         self.config.settings.trackers.lst.image_width = self.image_width.value()
         self.config.settings.trackers.lst.featured = self.featured.isChecked()
-        self.config.settings.trackers.lst.free = self.free.isChecked()
+        self.config.settings.trackers.lst.free = self.free.value()
         self.config.settings.trackers.lst.double_up = self.double_up.isChecked()
         self.config.settings.trackers.lst.sticky = self.sticky.isChecked()
         if self.screen_shot_settings:

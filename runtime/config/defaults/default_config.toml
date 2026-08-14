@@ -1,4 +1,4 @@
-schema_version = 6
+schema_version = 7
 
 [general]
 ui_suffix = ""
@@ -393,7 +393,7 @@ personal_release = false
 mod_queue_opt_in = false
 draft_queue_opt_in = false
 featured = false
-free = false
+free = 0
 double_up = false
 sticky = false
 image_width = 500

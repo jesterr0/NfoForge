@@ -13,7 +13,7 @@ TomlMutableMapping = TypeVar("TomlMutableMapping", bound=MutableMapping[str, Any
 class TomlConfigCodec:
     """Document-level TOML schema utilities used by the typed config manager."""
 
-    SCHEMA_VERSION = 6
+    SCHEMA_VERSION = 7
 
     @classmethod
     def validate_schema(cls, document: Mapping[str, Any]) -> None:
@@ -142,6 +142,7 @@ class TomlConfigCodec:
             "urls.vertical": config.urls.vertical >= 0,
             "urls.horizontal": config.urls.horizontal >= 0,
             "urls.image_width": config.urls.image_width >= 0,
+            "tracker.lst.free": 0 <= config.trackers.lst.free <= 100,
             "template_settings.newline_sequence": config.templates.newline_sequence
             in {"\n", "\r", "\r\n"},
         }

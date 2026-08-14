@@ -2361,7 +2361,7 @@ class ProcessBackEnd:
                 opt_in_to_mod_queue=bool(lst_payload.mod_queue_opt_in),
                 draft_queue_opt_in=bool(lst_payload.draft_queue_opt_in),
                 featured=bool(lst_payload.featured),
-                free=bool(lst_payload.free),
+                free=lst_payload.free,
                 double_up=bool(lst_payload.double_up),
                 sticky=bool(lst_payload.sticky),
                 mediainfo_obj=mediainfo_obj,
