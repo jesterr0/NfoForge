@@ -80,6 +80,10 @@ include = [
 
 [tool.uv]
 constraint-dependencies = ["requests>=2.32.4"]
+# urllib3-future intentionally shares urllib3's import namespace when its
+# wheel is installed. Build it from source so Niquests can use its separate
+# urllib3_future namespace alongside the upstream urllib3 used by Requests.
+no-binary-package = ["urllib3-future"]
 
 [tool.ruff.lint]
 # `select` replaces ruff's defaults rather than extending them, so "F"
