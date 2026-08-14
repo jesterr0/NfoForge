@@ -6,7 +6,11 @@ from typing import Any
 import niquests
 from niquests.typing import MultiPartFilesAltType
 
-from src.backend.trackers.utils import DISC_TITLE_REGEX, TRACKER_HEADERS
+from src.backend.trackers.utils import (
+    API_TRACKER_HEADERS,
+    DISC_TITLE_REGEX,
+    TRACKER_HEADERS,
+)
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.media_info_utils import MinimalMediaInfo
@@ -205,6 +209,7 @@ class BHDUploader:
                 self._upload_url,
                 data=upload_payload,
                 files=self._files(),
+                headers=API_TRACKER_HEADERS,
                 timeout=self.timeout,
             )
             if not response.ok or response.status_code != 200:

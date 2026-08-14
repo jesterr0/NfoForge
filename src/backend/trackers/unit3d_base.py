@@ -14,6 +14,7 @@ from tenacity import Retrying, retry_if_exception, stop_after_attempt
 from tenacity.wait import wait_exponential
 
 from src.backend.trackers.utils import (
+    API_TRACKER_HEADERS,
     DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
@@ -236,7 +237,7 @@ class Unit3dBaseUploader:
                     files=request_files,
                     params=params,
                     data=request_data,
-                    headers=TRACKER_HEADERS,
+                    headers=API_TRACKER_HEADERS,
                     timeout=self.timeout,
                 ) as response:
                     response_json = response.json()

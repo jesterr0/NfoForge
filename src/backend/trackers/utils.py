@@ -14,6 +14,11 @@ TRACKER_HEADERS = {
     "User-Agent": f"{program_name} v{__version__} ({platform.system()} {platform.release()})"
 }
 
+# JSON API requests must explicitly advertise the representation they expect.
+# Do not add this to TRACKER_HEADERS: several trackers upload through ordinary
+# browser-style forms and legitimately return HTML or plain text.
+API_TRACKER_HEADERS = {**TRACKER_HEADERS, "Accept": "application/json"}
+
 # Shared disc-detection heuristic used by every tracker that infers a
 # release's disc/encode/remux type from its filename (BeyondHD, the UNIT3D
 # family, PassThePopcorn, HDBits). Compiled case-insensitively: its literal

@@ -4,6 +4,7 @@ from unittest.mock import ANY, MagicMock, patch
 
 from src.backend.trackers.aither import AitherUploader
 from src.backend.trackers.huno import HunoUploader
+from src.backend.trackers.utils import API_TRACKER_HEADERS
 from src.enums.media_type import MediaType
 
 
@@ -239,6 +240,7 @@ def test_huno_upload_accepts_nested_success_response(
     assert _huno_uploader(tmp_path).upload(tracker_title="Ignored title") is True
 
     request = post.call_args.kwargs
+    assert request["headers"] == API_TRACKER_HEADERS
     assert request["data"] == {
         "category_id": "1",
         "type_id": "3",
