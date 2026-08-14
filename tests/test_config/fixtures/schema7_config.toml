@@ -1,0 +1,5 @@
+schema_version = 7
+
+[tracker.lst]
+source = "LST"
+free = 100

@@ -30,6 +30,8 @@ The versions so far:
   they are refreshed from the packaged default.
 - 6 -> 7: LST's `free` upload option changed from a boolean to the API's
   0--100 freeleech percentage. Disabled migrates to 0 and enabled to 100.
+- 7 -> 8: LST's torrent source flag changed from the incorrect ``LST`` to
+  the tracker-required ``LST.GG``. Other user-configured values are preserved.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -77,6 +79,7 @@ SCHEMA_4_VERSION = 4
 SCHEMA_5_VERSION = 5
 SCHEMA_6_VERSION = 6
 SCHEMA_7_VERSION = 7
+SCHEMA_8_VERSION = 8
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -639,6 +642,33 @@ def migrate_v6_to_v7(
     return new_doc, []
 
 
+def migrate_v7_to_v8(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Correct LST's legacy torrent source flag without clobbering edits."""
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_8_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    tracker_table = new_doc.get("tracker")
+    if not isinstance(tracker_table, Mapping):
+        return new_doc, []
+    lst = tracker_table.get("lst")
+    if not isinstance(lst, Mapping) or _unwrap(lst.get("source")) != "LST":
+        return new_doc, []
+
+    migrated_lst = dict(lst)
+    migrated_lst["source"] = "LST.GG"
+    migrated_trackers = dict(tracker_table)
+    migrated_trackers["lst"] = migrated_lst
+    new_doc["tracker"] = migrated_trackers
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -646,6 +676,7 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_4_VERSION: migrate_v4_to_v5,
     SCHEMA_5_VERSION: migrate_v5_to_v6,
     SCHEMA_6_VERSION: migrate_v6_to_v7,
+    SCHEMA_7_VERSION: migrate_v7_to_v8,
 }
 
 

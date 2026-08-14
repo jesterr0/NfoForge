@@ -37,7 +37,7 @@ _TRACKERS = {
         upload_enabled=True,
         nfo_template="default",
         announce_url="https://lst.invalid/LSTKEY/announce",
-        source="LST",
+        source="LST.GG",
         comments=None,
     ),
 }
@@ -199,7 +199,7 @@ def test_every_tracker_gets_only_its_own_identity(
     assert aither.comment == "Uploaded to Aither"
 
     assert lst.trackers == [["https://lst.invalid/LSTKEY/announce"]]
-    assert lst.metainfo["info"]["source"] == "LST"  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert lst.metainfo["info"]["source"] == "LST.GG"  # pyright: ignore[reportTypedDictNotRequiredAccess]
     # LST configures no comment, so it must not inherit Aither's
     assert lst.comment is None
     assert "comment" not in lst.metainfo

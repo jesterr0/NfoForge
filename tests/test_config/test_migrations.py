@@ -11,6 +11,7 @@ from src.config.migrations import (
     migrate_v4_to_v5,
     migrate_v5_to_v6,
     migrate_v6_to_v7,
+    migrate_v7_to_v8,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -452,3 +453,35 @@ def test_v6_to_v7_survives_a_document_with_no_lst_table() -> None:
 
     assert not unmapped
     assert new == {"schema_version": 7}
+
+
+def test_v7_to_v8_corrects_lst_source_flag() -> None:
+    old = {
+        "schema_version": 7,
+        "tracker": {"lst": {"source": "LST", "free": 100}},
+    }
+
+    new, unmapped = migrate_v7_to_v8(old, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 8
+    assert new["tracker"]["lst"] == {"source": "LST.GG", "free": 100}
+    assert old["tracker"]["lst"]["source"] == "LST"
+
+
+@pytest.mark.parametrize("source", ["CUSTOM", "", None])
+def test_v7_to_v8_preserves_nonlegacy_lst_source(source: str | None) -> None:
+    old = {"schema_version": 7, "tracker": {"lst": {"source": source}}}
+
+    new, unmapped = migrate_v7_to_v8(old, None)
+
+    assert not unmapped
+    assert new["schema_version"] == 8
+    assert new["tracker"]["lst"]["source"] == source
+
+
+def test_v7_to_v8_survives_a_document_with_no_lst_table() -> None:
+    new, unmapped = migrate_v7_to_v8({"schema_version": 7}, None)
+
+    assert not unmapped
+    assert new == {"schema_version": 8}

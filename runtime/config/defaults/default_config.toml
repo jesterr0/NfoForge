@@ -1,4 +1,4 @@
-schema_version = 7
+schema_version = 8
 
 [general]
 ui_suffix = ""
@@ -355,7 +355,7 @@ image_width = 350
 upload_enabled = true
 announce_url = ""
 enabled = false
-source = "LST"
+source = "LST.GG"
 comments = ""
 nfo_template = ""
 url_type = 1
