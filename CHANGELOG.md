@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.7] - 2026-08-14
+
+### Changed
+
+- Updated dependency platformdirs
 
 ### Fixed
 
