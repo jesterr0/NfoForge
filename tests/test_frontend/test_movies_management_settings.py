@@ -122,35 +122,30 @@ def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(
     assert live.mvr_title_token_override == "{title_clean} (my own)"  # noqa: S105
 
 
-def test_pass_the_popcorn_offers_no_title_override(
+def test_trackers_without_release_name_offer_no_title_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PTP's upload has no release-name field at all (see `ptp_uploader`) --
-    unlike every other tracker, there is nothing here for a title override to
-    shape, so it gets no row rather than an editable control that does
-    nothing.
-
-    Its own title is still generated and shown in the process log, the saved
-    job, and the overview/edit dialog (which has its own per-job title
-    field) -- this is only about the Settings-level template.
-    """
+    """Do not offer an override that neither uploader can transmit."""
     widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
 
-    assert TrackerSelection.PASS_THE_POPCORN not in widget.tracker_override_map
     combo = widget.tracker_selection
     combo_trackers = {combo.itemData(i) for i in range(combo.count())}
-    assert TrackerSelection.PASS_THE_POPCORN not in combo_trackers
+    excluded = (TrackerSelection.PASS_THE_POPCORN, TrackerSelection.HUNO)
+    for tracker in excluded:
+        assert tracker not in widget.tracker_override_map
+        assert tracker not in combo_trackers
 
-    # nothing to persist for it, so an existing settings value (there
-    # shouldn't be one, but just in case) is left untouched by save
-    live = manager.settings.trackers.by_selection()[TrackerSelection.PASS_THE_POPCORN]
-    live.mvr_title_override_enabled = True
-    live.mvr_title_token_override = "{title_clean} (untouched)"  # noqa: S105
+        # Existing profile values remain inert rather than being destroyed.
+        live = manager.settings.trackers.by_selection()[tracker]
+        live.mvr_title_override_enabled = True
+        live.mvr_title_token_override = "{title_clean} (untouched)"  # noqa: S105
 
     widget._save_settings()
 
-    assert live.mvr_title_override_enabled is True
-    assert live.mvr_title_token_override == "{title_clean} (untouched)"  # noqa: S105
+    for tracker in excluded:
+        live = manager.settings.trackers.by_selection()[tracker]
+        assert live.mvr_title_override_enabled is True
+        assert live.mvr_title_token_override == "{title_clean} (untouched)"  # noqa: S105
 
 
 def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(

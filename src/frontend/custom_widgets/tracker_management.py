@@ -711,9 +711,6 @@ class HunoTrackerEdit(TrackerEditBase):
         internal_lbl = QLabel("Internal", self)
         self.internal = QCheckBox(self)
 
-        stream_optimized_lbl = QLabel("Stream Optimized", self)
-        self.stream_optimized = QCheckBox(self)
-
         image_width_lbl = QLabel("Image Width", self)
         self.image_width = QSpinBox(self)
         self.image_width.setRange(300, 2000)
@@ -722,7 +719,6 @@ class HunoTrackerEdit(TrackerEditBase):
         self.add_pair_to_layout(api_key_lbl, self.api_key)
         self.add_pair_to_layout(anonymous_lbl, self.anonymous)
         self.add_pair_to_layout(internal_lbl, self.internal)
-        self.add_pair_to_layout(stream_optimized_lbl, self.stream_optimized)
         self.add_pair_to_layout(image_width_lbl, self.image_width)
         self.add_screen_shot_settings()
 
@@ -737,7 +733,6 @@ class HunoTrackerEdit(TrackerEditBase):
         self.api_key.setText(tracker_data.api_key if tracker_data.api_key else "")
         self.anonymous.setChecked(bool(tracker_data.anonymous))
         self.internal.setChecked(bool(tracker_data.internal))
-        self.stream_optimized.setChecked(bool(tracker_data.stream_optimized))
         self.image_width.setValue(tracker_data.image_width)
         if self.screen_shot_settings:
             self.screen_shot_settings.load_settings(
@@ -759,9 +754,6 @@ class HunoTrackerEdit(TrackerEditBase):
         self.config.settings.trackers.huno.api_key = self.api_key.text().strip()
         self.config.settings.trackers.huno.anonymous = self.anonymous.isChecked()
         self.config.settings.trackers.huno.internal = self.internal.isChecked()
-        self.config.settings.trackers.huno.stream_optimized = (
-            self.stream_optimized.isChecked()
-        )
         self.config.settings.trackers.huno.image_width = self.image_width.value()
         if self.screen_shot_settings:
             col_s, col_space, row_space = self.screen_shot_settings.current_settings()

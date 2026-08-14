@@ -88,6 +88,7 @@ from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.health import ensure_tracker_health
 from src.backend.trackers.media_support import (
+    NO_RELEASE_NAME_FIELD,
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
@@ -1029,16 +1030,17 @@ class ProcessBackEnd:
 
             # generate tracker title first
             tracker_title = None
-            generated_tracker_title = self.generate_tracker_title(
-                tracker=cur_tracker,
-                tracker_info=tracker_info,
-                context=context,
-                release_info=release_info,
-            )
-            if generated_tracker_title:
-                tracker_title = self.tracker_title_formatting(
-                    cur_tracker, generated_tracker_title
+            if cur_tracker not in NO_RELEASE_NAME_FIELD:
+                generated_tracker_title = self.generate_tracker_title(
+                    tracker=cur_tracker,
+                    tracker_info=tracker_info,
+                    context=context,
+                    release_info=release_info,
                 )
+                if generated_tracker_title:
+                    tracker_title = self.tracker_title_formatting(
+                        cur_tracker, generated_tracker_title
+                    )
 
             nfo_template = self.template_selector_be.read_template(
                 name=tracker_info.nfo_template
@@ -2331,16 +2333,15 @@ class ProcessBackEnd:
                 api_key=huno_payload.api_key,
                 torrent_file=torrent_file,
                 input_path=input_path,
-                tracker_title=tracker_title,
                 nfo=nfo,
                 internal=bool(huno_payload.internal),
                 anonymous=bool(huno_payload.anonymous),
-                stream_optimized=bool(huno_payload.stream_optimized),
                 mediainfo_obj=mediainfo_obj,
                 media_search_payload=media_search_obj,
                 timeout=self.config.settings.general.timeout,
                 season_number=release_info.season,
                 episode_number=release_info.episode_start,
+                episode_number_end=release_info.episode_end,
                 season_pack=release_info.is_pack,
             )
         elif tracker is TrackerSelection.LST:

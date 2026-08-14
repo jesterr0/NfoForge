@@ -15,7 +15,7 @@ from src.backend.trackers.beyondhd import BHDUploader
 from src.backend.trackers.blutopia import BlutopiaUploader
 from src.backend.trackers.darkpeers import DarkPeersUploader
 from src.backend.trackers.fearnopeer import FearNoPeerUploader
-from src.backend.trackers.huno import HunoUploader
+from src.backend.trackers.huno import HunoUploader, huno_uploader
 from src.backend.trackers.lst import LSTUploader
 from src.backend.trackers.media_support import (
     NO_RELEASE_NAME_FIELD,
@@ -748,12 +748,10 @@ def test_unit3d_trackers_lists_every_unit3d_uploader(tmp_path: Path) -> None:
     assert discovered == UNIT3D_TRACKERS
 
 
-def test_no_release_name_field_matches_ptp_uploaders_signature() -> None:
-    """PTP is excluded from the Movies/Series Management title-override rows
-    because `ptp_uploader` takes no `tracker_title` parameter at all -- every
-    other tracker's upload function does. Tied to the signature so that if PTP
-    ever gains a release-name field, this fails instead of leaving a stale
-    exclusion (or the settings pages) unnoticed.
-    """
+def test_no_release_name_field_matches_uploaders_without_title_inputs() -> None:
+    """Keep the title-override exclusions tied to the uploader contracts."""
     assert "tracker_title" not in inspect.signature(ptp_uploader).parameters
-    assert NO_RELEASE_NAME_FIELD == frozenset({TrackerSelection.PASS_THE_POPCORN})
+    assert "tracker_title" not in inspect.signature(huno_uploader).parameters
+    assert NO_RELEASE_NAME_FIELD == frozenset(
+        {TrackerSelection.PASS_THE_POPCORN, TrackerSelection.HUNO}
+    )
