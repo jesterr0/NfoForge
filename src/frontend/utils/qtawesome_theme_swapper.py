@@ -26,6 +26,7 @@ class QTAwesomeThemeSwapper(QObject):
             super().__init__()
             # list of (widget, icon_name, icon_kwargs)
             self._icon_widgets: list[tuple[Any, str, dict[str, Any]]] = []
+            self._current_color = self.LIGHT_COLOR
             self._initialized = True
 
             # connect to color scheme change signal
@@ -42,10 +43,10 @@ class QTAwesomeThemeSwapper(QObject):
     @Slot(Qt.ColorScheme)
     def update_icon(self, color_scheme: Qt.ColorScheme) -> None:
         """Updates the SVG icon based on the color scheme."""
-        if color_scheme == Qt.ColorScheme.Dark:
-            self.swap_all_icons(self.DARK_COLOR)
-        else:
-            self.swap_all_icons(self.LIGHT_COLOR)
+        self._current_color = (
+            self.DARK_COLOR if color_scheme == Qt.ColorScheme.Dark else self.LIGHT_COLOR
+        )
+        self.swap_all_icons(self._current_color)
 
     def register(
         self,
@@ -57,9 +58,8 @@ class QTAwesomeThemeSwapper(QObject):
         """Register a widget and its icon info for theme swapping."""
         self._icon_widgets.append((widget, icon_name, icon_kwargs))
         icon_args = dict(icon_kwargs)
-        if "color" not in icon_args:
-            icon_args["color"] = self.LIGHT_COLOR
-        widget.setIcon(qta.icon(icon_name, **icon_kwargs))
+        icon_args["color"] = self._current_color
+        widget.setIcon(qta.icon(icon_name, **icon_args))
         if icon_size:
             widget.setIconSize(icon_size)
             # we must call update on IconWidgets to correctly update the size

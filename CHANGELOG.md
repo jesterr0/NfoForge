@@ -16,6 +16,7 @@
 ### Fixed
 
 - Media Search SVGs now theme properly/automatically for dark/light modes
+- A bug when user selects **Start Over** in dark mode all the SVGs/icons could default to light mode even thought he client stayed in dark mode
 
 ### Removed
 
