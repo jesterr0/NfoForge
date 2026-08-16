@@ -8,6 +8,7 @@ from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.logging_settings import LogLevel
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
@@ -98,6 +99,7 @@ class GeneralSettings:
     enable_plugins: bool
     releasers_name: str
     tmdb_language: str
+    media_search_mode: MediaSearchMode
     timeout: int
     enable_prompt_overview: bool
     enable_mkbrr: bool

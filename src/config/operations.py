@@ -38,6 +38,7 @@ from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.logging_settings import LogLevel
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.series import EpisodeFormat
@@ -149,6 +150,9 @@ class TypedTomlOperations:
             general_data["enable_plugins"] = self.settings.general.enable_plugins
             general_data["releasers_name"] = self.settings.general.releasers_name
             general_data["tmdb_language"] = self.settings.general.tmdb_language
+            general_data["media_search_mode"] = (
+                self.settings.general.media_search_mode.value
+            )
             general_data["timeout"] = self.settings.general.timeout
             general_data["enable_prompt_overview"] = (
                 self.settings.general.enable_prompt_overview
@@ -2042,6 +2046,9 @@ class TypedTomlOperations:
                     enable_plugins=bool(general_data["enable_plugins"]),
                     releasers_name=str(general_data["releasers_name"]),
                     tmdb_language=str(general_data["tmdb_language"]),
+                    media_search_mode=MediaSearchMode(
+                        general_data["media_search_mode"]
+                    ),
                     timeout=int(general_data["timeout"]),
                     enable_prompt_overview=bool(general_data["enable_prompt_overview"]),
                     enable_mkbrr=bool(general_data["enable_mkbrr"]),

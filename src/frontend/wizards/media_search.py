@@ -38,6 +38,7 @@ from src.backend.utils.title_inference import MediaTitleInferer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import (
@@ -60,7 +61,9 @@ from src.utils.super_sub import normalize_super_sub
 
 
 class _MediaSearchBackend(Protocol):
-    def _parse_tmdb_api(self, media_str: str) -> dict[str, dict[str, Any]]: ...
+    def _parse_tmdb_api(
+        self, media_str: str, search_mode: MediaSearchMode
+    ) -> dict[str, dict[str, Any]]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +80,7 @@ def _run_media_search_job(
     query: str | None,
     input_path: Path | None,
     selected_files: tuple[Path, ...],
+    search_mode: MediaSearchMode = MediaSearchMode.BOTH,
 ) -> MediaSearchJobResult:
     """Infer an automatic query and perform the network search in one worker."""
 
@@ -109,7 +113,7 @@ def _run_media_search_job(
 
     return MediaSearchJobResult(
         query=query,
-        results=OrderedDict(backend._parse_tmdb_api(query)),
+        results=OrderedDict(backend._parse_tmdb_api(query, search_mode)),
     )
 
 
@@ -885,6 +889,7 @@ class MediaSearch(BaseWizardPage):
             query,
             input_path,
             selected_files,
+            self.config.settings.general.media_search_mode,
         )
         self.search_worker = worker
         worker.finished.connect(

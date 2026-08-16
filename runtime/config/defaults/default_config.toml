@@ -7,6 +7,7 @@ nfo_forge_theme = 1
 enable_plugins = false
 releasers_name = ""
 tmdb_language = "en-US"
+media_search_mode = "Movies & TV"
 timeout = 60
 enable_prompt_overview = true
 enable_mkbrr = true

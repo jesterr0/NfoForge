@@ -7,6 +7,7 @@ import pytest
 
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
@@ -143,6 +144,64 @@ def test_tmdb_search_query_is_sent_as_a_parameter(
     assert isinstance(params, dict)
     assert params["query"] == "Fast & Furious #9"
     assert params["year"] == "2024"
+
+
+@pytest.mark.parametrize(
+    ("search_mode", "endpoint", "year_param", "result", "expected_media_type"),
+    [
+        (
+            MediaSearchMode.MOVIES,
+            "movie",
+            "primary_release_year",
+            {
+                "id": 1,
+                "title": "Example Movie",
+                "original_title": "Example Movie",
+                "release_date": "2024-01-02",
+            },
+            "Movie",
+        ),
+        (
+            MediaSearchMode.TV,
+            "tv",
+            "first_air_date_year",
+            {
+                "id": 2,
+                "name": "Example Show",
+                "original_name": "Example Show",
+                "first_air_date": "2024-03-04",
+            },
+            "Series",
+        ),
+    ],
+)
+def test_tmdb_restricted_search_uses_dedicated_endpoint_and_media_type(
+    search_mode: MediaSearchMode,
+    endpoint: str,
+    year_param: str,
+    result: dict[str, Any],
+    expected_media_type: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = MediaSearchBackEnd()
+    request: dict[str, Any] = {}
+    monkeypatch.setattr(backend, "_guessit", lambda _value: ("Example", "2024"))
+
+    def get(url: str, **kwargs: object) -> _Response:
+        request["url"] = url
+        request.update(kwargs)
+        return _Response({"results": [result]})
+
+    monkeypatch.setattr(backend.session, "get", get)
+
+    parsed = backend._parse_tmdb_api("ignored", search_mode)
+
+    assert request["url"] == f"https://api.themoviedb.org/3/search/{endpoint}"
+    params = request["params"]
+    assert isinstance(params, dict)
+    assert params[year_param] == "2024"
+    assert "year" not in params
+    assert next(iter(parsed.values()))["media_type"] == expected_media_type
 
 
 @pytest.mark.parametrize("media_id", ["../../person/1234", "123&api_key=x", "²"])

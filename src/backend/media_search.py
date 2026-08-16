@@ -12,6 +12,7 @@ from unidecode import unidecode
 
 from src.backend.utils.guessit_helpers import get_guessit_title
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
@@ -58,7 +59,11 @@ class MediaSearchBackEnd:
         """Cleanup when object is destroyed"""
         self.close_session()
 
-    def _parse_tmdb_api(self, media_str: str) -> dict[str, dict[str, Any]]:
+    def _parse_tmdb_api(
+        self,
+        media_str: str,
+        search_mode: MediaSearchMode = MediaSearchMode.BOTH,
+    ) -> dict[str, dict[str, Any]]:
         media_title, media_year = self._guessit(media_str)
 
         # ensure we don't leave a previous successful search available while a new
@@ -70,19 +75,33 @@ class MediaSearchBackEnd:
             "page": 1,
             "query": media_title,
         }
-        if media_year:
-            search_params["year"] = media_year
+        forced_media_type: str | None = None
+        if search_mode is MediaSearchMode.MOVIES:
+            endpoint = "movie"
+            forced_media_type = "movie"
+            if media_year:
+                search_params["primary_release_year"] = media_year
+        elif search_mode is MediaSearchMode.TV:
+            endpoint = "tv"
+            forced_media_type = "tv"
+            if media_year:
+                search_params["first_air_date_year"] = media_year
+        else:
+            endpoint = "multi"
+            if media_year:
+                # Preserve the existing mixed-search request behavior.
+                search_params["year"] = media_year
 
-        multi_results = self._fetch_tmdb_results(
-            "https://api.themoviedb.org/3/search/multi",
+        search_results = self._fetch_tmdb_results(
+            f"https://api.themoviedb.org/3/search/{endpoint}",
             params=search_params,
         )
 
         media_dict: dict[str, dict[str, Any]] = {}
         base_num = 0
 
-        for result in multi_results:
-            media_type = result.get("media_type")
+        for result in search_results:
+            media_type = forced_media_type or result.get("media_type")
 
             # skip person results, only process movie and tv
             if media_type not in ["movie", "tv"]:

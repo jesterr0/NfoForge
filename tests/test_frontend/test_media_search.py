@@ -8,6 +8,7 @@ from src.backend.media_search import MediaSearchBackEnd
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
@@ -98,6 +99,7 @@ def test_automatic_search_uses_inferred_title_and_selected_files(
     selected_file.parent.mkdir()
     selected_file.write_bytes(b"")
     calls: list[tuple[Path, tuple[Path, ...]]] = []
+    search_modes: list[MediaSearchMode] = []
 
     class FakeInferer:
         def infer(self, path: Path, video_files: tuple[Path, ...]):
@@ -105,7 +107,8 @@ def test_automatic_search_uses_inferred_title_and_selected_files(
             return type("Result", (), {"title": "Inferred Movie", "confidence": 1.0})()
 
     class FakeBackend:
-        def _parse_tmdb_api(self, media_str: str):
+        def _parse_tmdb_api(self, media_str: str, search_mode: MediaSearchMode):
+            search_modes.append(search_mode)
             return OrderedDict([(media_str, {"title": media_str})])
 
     monkeypatch.setattr(
@@ -124,26 +127,37 @@ def test_automatic_search_uses_inferred_title_and_selected_files(
         results=OrderedDict([("Inferred Movie", {"title": "Inferred Movie"})]),
     )
     assert calls == [(input_path, (selected_file,))]
+    assert search_modes == [MediaSearchMode.BOTH]
 
 
 def test_manual_search_bypasses_title_inference(monkeypatch) -> None:
+    search_modes: list[MediaSearchMode] = []
+
     class FailingInferer:
         def __init__(self) -> None:
             raise AssertionError("manual searches must not infer a title")
 
     class FakeBackend:
-        def _parse_tmdb_api(self, media_str: str):
+        def _parse_tmdb_api(self, media_str: str, search_mode: MediaSearchMode):
+            search_modes.append(search_mode)
             return OrderedDict([(media_str, {"title": media_str})])
 
     monkeypatch.setattr(
         "src.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
     )
 
-    result = _run_media_search_job(FakeBackend(), "Manual Movie", None, tuple())
+    result = _run_media_search_job(
+        FakeBackend(),
+        "Manual Movie",
+        None,
+        tuple(),
+        MediaSearchMode.MOVIES,
+    )
 
     assert result.query == "Manual Movie"
     assert list(result.results) == ["Manual Movie"]
     assert result.title_error is None
+    assert search_modes == [MediaSearchMode.MOVIES]
 
 
 def test_title_inference_failure_returns_manual_search_error(
@@ -154,7 +168,7 @@ def test_title_inference_failure_returns_manual_search_error(
             raise ValueError("No usable title evidence")
 
     class FakeBackend:
-        def _parse_tmdb_api(self, media_str: str):
+        def _parse_tmdb_api(self, media_str: str, search_mode: MediaSearchMode):
             return OrderedDict([(media_str, {"title": media_str})])
 
     monkeypatch.setattr(

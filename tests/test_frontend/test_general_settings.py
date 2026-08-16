@@ -7,6 +7,7 @@ import tomlkit
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
+from src.enums.media_search_mode import MediaSearchMode
 from src.frontend.stacked_windows.settings.general import GeneralSettings
 from tests.repo_paths import DEFAULT_CONFIG_DIR
 
@@ -107,3 +108,29 @@ def test_swap_config_to_compatible_profile_switches_current_config(
 
     assert manager.program.current_config == "second"
     assert reload_calls == [True]
+
+
+def test_media_search_mode_loads_saves_and_resets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_general_settings(tmp_path, monkeypatch)
+
+    assert (
+        MediaSearchMode(widget.media_search_mode_combo.currentData())
+        is MediaSearchMode.BOTH
+    )
+
+    widget.media_search_mode_combo.setCurrentIndex(
+        widget.media_search_mode_combo.findData(MediaSearchMode.TV)
+    )
+    widget._save_settings()
+    assert manager.settings.general.media_search_mode is MediaSearchMode.TV
+    manager.save()
+    reloaded = ConfigManager("test", manager.paths)
+    assert reloaded.settings.general.media_search_mode is MediaSearchMode.TV
+
+    widget.apply_defaults()
+    assert (
+        MediaSearchMode(widget.media_search_mode_combo.currentData())
+        is MediaSearchMode.BOTH
+    )
