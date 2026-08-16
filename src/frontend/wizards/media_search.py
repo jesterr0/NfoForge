@@ -15,7 +15,6 @@ import webbrowser
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QColor, QCursor, QImage, QMouseEvent, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
-from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
@@ -34,6 +33,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qtawesome import IconWidget
 
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.title_inference import MediaTitleInferer
@@ -356,26 +356,36 @@ class MediaSearch(BaseWizardPage):
         tmdb_imdb_v_layout.addLayout(id_row_1_layout)
         tmdb_imdb_v_layout.addLayout(id_row_2_layout)
 
-        release_date_icon = QSvgWidget(
-            str(Path(RUNTIME_DIR / "svg" / "date.svg").resolve())
-        )
-        release_date_icon.setFixedSize(20, 20)
+        release_date_icon = IconWidget()
+        release_date_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
         release_date_icon.setToolTip("Release date")
+        QTAThemeSwap().register(
+            release_date_icon,
+            "ph.calendar-light",
+            icon_size=QSize(20, 20),
+        )
         self.release_date_label = QLabel()
         self.release_date_label.setMinimumWidth(80)
-        rating_icon = QSvgWidget(
-            str(Path(RUNTIME_DIR / "svg" / "rating.svg").resolve())
-        )
-        rating_icon.setFixedSize(20, 20)
+
+        rating_icon = IconWidget()
+        rating_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
         rating_icon.setToolTip("Average rating")
+        QTAThemeSwap().register(
+            rating_icon,
+            "ph.star-light",
+            icon_size=QSize(20, 20),
+        )
         self.rating_label = QLabel()
         self.rating_label.setMinimumWidth(80)
 
-        media_type_icon = QSvgWidget(
-            str(Path(RUNTIME_DIR / "svg" / "movie.svg").resolve())
-        )
-        media_type_icon.setFixedSize(20, 20)
+        media_type_icon = IconWidget()
+        media_type_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
         media_type_icon.setToolTip("Media Type")
+        QTAThemeSwap().register(
+            media_type_icon,
+            "ph.video-camera-light",
+            icon_size=QSize(20, 20),
+        )
         self.media_type_label = QLabel()
         self.media_type_label.setMinimumWidth(80)
 

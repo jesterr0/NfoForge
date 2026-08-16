@@ -13,6 +13,14 @@
   - Now shows poster
   - Combines plot/info section
 
+### Fixed
+
+- Media Search SVGs now theme properly/automatically for dark/light modes
+
+### Removed
+
+- Bundled un-used SVG files
+
 ## [1.1.7] - 2026-08-14
 
 ### Changed
