@@ -12,8 +12,9 @@ from typing import Any, Protocol
 from urllib import parse as url_parse
 import webbrowser
 
-from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QCursor, QMouseEvent, QPixmap
+from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QColor, QCursor, QImage, QMouseEvent, QPixmap
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QSizePolicy,
@@ -46,6 +48,7 @@ from src.exceptions import (
     MediaSearchError,
     MediaSearchUnavailableError,
 )
+from src.frontend.custom_widgets.image_label import ImageLabel
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.general_worker import GeneralWorker
@@ -228,6 +231,9 @@ class LinkLabel(QLabel):
 
 
 class MediaSearch(BaseWizardPage):
+    MOVIE_ROW_COLOR = QColor(52, 152, 219, 72)
+    SERIES_ROW_COLOR = QColor(155, 89, 182, 72)
+
     def __init__(
         self,
         config: ConfigManager,
@@ -267,10 +273,17 @@ class MediaSearch(BaseWizardPage):
         self.plot_text = QPlainTextEdit()
         self.plot_text.setReadOnly(True)
         self.plot_text.setFrameShape(QFrame.Shape.NoFrame)
-        plot_box = QGroupBox("Plot")
-        self.plot_layout = QHBoxLayout(plot_box)
+        self.poster_img: QImage | None = None
+        self.poster_label = ImageLabel(self)
+        self.poster_label.setToolTip("TMDB poster")
+        self.poster_label.hide()
+        self.poster_network_manager = QNetworkAccessManager(self)
+        self._poster_reply: QNetworkReply | None = None
+        self._poster_cache: dict[str, QImage] = {}
+        self.plot_layout = QHBoxLayout()
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
-        self.plot_layout.addWidget(self.plot_text)
+        self.plot_layout.addWidget(self.poster_label, stretch=1)
+        self.plot_layout.addWidget(self.plot_text, stretch=4)
 
         imdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "imdb.png").resolve()))
         imdb_image = imdb_image.scaled(
@@ -371,10 +384,14 @@ class MediaSearch(BaseWizardPage):
         additional_info_layout.addRow(rating_icon, self.rating_label)
         additional_info_layout.addRow(media_type_icon, self.media_type_label)
 
-        info_box = QGroupBox("Info")
-        info_layout = QHBoxLayout(info_box)
-        info_layout.addLayout(tmdb_imdb_v_layout)
-        info_layout.addLayout(additional_info_layout)
+        metadata_layout = QHBoxLayout()
+        metadata_layout.addLayout(tmdb_imdb_v_layout)
+        metadata_layout.addLayout(additional_info_layout)
+
+        self.info_box = QGroupBox("Info")
+        info_layout = QVBoxLayout(self.info_box)
+        info_layout.addLayout(metadata_layout)
+        info_layout.addLayout(self.plot_layout, stretch=1)
 
         self.search_label = QLabel()
         self.search_label.setSizePolicy(
@@ -398,8 +415,7 @@ class MediaSearch(BaseWizardPage):
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addWidget(self.listbox)
-        self.main_layout.addWidget(info_box)
-        self.main_layout.addWidget(plot_box)
+        self.main_layout.addWidget(self.info_box)
         self.main_layout.addWidget(search_box)
 
     def validatePage(self) -> bool:
@@ -949,9 +965,18 @@ class MediaSearch(BaseWizardPage):
 
         self.listbox.clear()
         if result_data:
-            self.listbox.addItems(list(result_data))
+            for item_text, item_data in result_data.items():
+                item = QListWidgetItem(item_text)
+                if isinstance(item_data, dict):
+                    media_type = MediaType.search_type(
+                        str(item_data.get("media_type") or "")
+                    )
+                    if media_type is MediaType.MOVIE:
+                        item.setBackground(self.MOVIE_ROW_COLOR)
+                    elif media_type is MediaType.SERIES:
+                        item.setBackground(self.SERIES_ROW_COLOR)
+                self.listbox.addItem(item)
             self.listbox.setCurrentRow(0)
-            self._select_media()
         else:
             self.listbox.addItem("No results, try again...")
 
@@ -968,6 +993,7 @@ class MediaSearch(BaseWizardPage):
         self.backend.media_data.clear()
         self.context.media_search.reset()
         self.context.media_input.media_type = None
+        self._clear_poster()
         self.listbox.clear()
         self.listbox.addItem(
             "Title detection failed. Enter a title above and search manually."
@@ -990,6 +1016,7 @@ class MediaSearch(BaseWizardPage):
         self.backend.media_data.clear()
         self.context.media_search.reset()
         self.context.media_input.media_type = None
+        self._clear_poster()
         self.listbox.clear()
         self.listbox.addItem(f"Search unavailable: {error_str}")
         self.listbox.setDisabled(False)
@@ -1007,6 +1034,7 @@ class MediaSearch(BaseWizardPage):
     def _select_media(self) -> None:
         current_item = self.listbox.currentItem()
         if not current_item:
+            self._clear_poster()
             return
 
         item_key = current_item.text()
@@ -1019,6 +1047,79 @@ class MediaSearch(BaseWizardPage):
             self.rating_label.setText(item_data.get("vote_average", ""))
             self.release_date_label.setText(item_data.get("full_release_date", ""))
             self.media_type_label.setText(item_data.get("media_type", ""))
+            self._load_poster(item_data.get("poster_path"))
+        else:
+            self._clear_poster()
+
+    @staticmethod
+    def _tmdb_poster_url(poster_path: object) -> str | None:
+        if not isinstance(poster_path, str) or not poster_path.strip():
+            return None
+        normalized_path = poster_path.strip()
+        if not normalized_path.startswith("/"):
+            return None
+        return f"https://image.tmdb.org/t/p/w342/{normalized_path.lstrip('/')}"
+
+    def _load_poster(self, poster_path: object) -> None:
+        self._clear_poster()
+
+        poster_url = self._tmdb_poster_url(poster_path)
+        if poster_url is None:
+            return
+
+        # Reserve the poster's space while the asynchronous request is in flight
+        # so the plot does not resize when the image arrives.
+        self.poster_label.show()
+        self.cached_image = self._poster_cache.get(poster_url)
+        if self.cached_image is not None:
+            self.poster_label.setImage(self.cached_image)
+            self.poster_label.show()
+            return
+
+        request = QNetworkRequest(QUrl(poster_url))
+        request.setTransferTimeout(max(1, self.config.settings.general.timeout) * 1000)
+        reply = self.poster_network_manager.get(request)
+        self._poster_reply = reply
+        reply.finished.connect(
+            lambda reply=reply, poster_url=poster_url: self._poster_loaded(
+                reply, poster_url
+            )
+        )
+
+    def _poster_loaded(self, reply: QNetworkReply, poster_url: str) -> None:
+        if reply is not self._poster_reply:
+            reply.deleteLater()
+            return
+
+        self._poster_reply = None
+        image_loaded = False
+        self.poster_img = None
+        if reply.error() == QNetworkReply.NetworkError.NoError:
+            self.poster_img = QImage.fromData(reply.readAll())
+            if not self.poster_img.isNull():
+                self._poster_cache[poster_url] = self.poster_img
+                self.poster_label.setImage(self.poster_img)
+                self.poster_label.show()
+                image_loaded = True
+        if not image_loaded:
+            self.poster_label.hide()
+        reply.deleteLater()
+
+    def _cancel_poster_request(self) -> None:
+        reply = self._poster_reply
+        self._poster_reply = None
+        if reply is None:
+            return
+        if reply.isRunning():
+            reply.abort()
+        reply.deleteLater()
+
+    def _clear_poster(self, clear_cache: bool = False) -> None:
+        self._cancel_poster_request()
+        self.poster_label.clearImage()
+        self.poster_label.hide()
+        if clear_cache:
+            self._poster_cache.clear()
 
     @Slot()
     def _open_imdb_link(self, _event: QMouseEvent) -> None:
@@ -1075,6 +1176,9 @@ class MediaSearch(BaseWizardPage):
         self.release_date_label.clear()
         self.rating_label.clear()
         self.plot_text.clear()
+        self.media_type_label.clear()
+        self.poster_img = None
+        self._clear_poster(clear_cache=True)
 
         if self.search_worker is not None and not self.search_worker.isRunning():
             self.search_worker = None

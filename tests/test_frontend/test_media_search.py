@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QGroupBox, QMessageBox
 import pytest
 
 from src.backend.media_search import MediaSearchBackEnd
@@ -89,6 +89,86 @@ def test_empty_search_result_does_not_complete_page(tmp_path: Path) -> None:
     assert page.isComplete() is False
     assert page.listbox.item(0) is not None
     assert page.listbox.item(0).text() == "No results, try again..."
+
+
+def test_metadata_and_plot_share_one_info_group(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+
+    group_titles = [group.title() for group in page.findChildren(QGroupBox)]
+    assert group_titles.count("Info") == 1
+    assert "Plot" not in group_titles
+    assert page.info_box.layout() is not None
+    assert page.main_layout.indexOf(page.info_box) >= 0
+
+
+def test_search_results_are_colored_by_media_type(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    results = OrderedDict(
+        [
+            ("1) Movie (2024)", {"media_type": "Movie"}),
+            ("2) Show (2024)", {"media_type": "Series"}),
+        ]
+    )
+    page.backend.media_data = results
+
+    page._handle_search_result(results)
+
+    assert page.listbox.item(0).background().color() == page.MOVIE_ROW_COLOR
+    assert page.listbox.item(1).background().color() == page.SERIES_ROW_COLOR
+
+
+def test_selecting_media_requests_its_tmdb_poster(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _make_page(tmp_path)
+    item_name = "1) Movie (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "media_type": "Movie",
+            "poster_path": "/poster.jpg",
+        }
+    }
+    requested_paths: list[object] = []
+    monkeypatch.setattr(page, "_load_poster", requested_paths.append)
+
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+
+    assert requested_paths == ["/poster.jpg"]
+    assert page._tmdb_poster_url("/poster.jpg") == (
+        "https://image.tmdb.org/t/p/w342/poster.jpg"
+    )
+    assert page._tmdb_poster_url(None) is None
+    assert page._tmdb_poster_url("https://example.com/poster.jpg") is None
+
+
+def test_poster_request_uses_memory_network_reply_and_global_timeout(
+    tmp_path: Path,
+) -> None:
+    page = _make_page(tmp_path)
+    requests = []
+
+    class FakeSignal:
+        def connect(self, _callback) -> None:
+            return None
+
+    class FakeReply:
+        finished = FakeSignal()
+
+    class FakeNetworkManager:
+        def get(self, request):
+            requests.append(request)
+            return FakeReply()
+
+    page.poster_network_manager = FakeNetworkManager()  # type: ignore[assignment]
+
+    page._load_poster("/poster.jpg")
+
+    assert requests[0].url().toString() == (
+        "https://image.tmdb.org/t/p/w342/poster.jpg"
+    )
+    assert requests[0].transferTimeout() == page.config.settings.general.timeout * 1000
+    page._poster_reply = None
 
 
 def test_automatic_search_uses_inferred_title_and_selected_files(

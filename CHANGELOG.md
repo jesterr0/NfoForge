@@ -7,6 +7,12 @@
 - Ability to select media search type (movies vs. tv or both) in General -> Settings
   - This controls the flow for the rest of the program and disables one or the other if not set to both
 
+### Changed
+
+- Improved **Media Search** UI
+  - Now shows poster
+  - Combines plot/info section
+
 ## [1.1.7] - 2026-08-14
 
 ### Changed
