@@ -283,6 +283,8 @@ def _media_input_to_dict(
         "media_type": _enum_name(payload.media_type),
         "working_dir": _path_to_str(payload.working_dir),
         "file_list": [str(path) for path in payload.file_list],
+        "input_kind": payload.input_kind,
+        "content_size": payload.content_size,
         **mediainfo_section,
         "comparison_pair": _comparison_pair_to_dict(payload.comparison_pair),
         "series_episode_map": series_episode_map,
@@ -344,6 +346,14 @@ def _media_input_from_dict(
     payload.input_path = _str_to_path(document.get("input_path"))
     payload.media_type = _enum_from_name(MediaType, document.get("media_type"))
     payload.working_dir = _str_to_path(document.get("working_dir"))
+    input_kind = document.get("input_kind")
+    payload.input_kind = input_kind if input_kind in {"file", "directory"} else None
+    content_size = document.get("content_size")
+    payload.content_size = (
+        content_size
+        if isinstance(content_size, int) and not isinstance(content_size, bool)
+        else None
+    )
 
     file_list = document.get("file_list")
     if isinstance(file_list, list):

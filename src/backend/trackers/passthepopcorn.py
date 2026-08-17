@@ -50,6 +50,7 @@ def ptp_uploader(
     cookie_dir: Path,
     totp: str | None = None,
     timeout: int = 60,
+    content_size: int | None = None,
 ) -> bool | None:
     """Upload to PassThePopcorn.
 
@@ -92,6 +93,7 @@ def ptp_uploader(
         input_path=input_path,
         nfo=nfo,
         group_id=group_id,
+        content_size=content_size,
     )
 
 
@@ -282,6 +284,7 @@ class PTPUploader:
         input_path: Path,
         nfo: str,
         group_id: str | None = None,
+        content_size: int | None = None,
     ) -> bool | None:
         if not media_search_payload.tmdb_data:
             raise TrackerError("Missing TMDB data")
@@ -291,7 +294,7 @@ class PTPUploader:
             "remaster_title": self._remaster_title(input_path),
             "type": self._get_type(media_search_payload),
             "codec": "Other",  # sending the codec as Other to fill with other_codec
-            "other_codec": self._get_codec(input_path),
+            "other_codec": self._get_codec(input_path, content_size),
             "resolution": self._resolution(),
             "container": "Other",  # sending container as Other to fill with other_container
             "other_container": self._get_container(input_path),
@@ -575,13 +578,15 @@ class PTPUploader:
         ptp_type = PTPType.SHORT_FILM if 0 < duration < 45 else PTPType.FEATURE_FILM
         return str(ptp_type.value)
 
-    def _get_codec(self, input_path: Path) -> str:
+    def _get_codec(self, input_path: Path, content_size: int | None = None) -> str:
         title_lowered = release_stem(input_path).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # disc
         if DISC_TITLE_REGEX.search(title_lowered):
-            input_file_size = input_path.stat().st_size
+            input_file_size = (
+                content_size if content_size is not None else input_path.stat().st_size
+            )
             if input_file_size <= 26_843_545_600:
                 return str(PTPCodec.BD25.value)
             elif input_file_size <= 53_687_091_200:

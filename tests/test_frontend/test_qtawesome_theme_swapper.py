@@ -47,4 +47,3 @@ def test_newly_registered_icons_use_the_active_theme(
     )
 
     assert requested_colors[-1] == expected_color
-

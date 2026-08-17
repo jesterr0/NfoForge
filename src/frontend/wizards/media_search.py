@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -1088,6 +1089,10 @@ class MediaSearch(BaseWizardPage):
 
         request = QNetworkRequest(QUrl(poster_url))
         request.setTransferTimeout(max(1, self.config.settings.general.timeout) * 1000)
+        # Qt's HTTP/2 path warns `QIODevice::read (QSslSocket): device not open`
+        # when it retires a pooled TLS socket, long after the request itself
+        # finished. Nothing is lost fetching a static poster over HTTP/1.1.
+        request.setAttribute(QNetworkRequest.Attribute.Http2AllowedAttribute, False)
         reply = self.poster_network_manager.get(request)
         self._poster_reply = reply
         reply.finished.connect(
@@ -1120,6 +1125,11 @@ class MediaSearch(BaseWizardPage):
         self._poster_reply = None
         if reply is None:
             return
+        # `abort()` emits `finished` synchronously, which re-enters
+        # `_poster_loaded`; that path disowns the reply and deletes it, so
+        # without dropping the connection first the reply is deleted twice.
+        with suppress(RuntimeError):
+            reply.finished.disconnect()
         if reply.isRunning():
             reply.abort()
         reply.deleteLater()

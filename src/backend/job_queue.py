@@ -30,6 +30,8 @@ from src.backend.jobs import (
     JobCodecError,
     JobStoreError,
     SavedJob,
+    archived_base_is_valid,
+    base_torrent_path,
     context_from_dict,
     delete_job,
     filter_context_document,
@@ -235,6 +237,7 @@ class JobQueueRunner:
             working_dir=context.media_input.require_working_dir(),
             input_path=context.media_input.require_input_path(),
             tracker_image_hosts=context.shared_data.tracker_image_hosts,
+            input_is_directory=context.media_input.input_is_directory(),
         )
         if not tracker_data:
             return QueuedJobOutcome(
@@ -291,6 +294,22 @@ class JobQueueRunner:
                 LOG.LOG_SOURCE.BE, f"Queue could not restore '{job.name}': {error}"
             )
             return str(error)
+        if job.archived:
+            stored = base_torrent_path(path)
+            details = job.context.get("base_torrent")
+            snapshot = details.get("snapshot") if isinstance(details, dict) else None
+            if stored is None or not archived_base_is_valid(stored, snapshot):
+                return "saved base torrent is missing, corrupt, or invalid"
+            if isinstance(snapshot, dict):
+                content_size = snapshot.get("content_size")
+                if isinstance(content_size, int):
+                    context.media_input.content_size = content_size
+                mode = snapshot.get("mode")
+                if mode in {"singlefile", "multifile"}:
+                    context.media_input.input_kind = (
+                        "directory" if mode == "multifile" else "file"
+                    )
+            context.shared_data.base_torrent = stored
         return context
 
     @staticmethod
@@ -299,7 +318,8 @@ class JobQueueRunner:
         try:
             context.media_input.require_existing_media_paths(include_comparison=False)
         except (FileNotFoundError, RuntimeError) as error:
-            return str(error)
+            if context.shared_data.base_torrent is None:
+                return str(error)
 
         missing = [
             str(image)
@@ -448,9 +468,62 @@ class JobQueueRunner:
             if tracker_outcome
             in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
         }
-        if not landed:
+        if not landed and not job.archived:
             # Nothing reached a tracker, so the job is still exactly itself.
             # It still needs saying when one of them cannot be accounted for.
+            self._warn_unconfirmed(job, outcome)
+            return
+
+        if job.archived:
+
+            def member_names(values: list[str]) -> set[TrackerSelection]:
+                members: set[TrackerSelection] = set()
+                for value in values:
+                    try:
+                        members.add(TrackerSelection[value])
+                    except KeyError:
+                        continue
+                return members
+
+            uploaded = member_names(job.uploaded_trackers) | landed
+            uncertain = member_names(job.uncertain_trackers) | {
+                tracker
+                for tracker, tracker_outcome in outcome.outcomes.items()
+                if tracker_outcome is TrackerRunOutcome.MAY_HAVE_UPLOADED
+            }
+            uncertain -= uploaded
+            pending = set(outcome.outcomes) - uploaded - uncertain
+            try:
+                job.context = filter_context_document(job.context, pending)
+                job.uploaded_trackers = sorted(tracker.name for tracker in uploaded)
+                job.uncertain_trackers = sorted(tracker.name for tracker in uncertain)
+                job.summary.trackers = sorted(str(tracker) for tracker in pending)
+                job.summary.uploaded_trackers = sorted(
+                    str(tracker) for tracker in uploaded
+                )
+                job.summary.uncertain_trackers = sorted(
+                    str(tracker) for tracker in uncertain
+                )
+                write_job_document(job, outcome.path)
+            except (JobStoreError, OSError) as error:
+                LOG.error(LOG.LOG_SOURCE.BE, f"Could not update archive: {error}")
+                self._text_update(
+                    f"<br /><span>⚠️ <b>{escape(job.name)}</b> uploaded, but its "
+                    f"archive state could not be updated: {escape(str(error))}</span>"
+                )
+                return
+            try:
+                prune_unreferenced_nfos(outcome.path, job.context)
+            except OSError as error:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Archive updated but stale NFO cleanup failed: {error}",
+                )
+            outcome.disposition = JobDisposition.NARROWED
+            self._text_update(
+                f"<br /><span>📦 Updated reusable archive "
+                f"<b>{escape(job.name)}</b></span>"
+            )
             self._warn_unconfirmed(job, outcome)
             return
 

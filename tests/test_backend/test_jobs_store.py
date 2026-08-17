@@ -45,6 +45,28 @@ def test_save_and_load_round_trip(working_dir: Path) -> None:
     assert loaded.context == job.context
 
 
+def test_archive_tracker_history_round_trips(working_dir: Path) -> None:
+    job = store.build_job(
+        name="Archive",
+        summary=JobSummary(
+            trackers=["HUNO"],
+            uploaded_trackers=["Aither"],
+            uncertain_trackers=["LST"],
+        ),
+        context={"media_input": {}, "media_search": {}, "shared_data": {}},
+        archived=True,
+        uploaded_trackers=["AITHER"],
+        uncertain_trackers=["LST"],
+    )
+
+    loaded = store.load_job(store.save_job(job, working_dir))
+
+    assert loaded.archived
+    assert loaded.uploaded_trackers == ["AITHER"]
+    assert loaded.uncertain_trackers == ["LST"]
+    assert loaded.summary.uploaded_trackers == ["Aither"]
+
+
 def test_jobs_live_beside_processing_not_inside_it(working_dir: Path) -> None:
     """Clean up empties everything but the jobs folder, so it must sit there."""
     path = store.save_job(_build(), working_dir)

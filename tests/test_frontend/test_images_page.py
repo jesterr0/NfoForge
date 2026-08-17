@@ -10,6 +10,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.cropping import Cropping
 from src.enums.media_type import MediaType
 from src.enums.screen_shot_mode import ScreenShotMode
+from src.frontend.global_signals import GSigs
 from src.frontend.windows.image_viewer import ImageViewer
 from src.frontend.wizards.images import ImagesPage, QueuedWorker
 from src.packages.custom_types import ComparisonPair
@@ -228,6 +229,41 @@ def test_exit_viewer_routes_to_load_images(
     page.image_viewer.exit_viewer.emit(selected)
 
     assert calls == [(selected, True)]
+
+
+def test_a_viewer_that_fails_to_open_still_re_enables_the_main_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_execute_image_generation` disables the main window before starting the
+    worker, and on the success path opening the viewer is the only thing that
+    re-enables it. The viewer raises for real reasons -- no frames produced, an
+    empty comparison set -- and if that is left to escape the slot the window
+    stays disabled for the rest of the session, which is indistinguishable from
+    a freeze right after image generation.
+    """
+    page = _images_page(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "src.frontend.wizards.images.ImageViewer",
+        lambda **kwargs: (_ for _ in ()).throw(IndexError("list index out of range")),
+    )
+    warned: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "src.frontend.wizards.images.QMessageBox.critical",
+        lambda parent, title, text, *a, **kw: warned.append((title, text)),
+    )
+    enabled: list[bool] = []
+    page.config.settings.screenshots.mode = ScreenShotMode.BASIC_SS_GEN
+    GSigs().main_window_set_disabled.connect(enabled.append)
+
+    try:
+        page._generate_finished(0)
+    finally:
+        GSigs().main_window_set_disabled.disconnect(enabled.append)
+
+    assert page.image_viewer is None
+    # False == "re-enable the window"
+    assert enabled == [False]
+    assert warned and "viewer could not be opened" in warned[0][1]
 
 
 def test_screenshot_worker_is_parented_to_the_page(

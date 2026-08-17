@@ -44,6 +44,7 @@ class TokenReplaceRequest:
     tracker_images: Mapping[int, ImageUploadData] | None = None
     formatted_screens: str | None = None
     preview: bool = False
+    source_available: bool = True
 
 
 class TokenReplacer(Protocol):
@@ -68,6 +69,7 @@ class PreUploadRequest:
     tracker: TrackerSelection
     torrent_file: Path
     reporter: UploadReporter
+    source_available: bool = True
 
 
 class PreUploadDecision(Enum):
@@ -99,6 +101,7 @@ class PostUploadRequest:
     reporter: UploadReporter
     outcome: PostUploadOutcome
     error: str | None = None
+    source_available: bool = True
 
 
 class PostUploadProcessor(Protocol):
@@ -152,6 +155,7 @@ class DuplicateCheckRequest:
     media_input: MediaInputPayload
     media_search: MediaSearchPayload
     timeout: int
+    source_available: bool = True
 
 
 class DuplicateChecker(Protocol):

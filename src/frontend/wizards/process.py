@@ -30,6 +30,7 @@ from src.backend.jobs import (
     JobCodecError,
     JobStoreError,
     JobSummary,
+    base_torrent_snapshot,
     build_job,
     capture_mediainfo,
     capture_nfos,
@@ -39,8 +40,11 @@ from src.backend.jobs import (
     filter_context_document,
     fingerprint_files,
     job_dir,
+    load_job,
+    prune_unreferenced_nfos,
     save_job,
     torrent_content_files,
+    write_job_document,
 )
 from src.backend.process import ProcessBackEnd
 from src.backend.torrents import BASE_TORRENT_SUFFIX
@@ -51,7 +55,7 @@ from src.backend.upload_retry import (
     UploadFailurePhase,
     UploadRetryAction,
 )
-from src.backend.utils.file_utilities import open_explorer
+from src.backend.utils.file_utilities import open_explorer, release_stem
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
@@ -435,6 +439,8 @@ class ProcessPage(BaseWizardPage):
         cannot re-upload them.
         """
         media_input = self.context.media_input
+        input_path = media_input.require_input_path()
+        media_input.input_kind = "directory" if input_path.is_dir() else "file"
         try:
             # capturing MediaInfo reads every input file, so the comparison
             # source has to be there too when one is in play
@@ -521,6 +527,8 @@ class ProcessPage(BaseWizardPage):
         longer covers.
         """
         media_input = self.context.media_input
+        input_path = media_input.require_input_path()
+        media_input.input_kind = "directory" if input_path.is_dir() else "file"
 
         # MediaInfo is captured for every file the payload knows about, which
         # includes the comparison source when one is in play
@@ -537,8 +545,11 @@ class ProcessPage(BaseWizardPage):
         )
 
         base_torrent = self._first_generated_torrent()
+        snapshot: dict[str, Any] | None = None
         if base_torrent:
             copy_base_torrent(directory, base_torrent)
+            snapshot = base_torrent_snapshot(base_torrent)
+            media_input.content_size = cast(int, snapshot["content_size"])
 
         # a prepared job's NFOs are the ones that get uploaded, so they cannot
         # be left in `processing/` where Clean Up would take them -- and a
@@ -558,9 +569,11 @@ class ProcessPage(BaseWizardPage):
                 str(image) for image in copied_images
             ]
         if base_torrent:
-            input_path = media_input.require_input_path()
+            if snapshot is None:
+                raise JobAssetError("Could not capture the base torrent snapshot")
             document["base_torrent"] = {
                 "media": str(input_path),
+                "snapshot": snapshot,
                 # every file, not just the first: the torrent is built from
                 # `input_path`, so one file of a pack cannot vouch for the rest
                 "fingerprints": fingerprint_files(torrent_content_files(input_path)),
@@ -587,7 +600,10 @@ class ProcessPage(BaseWizardPage):
         input_path = self.context.media_input.input_path
         if not working_dir or not input_path:
             return None
-        base = working_dir / f"{input_path.stem}{BASE_TORRENT_SUFFIX}"
+        base = working_dir / (
+            f"{release_stem(input_path, self.context.media_input.input_is_directory())}"
+            f"{BASE_TORRENT_SUFFIX}"
+        )
         return base if base.is_file() else None
 
     def _default_job_name(self) -> str:
@@ -611,10 +627,15 @@ class ProcessPage(BaseWizardPage):
             input_name=input_path.name if input_path else None,
             input_path=str(input_path) if input_path else "",
             file_count=len(self.context.media_input.file_list),
-            trackers=[
-                str(tracker)
-                for tracker in self.context.shared_data.tracker_image_hosts
-                if keep_trackers is None or tracker in keep_trackers
+            # `keep_trackers` is the authority when given. Filtering the run's
+            # image-host map by it would drop a tracker the run never touched --
+            # one left pending by an earlier run, whose row does not exist this
+            # time -- and the summary is what the picker shows and what decides
+            # whether a saved job can still be opened.
+            trackers=sorted(str(tracker) for tracker in keep_trackers)
+            if keep_trackers is not None
+            else [
+                str(tracker) for tracker in self.context.shared_data.tracker_image_hosts
             ],
         )
 
@@ -625,13 +646,21 @@ class ProcessPage(BaseWizardPage):
                 include_comparison=False
             )
         except (FileNotFoundError, RuntimeError) as error:
-            QMessageBox.critical(
-                self,
-                "Media Files Unavailable",
-                f"Processing cannot start because its input paths are no longer "
-                f"valid:\n\n{error}",
+            if self.context.shared_data.base_torrent is None:
+                QMessageBox.critical(
+                    self,
+                    "Media Files Unavailable",
+                    f"Processing cannot start because its input paths are no longer "
+                    f"valid:\n\n{error}",
+                )
+                return
+            self._on_text_update(
+                "<br /><span style='color: #d68c00;'>The original media is not "
+                "available. Using the archived release package; configured "
+                "plugins and torrent clients will still be attempted. This "
+                "does not recreate the media, so ensure the content still exists "
+                "where your torrent client will seed it.</span>"
             )
-            return
 
         # get paths and other things from the media input payload
         detected_input = self.context.media_input.require_input_path()
@@ -812,10 +841,13 @@ class ProcessPage(BaseWizardPage):
             # the deferred-job offer
             self.processing_mode = UploadProcessMode.DUPE_CHECK
             self._on_text_update("<br /><span>📦 Prepared. Saving this job...</span>")
-            self._save_job()
+            if not self._save_prepared_archive():
+                self._save_job()
             return
         GSigs().wizard_process_btn_set_hidden.emit()
-        self._offer_deferred_job()
+        archive_completed = getattr(self, "_archive_completed_run", None)
+        if not callable(archive_completed) or not archive_completed():
+            self._offer_deferred_job()
 
     @Slot()
     def _on_cancelled(self) -> None:
@@ -828,14 +860,204 @@ class ProcessPage(BaseWizardPage):
         # Without this the process button restarts from the first tracker and
         # re-uploads the ones that already succeeded.
         GSigs().wizard_process_btn_set_hidden.emit()
-        self._offer_deferred_job()
+        archive_completed = getattr(self, "_archive_completed_run", None)
+        if not callable(archive_completed) or not archive_completed():
+            self._offer_deferred_job()
 
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
         self._on_text_update(f"<br /><p>{scrub_secrets(e)}</p>")
         LOG.error(LOG.LOG_SOURCE.FE, scrub_secrets(trace_back))
-        self._offer_deferred_job()
+        archive_completed = getattr(self, "_archive_completed_run", None)
+        if not callable(archive_completed) or not archive_completed():
+            self._offer_deferred_job()
+
+    def _archive_completed_run(self) -> bool:
+        """Persist one reusable archive and reconcile tracker outcomes into it."""
+        if self._run_phase is not RunPhase.FULL or not self._run_outcomes:
+            return False
+
+        landed = {
+            tracker
+            for tracker, outcome in self._run_outcomes.items()
+            if outcome
+            in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
+        }
+        uncertain = {
+            tracker
+            for tracker, outcome in self._run_outcomes.items()
+            if outcome is TrackerRunOutcome.MAY_HAVE_UPLOADED
+        }
+        context = self.context
+        working_dir = self.config.settings.general.working_dir
+        existing_path = context.loaded_job_path
+        creating = existing_path is None
+        created_directory: Path | None = None
+        try:
+            if existing_path is not None:
+                job = load_job(existing_path)
+                directory = existing_path
+            else:
+                job = build_job(
+                    name=self._default_job_name(),
+                    summary=JobSummary(),
+                    context={},
+                    config_profile=self.config.program.current_config,
+                    archived=True,
+                )
+                directory = job_dir(working_dir, job.job_id, ensure_exists=True)
+                created_directory = directory
+
+            uploaded_all = context.loaded_uploaded_trackers | landed
+            uncertain_all = (context.loaded_uncertain_trackers | uncertain) - landed
+            # A tracker left pending by an *earlier* run is not in
+            # `_run_outcomes`, but its prepared title and NFO are still on the
+            # context. Narrowing to only this run's leftovers would drop them
+            # from the document, and `prune_unreferenced_nfos` would then
+            # delete the sidecars -- silently discarding prepared work whose
+            # only way back is preparing that tracker over again.
+            pending = (
+                (
+                    set(self._run_outcomes)
+                    | set(context.shared_data.tracker_release_data)
+                )
+                - uploaded_all
+                - uncertain_all
+            )
+
+            if creating:
+                document = self._build_job_document(directory, None)
+            else:
+                old_media = job.context.get("media_input")
+                raw_assets = (
+                    old_media.get("mediainfo_assets")
+                    if isinstance(old_media, dict)
+                    else None
+                )
+                mediainfo_assets = (
+                    {
+                        Path(raw_path): dict(names)
+                        for raw_path, names in raw_assets.items()
+                        if isinstance(raw_path, str) and isinstance(names, dict)
+                    }
+                    if isinstance(raw_assets, dict)
+                    else None
+                )
+                nfo_assets = capture_nfos(
+                    directory, context.shared_data.tracker_release_data
+                )
+                document = context_to_dict(context, mediainfo_assets, nfo_assets)
+                base_details = job.context.get("base_torrent")
+                if isinstance(base_details, dict):
+                    document["base_torrent"] = dict(base_details)
+
+            document = filter_context_document(document, pending)
+            job.context = document
+            job.archived = True
+            job.uploaded_trackers = sorted(tracker.name for tracker in uploaded_all)
+            job.uncertain_trackers = sorted(tracker.name for tracker in uncertain_all)
+            job.summary = self._job_summary(pending)
+            job.summary.uploaded_trackers = sorted(
+                str(tracker) for tracker in uploaded_all
+            )
+            job.summary.uncertain_trackers = sorted(
+                str(tracker) for tracker in uncertain_all
+            )
+            write_job_document(job, directory)
+            try:
+                prune_unreferenced_nfos(directory, job.context)
+            except OSError as error:
+                LOG.warning(
+                    LOG.LOG_SOURCE.FE,
+                    f"Archive saved but stale NFO cleanup failed: {error}",
+                )
+
+            context.loaded_job_path = directory
+            context.loaded_job_id = job.job_id
+            context.loaded_job_name = job.name
+            context.loaded_job_archived = True
+            context.loaded_uploaded_trackers = uploaded_all
+            context.loaded_uncertain_trackers = uncertain_all
+            self._on_text_update(
+                f"<br /><span>📦 Archived '{escape(job.name)}' for future "
+                "trackers.</span>"
+            )
+            return True
+        except (JobAssetError, JobCodecError, JobStoreError, OSError) as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to archive completed run: {error}")
+            if created_directory is not None:
+                shutil.rmtree(created_directory, ignore_errors=True)
+            QMessageBox.warning(
+                self,
+                "Archive Failed",
+                "The upload run finished, but its reusable job archive could not "
+                f"be saved:\n\n{error}",
+            )
+            return False
+
+    def _save_prepared_archive(self) -> bool:
+        """Update a loaded archive after preparing newly added trackers.
+
+        Only an archive takes this path. Preparing an ordinary saved job keeps
+        the named save it always had -- silently overwriting the job the user
+        opened is not what "Prepare Job" has ever meant, and that job still has
+        its media, so `_save_job` can capture MediaInfo the normal way. An
+        archive cannot: it may have no source left, which is what the stored
+        assets below are for.
+        """
+        if not self.context.loaded_job_archived:
+            return False
+        path = self.context.loaded_job_path
+        if path is None:
+            return False
+        try:
+            job = load_job(path)
+            old_media = job.context.get("media_input")
+            raw_assets = (
+                old_media.get("mediainfo_assets")
+                if isinstance(old_media, dict)
+                else None
+            )
+            if not isinstance(raw_assets, dict):
+                raise JobCodecError(
+                    "Archive has no stored MediaInfo assets for source-less preparation"
+                )
+            mediainfo_assets = {
+                Path(raw_path): dict(names)
+                for raw_path, names in raw_assets.items()
+                if isinstance(raw_path, str) and isinstance(names, dict)
+            }
+            nfo_assets = capture_nfos(
+                path, self.context.shared_data.tracker_release_data
+            )
+            document = context_to_dict(self.context, mediainfo_assets, nfo_assets)
+            base_details = job.context.get("base_torrent")
+            if isinstance(base_details, dict):
+                document["base_torrent"] = dict(base_details)
+            job.context = document
+            job.summary = self._job_summary()
+            job.summary.uploaded_trackers = sorted(
+                str(tracker) for tracker in self.context.loaded_uploaded_trackers
+            )
+            job.summary.uncertain_trackers = sorted(
+                str(tracker) for tracker in self.context.loaded_uncertain_trackers
+            )
+            write_job_document(job, path)
+            self._on_text_update(
+                f"<br /><span>📦 Updated prepared archive '{escape(job.name)}'.</span>"
+            )
+            return True
+        except (JobAssetError, JobCodecError, JobStoreError, OSError) as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to update prepared archive: {error}")
+            QMessageBox.warning(
+                self,
+                "Archive Update Failed",
+                f"Could not update the prepared archive:\n\n{error}",
+            )
+            # The archive exists but could not be updated; do not fall through
+            # to the ordinary save path, which requires the missing source.
+            return True
 
     def _deferrable_trackers(self) -> dict[TrackerSelection, TrackerRunOutcome]:
         """Trackers this run left un-uploaded that can safely be retried later.
@@ -1288,6 +1510,7 @@ class ProcessPage(BaseWizardPage):
             working_dir=process_dir,
             input_path=detected_input,
             tracker_image_hosts=self.context.shared_data.tracker_image_hosts,
+            input_is_directory=self.context.media_input.input_is_directory(),
         )
 
         # the prompt is the one part that needs a user, so it stays here rather

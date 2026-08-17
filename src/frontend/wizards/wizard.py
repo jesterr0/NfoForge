@@ -1,16 +1,28 @@
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 import traceback
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton, QWizard
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWizard,
+)
 
 from src.backend.jobs import (
     JobCodecError,
     JobStoreError,
     MediaFingerprint,
     SavedJob,
+    archived_base_is_valid,
     base_torrent_path,
     context_from_dict,
     fingerprints_match,
@@ -19,11 +31,13 @@ from src.backend.jobs import (
     template_fingerprint,
 )
 from src.backend.template_selector import TemplateSelectorBackEnd
+from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.utils.media_info_utils import clear_full_mi_str_cache
 from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.wizard import WizardPages
 from src.exceptions import ConfigSchemaError
 from src.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
@@ -43,6 +57,33 @@ from src.logger.nfo_forge_logger import LOG
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
+
+
+def tracker_profile_problems(
+    trackers: Iterable[TrackerSelection],
+    tracker_map: Mapping[TrackerSelection, Any],
+    template_selector: TemplateSelectorBackEnd,
+) -> list[str]:
+    """Ways the *active* profile cannot fully serve `trackers`.
+
+    A job stores no settings of its own -- credentials, templates and
+    per-tracker toggles are all read live -- so this asks the live config, not
+    the job. Shared by the resume path and by the add-trackers path, which
+    would otherwise check nothing at all.
+    """
+    available_templates = set(template_selector.load_templates())
+    problems: list[str] = []
+    for tracker in trackers:
+        tracker_info = tracker_map.get(tracker)
+        if tracker_info is None:
+            problems.append(f"{tracker}: not configured in this config")
+            continue
+        if not tracker_info.upload_enabled:
+            problems.append(f"{tracker}: uploads are disabled in this config")
+        template = tracker_info.nfo_template
+        if template and template not in available_templates:
+            problems.append(f"{tracker}: NFO template '{template}' no longer exists")
+    return problems
 
 
 class MainWindowWizard(QWizard):
@@ -266,12 +307,119 @@ class MainWindowWizard(QWizard):
             )
             return
 
-        if not self._restored_job_is_usable(job.name, context):
+        if not self._restored_job_is_usable(
+            job.name, context, allow_source_less=job.archived
+        ):
             return
 
         self._attach_base_torrent(job, listing.path, context)
+        if job.archived and context.shared_data.base_torrent is None:
+            QMessageBox.critical(
+                self,
+                "Archive Unavailable",
+                f"Job '{job.name}' cannot be extended because its saved base "
+                "torrent is missing, corrupt, or no longer matches the archive.",
+            )
+            return
+        context.loaded_job_path = listing.path
+        context.loaded_job_id = job.job_id
+        context.loaded_job_name = job.name
+        context.loaded_job_archived = job.archived
+        context.loaded_uploaded_trackers = self._tracker_names_to_members(
+            job.uploaded_trackers
+        )
+        context.loaded_uncertain_trackers = self._tracker_names_to_members(
+            job.uncertain_trackers
+        )
+        if dialog.add_trackers_requested:
+            additions = self._choose_additional_trackers(job, context)
+            if not additions:
+                return
+            if not self._confirm_profile_can_serve_added_trackers(additions):
+                return
+            context.shared_data.selected_trackers = additions
+            context.shared_data.tracker_image_hosts.clear()
         self._resume_job(context)
         LOG.info(LOG.LOG_SOURCE.FE, f"Resumed job '{job.name}' at the process page")
+
+    @staticmethod
+    def _tracker_names_to_members(names: list[str]) -> set[TrackerSelection]:
+        restored: set[TrackerSelection] = set()
+        for name in names:
+            try:
+                restored.add(TrackerSelection[name])
+            except KeyError:
+                continue
+        return restored
+
+    def _choose_additional_trackers(
+        self, job: SavedJob, context: ProcessingContext
+    ) -> list[TrackerSelection] | None:
+        """Choose any number of enabled trackers not already accounted for."""
+        blocked = self._tracker_names_to_members(
+            job.uploaded_trackers + job.uncertain_trackers
+        )
+        tracker_map = self.config.settings.trackers.by_selection()
+        available = [
+            tracker
+            for tracker in self.config.settings.trackers.order
+            if tracker not in blocked
+            and tracker_map[tracker].enabled
+            and not (
+                context.media_input.media_type is MediaType.SERIES
+                and tracker in UNSUPPORTED_SERIES_TRACKERS
+            )
+        ]
+        if not available:
+            QMessageBox.information(
+                self,
+                "No Additional Trackers",
+                "Every enabled compatible tracker is already uploaded or needs "
+                "its uncertain upload state resolved.",
+            )
+            return None
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Add Trackers")
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(
+            QLabel(
+                "Select the trackers to add. Current tracker templates and "
+                "settings will be used.",
+                wordWrap=True,
+                parent=dialog,
+            )
+        )
+        tracker_list = QListWidget(dialog)
+        for tracker in available:
+            item = QListWidgetItem(str(tracker), tracker_list)
+            item.setData(Qt.ItemDataRole.UserRole, tracker)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+        layout.addWidget(tracker_list)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+            parent=dialog,
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        selected = [
+            tracker_list.item(index).data(Qt.ItemDataRole.UserRole)
+            for index in range(tracker_list.count())
+            if tracker_list.item(index).checkState() == Qt.CheckState.Checked
+        ]
+        selected = [
+            tracker for tracker in selected if isinstance(tracker, TrackerSelection)
+        ]
+        if not selected:
+            QMessageBox.information(
+                self, "No Trackers Selected", "Select at least one tracker to add."
+            )
+            return None
+        return selected
 
     def _switch_config_profile(self, profile: str) -> bool:
         """Activate `profile`, reporting failure without changing anything.
@@ -300,7 +448,11 @@ class MainWindowWizard(QWizard):
         return True
 
     def _restored_job_is_usable(
-        self, job_name: str, context: ProcessingContext
+        self,
+        job_name: str,
+        context: ProcessingContext,
+        *,
+        allow_source_less: bool = False,
     ) -> bool:
         """Check a restored job against the filesystem it has to run against.
 
@@ -312,14 +464,14 @@ class MainWindowWizard(QWizard):
         try:
             context.media_input.require_existing_media_paths(include_comparison=False)
         except (FileNotFoundError, RuntimeError) as e:
-            QMessageBox.critical(
-                self,
-                "Media Files Unavailable",
-                f"Job '{job_name}' cannot be loaded because its media is no "
-                f"longer where it was saved:\n\n{e}",
-            )
-            return False
-
+            if not allow_source_less:
+                QMessageBox.critical(
+                    self,
+                    "Media Files Unavailable",
+                    f"Job '{job_name}' cannot be loaded because its media is no "
+                    f"longer where it was saved:\n\n{e}",
+                )
+                return False
         missing_images = [
             str(image)
             for image in (context.shared_data.loaded_images or ())
@@ -370,6 +522,26 @@ class MainWindowWizard(QWizard):
             )
             return
 
+        if getattr(job, "archived", False):
+            snapshot = details.get("snapshot")
+            if not archived_base_is_valid(stored, snapshot):
+                LOG.warning(
+                    LOG.LOG_SOURCE.FE,
+                    f"Not reusing archived torrent for '{job.name}': validation failed",
+                )
+                return
+            if isinstance(snapshot, dict):
+                content_size = snapshot.get("content_size")
+                if isinstance(content_size, int):
+                    context.media_input.content_size = content_size
+                mode = snapshot.get("mode")
+                if mode in {"singlefile", "multifile"}:
+                    context.media_input.input_kind = (
+                        "directory" if mode == "multifile" else "file"
+                    )
+            context.shared_data.base_torrent = stored
+            return
+
         recorded = details.get("fingerprints")
         if isinstance(recorded, dict) and recorded:
             unchanged = fingerprints_match(recorded, input_path)
@@ -418,6 +590,39 @@ class MainWindowWizard(QWizard):
                 )
         return warnings
 
+    def _confirm_profile_can_serve_added_trackers(
+        self, trackers: list[TrackerSelection]
+    ) -> bool:
+        """Check newly added trackers the way a resumed job's own are checked.
+
+        `_confirm_profile_can_serve_job` runs before these are chosen, and reads
+        the trackers the job already had -- which for a fully uploaded archive
+        is the empty set, so nothing about the additions would be checked. The
+        picker only filters on `enabled`, which is a separate setting from
+        `upload_enabled` and says nothing about the NFO template still existing.
+
+        Stale-template warnings deliberately do not apply here: those are about
+        NFOs a prepared job already froze, and an added tracker generates a
+        fresh one from the current template.
+        """
+        problems = tracker_profile_problems(
+            trackers,
+            self.config.settings.trackers.by_selection(),
+            TemplateSelectorBackEnd(),
+        )
+        if not problems:
+            return True
+        return (
+            QMessageBox.question(
+                self,
+                "Config Mismatch",
+                "This config cannot fully serve the trackers you added:\n\n"
+                + "\n".join(problems)
+                + "\n\nAdd them anyway?",
+            )
+            is QMessageBox.StandardButton.Yes
+        )
+
     def _confirm_profile_can_serve_job(
         self, job_name: str, context: ProcessingContext
     ) -> bool:
@@ -428,24 +633,12 @@ class MainWindowWizard(QWizard):
         active profile has since turned off or renamed would otherwise only
         surface as a failure partway through the upload.
         """
-        problems: list[str] = []
-        tracker_map = self.config.settings.trackers.by_selection()
         template_selector = TemplateSelectorBackEnd()
-        available_templates = set(template_selector.load_templates())
-
-        for tracker in context.shared_data.tracker_image_hosts:
-            tracker_info = tracker_map.get(tracker)
-            if tracker_info is None:
-                problems.append(f"{tracker}: not configured in this config")
-                continue
-            if not tracker_info.upload_enabled:
-                problems.append(f"{tracker}: uploads are disabled in this config")
-            template = tracker_info.nfo_template
-            if template and template not in available_templates:
-                problems.append(
-                    f"{tracker}: NFO template '{template}' no longer exists"
-                )
-
+        problems = tracker_profile_problems(
+            context.shared_data.tracker_image_hosts,
+            self.config.settings.trackers.by_selection(),
+            template_selector,
+        )
         problems.extend(self._stale_template_warnings(context, template_selector))
 
         if not problems:

@@ -97,6 +97,19 @@ def test_beyondhd_type_detects_disc_release(
     assert uploader._type() == BHDType.BD_25.value
 
 
+def test_beyondhd_disc_size_can_come_from_an_archive(tmp_path: Path) -> None:
+    uploader = BHDUploader(
+        api_key="api-key",
+        torrent_file=tmp_path / "upload.torrent",
+        input_path=tmp_path / "Movie.Name.2024.1080p.BluRay.AVC-GROUP.mkv",
+        media_type=MediaType.MOVIE,
+        content_size=_BD_25_SIZE,
+    )
+
+    assert not uploader.input_path.exists()
+    assert uploader._type() == BHDType.BD_25.value
+
+
 def test_unit3d_type_id_detects_disc_release(tmp_path: Path) -> None:
     uploader = Unit3dBaseUploader(
         tracker_name=TrackerSelection.AITHER,

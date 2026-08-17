@@ -113,6 +113,10 @@ def build_job(
     summary: JobSummary,
     context: dict,
     config_profile: str | None = None,
+    *,
+    archived: bool = False,
+    uploaded_trackers: Iterable[str] = (),
+    uncertain_trackers: Iterable[str] = (),
 ) -> SavedJob:
     """Assemble a `SavedJob` with fresh identity/timestamp fields."""
     return SavedJob(
@@ -124,6 +128,9 @@ def build_job(
         context=context,
         config_profile=config_profile or "",
         schema_version=JOB_SCHEMA_VERSION,
+        archived=archived,
+        uploaded_trackers=list(uploaded_trackers),
+        uncertain_trackers=list(uncertain_trackers),
     )
 
 
@@ -251,7 +258,13 @@ def _document_is_prepared(document: dict) -> bool:
     shared = context.get("shared_data")
     if not isinstance(shared, dict):
         return False
-    return bool(shared.get("tracker_release_data"))
+    release_data = shared.get("tracker_release_data")
+    selected = shared.get("selected_trackers")
+    if not isinstance(release_data, dict):
+        return False
+    if not isinstance(selected, list) or not selected:
+        return bool(release_data)
+    return all(name in release_data for name in selected)
 
 
 def list_jobs(working_dirs: Iterable[Path]) -> list[JobListing]:
@@ -292,6 +305,19 @@ def list_jobs(working_dirs: Iterable[Path]) -> list[JobListing]:
             media_available = (
                 Path(summary.input_path).exists() if summary.input_path else True
             )
+            context = document.get("context")
+            media_section = (
+                context.get("media_input") if isinstance(context, dict) else None
+            )
+            has_mediainfo = isinstance(media_section, dict) and bool(
+                media_section.get("mediainfo_assets")
+                or media_section.get("mediainfo_xml")
+            )
+            source_less_ready = bool(
+                document.get("archived")
+                and (candidate / JOB_BASE_TORRENT_NAME).is_file()
+                and has_mediainfo
+            )
             listings.append(
                 JobListing(
                     job_id=str(document.get("job_id") or candidate.name),
@@ -302,6 +328,8 @@ def list_jobs(working_dirs: Iterable[Path]) -> list[JobListing]:
                     prepared=_document_is_prepared(document),
                     path=candidate,
                     media_available=media_available,
+                    archived=bool(document.get("archived")),
+                    source_less_ready=source_less_ready,
                 )
             )
 

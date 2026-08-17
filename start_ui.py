@@ -19,9 +19,19 @@ from datetime import datetime
 import faulthandler
 from multiprocessing import freeze_support as mp_freeze_support
 import sys
+import threading
 import traceback
 
-from PySide6.QtCore import QTimer, QtMsgType, Slot, qInstallMessageHandler
+from PySide6.QtCore import (
+    QObject,
+    Qt,
+    QThread,
+    QTimer,
+    QtMsgType,
+    Signal,
+    Slot,
+    qInstallMessageHandler,
+)
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 import tomlkit
@@ -38,6 +48,24 @@ from src.frontend.windows.main_window import MainWindow
 from src.frontend.windows.splash_screen import SplashScreen, SplashScreenLoader
 from src.frontend.windows.template_migration_dialog import TemplateMigrationDialog
 from src.logger.nfo_forge_logger import LOG
+
+
+class _GuiThreadRelay(QObject):
+    """Marshal dialog requests onto the GUI thread.
+
+    Qt calls an installed message handler on whichever thread emitted the
+    message -- including its own network and worker threads -- and
+    `sys.excepthook` is no better behaved. Building a widget there is undefined
+    behavior: Qt warns `QObject::setParent: Cannot set parent, new parent is
+    in a different thread` (itself a message, so the handler re-enters), and
+    `exec()` then spins a nested modal event loop off the GUI thread, which
+    wedges the process a short while later.
+
+    Requests raised off-thread are emitted here instead and delivered by the
+    event loop, because this object is owned by the GUI thread.
+    """
+
+    show_error = Signal(str, str, str)  # title, message, traceback
 
 
 class NfoForge:
@@ -98,6 +126,13 @@ class NfoForge:
 
     def _setup_exception_hooks(self) -> None:
         self._enable_crash_dump()
+        # Both hooks below can fire on any thread, so the GUI-thread relay and
+        # its re-entrancy guard have to exist before either is installed.
+        self._error_dialog_active = False
+        self._gui_relay = _GuiThreadRelay(self.app)
+        self._gui_relay.show_error.connect(
+            self._show_error_dialog, Qt.ConnectionType.QueuedConnection
+        )
         sys.excepthook = self.exception_handler
         qInstallMessageHandler(self.qt_message_handler)
 
@@ -546,40 +581,78 @@ class NfoForge:
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
     def qt_message_handler(self, mode, _context, message) -> None:
-        """Handler for Qt-specific warnings and errors."""
-        if mode in (
-            QtMsgType.QtWarningMsg,
-            QtMsgType.QtCriticalMsg,
-            QtMsgType.QtFatalMsg,
-        ):
-            LOG.critical(LOG.LOG_SOURCE.FE, f"Qt Error: {message}")
-            if mode == QtMsgType.QtFatalMsg:
-                # Qt aborts as soon as this returns, so there is no application
-                # left to show a dialog against: _error_message_box runs exec(),
-                # spinning a nested event loop mid-teardown, which can hang or
-                # die before anyone reads it. The log line above is what
-                # survives, and is what a crash report is built from.
-                return
+        """Handler for Qt-specific warnings and errors.
+
+        Qt calls this on the thread that emitted the message, so the thread
+        name is recorded: it is the difference between a benign message from
+        the GUI thread and one from a worker or Qt's own network thread, and
+        without it the two are indistinguishable in a log.
+        """
+        thread = threading.current_thread().name
+        if mode == QtMsgType.QtFatalMsg:
+            # Qt aborts as soon as this returns, so there is no application
+            # left to show a dialog against: the dialog runs exec(), spinning a
+            # nested event loop mid-teardown, which can hang or die before
+            # anyone reads it. The log line is what survives, and is what a
+            # crash report is built from.
+            LOG.critical(LOG.LOG_SOURCE.FE, f"Qt Error [{thread}]: {message}")
+        elif mode == QtMsgType.QtCriticalMsg:
+            LOG.critical(LOG.LOG_SOURCE.FE, f"Qt Error [{thread}]: {message}")
             self._error_message_box("QtError", message)
+        elif mode == QtMsgType.QtWarningMsg:
+            # Qt warns about plenty of benign things -- pooled TLS sockets
+            # being torn down, layout and style quibbles, deprecations -- and
+            # interrupting the user with a modal dialog for each is not worth
+            # it. Real faults arrive as critical or fatal.
+            LOG.warning(LOG.LOG_SOURCE.FE, f"Qt Warning [{thread}]: {message}")
         else:
-            LOG.debug(LOG.LOG_SOURCE.FE, f"Qt: {message}")
+            LOG.debug(LOG.LOG_SOURCE.FE, f"Qt [{thread}]: {message}")
 
     def _error_message_box(
         self, title: str, message: str, traceback: str | None = None
     ) -> None:
+        """Show an error dialog, from any thread.
+
+        Widgets may only be touched on the GUI thread, and this is reachable
+        from both `qt_message_handler` and `sys.excepthook`, either of which can
+        run anywhere. An off-thread caller hands the request to the relay and
+        returns; a GUI-thread caller keeps the original synchronous `exec()`,
+        which the startup paths depend on to block before they continue.
+        """
+        if QThread.currentThread() is not self.app.thread():
+            self._gui_relay.show_error.emit(title, message, traceback or "")
+            return
+        self._show_error_dialog(title, message, traceback or "")
+
+    @Slot(str, str, str)
+    def _show_error_dialog(self, title: str, message: str, traceback: str) -> None:
+        if self._error_dialog_active:
+            # A dialog is already up. Stacking another modal on top of it buries
+            # the window until every one is dismissed, which reads as a lockup,
+            # and it is also what would recurse if building the dialog emitted a
+            # Qt message of its own.
+            LOG.error(
+                LOG.LOG_SOURCE.FE,
+                f"Suppressed error dialog while one is open -- {title}: {message}",
+            )
+            return
+
         detect_parent = (
             self.splash_screen
             if self.splash_screen and self.splash_screen.isVisible()
             else self.main_window
         )
-        if traceback:
-            traceback = f"\n{traceback}"
+        body = f"{message}\n{traceback}" if traceback else message
         err_msg_box = ScrollableErrorDialog(
-            f"{message}{traceback if traceback else ''}",
+            body,
             title=title,
             parent=detect_parent,
         )
-        err_msg_box.exec()
+        self._error_dialog_active = True
+        try:
+            err_msg_box.exec()
+        finally:
+            self._error_dialog_active = False
         if detect_parent is self.splash_screen and self.splash_screen is not None:
             if self.splash_screen.isVisible():
                 self.app.quit()

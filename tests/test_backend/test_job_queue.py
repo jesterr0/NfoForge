@@ -25,6 +25,17 @@ from src.enums.tracker_selection import TrackerSelection
 from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 
 
+def test_an_archived_base_makes_missing_original_media_usable(tmp_path: Path) -> None:
+    context = ProcessingContext()
+    context.media_input.input_path = tmp_path / "gone.mkv"
+    context.media_input.file_list.append(tmp_path / "gone.mkv")
+    base = tmp_path / "base.torrent"
+    base.write_bytes(b"stored")
+    context.shared_data.base_torrent = base
+
+    assert JobQueueRunner._unusable_reason(context) is None
+
+
 @pytest.fixture
 def working_dir(tmp_path: Path) -> Path:
     return tmp_path / "nfoforge"

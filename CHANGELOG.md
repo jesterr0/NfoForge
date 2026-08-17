@@ -4,6 +4,8 @@
 
 ### Added
 
+- Completed uploads are now retained as reusable job archives. Use **Jobs → Add Trackers** to publish the same prepared release to additional trackers later, even when the original media is no longer available to NfoForge. The archive carries the neutral torrent, MediaInfo, screenshots and release metadata; new trackers use the current profile's templates and settings.
+- Saved archives track confirmed and uncertain uploads separately, prevent selecting a confirmed tracker twice, and let uncertain results be resolved before retrying.
 - Ability to select media search type (movies vs. tv or both) in General -> Settings
   - This controls the flow for the rest of the program and disables one or the other if not set to both
 
@@ -14,6 +16,14 @@
   - Combines plot/info section
 
 ### Fixed
+
+- Adding trackers to an archive no longer discards a tracker left unfinished by an earlier run. Its prepared title and NFO are kept and it stays listed as pending.
+- Trackers added to an archive are now checked against the active config the same way a resumed job's own trackers are, so a disabled upload or a deleted NFO template is reported up front instead of failing partway through the run.
+- Preparing an ordinary saved job again prompts for a name as before, rather than silently overwriting the job that was opened.
+- Fixed a freeze that could occur a short while after image generation. Qt reports its own warnings on whichever thread raised them, including its internal network thread, and the handler was building an error dialog there — parenting a window across threads and then running a modal loop off the GUI thread, which wedged the client.
+- Qt warnings are now recorded in the log instead of interrupting with a dialog, and every Qt log line names the thread it came from. Genuine faults still raise a dialog, and only one at a time, so a burst of errors can no longer bury the window.
+- Suppressed a harmless `QSslSocket` warning from the Media Search poster download.
+- If the image viewer fails to open after generating images, the error is now reported and the client stays usable rather than remaining disabled.
 
 - Media Search SVGs now theme properly/automatically for dark/light modes
 - A bug when user selects **Start Over** in dark mode all the SVGs/icons could default to light mode even thought he client stayed in dark mode

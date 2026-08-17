@@ -85,6 +85,32 @@ def test_a_job_whose_trackers_all_uploaded_is_deleted(working_dir: Path) -> None
     assert not directory.exists()
 
 
+def test_a_fully_uploaded_archive_is_retained_with_history(
+    working_dir: Path,
+) -> None:
+    job, directory = _job(working_dir)
+    job.archived = True
+    store.write_job_document(job, directory)
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.INJECTION_FAILED,
+        },
+    )
+
+    _runner()._settle(job, outcome)
+
+    reloaded = store.load_job(directory)
+    assert directory.exists()
+    assert reloaded.archived
+    assert reloaded.summary.trackers == []
+    assert set(reloaded.uploaded_trackers) == {"AITHER", "HUNO"}
+    assert outcome.disposition is JobDisposition.NARROWED
+
+
 def test_a_partly_uploaded_job_is_narrowed_to_what_is_left(working_dir: Path) -> None:
     """HUNO uploads and is dropped; AITHER failed and is retained.
 

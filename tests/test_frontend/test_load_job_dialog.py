@@ -45,21 +45,49 @@ def _save(
     trackers: list[str] | None = None,
     title: str | None = None,
     created_at: str | None = None,
+    archived: bool = False,
 ) -> Path:
     context: dict[str, Any] = {"shared_data": {}}
+    if archived:
+        context["media_input"] = {
+            "mediainfo_assets": {"C:/gone.mkv": {"xml": "mediainfo/0.xml"}}
+        }
     if prepared:
         context["shared_data"]["tracker_release_data"] = {
             "AITHER": {"title": "t", "nfo": "body"}
         }
     job = store.build_job(
         name,
-        JobSummary(title=title or name, year=2024, trackers=trackers or ["Aither"]),
+        JobSummary(
+            title=title or name,
+            year=2024,
+            trackers=["Aither"] if trackers is None else trackers,
+        ),
         context,
         config_profile=profile,
+        archived=archived,
     )
     if created_at:
         job.created_at = created_at
-    return store.save_job(job, working_dir)
+    directory = store.save_job(job, working_dir)
+    if archived:
+        (directory / store.JOB_BASE_TORRENT_NAME).write_bytes(b"torrent")
+    return directory
+
+
+def test_add_trackers_is_available_for_a_self_contained_archive(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        assert dialog.add_trackers_btn.isEnabled()
+        open_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Open)
+        assert open_button is not None
+        assert not open_button.isEnabled()
+    finally:
+        dialog.deleteLater()
 
 
 def _open_dialog(qapp: Any, active_profile: str | None = "default") -> LoadJobDialog:

@@ -153,6 +153,12 @@ from src.plugins.api import (
 from src.utils.secret_redaction import scrub_secrets
 
 
+def _media_source_available(media_input: Any) -> bool:
+    """Report source availability while remaining compatible with test stubs."""
+    checker = getattr(media_input, "source_available", None)
+    return bool(checker()) if callable(checker) else True
+
+
 class ProcessBackEnd:
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
@@ -352,6 +358,7 @@ class ProcessBackEnd:
                     media_input=media_input_payload,
                     media_search=media_search_payload,
                     timeout=timeout,
+                    source_available=_media_source_available(media_input_payload),
                 ),
             )
         except PluginExecutionError as error:
@@ -978,6 +985,10 @@ class ProcessBackEnd:
 
         # get media input - use context instead of config
         media_input = context.media_input.require_input_path()
+        input_kind = getattr(context.media_input, "input_is_directory", None)
+        input_is_directory = (
+            bool(input_kind()) if callable(input_kind) else media_input.is_dir()
+        )
         release_info = build_series_release_info(context.media_input)
 
         # process
@@ -988,7 +999,13 @@ class ProcessBackEnd:
         # A prepared job already carries finished titles and NFOs, so none of
         # the generation below runs and neither prompt fires -- that silence is
         # what lets such a job be uploaded unattended, by a queue or otherwise.
-        already_prepared = context.shared_data.is_prepared()
+        prepared_trackers = set(context.shared_data.tracker_release_data)
+        trackers_to_generate = tuple(
+            name
+            for name in process_dict
+            if TrackerSelection(name) not in prepared_trackers
+        )
+        already_prepared = not trackers_to_generate
         if already_prepared:
             queued_text_update(
                 "<br /><span>Using the titles and NFOs saved with this job</span>"
@@ -1000,7 +1017,7 @@ class ProcessBackEnd:
         # find all prompt tokens
         if token_prompt_cb and not already_prepared:
             all_prompt_tokens: list[str] = []
-            for tracker_name in process_dict.keys():
+            for tracker_name in trackers_to_generate:
                 cur_tracker = TrackerSelection(tracker_name)
                 tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
                 nfo_template = self.template_selector_be.read_template(
@@ -1011,9 +1028,14 @@ class ProcessBackEnd:
                     all_prompt_tokens.extend(prompt_tokens)
 
             # remove duplicates but maintain order from prompt tokens
-            if all_prompt_tokens:
+            unresolved_tokens = [
+                token
+                for token in dict.fromkeys(all_prompt_tokens)
+                if token not in base_usr_tokens
+            ]
+            if unresolved_tokens:
                 # use a callback to wait for a response from the frontend
-                response = token_prompt_cb(list(dict.fromkeys(all_prompt_tokens)))
+                response = token_prompt_cb(unresolved_tokens)
                 if response:
                     base_usr_tokens.update(response)
 
@@ -1023,7 +1045,6 @@ class ProcessBackEnd:
         )
         if not already_prepared:
             queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
-        trackers_to_generate = () if already_prepared else tuple(process_dict.keys())
         for tracker_name in trackers_to_generate:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
@@ -1138,6 +1159,9 @@ class ProcessBackEnd:
                                 ),
                                 formatted_screens=formatted_screens,
                                 preview=False,
+                                source_available=_media_source_available(
+                                    context.media_input
+                                ),
                             ),
                         )
 
@@ -1149,11 +1173,15 @@ class ProcessBackEnd:
             and overview_cb
             and not already_prepared
         ):
-            confirm_overview = overview_cb(tracker_release_data)
+            generated_release_data = {
+                TrackerSelection(name): tracker_release_data[TrackerSelection(name)]
+                for name in trackers_to_generate
+            }
+            confirm_overview = overview_cb(generated_release_data)
             if confirm_overview:
                 nfo_updates = [
                     str(k)
-                    for k in tracker_release_data
+                    for k in generated_release_data
                     if k in confirm_overview
                     and tracker_release_data[k] != confirm_overview[k]
                 ]
@@ -1162,7 +1190,7 @@ class ProcessBackEnd:
                         "<br /><i><span>Applying user edits from overview to trackers "
                         f'<span style="font-weight: bold;">{", ".join(nfo_updates)}</span></span></i><br />'
                     )
-                tracker_release_data = confirm_overview
+                tracker_release_data.update(confirm_overview)
 
         # Record the finished titles/NFOs (including any overview edits) and the
         # prompt answers onto the context, so saving after this point produces a
@@ -1184,6 +1212,7 @@ class ProcessBackEnd:
                 media_input=media_input,
                 carried_torrent=base_torrent_file,
                 queued_text_update=queued_text_update,
+                input_is_directory=input_is_directory,
             )
 
         # loop from the start and process jobs
@@ -1489,6 +1518,7 @@ class ProcessBackEnd:
                         replace_last_line=queued_text_update_replace_last_line,
                         set_progress=self.progress_bar_cb or (lambda _value: None),
                     ),
+                    source_available=_media_source_available(context.media_input),
                 ),
             )
         except PluginExecutionError as error:
@@ -1538,6 +1568,7 @@ class ProcessBackEnd:
                     ),
                     outcome=outcome,
                     error=error,
+                    source_available=_media_source_available(context.media_input),
                 ),
             )
         except PluginExecutionError as plugin_error:
@@ -2086,6 +2117,7 @@ class ProcessBackEnd:
         media_input: Path,
         carried_torrent: Path | None,
         queued_text_update: Callable[[str], None],
+        input_is_directory: bool | None = None,
     ) -> Path:
         """Put a neutral base torrent in place for every tracker to clone.
 
@@ -2100,7 +2132,9 @@ class ProcessBackEnd:
         resumed job that gets re-saved keeps one, and the job's own stored file
         is never mutated.
         """
-        base_path = working_dir / f"{release_stem(media_input)}{BASE_TORRENT_SUFFIX}"
+        base_path = working_dir / (
+            f"{release_stem(media_input, input_is_directory)}{BASE_TORRENT_SUFFIX}"
+        )
 
         if carried_torrent:
             try:
@@ -2244,6 +2278,7 @@ class ProcessBackEnd:
                 localization=localization,
                 add_localization_to_custom_edition=bhd_payload.add_localization_to_custom_edition,
                 stream_optimized=bhd_payload.stream_optimized,
+                content_size=context.media_input.content_size,
             )
         elif tracker is TrackerSelection.PASS_THE_POPCORN:
             ptp_payload = self.config.settings.trackers.pass_the_popcorn
@@ -2271,6 +2306,7 @@ class ProcessBackEnd:
                 cookie_dir=self.config.paths.tracker_cookies,
                 totp=ptp_payload.totp,
                 timeout=self.config.settings.general.timeout,
+                content_size=context.media_input.content_size,
             )
         # Unit3d trackers
         elif tracker is TrackerSelection.REELFLIX:

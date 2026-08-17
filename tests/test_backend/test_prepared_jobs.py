@@ -261,6 +261,78 @@ def test_generation_records_release_data_for_saving(
     assert TrackerSelection.AITHER in context.shared_data.tracker_release_data
 
 
+def test_only_new_trackers_are_generated_in_a_mixed_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
+) -> None:
+    context = _context(tmp_path)
+    _prepare(context)
+    context.shared_data.selected_trackers = (
+        TrackerSelection.AITHER,
+        TrackerSelection.LST,
+    )
+    backend = _backend(monkeypatch)
+    info = _tracker_info()
+    backend.config.settings.trackers.by_selection = lambda: {
+        TrackerSelection.AITHER: info,
+        TrackerSelection.LST: info,
+    }
+    generated: list[TrackerSelection] = []
+    monkeypatch.setattr(
+        backend,
+        "generate_tracker_title",
+        lambda tracker, **_k: (generated.append(tracker), "Generated")[1],
+        raising=False,
+    )
+    monkeypatch.setattr(process_module, "get_prompt_tokens", lambda _t: [])
+    overview_payloads: list[dict[TrackerSelection, Any]] = []
+    process_dict = {
+        "Aither": {"path": tmp_path / "aither" / "release.torrent"},
+        "LST": {"path": tmp_path / "lst" / "release.torrent"},
+    }
+    (tmp_path / "lst").mkdir()
+
+    backend.process_trackers(
+        **_kwargs(
+            context,
+            tmp_path,
+            process_dict=process_dict,
+            overview_cb=lambda data: (overview_payloads.append(data), data)[1],
+        ),
+        phase=RunPhase.PREPARE,
+    )
+
+    assert generated == [TrackerSelection.LST]
+    assert list(overview_payloads[0]) == [TrackerSelection.LST]
+    assert (
+        context.shared_data.tracker_release_data[TrackerSelection.AITHER]["title"]
+        == "Frozen Title"
+    )
+    assert (
+        context.shared_data.tracker_release_data[TrackerSelection.LST]["title"]
+        == "Generated"
+    )
+
+
+def test_a_carried_archive_prepares_without_the_original_media(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
+) -> None:
+    context = _context(tmp_path)
+    context.media_input.input_kind = "file"
+    context.media_input.require_input_path().unlink()
+    backend = _backend(monkeypatch)
+    monkeypatch.setattr(
+        backend, "generate_tracker_title", lambda **_k: "Generated", raising=False
+    )
+    monkeypatch.setattr(process_module, "get_prompt_tokens", lambda _t: [])
+
+    backend.process_trackers(
+        **_kwargs(context, tmp_path),
+        phase=RunPhase.PREPARE,
+    )
+
+    assert TrackerSelection.AITHER in context.shared_data.tracker_release_data
+
+
 def test_generation_records_prompt_answers_for_saving(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
 ) -> None:

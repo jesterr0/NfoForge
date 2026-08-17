@@ -58,13 +58,18 @@ class SharedPayload:
     purely to make that staleness visible instead of silent.
     """
 
-    def is_prepared(self) -> bool:
+    def is_prepared(self, trackers: Sequence[TrackerSelection] | None = None) -> bool:
         """Whether titles and NFOs are already generated for this run.
 
         Derived rather than stored as its own flag, so there is no second piece
         of state that can disagree with the data itself.
         """
-        return bool(self.tracker_release_data)
+        required = tuple(
+            trackers if trackers is not None else self.selected_trackers or ()
+        )
+        if not required:
+            return bool(self.tracker_release_data)
+        return all(tracker in self.tracker_release_data for tracker in required)
 
     def reset(self) -> None:
         self.url_data.clear()

@@ -33,6 +33,7 @@ import shutil
 from typing import Any
 
 from pymediainfo import MediaInfo
+from torf import Torrent
 
 from src.backend.jobs.codec import mediainfo_xml
 from src.backend.jobs.store import (
@@ -261,6 +262,46 @@ def base_torrent_path(directory: Path) -> Path | None:
     """The stored base torrent, if this job has one."""
     candidate = directory / JOB_BASE_TORRENT_NAME
     return candidate if candidate.is_file() else None
+
+
+def base_torrent_snapshot(torrent_path: Path) -> dict[str, Any]:
+    """Return immutable release facts carried by a neutral base torrent."""
+    try:
+        torrent = Torrent.read(torrent_path)
+        digest = hashlib.sha256(torrent_path.read_bytes()).hexdigest()
+    except Exception as error:
+        raise JobAssetError(f"Could not inspect saved base torrent: {error}") from error
+    return {
+        "sha256": digest,
+        "name": torrent.name,
+        "mode": torrent.mode,
+        "content_size": torrent.size,
+        "files": [str(path) for path in torrent.files],
+    }
+
+
+def archived_base_is_valid(torrent_path: Path, snapshot: Any) -> bool:
+    """Validate an archive's canonical torrent without touching its content."""
+    if not isinstance(snapshot, dict):
+        return False
+    try:
+        current = base_torrent_snapshot(torrent_path)
+        torrent = Torrent.read(torrent_path)
+    except Exception:
+        return False
+    if any(
+        (
+            torrent.metainfo.get("announce"),
+            torrent.metainfo.get("announce-list"),
+            torrent.metainfo.get("comment"),
+            torrent.metainfo.get("info", {}).get("source"),
+        )
+    ):
+        return False
+    return all(
+        snapshot.get(key) == current.get(key)
+        for key in ("sha256", "name", "mode", "content_size", "files")
+    )
 
 
 def torrent_content_files(input_path: Path) -> list[Path]:

@@ -13,7 +13,9 @@ follows.
 from src.backend.jobs.assets import (
     JobAssetError,
     MediaFingerprint,
+    archived_base_is_valid,
     base_torrent_path,
+    base_torrent_snapshot,
     capture_mediainfo,
     capture_nfos,
     copy_base_torrent,
@@ -57,6 +59,8 @@ __all__ = [
     "MediaFingerprint",
     "SavedJob",
     "base_torrent_path",
+    "base_torrent_snapshot",
+    "archived_base_is_valid",
     "build_job",
     "capture_mediainfo",
     "capture_nfos",

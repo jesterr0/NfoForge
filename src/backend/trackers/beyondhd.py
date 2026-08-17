@@ -106,6 +106,7 @@ def bhd_uploader(
     localization: str | None = None,
     add_localization_to_custom_edition: bool = False,
     stream_optimized: bool = False,
+    content_size: int | None = None,
 ) -> str | None:
     uploader = BHDUploader(
         api_key=api_key,
@@ -113,6 +114,7 @@ def bhd_uploader(
         input_path=input_path,
         media_type=media_type,
         timeout=timeout,
+        content_size=content_size,
     )
     return uploader.upload(
         tracker_title=tracker_title,
@@ -143,6 +145,7 @@ class BHDUploader:
         "is_pack",
         "is_special",
         "timeout",
+        "content_size",
     )
 
     def __init__(
@@ -154,6 +157,7 @@ class BHDUploader:
         is_pack: bool = False,
         is_special: bool = False,
         timeout: int = 60,
+        content_size: int | None = None,
     ) -> None:
         self._upload_url = (
             f"{TrackerSelection.BEYOND_HD.get_root_url()}api/upload/{api_key}"
@@ -164,6 +168,7 @@ class BHDUploader:
         self.is_pack = is_pack
         self.is_special = is_special
         self.timeout = timeout
+        self.content_size = content_size
 
     def upload(
         self,
@@ -374,7 +379,11 @@ class BHDUploader:
 
         # disc
         elif DISC_TITLE_REGEX.search(title_lowered):
-            input_file_size = self.input_path.stat().st_size
+            input_file_size = (
+                self.content_size
+                if self.content_size is not None
+                else self.input_path.stat().st_size
+            )
             if input_file_size <= 26_843_545_600:
                 return BHDType.BD_25.value
             elif input_file_size <= 53_687_091_200:

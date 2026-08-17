@@ -35,6 +35,7 @@ class SeriesReleaseInfo:
     episode_end: int | None = None
     episode_count: int = 0
     episode_format: EpisodeFormat = EpisodeFormat.STANDARD
+    input_is_directory: bool = False
 
     @property
     def is_series(self) -> bool:
@@ -65,7 +66,11 @@ class SeriesReleaseInfo:
     @property
     def search_name(self) -> str:
         path = self.search_path
-        return path.stem if path and path.suffix else path.name if path else ""
+        if not path:
+            return ""
+        if self.is_pack and self.input_is_directory:
+            return path.name
+        return path.stem if path.suffix else path.name
 
     @property
     def season_tag(self) -> str | None:
@@ -171,6 +176,7 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
         episode_end=episode_end,
         episode_count=episode_count,
         episode_format=media_input.series_episode_format,
+        input_is_directory=media_input.input_is_directory(),
     )
 
 

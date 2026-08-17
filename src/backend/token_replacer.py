@@ -2083,7 +2083,7 @@ class TokenReplacer:
     def _original_filename(self, token_data: TokenData) -> str:
         # For series, use directory name or episode filename based on context
         if self.is_series_mode and self.media_input_obj.input_path:
-            if self.media_input_obj.input_path.is_dir():
+            if self.media_input_obj.input_is_directory():
                 return self._optional_user_input(
                     self.media_input_obj.input_path.name, token_data
                 )

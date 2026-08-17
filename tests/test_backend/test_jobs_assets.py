@@ -7,11 +7,14 @@ import wave
 
 from pymediainfo import MediaInfo
 import pytest
+from torf import Torrent
 
 from src.backend.jobs.assets import (
     JobAssetError,
     MediaFingerprint,
+    archived_base_is_valid,
     base_torrent_path,
+    base_torrent_snapshot,
     capture_mediainfo,
     copy_base_torrent,
     copy_images,
@@ -103,6 +106,38 @@ def test_a_missing_image_is_skipped_rather_than_failing_the_save(
 
 def test_no_images_creates_nothing(job_directory: Path) -> None:
     assert copy_images(job_directory, []) == []
+
+
+def test_archived_base_validates_without_the_source(
+    tmp_path: Path, job_directory: Path
+) -> None:
+    media = tmp_path / "release.bin"
+    media.write_bytes(b"archive payload")
+    torrent = Torrent(path=media, private=True)
+    torrent.generate()
+    base = job_directory / "base.torrent"
+    torrent.write(base)
+    snapshot = base_torrent_snapshot(base)
+
+    media.unlink()
+
+    assert snapshot["mode"] == "singlefile"
+    assert snapshot["content_size"] == len(b"archive payload")
+    assert archived_base_is_valid(base, snapshot)
+
+
+def test_archived_base_rejects_tampering(tmp_path: Path, job_directory: Path) -> None:
+    media = tmp_path / "release.bin"
+    media.write_bytes(b"archive payload")
+    torrent = Torrent(path=media, private=True)
+    torrent.generate()
+    base = job_directory / "base.torrent"
+    torrent.write(base)
+    snapshot = base_torrent_snapshot(base)
+
+    base.write_bytes(base.read_bytes() + b"tampered")
+
+    assert not archived_base_is_valid(base, snapshot)
 
 
 # --------------------------------------------------------------------------

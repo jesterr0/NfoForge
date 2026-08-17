@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 import pytest
+from torf import Torrent
 
 from src.backend.jobs import (
     MediaFingerprint,
@@ -223,6 +224,149 @@ def test_saved_job_round_trips_through_the_store(
         )
     }
     assert restored.media_input.require_mediainfo(sample_media).tracks  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_completed_upload_is_kept_as_a_source_less_archive(
+    sample_media: Path, working_dir: Path
+) -> None:
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.tracker_release_data = {
+        TrackerSelection.AITHER: {"title": "Example", "nfo": "release nfo"}
+    }
+    image = context.shared_data.loaded_images[0]
+    image.write_bytes(b"screenshot")
+    context.media_input.require_working_dir().mkdir()
+    base = context.media_input.require_working_dir() / "Example.Movie.2024.base.torrent"
+    torrent = Torrent(path=sample_media, private=True)
+    torrent.generate()
+    torrent.write(base)
+
+    page = SimpleNamespace(
+        context=context,
+        config=SimpleNamespace(
+            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
+            program=SimpleNamespace(current_config="config"),
+        ),
+        _run_phase=process_module.RunPhase.FULL,
+        _run_outcomes={TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED},
+        _on_text_update=lambda _text: None,
+    )
+    page._default_job_name = lambda: ProcessPage._default_job_name(page)
+    page._first_generated_torrent = lambda: base
+    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
+        page, directory, keep
+    )
+    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
+
+    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
+    listings = store.list_jobs([working_dir])
+    assert len(listings) == 1
+    assert listings[0].archived
+    assert listings[0].source_less_ready
+    saved = store.load_job(listings[0].path)
+    assert saved.uploaded_trackers == [TrackerSelection.AITHER.name]
+
+    sample_media.unlink()
+
+    assert store.list_jobs([working_dir])[0].source_less_ready
+
+
+def test_adding_trackers_keeps_one_left_pending_by_an_earlier_run(
+    sample_media: Path, working_dir: Path
+) -> None:
+    """Adding a tracker must not discard what an earlier run left unfinished.
+
+    `_run_outcomes` only covers the trackers of the run that just ended, so
+    narrowing the archive to it drops a tracker that failed last time -- its
+    prepared title and NFO go with it, and the sidecars are pruned. The user
+    would have no way back except preparing that tracker over again, and no
+    indication it happened.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.tracker_release_data = {
+        TrackerSelection.AITHER: {"title": "Example", "nfo": "aither nfo"},
+        TrackerSelection.HUNO: {"title": "Example", "nfo": "huno nfo"},
+    }
+    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
+    context.media_input.require_working_dir().mkdir()
+    base = context.media_input.require_working_dir() / "Example.Movie.2024.base.torrent"
+    torrent = Torrent(path=sample_media, private=True)
+    torrent.generate()
+    torrent.write(base)
+
+    page = SimpleNamespace(
+        context=context,
+        config=SimpleNamespace(
+            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
+            program=SimpleNamespace(current_config="config"),
+        ),
+        _run_phase=process_module.RunPhase.FULL,
+        _run_outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOAD_FAILED,
+        },
+        _on_text_update=lambda _text: None,
+    )
+    page._default_job_name = lambda: ProcessPage._default_job_name(page)
+    page._first_generated_torrent = lambda: base
+    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
+        page, directory, keep
+    )
+    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
+
+    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
+    path = store.list_jobs([working_dir])[0].path
+    assert store.load_job(path).summary.trackers == [str(TrackerSelection.HUNO)]
+
+    # Now add LST to that archive. Resuming clears the image-host map and
+    # re-fills it with only the additions, exactly as `_load_job` does, so HUNO
+    # has no row in this run at all.
+    context.loaded_job_path = path
+    context.loaded_job_archived = True
+    context.loaded_uploaded_trackers = {TrackerSelection.AITHER}
+    context.shared_data.tracker_release_data[TrackerSelection.LST] = {
+        "title": "Example",
+        "nfo": "lst nfo",
+    }
+    context.shared_data.tracker_image_hosts.clear()
+    context.shared_data.tracker_image_hosts[TrackerSelection.LST] = ImageUploadFromTo(
+        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+    )
+    page._run_outcomes = {TrackerSelection.LST: TrackerRunOutcome.UPLOADED}
+
+    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
+
+    saved = store.load_job(path)
+    assert set(saved.uploaded_trackers) == {
+        TrackerSelection.AITHER.name,
+        TrackerSelection.LST.name,
+    }
+    # HUNO was neither uploaded nor part of this run: it stays pending, keeps
+    # its frozen NFO, and remains visible to the picker.
+    assert saved.summary.trackers == [str(TrackerSelection.HUNO)]
+    release_data = saved.context["shared_data"]["tracker_release_data"]
+    assert TrackerSelection.HUNO.name in release_data
+    assert (Path(path) / store.JOB_NFO_DIR_NAME / "huno.txt").is_file()
+
+
+def test_a_prepared_plain_job_is_not_silently_overwritten(
+    sample_media: Path, working_dir: Path
+) -> None:
+    """Only an archive is updated in place.
+
+    Preparing an ordinary saved job keeps the named save it always had -- the
+    in-place path exists for archives, which may have no source left to capture
+    MediaInfo from.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.loaded_job_path = working_dir / "some-job"
+    context.loaded_job_archived = False
+    page = SimpleNamespace(context=context)
+
+    assert ProcessPage._save_prepared_archive(page) is False  # pyright: ignore[reportArgumentType]
 
 
 # --------------------------------------------------------------------------
@@ -767,6 +911,45 @@ def test_a_tracker_disabled_in_the_active_config_is_flagged(
 
     assert allowed is False
     assert "uploads are disabled" in asked[0]
+
+
+def test_trackers_added_to_an_archive_are_checked_against_the_config(
+    qapp: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The add-trackers path would otherwise check nothing at all.
+
+    `_confirm_profile_can_serve_job` runs before the additions are chosen and
+    reads the trackers the job already had -- for a fully uploaded archive that
+    set is empty. The picker itself only filters on `enabled`, which is a
+    different setting from `upload_enabled` and says nothing about the NFO
+    template still existing.
+    """
+    asked: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda _self, _title, text, *_a, **_k: (
+            asked.append(text),
+            QMessageBox.StandardButton.No,
+        )[1],
+    )
+    stub = _wizard_stub(upload_enabled=False)
+
+    allowed = MainWindowWizard._confirm_profile_can_serve_added_trackers(
+        stub,  # pyright: ignore[reportArgumentType]
+        [TrackerSelection.AITHER],
+    )
+
+    assert allowed is False
+    assert "uploads are disabled" in asked[0]
+
+
+def test_added_trackers_the_config_can_serve_ask_nothing(qapp: Any) -> None:
+    # no QMessageBox patch: a prompt here would fail the test by blocking
+    assert MainWindowWizard._confirm_profile_can_serve_added_trackers(
+        _wizard_stub(),  # pyright: ignore[reportArgumentType]
+        [TrackerSelection.AITHER],
+    )
 
 
 def test_a_missing_nfo_template_is_flagged(
