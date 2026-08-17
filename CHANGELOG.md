@@ -24,9 +24,12 @@
 - Qt warnings are now recorded in the log instead of interrupting with a dialog, and every Qt log line names the thread it came from. Genuine faults still raise a dialog, and only one at a time, so a burst of errors can no longer bury the window.
 - Suppressed a harmless `QSslSocket` warning from the Media Search poster download.
 - If the image viewer fails to open after generating images, the error is now reported and the client stays usable rather than remaining disabled.
-
 - Media Search SVGs now theme properly/automatically for dark/light modes
 - A bug when user selects **Start Over** in dark mode all the SVGs/icons could default to light mode even thought he client stayed in dark mode
+- Template system:
+  - Backend hardening: read_template now bounds-checks idx and catches OSError around the file open instead of letting it propagate; a stale entry is dropped from the cache and None is returned (every existing caller already treats None as "nothing to load," so this is a pure behavior improvement, not a contract change). delete_template uses unlink(missing_ok=True). load_templates tolerates a missing directory. save_template/create_template recreate the templates directory if it's gone.
+  - Cross-instance sync: added a templates_changed global signal, emitted whenever a TemplateSelector creates or deletes a template. Every open TemplateSelector listens and resyncs: if its current selection still exists it just refreshes the item list (preserving the active selection and any unsaved edits in the editor); if its selection was the one deleted elsewhere, it discards it and falls back cleanly (with a status-tip note if there was unsaved text). This is what actually prevents the reported crash rather than just catching it after the fact.
+  - Defense in depth: save_template()/delete_template() in the widget now look up the backend cache with .get() instead of [], so a stale selection warns/reloads instead of raising KeyError.
 
 ### Removed
 

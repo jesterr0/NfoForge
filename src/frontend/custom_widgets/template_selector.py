@@ -107,6 +107,7 @@ class TemplateSelector(QWidget):
         self.main_window = main_window
         self.sorted_tokens = self._get_file_tokens()
         GSigs().token_state_changed.connect(self._token_state_changed)
+        GSigs().templates_changed.connect(self._templates_changed_elsewhere)
 
         self.backend = TemplateSelectorBackEnd()
         self.templates = self.backend.templates
@@ -418,6 +419,7 @@ class TemplateSelector(QWidget):
             self.load_templates()
             index = self.template_index_map.get(new.stem, -1)
             self.template_combo.setCurrentIndex(index)
+            GSigs().templates_changed.emit()
 
     @Slot(str)
     def save_template(self, _data: str | None = None) -> None:
@@ -428,9 +430,19 @@ class TemplateSelector(QWidget):
             self.preview_template()
 
         if self.template_combo.currentIndex() != -1:
-            selected_template = self.backend.templates[
-                self.template_combo.currentText()
-            ]
+            selected_name = self.template_combo.currentText()
+            selected_template = self.backend.templates.get(selected_name)
+            if selected_template is None:
+                # gone from the cache -- most likely deleted through another
+                # open template editor since this combo was last refreshed
+                QMessageBox.warning(
+                    self,
+                    "Template Missing",
+                    f"'{selected_name}' no longer exists, so it can't be saved. "
+                    "It may have been deleted in another window.",
+                )
+                self.load_templates()
+                return
             self.backend.save_template(selected_template, self.text_edit.toPlainText())
             self._refresh_unknown_tokens()
             GSigs().main_window_update_status_tip.emit(
@@ -445,14 +457,19 @@ class TemplateSelector(QWidget):
         if self._del_timer.isActive():
             self._del_timer.stop()
             self._del_timer_done()
-            selected_template = self.backend.templates[
-                self.template_combo.currentText()
-            ]
+            selected_name = self.template_combo.currentText()
+            selected_template = self.backend.templates.get(selected_name)
+            if selected_template is None:
+                # already gone -- likely deleted through another open
+                # template editor before this confirm click landed
+                self.load_templates()
+                return
             if not self._template_in_use(selected_template):
                 return
             self.backend.delete_template(selected_template)
             self.load_templates()
             self.template_combo.setCurrentIndex(0)
+            GSigs().templates_changed.emit()
         else:
             self._del_timer.start()
             self.del_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
@@ -467,6 +484,50 @@ class TemplateSelector(QWidget):
     def _del_timer_done(self) -> None:
         self.del_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.del_btn.setText("")
+
+    @Slot()
+    def _templates_changed_elsewhere(self) -> None:
+        """Resync after another open TemplateSelector created or deleted a template.
+
+        Each TemplateSelector owns its own TemplateSelectorBackEnd cache over
+        the same templates directory -- the wizard's "Configure NFO Templates"
+        dialog and the Settings > Templates page are separate instances, for
+        example -- so a delete/create made through one leaves every other one
+        pointing at a stale template list until this runs. Left unhandled,
+        saving/reading against a template deleted elsewhere used to raise
+        FileNotFoundError; now the backend degrades to None, but the dead
+        entry would otherwise still linger in this combo box indefinitely.
+        """
+        previous_name = self.template_combo.currentText()
+        has_unsaved_text = bool(self.text_edit.toPlainText())
+
+        self.backend.load_templates()
+        templates = self.backend.templates
+
+        if previous_name and previous_name in templates:
+            # still on disk: refresh the item list (so templates added or
+            # removed elsewhere show up) without disturbing the active
+            # selection or any unsaved edits sitting in the editor
+            self.template_combo.blockSignals(True)
+            self.template_combo.clear()
+            self.template_combo.addItems(tuple(templates.keys()))
+            self.template_index_map = self.create_template_index_map()
+            self.template_combo.setCurrentIndex(self.template_index_map[previous_name])
+            self.template_combo.blockSignals(False)
+            self._update_tracker_toggles()
+            return
+
+        # either nothing was selected, or what was selected here just got
+        # deleted elsewhere -- there is nothing left to preserve
+        if previous_name and has_unsaved_text:
+            GSigs().main_window_update_status_tip.emit(
+                f"'{previous_name}' was deleted in another window; "
+                "discarding its unsaved changes",
+                5000,
+            )
+        self._del_timer_stop()
+        self.preview_btn.setChecked(False)
+        self.load_templates()
 
     def template_edited(self) -> bool:
         get_template = self.backend.read_template(
