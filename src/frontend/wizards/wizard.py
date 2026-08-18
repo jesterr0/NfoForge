@@ -7,13 +7,8 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
     QDialog,
-    QDialogButtonBox,
-    QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QVBoxLayout,
     QWizard,
 )
 
@@ -31,7 +26,6 @@ from src.backend.jobs import (
     template_fingerprint,
 )
 from src.backend.template_selector import TemplateSelectorBackEnd
-from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
 from src.backend.utils.media_info_utils import clear_full_mi_str_cache
 from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
@@ -68,8 +62,11 @@ def tracker_profile_problems(
 
     A job stores no settings of its own -- credentials, templates and
     per-tracker toggles are all read live -- so this asks the live config, not
-    the job. Shared by the resume path and by the add-trackers path, which
-    would otherwise check nothing at all.
+    the job.
+
+    Deliberately silent about a tracker with no template assigned at all: a
+    prepared job uploads a frozen NFO and does not care, and an unprepared one
+    is stopped by the pre-upload page, which names the trackers precisely.
     """
     available_templates = set(template_selector.load_templates())
     problems: list[str] = []
@@ -331,16 +328,32 @@ class MainWindowWizard(QWizard):
         context.loaded_uncertain_trackers = self._tracker_names_to_members(
             job.uncertain_trackers
         )
-        if dialog.add_trackers_requested:
-            additions = self._choose_additional_trackers(job, context)
-            if not additions:
-                return
-            if not self._confirm_profile_can_serve_added_trackers(additions):
-                return
-            context.shared_data.selected_trackers = additions
-            context.shared_data.tracker_image_hosts.clear()
-        self._resume_job(context)
-        LOG.info(LOG.LOG_SOURCE.FE, f"Resumed job '{job.name}' at the process page")
+        start_page = self._resume_start_page(
+            context, adding_trackers=dialog.add_trackers_requested
+        )
+        self._resume_job(context, start_page)
+        LOG.info(LOG.LOG_SOURCE.FE, f"Resumed job '{job.name}' at the {start_page}")
+
+    @staticmethod
+    def _resume_start_page(
+        context: ProcessingContext, *, adding_trackers: bool
+    ) -> WizardPages:
+        """Where in the flow a restored job picks up.
+
+        A job whose titles and NFOs are already frozen has nothing left to
+        decide, so it goes straight to processing. Anything else -- an archive
+        being extended, or a job saved before it was prepared -- still has to
+        pick trackers and assign their NFO templates, and neither is stored in
+        the job: both are read live from the profile, on wizard pages.
+
+        `adding_trackers` is asked separately because an archive can carry
+        prepared work for trackers left pending by an earlier run. That reads as
+        prepared, but the whole point of the request is to choose trackers it
+        does not have yet.
+        """
+        if adding_trackers or not context.shared_data.is_prepared():
+            return WizardPages.TRACKERS_PAGE
+        return WizardPages.PROCESS_PAGE
 
     @staticmethod
     def _tracker_names_to_members(names: list[str]) -> set[TrackerSelection]:
@@ -351,75 +364,6 @@ class MainWindowWizard(QWizard):
             except KeyError:
                 continue
         return restored
-
-    def _choose_additional_trackers(
-        self, job: SavedJob, context: ProcessingContext
-    ) -> list[TrackerSelection] | None:
-        """Choose any number of enabled trackers not already accounted for."""
-        blocked = self._tracker_names_to_members(
-            job.uploaded_trackers + job.uncertain_trackers
-        )
-        tracker_map = self.config.settings.trackers.by_selection()
-        available = [
-            tracker
-            for tracker in self.config.settings.trackers.order
-            if tracker not in blocked
-            and tracker_map[tracker].enabled
-            and not (
-                context.media_input.media_type is MediaType.SERIES
-                and tracker in UNSUPPORTED_SERIES_TRACKERS
-            )
-        ]
-        if not available:
-            QMessageBox.information(
-                self,
-                "No Additional Trackers",
-                "Every enabled compatible tracker is already uploaded or needs "
-                "its uncertain upload state resolved.",
-            )
-            return None
-
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Add Trackers")
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(
-            QLabel(
-                "Select the trackers to add. Current tracker templates and "
-                "settings will be used.",
-                wordWrap=True,
-                parent=dialog,
-            )
-        )
-        tracker_list = QListWidget(dialog)
-        for tracker in available:
-            item = QListWidgetItem(str(tracker), tracker_list)
-            item.setData(Qt.ItemDataRole.UserRole, tracker)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Unchecked)
-        layout.addWidget(tracker_list)
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=dialog,
-        )
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return None
-        selected = [
-            tracker_list.item(index).data(Qt.ItemDataRole.UserRole)
-            for index in range(tracker_list.count())
-            if tracker_list.item(index).checkState() == Qt.CheckState.Checked
-        ]
-        selected = [
-            tracker for tracker in selected if isinstance(tracker, TrackerSelection)
-        ]
-        if not selected:
-            QMessageBox.information(
-                self, "No Trackers Selected", "Select at least one tracker to add."
-            )
-            return None
-        return selected
 
     def _switch_config_profile(self, profile: str) -> bool:
         """Activate `profile`, reporting failure without changing anything.
@@ -590,39 +534,6 @@ class MainWindowWizard(QWizard):
                 )
         return warnings
 
-    def _confirm_profile_can_serve_added_trackers(
-        self, trackers: list[TrackerSelection]
-    ) -> bool:
-        """Check newly added trackers the way a resumed job's own are checked.
-
-        `_confirm_profile_can_serve_job` runs before these are chosen, and reads
-        the trackers the job already had -- which for a fully uploaded archive
-        is the empty set, so nothing about the additions would be checked. The
-        picker only filters on `enabled`, which is a separate setting from
-        `upload_enabled` and says nothing about the NFO template still existing.
-
-        Stale-template warnings deliberately do not apply here: those are about
-        NFOs a prepared job already froze, and an added tracker generates a
-        fresh one from the current template.
-        """
-        problems = tracker_profile_problems(
-            trackers,
-            self.config.settings.trackers.by_selection(),
-            TemplateSelectorBackEnd(),
-        )
-        if not problems:
-            return True
-        return (
-            QMessageBox.question(
-                self,
-                "Config Mismatch",
-                "This config cannot fully serve the trackers you added:\n\n"
-                + "\n".join(problems)
-                + "\n\nAdd them anyway?",
-            )
-            is QMessageBox.StandardButton.Yes
-        )
-
     def _confirm_profile_can_serve_job(
         self, job_name: str, context: ProcessingContext
     ) -> bool:
@@ -658,14 +569,23 @@ class MainWindowWizard(QWizard):
             is QMessageBox.StandardButton.Yes
         )
 
-    def _resume_job(self, context: ProcessingContext) -> None:
-        """Rebuild the wizard around a restored context, at the process page.
+    def _resume_job(
+        self,
+        context: ProcessingContext,
+        start_page: WizardPages = WizardPages.PROCESS_PAGE,
+    ) -> None:
+        """Rebuild the wizard around a restored context, at `start_page`.
 
-        Mirrors `reset_wizard`, except the start page is the process page:
-        everything earlier in the flow was already answered when the job was
-        saved, and `setStartId` + `restart()` (QWizard has no `setCurrentId`)
-        also leaves a clean history so Back cannot walk into pages this run
-        never visited.
+        Mirrors `reset_wizard`, except that it starts partway through: the pages
+        before `start_page` were already answered when the job was saved, and
+        `setStartId` + `restart()` (QWizard has no `setCurrentId`) also leaves a
+        clean history so Back cannot walk into pages this run never visited.
+
+        The process page is the usual entry, but a run that still has to
+        generate NFOs starts at the trackers page instead -- tracker choice and
+        NFO template assignment are read live from the profile rather than
+        stored in the job, so they cannot be inherited the way the rest of the
+        context is.
         """
         self.context = context
         self.currentIdChanged.disconnect()
@@ -678,10 +598,19 @@ class MainWindowWizard(QWizard):
         self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
         self.process_button.show()
-        self.setStartId(WizardPages.PROCESS_PAGE.value)
-        self.setButtonLayout(self.ending_buttons)
+        self.setStartId(start_page.value)
+        # `restart()` fires `currentIdChanged`, so `_handle_page_change` sets
+        # this too; doing it here as well keeps the button bar correct even
+        # for a start page that is somehow already current.
+        self.setButtonLayout(
+            self.ending_buttons
+            if start_page is WizardPages.PROCESS_PAGE
+            else self.mid_flow_buttons
+        )
         self.restart()
-        GSigs().main_window_update_status_bar_label.emit("Process")
+        GSigs().main_window_update_status_bar_label.emit(
+            str(start_page).removesuffix(" Page")
+        )
 
     def _build_wizard_pages(self) -> None:
         for idx, page in enumerate(self._PAGES):

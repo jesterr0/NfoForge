@@ -993,7 +993,7 @@ class ProcessBackEnd:
 
         # process
         queued_text_update(
-            '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:'
+            '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:</h3>'
         )
 
         # A prepared job already carries finished titles and NFOs, so none of
@@ -1020,6 +1020,12 @@ class ProcessBackEnd:
             for tracker_name in trackers_to_generate:
                 cur_tracker = TrackerSelection(tracker_name)
                 tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
+                # An unassigned template is a legitimate state -- the tracker
+                # simply uploads without an NFO (see the `if nfo_template` guard
+                # around generation below). Reading one by an empty name is not:
+                # `read_template` treats that as a programmer error and raises.
+                if not tracker_info.nfo_template:
+                    continue
                 nfo_template = self.template_selector_be.read_template(
                     name=tracker_info.nfo_template
                 )
@@ -1063,8 +1069,10 @@ class ProcessBackEnd:
                         cur_tracker, generated_tracker_title
                     )
 
-            nfo_template = self.template_selector_be.read_template(
-                name=tracker_info.nfo_template
+            nfo_template = (
+                self.template_selector_be.read_template(name=tracker_info.nfo_template)
+                if tracker_info.nfo_template
+                else None
             )
             user_tokens = base_usr_tokens | {
                 k: v for k, (v, _) in self.config.settings.user_tokens.tokens.items()

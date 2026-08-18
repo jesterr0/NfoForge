@@ -32,22 +32,54 @@ class TrackersPage(BaseWizardPage):
         layout = QVBoxLayout(self)
         layout.addWidget(self.tracker_selection)
 
+    def _resuming_job(self) -> bool:
+        """Whether this run came from a saved job rather than the full wizard.
+
+        A resumed run's tracker choice is scoped to that run: it starts from
+        what the job carried, cannot touch trackers the job already uploaded
+        to, and must not rewrite the profile's enabled flags on its way through.
+        """
+        return self.context.loaded_job_path is not None
+
     def initializePage(self) -> None:
         unsupported_trackers = (
             UNSUPPORTED_SERIES_TRACKERS
             if self.context.media_input.media_type is MediaType.SERIES
             else None
         )
+        resuming = self._resuming_job()
         self.tracker_selection.load_from_config(
             unsupported_trackers=unsupported_trackers,
+            locked_trackers=(
+                self.context.loaded_uploaded_trackers
+                | self.context.loaded_uncertain_trackers
+            )
+            if resuming
+            else None,
+            preselected=self.context.shared_data.selected_trackers
+            if resuming
+            else None,
+            persist_enabled=not resuming,
         )
 
     def validatePage(self) -> bool:
         trackers = self.tracker_selection.get_selected_trackers()
         if not trackers:
-            QMessageBox.information(
-                self, "Warning", "You must select at least one tracker"
+            # Say why the greyed-out rows are unavailable. Every compatible
+            # tracker being locked is a real outcome for an archive that has
+            # already been everywhere, and without this the page just refuses.
+            locked = (
+                self.context.loaded_uploaded_trackers
+                | self.context.loaded_uncertain_trackers
             )
+            message = "You must select at least one tracker"
+            if self._resuming_job() and locked:
+                message += (
+                    ".\n\nGreyed-out trackers already have this release, or their "
+                    "upload result is still unresolved. Resolve those from the "
+                    "Jobs dialog, or use 'Start Over' to leave this job."
+                )
+            QMessageBox.information(self, "Warning", message)
             return False
 
         self.context.shared_data.selected_trackers = trackers

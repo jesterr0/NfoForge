@@ -4,7 +4,7 @@
 
 ### Added
 
-- Completed uploads are now retained as reusable job archives. Use **Jobs → Add Trackers** to publish the same prepared release to additional trackers later, even when the original media is no longer available to NfoForge. The archive carries the neutral torrent, MediaInfo, screenshots and release metadata; new trackers use the current profile's templates and settings.
+- Completed uploads are now retained as reusable job archives. Use **Jobs → Add Trackers** to publish the same prepared release to additional trackers later, even when the original media is no longer available to NfoForge. The archive carries the neutral torrent, MediaInfo, screenshots and release metadata; adding trackers walks the usual **Trackers → Pre-upload → Process** pages, so their NFO templates, release notes and client options are all settled before the run starts.
 - Saved archives track confirmed and uncertain uploads separately, prevent selecting a confirmed tracker twice, and let uncertain results be resolved before retrying.
 - Ability to select media search type (movies vs. tv or both) in General -> Settings
   - This controls the flow for the rest of the program and disables one or the other if not set to both
@@ -20,7 +20,10 @@
 ### Fixed
 
 - Adding trackers to an archive no longer discards a tracker left unfinished by an earlier run. Its prepared title and NFO are kept and it stays listed as pending.
-- Trackers added to an archive are now checked against the active config the same way a resumed job's own trackers are, so a disabled upload or a deleted NFO template is reported up front instead of failing partway through the run.
+- Adding trackers to an archive no longer dies partway through with `Failed to process trackers: You must supply 'name' or 'idx' arg when reading templates`. Resuming a job that still has NFOs to generate now starts on the **Trackers** page and continues through **Pre-upload**, which is where a tracker's NFO template is assigned; previously it jumped straight to processing, so a tracker that had never been given a template killed the run before it could generate anything or show the overview. A job that is already prepared still resumes directly at processing.
+- Trackers a job has already uploaded to (or whose result is unresolved) are shown greyed out with the reason rather than hidden, and a resumed job's tracker selection no longer writes back into the profile's enabled flags.
+- The "original media is not available" notice is logged once per run instead of on every press of **Process**, and no longer runs into the line above it. The Process page also carries it as a banner for the whole run.
+- The `Trackers:` heading in the process log is closed properly, so the lines under it are no longer rendered as part of the heading.
 - Preparing an ordinary saved job again prompts for a name as before, rather than silently overwriting the job that was opened.
 - Fixed a freeze that could occur a short while after image generation. Qt reports its own warnings on whichever thread raised them, including its internal network thread, and the handler was building an error dialog there — parenting a window across threads and then running a modal loop off the GUI thread, which wedged the client.
 - Qt warnings are now recorded in the log instead of interrupting with a dialog, and every Qt log line names the thread it came from. Genuine faults still raise a dialog, and only one at a time, so a burst of errors can no longer bury the window.

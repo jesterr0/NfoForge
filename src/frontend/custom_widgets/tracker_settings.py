@@ -129,6 +129,8 @@ class TrackerSettingsWidget(QWidget):
         super().__init__(parent)
         self.config = config
         self._unsupported_trackers: frozenset[TrackerSelection] = frozenset()
+        self._locked_trackers: frozenset[TrackerSelection] = frozenset()
+        self._persist_enabled = True
 
         self.tracker_list = QListWidget(self)
         self.tracker_list.setObjectName("trackerSettingsList")
@@ -237,19 +239,40 @@ class TrackerSettingsWidget(QWidget):
         config: ConfigManager | None = None,
         *,
         unsupported_trackers: AbstractSet[TrackerSelection] | None = None,
+        locked_trackers: AbstractSet[TrackerSelection] | None = None,
+        preselected: Sequence[TrackerSelection] | None = None,
+        persist_enabled: bool = True,
     ) -> None:
         """Load list state and editor values from ``config``.
 
         Editors retain ``self.config`` as their save target. A temporary source
         config is used only while loading, which lets the settings page preview
         defaults without changing where subsequent edits are written.
+
+        `locked_trackers` are shown but cannot be picked -- a resumed job uses
+        this for trackers it has already uploaded to, which must never be
+        uploaded to twice.
+
+        `preselected` replaces the configured `enabled` flags as the source of
+        the initial check states. A resumed job's tracker choice belongs to that
+        run, not to the profile, which is also why `persist_enabled=False` stops
+        the checkboxes writing back into config at all.
         """
         source_config = config or self.config
         self._unsupported_trackers = frozenset(unsupported_trackers or ())
-        self._load_tracker_items(source_config.settings.trackers)
+        self._locked_trackers = frozenset(locked_trackers or ())
+        self._persist_enabled = persist_enabled
+        self._load_tracker_items(
+            source_config.settings.trackers,
+            preselected=frozenset(preselected) if preselected is not None else None,
+        )
         self._load_editor_values(source_config)
 
-    def _load_tracker_items(self, tracker_settings: TrackerSettings) -> None:
+    def _load_tracker_items(
+        self,
+        tracker_settings: TrackerSettings,
+        preselected: frozenset[TrackerSelection] | None = None,
+    ) -> None:
         tracker_map = tracker_settings.by_selection()
         order = self._normalize_order(tracker_settings.order)
 
@@ -266,14 +289,26 @@ class TrackerSettingsWidget(QWidget):
                 | Qt.ItemFlag.ItemIsEnabled
             )
             unsupported = tracker in self._unsupported_trackers
+            locked = tracker in self._locked_trackers
             if unsupported:
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
                 item.setToolTip(
                     f"{tracker} does not support series uploads in NfoForge yet."
                 )
+            elif locked:
+                item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+                item.setToolTip(
+                    f"{tracker} already has this release, or its upload result is "
+                    "unresolved. Uploading again could duplicate it."
+                )
+            wanted = (
+                tracker in preselected
+                if preselected is not None
+                else tracker_map[tracker].enabled
+            )
             item.setCheckState(
                 Qt.CheckState.Checked
-                if tracker_map[tracker].enabled and not unsupported
+                if wanted and not unsupported and not locked
                 else Qt.CheckState.Unchecked
             )
         self.tracker_list.blockSignals(False)
@@ -308,6 +343,11 @@ class TrackerSettingsWidget(QWidget):
 
     @Slot(QListWidgetItem)
     def _tracker_enabled_changed(self, item: QListWidgetItem) -> None:
+        # A run-scoped selection must not touch the profile. Without this a
+        # resumed job that unchecks a tracker would disable it everywhere --
+        # this fires on every toggle, independently of `save_editor_settings`.
+        if not self._persist_enabled:
+            return
         tracker = item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(tracker, TrackerSelection):
             return
@@ -324,15 +364,26 @@ class TrackerSettingsWidget(QWidget):
             if item is None:
                 continue
             tracker = item.data(Qt.ItemDataRole.UserRole)
-            if isinstance(tracker, TrackerSelection):
-                tracker_map[tracker].enabled = (
-                    item.checkState() == Qt.CheckState.Checked
-                    and tracker not in self._unsupported_trackers
-                )
+            if not isinstance(tracker, TrackerSelection):
+                continue
+            # A locked tracker is unchecked because it is off limits for this
+            # run, not because the user turned it off -- copying that into the
+            # profile would silently disable it everywhere.
+            if tracker in self._locked_trackers:
+                continue
+            tracker_map[tracker].enabled = (
+                item.checkState() == Qt.CheckState.Checked
+                and tracker not in self._unsupported_trackers
+            )
 
     def save_editor_settings(self) -> None:
-        """Save all visible editor values into the configured object."""
-        self.sync_enabled_to_config()
+        """Save all visible editor values into the configured object.
+
+        The per-tracker editor fields always save; only the checkbox state is
+        withheld when the selection is run-scoped (see `_persist_enabled`).
+        """
+        if self._persist_enabled:
+            self.sync_enabled_to_config()
         for editor in self._editor_map.values():
             editor.save_data.emit()
 
@@ -359,6 +410,7 @@ class TrackerSettingsWidget(QWidget):
             if (
                 item.checkState() == Qt.CheckState.Checked
                 and tracker not in self._unsupported_trackers
+                and tracker not in self._locked_trackers
             ):
                 selected.append(tracker)
         return selected or None

@@ -5,7 +5,7 @@ anything -- that silence is the precondition for running jobs from a queue.
 """
 
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -13,6 +13,7 @@ import pytest
 
 import src.backend.process as process_module
 from src.backend.process import ProcessBackEnd
+from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.torrents import generate_torrent
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
@@ -208,6 +209,42 @@ def test_an_unprepared_job_still_prompts(
     )
 
     token_prompt.assert_called_once()
+
+
+def test_a_tracker_with_no_template_assigned_still_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
+) -> None:
+    """An unassigned template means "no NFO", not "abort the run".
+
+    Generation below already tolerates it -- the NFO simply comes out empty.
+    Asking the reader for a template by an empty name does not: that is a
+    programmer error to it, and the ValueError used to surface as a bare
+    "Failed to process trackers" partway through an archived re-run.
+    """
+    context = _context(tmp_path)
+    backend = _backend(monkeypatch)
+    backend.config.settings.trackers.by_selection()[
+        TrackerSelection.AITHER
+    ].nfo_template = ""
+    # the real reader, so this test cannot drift from what it actually raises
+    reader = cast(Any, SimpleNamespace(templates={}, load_templates=lambda: {}))
+    reader.read_template = MethodType(TemplateSelectorBackEnd.read_template, reader)
+    backend.template_selector_be = reader
+    monkeypatch.setattr(
+        backend, "generate_tracker_title", lambda **_k: "Generated", raising=False
+    )
+    token_prompt = MagicMock(return_value={})
+
+    backend.process_trackers(
+        **_kwargs(context, tmp_path, token_prompt_cb=token_prompt),
+        phase=RunPhase.PREPARE,
+    )
+
+    assert context.shared_data.tracker_release_data[TrackerSelection.AITHER] == {
+        "title": "Generated",
+        "nfo": "",
+    }
+    token_prompt.assert_not_called()
 
 
 # --------------------------------------------------------------------------

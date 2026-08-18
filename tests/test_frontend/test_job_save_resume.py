@@ -886,6 +886,70 @@ def test_intact_job_passes_validation(qapp: Any, sample_media: Path) -> None:
     assert MainWindowWizard._restored_job_is_usable(_wizard_stub(), "Example", context)
 
 
+class _StopBeforeProcessing(Exception):
+    """Ends `process_jobs` right after the source-less notice would be logged."""
+
+
+def test_the_source_less_notice_is_logged_once_per_run(
+    qapp: Any, sample_media: Path, tmp_path: Path
+) -> None:
+    """It describes the run, not something that happened during it.
+
+    `process_jobs` is entered once per press of the Process button -- dupe
+    check, then upload, and again for Prepare -- so without a latch the same
+    paragraph lands in the log repeatedly, running into whatever section was
+    already there.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.base_torrent = tmp_path / "base.torrent"
+    sample_media.unlink()
+
+    logged: list[str] = []
+    page = cast(
+        Any,
+        SimpleNamespace(
+            context=context,
+            _source_less_notice_shown=False,
+            _on_text_update=logged.append,
+            _gather_tracker_data=lambda _detected: (_ for _ in ()).throw(
+                _StopBeforeProcessing()
+            ),
+        ),
+    )
+
+    for _ in range(3):
+        with pytest.raises(_StopBeforeProcessing):
+            ProcessPage.process_jobs(page)
+
+    assert len(logged) == 1
+    assert "archived release package" in logged[0]
+
+
+def test_the_process_page_flags_a_source_less_run(
+    qapp: Any, sample_media: Path, tmp_path: Path
+) -> None:
+    """The banner and the log line have to agree, so they share this predicate."""
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    page = cast(Any, SimpleNamespace(context=context))
+
+    # media present, no archive to fall back on
+    assert ProcessPage._source_less_run(page) is False
+
+    # media present and an archive carried: still a normal run
+    context.shared_data.base_torrent = tmp_path / "base.torrent"
+    assert ProcessPage._source_less_run(page) is False
+
+    sample_media.unlink()
+    assert ProcessPage._source_less_run(page) is True
+
+    # gone with nothing to fall back on is not source-less, it is unusable --
+    # `process_jobs` refuses that outright rather than warning about it
+    context.shared_data.base_torrent = None
+    assert ProcessPage._source_less_run(page) is False
+
+
 # --------------------------------------------------------------------------
 # the active config has to be able to actually serve the job
 # --------------------------------------------------------------------------
@@ -913,42 +977,57 @@ def test_a_tracker_disabled_in_the_active_config_is_flagged(
     assert "uploads are disabled" in asked[0]
 
 
-def test_trackers_added_to_an_archive_are_checked_against_the_config(
-    qapp: Any, monkeypatch: pytest.MonkeyPatch
+def test_an_archive_being_extended_starts_at_the_trackers_page(
+    qapp: Any, sample_media: Path
 ) -> None:
-    """The add-trackers path would otherwise check nothing at all.
+    """The add-trackers path would otherwise decide nothing at all.
 
-    `_confirm_profile_can_serve_job` runs before the additions are chosen and
-    reads the trackers the job already had -- for a fully uploaded archive that
-    set is empty. The picker itself only filters on `enabled`, which is a
-    different setting from `upload_enabled` and says nothing about the NFO
-    template still existing.
+    Tracker choice and NFO template assignment are read live from the profile
+    rather than stored in the job, so a run that has to make them needs the
+    wizard pages that own them -- the old straight-to-process resume skipped
+    both, and the run died reading a template nobody had assigned.
     """
-    asked: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda _self, _title, text, *_a, **_k: (
-            asked.append(text),
-            QMessageBox.StandardButton.No,
-        )[1],
-    )
-    stub = _wizard_stub(upload_enabled=False)
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    # an archive can carry prepared work for trackers an earlier run left
+    # pending, which reads as prepared even though the request is for new ones
+    context.shared_data.tracker_release_data[TrackerSelection.AITHER] = {
+        "title": "Example 2024",
+        "nfo": "the frozen nfo",
+    }
 
-    allowed = MainWindowWizard._confirm_profile_can_serve_added_trackers(
-        stub,  # pyright: ignore[reportArgumentType]
-        [TrackerSelection.AITHER],
+    assert (
+        MainWindowWizard._resume_start_page(context, adding_trackers=True)
+        is WizardPages.TRACKERS_PAGE
     )
 
-    assert allowed is False
-    assert "uploads are disabled" in asked[0]
+
+def test_a_job_saved_before_it_was_prepared_starts_at_the_trackers_page(
+    qapp: Any, sample_media: Path
+) -> None:
+    context = ProcessingContext()
+    _populate(context, sample_media)  # selected trackers, but no frozen NFOs
+
+    assert (
+        MainWindowWizard._resume_start_page(context, adding_trackers=False)
+        is WizardPages.TRACKERS_PAGE
+    )
 
 
-def test_added_trackers_the_config_can_serve_ask_nothing(qapp: Any) -> None:
-    # no QMessageBox patch: a prompt here would fail the test by blocking
-    assert MainWindowWizard._confirm_profile_can_serve_added_trackers(
-        _wizard_stub(),  # pyright: ignore[reportArgumentType]
-        [TrackerSelection.AITHER],
+def test_a_prepared_job_still_resumes_straight_to_processing(
+    qapp: Any, sample_media: Path
+) -> None:
+    """Its titles and NFOs are frozen, so there is nothing left to choose."""
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.tracker_release_data[TrackerSelection.AITHER] = {
+        "title": "Example 2024",
+        "nfo": "the frozen nfo",
+    }
+
+    assert (
+        MainWindowWizard._resume_start_page(context, adding_trackers=False)
+        is WizardPages.PROCESS_PAGE
     )
 
 

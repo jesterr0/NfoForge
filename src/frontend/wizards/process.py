@@ -79,6 +79,15 @@ if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
 
 
+_SOURCE_LESS_TEXT = (
+    "The original media is not available. Using the archived release package; "
+    "configured plugins and torrent clients will still be attempted. This does "
+    "not recreate the media, so ensure the content still exists where your "
+    "torrent client will seed it."
+)
+"""Shown when a run has no source left and is riding on its archived torrent."""
+
+
 class BaseWorker(QThread):
     job_finished = Signal()
     job_failed = Signal(str, str)
@@ -361,6 +370,22 @@ class ProcessPage(BaseWizardPage):
         self._run_outcomes: dict[TrackerSelection, TrackerRunOutcome] = {}
         self._run_phase = RunPhase.FULL
 
+        # The notice below describes the run as a whole rather than something
+        # that happened, so it is latched: `process_jobs` is entered once per
+        # press of the Process button (dupe check, then upload, and again for
+        # Prepare), and repeating it there reads as spam.
+        self._source_less_notice_shown = False
+
+        self.source_less_banner = QLabel(self, wordWrap=True)
+        self.source_less_banner.setText(f"⚠ {_SOURCE_LESS_TEXT}")
+        # Text and border only: the pane is themed by the app, and painting a
+        # background here would fight whichever theme is active.
+        self.source_less_banner.setStyleSheet(
+            "color: #d68c00; border: 1px solid #d68c00; border-radius: 4px; "
+            "padding: 6px;"
+        )
+        self.source_less_banner.hide()
+
         self.tracker_process_tree = ComboBoxTreeWidget(
             headers=("Tracker", "Image Host", "Status"), parent=self
         )
@@ -407,12 +432,29 @@ class ProcessPage(BaseWizardPage):
         button_row.addWidget(self.open_temp_output_btn)
 
         main_layout = QVBoxLayout(self)
+        main_layout.addWidget(self.source_less_banner)
         main_layout.addWidget(self.tracker_process_tree, stretch=3)
         main_layout.addWidget(text_widget_label, alignment=Qt.AlignmentFlag.AlignBottom)
         main_layout.addWidget(self.text_widget, stretch=5)
         main_layout.addWidget(self.progress_bar, stretch=1)
         main_layout.addLayout(button_row)
         self.setLayout(main_layout)
+
+    def _source_less_run(self) -> bool:
+        """Whether this run is riding on its archive rather than on the media.
+
+        The same condition `process_jobs` acts on, kept in one place so the
+        banner and the log line can never disagree about it.
+        """
+        if self.context.shared_data.base_torrent is None:
+            return False
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=False
+            )
+        except (FileNotFoundError, RuntimeError):
+            return True
+        return False
 
     def _announce_saved_job(self, name: str) -> None:
         """Note a save in the log pane.
@@ -654,13 +696,12 @@ class ProcessPage(BaseWizardPage):
                     f"valid:\n\n{error}",
                 )
                 return
-            self._on_text_update(
-                "<span style='color: #d68c00;'>The original media is not "
-                "available. Using the archived release package; configured "
-                "plugins and torrent clients will still be attempted. This "
-                "does not recreate the media, so ensure the content still exists "
-                "where your torrent client will seed it.</span><br /><br />"
-            )
+            if not self._source_less_notice_shown:
+                self._source_less_notice_shown = True
+                self._on_text_update(
+                    f"<span style='color: #d68c00;'>{_SOURCE_LESS_TEXT}</span>"
+                    "<br /><br />"
+                )
 
         # get paths and other things from the media input payload
         detected_input = self.context.media_input.require_input_path()
@@ -1572,4 +1613,5 @@ class ProcessPage(BaseWizardPage):
             open_explorer(self.context.media_input.working_dir)
 
     def initializePage(self) -> None:
+        self.source_less_banner.setVisible(self._source_less_run())
         self.add_tracker_items()
