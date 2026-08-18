@@ -90,6 +90,49 @@ def test_a_raising_plugin_is_logged_and_does_not_propagate(
     )  # must not raise
 
 
+def test_a_failure_that_is_not_a_plugin_error_does_not_propagate(
+    process_backend: ProcessBackEnd,
+    plugin_context: ProcessingContext,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The docstring's "never raises" has to hold for the whole call, not just
+    for the plugin body.
+
+    `run_post_upload` wraps what the plugin itself raises, but everything
+    around it -- resolving the capability, building the request, asking whether
+    the source is available -- can raise something else. Anything escaping here
+    lands in the generic handler around the upload block, which stamps
+    `MAY_HAVE_UPLOADED` over the outcome already recorded: a tracker that
+    provably failed becomes one nobody can account for, and its prepared work
+    is held back on the strength of a notifier plugin's bug.
+    """
+
+    def notify(request: PostUploadRequest) -> None:  # pragma: no cover - unreached
+        raise AssertionError("the plugin itself is never reached here")
+
+    process_backend.config.plugin_manager.register(
+        "test.notify",
+        _definition(plugin_id="test.notify", post_upload=notify),
+        "test",
+    )
+    process_backend.config.settings.plugins.post_upload = "test.notify"
+    monkeypatch.setattr(
+        process_backend.config.plugin_manager,
+        "run_post_upload",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("boom")),
+    )
+
+    process_backend._run_post_upload_plugin(
+        cur_tracker=TrackerSelection.BEYOND_HD,
+        context=plugin_context,
+        torrent_path=_any_torrent_path(),
+        outcome=PostUploadOutcome.UPLOAD_FAILED,
+        queued_text_update=lambda _text: None,
+        queued_text_update_replace_last_line=lambda _text: None,
+        error="upload failed",
+    )  # must not raise
+
+
 def test_no_configured_plugin_is_a_clean_no_op(
     process_backend: ProcessBackEnd, plugin_context: ProcessingContext
 ) -> None:

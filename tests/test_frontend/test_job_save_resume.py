@@ -41,7 +41,7 @@ from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
 from src.frontend.wizards import process as process_module, wizard as wizard_module
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.wizard import MainWindowWizard
-from src.packages.custom_types import ImageUploadFromTo
+from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 from src.payloads.image_hosts import ImagePayloadBase
 
 
@@ -346,9 +346,155 @@ def test_adding_trackers_keeps_one_left_pending_by_an_earlier_run(
     # HUNO was neither uploaded nor part of this run: it stays pending, keeps
     # its frozen NFO, and remains visible to the picker.
     assert saved.summary.trackers == [str(TrackerSelection.HUNO)]
-    release_data = saved.context["shared_data"]["tracker_release_data"]
-    assert TrackerSelection.HUNO.name in release_data
+    shared = saved.context["shared_data"]
+    assert TrackerSelection.HUNO.name in shared["tracker_release_data"]
     assert (Path(path) / store.JOB_NFO_DIR_NAME / "huno.txt").is_file()
+    # ...and it has to be runnable, not merely present. The summary saying the
+    # job still covers HUNO while `selected_trackers` omits it is a job the
+    # picker offers and the wizard then builds no tracker row for -- the
+    # prepared NFO survives on disk and is never reachable again.
+    assert shared["selected_trackers"] == [TrackerSelection.HUNO.name]
+
+
+def test_an_uncertain_tracker_keeps_everything_but_the_ability_to_run(
+    sample_media: Path, working_dir: Path
+) -> None:
+    """An upload nobody could confirm must stay resolvable.
+
+    Narrowing it out of the archive left only its name in
+    `uncertain_trackers`, so the picker went on offering "No, safe to upload"
+    for a tracker whose title, NFO sidecar and image host had already been
+    deleted -- a resolution the data could no longer support.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.selected_trackers = [
+        TrackerSelection.AITHER,
+        TrackerSelection.HUNO,
+    ]
+    context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
+        ImageSource.IMAGES, ImageHost.PIXHOST
+    )
+    context.shared_data.tracker_release_data = {
+        TrackerSelection.AITHER: {"title": "Example", "nfo": "aither nfo"},
+        TrackerSelection.HUNO: {"title": "Example", "nfo": "huno nfo"},
+    }
+    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
+    context.media_input.require_working_dir().mkdir()
+
+    page = SimpleNamespace(
+        context=context,
+        config=SimpleNamespace(
+            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
+            program=SimpleNamespace(current_config="config"),
+        ),
+        _run_phase=process_module.RunPhase.FULL,
+        _run_outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.MAY_HAVE_UPLOADED,
+        },
+        _on_text_update=lambda _text: None,
+    )
+    page._default_job_name = lambda: ProcessPage._default_job_name(page)
+    page._first_generated_torrent = lambda: None
+    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
+        page, directory, keep
+    )
+    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
+
+    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
+
+    path = store.list_jobs([working_dir])[0].path
+    saved = store.load_job(path)
+    shared = saved.context["shared_data"]
+    assert saved.uncertain_trackers == [TrackerSelection.HUNO.name]
+    # cannot upload again...
+    assert shared["selected_trackers"] == []
+    # ...but everything a resolution needs is still here
+    assert shared["tracker_release_data"][TrackerSelection.HUNO.name]["title"] == (
+        "Example"
+    )
+    assert TrackerSelection.HUNO.name in shared["tracker_image_hosts"]
+    assert (Path(path) / store.JOB_NFO_DIR_NAME / "huno.txt").is_file()
+
+
+def test_a_fully_uploaded_archive_still_carries_its_image_urls(
+    sample_media: Path, working_dir: Path
+) -> None:
+    """URLs are the host's, not the tracker's, so narrowing must not take them.
+
+    Every per-tracker map goes when nothing is left pending, which left the
+    archive of a completely successful run holding no image URLs at all -- so
+    a tracker added to it later re-uploaded the same screenshots, or had
+    nothing to upload once `images/` was gone.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.tracker_release_data = {
+        TrackerSelection.AITHER: {"title": "Example", "nfo": "aither nfo"}
+    }
+    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
+    context.media_input.require_working_dir().mkdir()
+    uploaded = {0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)}
+    context.shared_data.uploaded_images[TrackerSelection.AITHER] = dict(uploaded)
+    context.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = (
+        ImageHost.PIXHOST
+    )
+    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = dict(uploaded)
+
+    page = SimpleNamespace(
+        context=context,
+        config=SimpleNamespace(
+            settings=SimpleNamespace(general=SimpleNamespace(working_dir=working_dir)),
+            program=SimpleNamespace(current_config="config"),
+        ),
+        _run_phase=process_module.RunPhase.FULL,
+        _run_outcomes={TrackerSelection.AITHER: TrackerRunOutcome.UPLOADED},
+        _on_text_update=lambda _text: None,
+    )
+    page._default_job_name = lambda: ProcessPage._default_job_name(page)
+    page._first_generated_torrent = lambda: None
+    page._build_job_document = lambda directory, keep: ProcessPage._build_job_document(
+        page, directory, keep
+    )
+    page._job_summary = lambda keep=None: ProcessPage._job_summary(page, keep)
+
+    assert ProcessPage._archive_completed_run(page)  # pyright: ignore[reportArgumentType]
+
+    saved = store.load_job(store.list_jobs([working_dir])[0].path)
+    shared = saved.context["shared_data"]
+    assert shared["uploaded_images"] == {}
+    assert shared["uploaded_images_by_host"] == [
+        {
+            "name": "PIXHOST",
+            "type": "ImageHost",
+            "images": {"0": {"url": "https://pixhost/0.png", "medium_url": None}},
+        }
+    ]
+
+
+def test_content_size_is_recorded_even_without_a_base_torrent(
+    sample_media: Path, working_dir: Path
+) -> None:
+    """Two trackers size a disc release off the filesystem when it is absent.
+
+    `beyondhd` and `passthepopcorn` both fall back to
+    `input_path.stat().st_size`, which a source-less run cannot do -- and save
+    time is the last moment the media is guaranteed to be there to measure.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.loaded_images[0].write_bytes(b"screenshot")
+    directory = working_dir / "jobs" / "abc"
+    directory.mkdir(parents=True)
+
+    page = SimpleNamespace(context=context)
+    page._first_generated_torrent = lambda: None
+
+    document = ProcessPage._build_job_document(page, directory, None)  # pyright: ignore[reportArgumentType]
+
+    assert "base_torrent" not in document
+    assert document["media_input"]["content_size"] == sample_media.stat().st_size
 
 
 def test_a_prepared_plain_job_is_not_silently_overwritten(
@@ -432,6 +578,39 @@ def test_a_tracker_with_no_screenshots_only_offers_disabled_and_does_not_crash(
             ImageSource.IMAGES, ImageHost.DISABLED
         )
     }
+
+
+def test_a_source_less_archive_offers_the_hosts_it_already_uploaded_to(
+    qapp: Any, sample_media: Path
+) -> None:
+    """With no local screenshots left, the stored URLs are the only option.
+
+    The combo only offered real hosts when there were `loaded_images` or
+    `url_data`, so an archive whose `images/` had gone showed nothing but
+    `Disabled` -- and silently uploaded to nobody. Nothing is sent for a host
+    the job already holds URLs for, so neither the files nor the host's own
+    credentials are needed to offer it.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.loaded_images = None
+    context.shared_data.generated_images = False
+    context.shared_data.url_data.clear()
+    context.shared_data.tracker_image_hosts.clear()
+    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = {
+        0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
+    }
+    page = _fake_page(context)
+
+    ProcessPage.add_tracker_items(page)
+
+    combo = page.tracker_process_tree.combo_box_map[
+        (page.tracker_process_tree.topLevelItem(0), 1)
+    ]
+    offered = {combo.itemText(index) for index in range(combo.count())}
+    assert any("Pixhost" in text for text in offered)
+    # a host the bundle cannot serve must not be offered as if it could
+    assert not any("Chevereto" in text for text in offered)
 
 
 def test_sync_tracker_image_hosts_skips_a_row_missing_its_combo_data(

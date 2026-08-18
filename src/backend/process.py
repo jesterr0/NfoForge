@@ -1579,10 +1579,17 @@ class ProcessBackEnd:
                     source_available=_media_source_available(context.media_input),
                 ),
             )
-        except PluginExecutionError as plugin_error:
+        except Exception as plugin_error:
+            # Deliberately every exception, not just `PluginExecutionError`.
+            # Anything escaping here lands in the generic handler around the
+            # upload block, which stamps `MAY_HAVE_UPLOADED` over an outcome
+            # that was already established -- so a notifier plugin raising
+            # `ValueError` would turn a tracker that provably failed into one
+            # nobody can account for, and take its prepared work with it.
             LOG.error(
                 LOG.LOG_SOURCE.BE,
-                f"Post-upload plugin failed for {cur_tracker}: {plugin_error}",
+                f"Post-upload plugin failed for {cur_tracker}: "
+                f"{scrub_secrets(str(plugin_error))}",
             )
 
     def handle_images_for_trackers(
@@ -1691,6 +1698,25 @@ class ProcessBackEnd:
                 files_to_upload = context.shared_data.loaded_images
 
             if not files_to_upload:
+                # A job that carries URLs for some other host is a job whose
+                # screenshots exist -- just not as files this run can send. It
+                # would be served by picking one of those hosts, so say which,
+                # rather than uploading nothing and calling it a supported
+                # outcome. Downloading its own images back off a host to
+                # re-upload them elsewhere is deliberately not done.
+                servable = sorted(
+                    str(host)
+                    for host in context.shared_data.uploaded_images_by_host
+                    if isinstance(host, ImageHost) and host is not ImageHost.DISABLED
+                )
+                if servable:
+                    raise ImageHostError(
+                        "No screenshot files are available to upload to "
+                        f"{', '.join(sorted(str(host) for host in to_image_hosts))}. "
+                        "This job already holds uploaded images for "
+                        f"{', '.join(servable)} -- select one of those, or "
+                        "restore the screenshots it was saved with."
+                    )
                 LOG.warning(
                     LOG.LOG_SOURCE.BE,
                     f"No images available to upload to {len(to_image_hosts)} image host(s), "
@@ -1745,6 +1771,17 @@ class ProcessBackEnd:
                     LOG.LOG_SOURCE.BE,
                     f"Upload results returned for image host(s): {sorted(str(h) for h in upload_results)}",
                 )
+
+                # Recorded here, before anything below can raise. A single
+                # image that failed to upload sends `assert_all_images_uploaded`
+                # out of this function, and the per-tracker recording at the end
+                # never runs -- which threw away every host that had just
+                # succeeded, so a later run uploaded all of them again.
+                for img_host, host_results in upload_results.items():
+                    if host_results:
+                        context.shared_data.uploaded_images_by_host[img_host] = dict(
+                            host_results
+                        )
 
                 # map the uploaded image hosts to the appropriate trackers
                 for tracker, img_host in tracker_to_host_map.items():
@@ -1861,13 +1898,22 @@ class ProcessBackEnd:
         nothing, and `DISABLED` has nothing to reuse. Reuse also requires the
         destination to be unchanged -- otherwise the stored URLs point at a
         host the user has since moved this tracker away from.
+
+        The tracker's own record is consulted first, then the job's by-host
+        record. The second is what serves a tracker added *after* the run that
+        uploaded the images: the URLs are the host's, not the tracker's, so a
+        tracker pointed at a host this job already uploaded to has nothing to
+        gain from sending the same screenshots again -- and an archive whose
+        local copies are gone has nothing to send.
         """
         if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
             return None
-        if context.shared_data.uploaded_image_hosts.get(tracker) is not destination:
-            return None
-        images = context.shared_data.uploaded_images.get(tracker)
-        return dict(images) if images else None
+        if context.shared_data.uploaded_image_hosts.get(tracker) is destination:
+            images = context.shared_data.uploaded_images.get(tracker)
+            if images:
+                return dict(images)
+        by_host = context.shared_data.uploaded_images_by_host.get(destination)
+        return dict(by_host) if by_host else None
 
     def _optimize_images(
         self, progress_bar_cb: Callable[[float], None], files_to_upload: Sequence[Path]

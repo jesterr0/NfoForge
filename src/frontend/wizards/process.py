@@ -41,7 +41,9 @@ from src.backend.jobs import (
     fingerprint_files,
     job_dir,
     load_job,
+    mediainfo_sources,
     prune_unreferenced_nfos,
+    rebuild_job_document,
     save_job,
     torrent_content_files,
     write_job_document,
@@ -77,6 +79,29 @@ from src.utils.secret_redaction import scrub_secrets
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
+
+
+def _measure_content_size(input_path: Path) -> int | None:
+    """Total bytes of the release, or None when it cannot be measured.
+
+    Matches what a generated torrent reports (`Torrent.size`), so a job that
+    has a base torrent and one that does not record the same number: the sum of
+    every file for a pack, the file's own size for a single file. `stat()` on a
+    directory would report the directory entry instead, which is not a release
+    size at all.
+    """
+    try:
+        if input_path.is_dir():
+            return sum(
+                path.stat().st_size for path in torrent_content_files(input_path)
+            )
+        return input_path.stat().st_size if input_path.is_file() else None
+    except OSError as error:
+        LOG.warning(
+            LOG.LOG_SOURCE.FE,
+            f"Could not measure the size of '{input_path}' for this job: {error}",
+        )
+        return None
 
 
 _SOURCE_LESS_TEXT = (
@@ -571,11 +596,20 @@ class ProcessPage(BaseWizardPage):
         media_input = self.context.media_input
         input_path = media_input.require_input_path()
         media_input.input_kind = "directory" if input_path.is_dir() else "file"
+        # Recorded whether or not a torrent was generated. Without it the two
+        # trackers that size a disc release fall back to reading the input path
+        # off the filesystem (`beyondhd.py`, `passthepopcorn.py`), which a
+        # source-less run cannot do -- and this is the last moment the media is
+        # guaranteed to be there to measure.
+        if media_input.content_size is None:
+            media_input.content_size = _measure_content_size(input_path)
 
-        # MediaInfo is captured for every file the payload knows about, which
-        # includes the comparison source when one is in play
+        # MediaInfo is captured for every object the context can reach, not
+        # just the run's own file list: a plugin holding a per-episode source
+        # MediaInfo needs its dump stored too, or a resumed run has nothing to
+        # rebuild it from
         mediainfo_assets = capture_mediainfo(
-            directory, list(media_input.file_list_mediainfo)
+            directory, list(mediainfo_sources(self.context))
         )
 
         # copied even when the images already uploaded and their URLs were
@@ -970,30 +1004,16 @@ class ProcessPage(BaseWizardPage):
             if creating:
                 document = self._build_job_document(directory, None)
             else:
-                old_media = job.context.get("media_input")
-                raw_assets = (
-                    old_media.get("mediainfo_assets")
-                    if isinstance(old_media, dict)
-                    else None
-                )
-                mediainfo_assets = (
-                    {
-                        Path(raw_path): dict(names)
-                        for raw_path, names in raw_assets.items()
-                        if isinstance(raw_path, str) and isinstance(names, dict)
-                    }
-                    if isinstance(raw_assets, dict)
-                    else None
-                )
-                nfo_assets = capture_nfos(
-                    directory, context.shared_data.tracker_release_data
-                )
-                document = context_to_dict(context, mediainfo_assets, nfo_assets)
-                base_details = job.context.get("base_torrent")
-                if isinstance(base_details, dict):
-                    document["base_torrent"] = dict(base_details)
+                document = rebuild_job_document(job, directory, context)
 
-            document = filter_context_document(document, pending)
+            # An uncertain tracker keeps its title, NFO and image state while
+            # staying out of `selected_trackers`, so nothing can resume into a
+            # second upload -- and resolving it as "never landed" has the
+            # prepared work to put back. Narrowing it away instead left only
+            # its name, and offered a resolution the data could not support.
+            document = filter_context_document(
+                document, pending, retain_data_for=uncertain_all
+            )
             job.context = document
             job.archived = True
             job.uploaded_trackers = sorted(tracker.name for tracker in uploaded_all)
@@ -1054,29 +1074,7 @@ class ProcessPage(BaseWizardPage):
             return False
         try:
             job = load_job(path)
-            old_media = job.context.get("media_input")
-            raw_assets = (
-                old_media.get("mediainfo_assets")
-                if isinstance(old_media, dict)
-                else None
-            )
-            if not isinstance(raw_assets, dict):
-                raise JobCodecError(
-                    "Archive has no stored MediaInfo assets for source-less preparation"
-                )
-            mediainfo_assets = {
-                Path(raw_path): dict(names)
-                for raw_path, names in raw_assets.items()
-                if isinstance(raw_path, str) and isinstance(names, dict)
-            }
-            nfo_assets = capture_nfos(
-                path, self.context.shared_data.tracker_release_data
-            )
-            document = context_to_dict(self.context, mediainfo_assets, nfo_assets)
-            base_details = job.context.get("base_torrent")
-            if isinstance(base_details, dict):
-                document["base_torrent"] = dict(base_details)
-            job.context = document
+            job.context = rebuild_job_document(job, path, self.context)
             job.summary = self._job_summary()
             job.summary.uploaded_trackers = sorted(
                 str(tracker) for tracker in self.context.loaded_uploaded_trackers
@@ -1465,6 +1463,19 @@ class ProcessPage(BaseWizardPage):
                 # here comes entirely from the Settings > Plugins selection instead
                 if self._plugin_image_host_available():
                     enabled_img_hosts = enabled_img_hosts | {ImageHost.PLUGIN: True}
+
+            # A host this job already uploaded to can be served from the stored
+            # URLs alone -- no local screenshots, and no credentials, since
+            # nothing is sent. That is the only option a source-less archive
+            # has, so without this an archive whose `images/` is gone offered
+            # nothing but `Disabled` and silently uploaded to nobody.
+            enabled_img_hosts = enabled_img_hosts | {
+                host: True
+                for host in self.context.shared_data.uploaded_images_by_host
+                if isinstance(host, ImageHost)
+                and host is not ImageHost.DISABLED
+                and host not in enabled_img_hosts
+            }
 
             ordered_trackers = [
                 x
