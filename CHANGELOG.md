@@ -16,6 +16,8 @@
   - Now shows poster
   - Combines plot/info section
 - Now passes all media identifiers to TorrentLeech other than animeid (we'll let TL auto detect this one as we send it up as anime via the category)
+- Updated dependencies:
+  - Qbittorrent-API
 
 ### Fixed
 
