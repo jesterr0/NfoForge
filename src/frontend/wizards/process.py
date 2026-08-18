@@ -655,7 +655,7 @@ class ProcessPage(BaseWizardPage):
                 )
                 return
             self._on_text_update(
-                "<br /><span style='color: #d68c00;'>The original media is not "
+                "<span style='color: #d68c00;'>The original media is not "
                 "available. Using the archived release package; configured "
                 "plugins and torrent clients will still be attempted. This "
                 "does not recreate the media, so ensure the content still exists "
