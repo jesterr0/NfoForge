@@ -659,7 +659,7 @@ class ProcessPage(BaseWizardPage):
                 "available. Using the archived release package; configured "
                 "plugins and torrent clients will still be attempted. This "
                 "does not recreate the media, so ensure the content still exists "
-                "where your torrent client will seed it.</span>"
+                "where your torrent client will seed it.</span><br /><br />"
             )
 
         # get paths and other things from the media input payload
