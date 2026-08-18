@@ -1040,6 +1040,9 @@ class TypedTomlOperations:
             series_management["tvr_season_folder_token"] = (
                 self.settings.series.season_folder_token
             )
+            series_management["tvr_season_subfolder_token"] = (
+                self.settings.series.season_subfolder_token
+            )
             series_management["tvr_multi_episode_style"] = (
                 self.settings.series.multi_episode_style.value
             )
@@ -2136,6 +2139,13 @@ class TypedTomlOperations:
                     anime_episode_token=load_series_token("tvr_anime_episode_token"),
                     season_folder_token=str(
                         series_management["tvr_season_folder_token"]
+                    ),
+                    # `.get`: this key was added after release, and a profile
+                    # written before it is still valid -- an absent value means
+                    # "fall back to the season folder token", which is also the
+                    # packaged default.
+                    season_subfolder_token=str(
+                        series_management.get("tvr_season_subfolder_token", "")
                     ),
                     multi_episode_style=MultiEpisodeStyle(
                         series_management["tvr_multi_episode_style"]

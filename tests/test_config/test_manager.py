@@ -954,6 +954,19 @@ def test_default_season_folder_token_is_scene_style() -> None:
     assert "{episode_title_clean}" not in token
 
 
+def test_default_season_subfolder_token_is_blank() -> None:
+    """Blank means "use the season folder token".
+
+    A non-blank packaged default would silently change how every existing
+    single-season pack is named, since the same token then stops covering both
+    the opened folder and the season inside it.
+    """
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
+    series = cast(MutableMapping[str, Any], defaults["series_management"])
+
+    assert str(series["tvr_season_subfolder_token"]) == ""
+
+
 def test_series_title_override_loader_matches_serialiser_formats() -> None:
     """The loader must read exactly the episode formats the serialiser
     writes -- no more, no less.

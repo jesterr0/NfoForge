@@ -36,6 +36,7 @@ class RenamePreviewDialog(QDialog):
 
     # class level default so `event()` is safe if a palette change lands mid construction
     _rename_map: dict[Path, Path] | None = None
+    _directory_map: dict[Path, Path] | None = None
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -75,21 +76,32 @@ class RenamePreviewDialog(QDialog):
         layout.addWidget(self.text_viewer)
         layout.addWidget(self.button_box)
 
-    def set_renames(self, rename_map: dict[Path, Path]) -> None:
+    def set_renames(
+        self,
+        rename_map: dict[Path, Path],
+        directory_map: dict[Path, Path] | None = None,
+    ) -> None:
         """Populate the viewer with diff-style rename preview.
 
         Args:
             rename_map: Dictionary mapping original paths to renamed paths
+            directory_map: Folder renames the caller derived itself. Required
+                for a nested release, where a season subfolder and the pack
+                folder above it are both renamed -- comparing a file's parents
+                can only ever reveal one folder rename, and would report the
+                subfolder's *final* path as if it were a rename of its own.
         """
         self._rename_map = rename_map
+        self._directory_map = directory_map
         self._render_renames()
 
     def _render_renames(self) -> None:
         """Render the stored rename map using colors for the active color scheme."""
         rename_map = self._rename_map
+        directory_map = self._directory_map
         self.text_viewer.clear()
 
-        if not rename_map:
+        if not rename_map and not directory_map:
             self.text_viewer.setPlainText("No renames detected")
             self.button_box.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
             return
@@ -98,13 +110,18 @@ class RenamePreviewDialog(QDialog):
         folder_renames: dict[Path, Path] = {}
         file_renames: dict[Path, Path] = {}
 
-        for src, dest in rename_map.items():
-            if str(src.parent.absolute()) != str(dest.parent.absolute()):
-                # folder rename detected
+        for src, dest in (rename_map or {}).items():
+            if directory_map is None and str(src.parent.absolute()) != str(
+                dest.parent.absolute()
+            ):
+                # folder rename inferred from a file whose parent changed
                 folder_renames[src.parent] = dest.parent
             if src.name != dest.name:
                 # file rename
                 file_renames[src] = dest
+
+        if directory_map:
+            folder_renames.update(directory_map)
 
         cursor = self.text_viewer.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
@@ -193,7 +210,9 @@ class RenamePreviewDialog(QDialog):
         self.text_viewer.setTextCursor(cursor)
 
     def event(self, e: QEvent) -> bool:
-        if e.type() == QEvent.Type.PaletteChange and self._rename_map is not None:
+        if e.type() == QEvent.Type.PaletteChange and (
+            self._rename_map is not None or self._directory_map is not None
+        ):
             self._render_renames()
         return super().event(e)
 

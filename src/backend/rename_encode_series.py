@@ -142,26 +142,113 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         return None
 
     @staticmethod
-    def build_folder_rename_targets(
+    def build_pack_rename_targets(
         input_path: Path | None,
         rename_map: dict[Path, Path],
-        folder_name: str,
-    ) -> dict[Path, Path]:
-        """Relocate every rename target into ``input_path.parent / folder_name``.
+        file_seasons: dict[Path, int],
+        root_folder_name: str,
+        season_folder_names: dict[int, str],
+    ) -> tuple[dict[Path, Path], dict[Path, Path]]:
+        """Re-home a pack's files under a renamed root and season subfolders.
 
-        Only fires when a directory was opened and every mapped file sits
-        directly inside it (mirrors the movie flow's folder guard). Returns a new
-        mapping on success, or a copy of the original mapping unchanged when the
-        guard fails or ``folder_name`` is empty.
+        Handles the three layouts a pack actually arrives in: episodes sitting
+        directly in the opened folder (single- or multi-season), and episodes
+        split across ``Season NN`` subfolders. Only fires when a directory was
+        opened and every mapped file lives somewhere beneath it.
+
+        A subfolder is renamed only when every episode in it belongs to one
+        season that ``season_folder_names`` has a name for. One that mixes
+        seasons, or that has no name available, keeps its own name -- it still
+        moves, because its parent is renamed around it. Anything else in the
+        pack (``Extras``, artwork, a stray sample) is likewise carried along by
+        the folder rename without needing a target of its own.
+
+        Args:
+            file_seasons: Season per source file, from the episode mapping.
+            root_folder_name: Name for the opened folder. Empty leaves it alone.
+            season_folder_names: Season -> subfolder name. Empty leaves every
+                subfolder alone.
+
+        Returns:
+            ``(file_targets, directory_targets)``, both absolute and final. On
+            guard failure, the original mapping and an empty folder map, so the
+            caller falls back to renaming filenames in place.
         """
         if (
             not input_path
-            or not folder_name
             or not rename_map
             or not input_path.is_dir()
-            or any(src.parent != input_path for src in rename_map)
+            or any(not src.is_relative_to(input_path) for src in rename_map)
         ):
-            return dict(rename_map)
+            return dict(rename_map), {}
 
-        new_folder = input_path.parent / folder_name
-        return {src: new_folder / trg.name for src, trg in rename_map.items()}
+        directory_targets: dict[Path, Path] = {}
+        if root_folder_name:
+            directory_targets[input_path] = input_path.parent / root_folder_name
+
+        if season_folder_names:
+            for directory, seasons in _seasons_by_directory(
+                rename_map, file_seasons, input_path
+            ).items():
+                if len(seasons) != 1:
+                    continue
+                folder_name = season_folder_names.get(next(iter(seasons)))
+                if not folder_name:
+                    continue
+                # A subfolder's final path sits under its parent's final path,
+                # which for a season folder is the renamed root.
+                directory_targets[directory] = (
+                    _relocate(directory.parent, directory_targets) / folder_name
+                )
+
+        file_targets = {
+            src: _relocate(src.parent, directory_targets) / trg.name
+            for src, trg in rename_map.items()
+        }
+        return file_targets, directory_targets
+
+
+def _seasons_by_directory(
+    rename_map: dict[Path, Path],
+    file_seasons: dict[Path, int],
+    input_path: Path,
+) -> dict[Path, set[int]]:
+    """Season numbers found in each folder that directly holds episodes.
+
+    Only the folder an episode actually sits in is a candidate for a season
+    name. An intermediate folder between it and the opened root is left out
+    deliberately -- naming both it and its child from the same season would
+    produce a duplicated "Show.S01/Show.S01" path. The opened folder itself is
+    excluded too: it is named from the whole pack's season range, not from the
+    seasons of whichever files happen to sit loose in it.
+
+    Keyed outermost-first so a caller resolving a folder's new location can
+    rely on its ancestors having been resolved already.
+    """
+    seasons_by_directory: dict[Path, set[int]] = {}
+    for source in rename_map:
+        season = file_seasons.get(source)
+        if season is None:
+            continue
+        directory = source.parent
+        if directory == input_path or not directory.is_relative_to(input_path):
+            continue
+        seasons_by_directory.setdefault(directory, set()).add(season)
+
+    return dict(
+        sorted(seasons_by_directory.items(), key=lambda item: len(item[0].parts))
+    )
+
+
+def _relocate(directory: Path, directory_targets: dict[Path, Path]) -> Path:
+    """``directory``'s final location once every ancestor rename is applied."""
+    mapped = directory_targets.get(directory)
+    if mapped is not None:
+        return mapped
+    parent = directory.parent
+    if parent == directory:
+        return directory
+    mapped_parent = _relocate(parent, directory_targets)
+    if mapped_parent == parent:
+        return directory
+    return mapped_parent / directory.name

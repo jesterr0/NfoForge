@@ -29,7 +29,16 @@ _PATH_TOO_LONG_WINERRORS = frozenset({3, 206})
 
 @dataclass(frozen=True, slots=True)
 class RenamePlan:
-    """A fully derived set of in-place file and directory renames."""
+    """A fully derived set of in-place file and directory renames.
+
+    ``directory_targets`` holds each renamed folder's **final** location, which
+    for a nested tree is not where that folder is renamed *to* in one step: a
+    season subfolder's final path sits under the renamed root, but the root has
+    not been renamed yet at the moment the subfolder is. `ordered_directories`
+    resolves that -- renaming deepest-first keeps every individual operation an
+    in-place, same-parent rename, and an ancestor's later rename carries its
+    already-renamed children along for free.
+    """
 
     file_targets: dict[Path, Path]
     directory_targets: dict[Path, Path]
@@ -40,21 +49,41 @@ class RenamePlan:
         cls,
         file_targets: dict[Path, Path],
         input_path: Path | None,
+        directory_targets: dict[Path, Path] | None = None,
     ) -> RenamePlan:
+        """Derive a plan from file targets, or accept folder targets outright.
+
+        ``directory_targets`` is for a caller that already knows the folder
+        structure it wants (a season pack renaming its root *and* its season
+        subfolders). Omitted, folder renames are inferred from files whose
+        parent changed, which is all a single-level release ever needs.
+        """
         effective_targets = {
             source: target
             for source, target in file_targets.items()
             if _paths_differ(source, target)
         }
-        directory_targets: dict[Path, Path] = {}
 
+        if directory_targets is not None:
+            resolved_directories = {
+                source: target
+                for source, target in directory_targets.items()
+                if _paths_differ(source, target)
+            }
+            return cls(
+                file_targets=effective_targets,
+                directory_targets=resolved_directories,
+                input_path=input_path,
+            )
+
+        resolved_directories = {}
         for source, target in effective_targets.items():
             source_directory = source.parent
             target_directory = target.parent
             if not _paths_differ(source_directory, target_directory):
                 continue
 
-            existing_target = directory_targets.get(source_directory)
+            existing_target = resolved_directories.get(source_directory)
             if existing_target is not None and _paths_differ(
                 existing_target, target_directory
             ):
@@ -62,13 +91,42 @@ class RenamePlan:
                     "Files from the same source folder cannot be renamed into "
                     "multiple destination folders."
                 )
-            directory_targets[source_directory] = target_directory
+            resolved_directories[source_directory] = target_directory
 
         return cls(
             file_targets=effective_targets,
-            directory_targets=directory_targets,
+            directory_targets=resolved_directories,
             input_path=input_path,
         )
+
+    @property
+    def ordered_directories(self) -> list[tuple[Path, Path]]:
+        """Folder renames deepest-first, so each one is a same-parent rename."""
+        return sorted(
+            self.directory_targets.items(),
+            key=lambda item: len(Path(_absolute_text(item[0])).parts),
+            reverse=True,
+        )
+
+    def final_directory(self, directory: Path) -> Path:
+        """Where `directory` ends up once every ancestor rename has been applied.
+
+        A directory that is itself renamed contributes its own new name; one
+        that is not still moves when an ancestor is renamed. Walking upward
+        composes both, which is what lets `_preflight` compare a file's stated
+        final parent against reality without executing anything.
+        """
+        mapped = self.directory_targets.get(directory)
+        if mapped is not None:
+            return mapped
+
+        parent = directory.parent
+        if parent == directory:
+            return directory
+        mapped_parent = self.final_directory(parent)
+        if not _paths_differ(mapped_parent, parent):
+            return directory
+        return mapped_parent / directory.name
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,14 +196,26 @@ class RenameExecutor:
                 )
                 current_paths[source] = target
 
-            for source_directory, target_directory in plan.directory_targets.items():
+            # Deepest-first: a subfolder is renamed while its parent still
+            # carries the source's name, so every operation here stays inside
+            # one parent. The ancestor's own rename then relocates it, which is
+            # why the target used is only the *name* from the final path.
+            current_directories = {
+                source: source for source, _ in plan.ordered_directories
+            }
+            for source_directory, final_directory in plan.ordered_directories:
+                current_directory = current_directories[source_directory]
+                target_directory = current_directory.parent / final_directory.name
                 cls._rename_with_journal(
-                    source_directory,
+                    current_directory,
                     target_directory,
                     is_directory=True,
                     journal=journal,
                 )
-                cls._remap_directory(current_paths, source_directory, target_directory)
+                cls._remap_directory(current_paths, current_directory, target_directory)
+                cls._remap_directory(
+                    current_directories, current_directory, target_directory
+                )
 
             missing_targets = [
                 path for path in current_paths.values() if not path.is_file()
@@ -219,7 +289,7 @@ class RenameExecutor:
                 raise FileNotFoundError(f"Source file does not exist: {source}")
             cls._validate_same_volume(source, final_target)
 
-            expected_parent = plan.directory_targets.get(source.parent, source.parent)
+            expected_parent = plan.final_directory(source.parent)
             if _path_key(final_target.parent) != _path_key(expected_parent):
                 raise ValueError(
                     "File renames must stay in the source folder (or its mapped "
@@ -265,7 +335,14 @@ class RenameExecutor:
                 raise FileNotFoundError(
                     f"Source folder does not exist: {source_directory}"
                 )
-            if _path_key(source_directory.parent) != _path_key(target_directory.parent):
+            # A folder may change name, but it must stay where it is relative
+            # to its parent. Comparing against the parent's *composed* target
+            # allows a nested pack (whose root is renamed too) while still
+            # rejecting a target that moves a folder into a different tree.
+            expected_directory_parent = plan.final_directory(source_directory.parent)
+            if _path_key(expected_directory_parent) != _path_key(
+                target_directory.parent
+            ):
                 raise ValueError(
                     "Folder renames must remain in the same parent directory: "
                     f"{source_directory} -> {target_directory}"
@@ -288,7 +365,10 @@ class RenameExecutor:
         source: Path,
         final_target: Path,
     ) -> Path:
-        if source.parent in plan.directory_targets:
+        # Files are renamed before any folder is, so a file whose parent moves
+        # -- because that folder is renamed, or because an ancestor of it is --
+        # is renamed in place first and relocated by the folder pass.
+        if _paths_differ(plan.final_directory(source.parent), source.parent):
             return source.parent / final_target.name
         return final_target
 

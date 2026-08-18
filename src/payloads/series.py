@@ -199,6 +199,35 @@ def describe_missing_upload_fields(release_info: SeriesReleaseInfo) -> str | Non
     )
 
 
+def describe_multi_season_pack(release_info: SeriesReleaseInfo) -> str | None:
+    """Warning for a pack spanning seasons on trackers that record only one.
+
+    UNIT3D's StoreTorrentRequest makes ``season_number`` a required scalar, so
+    a five-season pack is filed under whichever single season is sent -- the
+    lowest, since ``build_series_release_info`` takes ``min()``. That is not
+    wrong so much as lossy, and it is invisible unless someone says so: the
+    release name the user sees still reads "S01-S05". Returns ``None`` for a
+    single-season release, which is every release this does not apply to.
+
+    Shared with the tracker wizard page so the wording lives beside
+    ``describe_missing_upload_fields`` rather than being duplicated in the UI.
+    """
+    if not release_info.is_series:
+        return None
+    season = release_info.season
+    season_end = release_info.season_end
+    if season is None or season_end is None or season_end == season:
+        return None
+    return (
+        f"This release covers seasons {season} to {season_end}, but the "
+        "selected tracker(s) running UNIT3D record a single season per "
+        f"upload. They will file it under season {season}."
+        "\n\nThe release name and NFO still show the full range. "
+        "Continue only if that tracker accepts multi-season packs filed "
+        "this way."
+    )
+
+
 def _mapping_for_path(
     file_path: Path, mappings: dict[Any, dict[str, Any]]
 ) -> dict[str, Any]:

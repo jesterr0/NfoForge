@@ -203,6 +203,11 @@ class SeriesSettings:
     daily_episode_token: str
     anime_episode_token: str
     season_folder_token: str
+    # Blank means "use season_folder_token": in a single-season pack the
+    # opened folder IS the season folder, so one token covers both. This
+    # only diverges for a nested pack, where the root carries the season
+    # range and each subfolder carries its own season.
+    season_subfolder_token: str
     multi_episode_style: MultiEpisodeStyle
     standard_title_token: str
     daily_title_token: str

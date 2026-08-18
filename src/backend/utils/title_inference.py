@@ -9,6 +9,7 @@ from typing import Any
 
 from guessit import guessit
 
+from src.backend.utils import media_files
 from src.backend.utils.guessit_helpers import get_guessit_title
 from src.exceptions import MediaParsingError
 
@@ -64,31 +65,9 @@ class MediaTitleInferer:
     the greatest weight.
     """
 
-    VIDEO_EXTENSIONS = frozenset(
-        {
-            ".3gp",
-            ".avi",
-            ".divx",
-            ".flv",
-            ".iso",
-            ".m2ts",
-            ".m4v",
-            ".mkv",
-            ".mov",
-            ".mp4",
-            ".mpeg",
-            ".mpg",
-            ".mts",
-            ".ogm",
-            ".ogv",
-            ".rm",
-            ".rmvb",
-            ".ts",
-            ".vob",
-            ".webm",
-            ".wmv",
-        }
-    )
+    # Defined in `media_files` so the input page filters `file_list` by the
+    # exact set this inferer treats as video evidence.
+    VIDEO_EXTENSIONS = media_files.VIDEO_EXTENSIONS
 
     GENERIC_DIRECTORY_NAMES = frozenset(
         {
@@ -127,10 +106,7 @@ class MediaTitleInferer:
         re.compile(r"^\d{1,3}$"),
     )
 
-    SAMPLE_PATTERN = re.compile(
-        r"(?:^|[._\-\s])sample(?:$|[._\-\s])",
-        re.IGNORECASE,
-    )
+    SAMPLE_PATTERN = media_files.SAMPLE_PATTERN
 
     SPACE_PATTERN = re.compile(r"\s+")
     SEPARATOR_PATTERN = re.compile(r"[._]+")

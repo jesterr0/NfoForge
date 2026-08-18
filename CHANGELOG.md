@@ -9,9 +9,14 @@
 - Ability to select media search type (movies vs. tv or both) in General -> Settings
   - This controls the flow for the rest of the program and disables one or the other if not set to both
 - MediaSearch now gathers TVMaze metadata
+- Season packs can now be opened in any layout, including seasons kept in separate `Season NN` subfolders. The opened folder is renamed from the **Season Folder** token (rendering `{season_number}` as a range, e.g. `S01-S05`, for a multi-season pack) and each season subfolder is renamed for its own season. Previously a pack whose episodes were not all sitting directly in the opened folder had its filenames renamed but every folder left with the source's name.
+- New **Season Subfolder** token in Settings -> Series, for naming each season subfolder in a nested pack. Leave it blank (the default) to reuse the Season Folder token, which is what a flat single-season pack has always done.
+- Subtitles and per-episode `.nfo` files named after an episode now follow it through a rename, keeping any language or ordering segment (`ep01.en.srt` -> `Show.S01E01....en.srt`). Anything else in the pack, such as an `Extras` folder, is left untouched and moves with the folder around it.
+- A pack spanning several seasons now asks for confirmation before uploading to UNIT3D trackers, which record a single season per upload and will file it under the lowest one.
 
 ### Changed
 
+- `{total_seasons}` and `{total_episodes}` are described as series-wide totals from TMDB/TVDB, which is what they have always returned -- they do not count what the release contains.
 - Improved **Media Search** UI
   - Now shows poster
   - Combines plot/info section
@@ -21,6 +26,7 @@
 
 ### Fixed
 
+- Opening a folder no longer treats subtitles, `.nfo` files, artwork and sample clips as episodes. They were sent to MediaInfo, listed on the **Series Match** page as files needing an episode number, and rendered into `{episode_mediainfo}`/`{episode_metadata}`. Only video files are collected now.
 - Adding trackers to an archive no longer discards a tracker left unfinished by an earlier run. Its prepared title and NFO are kept and it stays listed as pending.
 - Adding trackers to an archive no longer dies partway through with `Failed to process trackers: You must supply 'name' or 'idx' arg when reading templates`. Resuming a job that still has NFOs to generate now starts on the **Trackers** page and continues through **Pre-upload**, which is where a tracker's NFO template is assigned; previously it jumped straight to processing, so a tracker that had never been given a template killed the run before it could generate anything or show the overview. A job that is already prepared still resumes directly at processing.
 - Trackers a job has already uploaded to (or whose result is unresolved) are shown greyed out with the reason rather than hidden, and a resumed job's tracker selection no longer writes back into the profile's enabled flags.
