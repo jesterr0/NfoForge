@@ -2243,6 +2243,10 @@ class ProcessBackEnd:
                 is_pack=release_info.is_pack,
                 is_anime=is_anime_release(context.media_input, media_search_obj),
                 timeout=self.config.settings.general.timeout,
+                imdb_id=media_search_obj.imdb_id,
+                tvdb_id=media_search_obj.tvdb_id,
+                season=release_info.season,
+                episode=release_info.episode_start,
             )
         elif tracker is TrackerSelection.BEYOND_HD:
             bhd_payload = self.config.settings.trackers.beyond_hd

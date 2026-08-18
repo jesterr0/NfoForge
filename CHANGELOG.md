@@ -8,12 +8,14 @@
 - Saved archives track confirmed and uncertain uploads separately, prevent selecting a confirmed tracker twice, and let uncertain results be resolved before retrying.
 - Ability to select media search type (movies vs. tv or both) in General -> Settings
   - This controls the flow for the rest of the program and disables one or the other if not set to both
+- MediaSearch now gathers TVMaze metadata
 
 ### Changed
 
 - Improved **Media Search** UI
   - Now shows poster
   - Combines plot/info section
+- Now passes all media identifiers to TorrentLeech other than animeid (we'll let TL auto detect this one as we send it up as anime via the category)
 
 ### Fixed
 

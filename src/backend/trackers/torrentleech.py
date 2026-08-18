@@ -11,6 +11,7 @@ from src.backend.trackers.utils import TRACKER_HEADERS, strip_title_dots
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.backend.utils.tvmaze_client import TVmazeClient, normalize_imdb_id
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.torrentleech import TLCategories
@@ -30,8 +31,19 @@ def tl_upload(
     is_pack: bool,
     timeout: int,
     is_anime: bool = False,
+    imdb_id: str | None = None,
+    tvdb_id: str | None = None,
+    season: int | None = None,
+    episode: int | None = None,
 ) -> bool | None:
-    uploader = TLUploader(announce_key=announce_key, timeout=timeout)
+    uploader = TLUploader(
+        announce_key=announce_key,
+        timeout=timeout,
+        imdb_id=imdb_id,
+        tvdb_id=tvdb_id,
+        season=season,
+        episode=episode,
+    )
     return uploader.upload(
         nfo=nfo,
         tracker_title=tracker_title,
@@ -52,9 +64,19 @@ class TLUploader:
         self,
         announce_key: str,
         timeout: int = 60,
+        imdb_id: str | None = None,
+        tvdb_id: str | None = None,
+        season: int | None = None,
+        episode: int | None = None,
+        tvmaze_client: TVmazeClient | None = None,
     ):
         self.announce_key = announce_key
         self.timeout = timeout
+        self.imdb_id = imdb_id
+        self.tvdb_id = tvdb_id
+        self.season = season
+        self.episode = episode
+        self._tvmaze_client = tvmaze_client
 
     def upload(
         self,
@@ -137,12 +159,99 @@ class TLUploader:
         is_pack: bool = False,
         is_anime: bool = False,
     ) -> dict[str, str | int]:
-        return {
+        data: dict[str, str | int] = {
             "announcekey": self.announce_key,
             "category": self._detect_category(
                 title, resolution, media_type, is_pack, is_anime
             ),
         }
+        data.update(self._metadata_fields(media_type, is_pack, is_anime))
+        return data
+
+    def _metadata_fields(
+        self, media_type: MediaType, is_pack: bool, is_anime: bool
+    ) -> dict[str, str | int]:
+        """Build the optional ID fields that pin the upload to the right title.
+
+        Without these TorrentLeech falls back to matching on the release name
+        alone, which picks the wrong entry for titles with several versions
+        (theatrical vs. extended, remakes sharing a name). Each category takes
+        a different ID, and sending the wrong one is worse than sending none
+        -- it overrides the tracker's own detection with something incorrect
+        -- so anything we cannot resolve confidently is logged and omitted.
+        """
+        # anime uploads take `animeid`, which is not one of the IDs the
+        # media-search pipeline resolves (we carry AniList and MAL; which of
+        # those -- if either -- TL expects is undocumented). Guessing risks
+        # pinning the upload to an unrelated title, so let TL auto-detect.
+        if is_anime:
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                "TorrentLeech anime uploads take an 'animeid' NfoForge cannot "
+                "resolve; leaving the title to TorrentLeech's auto-detection.",
+            )
+            return {}
+
+        if media_type is MediaType.MOVIE:
+            imdb_id = normalize_imdb_id(self.imdb_id)
+            if imdb_id:
+                LOG.info(LOG.LOG_SOURCE.BE, f"Attaching IMDb ID to upload: {imdb_id}")
+                return {"imdb": imdb_id}
+            LOG.info(
+                LOG.LOG_SOURCE.BE,
+                "No IMDb ID available; leaving the title to TorrentLeech's "
+                "auto-detection.",
+            )
+            return {}
+
+        if media_type is MediaType.SERIES:
+            return self._tvmaze_fields(is_pack)
+
+        return {}
+
+    def _tvmaze_fields(self, is_pack: bool) -> dict[str, str | int]:
+        """Resolve TorrentLeech's tvmaze/tvmazetype pair for a series upload.
+
+        ``tvmazetype`` tells TL what the accompanying ID refers to: 1 for the
+        show, 2 for a single episode. A pack covers a whole season, so it
+        points at the show; a lone episode points at that episode. If the
+        episode lookup misses (TVmaze files specials outside the regular
+        numbering, among other gaps) we fall back to the show -- still a
+        correct title, just less specific.
+        """
+        client = self._tvmaze_client or TVmazeClient(timeout=self.timeout)
+        try:
+            show_id = client.lookup_show_id(imdb_id=self.imdb_id, tvdb_id=self.tvdb_id)
+            if show_id is None:
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    "Could not resolve a TVmaze show; leaving the title to "
+                    "TorrentLeech's auto-detection.",
+                )
+                return {}
+
+            if not is_pack and self.season is not None and self.episode is not None:
+                episode_id = client.get_episode_id(show_id, self.season, self.episode)
+                if episode_id is not None:
+                    LOG.info(
+                        LOG.LOG_SOURCE.BE,
+                        f"Attaching TVmaze episode ID to upload: {episode_id} "
+                        f"(S{self.season:02d}E{self.episode:02d})",
+                    )
+                    return {"tvmazeid": episode_id, "tvmazetype": 2}
+                LOG.info(
+                    LOG.LOG_SOURCE.BE,
+                    "Could not resolve a TVmaze episode; falling back to the "
+                    f"show ID {show_id}.",
+                )
+
+            LOG.info(
+                LOG.LOG_SOURCE.BE, f"Attaching TVmaze show ID to upload: {show_id}"
+            )
+            return {"tvmazeid": show_id, "tvmazetype": 1}
+        finally:
+            if self._tvmaze_client is None:
+                client.close()
 
     @staticmethod
     def _detect_category(
