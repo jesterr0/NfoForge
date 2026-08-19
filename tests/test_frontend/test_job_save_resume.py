@@ -9,6 +9,7 @@ import wave
 from pymediainfo import MediaInfo
 from PySide6.QtWidgets import (
     QDialog,
+    QLabel,
     QMessageBox,
     QPushButton,
     QWizard,
@@ -183,6 +184,15 @@ def _fake_page(context: ProcessingContext, *, last_used: dict | None = None) -> 
     )
     page._image_host_label = ProcessPage._image_host_label
     page._plugin_image_host_available = lambda: False
+    page.image_host_banner = QLabel()
+    page._apply_remembered_image_host = lambda combo, tracker, upload_type, restored: (
+        ProcessPage._apply_remembered_image_host(  # pyright: ignore[reportArgumentType]
+            page, combo, tracker, upload_type, restored
+        )
+    )
+    page._show_image_host_notice = lambda notes: ProcessPage._show_image_host_notice(  # pyright: ignore[reportArgumentType]
+        page, notes
+    )
     page._sync_tracker_image_hosts = lambda: ProcessPage._sync_tracker_image_hosts(page)  # pyright: ignore[reportArgumentType]
     page._tree_combo_changed = lambda combo, idx: ProcessPage._tree_combo_changed(
         page,  # pyright: ignore[reportArgumentType]
@@ -611,6 +621,88 @@ def test_a_source_less_archive_offers_the_hosts_it_already_uploaded_to(
     assert any("Pixhost" in text for text in offered)
     # a host the bundle cannot serve must not be offered as if it could
     assert not any("Chevereto" in text for text in offered)
+
+
+def test_a_saved_host_that_is_gone_is_named_instead_of_silently_dropped(
+    qapp: Any, sample_media: Path
+) -> None:
+    """Settings -> Image Hosts is read live, so a job's host can vanish.
+
+    The row then took whatever was first -- `Disabled` -- and a run that was
+    meant to carry screenshots uploaded none, looking exactly like a row the
+    user had turned off on purpose.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)  # saved against Chevereto v3
+    page = _fake_page(context)
+    # the host the job chose is no longer offered by this config
+    page.config.settings.image_hosts.by_selection = lambda: {}
+
+    ProcessPage.add_tracker_items(page)
+
+    assert (
+        context.shared_data.tracker_image_hosts[TrackerSelection.AITHER].img_to
+        is ImageHost.DISABLED
+    )
+    assert not page.image_host_banner.isHidden()
+    notice = page.image_host_banner.text()
+    assert "Chevereto v3" in notice
+    assert "Aither" in notice
+    assert "Disabled" in notice
+
+
+def test_a_saved_host_replaced_by_the_global_preference_is_named_too(
+    qapp: Any, sample_media: Path
+) -> None:
+    """Landing on a *different* host is the worse of the two substitutions.
+
+    The screenshots go somewhere the job never chose, which also makes the
+    URLs it already holds for its own host unusable.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)  # saved against Chevereto v3
+    page = _fake_page(context, last_used={TrackerSelection.AITHER: ImageHost.PIXHOST})
+    page.config.settings.image_hosts.by_selection = lambda: {
+        ImageHost.PIXHOST: ImagePayloadBase(base_url="https://pix.test", enabled=True)
+    }
+
+    ProcessPage.add_tracker_items(page)
+
+    assert (
+        context.shared_data.tracker_image_hosts[TrackerSelection.AITHER].img_to
+        is ImageHost.PIXHOST
+    )
+    notice = page.image_host_banner.text()
+    assert "Chevereto v3" in notice
+    assert "Pixhost" in notice
+
+
+def test_a_host_that_is_still_offered_says_nothing(
+    qapp: Any, sample_media: Path
+) -> None:
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    page = _fake_page(context)
+
+    ProcessPage.add_tracker_items(page)
+
+    assert page.image_host_banner.text() == ""
+    assert page.image_host_banner.isHidden()
+
+
+def test_a_fresh_run_with_no_remembered_host_says_nothing(
+    qapp: Any, sample_media: Path
+) -> None:
+    """`Disabled` is only worth reporting when it displaced something."""
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.tracker_image_hosts.clear()
+    page = _fake_page(context)
+
+    ProcessPage.add_tracker_items(page)
+
+    assert page.image_host_banner.text() == ""
+    assert page.image_host_banner.isHidden()
 
 
 def test_sync_tracker_image_hosts_skips_a_row_missing_its_combo_data(

@@ -411,6 +411,18 @@ class ProcessPage(BaseWizardPage):
         )
         self.source_less_banner.hide()
 
+        # A row reading "Disabled" because the user chose it and one reading
+        # "Disabled" because its host went away look identical, so the
+        # substitution gets said out loud here. Built like the banner above
+        # and filled in by `add_tracker_items`, which is the only place that
+        # knows what a row was asked for versus what it could be given.
+        self.image_host_banner = QLabel(self, wordWrap=True)
+        self.image_host_banner.setStyleSheet(
+            "color: #d68c00; border: 1px solid #d68c00; border-radius: 4px; "
+            "padding: 6px;"
+        )
+        self.image_host_banner.hide()
+
         self.tracker_process_tree = ComboBoxTreeWidget(
             headers=("Tracker", "Image Host", "Status"), parent=self
         )
@@ -458,6 +470,7 @@ class ProcessPage(BaseWizardPage):
 
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(self.source_less_banner)
+        main_layout.addWidget(self.image_host_banner)
         main_layout.addWidget(self.tracker_process_tree, stretch=3)
         main_layout.addWidget(text_widget_label, alignment=Qt.AlignmentFlag.AlignBottom)
         main_layout.addWidget(self.text_widget, stretch=5)
@@ -1440,6 +1453,10 @@ class ProcessPage(BaseWizardPage):
         self.context.shared_data.tracker_image_hosts.update(selections)
 
     def add_tracker_items(self) -> None:
+        # collected across every row so one notice names them all, rather than
+        # one banner per tracker overwriting the last
+        unavailable: list[str] = []
+
         # sort the trackers in the users desired order before displaying them
         if self.context.shared_data.selected_trackers:
             # snapshot before any rows are built: adding rows fires
@@ -1524,27 +1541,13 @@ class ProcessPage(BaseWizardPage):
                 if not combo_box:
                     continue
 
-                # a restored job knows exactly which destination was chosen, so
-                # match it directly; otherwise fall back to the remembered
-                # preference, which only has the destination to go on
-                restored_host = restored_hosts.get(tracker)
-                if restored_host:
-                    restored_idx = combo_box.findText(
-                        self._image_host_label(upload_type, restored_host.img_to)
-                    )
-                    if restored_idx != -1:
-                        combo_box.setCurrentIndex(restored_idx)
-                        continue
-
-                last_used_host = self.config.settings.trackers.last_used_image_host.get(
-                    tracker
+                note = self._apply_remembered_image_host(
+                    combo_box, tracker, upload_type, restored_hosts.get(tracker)
                 )
-                if last_used_host:
-                    get_last = combo_box.findText(
-                        str(last_used_host), flags=Qt.MatchFlag.MatchContains
-                    )
-                    if get_last != -1:
-                        combo_box.setCurrentIndex(get_last)
+                if note:
+                    unavailable.append(note)
+
+        self._show_image_host_notice(unavailable)
 
         # Outside the branch on purpose: the rows are the run, so with no
         # tracker to build a row for there is no run, and the payload has to
@@ -1553,6 +1556,80 @@ class ProcessPage(BaseWizardPage):
         # entry -- and leaving those in place let a run with no rows at all
         # still hand the backend a tracker to upload to.
         self._sync_tracker_image_hosts()
+
+    def _apply_remembered_image_host(
+        self,
+        combo_box: QComboBox,
+        tracker: TrackerSelection,
+        upload_type: ImageSource,
+        restored_host: ImageUploadFromTo | None,
+    ) -> str | None:
+        """Point one row at the destination it is meant to use.
+
+        A restored job knows exactly which destination was chosen, so it is
+        matched directly; otherwise the remembered preference applies, which
+        only has the destination to go on.
+
+        Returns a note when the remembered destination could not be offered.
+        Settings -> Image Hosts is read live, so a host turned off (or left
+        with a required field blank) since the job was saved simply is not in
+        the list, and the row quietly took whatever was first -- `Disabled`,
+        which uploads no screenshots at all. A saved job could also land on the
+        *global* last-used host instead of its own, sending its screenshots
+        somewhere it never chose and making the URLs it already holds
+        unusable. Both are still allowed to happen -- turning images off is a
+        legitimate choice and this is not the page to argue with it -- but the
+        caller says so out loud instead of letting the row imply the user
+        picked it.
+        """
+        if restored_host:
+            index = combo_box.findText(
+                self._image_host_label(upload_type, restored_host.img_to)
+            )
+            if index != -1:
+                combo_box.setCurrentIndex(index)
+                return None
+
+        last_used_host = self.config.settings.trackers.last_used_image_host.get(tracker)
+        if last_used_host:
+            index = combo_box.findText(
+                str(last_used_host), flags=Qt.MatchFlag.MatchContains
+            )
+            if index != -1:
+                combo_box.setCurrentIndex(index)
+                # the preference standing in for a job's own choice is the
+                # substitution worth reporting; standing in for nothing is
+                # just the preference doing its job
+                if not restored_host:
+                    return None
+
+        wanted = restored_host.img_to if restored_host else last_used_host
+        if wanted is None:
+            return None
+        return (
+            f"{tracker}: '{wanted}' is not available in this config, so this "
+            f"run will use '{combo_box.currentText()}'"
+        )
+
+    def _show_image_host_notice(self, unavailable: Sequence[str]) -> None:
+        """Put the image-host substitutions on the banner, or take it down.
+
+        Always one or the other: re-entering the page rebuilds the rows, and a
+        banner left up from a previous visit would describe a run that is no
+        longer the one on screen.
+        """
+        if not unavailable:
+            self.image_host_banner.clear()
+            self.image_host_banner.hide()
+            return
+        self.image_host_banner.setText(
+            "⚠ Image host unavailable for "
+            f"{'a tracker' if len(unavailable) == 1 else 'some trackers'}:\n"
+            + "\n".join(unavailable)
+            + "\nRe-enable it in Settings -> Image Hosts, or pick another "
+            "above, if this is not what you want."
+        )
+        self.image_host_banner.show()
 
     def _plugin_image_host_available(self) -> bool:
         """Whether a loaded plugin currently provides image host uploads.

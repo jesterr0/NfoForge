@@ -56,6 +56,7 @@ def rebuild_job_document(
 
     nfo_assets = capture_nfos(directory, context.shared_data.tracker_release_data)
     document = context_to_dict(context, mediainfo_assets, nfo_assets)
+    _carry_held_image_hosts(document, old_context)
 
     images = _job_local_images(directory, context.shared_data.loaded_images or ())
     if images:
@@ -70,6 +71,51 @@ def rebuild_job_document(
         document["base_torrent"] = dict(base_details)
 
     return document
+
+
+def _carry_held_image_hosts(
+    document: dict[str, Any], old_context: dict[str, Any]
+) -> None:
+    """Keep the image host of a tracker this run built no row for.
+
+    `tracker_image_hosts` mirrors the process page's tracker rows, so a run
+    that adds one tracker to an archive re-serializes the map with only that
+    tracker in it. Everything else a held-back tracker owns survives on the
+    context and comes through untouched -- its frozen title and NFO, the URLs
+    its screenshots already got -- so this was the one piece of its state that
+    an update quietly dropped.
+
+    That mattered when the tracker came back: resolving an unconfirmed upload
+    as "it never landed" re-selects it, and the process page then had no stored
+    choice to restore and fell back to the *global* last-used preference for
+    that tracker -- a different host than the job chose, whose stored URLs the
+    run could then not reuse.
+
+    Scoped to trackers the job still holds prepared work for, so it carries
+    what `filter_context_document(retain_data_for=...)` is about to keep rather
+    than resurrecting a tracker that has been narrowed away for good.
+    """
+    shared = document.get("shared_data")
+    old_shared = old_context.get("shared_data")
+    if not isinstance(shared, dict) or not isinstance(old_shared, dict):
+        return
+
+    hosts = shared.get("tracker_image_hosts")
+    old_hosts = old_shared.get("tracker_image_hosts")
+    release_data = shared.get("tracker_release_data")
+    if (
+        not isinstance(hosts, dict)
+        or not isinstance(old_hosts, dict)
+        or not isinstance(release_data, dict)
+    ):
+        return
+
+    for name, entry in old_hosts.items():
+        if name in hosts or name not in release_data:
+            continue
+        # copied rather than shared, so the rebuilt document does not alias
+        # the one still held as `job.context`
+        hosts[name] = dict(entry) if isinstance(entry, dict) else entry
 
 
 def _carried_mediainfo_assets(

@@ -848,9 +848,20 @@ class LoadJobDialog(QDialog):
                     "to open it."
                 )
             if not self._can_load(listing):
+                # Pointing at 'Add Trackers' is only useful while that button
+                # is the one enabled; an archive missing its base torrent or
+                # its MediaInfo cannot take that route either, and saying so
+                # beats naming an action that does nothing.
+                if self._can_add_trackers(listing):
+                    return (
+                        f"'{listing.name}' has already uploaded to every tracker "
+                        "it was run for. Use 'Add Trackers' to send it somewhere "
+                        "new."
+                    )
                 return (
                     f"'{listing.name}' has already uploaded to every tracker it "
-                    "was run for. Use 'Add Trackers' to send it somewhere new."
+                    "was run for, and its saved release package is incomplete, "
+                    "so it cannot be reopened for new ones."
                 )
             if not listing.prepared:
                 return (
@@ -1127,8 +1138,10 @@ class LoadJobDialog(QDialog):
             self._accept_with_switch()
         elif self._can_load(listing):
             self._accept_selection()
-        else:
+        elif self._can_add_trackers(listing):
             self._accept_add_trackers()
+        # else: nothing this dialog can do with it, which `_selection_hint`
+        # says in words rather than leaving the click to look ignored
 
     @Slot()
     def _accept_selection(self) -> None:

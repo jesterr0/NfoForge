@@ -28,9 +28,9 @@ from src.backend.jobs import (
 from src.backend.jobs.models import JobSummary
 from src.backend.upload_retry import TrackerRunOutcome
 from src.context.processing_context import ProcessingContext
-from src.enums.image_host import ImageHost
+from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageUploadData
+from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
 
 _TRACKERS = (TrackerSelection.AITHER, TrackerSelection.HUNO)
 _NFOS = {TrackerSelection.AITHER: "a", TrackerSelection.HUNO: "h"}
@@ -558,6 +558,59 @@ def test_an_uncertain_tracker_in_an_archive_keeps_its_prepared_work(
     # ...but everything needed to put it back is still here
     assert shared["tracker_release_data"]["AITHER"]["title"] == "a"
     assert (directory / store.JOB_NFO_DIR_NAME / "aither.txt").is_file()
+
+
+def test_an_uncertain_tracker_in_an_archive_keeps_its_image_host(
+    working_dir: Path,
+) -> None:
+    """The destination its screenshots were bound for is part of that work.
+
+    `tracker_image_hosts` is re-serialized from the run that just happened, so
+    a tracker held back from it lost its entry while keeping everything else.
+    Resolving it later then re-derived the host from the global last-used
+    preference instead of the one this job chose, which can point at a host
+    whose stored URLs the run cannot reuse.
+    """
+    job, directory = _job(working_dir)
+    job.archived = True
+    store.write_job_document(job, directory)
+    context = _context(directory)
+    context.shared_data.tracker_image_hosts[TrackerSelection.AITHER] = (
+        ImageUploadFromTo(ImageSource.IMAGES, ImageHost.PIXHOST)
+    )
+    context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
+        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+    )
+    store.write_job_document(
+        store.build_job(
+            job.name,
+            job.summary,
+            context_to_dict(context, {}, {}),
+            archived=True,
+        ),
+        directory,
+    )
+    job = store.load_job(directory)
+    job.archived = True
+
+    # the run that follows only covers HUNO, so AITHER never gets a row
+    run_context = _context(directory)
+    run_context.shared_data.tracker_image_hosts.pop(TrackerSelection.AITHER)
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.MAY_HAVE_UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOADED,
+        },
+    )
+
+    _runner()._settle(job, outcome, run_context)
+
+    shared = store.load_job(directory).context["shared_data"]
+    assert shared["selected_trackers"] == []
+    assert list(shared["tracker_image_hosts"]) == ["AITHER"]
 
 
 def test_a_rebuild_that_fails_leaves_the_job_exactly_as_it_was(

@@ -298,6 +298,49 @@ def test_a_spent_archive_cannot_be_loaded_by_pressing_open(
         dialog.deleteLater()
 
 
+def test_an_archive_that_cannot_add_trackers_either_says_so_and_stays_put(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Neither route is open, so the click must not pretend one is.
+
+    Without its base torrent the archive cannot be reopened for new trackers,
+    which leaves a double click with nothing to do -- and a hint naming a
+    disabled button would send the user at it anyway.
+    """
+    directory = _save(working_dir, "archive", archived=True, trackers=[])
+    (directory / store.JOB_BASE_TORRENT_NAME).unlink()
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        _click_tree_item(dialog, item, qapp)
+        assert not dialog.add_trackers_btn.isEnabled()
+        assert "cannot be reopened" in dialog.status_lbl.text()
+
+        dialog._on_double_click(item, 0)
+
+        assert dialog.selected_listing is None
+    finally:
+        dialog.deleteLater()
+
+
+def test_a_spent_archive_points_at_the_action_it_can_take(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        _click_tree_item(dialog, item, qapp)
+
+        assert "Add Trackers" in dialog.status_lbl.text()
+    finally:
+        dialog.deleteLater()
+
+
 def test_double_clicking_an_ordinary_job_still_loads_it(
     qapp: Any, working_dir: Path, patched_working_dirs: None
 ) -> None:
