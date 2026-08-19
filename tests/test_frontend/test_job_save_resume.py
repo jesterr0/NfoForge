@@ -1653,10 +1653,11 @@ def test_starting_over_drops_mediainfo_cached_by_a_loaded_job(
         _connect_current_id_changed=lambda: None,
         _set_disabled=lambda _value: None,
         next_button=SimpleNamespace(setText=lambda _text: None),
-        process_button=SimpleNamespace(setText=lambda _text: None),
+        process_button=SimpleNamespace(setText=lambda _text: None, show=lambda: None),
         setButtonLayout=lambda _buttons: None,
         starting_buttons=(),
         restart=lambda: None,
+        _sync_button_layout=lambda: None,
     )
 
     MainWindowWizard.reset_wizard(wizard)  # pyright: ignore[reportArgumentType]

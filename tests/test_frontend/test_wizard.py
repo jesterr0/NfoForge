@@ -261,3 +261,39 @@ def test_a_page_without_a_teardown_is_still_removed() -> None:
     MainWindowWizard._remove_all_pages(wizard)  # pyright: ignore[reportArgumentType]
 
     assert wizard.pageIds() == []
+
+
+def test_the_button_row_is_stated_not_inferred_from_a_signal() -> None:
+    """`currentIdChanged` is an edge, and a rebuild may not move the id.
+
+    A run ends on the process page with its Process button showing. Rebuild
+    the wizard back onto that same id and no id changes, so nothing re-runs
+    `_handle_page_change` and the ending layout stays -- Process sitting where
+    Next belongs, on a page with nothing to process. The two symptoms of that
+    are a "Next" button reading "Process (Dupe Check)", and pressing it
+    reporting no trackers to upload to.
+    """
+    wizard = QWizard()
+    for page_id in range(1, WizardPages.PROCESS_PAGE.value + 1):
+        wizard.setPage(page_id, QWizardPage())
+    wizard._START_PAGES = (  # pyright: ignore[reportAttributeAccessIssue]
+        WizardPages.INPUT_PAGE,
+        WizardPages.PLUGIN_INPUT_PAGE,
+    )
+    seen: list[int] = []
+    wizard.setButtonLayout = lambda layout: seen.append(len(layout))  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.starting_buttons = (1, 2, 3, 4)  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.mid_flow_buttons = (1, 2, 3)  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.ending_buttons = (1, 2)  # pyright: ignore[reportAttributeAccessIssue]
+    wizard._handle_page_change = lambda idx: MainWindowWizard._handle_page_change(  # pyright: ignore[reportAttributeAccessIssue]
+        wizard,  # pyright: ignore[reportArgumentType]
+        idx,
+    )
+    wizard.setStartId(WizardPages.TRACKERS_PAGE.value)
+    wizard.restart()
+    seen.clear()
+
+    MainWindowWizard._sync_button_layout(wizard)  # pyright: ignore[reportArgumentType]
+
+    # the trackers page is mid-flow, so Next belongs there -- not Process
+    assert seen == [len((1, 2, 3))]

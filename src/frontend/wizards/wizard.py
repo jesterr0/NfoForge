@@ -223,8 +223,10 @@ class MainWindowWizard(QWizard):
         self._set_disabled(False)
         self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
+        self.process_button.show()
         self.setButtonLayout(self.starting_buttons)
         self.restart()
+        self._sync_button_layout()
 
     @Slot()
     def open_load_job_dialog(self) -> None:
@@ -599,15 +601,13 @@ class MainWindowWizard(QWizard):
         self.process_button.setText("Process (Dupe Check)")
         self.process_button.show()
         self.setStartId(start_page.value)
-        # `restart()` fires `currentIdChanged`, so `_handle_page_change` sets
-        # this too; doing it here as well keeps the button bar correct even
-        # for a start page that is somehow already current.
         self.setButtonLayout(
             self.ending_buttons
             if start_page is WizardPages.PROCESS_PAGE
             else self.mid_flow_buttons
         )
         self.restart()
+        self._sync_button_layout()
         GSigs().main_window_update_status_bar_label.emit(
             str(start_page).removesuffix(" Page")
         )
@@ -639,6 +639,19 @@ class MainWindowWizard(QWizard):
 
         self.setStartId(WizardPages.INPUT_PAGE.value)
         GSigs().main_window_update_status_bar_label.emit("Input")
+
+    def _sync_button_layout(self) -> None:
+        """Match the button row to the page that is actually showing.
+
+        `_handle_page_change` runs off `currentIdChanged`, which is an edge:
+        a rebuild landing back on the id the wizard was already on changes
+        nothing and fires nothing, leaving the previous run's buttons in
+        place. The layout left behind by a finished run is the one that hurts
+        -- it puts Process where Next belongs, on a page with nothing to
+        process -- so the rebuild states the layout rather than inferring it
+        from a signal that may not come.
+        """
+        self._handle_page_change(self.currentId())
 
     @Slot(int)
     def _handle_page_change(self, idx: int) -> None:
