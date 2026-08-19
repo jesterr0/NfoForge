@@ -101,8 +101,15 @@ def _unique_destination(directory: Path, name: str) -> Path:
 def copy_images(directory: Path, images: list[Path]) -> list[Path]:
     """Copy screenshots into the job and return their new paths.
 
-    A missing source is skipped with a warning rather than failing the save:
-    losing one screenshot should not cost the user the whole job.
+    One entry out per entry in, in the same order. A missing source keeps its
+    original path rather than dropping out of the list: `uploaded_images` is
+    keyed by a screenshot's *position*, so removing an entry here silently
+    renumbers every later one and pairs each remaining image with the URL of
+    the one after it. A path that no longer exists is a screenshot already
+    lost; a shifted index would additionally corrupt the ones that survived.
+
+    Losing a screenshot is warned about rather than raised, though: it should
+    not cost the user the whole job.
     """
     if not images:
         return []
@@ -113,8 +120,11 @@ def copy_images(directory: Path, images: list[Path]) -> list[Path]:
     for image in images:
         if not image.is_file():
             LOG.warning(
-                LOG.LOG_SOURCE.BE, f"Skipping missing screenshot while saving: {image}"
+                LOG.LOG_SOURCE.BE,
+                f"Screenshot missing while saving, keeping its recorded path so "
+                f"the remaining images stay correctly numbered: {image}",
             )
+            copied.append(image)
             continue
         destination = _unique_destination(target, image.name)
         try:
@@ -136,6 +146,12 @@ def capture_mediainfo(
     actually sent (`MinimalMediaInfo.get_full_mi_str`) and cannot be derived
     from the object, since it comes from libmediainfo's own formatter. Keeping
     both is what lets a resumed run avoid touching the media file at all.
+
+    Additive: a second call into a directory that already holds sidecars adds
+    to them rather than writing over `0.xml` again. Updating an archive
+    captures only the files the stored document does not already cover, so a
+    numbering that restarted at zero would overwrite the dumps it was meant to
+    be extending.
     """
     if not media_paths:
         return {}
@@ -143,7 +159,9 @@ def capture_mediainfo(
     target.mkdir(parents=True, exist_ok=True)
 
     captured: dict[Path, dict[str, str]] = {}
-    for index, media_path in enumerate(media_paths):
+    index = -1
+    for media_path in media_paths:
+        index = _next_free_asset_index(target, index + 1)
         try:
             xml = mediainfo_xml(media_path)
             text = MediaInfo.parse(
@@ -173,6 +191,17 @@ def capture_mediainfo(
             "text": f"{JOB_MEDIAINFO_DIR_NAME}/{text_path.name}",
         }
     return captured
+
+
+def _next_free_asset_index(target: Path, start: int) -> int:
+    """The lowest index at or above `start` with neither sidecar taken.
+
+    Both names move together so an xml/txt pair always shares a stem.
+    """
+    index = start
+    while (target / f"{index}.xml").exists() or (target / f"{index}.txt").exists():
+        index += 1
+    return index
 
 
 def _write_exact(path: Path, text: str) -> None:

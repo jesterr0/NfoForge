@@ -26,7 +26,7 @@ from src.backend.jobs import (
     template_fingerprint,
 )
 from src.backend.template_selector import TemplateSelectorBackEnd
-from src.backend.utils.media_info_utils import clear_full_mi_str_cache
+from src.backend.utils.media_info_utils import clear_restored_mediainfo
 from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
 from src.context.processing_context import ProcessingContext
@@ -207,7 +207,7 @@ class MainWindowWizard(QWizard):
         # media never has to be re-read. Starting over means a genuinely new
         # run, which must measure the file itself rather than inherit a dump
         # that may now describe a different encode.
-        clear_full_mi_str_cache()
+        clear_restored_mediainfo()
 
         self.context = create_processing_context(
             self.config.settings,
@@ -291,7 +291,7 @@ class MainWindowWizard(QWizard):
         )
         try:
             # a new run must not inherit MediaInfo cached for a previous job
-            clear_full_mi_str_cache()
+            clear_restored_mediainfo()
             context_from_dict(
                 job.context,
                 context,

@@ -17,10 +17,23 @@ from src.backend.job_queue import (
     QueuedJobOutcome,
     QueuedJobResult,
 )
-from src.backend.jobs import JobStoreError, store
+from src.backend.jobs import (
+    JobCodecError,
+    JobStoreError,
+    context_from_dict,
+    context_to_dict,
+    read_job_asset,
+    store,
+)
 from src.backend.jobs.models import JobSummary
 from src.backend.upload_retry import TrackerRunOutcome
+from src.context.processing_context import ProcessingContext
+from src.enums.image_host import ImageHost
 from src.enums.tracker_selection import TrackerSelection
+from src.packages.custom_types import ImageUploadData
+
+_TRACKERS = (TrackerSelection.AITHER, TrackerSelection.HUNO)
+_NFOS = {TrackerSelection.AITHER: "a", TrackerSelection.HUNO: "h"}
 
 
 @pytest.fixture
@@ -29,16 +42,26 @@ def working_dir(tmp_path: Path) -> Path:
 
 
 def _job(working_dir: Path) -> tuple[Any, Path]:
-    """A saved job covering two trackers, each with a stored NFO."""
-    context = {
-        "shared_data": {
-            "selected_trackers": ["AITHER", "HUNO"],
-            "tracker_release_data": {
-                "AITHER": {"title": "a", "nfo_asset": "nfo/aither.txt"},
-                "HUNO": {"title": "h", "nfo_asset": "nfo/huno.txt"},
-            },
+    """A saved job covering two trackers, each with a stored NFO.
+
+    Built by serializing a real context rather than by hand: `_settle` now
+    re-serializes the live context back onto the job, so a document no
+    `context_to_dict` could have produced would make every test here measure a
+    round trip the application never performs.
+    """
+    source = ProcessingContext()
+    source.shared_data.selected_trackers = list(_TRACKERS)
+    for tracker, nfo in _NFOS.items():
+        source.shared_data.tracker_release_data[tracker] = {
+            "title": nfo,
+            "nfo": nfo,
         }
-    }
+    context = context_to_dict(
+        source,
+        {},
+        {tracker: f"nfo/{tracker.name.lower()}.txt" for tracker in _TRACKERS},
+    )
+
     job = store.build_job(
         "Two trackers",
         JobSummary(trackers=["Aither", "Huno"]),
@@ -47,10 +70,20 @@ def _job(working_dir: Path) -> tuple[Any, Path]:
     directory = store.job_dir(working_dir, job.job_id, ensure_exists=True)
     nfo_dir = directory / store.JOB_NFO_DIR_NAME
     nfo_dir.mkdir(parents=True)
-    (nfo_dir / "aither.txt").write_text("a", encoding="utf-8")
-    (nfo_dir / "huno.txt").write_text("h", encoding="utf-8")
+    for tracker, nfo in _NFOS.items():
+        (nfo_dir / f"{tracker.name.lower()}.txt").write_text(nfo, encoding="utf-8")
     store.write_job_document(job, directory)
     return job, directory
+
+
+def _context(directory: Path) -> ProcessingContext:
+    """The live context a queued run would hold, restored the same way it is."""
+    job = store.load_job(directory)
+    context = ProcessingContext()
+    context_from_dict(
+        job.context, context, lambda name: read_job_asset(directory, name)
+    )
+    return context
 
 
 def _runner(messages: list[str] | None = None) -> JobQueueRunner:
@@ -79,7 +112,7 @@ def test_a_job_whose_trackers_all_uploaded_is_deleted(working_dir: Path) -> None
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.DELETED
     assert not directory.exists()
@@ -101,7 +134,7 @@ def test_a_fully_uploaded_archive_is_retained_with_history(
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     reloaded = store.load_job(directory)
     assert directory.exists()
@@ -130,7 +163,7 @@ def test_a_partly_uploaded_job_is_narrowed_to_what_is_left(working_dir: Path) ->
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.NARROWED
     reloaded = store.load_job(directory)
@@ -157,7 +190,7 @@ def test_a_job_that_uploaded_nothing_is_left_alone(working_dir: Path) -> None:
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert (directory / store.JOB_DOCUMENT_NAME).read_text(encoding="utf-8") == before
@@ -176,7 +209,7 @@ def test_an_unknown_outcome_never_deletes_the_job(working_dir: Path) -> None:
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
@@ -195,7 +228,7 @@ def test_upload_disabled_alone_never_deletes_the_job(working_dir: Path) -> None:
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
@@ -218,7 +251,7 @@ def test_an_uploaded_tracker_alongside_an_unknown_one_is_narrowed_not_deleted(
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.NARROWED
     reloaded = store.load_job(directory)
@@ -248,7 +281,7 @@ def test_an_uploaded_tracker_alongside_a_disabled_one_is_narrowed_not_deleted(
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.NARROWED
     reloaded = store.load_job(directory)
@@ -279,7 +312,7 @@ def test_a_failed_tracker_alongside_an_unknown_one_is_left_untouched(
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert (directory / store.JOB_DOCUMENT_NAME).read_text(encoding="utf-8") == before
@@ -306,7 +339,7 @@ def test_a_failed_tracker_alongside_a_disabled_one_is_left_untouched(
         },
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert (directory / store.JOB_DOCUMENT_NAME).read_text(encoding="utf-8") == before
@@ -325,7 +358,7 @@ def test_a_job_that_never_reached_upload_is_untouched(working_dir: Path) -> None
         detail="possible duplicates on Aither",
     )
 
-    _runner()._settle(job, outcome)
+    _runner()._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
@@ -350,7 +383,7 @@ def test_every_tracker_unconfirmed_is_named_in_the_log(working_dir: Path) -> Non
     )
     messages: list[str] = []
 
-    _runner(messages)._settle(job, outcome)
+    _runner(messages)._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
@@ -373,7 +406,7 @@ def test_every_tracker_disabled_emits_nothing(working_dir: Path) -> None:
     )
     messages: list[str] = []
 
-    _runner(messages)._settle(job, outcome)
+    _runner(messages)._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
@@ -394,7 +427,7 @@ def test_every_tracker_not_attempted_emits_nothing(working_dir: Path) -> None:
     )
     messages: list[str] = []
 
-    _runner(messages)._settle(job, outcome)
+    _runner(messages)._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
@@ -418,11 +451,143 @@ def test_a_narrowed_job_logs_both_the_kept_line_and_the_unconfirmed_warning(
     )
     messages: list[str] = []
 
-    _runner(messages)._settle(job, outcome)
+    _runner(messages)._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.NARROWED
     assert any("Kept" in message for message in messages)
     assert any("Check" in message and "Aither" in message for message in messages)
+
+
+# --------------------------------------------------------------------------
+# what the run itself produced, not just which trackers it covers
+# --------------------------------------------------------------------------
+def test_urls_uploaded_during_the_run_are_written_back(working_dir: Path) -> None:
+    """The queue used to re-narrow the document *as loaded from disk*.
+
+    Everything the run produced -- above all the screenshots it had just
+    uploaded -- was therefore thrown away, and the next queue run uploaded the
+    same images to the same host all over again.
+    """
+    job, directory = _job(working_dir)
+    context = _context(directory)
+    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = {
+        0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
+    }
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOAD_FAILED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOADED,
+        },
+    )
+
+    _runner()._settle(job, outcome, context)
+
+    reloaded = store.load_job(directory)
+    assert reloaded.context["shared_data"]["uploaded_images_by_host"] == [
+        {
+            "name": "PIXHOST",
+            "type": "ImageHost",
+            "images": {"0": {"url": "https://pixhost/0.png", "medium_url": None}},
+        }
+    ]
+
+
+def test_urls_are_written_back_even_when_every_tracker_failed(
+    working_dir: Path,
+) -> None:
+    """Nothing landed, so the job still covers both trackers -- but the images
+    it uploaded on the way are worth keeping, or the retry pays for them
+    again."""
+    job, directory = _job(working_dir)
+    context = _context(directory)
+    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = {
+        0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
+    }
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.FAILED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOAD_FAILED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOAD_FAILED,
+        },
+    )
+
+    _runner()._settle(job, outcome, context)
+
+    reloaded = store.load_job(directory)
+    shared = reloaded.context["shared_data"]
+    assert shared["uploaded_images_by_host"]
+    # nothing landed, so both trackers are still the job's to upload
+    assert set(shared["selected_trackers"]) == {"AITHER", "HUNO"}
+    assert outcome.disposition is JobDisposition.KEPT
+
+
+def test_an_uncertain_tracker_in_an_archive_keeps_its_prepared_work(
+    working_dir: Path,
+) -> None:
+    """It must not run again, but "it never landed" has to be resolvable.
+
+    Narrowing an uncertain tracker away left only its name, so answering "no,
+    it is safe to upload" offered to restore a tracker whose title and NFO had
+    already been deleted along with its sidecar.
+    """
+    job, directory = _job(working_dir)
+    job.archived = True
+    store.write_job_document(job, directory)
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.UPLOADED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.MAY_HAVE_UPLOADED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOADED,
+        },
+    )
+
+    _runner()._settle(job, outcome, _context(directory))
+
+    reloaded = store.load_job(directory)
+    shared = reloaded.context["shared_data"]
+    assert reloaded.uncertain_trackers == ["AITHER"]
+    # kept out of the run...
+    assert shared["selected_trackers"] == []
+    # ...but everything needed to put it back is still here
+    assert shared["tracker_release_data"]["AITHER"]["title"] == "a"
+    assert (directory / store.JOB_NFO_DIR_NAME / "aither.txt").is_file()
+
+
+def test_a_rebuild_that_fails_leaves_the_job_exactly_as_it_was(
+    working_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-serializing is a bonus, not a precondition: failing it must not cost
+    the job the state it already had on disk."""
+    job, directory = _job(working_dir)
+    before = (directory / store.JOB_DOCUMENT_NAME).read_text(encoding="utf-8")
+
+    def _boom(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise JobCodecError("could not serialize")
+
+    monkeypatch.setattr(job_queue_module, "rebuild_job_document", _boom)
+    messages: list[str] = []
+    outcome = QueuedJobOutcome(
+        job_name=job.name,
+        path=directory,
+        result=QueuedJobResult.FAILED,
+        outcomes={
+            TrackerSelection.AITHER: TrackerRunOutcome.UPLOAD_FAILED,
+            TrackerSelection.HUNO: TrackerRunOutcome.UPLOAD_FAILED,
+        },
+    )
+
+    _runner(messages)._settle(job, outcome, _context(directory))
+
+    assert outcome.disposition is JobDisposition.KEPT
+    assert (directory / store.JOB_DOCUMENT_NAME).read_text(encoding="utf-8") == before
+    assert any("could not be written back" in message for message in messages)
 
 
 def test_a_failed_delete_is_reported_not_just_logged(
@@ -447,7 +612,7 @@ def test_a_failed_delete_is_reported_not_just_logged(
         },
     )
 
-    _runner(messages)._settle(job, outcome)
+    _runner(messages)._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert directory.exists()
@@ -477,7 +642,7 @@ def test_a_failed_narrow_is_reported_not_just_logged(
         },
     )
 
-    _runner(messages)._settle(job, outcome)
+    _runner(messages)._settle(job, outcome, _context(directory))
 
     assert outcome.disposition is JobDisposition.KEPT
     assert any(

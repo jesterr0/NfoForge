@@ -15,6 +15,11 @@ checked separately.
 Enums round-trip by member *name* rather than value. Some enums here are
 built with `auto()`, whose integer values would shift if a member were ever
 inserted above them, and a name also stays readable in the saved file.
+
+The free-form fields plugins write to (`dynamic_data`, `plugin_data`, the
+provider blobs) go through `values.encode_value`, which carries `Path`,
+`MediaInfo`, enum, `tuple`, `set` and non-string-keyed dicts as typed
+envelopes instead of dropping the key they sit in. See `values.py`.
 """
 
 from __future__ import annotations
@@ -23,11 +28,20 @@ from collections.abc import Callable, Iterable
 from enum import Enum
 import json
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from pymediainfo import MediaInfo
 
-from src.backend.utils.media_info_utils import cache_full_mi_str
+from src.backend.jobs.values import (
+    ENUM_REGISTRY,
+    MediaInfoIndex,
+    MediaInfoResolver,
+    UnencodableValue,
+    decode_value,
+    encode_value,
+    enum_from_name,
+)
+from src.backend.utils.media_info_utils import cache_full_mi_str, cache_mediainfo_obj
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
@@ -50,16 +64,6 @@ EnumT = TypeVar("EnumT", bound=Enum)
 AssetLoader = Callable[[str], "str | None"]
 """Reads one stored sidecar by filename, returning None when unavailable."""
 
-_GENRE_ENUMS: dict[str, type[Enum]] = {
-    "TMDBGenreIDsMovies": TMDBGenreIDsMovies,
-    "TMDBGenreIDsSeries": TMDBGenreIDsSeries,
-}
-
-_IMAGE_DESTINATION_ENUMS: dict[str, type[Enum]] = {
-    "ImageHost": ImageHost,
-    "ImageSource": ImageSource,
-}
-
 
 class JobCodecError(Exception):
     """A job document could not be encoded or decoded."""
@@ -81,42 +85,43 @@ def _enum_name(member: Enum | None) -> str | None:
 
 
 def _enum_from_name(enum_cls: type[EnumT], name: Any) -> EnumT | None:
-    """Resolve an enum member by name, tolerating a member that has since gone.
+    """Resolve an enum member by name, tolerating a member that has since gone."""
+    return cast("EnumT | None", enum_from_name(enum_cls, name))
 
-    A saved job outliving an enum member (a retired tracker, say) should not
-    make the whole job unreadable, so an unknown name degrades to `None` and
-    is logged rather than raising.
+
+def _registered_enum(raw_name: Any, *allowed: type[Enum]) -> type[Enum] | None:
+    """Look a stored enum class up, refusing one this field does not accept.
+
+    `ENUM_REGISTRY` covers every enum a job can carry, so a field storing its
+    own class name (a genre, an image destination) has to say which classes it
+    will honour -- otherwise a hand-edited `job.json` could name any enum at
+    all and be believed.
     """
-    if not isinstance(name, str) or not name:
-        return None
-    try:
-        return enum_cls[name]
-    except KeyError:
-        LOG.warning(
-            LOG.LOG_SOURCE.BE,
-            f"Saved job references unknown {enum_cls.__name__} member '{name}'; "
-            "dropping it",
-        )
-        return None
+    enum_cls = ENUM_REGISTRY.get(str(raw_name))
+    return enum_cls if enum_cls in allowed else None
 
 
-def _json_safe_mapping(mapping: dict[str, Any], label: str) -> dict[str, Any]:
-    """Keep only the entries of a free-form mapping that survive JSON.
+def _json_safe_mapping(
+    mapping: dict[str, Any], label: str, index: MediaInfoIndex | None = None
+) -> dict[str, Any]:
+    """Keep only the entries of a free-form mapping that survive a save.
 
     `dynamic_data` and `plugin_data` are open to plugins, so their contents
-    are not guaranteed to be serializable. Dropping the offending keys keeps
-    the rest of the job saveable instead of failing the whole save, and the
+    are not guaranteed to be serializable. `encode_value` carries the types a
+    plugin actually tends to leave behind (see `values.py`); anything still
+    outside that whitelist costs its own key rather than the whole job, and the
     drop is logged so it is not silent.
     """
     safe: dict[str, Any] = {}
     dropped: list[str] = []
     for key, value in mapping.items():
         try:
-            json.dumps(value)
-        except (TypeError, ValueError):
+            encoded = encode_value(value, index=index)
+            json.dumps(encoded)
+        except (UnencodableValue, TypeError, ValueError):
             dropped.append(str(key))
             continue
-        safe[str(key)] = value
+        safe[str(key)] = encoded
     if dropped:
         LOG.warning(
             LOG.LOG_SOURCE.BE,
@@ -125,19 +130,22 @@ def _json_safe_mapping(mapping: dict[str, Any], label: str) -> dict[str, Any]:
     return safe
 
 
-def _json_safe_value(value: Any, label: str) -> Any:
-    """Keep a free-form value only if it survives JSON.
+def _json_safe_value(
+    value: Any, label: str, index: MediaInfoIndex | None = None
+) -> Any:
+    """Keep a free-form value only if it survives a save.
 
     The metadata providers hand back decoded JSON, so this normally passes
     untouched. A plugin is free to put anything in these fields, though, and one
     odd object should cost that field rather than the whole job.
     """
     try:
-        json.dumps(value)
-    except (TypeError, ValueError):
+        encoded = encode_value(value, index=index)
+        json.dumps(encoded)
+    except (UnencodableValue, TypeError, ValueError):
         LOG.warning(LOG.LOG_SOURCE.BE, f"Job save dropped non-serializable {label}")
         return None
-    return value
+    return encoded
 
 
 # --------------------------------------------------------------------------
@@ -169,13 +177,35 @@ def _image_upload_from_to_from_dict(document: Any) -> ImageUploadFromTo | None:
     if not isinstance(document, dict):
         return None
     img_from = _enum_from_name(ImageSource, document.get("img_from"))
-    destination_cls = _IMAGE_DESTINATION_ENUMS.get(str(document.get("img_to_type")))
+    destination_cls = _registered_enum(
+        document.get("img_to_type"), ImageHost, ImageSource
+    )
     if img_from is None or destination_cls is None:
         return None
     img_to = _enum_from_name(destination_cls, document.get("img_to"))
     if img_to is None:
         return None
     return ImageUploadFromTo(img_from=img_from, img_to=img_to)  # pyright: ignore[reportArgumentType]
+
+
+def _indexed_images_from_dict(document: Any) -> dict[int, ImageUploadData]:
+    """Rebuild one `{index: ImageUploadData}` map, skipping unusable entries.
+
+    Indices are the screenshot's position in `loaded_images`, so they have to
+    come back as the ints they went out as -- JSON object keys are strings.
+    """
+    if not isinstance(document, dict):
+        return {}
+    restored: dict[int, ImageUploadData] = {}
+    for raw_index, data in document.items():
+        restored_data = _image_upload_data_from_dict(data)
+        if restored_data is None:
+            continue
+        try:
+            restored[int(raw_index)] = restored_data
+        except (TypeError, ValueError):
+            continue
+    return restored
 
 
 def _comparison_pair_to_dict(pair: ComparisonPair | None) -> dict[str, Any] | None:
@@ -244,9 +274,86 @@ def mediainfo_xml(path: Path) -> str:
     )
 
 
+def mediainfo_sources(context: ProcessingContext) -> dict[Path, MediaInfo]:
+    """Every `MediaInfo` object this context can reach, keyed by media path.
+
+    `file_list_mediainfo` is only the run's own view. A plugin that ingests a
+    season pack keeps a `MediaInfo` per episode *source* on `dynamic_data`, and
+    a metadata plugin can leave one on `plugin_data`; neither is in the file
+    list, so capturing only that map wrote no dump for them and a resumed run
+    found nothing to restore them from.
+
+    An object already in the map keeps that path **by identity**. That is what
+    survives `apply_rename_mapping` re-keying `file_list_mediainfo`
+    (`src/payloads/media_inputs.py`) after a rename: the object's own
+    `complete_name` still names where the file used to be, while the map holds
+    where it now is, and the map is the one the rest of the run agrees with.
+
+    Anything new derives its path from its General track's `complete_name`. An
+    object that cannot say where it came from is skipped with a warning -- it
+    has no path to file a dump under, and inventing one would put a sidecar
+    somewhere nothing looks for it.
+    """
+    sources: dict[Path, MediaInfo] = dict(context.media_input.file_list_mediainfo)
+    known: set[int] = {id(mi) for mi in sources.values()}
+
+    for label, container in (
+        ("dynamic_data", context.shared_data.dynamic_data),
+        ("plugin_data", context.media_search.plugin_data),
+        ("series_episode_map", context.media_input.series_episode_map),
+    ):
+        for mi in _walk_mediainfo(container, set()):
+            if id(mi) in known:
+                continue
+            known.add(id(mi))
+            path = _mediainfo_path(mi)
+            if path is None:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Skipping a MediaInfo object on {label} that does not name "
+                    "the file it came from; it cannot be saved with this job",
+                )
+                continue
+            sources.setdefault(path, mi)
+    return sources
+
+
+def _walk_mediainfo(value: Any, seen: set[int]) -> Iterable[MediaInfo]:
+    """Yield every `MediaInfo` reachable through nested containers."""
+    if isinstance(value, MediaInfo):
+        yield value
+        return
+    if not isinstance(value, (dict, list, tuple, set, frozenset)):
+        return
+    if id(value) in seen:
+        return
+    seen.add(id(value))
+    entries = (
+        [item for pair in value.items() for item in pair]
+        if isinstance(value, dict)
+        else value
+    )
+    for entry in entries:
+        yield from _walk_mediainfo(entry, seen)
+
+
+def _mediainfo_path(mi: MediaInfo) -> Path | None:
+    """The media file a `MediaInfo` object says it was parsed from."""
+    try:
+        general = mi.general_tracks[0]
+    except (AttributeError, IndexError):
+        return None
+    name = getattr(general, "complete_name", None)
+    if not isinstance(name, str) or not name.strip():
+        return None
+    return Path(name)
+
+
 def _media_input_to_dict(
     context: ProcessingContext,
     mediainfo_assets: dict[Path, dict[str, str]] | None,
+    sources: dict[Path, MediaInfo],
+    index: MediaInfoIndex,
 ) -> dict[str, Any]:
     payload = context.media_input
 
@@ -258,7 +365,7 @@ def _media_input_to_dict(
     mediainfo_section: dict[str, Any] = {}
     if mediainfo_assets is None:
         inline: dict[str, str] = {}
-        for path in payload.file_list_mediainfo:
+        for path in sources:
             try:
                 inline[str(path)] = mediainfo_xml(path)
             except Exception as error:
@@ -274,7 +381,7 @@ def _media_input_to_dict(
     series_episode_map: dict[str, Any] | None = None
     if payload.series_episode_map is not None:
         series_episode_map = {
-            str(path): _json_safe_mapping(episode, "series_episode_map")
+            str(path): _json_safe_mapping(episode, "series_episode_map", index)
             for path, episode in payload.series_episode_map.items()
         }
 
@@ -308,11 +415,16 @@ def _restore_mediainfo(
         if not xml or not xml.strip():
             return
         try:
-            payload.file_list_mediainfo[Path(raw_path)] = MediaInfo(xml)
+            restored = MediaInfo(xml)
         except Exception as error:
             raise JobCodecError(
                 f"Could not restore MediaInfo for '{raw_path}': {error}"
             ) from error
+        payload.file_list_mediainfo[Path(raw_path)] = restored
+        # `{media_info_short}` is built from a parsed object rather than from
+        # a stored dump, so without this it would be the one token that still
+        # reaches for the media file (`MinimalMediaInfo.get_minimal_mi_str`)
+        cache_mediainfo_obj(Path(raw_path), restored)
 
     assets = document.get("mediainfo_assets")
     if isinstance(assets, dict) and load_asset is not None:
@@ -333,6 +445,21 @@ def _restore_mediainfo(
     if isinstance(inline, dict):
         for raw_path, xml in inline.items():
             restore(raw_path, xml if isinstance(xml, str) else None)
+
+
+def _mediainfo_resolver(payload: MediaInputPayload) -> MediaInfoResolver:
+    """Resolve a stored MediaInfo reference against what was just restored.
+
+    `_restore_mediainfo` puts *every* captured asset into `file_list_mediainfo`,
+    including dumps that only a plugin's state points at, so this is the single
+    place a reference resolves from. `context_from_dict` decodes `media_input`
+    first for exactly this reason -- do not reorder those sections.
+    """
+
+    def lookup(ref: str) -> MediaInfo | None:
+        return payload.file_list_mediainfo.get(Path(ref))
+
+    return MediaInfoResolver(lookup)
 
 
 def _media_input_from_dict(
@@ -369,8 +496,9 @@ def _media_input_from_dict(
 
     series_episode_map = document.get("series_episode_map")
     if isinstance(series_episode_map, dict):
+        resolver = _mediainfo_resolver(payload)
         payload.series_episode_map = {
-            Path(raw_path): episode
+            Path(raw_path): decode_value(episode, resolver=resolver)
             for raw_path, episode in series_episode_map.items()
             if isinstance(episode, dict)
         }
@@ -385,17 +513,19 @@ def _media_input_from_dict(
 # --------------------------------------------------------------------------
 # media search
 # --------------------------------------------------------------------------
-def _media_search_to_dict(context: ProcessingContext) -> dict[str, Any]:
+def _media_search_to_dict(
+    context: ProcessingContext, index: MediaInfoIndex
+) -> dict[str, Any]:
     payload = context.media_search
     return {
         "media_type": _enum_name(payload.media_type),
         "imdb_id": payload.imdb_id,
         "tmdb_id": payload.tmdb_id,
-        "tmdb_data": _json_safe_value(payload.tmdb_data, "tmdb_data"),
+        "tmdb_data": _json_safe_value(payload.tmdb_data, "tmdb_data", index),
         "tvdb_id": payload.tvdb_id,
-        "tvdb_data": _json_safe_value(payload.tvdb_data, "tvdb_data"),
+        "tvdb_data": _json_safe_value(payload.tvdb_data, "tvdb_data", index),
         "anilist_id": payload.anilist_id,
-        "anilist_data": _json_safe_value(payload.anilist_data, "anilist_data"),
+        "anilist_data": _json_safe_value(payload.anilist_data, "anilist_data", index),
         "mal_id": payload.mal_id,
         "title": payload.title,
         "year": payload.year,
@@ -408,24 +538,28 @@ def _media_search_to_dict(context: ProcessingContext) -> dict[str, Any]:
         "poster_url": payload.poster_url,
         "genre_names": list(payload.genre_names),
         "media_kind": _enum_name(payload.media_kind),
-        "plugin_data": _json_safe_mapping(payload.plugin_data, "plugin_data"),
+        "plugin_data": _json_safe_mapping(payload.plugin_data, "plugin_data", index),
     }
 
 
 def _media_search_from_dict(
     document: dict[str, Any], context: ProcessingContext
 ) -> None:
+    resolver = _mediainfo_resolver(context.media_input)
+
     # build into a scratch payload so `copy_from` can validate the result and
     # apply it without swapping the object the Jinja engine holds a reference to
     restored = MediaSearchPayload()
     restored.media_type = _enum_from_name(MediaType, document.get("media_type"))
     restored.imdb_id = document.get("imdb_id")
     restored.tmdb_id = document.get("tmdb_id")
-    restored.tmdb_data = document.get("tmdb_data")
+    restored.tmdb_data = decode_value(document.get("tmdb_data"), resolver=resolver)
     restored.tvdb_id = document.get("tvdb_id")
-    restored.tvdb_data = document.get("tvdb_data")
+    restored.tvdb_data = decode_value(document.get("tvdb_data"), resolver=resolver)
     restored.anilist_id = document.get("anilist_id")
-    restored.anilist_data = document.get("anilist_data")
+    restored.anilist_data = decode_value(
+        document.get("anilist_data"), resolver=resolver
+    )
     restored.mal_id = document.get("mal_id")
     restored.title = document.get("title")
     restored.year = document.get("year")
@@ -438,7 +572,9 @@ def _media_search_from_dict(
         for entry in genres:
             if not isinstance(entry, dict):
                 continue
-            genre_cls = _GENRE_ENUMS.get(str(entry.get("enum")))
+            genre_cls = _registered_enum(
+                entry.get("enum"), TMDBGenreIDsMovies, TMDBGenreIDsSeries
+            )
             if genre_cls is None:
                 continue
             genre = _enum_from_name(genre_cls, entry.get("name"))
@@ -455,7 +591,12 @@ def _media_search_from_dict(
 
     plugin_data = document.get("plugin_data")
     if isinstance(plugin_data, dict):
-        restored.plugin_data.update(plugin_data)
+        restored.plugin_data.update(
+            {
+                key: decode_value(value, resolver=resolver)
+                for key, value in plugin_data.items()
+            }
+        )
 
     context.media_search.copy_from(restored)
 
@@ -463,9 +604,16 @@ def _media_search_from_dict(
 # --------------------------------------------------------------------------
 # shared data
 # --------------------------------------------------------------------------
+def _image_destination_to_dict(host: ImageHost | ImageSource) -> dict[str, Any]:
+    # a destination is an ImageHost *or* an ImageSource; the member name alone
+    # cannot say which, so the type travels with it
+    return {"name": host.name, "type": type(host).__name__}
+
+
 def _shared_data_to_dict(
     context: ProcessingContext,
-    nfo_assets: dict[TrackerSelection, str] | None = None,
+    nfo_assets: dict[TrackerSelection, str] | None,
+    index: MediaInfoIndex,
 ) -> dict[str, Any]:
     payload = context.shared_data
     return {
@@ -480,7 +628,7 @@ def _shared_data_to_dict(
         else None,
         "generated_images": payload.generated_images,
         "is_comparison_images": payload.is_comparison_images,
-        "dynamic_data": _json_safe_mapping(payload.dynamic_data, "dynamic_data"),
+        "dynamic_data": _json_safe_mapping(payload.dynamic_data, "dynamic_data", index),
         "release_notes": payload.release_notes,
         "tracker_image_hosts": {
             tracker.name: _image_upload_from_to_to_dict(image_host_data)
@@ -496,12 +644,25 @@ def _shared_data_to_dict(
             for tracker, images in payload.uploaded_images.items()
         },
         "uploaded_image_hosts": {
-            tracker.name: {
-                "name": host.name,
-                "type": type(host).__name__,
-            }
+            tracker.name: _image_destination_to_dict(host)
             for tracker, host in payload.uploaded_image_hosts.items()
         },
+        # The same URLs again, filed under the host that issued them rather
+        # than the tracker that asked for them. Narrowing a job to fewer
+        # trackers takes the per-tracker maps above with it, so an archive of a
+        # fully successful run kept no URLs at all -- and a tracker added later
+        # could not reuse another tracker's upload even when both point at the
+        # same host. Host-scoped state answers both, and is never narrowed.
+        "uploaded_images_by_host": [
+            {
+                **_image_destination_to_dict(host),
+                "images": {
+                    str(index): _image_upload_data_to_dict(data)
+                    for index, data in images.items()
+                },
+            }
+            for host, images in payload.uploaded_images_by_host.items()
+        ],
         # Titles stay inline; NFO bodies are referenced by sidecar filename when
         # the caller captured them, the same way MediaInfo is handled, so a
         # multi-kilobyte NFO per tracker doesn't bloat job.json.
@@ -555,9 +716,16 @@ def _shared_data_from_dict(
     payload.generated_images = bool(document.get("generated_images"))
     payload.is_comparison_images = bool(document.get("is_comparison_images"))
 
+    resolver = _mediainfo_resolver(context.media_input)
+
     dynamic_data = document.get("dynamic_data")
     if isinstance(dynamic_data, dict):
-        payload.dynamic_data.update(dynamic_data)
+        payload.dynamic_data.update(
+            {
+                key: decode_value(value, resolver=resolver)
+                for key, value in dynamic_data.items()
+            }
+        )
 
     release_notes = document.get("release_notes")
     payload.release_notes = release_notes if isinstance(release_notes, str) else None
@@ -574,19 +742,26 @@ def _shared_data_from_dict(
     if isinstance(uploaded_images, dict):
         for raw_tracker, images in uploaded_images.items():
             tracker = _enum_from_name(TrackerSelection, raw_tracker)
-            if tracker is None or not isinstance(images, dict):
+            if tracker is None:
                 continue
-            restored_images: dict[int, ImageUploadData] = {}
-            for raw_index, data in images.items():
-                restored_data = _image_upload_data_from_dict(data)
-                if restored_data is None:
-                    continue
-                try:
-                    restored_images[int(raw_index)] = restored_data
-                except (TypeError, ValueError):
-                    continue
+            restored_images = _indexed_images_from_dict(images)
             if restored_images:
                 payload.uploaded_images[tracker] = restored_images
+
+    by_host = document.get("uploaded_images_by_host")
+    if isinstance(by_host, list):
+        for entry in by_host:
+            if not isinstance(entry, dict):
+                continue
+            host_cls = _registered_enum(entry.get("type"), ImageHost, ImageSource)
+            if host_cls is None:
+                continue
+            host = _enum_from_name(host_cls, entry.get("name"))
+            if host is None:
+                continue
+            restored_images = _indexed_images_from_dict(entry.get("images"))
+            if restored_images:
+                payload.uploaded_images_by_host[host] = restored_images  # pyright: ignore[reportArgumentType]
 
     uploaded_image_hosts = document.get("uploaded_image_hosts")
     if isinstance(uploaded_image_hosts, dict):
@@ -594,7 +769,7 @@ def _shared_data_from_dict(
             tracker = _enum_from_name(TrackerSelection, raw_tracker)
             if tracker is None or not isinstance(raw_host, dict):
                 continue
-            host_cls = _IMAGE_DESTINATION_ENUMS.get(str(raw_host.get("type")))
+            host_cls = _registered_enum(raw_host.get("type"), ImageHost, ImageSource)
             if host_cls is None:
                 continue
             host = _enum_from_name(host_cls, raw_host.get("name"))
@@ -684,10 +859,16 @@ def context_to_dict(
     (from `assets.capture_nfos`) to reference sidecar files instead of inlining
     those dumps.
     """
+    # One index for the whole document: a `MediaInfo` (or one of its `Track`s)
+    # that a plugin left on `dynamic_data` is stored as a reference to the path
+    # whose dump was captured, so encoding has to agree with what was written.
+    sources = mediainfo_sources(context)
+    index = MediaInfoIndex(sources)
+
     return {
-        "media_input": _media_input_to_dict(context, mediainfo_assets),
-        "media_search": _media_search_to_dict(context),
-        "shared_data": _shared_data_to_dict(context, nfo_assets),
+        "media_input": _media_input_to_dict(context, mediainfo_assets, sources, index),
+        "media_search": _media_search_to_dict(context, index),
+        "shared_data": _shared_data_to_dict(context, nfo_assets, index),
         **_outputs_to_dict(context),
     }
 
@@ -716,8 +897,30 @@ def context_from_dict(
     _outputs_from_dict(document, context)
 
 
+_PER_TRACKER_KEYS = (
+    "tracker_image_hosts",
+    "uploaded_images",
+    "uploaded_image_hosts",
+    "tracker_release_data",
+)
+"""Every `shared_data` map keyed by tracker name.
+
+`filter_context_document` narrows all of these together, so a per-tracker map
+added to `SharedPayload` has to be listed here too. Leaving one out means a
+dropped tracker's state survives the narrowing as an orphan, and a retained
+one's state is only half kept.
+
+Note what is deliberately absent: `uploaded_images_by_host` is keyed by image
+host, not by tracker, and narrowing it is what left a fully successful run's
+archive with no image URLs at all.
+"""
+
+
 def filter_context_document(
-    document: dict[str, Any], keep_trackers: Iterable[TrackerSelection]
+    document: dict[str, Any],
+    keep_trackers: Iterable[TrackerSelection],
+    *,
+    retain_data_for: Iterable[TrackerSelection] = (),
 ) -> dict[str, Any]:
     """Return a copy of `document` narrowed to `keep_trackers`.
 
@@ -727,8 +930,19 @@ def filter_context_document(
     trackers that still need uploading. The result is structurally identical to
     a job saved before any upload was attempted, so nothing downstream needs to
     know it came from a partial run.
+
+    `retain_data_for` names trackers that must **not** run but whose prepared
+    work is worth keeping -- an upload nobody could confirm either way. They
+    stay out of `selected_trackers`, so no resume can send to them, while their
+    title, NFO reference and image state stay in the document. That is what
+    lets "the upload never landed after all" put a tracker back into play with
+    the NFO it was prepared with, instead of offering a resolution the data can
+    no longer support. `store.prune_unreferenced_nfos` leaves their sidecars
+    alone for the same reason: `tracker_release_data` still points at them.
     """
-    keep_names = {tracker.name for tracker in keep_trackers}
+    keep = list(keep_trackers)
+    keep_names = {tracker.name for tracker in keep}
+    data_names = keep_names | {tracker.name for tracker in retain_data_for}
     filtered = dict(document)
 
     shared_data = filtered.get("shared_data")
@@ -745,17 +959,82 @@ def filter_context_document(
 
     # every per-tracker map has to be narrowed together, or a dropped tracker
     # leaves its uploaded-image URLs and frozen NFO behind as confusing orphans
-    for key in (
-        "tracker_image_hosts",
-        "uploaded_images",
-        "uploaded_image_hosts",
-        "tracker_release_data",
-    ):
+    for key in _PER_TRACKER_KEYS:
         value = shared_copy.get(key)
         if isinstance(value, dict):
             shared_copy[key] = {
-                name: entry for name, entry in value.items() if name in keep_names
+                name: entry for name, entry in value.items() if name in data_names
             }
 
+    # A tracker being kept is one that still has to upload, so it has to be
+    # selectable -- and it is not always already selected. `_run_outcomes`
+    # covers only the run that just ended, so a tracker left pending by an
+    # *earlier* run reaches here holding a prepared title and NFO while being
+    # absent from this run's `selected_trackers`. Narrowing alone left it in
+    # the document but unrunnable: the picker showed it, and resuming built no
+    # row for it.
+    _select_prepared(shared_copy, keep)
+
+    filtered["shared_data"] = shared_copy
+    return filtered
+
+
+def _select_prepared(
+    shared: dict[str, Any], trackers: Iterable[TrackerSelection]
+) -> list[str]:
+    """Add `trackers` to `selected_trackers`, but only where they can run.
+
+    A tracker with no `tracker_release_data` is left out: its title and NFO are
+    gone, so selecting it would produce a job that reports itself prepared and
+    then uploads whatever a fresh render produces, which is not what the user
+    reviewed. A job with no release data at all is not prepared in the first
+    place, and its selection is left exactly as it is.
+    """
+    release_data = shared.get("tracker_release_data")
+    if not isinstance(release_data, dict):
+        return []
+    selected = shared.get("selected_trackers")
+    names = list(selected) if isinstance(selected, list) else []
+    refused: list[str] = []
+    for tracker in trackers:
+        if tracker.name in release_data:
+            if tracker.name not in names:
+                names.append(tracker.name)
+        elif release_data:
+            refused.append(str(tracker))
+    shared["selected_trackers"] = names
+    return refused
+
+
+def reselect_trackers(
+    document: dict[str, Any], trackers: Iterable[TrackerSelection]
+) -> dict[str, Any]:
+    """Return a copy of `document` with `trackers` runnable again.
+
+    The counterpart to `filter_context_document(retain_data_for=...)`: a
+    tracker whose upload could not be confirmed was held back from
+    `selected_trackers` but kept everything else, and resolving that
+    uncertainty as "it never landed" puts it back.
+
+    A tracker with no `tracker_release_data` is refused rather than re-added.
+    Its title and NFO are gone, so selecting it would produce a job that claims
+    to be prepared and then uploads whatever a fresh render produces -- which
+    is not what the user reviewed.
+    """
+    filtered = dict(document)
+    shared_data = filtered.get("shared_data")
+    if not isinstance(shared_data, dict):
+        return filtered
+
+    shared_copy = dict(shared_data)
+    if not isinstance(shared_copy.get("tracker_release_data"), dict):
+        return filtered
+
+    for name in _select_prepared(shared_copy, trackers):
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"Not restoring {name} to a saved job: it no longer carries a "
+            "title or NFO for that tracker",
+        )
     filtered["shared_data"] = shared_copy
     return filtered

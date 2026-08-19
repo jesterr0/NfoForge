@@ -38,6 +38,7 @@ from src.backend.jobs import (
     delete_job,
     list_jobs,
     load_job,
+    reselect_trackers,
     write_job_document,
 )
 from src.backend.utils.file_utilities import (
@@ -1141,6 +1142,12 @@ class LoadJobDialog(QDialog):
             return
         uploaded = set(job.uploaded_trackers)
         unresolved = list(job.uncertain_trackers)
+        # "it never landed" has to make the tracker runnable again, not just
+        # move its name between two lists. Its title, NFO and image host were
+        # kept in the context for exactly this moment (see
+        # `codec.filter_context_document`), so putting it back in
+        # `selected_trackers` restores the release the user already reviewed.
+        runnable: list[TrackerSelection] = []
         for tracker_name in unresolved:
             try:
                 display = str(TrackerSelection[tracker_name])
@@ -1161,7 +1168,28 @@ class LoadJobDialog(QDialog):
             job.uncertain_trackers.remove(tracker_name)
             if result is QMessageBox.StandardButton.Yes:
                 uploaded.add(tracker_name)
+            elif tracker_name in TrackerSelection.__members__:
+                runnable.append(TrackerSelection[tracker_name])
         job.uploaded_trackers = sorted(uploaded)
+        if runnable:
+            job.context = reselect_trackers(job.context, runnable)
+            # Only what `reselect_trackers` actually took. It refuses a tracker
+            # whose title and NFO are gone, and a summary claiming the job
+            # covers one the context cannot run is the mismatch that makes the
+            # picker offer a job the wizard then builds no row for.
+            #
+            # `JobSummary.trackers` holds display values while the context
+            # holds member names -- mixing the two fails silently.
+            shared = job.context.get("shared_data")
+            selected = (
+                shared.get("selected_trackers") if isinstance(shared, dict) else []
+            )
+            accepted = {
+                str(tracker)
+                for tracker in runnable
+                if isinstance(selected, list) and tracker.name in selected
+            }
+            job.summary.trackers = sorted(set(job.summary.trackers) | accepted)
         job.summary.uncertain_trackers = [
             str(TrackerSelection[name])
             for name in job.uncertain_trackers

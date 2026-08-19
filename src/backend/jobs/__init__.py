@@ -31,7 +31,9 @@ from src.backend.jobs.codec import (
     context_from_dict,
     context_to_dict,
     filter_context_document,
+    mediainfo_sources,
     mediainfo_xml,
+    reselect_trackers,
 )
 from src.backend.jobs.migrations import JOB_SCHEMA_VERSION, JobMigrationError
 from src.backend.jobs.models import JobListing, JobSummary, SavedJob
@@ -47,6 +49,8 @@ from src.backend.jobs.store import (
     save_job,
     write_job_document,
 )
+from src.backend.jobs.update import rebuild_job_document
+from src.backend.jobs.values import UnencodableValue, decode_value, encode_value
 
 __all__ = [
     "JOB_SCHEMA_VERSION",
@@ -58,6 +62,7 @@ __all__ = [
     "JobSummary",
     "MediaFingerprint",
     "SavedJob",
+    "UnencodableValue",
     "base_torrent_path",
     "base_torrent_snapshot",
     "archived_base_is_valid",
@@ -68,7 +73,9 @@ __all__ = [
     "context_to_dict",
     "copy_base_torrent",
     "copy_images",
+    "decode_value",
     "delete_job",
+    "encode_value",
     "filter_context_document",
     "fingerprint_files",
     "fingerprints_match",
@@ -76,9 +83,12 @@ __all__ = [
     "jobs_dir",
     "list_jobs",
     "load_job",
+    "mediainfo_sources",
     "mediainfo_xml",
     "prune_unreferenced_nfos",
     "read_job_asset",
+    "rebuild_job_document",
+    "reselect_trackers",
     "save_job",
     "template_fingerprint",
     "torrent_content_files",

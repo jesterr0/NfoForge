@@ -36,6 +36,19 @@ class SharedPayload:
         default_factory=dict
     )
 
+    # The same URLs again, filed by the host that issued them. The two maps
+    # above answer "has *this tracker* already uploaded?"; this answers "does
+    # this bundle hold images for *this host*?", which is the question a
+    # tracker added after the fact asks -- and the one a narrowed job could not
+    # answer, because narrowing takes the per-tracker maps with it.
+    #
+    # Written as soon as a host's uploads come back, before anything can raise
+    # over a different host's failure, so a batch that succeeded is never lost
+    # to a batch that did not.
+    uploaded_images_by_host: dict[
+        ImageHost | ImageSource, dict[int, ImageUploadData]
+    ] = field(default_factory=dict)
+
     base_torrent: Path | None = None
     """An already-hashed torrent a resumed job brought with it, if any."""
 
@@ -82,6 +95,7 @@ class SharedPayload:
         self.tracker_image_hosts.clear()
         self.uploaded_images.clear()
         self.uploaded_image_hosts.clear()
+        self.uploaded_images_by_host.clear()
         self.base_torrent = None
         self.tracker_release_data.clear()
         self.prompt_token_answers.clear()
