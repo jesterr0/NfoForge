@@ -617,10 +617,16 @@ class MainWindowWizard(QWizard):
             self.setPage(idx + 1, page)
 
     def _set_start_page(self) -> None:
-        if not self.config.settings.general.enable_plugins:
-            self.setStartId(WizardPages.INPUT_PAGE.value)
-            GSigs().main_window_update_status_bar_label.emit("Input")
-        elif (
+        """Point a fresh run at the page it begins on.
+
+        Always sets one, which is the whole point. `setStartId` is sticky and
+        `_resume_job` moves it to wherever a resumed job picks up, so leaving
+        it alone here does not mean "the default" -- it means "wherever the
+        last resumed job started". Plugins being enabled with no usable wizard
+        page took that path, and Start Over then opened a brand new run
+        partway through the wizard, on a context with nothing in it.
+        """
+        if (
             self.config.settings.general.enable_plugins
             and self.config.settings.plugins.wizard_page
             and self.config.plugin_manager.get(self.config.settings.plugins.wizard_page)
@@ -629,6 +635,10 @@ class MainWindowWizard(QWizard):
             GSigs().main_window_update_status_bar_label.emit(
                 self.config.settings.plugins.wizard_page
             )
+            return
+
+        self.setStartId(WizardPages.INPUT_PAGE.value)
+        GSigs().main_window_update_status_bar_label.emit("Input")
 
     @Slot(int)
     def _handle_page_change(self, idx: int) -> None:
@@ -696,7 +706,15 @@ class MainWindowWizard(QWizard):
             # settings_close) stay alive. Schedule the old instance for
             # deletion so "Start Over" doesn't keep accumulating live, still
             # connected page objects each time fresh pages are built.
+            #
+            # `deleteLater()` alone is not enough for a connection whose
+            # correctness depends on *when* it goes: it schedules the delete
+            # and nothing here waits for it. A page with something it must
+            # hand back now says so in `teardown()`.
             if page is not None:
+                teardown = getattr(page, "teardown", None)
+                if callable(teardown):
+                    teardown()
                 page.deleteLater()
 
     def _connect_current_id_changed(self) -> None:

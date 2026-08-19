@@ -4,6 +4,7 @@ from typing import Any
 from PySide6.QtWidgets import QDialog, QWizard, QWizardPage
 import pytest
 
+from src.enums.wizard import WizardPages
 import src.frontend.wizards.wizard as wizard_module
 from src.frontend.wizards.wizard import MainWindowWizard
 
@@ -165,3 +166,98 @@ def test_open_load_job_dialog_frees_the_dialog_after_accepting_a_queue(
 
     assert len(_FakeLoadJobDialog.instances) == 1
     assert _FakeLoadJobDialog.instances[0].delete_later_called is True
+
+
+def _wizard_for_start_page(
+    *, enable_plugins: bool, wizard_page: str | None, plugin_found: object | None
+) -> QWizard:
+    wizard = QWizard()
+    for page_id in range(1, WizardPages.PROCESS_PAGE.value + 1):
+        wizard.setPage(page_id, QWizardPage())
+    wizard.config = SimpleNamespace(  # pyright: ignore[reportAttributeAccessIssue]
+        settings=SimpleNamespace(
+            general=SimpleNamespace(enable_plugins=enable_plugins),
+            plugins=SimpleNamespace(wizard_page=wizard_page),
+        ),
+        plugin_manager=SimpleNamespace(get=lambda _name: plugin_found),
+    )
+    return wizard
+
+
+@pytest.mark.parametrize(
+    ("enable_plugins", "wizard_page", "plugin_found"),
+    [
+        (False, None, None),
+        (True, None, None),
+        (True, "a-plugin", None),
+    ],
+)
+def test_start_over_never_inherits_a_resumed_job_start_page(
+    enable_plugins: bool, wizard_page: str | None, plugin_found: object | None
+) -> None:
+    """`setStartId` is sticky, so not setting it is not the same as a default.
+
+    `_resume_job` moves the start page to wherever the job picks up. Leaving
+    it alone here -- which plugins being enabled with no usable wizard page
+    used to do -- meant the next Start Over opened a brand new run on the
+    *resumed* job's page, with a context that has nothing in it. The wizard
+    only recovered when the app was restarted.
+    """
+    wizard = _wizard_for_start_page(
+        enable_plugins=enable_plugins,
+        wizard_page=wizard_page,
+        plugin_found=plugin_found,
+    )
+    wizard.setStartId(WizardPages.TRACKERS_PAGE.value)  # a resumed job's page
+
+    MainWindowWizard._set_start_page(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert wizard.startId() == WizardPages.INPUT_PAGE.value
+
+
+def test_a_configured_plugin_page_is_still_where_a_fresh_run_starts() -> None:
+    wizard = _wizard_for_start_page(
+        enable_plugins=True, wizard_page="a-plugin", plugin_found=object()
+    )
+    wizard.setStartId(WizardPages.TRACKERS_PAGE.value)
+
+    MainWindowWizard._set_start_page(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert wizard.startId() == WizardPages.PLUGIN_INPUT_PAGE.value
+
+
+class _TeardownPage(QWizardPage):
+    def __init__(self) -> None:
+        super().__init__()
+        self.torn_down = False
+
+    def teardown(self) -> None:
+        self.torn_down = True
+
+
+def test_removing_pages_lets_each_one_hand_back_what_outlives_it() -> None:
+    """`deleteLater()` schedules a delete; it does not perform one.
+
+    A page subscribed to the global signal bus keeps answering it until it is
+    really destroyed, and nothing in the rebuild waits for that. Pages get a
+    say before they are dropped so anything order-sensitive can be released
+    now rather than whenever the event loop gets to it.
+    """
+    wizard = QWizard()
+    pages = [_TeardownPage(), _TeardownPage()]
+    for page_id, page in enumerate(pages, start=1):
+        wizard.setPage(page_id, page)
+
+    MainWindowWizard._remove_all_pages(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert all(page.torn_down for page in pages)
+
+
+def test_a_page_without_a_teardown_is_still_removed() -> None:
+    """`_remove_all_pages` also runs against plugin-supplied pages."""
+    wizard = QWizard()
+    wizard.setPage(1, QWizardPage())
+
+    MainWindowWizard._remove_all_pages(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert wizard.pageIds() == []

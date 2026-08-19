@@ -48,6 +48,21 @@ class BaseWizardPage(QWizardPage):
     #                 f"You must implement the {method} method for {self.__class__.__name__}"
     #             )
 
+    def teardown(self) -> None:
+        """Release anything of this page's that outlives the page.
+
+        Called by `MainWindowWizard._remove_all_pages` as the wizard is rebuilt
+        -- by Start Over and by resuming a job -- before the page is scheduled
+        for deletion. A no-op unless a page has something to hand back.
+
+        The case this exists for is a subscription to the global signal bus. A
+        removed page keeps answering `GSigs()` until it is really destroyed,
+        and `deleteLater()` only *schedules* that: which event loop runs it,
+        and when, is not something the rebuild waits for. Anything whose
+        correctness depends on only the live page reacting has to be given up
+        here rather than left to that timing.
+        """
+
     def validatePage(self) -> bool:
         """
         Overrides QWizardPage validatePage and should ALWAYS be called in children pages before

@@ -10,6 +10,7 @@ from pymediainfo import MediaInfo
 from PySide6.QtWidgets import (
     QDialog,
     QLabel,
+    QMainWindow,
     QMessageBox,
     QPushButton,
     QWizard,
@@ -39,6 +40,7 @@ from src.enums.wizard import WizardPages
 from src.frontend.custom_widgets import load_job_dialog as load_job_dialog_module
 from src.frontend.custom_widgets.combo_qtree import ComboBoxTreeWidget
 from src.frontend.custom_widgets.load_job_dialog import LoadJobDialog
+from src.frontend.global_signals import GSigs
 from src.frontend.wizards import process as process_module, wizard as wizard_module
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.wizard import MainWindowWizard
@@ -749,6 +751,41 @@ def test_a_run_with_no_trackers_clears_the_hosts_it_restored(
 
     assert page.tracker_process_tree.topLevelItemCount() == 0
     assert context.shared_data.tracker_image_hosts == {}
+
+
+def test_only_the_live_process_page_answers_the_process_button(
+    qapp: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Process button is the wizard's, so every page ever built hears it.
+
+    Rebuilding the wizard -- Start Over, or resuming a job -- removes the old
+    page and schedules its deletion, but the subscription outlives the removal
+    until that delete actually runs, which nothing waits for. Two pages
+    answering one press is two runs from two different contexts: the live one,
+    and a stale one uploading to whatever trackers its own context still
+    names. A page built by Start Over has an empty context, so its run reports
+    having no trackers at all -- which is how this surfaced.
+    """
+    fired: list[int] = []
+    monkeypatch.setattr(
+        ProcessPage, "process_jobs", lambda self: fired.append(id(self))
+    )
+    config = SimpleNamespace(settings=SimpleNamespace())
+    main_window = QMainWindow()
+    wizard = QWizard()
+
+    # three wizard rebuilds, with no event-loop turn in between: the worst
+    # case for anything relying on `deleteLater()` having happened
+    for _ in range(3):
+        MainWindowWizard._remove_all_pages(wizard)  # pyright: ignore[reportArgumentType]
+        wizard.setPage(
+            WizardPages.PROCESS_PAGE.value,
+            ProcessPage(config, ProcessingContext(), main_window),  # pyright: ignore[reportArgumentType]
+        )
+
+    GSigs().wizard_process_btn_clicked.emit()
+
+    assert len(fired) == 1
 
 
 def test_gathered_tracker_data_comes_from_the_payload(

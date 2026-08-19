@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
+from typing_extensions import override
 
 from src.backend.jobs import (
     JobAssetError,
@@ -477,6 +478,25 @@ class ProcessPage(BaseWizardPage):
         main_layout.addWidget(self.progress_bar, stretch=1)
         main_layout.addLayout(button_row)
         self.setLayout(main_layout)
+
+    @override
+    def teardown(self) -> None:
+        """Stop answering the Process button once this page is not the run.
+
+        The button belongs to the wizard, not to any one page, so every
+        `ProcessPage` ever built subscribes to the same signal and a removed
+        one keeps its subscription until it is destroyed. Two pages answering
+        one press means two runs from two different contexts: the live one,
+        and a stale one that uploads to trackers its own context still names.
+        Start Over is the way to collect a page whose context is empty, whose
+        run then reports having no trackers at all.
+        """
+        try:
+            GSigs().wizard_process_btn_clicked.disconnect(self.process_jobs)
+        except (RuntimeError, TypeError):
+            # already gone -- torn down twice, or never connected
+            pass
+        super().teardown()
 
     def _source_less_run(self) -> bool:
         """Whether this run is riding on its archive rather than on the media.
