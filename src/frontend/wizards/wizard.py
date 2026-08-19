@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 import traceback
 from typing import TYPE_CHECKING, Any
@@ -223,8 +223,7 @@ class MainWindowWizard(QWizard):
         self._set_disabled(False)
         self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
-        self.process_button.show()
-        self.setButtonLayout(self.starting_buttons)
+        self._apply_button_layout(self.starting_buttons)
         self.restart()
         self._sync_button_layout()
 
@@ -599,9 +598,8 @@ class MainWindowWizard(QWizard):
         self._set_disabled(False)
         self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
-        self.process_button.show()
         self.setStartId(start_page.value)
-        self.setButtonLayout(
+        self._apply_button_layout(
             self.ending_buttons
             if start_page is WizardPages.PROCESS_PAGE
             else self.mid_flow_buttons
@@ -640,6 +638,24 @@ class MainWindowWizard(QWizard):
         self.setStartId(WizardPages.INPUT_PAGE.value)
         GSigs().main_window_update_status_bar_label.emit("Input")
 
+    def _apply_button_layout(self, layout: Sequence[QWizard.WizardButton]) -> None:
+        """Apply a button row, Process button visibility included.
+
+        `setButtonLayout` only governs the buttons a layout names. A custom
+        button hidden or shown by hand keeps that state while absent from the
+        layout, with no place in the row -- which is how the Process button
+        came to sit beside Next on the trackers page: a finished run hides it,
+        and the next resumed job called `show()` on it while putting a layout
+        up that does not include it.
+
+        That button is not cosmetic where it does not belong. Pressing it
+        starts a run from whichever page is current, and a process page that
+        was never reached never built its tracker rows, so the run it starts
+        has no trackers at all.
+        """
+        self.setButtonLayout(layout)
+        self.process_button.setVisible(QWizard.WizardButton.CustomButton3 in layout)
+
     def _sync_button_layout(self) -> None:
         """Match the button row to the page that is actually showing.
 
@@ -656,12 +672,12 @@ class MainWindowWizard(QWizard):
     @Slot(int)
     def _handle_page_change(self, idx: int) -> None:
         if idx > -1 and WizardPages(idx) in self._START_PAGES:
-            self.setButtonLayout(self.starting_buttons)
+            self._apply_button_layout(self.starting_buttons)
         else:
             if idx != WizardPages.PROCESS_PAGE.value:
-                self.setButtonLayout(self.mid_flow_buttons)
+                self._apply_button_layout(self.mid_flow_buttons)
             else:
-                self.setButtonLayout(self.ending_buttons)
+                self._apply_button_layout(self.ending_buttons)
 
     @Slot(bool)
     def _set_disabled(self, value: bool) -> None:
@@ -672,7 +688,7 @@ class MainWindowWizard(QWizard):
         self.load_job_button.setDisabled(value)
 
     def end_early(self) -> None:
-        self.setButtonLayout(self.early_ending_buttons)
+        self._apply_button_layout(self.early_ending_buttons)
 
     def _insert_plugin_page(self) -> None:
         if (

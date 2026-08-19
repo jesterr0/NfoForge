@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from typing import Any
 
-from PySide6.QtWidgets import QDialog, QWizard, QWizardPage
+from PySide6.QtWidgets import QDialog, QPushButton, QWizard, QWizardPage
 import pytest
 
 from src.enums.wizard import WizardPages
@@ -281,7 +281,7 @@ def test_the_button_row_is_stated_not_inferred_from_a_signal() -> None:
         WizardPages.PLUGIN_INPUT_PAGE,
     )
     seen: list[int] = []
-    wizard.setButtonLayout = lambda layout: seen.append(len(layout))  # pyright: ignore[reportAttributeAccessIssue]
+    wizard._apply_button_layout = lambda layout: seen.append(len(layout))  # pyright: ignore[reportAttributeAccessIssue]
     wizard.starting_buttons = (1, 2, 3, 4)  # pyright: ignore[reportAttributeAccessIssue]
     wizard.mid_flow_buttons = (1, 2, 3)  # pyright: ignore[reportAttributeAccessIssue]
     wizard.ending_buttons = (1, 2)  # pyright: ignore[reportAttributeAccessIssue]
@@ -297,3 +297,64 @@ def test_the_button_row_is_stated_not_inferred_from_a_signal() -> None:
 
     # the trackers page is mid-flow, so Next belongs there -- not Process
     assert seen == [len((1, 2, 3))]
+
+
+def _wizard_with_process_button() -> QWizard:
+    wizard = QWizard()
+    button = QPushButton("Process (Dupe Check)")
+    wizard.setButton(QWizard.WizardButton.CustomButton3, button)
+    wizard.setOption(QWizard.WizardOption.HaveCustomButton3)
+    wizard.setPage(WizardPages.INPUT_PAGE.value, QWizardPage())
+    wizard.setPage(WizardPages.TRACKERS_PAGE.value, QWizardPage())
+    wizard.process_button = button  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.show()
+    return wizard
+
+
+_MID_FLOW = (
+    QWizard.WizardButton.CustomButton2,
+    QWizard.WizardButton.Stretch,
+    QWizard.WizardButton.CommitButton,
+)
+_ENDING = (
+    QWizard.WizardButton.CustomButton2,
+    QWizard.WizardButton.Stretch,
+    QWizard.WizardButton.CustomButton3,
+)
+
+
+def test_the_process_button_does_not_follow_a_resumed_job_onto_a_mid_flow_page(
+    qapp: Any,
+) -> None:
+    """`setButtonLayout` only governs the buttons its layout names.
+
+    A finished run hides the Process button; the next resumed job called
+    `show()` on it while putting up a layout that does not contain it, and Qt
+    left it on screen with no place in the row -- sitting beside Next on the
+    trackers page. Pressing it there starts a run from a process page that was
+    never reached, so its tracker rows were never built and the run reports
+    having no trackers to upload to.
+    """
+    wizard = _wizard_with_process_button()
+    MainWindowWizard._apply_button_layout(wizard, _ENDING)  # pyright: ignore[reportArgumentType]
+    wizard.process_button.hide()  # pyright: ignore[reportAttributeAccessIssue]
+    qapp.processEvents()
+
+    MainWindowWizard._apply_button_layout(wizard, _MID_FLOW)  # pyright: ignore[reportArgumentType]
+    qapp.processEvents()
+
+    assert not wizard.process_button.isVisible()  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_the_process_button_comes_back_on_the_page_that_owns_it(qapp: Any) -> None:
+    """The other direction: a run's hide() must not outlive that run."""
+    wizard = _wizard_with_process_button()
+    MainWindowWizard._apply_button_layout(wizard, _ENDING)  # pyright: ignore[reportArgumentType]
+    wizard.process_button.hide()  # pyright: ignore[reportAttributeAccessIssue]
+    MainWindowWizard._apply_button_layout(wizard, _MID_FLOW)  # pyright: ignore[reportArgumentType]
+    qapp.processEvents()
+
+    MainWindowWizard._apply_button_layout(wizard, _ENDING)  # pyright: ignore[reportArgumentType]
+    qapp.processEvents()
+
+    assert wizard.process_button.isVisible()  # pyright: ignore[reportAttributeAccessIssue]
