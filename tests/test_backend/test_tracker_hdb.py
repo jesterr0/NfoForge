@@ -211,8 +211,8 @@ def test_validate_cookies_detects_expired_session(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("src.backend.trackers.hdb.niquests.get")
-@patch("src.backend.trackers.hdb.niquests.post")
+@patch("niquests.Session.get")
+@patch("niquests.Session.post")
 def test_download_new_torrent_writes_file_atomically(
     post: MagicMock, get: MagicMock, tmp_path: Path
 ) -> None:
@@ -236,8 +236,8 @@ def test_download_new_torrent_writes_file_atomically(
     assert not list(tmp_path.glob("*.part"))
 
 
-@patch("src.backend.trackers.hdb.niquests.get")
-@patch("src.backend.trackers.hdb.niquests.post")
+@patch("niquests.Session.get")
+@patch("niquests.Session.post")
 def test_download_new_torrent_rejects_invalid_content(
     post: MagicMock, get: MagicMock, tmp_path: Path
 ) -> None:
@@ -266,7 +266,7 @@ def test_download_new_torrent_rejects_invalid_content(
 # ---------------------------------------------------------------------------
 
 
-@patch("src.backend.trackers.hdb.niquests.post")
+@patch("niquests.Session.post")
 def test_search_omits_unmappable_ids_instead_of_aborting(post: MagicMock) -> None:
     response = MagicMock()
     response.json.return_value = {"data": []}

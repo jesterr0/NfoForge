@@ -1,6 +1,5 @@
 from collections.abc import MutableMapping
 
-import niquests
 from niquests import RequestException
 from tenacity import (
     Retrying,
@@ -11,14 +10,17 @@ from tenacity import (
 
 from src.backend.trackers.utils import TRACKER_HEADERS
 from src.backend.upload_retry import RETRY_ATTEMPTS
+from src.backend.utils.http_client import new_http_session
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import TrackerError
 
 HEALTH_CHECK_TIMEOUT_SECONDS = 5
 
+_SESSION = new_http_session()
+
 
 def _probe_tracker_once(url: str, timeout: int) -> tuple[int, str | None]:
-    with niquests.get(
+    with _SESSION.get(
         url,
         headers=TRACKER_HEADERS,
         timeout=timeout,

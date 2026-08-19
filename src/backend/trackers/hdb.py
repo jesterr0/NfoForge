@@ -17,6 +17,7 @@ from src.backend.trackers.utils import (
 )
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -179,7 +180,7 @@ class HDBUploader:
         self.mediainfo_obj = mediainfo_obj
         self.timeout = timeout
 
-        self._session = niquests.Session()
+        self._session = new_http_session()
         self._load_session_cookie(session_cookie)
 
     def _load_session_cookie(self, session_cookie: str) -> None:
@@ -324,7 +325,7 @@ class HDBUploader:
     def _download_new_torrent(self, hdb_id: str) -> Path:
         """Fetch the tracker-issued, passkey-stamped .torrent after upload."""
         try:
-            info_response = niquests.post(
+            info_response = self._session.post(
                 self.API_URL,
                 json={
                     "username": self.username,
@@ -360,7 +361,7 @@ class HDBUploader:
         temporary_path = Path(temporary_name)
         try:
             with os.fdopen(file_descriptor, "wb") as torrent_file:
-                with niquests.get(
+                with self._session.get(
                     f"{self.DOWNLOAD_URL}/{quote(filename)}",
                     params={"passkey": self.passkey, "id": hdb_id},
                     headers=TRACKER_HEADERS,
@@ -404,6 +405,9 @@ class HDBUploader:
         name = re.sub(r"[^0-9a-zA-ZÀ-ÿ. :&+'\-\[\]]+", "", name)
         name = name.replace(" .", ".").replace("..", ".")
         return name
+
+
+_HDB_SEARCH_SESSION = new_http_session()
 
 
 class HDBSearch:
@@ -461,7 +465,7 @@ class HDBSearch:
             LOG.info(
                 LOG.LOG_SOURCE.BE, f"Searching HDBits for release: {input_path.name}"
             )
-            response = niquests.post(
+            response = _HDB_SEARCH_SESSION.post(
                 self.API_URL,
                 json=payload,
                 headers=TRACKER_HEADERS,

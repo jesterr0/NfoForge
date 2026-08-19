@@ -6,6 +6,7 @@ from typing import Any
 
 import niquests
 
+from src.backend.utils.http_client import new_http_session
 from src.logger.nfo_forge_logger import LOG
 from src.version import __version__, program_name
 
@@ -61,7 +62,7 @@ class TVmazeClient:
         self, timeout: int = 60, session: niquests.Session | None = None
     ) -> None:
         self.timeout = max(1, timeout)
-        self._session = session if session is not None else niquests.Session()
+        self._session = session if session is not None else new_http_session()
         self._owns_session = session is None
 
     def close(self) -> None:

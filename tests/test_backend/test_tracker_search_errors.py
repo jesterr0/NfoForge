@@ -9,7 +9,7 @@ from src.exceptions import TrackerError
 
 
 @pytest.mark.parametrize("status_code", [401, 403, 500])
-@patch("src.backend.trackers.passthepopcorn.niquests.get")
+@patch("niquests.Session.get")
 def test_ptp_search_reports_http_failures(get: MagicMock, status_code: int) -> None:
     response = MagicMock(status_code=status_code, reason="failure")
     get.return_value = response
@@ -20,7 +20,7 @@ def test_ptp_search_reports_http_failures(get: MagicMock, status_code: int) -> N
 
 
 @pytest.mark.parametrize("status_code", [401, 403, 500])
-@patch("src.backend.trackers.unit3d_base.niquests.get")
+@patch("niquests.Session.get")
 def test_unit3d_search_reports_http_failures(get: MagicMock, status_code: int) -> None:
     response = MagicMock(status_code=status_code, reason="failure")
     get.return_value.__enter__.return_value = response

@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 import niquests
 
+from src.backend.utils.http_client import new_http_session
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 
 
@@ -23,7 +24,7 @@ class TVDBClient:
     def __init__(self, api_key: str, timeout: int) -> None:
         self.api_key = api_key
         self.timeout = max(1, timeout)
-        self.session = niquests.Session()
+        self.session = new_http_session()
         self._token: str | None = None
 
     def close(self) -> None:

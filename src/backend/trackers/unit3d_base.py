@@ -22,6 +22,7 @@ from src.backend.trackers.utils import (
 )
 from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
@@ -124,6 +125,11 @@ TypeEnums: TypeAlias = (
     | YuSceneType
     | FearNoPeerType
 )
+
+# Shared across every UNIT3D-based tracker (LST, Aither, Blutopia, ...) so
+# their upload/search/download calls all negotiate the same HTTP protocol
+# (see new_http_session) and reuse pooled connections.
+_SESSION = new_http_session()
 
 
 class Unit3dBaseUploader:
@@ -232,7 +238,7 @@ class Unit3dBaseUploader:
                     LOG.LOG_SOURCE.BE,
                     f"{self.tracker_name} payload: {request_data}",
                 )
-                with niquests.post(
+                with _SESSION.post(
                     url=self.upload_url,
                     files=request_files,
                     params=params,
@@ -377,7 +383,7 @@ class Unit3dBaseUploader:
         temporary_path = Path(temporary_name)
         try:
             with os.fdopen(file_descriptor, "wb") as torrent_file:
-                with niquests.get(
+                with _SESSION.get(
                     download_url,
                     headers=TRACKER_HEADERS,
                     timeout=self.timeout,
@@ -686,7 +692,7 @@ class Unit3dBaseSearch:
                 LOG.LOG_SOURCE.BE,
                 f"Searching {self.tracker_name} for title: {file_name}",
             )
-            with niquests.get(
+            with _SESSION.get(
                 self.search_url,
                 headers=TRACKER_HEADERS,
                 params=params,

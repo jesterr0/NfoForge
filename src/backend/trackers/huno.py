@@ -8,11 +8,14 @@ from pymediainfo import MediaInfo
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
 from src.backend.trackers.utils import TRACKER_HEADERS
+from src.backend.utils.http_client import new_http_session
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.huno import HunoCategory, HunoResolution, HunoType
 from src.exceptions import TrackerError
 from src.payloads.media_search import MediaSearchPayload
+
+_SESSION = new_http_session()
 
 
 def huno_uploader(
@@ -206,7 +209,7 @@ class HunoUploader(Unit3dBaseUploader):
 
         details_url = f"{self.base_url.rstrip('/')}/api/torrents/{torrent_id}"
         try:
-            with niquests.get(
+            with _SESSION.get(
                 details_url,
                 params={"api_token": self.api_key},
                 headers=TRACKER_HEADERS,

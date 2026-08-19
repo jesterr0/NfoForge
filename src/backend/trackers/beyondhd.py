@@ -13,6 +13,7 @@ from src.backend.trackers.utils import (
 )
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -27,6 +28,8 @@ from src.enums.trackers.beyondhd import (
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
+
+_SESSION = new_http_session()
 
 
 def process_edition(edition: str | None) -> tuple[str, str] | None:
@@ -210,7 +213,7 @@ class BHDUploader:
         )
 
         try:
-            response = niquests.post(
+            response = _SESSION.post(
                 self._upload_url,
                 data=upload_payload,
                 files=self._files(),
@@ -492,7 +495,7 @@ class BHDSearch:
             LOG.info(
                 LOG.LOG_SOURCE.BE, f"Searching BeyondHD for release: {input_path.name}"
             )
-            response = niquests.post(
+            response = _SESSION.post(
                 url=self._search_url,
                 params=payload,
                 headers=TRACKER_HEADERS,

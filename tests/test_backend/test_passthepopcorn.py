@@ -31,7 +31,7 @@ def test_ptp_disc_size_can_come_from_an_archive(tmp_path: Path) -> None:
 
 
 @patch("src.backend.trackers.passthepopcorn.ImageBoxUploader")
-@patch("src.backend.trackers.passthepopcorn.niquests.get")
+@patch("niquests.Session.get")
 def test_ptp_new_group_poster_is_rehosted_on_imgbox(
     get: MagicMock, image_box_uploader: MagicMock, tmp_path: Path
 ) -> None:
@@ -57,7 +57,7 @@ def test_ptp_new_group_poster_is_rehosted_on_imgbox(
 
 
 @patch("src.backend.trackers.passthepopcorn.ImageBoxUploader")
-@patch("src.backend.trackers.passthepopcorn.niquests.get")
+@patch("niquests.Session.get")
 def test_ptp_new_group_poster_requires_imgbox_url(
     get: MagicMock, image_box_uploader: MagicMock, tmp_path: Path
 ) -> None:

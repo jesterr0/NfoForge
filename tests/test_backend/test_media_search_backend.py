@@ -271,7 +271,8 @@ def test_tvdb_sync_and_async_clients_use_timeouts_and_reuse_token(
 ) -> None:
     fake_session = _FakeTVDBSession()
     monkeypatch.setattr(
-        "src.backend.utils.tvdb_client.niquests.Session", lambda: fake_session
+        "src.backend.utils.http_client.niquests.Session",
+        lambda **_kwargs: fake_session,
     )
     client = TVDBClient("api-key", timeout=7)
 

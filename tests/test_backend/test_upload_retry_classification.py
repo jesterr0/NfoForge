@@ -99,7 +99,7 @@ def _upload_raising(post_error: BaseException, tmp_path: Path) -> TrackerError:
     # The uploader classes use __slots__, so stub on the class, not the instance.
     with (
         patch.object(HunoUploader, "_build_upload_payload", return_value={}),
-        patch("src.backend.trackers.unit3d_base.niquests.post") as post,
+        patch("niquests.Session.post") as post,
     ):
         post.side_effect = post_error
         with pytest.raises(TrackerError) as excinfo:
@@ -152,7 +152,7 @@ def _upload_raising_from_response(
     with (
         patch.object(HunoUploader, "_build_upload_payload", return_value={}),
         patch(
-            "src.backend.trackers.unit3d_base.niquests.post",
+            "niquests.Session.post",
             return_value=mock_response,
         ),
     ):
@@ -210,9 +210,7 @@ def test_beyondhd_408_response_is_retryable(tmp_path: Path) -> None:
     with (
         patch.object(BHDUploader, "_build_upload_payload", return_value={}),
         patch.object(BHDUploader, "_files", return_value={}),
-        patch(
-            "src.backend.trackers.beyondhd.niquests.post", return_value=mock_response
-        ),
+        patch("niquests.Session.post", return_value=mock_response),
     ):
         with pytest.raises(TrackerError) as excinfo:
             uploader.upload(tracker_title="Example.2026.1080p.WEB-DL-GRP")
@@ -234,9 +232,7 @@ def _bhd_upload_raising(status_code: int, tmp_path: Path) -> TrackerError:
     with (
         patch.object(BHDUploader, "_build_upload_payload", return_value={}),
         patch.object(BHDUploader, "_files", return_value={}),
-        patch(
-            "src.backend.trackers.beyondhd.niquests.post", return_value=mock_response
-        ),
+        patch("niquests.Session.post", return_value=mock_response),
     ):
         with pytest.raises(TrackerError) as excinfo:
             uploader.upload(tracker_title="Example.2026.1080p.WEB-DL-GRP")
@@ -275,7 +271,7 @@ def test_torrentleech_408_response_is_retryable(tmp_path: Path) -> None:
         patch.object(TLUploader, "_get_data", return_value={}),
         patch("src.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
         patch(
-            "src.backend.trackers.torrentleech.niquests.post",
+            "niquests.Session.post",
             return_value=mock_response,
         ),
     ):
@@ -306,7 +302,7 @@ def _tl_upload_raising(status_code: int, tmp_path: Path) -> TrackerError:
         patch.object(TLUploader, "_get_data", return_value={}),
         patch("src.backend.trackers.torrentleech.VideoResolutionAnalyzer"),
         patch(
-            "src.backend.trackers.torrentleech.niquests.post",
+            "niquests.Session.post",
             return_value=mock_response,
         ),
     ):

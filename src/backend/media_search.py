@@ -11,6 +11,7 @@ from rapidfuzz import fuzz
 from unidecode import unidecode
 
 from src.backend.utils.guessit_helpers import get_guessit_title
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
 from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
@@ -20,6 +21,10 @@ from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.logger.nfo_forge_logger import LOG
 from src.utils.secret_redaction import scrub_secrets
 from src.utils.super_sub import normalize_super_sub
+
+# Shared by MatchAnilistTitle, which is instantiated fresh per search and so
+# has no long-lived session of its own to attach this to.
+_ANILIST_SESSION = new_http_session()
 
 
 class MediaSearchBackEnd:
@@ -31,7 +36,7 @@ class MediaSearchBackEnd:
         api_key: str = "",
     ) -> None:
         self.media_data: dict[str, dict[str, Any]] = {}
-        self.session = niquests.Session()
+        self.session = new_http_session()
         self._tvdb_client: AsyncTVDBClient | None = None
         self.use_base_language_for_images = use_base_language_for_images
         self.timeout = max(1, timeout)
@@ -695,7 +700,7 @@ class MatchAnilistTitle:
         """
         variables = {"search": tmdb_title}
         response = await asyncio.to_thread(
-            niquests.post,
+            _ANILIST_SESSION.post,
             "https://graphql.anilist.co",
             json={"query": query, "variables": variables},
             timeout=self.timeout,

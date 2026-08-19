@@ -10,6 +10,7 @@ from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import TRACKER_HEADERS, strip_title_dots
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.tvmaze_client import TVmazeClient, normalize_imdb_id
 from src.enums.media_type import MediaType
@@ -53,6 +54,9 @@ def tl_upload(
         is_pack=is_pack,
         is_anime=is_anime,
     )
+
+
+_SESSION = new_http_session()
 
 
 class TLUploader:
@@ -104,7 +108,7 @@ class TLUploader:
         LOG.debug(LOG.LOG_SOURCE.BE, f"TorrentLeech 'data': {scrub_mapping(data)}")
 
         try:
-            request = niquests.post(
+            request = _SESSION.post(
                 url=self.UPLOAD_URL,
                 files=files,
                 data=data,
@@ -339,7 +343,7 @@ class TLSearch:
         self.alt_2_fa_token = alt_2_fa_token
         self.timeout = timeout
 
-        self._session = niquests.Session()
+        self._session = new_http_session()
 
     def search(self, file_input: Path) -> list[TrackerSearchResult]:
         LOG.info(

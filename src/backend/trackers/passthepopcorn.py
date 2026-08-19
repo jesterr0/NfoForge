@@ -17,6 +17,7 @@ from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import DISC_TITLE_REGEX, TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -274,7 +275,7 @@ class PTPUploader:
         self.totp = totp
         self.timeout = timeout
 
-        self._session = niquests.Session()
+        self._session = new_http_session()
 
     def upload(
         self,
@@ -421,7 +422,7 @@ class PTPUploader:
     def _upload_poster_to_imgbox(self, image_url: str) -> str:
         """Download a new-group poster and host it on ImageBox for PTP."""
         try:
-            response = niquests.get(image_url, timeout=self.timeout)
+            response = self._session.get(image_url, timeout=self.timeout)
             response.raise_for_status()
             poster_content = response.content
             if poster_content is None:
@@ -845,6 +846,9 @@ class PTPUploader:
         return response, tried_totp
 
 
+_PTP_SEARCH_SESSION = new_http_session()
+
+
 class PTPSearch:
     """Search PassThePopcorn"""
 
@@ -887,7 +891,7 @@ class PTPSearch:
             f"Searching PassThePopcorn for title: {movie_title} ({movie_year})",
         )
         try:
-            response = niquests.get(
+            response = _PTP_SEARCH_SESSION.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
             if response.status_code != 200:
@@ -941,7 +945,7 @@ class PTPSearch:
         }
 
         try:
-            response = niquests.get(
+            response = _PTP_SEARCH_SESSION.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
             if response.ok and response.status_code == 200:

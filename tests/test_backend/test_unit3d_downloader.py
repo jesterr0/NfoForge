@@ -20,7 +20,7 @@ def _uploader(torrent_file: Path) -> HunoUploader:
     )
 
 
-@patch("src.backend.trackers.unit3d_base.niquests.get")
+@patch("niquests.Session.get")
 def test_unit3d_download_replaces_generated_torrent_atomically(
     get: MagicMock, tmp_path: Path
 ) -> None:
@@ -48,7 +48,7 @@ def test_unit3d_download_replaces_generated_torrent_atomically(
     response.iter_content.assert_called_once_with(chunk_size=64 * 1024)
 
 
-@patch("src.backend.trackers.unit3d_base.niquests.get")
+@patch("niquests.Session.get")
 def test_unit3d_download_preserves_original_torrent_on_invalid_response(
     get: MagicMock, tmp_path: Path
 ) -> None:
@@ -76,7 +76,7 @@ def test_unit3d_download_preserves_original_torrent_on_invalid_response(
         "javascript:alert(1)",
     ],
 )
-@patch("src.backend.trackers.unit3d_base.niquests.get")
+@patch("niquests.Session.get")
 def test_unit3d_download_rejects_unsupported_scheme(
     get: MagicMock, download_url: str, tmp_path: Path
 ) -> None:
@@ -101,7 +101,7 @@ def test_unit3d_download_rejects_unsupported_scheme(
     assert not list(tmp_path.glob("*.part"))
 
 
-@patch("src.backend.trackers.unit3d_base.niquests.get")
+@patch("niquests.Session.get")
 def test_unit3d_download_rejects_mismatched_host(
     get: MagicMock, tmp_path: Path
 ) -> None:
@@ -123,7 +123,7 @@ def test_unit3d_download_rejects_mismatched_host(
 
 
 @patch.object(Unit3dBaseUploader, "_build_upload_payload", return_value={})
-@patch("src.backend.trackers.unit3d_base.niquests.post")
+@patch("niquests.Session.post")
 def test_unit3d_upload_redownloads_tracker_torrent_before_success(
     post: MagicMock,
     _build_payload: MagicMock,
@@ -167,7 +167,7 @@ def test_unit3d_upload_redownloads_tracker_torrent_before_success(
     ],
 )
 @patch.object(Unit3dBaseUploader, "_build_upload_payload", return_value={})
-@patch("src.backend.trackers.unit3d_base.niquests.post")
+@patch("niquests.Session.post")
 def test_unit3d_upload_flags_missing_download_url_as_already_accepted(
     post: MagicMock,
     _build_payload: MagicMock,
