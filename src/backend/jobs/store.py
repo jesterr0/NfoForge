@@ -251,6 +251,10 @@ def _document_is_prepared(document: dict) -> bool:
 
     Read straight from the document so the picker can tell without paying to
     deserialize every job it lists.
+
+    Kept in step with `SharedPayload.is_prepared()`, including its answer for a
+    job that selects no tracker at all: there is nothing to be prepared for, so
+    retained release data does not make it runnable.
     """
     context = document.get("context")
     if not isinstance(context, dict):
@@ -263,7 +267,7 @@ def _document_is_prepared(document: dict) -> bool:
     if not isinstance(release_data, dict):
         return False
     if not isinstance(selected, list) or not selected:
-        return bool(release_data)
+        return False
     return all(name in release_data for name in selected)
 
 

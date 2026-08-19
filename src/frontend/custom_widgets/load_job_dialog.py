@@ -734,6 +734,35 @@ class LoadJobDialog(QDialog):
     def _can_queue(self, listing: JobListing) -> bool:
         return listing.prepared and listing.matches_profile(self.active_profile)
 
+    def _can_load(self, listing: JobListing) -> bool:
+        """Whether plain "Load" can open this job as it stands.
+
+        An archive with no trackers left has nothing for the process page to
+        run, so loading it lands the user on a page whose only button fails.
+        Its way back into a wizard is 'Add Trackers', which starts at the
+        tracker page instead.
+
+        This is the rule, not a copy of it: `_update_button_state` gates the
+        Load button on it and `_accept_selection` enforces it, because the
+        button being disabled never stopped a double click.
+        """
+        if not listing.matches_profile(self.active_profile):
+            return False
+        return not listing.archived or bool(listing.summary.trackers)
+
+    def _can_add_trackers(self, listing: JobListing) -> bool:
+        """Whether this job can be reopened to pick trackers it has not used.
+
+        Only an archive that still carries its own release package qualifies:
+        choosing new trackers is worth offering precisely when the media it
+        was built from may be long gone.
+        """
+        return (
+            listing.matches_profile(self.active_profile)
+            and listing.archived
+            and listing.source_less_ready
+        )
+
     def _queued_paths(self) -> set[Path]:
         """Paths already in the queue, for the duplicate check.
 
@@ -817,6 +846,11 @@ class LoadJobDialog(QDialog):
                     f"'{listing.name}' was saved under config "
                     f"'{listing.config_profile}'. Use 'Switch profile and load' "
                     "to open it."
+                )
+            if not self._can_load(listing):
+                return (
+                    f"'{listing.name}' has already uploaded to every tracker it "
+                    "was run for. Use 'Add Trackers' to send it somewhere new."
                 )
             if not listing.prepared:
                 return (
@@ -904,7 +938,7 @@ class LoadJobDialog(QDialog):
             len(selected) == 1 and listing is not None and not matches
         )
         self.add_trackers_btn.setEnabled(
-            bool(listing and matches and listing.archived and listing.source_less_ready)
+            bool(listing is not None and self._can_add_trackers(listing))
         )
         self.resolve_uncertain_btn.setEnabled(
             bool(listing and matches and listing.summary.uncertain_trackers)
@@ -923,13 +957,7 @@ class LoadJobDialog(QDialog):
         open_button = self.button_box.button(QDialogButtonBox.StandardButton.Open)
         if open_button:
             open_button.setEnabled(
-                bool(
-                    matches
-                    and len(selected) == 1
-                    and (
-                        not listing or not listing.archived or listing.summary.trackers
-                    )
-                )
+                bool(listing is not None and self._can_load(listing))
             )
         self.status_lbl.setText(self._selection_hint())
         self._refresh_details()
@@ -1082,19 +1110,25 @@ class LoadJobDialog(QDialog):
 
     @Slot(QTreeWidgetItem, int)
     def _on_double_click(self, item: QTreeWidgetItem, _column: int) -> None:
-        """Open on double click, routing a cross-profile job to the switch.
+        """Open on double click, routing a job to whatever it can actually do.
 
         Doing nothing is what this used to do, and it reads as the dialog being
-        broken rather than as the job needing a different config.
+        broken rather than as the job needing a different config. Each branch
+        picks the same action the row's own enabled button offers: a
+        cross-profile job goes through the profile switch, and an archive with
+        no trackers left goes to 'Add Trackers', since a plain load would drop
+        it on a process page with nothing to process.
         """
         listing = item.data(0, _LISTING_ROLE)
         if not isinstance(listing, JobListing):
             return
         self.job_tree.setCurrentItem(item)
-        if listing.matches_profile(self.active_profile):
+        if not listing.matches_profile(self.active_profile):
+            self._accept_with_switch()
+        elif self._can_load(listing):
             self._accept_selection()
         else:
-            self._accept_with_switch()
+            self._accept_add_trackers()
 
     @Slot()
     def _accept_selection(self) -> None:
@@ -1105,7 +1139,7 @@ class LoadJobDialog(QDialog):
         if len(selected) != 1:
             return
         listing = selected[0]
-        if not listing.matches_profile(self.active_profile):
+        if not self._can_load(listing):
             return
         self.selected_listing = listing
         self.switch_profile_requested = False
@@ -1118,11 +1152,7 @@ class LoadJobDialog(QDialog):
         if len(selected) != 1:
             return
         listing = selected[0]
-        if not (
-            listing.matches_profile(self.active_profile)
-            and listing.archived
-            and listing.source_less_ready
-        ):
+        if not self._can_add_trackers(listing):
             return
         self.selected_listing = listing
         self.switch_profile_requested = False

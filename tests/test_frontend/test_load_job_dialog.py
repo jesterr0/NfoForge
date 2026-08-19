@@ -53,6 +53,9 @@ def _save(
             "mediainfo_assets": {"C:/gone.mkv": {"xml": "mediainfo/0.xml"}}
         }
     if prepared:
+        # both halves, as a real prepared job has them: the trackers the run
+        # will serve, and the frozen release for each of them
+        context["shared_data"]["selected_trackers"] = ["AITHER"]
         context["shared_data"]["tracker_release_data"] = {
             "AITHER": {"title": "t", "nfo": "body"}
         }
@@ -247,6 +250,68 @@ def test_add_trackers_is_available_for_a_self_contained_archive(
         open_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Open)
         assert open_button is not None
         assert not open_button.isEnabled()
+    finally:
+        dialog.deleteLater()
+
+
+def test_double_clicking_a_spent_archive_asks_for_new_trackers(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """The disabled Load button was never the whole rule.
+
+    An archive that has been everywhere it was run for has nothing for the
+    process page to do, which is why Load is greyed out for it -- but a double
+    click went straight to `_accept_selection` and loaded it anyway, landing on
+    a process page whose only button failed with "Failed to generate tracker
+    data". A double click now takes the action the row does offer.
+    """
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        dialog._on_double_click(item, 0)
+
+        assert dialog.selected_listing is not None
+        assert dialog.add_trackers_requested is True
+    finally:
+        dialog.deleteLater()
+
+
+def test_a_spent_archive_cannot_be_loaded_by_pressing_open(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`_accept_selection` enforces the rule rather than trusting the button."""
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        dialog.job_tree.setCurrentItem(item)
+        item.setSelected(True)
+        dialog._accept_selection()
+
+        assert dialog.selected_listing is None
+    finally:
+        dialog.deleteLater()
+
+
+def test_double_clicking_an_ordinary_job_still_loads_it(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "plain")
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        dialog._on_double_click(item, 0)
+
+        assert dialog.selected_listing is not None
+        assert dialog.add_trackers_requested is False
+        assert dialog.switch_profile_requested is False
     finally:
         dialog.deleteLater()
 

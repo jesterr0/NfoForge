@@ -76,12 +76,20 @@ class SharedPayload:
 
         Derived rather than stored as its own flag, so there is no second piece
         of state that can disagree with the data itself.
+
+        No trackers means nothing to be prepared *for*, so the answer is False
+        even when release data is present. An archive of a fully uploaded run
+        is exactly that: it keeps the title and NFO of any tracker whose upload
+        could not be confirmed, while selecting none of them. Reading that
+        leftover as "prepared" sent the job straight to the process page, which
+        then had no tracker to build a run from and failed there instead of
+        asking which tracker to add.
         """
         required = tuple(
             trackers if trackers is not None else self.selected_trackers or ()
         )
         if not required:
-            return bool(self.tracker_release_data)
+            return False
         return all(tracker in self.tracker_release_data for tracker in required)
 
     def reset(self) -> None:

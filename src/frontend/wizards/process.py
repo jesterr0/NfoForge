@@ -737,6 +737,19 @@ class ProcessPage(BaseWizardPage):
                     "<br /><br />"
                 )
 
+        # Nothing to upload to is a state the user can reach -- a job that has
+        # already been everywhere it was run for -- so it is answered here
+        # rather than left to fail as an unhandled exception further down.
+        if not self.context.shared_data.tracker_image_hosts:
+            QMessageBox.warning(
+                self,
+                "No Trackers",
+                "This run has no trackers to upload to.\n\nIf this came from a "
+                "saved job, reopen it from the Jobs dialog with 'Add Trackers' "
+                "to choose one, or use 'Start Over' to begin a new run.",
+            )
+            return
+
         # get paths and other things from the media input payload
         detected_input = self.context.media_input.require_input_path()
         LOG.debug(LOG.LOG_SOURCE.FE, f"Detected file input: {detected_input}")
@@ -744,7 +757,9 @@ class ProcessPage(BaseWizardPage):
         # get tracker data and check for existing torrent files
         tracker_data = self._gather_tracker_data(detected_input)
         if not tracker_data:
-            raise AttributeError("Could not determine tracker data")
+            # None means the overwrite prompt was backed out of, which is the
+            # user cancelling rather than anything going wrong.
+            return
 
         GSigs().wizard_set_disabled.emit(True)
         self.tracker_process_tree.setDisabled(True)
@@ -1531,7 +1546,13 @@ class ProcessPage(BaseWizardPage):
                     if get_last != -1:
                         combo_box.setCurrentIndex(get_last)
 
-            self._sync_tracker_image_hosts()
+        # Outside the branch on purpose: the rows are the run, so with no
+        # tracker to build a row for there is no run, and the payload has to
+        # say so. A restored job can arrive carrying image hosts for trackers
+        # it is only holding state for -- an unconfirmed upload keeps its
+        # entry -- and leaving those in place let a run with no rows at all
+        # still hand the backend a tracker to upload to.
+        self._sync_tracker_image_hosts()
 
     def _plugin_image_host_available(self) -> bool:
         """Whether a loaded plugin currently provides image host uploads.

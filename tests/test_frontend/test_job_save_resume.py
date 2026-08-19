@@ -637,6 +637,28 @@ def test_sync_tracker_image_hosts_skips_a_row_missing_its_combo_data(
     assert context.shared_data.tracker_image_hosts == {}
 
 
+def test_a_run_with_no_trackers_clears_the_hosts_it_restored(
+    qapp: Any, sample_media: Path
+) -> None:
+    """The rows are the run, so no rows has to mean no trackers.
+
+    A restored job can arrive holding an image host for a tracker it is not
+    going to run -- an unconfirmed upload keeps its entry. The sync only ran
+    when there was something to build a row for, so those entries survived a
+    run that showed none, and `_gather_tracker_data` handed the backend a
+    tracker the user never saw listed.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.selected_trackers = []
+    page = _fake_page(context)
+
+    ProcessPage.add_tracker_items(page)
+
+    assert page.tracker_process_tree.topLevelItemCount() == 0
+    assert context.shared_data.tracker_image_hosts == {}
+
+
 def test_gathered_tracker_data_comes_from_the_payload(
     qapp: Any, sample_media: Path
 ) -> None:
@@ -906,9 +928,19 @@ def test_a_job_without_a_recorded_config_stays_loadable(
 def _save_listing(
     working_dir: Path, name: str, *, prepared: bool, profile: str = "config"
 ) -> None:
-    """Write a job whose document is or isn't prepared, for picker tests."""
+    """Write a job whose document is or isn't prepared, for picker tests.
+
+    A prepared job carries both halves: the trackers it will run and the
+    frozen release for each of them. Release data on its own belongs to a
+    tracker the job is holding state for rather than running.
+    """
     context = (
-        {"shared_data": {"tracker_release_data": {"AITHER": {"title": "x"}}}}
+        {
+            "shared_data": {
+                "selected_trackers": ["AITHER"],
+                "tracker_release_data": {"AITHER": {"title": "x"}},
+            }
+        }
         if prepared
         else {"shared_data": {}}
     )
@@ -1207,6 +1239,33 @@ def test_a_prepared_job_still_resumes_straight_to_processing(
     assert (
         MainWindowWizard._resume_start_page(context, adding_trackers=False)
         is WizardPages.PROCESS_PAGE
+    )
+
+
+def test_an_archive_with_nothing_left_to_run_starts_at_the_trackers_page(
+    qapp: Any, sample_media: Path
+) -> None:
+    """A spent archive keeps release data it is not going to upload.
+
+    An upload nobody could confirm holds on to its title and NFO so that
+    resolving it later still has the reviewed release to put back, while
+    staying out of `selected_trackers` so nothing can send it twice. Reading
+    that leftover as "prepared" resumed the job straight to the process page,
+    which built no tracker row and then failed on Process with "Failed to
+    generate tracker data" -- the run has to start where trackers are chosen.
+    """
+    context = ProcessingContext()
+    _populate(context, sample_media)
+    context.shared_data.selected_trackers = []
+    context.shared_data.tracker_release_data[TrackerSelection.HUNO] = {
+        "title": "Example 2024",
+        "nfo": "held for an upload nobody could confirm",
+    }
+
+    assert context.shared_data.is_prepared() is False
+    assert (
+        MainWindowWizard._resume_start_page(context, adding_trackers=False)
+        is WizardPages.TRACKERS_PAGE
     )
 
 

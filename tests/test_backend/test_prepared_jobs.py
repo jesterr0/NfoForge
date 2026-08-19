@@ -81,6 +81,9 @@ def _context(tmp_path: Path) -> ProcessingContext:
     media.write_bytes(b"media")
     context.media_input.input_path = media
     context.media_input.working_dir = tmp_path
+    # nothing reaches processing without a tracker chosen, and "prepared" is
+    # answered against that selection
+    context.shared_data.selected_trackers = [TrackerSelection.AITHER]
     # the real flow creates each tracker's output dir when building the paths
     (tmp_path / "aither").mkdir(parents=True, exist_ok=True)
     # carrying a base torrent keeps these tests off real hashing, which is also

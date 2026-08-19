@@ -370,3 +370,50 @@ def test_a_job_that_recorded_no_media_path_is_not_flagged(working_dir: Path) -> 
     store.save_job(store.build_job("old", JobSummary(), {}), working_dir)
 
     assert store.list_jobs([working_dir])[0].media_available is True
+
+
+def test_release_data_alone_does_not_make_a_job_prepared(working_dir: Path) -> None:
+    """An archive holds an unconfirmed upload's title and NFO, and runs nothing.
+
+    `selected_trackers` empty means there is no run to be prepared for, so the
+    leftover release data must not read as one. Calling it prepared is what let
+    the picker offer it for the queue and sent the wizard straight to the
+    process page, which then had no tracker to build.
+    """
+    store.save_job(
+        store.build_job(
+            "spent archive",
+            JobSummary(trackers=[]),
+            {
+                "shared_data": {
+                    "selected_trackers": [],
+                    "tracker_release_data": {"AITHER": {"title": "t", "nfo": "n"}},
+                }
+            },
+            archived=True,
+            uncertain_trackers=["AITHER"],
+        ),
+        working_dir,
+    )
+
+    assert store.list_jobs([working_dir])[0].prepared is False
+
+
+def test_a_job_is_prepared_when_every_selected_tracker_has_release_data(
+    working_dir: Path,
+) -> None:
+    store.save_job(
+        store.build_job(
+            "pending archive",
+            JobSummary(trackers=["Aither"]),
+            {
+                "shared_data": {
+                    "selected_trackers": ["AITHER"],
+                    "tracker_release_data": {"AITHER": {"title": "t", "nfo": "n"}},
+                }
+            },
+        ),
+        working_dir,
+    )
+
+    assert store.list_jobs([working_dir])[0].prepared is True
