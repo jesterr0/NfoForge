@@ -333,6 +333,147 @@ def test_episode_title_exact_preserves_non_ascii() -> None:
     assert "。" in replacer._episode_title_exact(_td())
 
 
+def _span_replacer(token: str, *, file_name_mode: bool = False) -> TokenReplacer:
+    """A file covering S01E01-E03, mapped to episode 1 with a real title."""
+    file_path = Path("Show.S01E01-E03.mkv")
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": 1,
+                    "episode": 1,
+                    "episode_end": 3,
+                    "episode_name": "Pilot",
+                    "episode_data": {
+                        "seasonNumber": 1,
+                        "number": 1,
+                        "name": "Pilot",
+                        "aired": "2024-01-01",
+                    },
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={
+                "episodes": [
+                    {
+                        "seasonNumber": 1,
+                        "number": 1,
+                        "name": "Pilot",
+                        "aired": "2024-01-01",
+                    }
+                ]
+            },
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=file_name_mode,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+def test_episode_title_tokens_blank_for_a_multi_episode_span(token: str) -> None:
+    # A file covering S01E01-E03 has no single episode title. Naming it
+    # after episode 1 asserts that one episode's title describes all three.
+    assert _span_replacer(token).get_output() == ""
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+@pytest.mark.parametrize(
+    ("file_name_mode", "expected"),
+    [(False, "Show S01E01-03 1080p"), (True, "Show.S01E01-03.1080p.mkv")],
+)
+def test_multi_episode_span_drops_the_title_from_a_whole_template(
+    token: str, file_name_mode: bool, expected: str
+) -> None:
+    # Both output modes, because the handlers are shared: file_name_mode
+    # selects only the final formatting stage, not token resolution.
+    #
+    # A whole template rather than the bare token: in file_name_mode a name
+    # that resolves to nothing at all is rejected and get_output() returns
+    # None, so a bare-token assertion would pass without proving the
+    # surrounding components survived. This asserts the designator still
+    # renders E01-03 and no stray separator is left where the title was.
+    output = _span_replacer(
+        f"Show S{{season_number|zfill(2)}}E{{episode_number|zfill(2)}} {token} 1080p",
+        file_name_mode=file_name_mode,
+    ).get_output()
+
+    assert output == expected
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+def test_episode_title_tokens_keep_the_title_for_a_single_episode(
+    token: str,
+) -> None:
+    # The guard for the span check: a normal single-episode file is
+    # untouched. _series_replacer maps S01E02 with no episode_end.
+    assert _series_replacer(token).get_output() == "Selected Order Title"
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+def test_episode_title_tokens_stay_blank_for_a_season_pack(token: str) -> None:
+    # Already correct today and must not regress while adding the span
+    # check: _verify_series_info needs an episode number and a pack has none.
+    file_path = Path("Show.S01.mkv")
+    replacer = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={"episodes": [{"seasonNumber": 1, "number": 1, "name": "Pilot"}]},
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+    )
+
+    assert replacer.get_output() == ""
+
+
+def test_span_predicate_is_shared_by_episode_number_and_episode_title() -> None:
+    # episode_end present but not greater than the start is not a span.
+    # Both the designator and the title must agree, which is what makes
+    # extracting the predicate worth doing: a fixture that renders the raw
+    # start number must also render the title.
+    replacer = _multi_episode_replacer(
+        "{episode_number}|{episode_title}",
+        MultiEpisodeStyle.RANGE,
+        episode=2,
+        episode_end=2,
+    )
+
+    assert replacer.get_output() == "2|Multi Episode"
+
+
 @pytest.mark.parametrize("placeholder_name", ["TBA", "Episode 12"])
 def test_episode_metadata_omits_tvdb_placeholder_name(placeholder_name: str) -> None:
     # {episode_metadata} must not leak a TVDB placeholder episode name into

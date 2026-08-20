@@ -2355,6 +2355,27 @@ class TokenReplacer:
         int_val = designator if designator is not None else str(episode)
         return self._optional_user_input(int_val, token_data)
 
+    def _span_end_episode(self, season: int, episode: int) -> int | None:
+        """Last episode number for a file spanning more than one episode.
+
+        ``None`` when the file covers a single episode -- either no mapping
+        row exists for it, or the row's ``episode_end`` is absent, invalid,
+        or not greater than the start.
+
+        This is the only definition of "span" in the class. Every token that
+        behaves differently for a multi-episode file asks here, so the token
+        that renders ``E01-03`` and the tokens that suppress an episode's
+        own metadata cannot disagree about what they are looking at.
+        """
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if not mapped_episode:
+            return None
+
+        end_episode = self._validate_int_var(mapped_episode.get("episode_end"))
+        if end_episode is None or end_episode <= episode:
+            return None
+        return end_episode
+
     def _multi_episode_designator(self, episode: int) -> str | None:
         """Render the season/episode span designator for a multi-episode file
         per the configured ``MultiEpisodeStyle``, or ``None`` when the file
@@ -2380,12 +2401,8 @@ class TokenReplacer:
         if season is None:
             return None
 
-        mapped_episode = self._get_mapped_episode_payload(season, episode)
-        if not mapped_episode:
-            return None
-
-        end_episode = self._validate_int_var(mapped_episode.get("episode_end"))
-        if end_episode is None or end_episode <= episode:
+        end_episode = self._span_end_episode(season, episode)
+        if end_episode is None:
             return None
 
         start = f"{episode:02d}"
@@ -2436,50 +2453,61 @@ class TokenReplacer:
 
         return self._optional_user_input(str(end_episode), token_data)
 
-    def _episode_title(self, token_data: TokenData) -> str:
+    def _selected_episode_title(self) -> str | None:
+        """Raw title for the selected episode, before any formatting.
+
+        ``None`` means there is no series context at all: no season or
+        episode number, or no TVDB data. Callers surface that as a bare ""
+        without running filters, preserving the early return these tokens
+        have always had.
+
+        ``""`` means there is series context but no usable title: no episode
+        data, a TVDB placeholder such as "TBA" or "Episode 12", or a file
+        spanning more than one episode. A span has no single episode title,
+        so naming it after the first episode would assert that one episode's
+        title describes all of them.
+        """
         get_info = self._verify_series_info()
         if not get_info:
+            return None
+
+        season, episode = get_info
+        if self._span_end_episode(season, episode) is not None:
             return ""
 
-        # get episode dict
         title = ""
-        episode_data = self._get_selected_episode_data(*get_info)
+        episode_data = self._get_selected_episode_data(season, episode)
         if episode_data:
             title = episode_data.get("name", "")
         if self._is_placeholder_episode_title(title):
             title = ""
+        # a manually mapped episode with no TVDB match synthesizes name: None
+        return title or ""
+
+    def _episode_title(self, token_data: TokenData) -> str:
+        title = self._selected_episode_title()
+        if title is None:
+            return ""
 
         # apply basic formatting
-        title = self._title_formatting_standard(title)
-        return self._optional_user_input(title, token_data)
+        return self._optional_user_input(
+            self._title_formatting_standard(title), token_data
+        )
 
     def _episode_title_clean(self, token_data: TokenData) -> str:
-        get_info = self._verify_series_info()
-        if not get_info:
+        title = self._selected_episode_title()
+        if title is None:
             return ""
 
-        # get episode dict
-        title = ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            title = episode_data.get("name", "")
-        if self._is_placeholder_episode_title(title):
-            title = ""
-        title = self._title_formatting_cleaned(title, self.title_clean_rules)
-        return self._optional_user_input(title, token_data)
+        return self._optional_user_input(
+            self._title_formatting_cleaned(title, self.title_clean_rules), token_data
+        )
 
     def _episode_title_exact(self, token_data: TokenData) -> str:
-        get_info = self._verify_series_info()
-        if not get_info:
+        title = self._selected_episode_title()
+        if title is None:
             return ""
 
-        # get episode dict
-        title = ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            title = episode_data.get("name", "")
-        if self._is_placeholder_episode_title(title):
-            title = ""
         if title:
             # Strip only what cannot appear in a path component. Deliberately
             # no `unidecode` here, unlike `_title_formatting_standard` --

@@ -16,9 +16,9 @@ The templates being pinned, quoted from the rules as saved:
                     Acodec Channels Object - Tag
 - LST encode/web .. ... Resolution ... SOURCE TYPE Dub Acodec Channels Object
                     Hi10P HDR Vcodec - Tag
-- ReelFliX 4.1 .... order-free, every required element present, blank tag
+- ReelFliX ........ order-free, every required element present, blank tag
                     preferred over a NOGROUP placeholder
-- BeyondHD 3.3.9 .. remux/encode/web-dl with no tag must end "-NOGROUP"
+- BeyondHD ........ remux/encode/web-dl with no tag must end "-NOGROUP"
 
 Known gaps, deliberately not asserted because NfoForge has no token for them.
 Each needs a new token rather than an edit to the packaged defaults:
@@ -300,7 +300,7 @@ def test_a_remux_keeps_the_container_codec_name(
 def test_beyondhd_tags_an_untagged_release_nogroup(
     packaged: dict[TrackerSelection, TrackerInfo],
 ) -> None:
-    """BeyondHD rule 3.3.9, which names the exact spelling."""
+    """BeyondHD's rule, which names the exact spelling."""
     rendered = _render(
         packaged[TrackerSelection.BEYOND_HD], ENCODE_NAME, "BluRay", release_group=""
     )
@@ -317,7 +317,7 @@ def test_beyondhd_tags_an_untagged_release_nogroup(
 def test_the_other_three_leave_an_untagged_release_bare(
     tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
 ) -> None:
-    """ReelFliX 4.1 prefers a blank tag to a placeholder, and neither Aither
+    """ReelFliX prefers a blank tag to a placeholder, and neither Aither
     nor LST asks for one. The separator has to go with it."""
     rendered = _render(packaged[tracker], ENCODE_NAME, "BluRay", release_group="")
 

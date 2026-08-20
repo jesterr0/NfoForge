@@ -60,8 +60,8 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-# BeyondHD rule 3.1.1 is order-free: "Movie Name / Movie Year / Edition /
-# Relevant Information / Group Tag". Rule 3.3.9 is the one hard requirement --
+# BeyondHD's rules are order-free: "Movie Name / Movie Year / Edition /
+# Relevant Information / Group Tag". The tag rule is the one hard requirement --
 # a remux, encode or web-dl with no release group must end in "-NOGROUP"
 # (not NoGroup, NOGRP or NOTAG), which is what `default('NOGROUP')` supplies.
 # BeyondHD's policy is FREE, so this is a starting point a user can edit,
@@ -92,7 +92,7 @@ image_width = 350
 add_localization_to_custom_edition = false
 stream_optimized = false
 
-# Rule 3.2.1: "Series Name / Series Year / Season Number(+Episode Number for
+# The series rule: "Series Name / Series Year / Season Number(+Episode Number for
 # Single Episodes) / Edition / Relevant Information / Group Tag". No episode
 # title is called for, so none is emitted.
 [tracker.beyond_hd.tvr_title_overrides.standard]
@@ -185,9 +185,9 @@ column_s = 1
 column_space = 1
 row_space = 0
 mvr_title_override_enabled = true
-# ReelFliX rule 4.1 states the elements may appear in any order as long as
+# ReelFliX's rules state the elements may appear in any order as long as
 # every required one is present, so this needs no source-dependent ordering --
-# unlike Aither and LST below. Rule 4.1 also prefers an absent tag over a
+# unlike Aither and LST below. Its rules also prefer an absent tag over a
 # "NOGROUP" placeholder, which `{:opt=-:release_group}` gives for free.
 mvr_title_token_override = "{title_exact} {release_year} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type}{:opt= :video_codec}{:opt=-:release_group}"
 mvr_title_replace_map = [
