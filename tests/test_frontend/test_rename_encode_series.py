@@ -447,3 +447,124 @@ def test_sidecars_follow_their_episode(
     }
     # not named after the episode, so it is left alone and rides along
     assert unrelated not in captured["files"]
+
+
+def _series_page_with_episodes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *file_paths: Path
+) -> RenameEncodeSeries:
+    """A series rename page over a pack of the given files."""
+    episode_map = {
+        path: {"season": 1, "episode": index}
+        for index, path in enumerate(file_paths, start=1)
+    }
+    return _make_series_rename_page(
+        tmp_path, monkeypatch, file_path=file_paths[0], episode_map=episode_map
+    )
+
+
+def test_hybrid_is_pre_ticked_when_every_episode_is_hybrid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # HYBRID had no pre-tick at all: _auto_check_remux_checkbox has no
+    # hybrid equivalent, so the claim was invisible until the user found
+    # the checkbox.
+    page = _series_page_with_episodes(
+        tmp_path,
+        monkeypatch,
+        Path("Show.S01E01.HYBRID.1080p.BluRay.x264-GRP.mkv"),
+        Path("Show.S01E02.HYBRID.1080p.BluRay.x264-GRP.mkv"),
+    )
+
+    page.initializePage()
+
+    assert page.hybrid_checkbox.isChecked() is True
+
+
+def test_hybrid_is_not_pre_ticked_when_only_some_episodes_are(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _series_page_with_episodes(
+        tmp_path,
+        monkeypatch,
+        Path("Show.S01E01.HYBRID.1080p.BluRay.x264-GRP.mkv"),
+        Path("Show.S01E02.1080p.BluRay.x264-GRP.mkv"),
+    )
+
+    page.initializePage()
+
+    assert page.hybrid_checkbox.isChecked() is False
+
+
+def test_remux_is_pre_ticked_only_when_every_episode_is_a_remux(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # REMUX keeps its pack-wide pre-tick, now from the same detector as
+    # the other five rather than its own bespoke check.
+    page = _series_page_with_episodes(
+        tmp_path,
+        monkeypatch,
+        Path("Show.S01E01.1080p.BluRay.REMUX.AVC-GRP.mkv"),
+        Path("Show.S01E02.1080p.BluRay.REMUX.AVC-GRP.mkv"),
+    )
+
+    page.initializePage()
+
+    assert page.remux_checkbox.isChecked() is True
+
+
+def test_a_switched_off_category_is_not_pre_filled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _series_page_with_episodes(
+        tmp_path, monkeypatch, Path("Show.S01E01.REPACK.1080p.WEB-DL.x264-GRP.mkv")
+    )
+    page.config.settings.series.claims.re_release = False
+
+    page.initializePage()
+
+    assert page.re_release_combo.currentText() == ""
+
+
+def test_a_switched_off_category_leaves_the_others_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _series_page_with_episodes(
+        tmp_path,
+        monkeypatch,
+        Path("Show.S01E01.IMAX.REPACK.1080p.WEB-DL.x264-GRP.mkv"),
+    )
+    page.config.settings.series.claims.frame_size = False
+
+    page.initializePage()
+
+    assert page.frame_size_combo.currentText() == ""
+    assert page.re_release_combo.currentText() == "REPACK"
+
+
+def test_release_group_falls_back_to_the_detected_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The settings value means "my group"; the filename's means "whoever
+    # made the source". With settings blank the field showed empty while
+    # the output carried OTHERGROUP -- the field and the output disagreed.
+    page = _series_page_with_episodes(
+        tmp_path, monkeypatch, Path("Show.S01E01.1080p.WEB-DL.x264-OTHERGROUP.mkv")
+    )
+    page.config.settings.series.release_group = ""
+
+    page.initializePage()
+
+    assert page.release_group_entry.text() == "OTHERGROUP"
+
+
+def test_a_configured_release_group_wins_over_the_detected_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _series_page_with_episodes(
+        tmp_path, monkeypatch, Path("Show.S01E01.1080p.WEB-DL.x264-OTHERGROUP.mkv")
+    )
+    page.config.settings.series.release_group = "MYGROUP"
+
+    page.initializePage()
+
+    assert page.release_group_entry.text() == "MYGROUP"

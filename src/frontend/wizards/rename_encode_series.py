@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
 from src.backend.rename_files import RenamePlan, RenameResult
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
+from src.backend.utils.filename_claims import FilenameClaims, detect_filename_claims
 from src.backend.utils.media_files import find_sidecars_for
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
@@ -40,7 +41,6 @@ from src.backend.utils.rename_normalizations import (
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.streaming_services import (
     STREAMING_SERVICE_CHOICES,
-    detect_streaming_service,
 )
 from src.config.config import ConfigManager
 from src.config.tv_tokens import get_tvr_episode_token
@@ -343,7 +343,9 @@ class RenameEncodeSeries(BaseWizardPage):
 
         # Only infer a pack-wide override when every episode agrees. File-specific
         # attributes are otherwise resolved from each active file during rendering.
-        self._pre_load_attribute_combos([Path(path).stem for path in media_files])
+        claims = self._pre_load_attribute_combos(
+            [Path(path).stem for path in media_files]
+        )
 
         # Use series token from config
         series_token = get_tvr_episode_token(
@@ -372,9 +374,12 @@ class RenameEncodeSeries(BaseWizardPage):
         else:
             self.quality_combo.setCurrentIndex(0)
 
-        self.release_group_entry.setText(
-            release_group_name if release_group_name else ""
-        )
+        # The settings value means "my group"; the detected one means
+        # "whoever made the source file". Configured wins, but a blank
+        # setting must not leave the field empty while the output silently
+        # carries the detected group -- that is the invisible claim this
+        # design removes everywhere else.
+        self.release_group_entry.setText(release_group_name or claims.release_group)
 
         # Initial call to update_generated_name populates the override token
         # grid (using the first mapped episode as a representative preview)
@@ -645,46 +650,50 @@ class RenameEncodeSeries(BaseWizardPage):
         return True
 
     # All the methods from RenameEncode, adapted for series
-    def _pre_load_attribute_combos(self, filenames: Sequence[str]) -> None:
-        """Pre-load only attributes shared by every file in the series pack."""
+    def _pre_load_attribute_combos(self, filenames: Sequence[str]) -> FilenameClaims:
+        """Pre-fill the claim controls from stage 1, and return what it found.
 
-        def detect_normalized_value(
-            norm_list: Sequence[RenameNormalization], filename: str
-        ) -> str:
-            for item in norm_list:
-                if any(re.search(pat, filename, flags=re.I) for pat in item.re_gex):
-                    return item.normalized
-            return ""
+        The detection itself lives in `detect_filename_claims`, which the
+        settings preview also calls, so what this page shows and what the
+        preview shows cannot diverge. Everything here is presentation: put
+        each detected value into the control that owns it.
 
-        def select_common_value(
-            norm_list: Sequence[RenameNormalization], combo: CustomComboBox
-        ) -> None:
-            detected = {
-                detect_normalized_value(norm_list, filename) for filename in filenames
-            }
-            common_value = next(iter(detected)) if len(detected) == 1 else ""
-            idx = combo.findText(common_value)
+        The claims come back so the caller can reuse them without detecting
+        twice -- the release group seed needs the same result.
+        """
+        claims = detect_filename_claims(filenames, self.config.settings.series.claims)
+
+        for combo, value in (
+            (self.edition_combo, claims.edition),
+            (self.frame_size_combo, claims.frame_size),
+            (self.localization_combo, claims.localization),
+            (self.re_release_combo, claims.re_release),
+            (self.service_combo, claims.streaming_service),
+        ):
+            idx = combo.findText(value)
             combo.setCurrentIndex(idx if idx > -1 else 0)
 
-        select_common_value(EDITION_INFO, self.edition_combo)
-        select_common_value(FRAME_SIZE_INFO, self.frame_size_combo)
-        select_common_value(LOCALIZATION_INFO, self.localization_combo)
-        select_common_value(RE_RELEASE_INFO, self.re_release_combo)
+        # REMUX used to have its own bespoke pack-wide check and HYBRID had
+        # no pre-tick at all; both are ordinary claims now.
+        self.remux_checkbox.setChecked(bool(claims.remux))
+        self.hybrid_checkbox.setChecked(bool(claims.hybrid))
+        return claims
 
-        # Same pack-wide rule as the tables above: a service is only
-        # preselected when every episode in the pack carries the same one.
-        services = {detect_streaming_service(filename) for filename in filenames}
-        common_service = next(iter(services)) if len(services) == 1 else ""
-        idx = self.service_combo.findText(common_service)
-        self.service_combo.setCurrentIndex(idx if idx > -1 else 0)
+    def _detected_claims(self) -> FilenameClaims:
+        return detect_filename_claims(
+            [Path(path).stem for path in self.context.media_input.file_list],
+            self.config.settings.series.claims,
+        )
 
     def _auto_check_remux_checkbox(self) -> None:
-        """Auto-check REMUX only when every file in the pack is a remux."""
-        media_files = self.context.media_input.file_list
-        self.remux_checkbox.setChecked(
-            bool(media_files)
-            and all("remux" in Path(path).stem.lower() for path in media_files)
-        )
+        """Re-apply the detected REMUX claim.
+
+        Called when the quality combo moves to a disc source, which
+        re-enables the checkbox after a non-disc quality forced it off.
+        Goes through the same detector as the initial pre-fill so the two
+        cannot disagree, and so a switched-off REMUX category stays off.
+        """
+        self.remux_checkbox.setChecked(bool(self._detected_claims().remux))
 
     @Slot(bool)
     def _on_override_group_toggled(self, checked: bool) -> None:
