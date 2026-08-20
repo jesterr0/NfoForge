@@ -232,6 +232,127 @@ def test_episode_tokens_prefer_selected_series_mapping() -> None:
     assert output == "Selected Order Title 2024-02-03 22"
 
 
+def _ordering_replacer(
+    token: str, episode_order_type_id: object = 4, episode: int = 2
+) -> TokenReplacer:
+    """A series whose DVD ordering disagrees with the flat aired list.
+
+    The same (season, episode) pair names a different episode in each,
+    which is the only situation where honouring the recorded ordering is
+    observable. The mapping row carries no ``episode_data``, forcing the
+    TVDB lookup rather than reading the payload straight off the row.
+    """
+    file_path = Path("Show.S01E02.mkv")
+    mapping: dict[str, object] = {
+        "season": 1,
+        "episode": episode,
+        "episode_name": "",
+    }
+    if episode_order_type_id is not None:
+        mapping["episode_order_type_id"] = episode_order_type_id
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={file_path: mapping},
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={
+                "episodes": [
+                    {
+                        "seasonNumber": 1,
+                        "number": 2,
+                        "absoluteNumber": 2,
+                        "name": "Aired Order Episode",
+                        "aired": "2020-01-02",
+                    }
+                ],
+                "episodes_by_type": {
+                    0: {
+                        "type_name": "Aired Order",
+                        "type": "official",
+                        "episodes": [
+                            {
+                                "seasonNumber": 1,
+                                "number": 2,
+                                "absoluteNumber": 2,
+                                "name": "Aired Order Episode",
+                                "aired": "2020-01-02",
+                            }
+                        ],
+                    },
+                    4: {
+                        "type_name": "DVD Order",
+                        "type": "dvd",
+                        "episodes": [
+                            {
+                                "seasonNumber": 1,
+                                "number": 2,
+                                "absoluteNumber": 9,
+                                "name": "DVD Order Episode",
+                                "aired": "2020-06-06",
+                            }
+                        ],
+                    },
+                },
+            },
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=episode,
+    )
+
+
+def test_episode_lookup_uses_the_ordering_the_row_recorded() -> None:
+    assert _ordering_replacer("{episode_title}").get_output() == "DVD Order Episode"
+
+
+def test_episode_lookup_falls_back_to_the_flat_list_without_a_recorded_ordering() -> (
+    None
+):
+    # Every mapping row written before the ordering field existed. Absent
+    # must keep meaning the flat list, or every saved job changes output.
+    replacer = _ordering_replacer("{episode_title}", episode_order_type_id=None)
+
+    assert replacer.get_output() == "Aired Order Episode"
+
+
+def test_episode_lookup_accepts_a_string_ordering_key_from_a_saved_job() -> None:
+    # tvdb_data is persisted through json.dumps, which turns the int keys of
+    # episodes_by_type into strings, while the mapping row's id stays an int.
+    # A saved job must not silently fall back to the aired list.
+    replacer = _ordering_replacer("{episode_title}")
+    tvdb_data = replacer.media_search_obj.tvdb_data
+    assert tvdb_data is not None
+    tvdb_data["episodes_by_type"] = {
+        str(key): value for key, value in tvdb_data["episodes_by_type"].items()
+    }
+
+    assert replacer.get_output() == "DVD Order Episode"
+
+
+def test_episode_lookup_cache_does_not_leak_across_orderings() -> None:
+    # The cache was keyed [season][episode]. Two lookups for the same pair
+    # under different orderings must return the two different episodes, not
+    # whichever was asked for first.
+    replacer = _ordering_replacer("{episode_title}")
+
+    dvd = replacer._get_tvdb_episode_dict(1, 2, 4)
+    aired = replacer._get_tvdb_episode_dict(1, 2, 0)
+    dvd_again = replacer._get_tvdb_episode_dict(1, 2, 4)
+
+    assert dvd is not None and dvd["name"] == "DVD Order Episode"
+    assert aired is not None and aired["name"] == "Aired Order Episode"
+    assert dvd_again is not None and dvd_again["name"] == "DVD Order Episode"
+
+
 def _series_replacer_with_episode_name(name: str | None) -> TokenReplacer:
     """Selected-mapping episode data with a caller-supplied ``name``, so
     episode-title placeholder handling can be exercised directly without

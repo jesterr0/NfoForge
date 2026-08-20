@@ -314,7 +314,11 @@ class TokenReplacer:
 
         # series counts and episode lookups have different key/value shapes
         self._series_counts: dict[str, int] = {}
-        self._series_episode_cache: dict[int, dict[int, dict[str, Any]]] = {}
+        # keyed by ordering type id first: TVDB serves several episode
+        # orderings and the same (season, episode) pair names a different
+        # episode in each, so a cache keyed only on the pair would answer a
+        # DVD-order lookup with an aired-order episode.
+        self._series_episode_cache: dict[Any, dict[int, dict[int, dict[str, Any]]]] = {}
 
         # the conventions file is read from disk per lookup, and three tokens
         # share the result, so resolve it once per instance
@@ -3390,11 +3394,47 @@ class TokenReplacer:
 
         return season_num, episode_num
 
+    def _tvdb_episode_list(
+        self, episode_order_type_id: Any | None
+    ) -> list[dict[str, Any]]:
+        """Episode list for one TVDB ordering, or the flat list.
+
+        ``episodes_by_type`` holds one list per ordering; the flat
+        ``episodes`` key is the official/aired order. An id that is absent,
+        or names an ordering this payload does not carry, falls back to the
+        flat list, which is what every lookup did before orderings were
+        recorded.
+
+        The id is matched against both the int and str forms of each key: a
+        saved job round-trips ``tvdb_data`` through JSON, which turns the int
+        keys of ``episodes_by_type`` into strings, while the mapping row's
+        id stays an int.
+        """
+        tvdb_data = self.media_search_obj.tvdb_data if self.media_search_obj else None
+        if not tvdb_data:
+            return []
+
+        if episode_order_type_id is not None:
+            episodes_by_type = tvdb_data.get("episodes_by_type") or {}
+            if isinstance(episodes_by_type, dict):
+                type_data = episodes_by_type.get(episode_order_type_id)
+                if type_data is None:
+                    type_data = episodes_by_type.get(str(episode_order_type_id))
+                if isinstance(type_data, dict):
+                    episodes = type_data.get("episodes")
+                    if isinstance(episodes, list):
+                        return cast(list[dict[str, Any]], episodes)
+
+        return cast(list[dict[str, Any]], tvdb_data.get("episodes", []))
+
     def _get_tvdb_episode_dict(
-        self, season: int, episode: int
+        self, season: int, episode: int, episode_order_type_id: Any | None = None
     ) -> dict[str, Any] | None:
         """
         Iterate TVDB data and return episode data as a dictionary or None.
+
+        ``episode_order_type_id`` selects which episode ordering to search;
+        ``None`` searches the flat official/aired list.
 
         Example output:
         ```python
@@ -3406,16 +3446,14 @@ class TokenReplacer:
         ```
         """
         # check cache first for a faster lookup
-        if self._series_episode_cache:
-            cached_data = self._series_episode_cache.get(season, {}).get(episode)
+        cached_order = self._series_episode_cache.get(episode_order_type_id)
+        if cached_order:
+            cached_data = cached_order.get(season, {}).get(episode)
             if cached_data:
                 return cached_data
 
-        if not self.media_search_obj or not self.media_search_obj.tvdb_data:
-            return None
-
         # search through TVDB data
-        for ep in self.media_search_obj.tvdb_data.get("episodes", []):
+        for ep in self._tvdb_episode_list(episode_order_type_id):
             s = ep.get("seasonNumber")
             e = ep.get("number")
             if s is None or e is None:
@@ -3424,19 +3462,36 @@ class TokenReplacer:
                 if int(s) == season and int(e) == episode:
                     episode_data = cast(dict[str, Any], ep)
                     # initialize season dict if it doesn't exist
-                    if season not in self._series_episode_cache:
-                        self._series_episode_cache[season] = {}
-                    self._series_episode_cache[season][episode] = episode_data
+                    order_cache = self._series_episode_cache.setdefault(
+                        episode_order_type_id, {}
+                    )
+                    order_cache.setdefault(season, {})[episode] = episode_data
                     return episode_data
             except ValueError:
                 continue
 
         return None
 
+    def _selected_order_type_id(self, season: int, episode: int) -> Any | None:
+        """Which TVDB ordering the mapping row for this episode was built
+        from, or ``None`` when the row predates the field or no row exists.
+        """
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if not mapped_episode:
+            return None
+        return mapped_episode.get("episode_order_type_id")
+
     def _get_selected_episode_data(
-        self, season: int, episode: int
+        self, season: int, episode: int, episode_order_type_id: Any | None = None
     ) -> dict[str, Any] | None:
-        """Return episode data from the user's selected mapping before TVDB fallback."""
+        """Return episode data from the user's selected mapping before TVDB fallback.
+
+        ``episode_order_type_id`` is only consulted for the TVDB fallback. A
+        caller looking up a *different* episode of the same file -- the end
+        of a multi-episode span -- passes the start row's ordering, because
+        no mapping row matches the end and the fallback would otherwise read
+        the aired list whatever the row was built from.
+        """
         mapped_episode = self._get_mapped_episode_payload(season, episode)
         if mapped_episode:
             episode_data = mapped_episode.get("episode_data")
@@ -3449,7 +3504,9 @@ class TokenReplacer:
                     "name": mapped_episode.get("episode_name", ""),
                     "aired": "",
                 }
-        return self._get_tvdb_episode_dict(season, episode)
+            if episode_order_type_id is None:
+                episode_order_type_id = mapped_episode.get("episode_order_type_id")
+        return self._get_tvdb_episode_dict(season, episode, episode_order_type_id)
 
     def _get_mapped_episode_payload(
         self, season: int, episode: int
