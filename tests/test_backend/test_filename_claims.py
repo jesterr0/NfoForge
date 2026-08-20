@@ -2,6 +2,7 @@ import pytest
 
 from src.backend.utils.filename_claims import (
     FilenameClaims,
+    detect_file_claims,
     detect_filename_claims,
 )
 from src.config.models import ClaimSwitches
@@ -135,3 +136,27 @@ def test_release_group_needs_pack_agreement_too() -> None:
     )
 
     assert claims.release_group == ""
+
+
+def test_per_file_claims_keep_a_lone_repack() -> None:
+    # The pack-wide rule answers "what should the control show", where one
+    # value covers every file. It is the wrong answer for "what should this
+    # file render": a season pack with one repacked episode agrees on
+    # nothing, and that episode still deserves its marker.
+    stems = [
+        "Show.S01E01.1080p.WEB-DL.H.264-GRP",
+        "Show.S01E02.REPACK.1080p.WEB-DL.H.264-GRP",
+        "Show.S01E03.1080p.WEB-DL.H.264-GRP",
+    ]
+
+    assert detect_filename_claims(stems, _switches()).re_release == ""
+    assert detect_file_claims(stems[0], _switches()).re_release == ""
+    assert detect_file_claims(stems[1], _switches()).re_release == "REPACK"
+
+
+def test_per_file_claims_honour_the_switches() -> None:
+    claims = detect_file_claims(
+        "Show.S01E02.REPACK.1080p.WEB-DL.H.264-GRP", _switches(re_release=False)
+    )
+
+    assert claims.re_release == ""

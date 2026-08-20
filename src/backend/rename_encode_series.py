@@ -31,6 +31,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         episode_format: EpisodeFormat,
         multi_episode_style: MultiEpisodeStyle,
         season_end: int | None = None,
+        file_claims: dict[str, str] | None = None,
     ) -> Path | None:
         """Rename series file.
 
@@ -45,6 +46,12 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             user_tokens: User-defined tokens
             episode_format: Episode format (Standard, Daily, Anime)
             multi_episode_style: How multi-episode spans render in {episode_number}
+            file_claims: Claims this episode's own filename carries, applied
+                beneath the pack-wide overrides. A pack where one episode is
+                a REPACK agrees on nothing, so no control can carry that
+                claim -- but the episode still deserves its marker. A value
+                the user set wins, because these fill gaps rather than
+                overrule choices.
             season_end: Highest season number in a multi-season pack, for {season_number}
                 range rendering. None (or equal to season_num) keeps single-season output.
 
@@ -63,7 +70,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             title_clean_rules=title_clean_rules,
             video_dynamic_range=video_dynamic_range,
-            override_tokens=self.override_tokens,
+            override_tokens={**(file_claims or {}), **(self.override_tokens or {})},
             user_tokens=user_tokens,
             season_number=season_num,
             season_end=season_end,

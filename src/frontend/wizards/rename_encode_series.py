@@ -30,7 +30,11 @@ from PySide6.QtWidgets import (
 from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
 from src.backend.rename_files import RenamePlan, RenameResult
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
-from src.backend.utils.filename_claims import FilenameClaims, detect_filename_claims
+from src.backend.utils.filename_claims import (
+    FilenameClaims,
+    detect_file_claims,
+    detect_filename_claims,
+)
 from src.backend.utils.media_files import find_sidecars_for
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
@@ -429,6 +433,10 @@ class RenameEncodeSeries(BaseWizardPage):
 
         rename_map: dict[Path, Path] = {}
         failed_files: list[Path] = []
+        # Detected once for the pack rather than per episode: the per-file
+        # lookup below only needs to know which categories the pack agrees
+        # on, and guessit is not cheap.
+        pack_overrides = self._detected_claims().as_override_tokens()
         for (
             media_file,
             media_data,
@@ -436,6 +444,7 @@ class RenameEncodeSeries(BaseWizardPage):
             renamed_file = self.backend.series_renamer(
                 media_input_obj=self.context.media_input,
                 media_file=media_file,
+                file_claims=self._file_claim_overrides(media_file, pack_overrides),
                 token=token,
                 colon_replacement=self.config.settings.series.filename_colon_replace,
                 media_search_payload=self.context.media_search,
@@ -681,6 +690,24 @@ class RenameEncodeSeries(BaseWizardPage):
         self.remux_checkbox.setChecked(bool(claims.remux))
         self.hybrid_checkbox.setChecked(bool(claims.hybrid))
         return claims
+
+    def _file_claim_overrides(
+        self, media_file: Path, pack_overrides: dict[str, str]
+    ) -> dict[str, str]:
+        """This episode's own claims, for categories the pack does not share.
+
+        Where every file agrees, the control carries the claim and the user
+        can clear it; re-supplying it per file would quietly undo that.
+        Where the files disagree there is no control value to clear -- one
+        combo cannot say "REPACK, but only episode 2" -- so the episode's
+        own filename is the best answer available.
+        """
+        own = detect_file_claims(
+            media_file.stem,
+            self.config.settings.series.claims,
+            self.context.custom_edition_info,
+        ).as_override_tokens()
+        return {k: v for k, v in own.items() if k not in pack_overrides}
 
     def _detected_claims(self) -> FilenameClaims:
         return detect_filename_claims(
@@ -939,6 +966,9 @@ class RenameEncodeSeries(BaseWizardPage):
         get_file_name = self.backend.series_renamer(
             media_input_obj=self.context.media_input,
             media_file=representative_path,
+            file_claims=self._file_claim_overrides(
+                representative_path, self._detected_claims().as_override_tokens()
+            ),
             token=token,
             colon_replacement=self.config.settings.series.filename_colon_replace,
             media_search_payload=self.context.media_search,

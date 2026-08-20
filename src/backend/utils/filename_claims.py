@@ -19,7 +19,6 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 import re
-from typing import Any
 
 from guessit import guessit
 
@@ -83,20 +82,12 @@ def _pack_wide(values: Sequence[str]) -> str:
     return next(iter(unique)) if len(unique) == 1 else ""
 
 
-def detect_filename_claims(
-    stems: Sequence[str],
+def detect_file_claims(
+    stem: str,
     switches: ClaimSwitches,
     custom_edition_info: Sequence[RenameNormalization] = (),
 ) -> FilenameClaims:
-    """Detect every claim the pack's filenames agree on.
-
-    ``stems`` are filename stems, not paths -- callers pass ``Path(p).stem``.
-    A switched-off category comes back empty, as does a category the files
-    disagree about.
-
-    guessit is run once per file and shared between the streaming service
-    and the release group. Both read the same fields the token engine reads,
-    so what a rename page shows is what an untouched release would render.
+    """Claims a single filename carries.
 
     ``custom_edition_info`` carries plugin-contributed edition entries
     (src.plugins.api.CustomEditionContribution). They are recognised
@@ -104,48 +95,63 @@ def detect_filename_claims(
     plugin's edition would otherwise be invisible to every caller.
     """
     all_edition_info = (*EDITION_INFO, *custom_edition_info)
-    if not stems:
-        return FilenameClaims()
-
-    parsed: list[dict[str, Any]] = [dict(guessit(stem)) for stem in stems]
+    guess = dict(guessit(stem))
 
     def switched(name: str, detect: Callable[[str], str]) -> str:
         if not switches.enabled or not getattr(switches, name):
             return ""
-        return _pack_wide([detect(stem) for stem in stems])
+        return detect(stem)
 
     return FilenameClaims(
-        edition=switched(
-            "edition", lambda stem: _normalized_value(all_edition_info, stem)
-        ),
+        edition=switched("edition", lambda s: _normalized_value(all_edition_info, s)),
         frame_size=switched(
-            "frame_size", lambda stem: _normalized_value(FRAME_SIZE_INFO, stem)
+            "frame_size", lambda s: _normalized_value(FRAME_SIZE_INFO, s)
         ),
         localization=switched(
-            "localization",
-            lambda stem: _normalized_value(LOCALIZATION_INFO, stem),
+            "localization", lambda s: _normalized_value(LOCALIZATION_INFO, s)
         ),
         re_release=switched(
-            "re_release", lambda stem: _normalized_value(RE_RELEASE_INFO, stem)
+            "re_release", lambda s: _normalized_value(RE_RELEASE_INFO, s)
         ),
-        remux=switched(
-            "remux", lambda stem: "REMUX" if "remux" in stem.lower() else ""
-        ),
-        hybrid=switched(
-            "hybrid", lambda stem: "HYBRID" if "hybrid" in stem.lower() else ""
-        ),
+        remux=switched("remux", lambda s: "REMUX" if "remux" in s.lower() else ""),
+        hybrid=switched("hybrid", lambda s: "HYBRID" if "hybrid" in s.lower() else ""),
         # No switch: identity fields the user always wants pre-filled.
-        streaming_service=_pack_wide(
-            [
-                abbreviate_streaming_service(
-                    str(guess.get("streaming_service", "") or "")
-                )
-                for guess in parsed
-            ]
+        streaming_service=abbreviate_streaming_service(
+            str(guess.get("streaming_service", "") or "")
         ),
         # `lstrip("-")` mirrors the token handler, which has always stripped
         # a leading dash guessit sometimes leaves on the value.
-        release_group=_pack_wide(
-            [str(guess.get("release_group", "") or "").lstrip("-") for guess in parsed]
-        ),
+        release_group=str(guess.get("release_group", "") or "").lstrip("-"),
+    )
+
+
+def detect_filename_claims(
+    stems: Sequence[str],
+    switches: ClaimSwitches,
+    custom_edition_info: Sequence[RenameNormalization] = (),
+) -> FilenameClaims:
+    """Every claim the pack's files agree on.
+
+    ``stems`` are filename stems, not paths -- callers pass ``Path(p).stem``.
+    A switched-off category comes back empty, as does a category the files
+    disagree about.
+
+    This is what a control shows, because a control holds one value for the
+    whole pack. It is *not* what each file should render: see
+    `detect_file_claims`, which is per file. A pack where one episode is a
+    REPACK agrees on nothing, and that episode still deserves its marker.
+    """
+    if not stems:
+        return FilenameClaims()
+
+    per_file = [
+        detect_file_claims(stem, switches, custom_edition_info) for stem in stems
+    ]
+
+    def agreed(name: str) -> str:
+        values = {getattr(claims, name) for claims in per_file}
+        return next(iter(values)) if len(values) == 1 else ""
+
+    return FilenameClaims(
+        **{field: agreed(field) for field in FilenameClaims.__dataclass_fields__}
     )
