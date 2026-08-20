@@ -2336,15 +2336,43 @@ class TokenReplacer:
         return self._optional_user_input(int_val, token_data)
 
     def _episode_air_date(self, token_data: TokenData) -> str:
+        """Air date of the selected episode.
+
+        A file spanning several episodes keeps the date only when every
+        episode in it aired that day -- a two-parter broadcast in one block.
+        Where the episodes aired apart, or the end episode's date cannot be
+        read, the token blanks rather than presenting the first episode's
+        date as the date of the whole file.
+
+        Unlike an episode title this is not simply dropped for a span. In
+        the packaged daily templates the air date is the only episode
+        identifier, with no SxxExx anywhere, so blanking unconditionally
+        would trade a wrong claim for no claim. A date range is not an
+        option either: ISO dates already contain hyphens, so
+        "2024-01-15-2024-01-17" has no unambiguous reading.
+        """
         get_info = self._verify_series_info()
         if not get_info:
             return ""
 
-        # get episode dict
-        air_date = ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            air_date = episode_data.get("aired", "")
+        season, episode = get_info
+        type_id = self._selected_order_type_id(season, episode)
+        episode_data = self._get_selected_episode_data(season, episode, type_id)
+        air_date = episode_data.get("aired", "") if episode_data else ""
+
+        # An absent date is not a date two episodes can share: the two
+        # synthesized payloads spell it "" and None respectively, and
+        # comparing them would call that a match.
+        if not air_date:
+            return self._optional_user_input("", token_data)
+
+        end_episode = self._span_end_episode(season, episode)
+        if end_episode is not None:
+            end_data = self._get_selected_episode_data(season, end_episode, type_id)
+            end_air_date = end_data.get("aired", "") if end_data else ""
+            if not end_air_date or end_air_date != air_date:
+                air_date = ""
+
         return self._optional_user_input(air_date, token_data)
 
     def _episode_number(self, token_data: TokenData) -> str:
@@ -2421,22 +2449,77 @@ class TokenReplacer:
         # EXTEND and RANGE (and any future member) -> plain zero-padded range
         return f"{start}-{end}"
 
+    def _absolute_number_for(
+        self, season: int, episode: int, episode_order_type_id: Any | None
+    ) -> int | None:
+        """One episode's TVDB absolute number, or ``None`` when it has none.
+
+        TVDB stores ``absoluteNumber: 0`` for non-anime episodes, which
+        means "no absolute number" rather than zero.
+        """
+        episode_data = self._get_selected_episode_data(
+            season, episode, episode_order_type_id
+        )
+        if not episode_data:
+            return None
+        absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
+        if not absolute_number:
+            return None
+        return absolute_number
+
     def _episode_number_absolute(self, token_data: TokenData) -> str:
+        """Absolute episode number, or the absolute range for a span.
+
+        A span renders "001-003" rather than the first episode's number.
+        This is an identifier, so blanking it the way an episode title is
+        blanked could leave a file with no episode in its name at all.
+
+        Deliberately not styled by ``MultiEpisodeStyle``: Duplicate's
+        "01.S01E03", Repeat's "01E03" and Scene's "01-E03" all embed
+        season/episode structure that absolute numbering does not have. Both
+        ends are padded to width 3, the width every packaged anime template
+        applies via ``|zfill(3)``, so that filter is a no-op on the
+        composite. A single episode still returns its raw unpadded number,
+        keeping the asymmetry ``{episode_number}`` already has.
+
+        Both ends come from the same source or neither does. The end
+        episode's data is read through the start row's ordering, since no
+        mapping row matches the end of a span. When either end has no
+        absolute number, or the two are inconsistent with the span's length
+        -- a TVDB gap, or an end episode a user typed by hand -- both
+        components fall back to the plain episode numbers. A
+        wrong-but-plausible absolute range is worse than a designator
+        repeated from the token beside it.
+        """
         get_info = self._verify_series_info()
         if not get_info:
             return ""
 
-        absolute_number = None
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
-        if not absolute_number:  # None or 0 (TVDB uses 0 for non-anime episodes)
-            absolute_number = self._validate_int_var(self.episode_number)
+        season, episode = get_info
+        type_id = self._selected_order_type_id(season, episode)
+        start_absolute = self._absolute_number_for(season, episode, type_id)
+        end_episode = self._span_end_episode(season, episode)
 
-        return self._optional_user_input(
-            str(absolute_number) if absolute_number is not None else "",
-            token_data,
-        )
+        if end_episode is None:
+            absolute_number = start_absolute
+            if absolute_number is None:
+                absolute_number = self._validate_int_var(self.episode_number)
+            return self._optional_user_input(
+                str(absolute_number) if absolute_number is not None else "",
+                token_data,
+            )
+
+        end_absolute = self._absolute_number_for(season, end_episode, type_id)
+        if (
+            start_absolute is not None
+            and end_absolute is not None
+            and end_absolute - start_absolute == end_episode - episode
+        ):
+            return self._optional_user_input(
+                f"{start_absolute:03d}-{end_absolute:03d}", token_data
+            )
+
+        return self._optional_user_input(f"{episode:02d}-{end_episode:02d}", token_data)
 
     def _end_episode_number(self, token_data: TokenData) -> str:
         """Range end for a multi-episode file; blank when the file covers a

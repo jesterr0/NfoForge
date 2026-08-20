@@ -454,8 +454,30 @@ def test_episode_title_exact_preserves_non_ascii() -> None:
     assert "。" in replacer._episode_title_exact(_td())
 
 
-def _span_replacer(token: str, *, file_name_mode: bool = False) -> TokenReplacer:
-    """A file covering S01E01-E03, mapped to episode 1 with a real title."""
+_SPAN_START_PAYLOAD: dict[str, object] = {
+    "seasonNumber": 1,
+    "number": 1,
+    "absoluteNumber": 1,
+    "name": "Pilot",
+    "aired": "2024-01-01",
+}
+
+
+def _span_replacer(
+    token: str,
+    *,
+    file_name_mode: bool = False,
+    episodes: list[dict[str, object]] | None = None,
+    start_payload: dict[str, object] | None = None,
+    episode_end: int = 3,
+) -> TokenReplacer:
+    """A file covering S01E01-E03, mapped to episode 1 with a real title.
+
+    ``episodes`` is the flat TVDB list. The start episode is read straight
+    off the mapping row, so this list only matters for the *end* of the
+    span: the row keys on the start episode, so no row matches the end and
+    it resolves through the TVDB fallback exactly as it does in the app.
+    """
     file_path = Path("Show.S01E01-E03.mkv")
     return TokenReplacer(
         media_input_obj=MediaInputPayload(
@@ -466,28 +488,22 @@ def _span_replacer(token: str, *, file_name_mode: bool = False) -> TokenReplacer
                 file_path: {
                     "season": 1,
                     "episode": 1,
-                    "episode_end": 3,
+                    "episode_end": episode_end,
                     "episode_name": "Pilot",
-                    "episode_data": {
-                        "seasonNumber": 1,
-                        "number": 1,
-                        "name": "Pilot",
-                        "aired": "2024-01-01",
-                    },
+                    "episode_data": (
+                        start_payload
+                        if start_payload is not None
+                        else dict(_SPAN_START_PAYLOAD)
+                    ),
                 }
             },
         ),
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.SERIES,
             tvdb_data={
-                "episodes": [
-                    {
-                        "seasonNumber": 1,
-                        "number": 1,
-                        "name": "Pilot",
-                        "aired": "2024-01-01",
-                    }
-                ]
+                "episodes": (
+                    episodes if episodes is not None else [dict(_SPAN_START_PAYLOAD)]
+                )
             },
         ),
         token_string=token,
@@ -746,6 +762,131 @@ def test_end_episode_number_blank_for_single_episode() -> None:
     output = _series_replacer("{end_episode_number}").get_output()
 
     assert output == ""
+
+
+_SAME_DAY_END: list[dict[str, object]] = [
+    {
+        "seasonNumber": 1,
+        "number": 3,
+        "absoluteNumber": 3,
+        "name": "Part Three",
+        "aired": "2024-01-01",
+    }
+]
+_LATER_END: list[dict[str, object]] = [
+    {
+        "seasonNumber": 1,
+        "number": 3,
+        "absoluteNumber": 3,
+        "name": "Part Three",
+        "aired": "2024-01-15",
+    }
+]
+
+
+def test_air_date_survives_a_span_whose_episodes_aired_together() -> None:
+    # A two- or three-parter broadcast in one block: every episode in the
+    # file aired that day, so the date does describe the whole file. Daily
+    # templates carry no SxxExx at all, so blanking here would leave a name
+    # with no episode identifier in it.
+    output = _span_replacer("{episode_air_date}", episodes=_SAME_DAY_END).get_output()
+
+    assert output == "2024-01-01"
+
+
+def test_air_date_blanks_for_a_span_whose_episodes_aired_apart() -> None:
+    output = _span_replacer("{episode_air_date}", episodes=_LATER_END).get_output()
+
+    assert output == ""
+
+
+def test_air_date_blanks_when_the_end_episode_is_missing_from_tvdb() -> None:
+    # Cannot prove the dates match, so the date cannot be asserted of the
+    # whole file.
+    output = _span_replacer("{episode_air_date}", episodes=[]).get_output()
+
+    assert output == ""
+
+
+@pytest.mark.parametrize("absent", ["", None])
+def test_air_date_blanks_rather_than_matching_two_absent_dates(
+    absent: str | None,
+) -> None:
+    # Two synthesized payloads spell "no date" differently -- "" from the
+    # episode_name-only branch, None from the mapper's manual edit path.
+    # Comparing them directly calls two absent dates a match and keeps the
+    # start value. That is harmless only because `_optional_user_input`
+    # blanks anything falsy; this pins the outcome so a later change that
+    # substitutes a placeholder for an absent date cannot leak it into a
+    # name through the same-day branch.
+    output = _span_replacer(
+        "{episode_air_date}",
+        episodes=[
+            {
+                "seasonNumber": 1,
+                "number": 3,
+                "name": "Part Three",
+                "aired": absent,
+            }
+        ],
+        start_payload={
+            "seasonNumber": 1,
+            "number": 1,
+            "name": "Part One",
+            "aired": absent,
+        },
+    ).get_output()
+
+    assert output == ""
+
+
+def test_absolute_number_renders_the_span() -> None:
+    # An identifier, so a span is more informative than the first episode's
+    # number and never leaves a file unnumbered. Padded to 3 so a template's
+    # own |zfill(3) is a no-op on the composite.
+    output = _span_replacer(
+        "{episode_number_absolute}", episodes=_SAME_DAY_END
+    ).get_output()
+
+    assert output == "001-003"
+
+
+def test_absolute_number_single_episode_is_unchanged_and_still_pads() -> None:
+    # The guard: a single episode keeps the raw unpadded number so the
+    # template's own filter still pads it.
+    assert _series_replacer("{episode_number_absolute}").get_output() == "22"
+    assert _series_replacer("{episode_number_absolute|zfill(3)}").get_output() == "022"
+
+
+def test_absolute_number_falls_back_to_episode_numbers_for_both_ends() -> None:
+    # The end episode has no absoluteNumber, so mixing sources would render
+    # "001-03". Both components come from the same place or neither does.
+    output = _span_replacer(
+        "{episode_number_absolute}",
+        episodes=[{"seasonNumber": 1, "number": 3, "name": "Part Three", "aired": ""}],
+    ).get_output()
+
+    assert output == "01-03"
+
+
+def test_absolute_number_rejects_a_span_length_that_does_not_match() -> None:
+    # An end absolute number inconsistent with the span -- what an ordering
+    # mismatch or a TVDB gap produces. "001-047" is wrong and plausible,
+    # which is worse than a duplicated designator.
+    output = _span_replacer(
+        "{episode_number_absolute}",
+        episodes=[
+            {
+                "seasonNumber": 1,
+                "number": 3,
+                "absoluteNumber": 47,
+                "name": "Part Three",
+                "aired": "2024-01-01",
+            }
+        ],
+    ).get_output()
+
+    assert output == "01-03"
 
 
 def _multi_episode_replacer(
