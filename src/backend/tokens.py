@@ -140,7 +140,7 @@ class Tokens:
     )
     VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080 = FileToken(
         "{video_dynamic_range_type_inc_sdr_over_1080}",
-        "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
+        "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ), plus SDR only above 1080p",
     )
     VIDEO_FORMAT = FileToken("{video_format}", "Video format (AVC/HEVC/MPEG Video)")
     FILE_VIDEO_HEIGHT = FileToken("{video_height}", "Video height (1040)")

@@ -1942,13 +1942,23 @@ class TokenReplacer:
 
         return self._optional_user_input(hdr_string, token_data)
 
+    def _resolution_over_1080(self) -> bool:
+        """Whether the release is above 1080p.
+
+        An unparseable or missing resolution answers False rather than
+        raising. ``_detect_resolution`` falls back to guessit's
+        ``screen_size``, which carries the scan letter ("1080p"), and an
+        int() over that raised out of token rendering.
+        """
+        resolution = self._detect_resolution(self.media_info_obj, True)
+        leading_digits = re.match(r"\d+", resolution)
+        if not leading_digits:
+            return False
+        return int(leading_digits.group()) > 1080
+
     def _video_dynamic_range_type(
         self, token_data: TokenData, include_sdr: bool = False, uhd_only: bool = False
     ) -> str:
-        if uhd_only:
-            if int(self._detect_resolution(self.media_info_obj, True)) <= 1080:
-                return ""
-
         dv = "DV" if "Dolby Vision" in self.guess_name.get("other", "") else ""
         hdr10 = "HDR" if "HDR10" in self.guess_name.get("other", "") else ""
         hdr10_plus = "HDR10Plus" if "HDR10+" in self.guess_name.get("other", "") else ""
@@ -1987,11 +1997,15 @@ class TokenReplacer:
         else:
             if any([hlg, pq]):
                 dynamic_range_type = hlg if hlg else pq
+            elif include_sdr and (not uhd_only or self._resolution_over_1080()):
+                # `uhd_only` gates the SDR spelling alone, not the whole
+                # token: 2160p is usually HDR so SDR is worth stating there,
+                # while 1080p is SDR by default and does not need it. Gating
+                # the method entrypoint suppressed DV, HDR10Plus, HDR, HLG
+                # and PQ at 1080p as well.
+                dynamic_range_type = "SDR"
             else:
-                if include_sdr:
-                    dynamic_range_type = "SDR"
-                else:
-                    dynamic_range_type = ""
+                dynamic_range_type = ""
 
         return self._optional_user_input(dynamic_range_type, token_data)
 

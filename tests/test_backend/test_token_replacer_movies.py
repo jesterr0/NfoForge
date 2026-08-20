@@ -1,3 +1,6 @@
+from pathlib import Path
+
+from pymediainfo import MediaInfo
 import pytest
 
 from src.backend.token_replacer import TokenReplacer
@@ -12,6 +15,7 @@ from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
 from src.packages.custom_types import RenameNormalization
+from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 
 
@@ -755,3 +759,119 @@ def test_an_empty_value_still_skips_the_filters_that_describe_one() -> None:
     output = _title_replacer("S{:opt=E:episode_number|zfill(2)}").get_output()
 
     assert output == "S"
+
+
+def _dynamic_range_media_info(
+    width: int, height: int, hdr_format: str = "", transfer: str = ""
+) -> MediaInfo:
+    # HDR_Format is emitted twice, as real MediaInfo does: the raw value
+    # first, the human-readable string second. pymediainfo puts the first
+    # occurrence in `hdr_format` and the rest in `other_hdr_format`, and the
+    # handler under test reads `other_hdr_format[0]`. A single element
+    # leaves that attribute None and no HDR is detected at all.
+    hdr_xml = (
+        f"<HDR_Format>{hdr_format}</HDR_Format><HDR_Format>{hdr_format}</HDR_Format>"
+        if hdr_format
+        else ""
+    )
+    transfer_xml = (
+        f"<transfer_characteristics>{transfer}</transfer_characteristics>"
+        if transfer
+        else ""
+    )
+    return MediaInfo(
+        f"""<Mediainfo><File>
+        <track type="General"><Duration>60000</Duration><File_size>1000</File_size></track>
+        <track type="Video"><Width>{width}</Width><Height>{height}</Height><Scan_type>Progressive</Scan_type><Frame_rate>24.000</Frame_rate><Format>HEVC</Format>{hdr_xml}{transfer_xml}</track>
+        <track type="Audio"><Format>AC-3</Format><Channel_s>2</Channel_s><Language>en</Language></track>
+        </File></Mediainfo>"""
+    )
+
+
+def _dynamic_range_output(
+    token: str, width: int, height: int, hdr_format: str = ""
+) -> str | None:
+    file_path = Path("Movie.2024.mkv")
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.MOVIE,
+            file_list=[file_path],
+            file_list_mediainfo={
+                file_path: _dynamic_range_media_info(width, height, hdr_format)
+            },
+        ),
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        token_string=token,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    ).get_output()
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "hdr_format", "expected"),
+    [
+        # The defect: at 1080p the gate returned before any detection ran,
+        # so an HDR release lost its dynamic range component entirely.
+        (1920, 1080, "SMPTE ST 2086, HDR10 compatible", "HDR"),
+        (1920, 1080, "Dolby Vision, Version 1.0, dvhe.05", "DV"),
+        # The guard: 1080p SDR is the case the gate was written for and
+        # must not change. 1080p is SDR by default, so nobody expects it.
+        (1920, 1080, "", ""),
+        (3840, 2160, "", "SDR"),
+        (3840, 2160, "SMPTE ST 2086, HDR10 compatible", "HDR"),
+    ],
+)
+def test_dynamic_range_over_1080_gates_only_the_sdr_branch(
+    width: int, height: int, hdr_format: str, expected: str
+) -> None:
+    output = _dynamic_range_output(
+        "{video_dynamic_range_type_inc_sdr_over_1080}", width, height, hdr_format
+    )
+
+    assert output == expected
+
+
+def test_dynamic_range_over_1080_survives_an_unparseable_resolution() -> None:
+    # _detect_resolution falls back to guessit's screen_size, which carries
+    # the scan letter ("1080p"), and int() on that raised out of token
+    # rendering rather than degrading.
+    file_path = Path("Movie.2024.1080p.WEB-DL.mkv")
+    output = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.MOVIE,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        token_string="{video_dynamic_range_type_inc_sdr_over_1080}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    ).get_output()
+
+    assert output == ""
+
+
+def test_dynamic_range_over_1080_survives_a_missing_resolution() -> None:
+    # The other route to the same int(): no MediaInfo and nothing for
+    # guessit to read a resolution from.
+    file_path = Path("Movie.mkv")
+    output = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.MOVIE,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        token_string="{video_dynamic_range_type_inc_sdr_over_1080}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    ).get_output()
+
+    assert output == ""
