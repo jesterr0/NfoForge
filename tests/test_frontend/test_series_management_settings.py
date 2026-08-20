@@ -12,6 +12,7 @@ from src.config.paths import ConfigPaths
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
+from src.enums.token_replacer import ColonReplace
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.series_management import (
     SeriesManagementSettings,
@@ -253,3 +254,105 @@ def test_override_preview_follows_the_enable_checkbox(
     assert calls[-1]["override_title_rules"] == (
         override.over_ride_replacement_table.get_replacements()
     )
+
+
+def test_filename_colon_combo_offers_three_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
+
+    labels = [
+        widget.fn_colon_replace.itemText(i)
+        for i in range(widget.fn_colon_replace.count())
+    ]
+
+    assert labels == ["Dot", "Remove", "Dash"]
+
+
+def test_filename_colon_combo_still_offers_three_after_a_reload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `load_combo_box` repopulates from the whole enum, so a three-option
+    # combo loaded through it silently grows back to five.
+    widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
+
+    widget._load_saved_settings()
+
+    assert widget.fn_colon_replace.count() == 3
+
+
+def test_title_colon_combo_still_offers_five(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
+
+    assert widget.title_colon_replace.count() == 5
+
+
+def test_filename_colon_combo_round_trips_each_option(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
+
+    for expected in (
+        ColonReplace.KEEP,
+        ColonReplace.DELETE,
+        ColonReplace.REPLACE_WITH_DASH,
+    ):
+        index = widget.fn_colon_replace.findData(expected)
+        assert index > -1, expected
+        widget.fn_colon_replace.setCurrentIndex(index)
+        widget._save_settings()
+
+        assert manager.settings.series.filename_colon_replace is expected
+
+
+def test_illegal_chars_checkbox_is_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
+
+    assert not hasattr(widget, "replace_illegal_chars")
+
+
+def test_the_six_claim_switches_are_offered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
+
+    assert set(widget.claim_checks) == {
+        "edition",
+        "frame_size",
+        "localization",
+        "re_release",
+        "remux",
+        "hybrid",
+    }
+
+
+def test_claim_switches_grey_out_when_master_is_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    widget.claim_checks["edition"].setChecked(True)
+
+    widget.claims_master.setChecked(False)
+
+    assert widget.claim_checks["edition"].isEnabled() is False
+    assert widget.claim_checks["edition"].isChecked() is True
+
+
+def test_claim_switches_round_trip_through_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    widget.claim_checks["localization"].setChecked(False)
+    widget.claim_checks["hybrid"].setChecked(True)
+
+    widget._save_settings()
+
+    assert manager.settings.series.claims.enabled is True
+    assert manager.settings.series.claims.localization is False
+    assert manager.settings.series.claims.hybrid is True

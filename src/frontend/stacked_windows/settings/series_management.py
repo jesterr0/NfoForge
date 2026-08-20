@@ -39,7 +39,11 @@ from src.config.tv_tokens import (
 )
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from src.enums.token_replacer import (
+    FILENAME_COLON_OPTIONS,
+    ColonReplace,
+    UnfilledTokenRemoval,
+)
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -107,17 +111,18 @@ class SeriesManagementSettings(BaseSettings):
         control_top_layout.addStretch()
         control_top_layout.addWidget(preview_example_data_btn)
 
-        self.parse_input_file_attributes = QCheckBox("Parse Filename Attributes", self)
-        self.parse_input_file_attributes.setToolTip(
-            "If enabled, attributes REMUX, HYBRID, PROPER, and REPACK will be detected from the filename"
-        )
-        self.parse_input_file_attributes.clicked.connect(
-            self._update_current_tab_file_example
-        )
+        # claims read out of the input filename
+        self.claims_master = self._build_claims_master(self)
+        self.claims_master.toggled.connect(self._on_claims_master_toggled)
+        self.claims_master.clicked.connect(self._update_current_tab_file_example)
+        self.claim_checks = self._build_claim_checks(self)
+        for claim_check in self.claim_checks.values():
+            claim_check.clicked.connect(self._update_current_tab_file_example)
 
         fn_colon_replace_lbl, self.fn_colon_replace = self._build_colon_replace_combo(
             """<span><span style="font-weight: bold;">Filename</span> Colon Replacement</span>""",
             self,
+            FILENAME_COLON_OPTIONS,
         )
         self.fn_colon_replace.currentIndexChanged.connect(
             self._update_current_tab_file_example
@@ -206,7 +211,8 @@ class SeriesManagementSettings(BaseSettings):
         self.controls_box = QGroupBox("Controls")
         controls_layout = QVBoxLayout(self.controls_box)
         controls_layout.addLayout(control_top_layout)
-        controls_layout.addWidget(self.parse_input_file_attributes)
+        controls_layout.addWidget(self.claims_master)
+        controls_layout.addLayout(self._build_claim_checks_layout(self.claim_checks))
         controls_layout.addLayout(fn_colon_replace_v_box)
         controls_layout.addLayout(title_colon_replace_v_box)
         controls_layout.addLayout(multi_episode_style_v_box)
@@ -439,7 +445,7 @@ class SeriesManagementSettings(BaseSettings):
             video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
-            parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
+            parse_filename_attributes=self.claims_master.isChecked(),
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),
@@ -513,9 +519,8 @@ class SeriesManagementSettings(BaseSettings):
                 tfo.blockSignals(True)
 
         self.rename_check_box.setChecked(self.config.settings.series.enabled)
-        self.load_combo_box(
+        self._load_filename_colon_combo(
             self.fn_colon_replace,
-            ColonReplace,
             self.config.settings.series.filename_colon_replace,
         )
         self.load_combo_box(
@@ -523,9 +528,7 @@ class SeriesManagementSettings(BaseSettings):
             ColonReplace,
             self.config.settings.series.title_colon_replace,
         )
-        self.parse_input_file_attributes.setChecked(
-            self.config.settings.series.claims.enabled
-        )
+        self._load_claim_switches(self.config.settings.series.claims)
         self.load_combo_box(
             self.multi_episode_style_combo,
             MultiEpisodeStyle,
@@ -598,9 +601,7 @@ class SeriesManagementSettings(BaseSettings):
         self.config.settings.series.title_colon_replace = ColonReplace(
             self.title_colon_replace.currentData()
         )
-        self.config.settings.series.claims.enabled = (
-            self.parse_input_file_attributes.isChecked()
-        )
+        self.config.settings.series.claims = self._current_claim_switches()
         self.config.settings.series.multi_episode_style = MultiEpisodeStyle(
             self.multi_episode_style_combo.currentData()
         )
@@ -640,12 +641,10 @@ class SeriesManagementSettings(BaseSettings):
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.series.enabled)
-        self.fn_colon_replace.setCurrentIndex(
-            self.config.defaults.series.filename_colon_replace.value - 1
+        self._select_filename_colon(
+            self.fn_colon_replace, self.config.defaults.series.filename_colon_replace
         )
-        self.parse_input_file_attributes.setChecked(
-            self.config.defaults.series.claims.enabled
-        )
+        self._load_claim_switches(self.config.defaults.series.claims)
         self.title_colon_replace.setCurrentIndex(
             self.config.defaults.series.title_colon_replace.value - 1
         )
@@ -754,13 +753,24 @@ class SeriesManagementSettings(BaseSettings):
 
     @staticmethod
     def _build_colon_replace_combo(
-        lbl_txt: str, parent: QWidget
+        lbl_txt: str,
+        parent: QWidget,
+        options: Sequence[tuple[ColonReplace, str]] | None = None,
     ) -> tuple[QLabel, CustomComboBox]:
+        """Build a colon-replacement combo.
+
+        ``options`` defaults to every ColonReplace member, which is what the
+        title side wants. The filename side passes FILENAME_COLON_OPTIONS:
+        three members with their own labels, because "Keep" and "Delete"
+        describe the enum rather than what a filename ends up looking like.
+        """
         lbl = QLabel(lbl_txt, parent)
         lbl.setToolTip("Select how NfoForge handles colon replacement")
         combo = CustomComboBox(disable_mouse_wheel=True, parent=parent)
-        for colon_enum in ColonReplace:
-            combo.addItem(str(colon_enum), colon_enum.value)
+        for colon_enum, label in options or [
+            (member, str(member)) for member in ColonReplace
+        ]:
+            combo.addItem(label, colon_enum)
         return lbl, combo
 
     @staticmethod

@@ -290,3 +290,111 @@ def test_filename_and_title_examples_use_their_own_colon_replace_setting(
 
     title_example = widget.format_release_title_example.text()
     assert ":" not in title_example
+
+
+def test_filename_colon_combo_offers_three_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Five ColonReplace members produce at most three distinct filenames.
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    labels = [
+        widget.fn_colon_replace.itemText(i)
+        for i in range(widget.fn_colon_replace.count())
+    ]
+
+    assert labels == ["Dot", "Remove", "Dash"]
+
+
+def test_filename_colon_combo_still_offers_three_after_a_reload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `load_combo_box` clears the combo and repopulates it from the whole
+    # enum, so a filename combo built with three options and then loaded
+    # through it silently grows back to five.
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    widget._load_saved_settings()
+
+    assert widget.fn_colon_replace.count() == 3
+
+
+def test_title_colon_combo_still_offers_five(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The title side is untouched by this pass; only the filename side
+    # reduces.
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    assert widget.title_colon_replace.count() == 5
+
+
+def test_filename_colon_combo_round_trips_each_option(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    for expected in (
+        ColonReplace.KEEP,
+        ColonReplace.DELETE,
+        ColonReplace.REPLACE_WITH_DASH,
+    ):
+        index = widget.fn_colon_replace.findData(expected)
+        assert index > -1, expected
+        widget.fn_colon_replace.setCurrentIndex(index)
+        widget._save_settings()
+
+        assert manager.settings.movie.filename_colon_replace is expected
+
+
+def test_illegal_chars_checkbox_is_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    assert not hasattr(widget, "replace_illegal_chars")
+
+
+def test_the_six_claim_switches_are_offered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    assert set(widget.claim_checks) == {
+        "edition",
+        "frame_size",
+        "localization",
+        "re_release",
+        "remux",
+        "hybrid",
+    }
+
+
+def test_claim_switches_grey_out_when_master_is_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Greyed at their current values rather than hidden or cleared, so
+    # turning master back on restores what the user had.
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    widget.claim_checks["edition"].setChecked(True)
+
+    widget.claims_master.setChecked(False)
+
+    assert widget.claim_checks["edition"].isEnabled() is False
+    assert widget.claim_checks["edition"].isChecked() is True
+
+
+def test_claim_switches_round_trip_through_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    widget.claim_checks["frame_size"].setChecked(False)
+    widget.claim_checks["remux"].setChecked(True)
+
+    widget._save_settings()
+
+    assert manager.settings.movie.claims.enabled is True
+    assert manager.settings.movie.claims.frame_size is False
+    assert manager.settings.movie.claims.remux is True

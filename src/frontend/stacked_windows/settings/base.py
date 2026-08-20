@@ -1,8 +1,9 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLayout,
@@ -13,6 +14,8 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.config import ConfigManager
+from src.config.models import ClaimSwitches
+from src.enums.token_replacer import FILENAME_COLON_OPTIONS, ColonReplace
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 
 if TYPE_CHECKING:
@@ -31,6 +34,12 @@ class BaseSettings(QWidget):
     updated_settings_applied = Signal()
 
     REQUIRED_CHILD_METHODS = ("apply_defaults",)
+
+    # Built by the management pages that carry claim switches, via the
+    # helpers below. Declared here so those helpers can be shared rather
+    # than written out identically on both pages.
+    claims_master: QCheckBox
+    claim_checks: dict[str, QCheckBox]
 
     def __init__(
         self, config: ConfigManager, main_window: "MainWindow", parent: "Settings"
@@ -118,6 +127,88 @@ class BaseSettings(QWidget):
         raise NotImplementedError(
             "You must implement method 'apply_defaults' in children classes"
         )
+
+    @staticmethod
+    def _build_claims_master(parent: QWidget) -> QCheckBox:
+        master = QCheckBox("Parse claims from input filename", parent)
+        master.setToolTip(
+            "Read claims that MediaInfo cannot verify out of the input "
+            "filename. Quality/source, streaming service and release group "
+            "are always parsed."
+        )
+        return master
+
+    @staticmethod
+    def _build_claim_checks(parent: QWidget) -> dict[str, QCheckBox]:
+        return {
+            key: QCheckBox(label, parent)
+            for key, label in (
+                ("edition", "Edition (incl. Cut)"),
+                ("frame_size", "Frame size (IMAX / Open Matte)"),
+                ("localization", "Localization (Subbed / Dubbed)"),
+                ("re_release", "Re-release (PROPER / REPACK)"),
+                ("remux", "REMUX"),
+                ("hybrid", "HYBRID"),
+            )
+        }
+
+    @staticmethod
+    def _build_claim_checks_layout(checks: dict[str, QCheckBox]) -> QVBoxLayout:
+        layout = QVBoxLayout()
+        layout.setContentsMargins(18, 0, 0, 0)
+        layout.setSpacing(0)
+        for check in checks.values():
+            layout.addWidget(check)
+        return layout
+
+    def _load_claim_switches(self, claims: ClaimSwitches) -> None:
+        self.claims_master.setChecked(claims.enabled)
+        for key, check in self.claim_checks.items():
+            check.setChecked(getattr(claims, key))
+        # `toggled` does not fire when the checked state is unchanged, so
+        # the greyed state is applied explicitly rather than relied upon.
+        self._on_claims_master_toggled(claims.enabled)
+
+    def _current_claim_switches(self) -> ClaimSwitches:
+        return ClaimSwitches(
+            enabled=self.claims_master.isChecked(),
+            **{key: check.isChecked() for key, check in self.claim_checks.items()},
+        )
+
+    @Slot(bool)
+    def _on_claims_master_toggled(self, checked: bool) -> None:
+        """Grey the six at their current values rather than clearing them.
+
+        A user who turns parsing off and on again gets back the categories
+        they had, not an empty state.
+        """
+        for check in self.claim_checks.values():
+            check.setEnabled(checked)
+
+    @staticmethod
+    def _select_filename_colon(combo: CustomComboBox, saved: ColonReplace) -> None:
+        """Select a value by data rather than by index arithmetic.
+
+        `apply_defaults` used `value - 1`, which only lands correctly
+        because the three surviving members happen to be 1, 2 and 3.
+        """
+        index = combo.findData(saved)
+        combo.setCurrentIndex(index if index > -1 else 0)
+
+    @classmethod
+    def _load_filename_colon_combo(
+        cls, combo: CustomComboBox, saved: ColonReplace
+    ) -> None:
+        """Repopulate the filename colon combo and select the saved value.
+
+        Not `load_combo_box`: that one clears the combo and refills it from
+        the *whole* enum, so a three-option filename combo silently grows
+        back to five the first time settings are loaded.
+        """
+        combo.clear()
+        for colon_enum, label in FILENAME_COLON_OPTIONS:
+            combo.addItem(label, colon_enum)
+        cls._select_filename_colon(combo, saved)
 
     @staticmethod
     def load_combo_box(
