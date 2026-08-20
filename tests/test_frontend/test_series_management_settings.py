@@ -356,3 +356,23 @@ def test_claim_switches_round_trip_through_settings(
     assert manager.settings.series.claims.enabled is True
     assert manager.settings.series.claims.localization is False
     assert manager.settings.series.claims.hybrid is True
+
+
+def test_preview_shows_claims_the_example_filename_carries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The series example filename carried REMUX and nothing else, so five of
+    # the six claim switches had nothing to demonstrate on this tab.
+    widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    for check in widget.claim_checks.values():
+        check.setChecked(True)
+
+    fmt = widget._FORMAT_ORDER[0]
+    widget._format_widgets[fmt]["file_token"].setText(
+        "{edition}|{frame_size}|{re_release}|{hybrid}|{remux}"
+    )
+
+    example = widget._format_widgets[fmt]["file_example"].text()
+    for expected in ("Directors.Cut", "IMAX", "REPACK", "HYBRID", "REMUX"):
+        assert expected in example, f"{expected} missing from {example!r}"

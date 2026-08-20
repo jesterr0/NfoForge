@@ -398,3 +398,19 @@ def test_claim_switches_round_trip_through_settings(
     assert manager.settings.movie.claims.enabled is True
     assert manager.settings.movie.claims.frame_size is False
     assert manager.settings.movie.claims.remux is True
+
+
+def test_preview_shows_claims_the_example_filename_carries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    for check in widget.claim_checks.values():
+        check.setChecked(True)
+
+    widget.format_file_name_token_input.setText("{edition}|{frame_size}|{hybrid}")
+
+    example = widget.format_file_name_token_example.text()
+    assert "Directors.Cut" in example
+    assert "IMAX" in example
+    assert "HYBRID" in example

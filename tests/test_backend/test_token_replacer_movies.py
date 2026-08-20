@@ -907,3 +907,51 @@ def test_localization_detects_dubbed_and_subbed(stem: str, expected: str) -> Non
     ).get_output()
 
     assert output == expected
+
+
+def test_settings_preview_and_rename_render_the_same_claims() -> None:
+    """The regression this architecture exists to prevent.
+
+    The preview honoured the old claim-parsing flag while the movie rename
+    backend had no such parameter at all, so the two could show different
+    output for the same input. Both now resolve claims through one
+    detector over one set of tables, fed in as override_tokens.
+    """
+    from src.backend.utils.filename_claims import detect_filename_claims
+    from src.config.models import ClaimSwitches
+
+    switches = ClaimSwitches(
+        enabled=True,
+        edition=True,
+        frame_size=True,
+        localization=True,
+        re_release=True,
+        remux=True,
+        hybrid=True,
+    )
+    claims = detect_filename_claims(
+        [EXAMPLE_MEDIA_INPUT_PAYLOAD.input_path.stem], switches
+    )
+
+    rendered = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{edition}|{frame_size}|{re_release}|{remux}|{hybrid}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        override_tokens=claims.as_override_tokens(),
+    ).get_output()
+
+    # The example filename carries Directors.Cut, IMAX, REPACK, HYBRID and
+    # REMUX, so every component resolves and none is empty.
+    assert rendered is not None
+    assert rendered.split("|") == [
+        claims.edition,
+        claims.frame_size,
+        claims.re_release,
+        claims.remux,
+        claims.hybrid,
+    ]
+    assert "" not in rendered.split("|")

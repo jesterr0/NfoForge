@@ -28,6 +28,10 @@ from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.backend.utils.filename_claims import (
+    FilenameClaims,
+    detect_filename_claims,
+)
 from src.config.config import ConfigManager
 from src.config.models import (
     DynamicRangeSettings,
@@ -294,6 +298,12 @@ class MoviesManagementSettings(BaseSettings):
         ):
             override_widget.over_ride_format_file_name_token_example.setText(txt_data)
 
+    def _detected_claims(self) -> FilenameClaims:
+        """Claims the example filename carries, per the current switches."""
+        return detect_filename_claims(
+            [EXAMPLE_FILE_NAME.stem], self._current_claim_switches()
+        )
+
     def _update_example(
         self,
         token_str: str,
@@ -322,7 +332,10 @@ class MoviesManagementSettings(BaseSettings):
             video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
-            parse_filename_attributes=self.claims_master.isChecked(),
+            # Stage 1 detection, the same function the rename pages call,
+            # so the preview and the wizard cannot disagree about what the
+            # example filename claims.
+            override_tokens=self._detected_claims().as_override_tokens(),
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),

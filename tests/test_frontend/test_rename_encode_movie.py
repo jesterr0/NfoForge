@@ -159,7 +159,9 @@ def test_claims_are_pre_filled_from_the_filename(
     page = _make_movie_rename_page(
         tmp_path,
         monkeypatch,
-        file_path=Path("Movie.2024.Directors.Cut.IMAX.REPACK.1080p.BluRay.x264-GRP.mkv"),
+        file_path=Path(
+            "Movie.2024.Directors.Cut.IMAX.REPACK.1080p.BluRay.x264-GRP.mkv"
+        ),
     )
 
     page.initializePage()

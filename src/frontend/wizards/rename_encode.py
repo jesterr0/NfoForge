@@ -498,9 +498,7 @@ class RenameEncode(BaseWizardPage):
         The claims come back so the caller can reuse them without detecting
         twice -- the release group seed needs the same result.
         """
-        claims = detect_filename_claims(
-            [filename], self.config.settings.movie.claims
-        )
+        claims = detect_filename_claims([filename], self.config.settings.movie.claims)
 
         for combo, value in (
             (self.edition_combo, claims.edition),
