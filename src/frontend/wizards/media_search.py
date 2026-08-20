@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,9 +13,9 @@ from typing import Any, Protocol
 from urllib import parse as url_parse
 import webbrowser
 
-from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, Signal, Slot
-from PySide6.QtGui import QCursor, QMouseEvent, QPixmap
-from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QColor, QCursor, QImage, QMouseEvent, QPixmap
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QSizePolicy,
@@ -32,12 +34,14 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qtawesome import IconWidget
 
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.title_inference import MediaTitleInferer
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import (
@@ -45,6 +49,7 @@ from src.exceptions import (
     MediaSearchError,
     MediaSearchUnavailableError,
 )
+from src.frontend.custom_widgets.image_label import ImageLabel
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import QWidgetTempStyle
 from src.frontend.utils.general_worker import GeneralWorker
@@ -60,7 +65,9 @@ from src.utils.super_sub import normalize_super_sub
 
 
 class _MediaSearchBackend(Protocol):
-    def _parse_tmdb_api(self, media_str: str) -> dict[str, dict[str, Any]]: ...
+    def _parse_tmdb_api(
+        self, media_str: str, search_mode: MediaSearchMode
+    ) -> dict[str, dict[str, Any]]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +84,7 @@ def _run_media_search_job(
     query: str | None,
     input_path: Path | None,
     selected_files: tuple[Path, ...],
+    search_mode: MediaSearchMode = MediaSearchMode.BOTH,
 ) -> MediaSearchJobResult:
     """Infer an automatic query and perform the network search in one worker."""
 
@@ -109,7 +117,7 @@ def _run_media_search_job(
 
     return MediaSearchJobResult(
         query=query,
-        results=OrderedDict(backend._parse_tmdb_api(query)),
+        results=OrderedDict(backend._parse_tmdb_api(query, search_mode)),
     )
 
 
@@ -224,6 +232,9 @@ class LinkLabel(QLabel):
 
 
 class MediaSearch(BaseWizardPage):
+    MOVIE_ROW_COLOR = QColor(52, 152, 219, 72)
+    SERIES_ROW_COLOR = QColor(155, 89, 182, 72)
+
     def __init__(
         self,
         config: ConfigManager,
@@ -263,10 +274,17 @@ class MediaSearch(BaseWizardPage):
         self.plot_text = QPlainTextEdit()
         self.plot_text.setReadOnly(True)
         self.plot_text.setFrameShape(QFrame.Shape.NoFrame)
-        plot_box = QGroupBox("Plot")
-        self.plot_layout = QHBoxLayout(plot_box)
+        self.poster_img: QImage | None = None
+        self.poster_label = ImageLabel(self)
+        self.poster_label.setToolTip("TMDB poster")
+        self.poster_label.hide()
+        self.poster_network_manager = QNetworkAccessManager(self)
+        self._poster_reply: QNetworkReply | None = None
+        self._poster_cache: dict[str, QImage] = {}
+        self.plot_layout = QHBoxLayout()
         self.plot_layout.setContentsMargins(0, 0, 0, 0)
-        self.plot_layout.addWidget(self.plot_text)
+        self.plot_layout.addWidget(self.poster_label, stretch=1)
+        self.plot_layout.addWidget(self.plot_text, stretch=4)
 
         imdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "imdb.png").resolve()))
         imdb_image = imdb_image.scaled(
@@ -339,26 +357,36 @@ class MediaSearch(BaseWizardPage):
         tmdb_imdb_v_layout.addLayout(id_row_1_layout)
         tmdb_imdb_v_layout.addLayout(id_row_2_layout)
 
-        release_date_icon = QSvgWidget(
-            str(Path(RUNTIME_DIR / "svg" / "date.svg").resolve())
-        )
-        release_date_icon.setFixedSize(20, 20)
+        release_date_icon = IconWidget()
+        release_date_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
         release_date_icon.setToolTip("Release date")
+        QTAThemeSwap().register(
+            release_date_icon,
+            "ph.calendar-light",
+            icon_size=QSize(20, 20),
+        )
         self.release_date_label = QLabel()
         self.release_date_label.setMinimumWidth(80)
-        rating_icon = QSvgWidget(
-            str(Path(RUNTIME_DIR / "svg" / "rating.svg").resolve())
-        )
-        rating_icon.setFixedSize(20, 20)
+
+        rating_icon = IconWidget()
+        rating_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
         rating_icon.setToolTip("Average rating")
+        QTAThemeSwap().register(
+            rating_icon,
+            "ph.star-light",
+            icon_size=QSize(20, 20),
+        )
         self.rating_label = QLabel()
         self.rating_label.setMinimumWidth(80)
 
-        media_type_icon = QSvgWidget(
-            str(Path(RUNTIME_DIR / "svg" / "movie.svg").resolve())
-        )
-        media_type_icon.setFixedSize(20, 20)
+        media_type_icon = IconWidget()
+        media_type_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
         media_type_icon.setToolTip("Media Type")
+        QTAThemeSwap().register(
+            media_type_icon,
+            "ph.video-camera-light",
+            icon_size=QSize(20, 20),
+        )
         self.media_type_label = QLabel()
         self.media_type_label.setMinimumWidth(80)
 
@@ -367,10 +395,14 @@ class MediaSearch(BaseWizardPage):
         additional_info_layout.addRow(rating_icon, self.rating_label)
         additional_info_layout.addRow(media_type_icon, self.media_type_label)
 
-        info_box = QGroupBox("Info")
-        info_layout = QHBoxLayout(info_box)
-        info_layout.addLayout(tmdb_imdb_v_layout)
-        info_layout.addLayout(additional_info_layout)
+        metadata_layout = QHBoxLayout()
+        metadata_layout.addLayout(tmdb_imdb_v_layout)
+        metadata_layout.addLayout(additional_info_layout)
+
+        self.info_box = QGroupBox("Info")
+        info_layout = QVBoxLayout(self.info_box)
+        info_layout.addLayout(metadata_layout)
+        info_layout.addLayout(self.plot_layout, stretch=1)
 
         self.search_label = QLabel()
         self.search_label.setSizePolicy(
@@ -394,8 +426,7 @@ class MediaSearch(BaseWizardPage):
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.addWidget(self.listbox)
-        self.main_layout.addWidget(info_box)
-        self.main_layout.addWidget(plot_box)
+        self.main_layout.addWidget(self.info_box)
         self.main_layout.addWidget(search_box)
 
     def validatePage(self) -> bool:
@@ -405,6 +436,10 @@ class MediaSearch(BaseWizardPage):
         invalid_entries = self._check_invalid_entries((self.tmdb_id_entry,))
         if invalid_entries or self._has_invalid_id_formats():
             return False
+
+        if not self.other_ids_parsed and self._selected_title_is_ambiguous():
+            if not self._confirm_ambiguous_title_selection():
+                return False
 
         if not self.other_ids_parsed:
             self.listbox.setDisabled(True)
@@ -440,6 +475,71 @@ class MediaSearch(BaseWizardPage):
         for entry in invalid_entries:
             QWidgetTempStyle().set_temp_style(widget=entry).start()
         return bool(invalid_entries)
+
+    def _selected_title_is_ambiguous(self) -> bool:
+        """Whether another current result has the selected result's title.
+
+        TMDB can return remakes, reboots, and movie/series pairs with an
+        identical title. Years and media types distinguish their list rows,
+        but the duplicate title is the important signal to ask for a deliberate
+        selection before continuing.
+        """
+
+        selected = self._get_current_item_data()
+        if not selected:
+            return False
+
+        selected_title = self._normalized_result_title(selected.get("title"))
+        if not selected_title:
+            return False
+
+        return (
+            sum(
+                self._normalized_result_title(item.get("title")) == selected_title
+                for item in self.backend.media_data.values()
+                if isinstance(item, dict)
+            )
+            > 1
+        )
+
+    @staticmethod
+    def _normalized_result_title(title: object) -> str:
+        """Normalize a TMDB title for duplicate-title comparison."""
+
+        if not isinstance(title, str):
+            return ""
+        return " ".join(title.split()).casefold()
+
+    def _confirm_ambiguous_title_selection(self) -> bool:
+        """Require an explicit choice before accepting an ambiguous result."""
+
+        selected = self._get_current_item_data() or {}
+        title = str(selected.get("title") or "this title")
+        year = selected.get("year")
+        media_type = selected.get("media_type")
+        selected_details = " ".join(
+            str(value)
+            for value in (title, f"({year})" if year else "", media_type or "")
+            if value
+        )
+
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Icon.Warning)
+        message_box.setWindowTitle("Multiple Matching Titles")
+        message_box.setText(
+            f"More than one search result is named \u201c{title}\u201d.\n\n"
+            f"You selected: {selected_details}\n\n"
+            "Please verify the year, media type, poster, and plot before continuing."
+        )
+        review_button = message_box.addButton(
+            "Review Results", QMessageBox.ButtonRole.RejectRole
+        )
+        use_button = message_box.addButton(
+            "Use This Title", QMessageBox.ButtonRole.AcceptRole
+        )
+        message_box.setDefaultButton(review_button)
+        message_box.exec()
+        return message_box.clickedButton() is use_button
 
     @Slot(str)
     def _mark_metadata_dirty(self, _text: str) -> None:
@@ -885,6 +985,7 @@ class MediaSearch(BaseWizardPage):
             query,
             input_path,
             selected_files,
+            self.config.settings.general.media_search_mode,
         )
         self.search_worker = worker
         worker.finished.connect(
@@ -944,9 +1045,18 @@ class MediaSearch(BaseWizardPage):
 
         self.listbox.clear()
         if result_data:
-            self.listbox.addItems(list(result_data))
+            for item_text, item_data in result_data.items():
+                item = QListWidgetItem(item_text)
+                if isinstance(item_data, dict):
+                    media_type = MediaType.search_type(
+                        str(item_data.get("media_type") or "")
+                    )
+                    if media_type is MediaType.MOVIE:
+                        item.setBackground(self.MOVIE_ROW_COLOR)
+                    elif media_type is MediaType.SERIES:
+                        item.setBackground(self.SERIES_ROW_COLOR)
+                self.listbox.addItem(item)
             self.listbox.setCurrentRow(0)
-            self._select_media()
         else:
             self.listbox.addItem("No results, try again...")
 
@@ -963,6 +1073,7 @@ class MediaSearch(BaseWizardPage):
         self.backend.media_data.clear()
         self.context.media_search.reset()
         self.context.media_input.media_type = None
+        self._clear_poster()
         self.listbox.clear()
         self.listbox.addItem(
             "Title detection failed. Enter a title above and search manually."
@@ -985,6 +1096,7 @@ class MediaSearch(BaseWizardPage):
         self.backend.media_data.clear()
         self.context.media_search.reset()
         self.context.media_input.media_type = None
+        self._clear_poster()
         self.listbox.clear()
         self.listbox.addItem(f"Search unavailable: {error_str}")
         self.listbox.setDisabled(False)
@@ -1002,6 +1114,7 @@ class MediaSearch(BaseWizardPage):
     def _select_media(self) -> None:
         current_item = self.listbox.currentItem()
         if not current_item:
+            self._clear_poster()
             return
 
         item_key = current_item.text()
@@ -1014,6 +1127,88 @@ class MediaSearch(BaseWizardPage):
             self.rating_label.setText(item_data.get("vote_average", ""))
             self.release_date_label.setText(item_data.get("full_release_date", ""))
             self.media_type_label.setText(item_data.get("media_type", ""))
+            self._load_poster(item_data.get("poster_path"))
+        else:
+            self._clear_poster()
+
+    @staticmethod
+    def _tmdb_poster_url(poster_path: object) -> str | None:
+        if not isinstance(poster_path, str) or not poster_path.strip():
+            return None
+        normalized_path = poster_path.strip()
+        if not normalized_path.startswith("/"):
+            return None
+        return f"https://image.tmdb.org/t/p/w342/{normalized_path.lstrip('/')}"
+
+    def _load_poster(self, poster_path: object) -> None:
+        self._clear_poster()
+
+        poster_url = self._tmdb_poster_url(poster_path)
+        if poster_url is None:
+            return
+
+        # Reserve the poster's space while the asynchronous request is in flight
+        # so the plot does not resize when the image arrives.
+        self.poster_label.show()
+        self.cached_image = self._poster_cache.get(poster_url)
+        if self.cached_image is not None:
+            self.poster_label.setImage(self.cached_image)
+            self.poster_label.show()
+            return
+
+        request = QNetworkRequest(QUrl(poster_url))
+        request.setTransferTimeout(max(1, self.config.settings.general.timeout) * 1000)
+        # Qt's HTTP/2 path warns `QIODevice::read (QSslSocket): device not open`
+        # when it retires a pooled TLS socket, long after the request itself
+        # finished. Nothing is lost fetching a static poster over HTTP/1.1.
+        request.setAttribute(QNetworkRequest.Attribute.Http2AllowedAttribute, False)
+        reply = self.poster_network_manager.get(request)
+        self._poster_reply = reply
+        reply.finished.connect(
+            lambda reply=reply, poster_url=poster_url: self._poster_loaded(
+                reply, poster_url
+            )
+        )
+
+    def _poster_loaded(self, reply: QNetworkReply, poster_url: str) -> None:
+        if reply is not self._poster_reply:
+            reply.deleteLater()
+            return
+
+        self._poster_reply = None
+        image_loaded = False
+        self.poster_img = None
+        if reply.error() == QNetworkReply.NetworkError.NoError:
+            self.poster_img = QImage.fromData(reply.readAll())
+            if not self.poster_img.isNull():
+                self._poster_cache[poster_url] = self.poster_img
+                self.poster_label.setImage(self.poster_img)
+                self.poster_label.show()
+                image_loaded = True
+        if not image_loaded:
+            self.poster_label.hide()
+        reply.deleteLater()
+
+    def _cancel_poster_request(self) -> None:
+        reply = self._poster_reply
+        self._poster_reply = None
+        if reply is None:
+            return
+        # `abort()` emits `finished` synchronously, which re-enters
+        # `_poster_loaded`; that path disowns the reply and deletes it, so
+        # without dropping the connection first the reply is deleted twice.
+        with suppress(RuntimeError):
+            reply.finished.disconnect()
+        if reply.isRunning():
+            reply.abort()
+        reply.deleteLater()
+
+    def _clear_poster(self, clear_cache: bool = False) -> None:
+        self._cancel_poster_request()
+        self.poster_label.clearImage()
+        self.poster_label.hide()
+        if clear_cache:
+            self._poster_cache.clear()
 
     @Slot()
     def _open_imdb_link(self, _event: QMouseEvent) -> None:
@@ -1070,6 +1265,9 @@ class MediaSearch(BaseWizardPage):
         self.release_date_label.clear()
         self.rating_label.clear()
         self.plot_text.clear()
+        self.media_type_label.clear()
+        self.poster_img = None
+        self._clear_poster(clear_cache=True)
 
         if self.search_worker is not None and not self.search_worker.isRunning():
             self.search_worker = None

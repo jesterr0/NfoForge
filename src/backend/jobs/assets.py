@@ -33,6 +33,7 @@ import shutil
 from typing import Any
 
 from pymediainfo import MediaInfo
+from torf import Torrent
 
 from src.backend.jobs.codec import mediainfo_xml
 from src.backend.jobs.store import (
@@ -100,8 +101,15 @@ def _unique_destination(directory: Path, name: str) -> Path:
 def copy_images(directory: Path, images: list[Path]) -> list[Path]:
     """Copy screenshots into the job and return their new paths.
 
-    A missing source is skipped with a warning rather than failing the save:
-    losing one screenshot should not cost the user the whole job.
+    One entry out per entry in, in the same order. A missing source keeps its
+    original path rather than dropping out of the list: `uploaded_images` is
+    keyed by a screenshot's *position*, so removing an entry here silently
+    renumbers every later one and pairs each remaining image with the URL of
+    the one after it. A path that no longer exists is a screenshot already
+    lost; a shifted index would additionally corrupt the ones that survived.
+
+    Losing a screenshot is warned about rather than raised, though: it should
+    not cost the user the whole job.
     """
     if not images:
         return []
@@ -112,8 +120,11 @@ def copy_images(directory: Path, images: list[Path]) -> list[Path]:
     for image in images:
         if not image.is_file():
             LOG.warning(
-                LOG.LOG_SOURCE.BE, f"Skipping missing screenshot while saving: {image}"
+                LOG.LOG_SOURCE.BE,
+                f"Screenshot missing while saving, keeping its recorded path so "
+                f"the remaining images stay correctly numbered: {image}",
             )
+            copied.append(image)
             continue
         destination = _unique_destination(target, image.name)
         try:
@@ -135,6 +146,12 @@ def capture_mediainfo(
     actually sent (`MinimalMediaInfo.get_full_mi_str`) and cannot be derived
     from the object, since it comes from libmediainfo's own formatter. Keeping
     both is what lets a resumed run avoid touching the media file at all.
+
+    Additive: a second call into a directory that already holds sidecars adds
+    to them rather than writing over `0.xml` again. Updating an archive
+    captures only the files the stored document does not already cover, so a
+    numbering that restarted at zero would overwrite the dumps it was meant to
+    be extending.
     """
     if not media_paths:
         return {}
@@ -142,7 +159,9 @@ def capture_mediainfo(
     target.mkdir(parents=True, exist_ok=True)
 
     captured: dict[Path, dict[str, str]] = {}
-    for index, media_path in enumerate(media_paths):
+    index = -1
+    for media_path in media_paths:
+        index = _next_free_asset_index(target, index + 1)
         try:
             xml = mediainfo_xml(media_path)
             text = MediaInfo.parse(
@@ -172,6 +191,17 @@ def capture_mediainfo(
             "text": f"{JOB_MEDIAINFO_DIR_NAME}/{text_path.name}",
         }
     return captured
+
+
+def _next_free_asset_index(target: Path, start: int) -> int:
+    """The lowest index at or above `start` with neither sidecar taken.
+
+    Both names move together so an xml/txt pair always shares a stem.
+    """
+    index = start
+    while (target / f"{index}.xml").exists() or (target / f"{index}.txt").exists():
+        index += 1
+    return index
 
 
 def _write_exact(path: Path, text: str) -> None:
@@ -261,6 +291,46 @@ def base_torrent_path(directory: Path) -> Path | None:
     """The stored base torrent, if this job has one."""
     candidate = directory / JOB_BASE_TORRENT_NAME
     return candidate if candidate.is_file() else None
+
+
+def base_torrent_snapshot(torrent_path: Path) -> dict[str, Any]:
+    """Return immutable release facts carried by a neutral base torrent."""
+    try:
+        torrent = Torrent.read(torrent_path)
+        digest = hashlib.sha256(torrent_path.read_bytes()).hexdigest()
+    except Exception as error:
+        raise JobAssetError(f"Could not inspect saved base torrent: {error}") from error
+    return {
+        "sha256": digest,
+        "name": torrent.name,
+        "mode": torrent.mode,
+        "content_size": torrent.size,
+        "files": [str(path) for path in torrent.files],
+    }
+
+
+def archived_base_is_valid(torrent_path: Path, snapshot: Any) -> bool:
+    """Validate an archive's canonical torrent without touching its content."""
+    if not isinstance(snapshot, dict):
+        return False
+    try:
+        current = base_torrent_snapshot(torrent_path)
+        torrent = Torrent.read(torrent_path)
+    except Exception:
+        return False
+    if any(
+        (
+            torrent.metainfo.get("announce"),
+            torrent.metainfo.get("announce-list"),
+            torrent.metainfo.get("comment"),
+            torrent.metainfo.get("info", {}).get("source"),
+        )
+    ):
+        return False
+    return all(
+        snapshot.get(key) == current.get(key)
+        for key in ("sha256", "name", "mode", "content_size", "files")
+    )
 
 
 def torrent_content_files(input_path: Path) -> list[Path]:

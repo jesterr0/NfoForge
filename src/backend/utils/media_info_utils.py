@@ -54,6 +54,18 @@ without every one of them having to thread the cached value through.
 """
 
 
+_MI_OBJ_CACHE: dict[Path, MediaInfo] = {}
+"""Media path -> the parsed `MediaInfo` object a saved job restored.
+
+`get_minimal_mi_str` builds its output from tracks rather than from
+libmediainfo's formatter, so unlike `get_full_mi_str` it needs the *object*,
+not a stored dump. A restored job already has that object; without somewhere to
+put it, `{media_info_short}` would be the one token still parsing the media
+file -- the file a source-less run does not have. Keyed the same way as
+`_FULL_MI_STR_CACHE` so both are found from a bare path.
+"""
+
+
 def cache_full_mi_str(file_input: PathLike[str], text: str) -> None:
     """Register a previously captured MediaInfo text dump for a media file."""
     if text and text.strip():
@@ -63,6 +75,28 @@ def cache_full_mi_str(file_input: PathLike[str], text: str) -> None:
 def clear_full_mi_str_cache() -> None:
     """Drop every cached dump (a new run must not inherit a stale one)."""
     _FULL_MI_STR_CACHE.clear()
+
+
+def cache_mediainfo_obj(file_input: PathLike[str], mi: MediaInfo) -> None:
+    """Register a restored `MediaInfo` object for a media file."""
+    if isinstance(mi, MediaInfo):
+        _MI_OBJ_CACHE[_cache_key(Path(file_input))] = mi
+
+
+def clear_mediainfo_obj_cache() -> None:
+    """Drop every cached object (a new run must not inherit a stale one)."""
+    _MI_OBJ_CACHE.clear()
+
+
+def clear_restored_mediainfo() -> None:
+    """Drop everything a previously loaded job left cached.
+
+    Both caches are filled from the same place (`codec._restore_mediainfo`) and
+    are stale under exactly the same condition, so they are cleared through one
+    call rather than leaving a future caller to remember there are two.
+    """
+    clear_full_mi_str_cache()
+    clear_mediainfo_obj_cache()
 
 
 def _cache_key(path: Path) -> Path:
@@ -96,7 +130,12 @@ class MinimalMediaInfo:
         """Mocks MediaInfo's normal output with stripped down information"""
         LENGTH = 41
         mi_str = ""
-        media_info_obj = MediaInfo.parse(self.file_input, legacy_stream_display=True)
+        cached = _MI_OBJ_CACHE.get(_cache_key(self.file_input))
+        media_info_obj = (
+            cached
+            if cached is not None
+            else MediaInfo.parse(self.file_input, legacy_stream_display=True)
+        )
 
         if not isinstance(media_info_obj, MediaInfo):
             raise TypeError("Should be of type 'MediaInfo'")

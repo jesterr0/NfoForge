@@ -172,7 +172,8 @@ class SeriesManagementSettings(BaseSettings):
         season_folder_lbl.setToolTip(
             "Token used to rename the opened season pack folder. Only applies "
             "when a directory is opened; opening a single file leaves any folder "
-            "untouched."
+            "untouched. A pack spanning several seasons renders {season_number} "
+            "as a range, e.g. S01-S05."
         )
         self.season_folder_token = QLineEdit(self)
         self.season_folder_token.textChanged.connect(self._update_season_folder_example)
@@ -183,6 +184,30 @@ class SeriesManagementSettings(BaseSettings):
         season_folder_v_box.addWidget(self.season_folder_token)
         season_folder_v_box.addWidget(self.season_folder_example)
 
+        season_subfolder_lbl = QLabel(
+            """<span><span style="font-weight: bold;">Season Subfolder</span> Token</span>""",
+            self,
+        )
+        season_subfolder_lbl.setToolTip(
+            "Token used to rename each 'Season NN' subfolder inside a pack that "
+            "keeps its seasons in separate folders. Leave blank to use the "
+            "Season Folder token, which names each subfolder after its own "
+            "season while the pack folder above it carries the season range."
+        )
+        self.season_subfolder_token = QLineEdit(self)
+        self.season_subfolder_token.setPlaceholderText(
+            "Blank: use the Season Folder token"
+        )
+        self.season_subfolder_token.textChanged.connect(
+            self._update_season_subfolder_example
+        )
+        self.season_subfolder_example = QLineEdit(self, readOnly=True, frame=False)
+        season_subfolder_v_box = QVBoxLayout()
+        season_subfolder_v_box.setContentsMargins(0, 0, 0, 0)
+        season_subfolder_v_box.addWidget(season_subfolder_lbl)
+        season_subfolder_v_box.addWidget(self.season_subfolder_token)
+        season_subfolder_v_box.addWidget(self.season_subfolder_example)
+
         self.controls_box = QGroupBox("Controls")
         controls_layout = QVBoxLayout(self.controls_box)
         controls_layout.addLayout(control_top_layout)
@@ -192,6 +217,7 @@ class SeriesManagementSettings(BaseSettings):
         controls_layout.addLayout(title_colon_replace_v_box)
         controls_layout.addLayout(multi_episode_style_v_box)
         controls_layout.addLayout(season_folder_v_box)
+        controls_layout.addLayout(season_subfolder_v_box)
 
         #### per format tabs ####
         self._format_widgets: dict[EpisodeFormat, FormatWidgets] = {}
@@ -355,6 +381,7 @@ class SeriesManagementSettings(BaseSettings):
             self._update_tab_file_example(fmt)
             self._update_tab_title_example(fmt)
         self._update_season_folder_example()
+        self._update_season_subfolder_example()
 
     def _update_season_folder_example(self) -> None:
         self._update_example(
@@ -364,6 +391,28 @@ class SeriesManagementSettings(BaseSettings):
             qline=self.season_folder_example,
             episode_number=None,
             season_end=3,
+        )
+
+    def _update_season_subfolder_example(self) -> None:
+        """Preview one season's subfolder, i.e. no season range.
+
+        Falls back to the season folder token exactly as the rename does, so
+        the blank default previews what the user will actually get rather than
+        an empty line.
+        """
+        token_str = (
+            self.season_subfolder_token.text().strip()
+            or self.season_folder_token.text()
+        )
+        self._update_example(
+            token_str=token_str,
+            colon_replace=ColonReplace(self.fn_colon_replace.currentData()),
+            file_name_mode=True,
+            qline=self.season_subfolder_example,
+            episode_number=None,
+            # equal to the example's season_number, so {season_number} renders
+            # a single season rather than the range the pack folder shows
+            season_end=1,
         )
 
     def _update_example(
@@ -434,9 +483,16 @@ class SeriesManagementSettings(BaseSettings):
         self, fmt: EpisodeFormat, tfo: TrackerFormatOverride
     ) -> None:
         w = self._format_widgets[fmt]
-        token_str = tfo.over_ride_format_title.text()
-        colon_replace = ColonReplace(tfo.title_colon_replace.currentData())
-        over_ride_rules = tfo.over_ride_replacement_table.get_replacements()
+        enabled = tfo.enabled_checkbox.isChecked()
+        token_str = tfo.over_ride_format_title.text() if enabled else ""
+        colon_replace = (
+            ColonReplace(tfo.title_colon_replace.currentData())
+            if enabled
+            else ColonReplace(self.title_colon_replace.currentData())
+        )
+        over_ride_rules = (
+            tfo.over_ride_replacement_table.get_replacements() if enabled else None
+        )
         self._update_example(
             token_str=token_str if token_str else w["title_token"].text(),
             colon_replace=colon_replace,
@@ -454,6 +510,7 @@ class SeriesManagementSettings(BaseSettings):
         self.title_colon_replace.blockSignals(True)
         self.multi_episode_style_combo.blockSignals(True)
         self.season_folder_token.blockSignals(True)
+        self.season_subfolder_token.blockSignals(True)
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
             w["file_token"].blockSignals(True)
@@ -486,6 +543,10 @@ class SeriesManagementSettings(BaseSettings):
         self._update_qline_cursor_0(
             self.season_folder_token,
             self.config.settings.series.season_folder_token,
+        )
+        self._update_qline_cursor_0(
+            self.season_subfolder_token,
+            self.config.settings.series.season_subfolder_token,
         )
 
         for fmt in self._FORMAT_ORDER:
@@ -523,6 +584,7 @@ class SeriesManagementSettings(BaseSettings):
         self.title_colon_replace.blockSignals(False)
         self.multi_episode_style_combo.blockSignals(False)
         self.season_folder_token.blockSignals(False)
+        self.season_subfolder_token.blockSignals(False)
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]
             w["file_token"].blockSignals(False)
@@ -556,6 +618,9 @@ class SeriesManagementSettings(BaseSettings):
         )
         self.config.settings.series.season_folder_token = (
             self.season_folder_token.text()
+        )
+        self.config.settings.series.season_subfolder_token = (
+            self.season_subfolder_token.text()
         )
 
         for fmt in self._FORMAT_ORDER:
@@ -604,6 +669,9 @@ class SeriesManagementSettings(BaseSettings):
         )
         self.season_folder_token.setText(
             self.config.defaults.series.season_folder_token
+        )
+        self.season_subfolder_token.setText(
+            self.config.defaults.series.season_subfolder_token
         )
         for fmt in self._FORMAT_ORDER:
             w = self._format_widgets[fmt]

@@ -14,7 +14,7 @@ from typing import Any
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QDialogButtonBox, QHeaderView
+from PySide6.QtWidgets import QDialogButtonBox, QHeaderView, QMessageBox
 import pytest
 import qtawesome as qta
 
@@ -45,21 +45,318 @@ def _save(
     trackers: list[str] | None = None,
     title: str | None = None,
     created_at: str | None = None,
+    archived: bool = False,
 ) -> Path:
     context: dict[str, Any] = {"shared_data": {}}
+    if archived:
+        context["media_input"] = {
+            "mediainfo_assets": {"C:/gone.mkv": {"xml": "mediainfo/0.xml"}}
+        }
     if prepared:
+        # both halves, as a real prepared job has them: the trackers the run
+        # will serve, and the frozen release for each of them
+        context["shared_data"]["selected_trackers"] = ["AITHER"]
         context["shared_data"]["tracker_release_data"] = {
             "AITHER": {"title": "t", "nfo": "body"}
         }
     job = store.build_job(
         name,
-        JobSummary(title=title or name, year=2024, trackers=trackers or ["Aither"]),
+        JobSummary(
+            title=title or name,
+            year=2024,
+            trackers=["Aither"] if trackers is None else trackers,
+        ),
         context,
         config_profile=profile,
+        archived=archived,
     )
     if created_at:
         job.created_at = created_at
+    directory = store.save_job(job, working_dir)
+    if archived:
+        (directory / store.JOB_BASE_TORRENT_NAME).write_bytes(b"torrent")
+    return directory
+
+
+# --------------------------------------------------------------------------
+# resolving an upload nobody could confirm
+# --------------------------------------------------------------------------
+def _save_with_uncertain(working_dir: Path) -> Path:
+    """An archive that ran two trackers and could not account for one.
+
+    `AITHER` is the uncertain one, so it is held out of `selected_trackers`
+    while keeping its title and NFO -- exactly what `_archive_completed_run`
+    now writes.
+    """
+    context: dict[str, Any] = {
+        "shared_data": {
+            "selected_trackers": [],
+            "tracker_release_data": {
+                "AITHER": {"title": "the reviewed title", "nfo": "the reviewed nfo"},
+            },
+            "tracker_image_hosts": {
+                "AITHER": {
+                    "img_from": "IMAGES",
+                    "img_to": "PIXHOST",
+                    "img_to_type": "ImageHost",
+                }
+            },
+        }
+    }
+    job = store.build_job(
+        "uncertain archive",
+        JobSummary(title="uncertain archive", year=2024, trackers=[]),
+        context,
+        archived=True,
+        uploaded_trackers=["HUNO"],
+        uncertain_trackers=["AITHER"],
+    )
     return store.save_job(job, working_dir)
+
+
+def _answer_resolve(monkeypatch: pytest.MonkeyPatch, answer: Any) -> None:
+    monkeypatch.setattr(
+        load_job_dialog_module.QMessageBox, "question", lambda *_a, **_k: answer
+    )
+
+
+def test_resolving_no_makes_the_tracker_runnable_again(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ "No, safe to upload" has to mean the job can actually upload it.
+
+    Moving the name between two lists was all this used to do, so the answer
+    left the tracker out of `selected_trackers` and the job unchanged in every
+    way that matters -- the resolution had no effect at all.
+    """
+    directory = _save_with_uncertain(working_dir)
+    _answer_resolve(monkeypatch, QMessageBox.StandardButton.No)
+
+    dialog = _open_dialog(qapp)
+    try:
+        _click_tree_item(dialog, dialog.job_tree.topLevelItem(0), qapp)
+        dialog._resolve_uncertain()
+        _wait_for_load(dialog, qapp)
+    finally:
+        dialog.deleteLater()
+
+    reloaded = store.load_job(directory)
+    shared = reloaded.context["shared_data"]
+    assert reloaded.uncertain_trackers == []
+    assert shared["selected_trackers"] == ["AITHER"]
+    # the release the user reviewed, not a fresh render of it
+    assert shared["tracker_release_data"]["AITHER"]["title"] == "the reviewed title"
+    # `summary.trackers` stores display values, the context stores member names
+    assert reloaded.summary.trackers == ["Aither"]
+
+
+def test_resolving_yes_records_the_upload_without_reselecting(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """It landed, so the one thing that must never happen is uploading again."""
+    directory = _save_with_uncertain(working_dir)
+    _answer_resolve(monkeypatch, QMessageBox.StandardButton.Yes)
+
+    dialog = _open_dialog(qapp)
+    try:
+        _click_tree_item(dialog, dialog.job_tree.topLevelItem(0), qapp)
+        dialog._resolve_uncertain()
+        _wait_for_load(dialog, qapp)
+    finally:
+        dialog.deleteLater()
+
+    reloaded = store.load_job(directory)
+    assert reloaded.uncertain_trackers == []
+    assert set(reloaded.uploaded_trackers) == {"AITHER", "HUNO"}
+    assert reloaded.context["shared_data"]["selected_trackers"] == []
+
+
+def test_cancelling_leaves_the_tracker_unresolved(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = _save_with_uncertain(working_dir)
+    _answer_resolve(monkeypatch, QMessageBox.StandardButton.Cancel)
+
+    dialog = _open_dialog(qapp)
+    try:
+        _click_tree_item(dialog, dialog.job_tree.topLevelItem(0), qapp)
+        dialog._resolve_uncertain()
+        _wait_for_load(dialog, qapp)
+    finally:
+        dialog.deleteLater()
+
+    reloaded = store.load_job(directory)
+    assert reloaded.uncertain_trackers == ["AITHER"]
+    assert reloaded.context["shared_data"]["selected_trackers"] == []
+
+
+def test_resolving_no_refuses_a_tracker_whose_prepared_work_is_gone(
+    qapp: Any,
+    working_dir: Path,
+    patched_working_dirs: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An older archive narrowed its uncertain tracker away entirely.
+
+    There is no title or NFO left to upload, so it must not be re-selected --
+    a "prepared" job that silently uploads a freshly rendered release is worse
+    than one that says it cannot help.
+    """
+    context: dict[str, Any] = {
+        "shared_data": {"selected_trackers": [], "tracker_release_data": {}}
+    }
+    job = store.build_job(
+        "stripped archive",
+        JobSummary(title="stripped archive", year=2024, trackers=[]),
+        context,
+        archived=True,
+        uncertain_trackers=["AITHER"],
+    )
+    directory = store.save_job(job, working_dir)
+    _answer_resolve(monkeypatch, QMessageBox.StandardButton.No)
+
+    dialog = _open_dialog(qapp)
+    try:
+        _click_tree_item(dialog, dialog.job_tree.topLevelItem(0), qapp)
+        dialog._resolve_uncertain()
+        _wait_for_load(dialog, qapp)
+    finally:
+        dialog.deleteLater()
+
+    reloaded = store.load_job(directory)
+    assert reloaded.uncertain_trackers == []
+    assert reloaded.context["shared_data"]["selected_trackers"] == []
+    # and the summary must not claim it covers a tracker it cannot run
+    assert reloaded.summary.trackers == []
+
+
+def test_add_trackers_is_available_for_a_self_contained_archive(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        assert dialog.add_trackers_btn.isEnabled()
+        open_button = dialog.button_box.button(QDialogButtonBox.StandardButton.Open)
+        assert open_button is not None
+        assert not open_button.isEnabled()
+    finally:
+        dialog.deleteLater()
+
+
+def test_double_clicking_a_spent_archive_asks_for_new_trackers(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """The disabled Load button was never the whole rule.
+
+    An archive that has been everywhere it was run for has nothing for the
+    process page to do, which is why Load is greyed out for it -- but a double
+    click went straight to `_accept_selection` and loaded it anyway, landing on
+    a process page whose only button failed with "Failed to generate tracker
+    data". A double click now takes the action the row does offer.
+    """
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        dialog._on_double_click(item, 0)
+
+        assert dialog.selected_listing is not None
+        assert dialog.add_trackers_requested is True
+    finally:
+        dialog.deleteLater()
+
+
+def test_a_spent_archive_cannot_be_loaded_by_pressing_open(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`_accept_selection` enforces the rule rather than trusting the button."""
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        dialog.job_tree.setCurrentItem(item)
+        item.setSelected(True)
+        dialog._accept_selection()
+
+        assert dialog.selected_listing is None
+    finally:
+        dialog.deleteLater()
+
+
+def test_an_archive_that_cannot_add_trackers_either_says_so_and_stays_put(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """Neither route is open, so the click must not pretend one is.
+
+    Without its base torrent the archive cannot be reopened for new trackers,
+    which leaves a double click with nothing to do -- and a hint naming a
+    disabled button would send the user at it anyway.
+    """
+    directory = _save(working_dir, "archive", archived=True, trackers=[])
+    (directory / store.JOB_BASE_TORRENT_NAME).unlink()
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        _click_tree_item(dialog, item, qapp)
+        assert not dialog.add_trackers_btn.isEnabled()
+        assert "cannot be reopened" in dialog.status_lbl.text()
+
+        dialog._on_double_click(item, 0)
+
+        assert dialog.selected_listing is None
+    finally:
+        dialog.deleteLater()
+
+
+def test_a_spent_archive_points_at_the_action_it_can_take(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "archive", archived=True, trackers=[])
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        _click_tree_item(dialog, item, qapp)
+
+        assert "Add Trackers" in dialog.status_lbl.text()
+    finally:
+        dialog.deleteLater()
+
+
+def test_double_clicking_an_ordinary_job_still_loads_it(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    _save(working_dir, "plain")
+
+    dialog = _open_dialog(qapp)
+    try:
+        item = dialog.job_tree.topLevelItem(0)
+        assert item is not None
+        dialog._on_double_click(item, 0)
+
+        assert dialog.selected_listing is not None
+        assert dialog.add_trackers_requested is False
+        assert dialog.switch_profile_requested is False
+    finally:
+        dialog.deleteLater()
 
 
 def _open_dialog(qapp: Any, active_profile: str | None = "default") -> LoadJobDialog:

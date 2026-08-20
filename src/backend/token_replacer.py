@@ -1471,12 +1471,31 @@ class TokenReplacer:
     def _resolved_audio_codec(self) -> str:
         """Audio codec for the primary file, computed once per instance (conventions
         file when MediaInfo is available, guessit otherwise).
+
+        ``audio_codec_no_atmos`` and ``atmos`` are derived views of
+        ``audio_codec``.  The rename wizard exposes the latter in its editable
+        token grid, so its override must be the source for all three views.
+        Otherwise a filename can reflect a hand-corrected codec while tracker
+        templates that split Atmos out (notably Aither and LST) silently keep
+        the detected value.
         """
         if self._audio_codec_cache is None:
-            # guessit can hand back a list here; it already reached output via
-            # f-string interpolation downstream, so coercing early is a no-op
-            codec = str(self.guess_name.get("audio_codec", "") or "")
-            if self.media_info_obj and self.media_info_obj.audio_tracks:
+            overridden_codec = (
+                self.override_tokens.get("audio_codec")
+                if self.override_tokens is not None
+                else None
+            )
+            if overridden_codec is not None:
+                codec = overridden_codec
+            else:
+                # guessit can hand back a list here; it already reached output via
+                # f-string interpolation downstream, so coercing early is a no-op
+                codec = str(self.guess_name.get("audio_codec", "") or "")
+            if (
+                overridden_codec is None
+                and self.media_info_obj
+                and self.media_info_obj.audio_tracks
+            ):
                 audio_codecs = AudioCodecs()
                 # The bundled conventions file is a runtime asset in both source and frozen builds.
                 audio_convention_path = Path(
@@ -2083,7 +2102,7 @@ class TokenReplacer:
     def _original_filename(self, token_data: TokenData) -> str:
         # For series, use directory name or episode filename based on context
         if self.is_series_mode and self.media_input_obj.input_path:
-            if self.media_input_obj.input_path.is_dir():
+            if self.media_input_obj.input_is_directory():
                 return self._optional_user_input(
                     self.media_input_obj.input_path.name, token_data
                 )

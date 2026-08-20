@@ -23,7 +23,7 @@ def find_largest_file_in_directory(
     return largest_file
 
 
-def release_stem(path: Path) -> str:
+def release_stem(path: Path, is_directory: bool | None = None) -> str:
     """Name a run's artifacts (.torrent/.nfo) after the release.
 
     `Path.stem` is only correct for a single file. A season pack is a directory
@@ -32,7 +32,9 @@ def release_stem(path: Path) -> str:
     "Show.S01.1080p.BluRay", silently losing the codec and release group from
     every artifact named after it.
     """
-    return path.name if path.is_dir() else path.stem
+    if is_directory is None:
+        is_directory = path.is_dir()
+    return path.name if is_directory else path.stem
 
 
 def generate_unique_date_name(

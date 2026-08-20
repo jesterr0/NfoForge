@@ -1,16 +1,23 @@
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 import traceback
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import QDialog, QMessageBox, QPushButton, QWizard
+from PySide6.QtWidgets import (
+    QDialog,
+    QMessageBox,
+    QPushButton,
+    QWizard,
+)
 
 from src.backend.jobs import (
     JobCodecError,
     JobStoreError,
     MediaFingerprint,
     SavedJob,
+    archived_base_is_valid,
     base_torrent_path,
     context_from_dict,
     fingerprints_match,
@@ -19,11 +26,12 @@ from src.backend.jobs import (
     template_fingerprint,
 )
 from src.backend.template_selector import TemplateSelectorBackEnd
-from src.backend.utils.media_info_utils import clear_full_mi_str_cache
+from src.backend.utils.media_info_utils import clear_restored_mediainfo
 from src.config.config import ConfigManager
 from src.context.factory import create_processing_context
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.wizard import WizardPages
 from src.exceptions import ConfigSchemaError
 from src.frontend.custom_widgets.job_queue_dialog import JobQueueDialog
@@ -43,6 +51,36 @@ from src.logger.nfo_forge_logger import LOG
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
+
+
+def tracker_profile_problems(
+    trackers: Iterable[TrackerSelection],
+    tracker_map: Mapping[TrackerSelection, Any],
+    template_selector: TemplateSelectorBackEnd,
+) -> list[str]:
+    """Ways the *active* profile cannot fully serve `trackers`.
+
+    A job stores no settings of its own -- credentials, templates and
+    per-tracker toggles are all read live -- so this asks the live config, not
+    the job.
+
+    Deliberately silent about a tracker with no template assigned at all: a
+    prepared job uploads a frozen NFO and does not care, and an unprepared one
+    is stopped by the pre-upload page, which names the trackers precisely.
+    """
+    available_templates = set(template_selector.load_templates())
+    problems: list[str] = []
+    for tracker in trackers:
+        tracker_info = tracker_map.get(tracker)
+        if tracker_info is None:
+            problems.append(f"{tracker}: not configured in this config")
+            continue
+        if not tracker_info.upload_enabled:
+            problems.append(f"{tracker}: uploads are disabled in this config")
+        template = tracker_info.nfo_template
+        if template and template not in available_templates:
+            problems.append(f"{tracker}: NFO template '{template}' no longer exists")
+    return problems
 
 
 class MainWindowWizard(QWizard):
@@ -169,7 +207,7 @@ class MainWindowWizard(QWizard):
         # media never has to be re-read. Starting over means a genuinely new
         # run, which must measure the file itself rather than inherit a dump
         # that may now describe a different encode.
-        clear_full_mi_str_cache()
+        clear_restored_mediainfo()
 
         self.context = create_processing_context(
             self.config.settings,
@@ -185,8 +223,9 @@ class MainWindowWizard(QWizard):
         self._set_disabled(False)
         self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
-        self.setButtonLayout(self.starting_buttons)
+        self._apply_button_layout(self.starting_buttons)
         self.restart()
+        self._sync_button_layout()
 
     @Slot()
     def open_load_job_dialog(self) -> None:
@@ -253,7 +292,7 @@ class MainWindowWizard(QWizard):
         )
         try:
             # a new run must not inherit MediaInfo cached for a previous job
-            clear_full_mi_str_cache()
+            clear_restored_mediainfo()
             context_from_dict(
                 job.context,
                 context,
@@ -266,12 +305,66 @@ class MainWindowWizard(QWizard):
             )
             return
 
-        if not self._restored_job_is_usable(job.name, context):
+        if not self._restored_job_is_usable(
+            job.name, context, allow_source_less=job.archived
+        ):
             return
 
         self._attach_base_torrent(job, listing.path, context)
-        self._resume_job(context)
-        LOG.info(LOG.LOG_SOURCE.FE, f"Resumed job '{job.name}' at the process page")
+        if job.archived and context.shared_data.base_torrent is None:
+            QMessageBox.critical(
+                self,
+                "Archive Unavailable",
+                f"Job '{job.name}' cannot be extended because its saved base "
+                "torrent is missing, corrupt, or no longer matches the archive.",
+            )
+            return
+        context.loaded_job_path = listing.path
+        context.loaded_job_id = job.job_id
+        context.loaded_job_name = job.name
+        context.loaded_job_archived = job.archived
+        context.loaded_uploaded_trackers = self._tracker_names_to_members(
+            job.uploaded_trackers
+        )
+        context.loaded_uncertain_trackers = self._tracker_names_to_members(
+            job.uncertain_trackers
+        )
+        start_page = self._resume_start_page(
+            context, adding_trackers=dialog.add_trackers_requested
+        )
+        self._resume_job(context, start_page)
+        LOG.info(LOG.LOG_SOURCE.FE, f"Resumed job '{job.name}' at the {start_page}")
+
+    @staticmethod
+    def _resume_start_page(
+        context: ProcessingContext, *, adding_trackers: bool
+    ) -> WizardPages:
+        """Where in the flow a restored job picks up.
+
+        A job whose titles and NFOs are already frozen has nothing left to
+        decide, so it goes straight to processing. Anything else -- an archive
+        being extended, or a job saved before it was prepared -- still has to
+        pick trackers and assign their NFO templates, and neither is stored in
+        the job: both are read live from the profile, on wizard pages.
+
+        `adding_trackers` is asked separately because an archive can carry
+        prepared work for trackers left pending by an earlier run. That reads as
+        prepared, but the whole point of the request is to choose trackers it
+        does not have yet.
+        """
+        if adding_trackers or not context.shared_data.is_prepared():
+            return WizardPages.TRACKERS_PAGE
+        return WizardPages.PROCESS_PAGE
+
+    @staticmethod
+    def _tracker_names_to_members(names: list[str]) -> set[TrackerSelection]:
+        restored: set[TrackerSelection] = set()
+        for name in names:
+            try:
+                restored.add(TrackerSelection[name])
+            except KeyError:
+                continue
+        return restored
 
     def _switch_config_profile(self, profile: str) -> bool:
         """Activate `profile`, reporting failure without changing anything.
@@ -300,7 +393,11 @@ class MainWindowWizard(QWizard):
         return True
 
     def _restored_job_is_usable(
-        self, job_name: str, context: ProcessingContext
+        self,
+        job_name: str,
+        context: ProcessingContext,
+        *,
+        allow_source_less: bool = False,
     ) -> bool:
         """Check a restored job against the filesystem it has to run against.
 
@@ -312,14 +409,14 @@ class MainWindowWizard(QWizard):
         try:
             context.media_input.require_existing_media_paths(include_comparison=False)
         except (FileNotFoundError, RuntimeError) as e:
-            QMessageBox.critical(
-                self,
-                "Media Files Unavailable",
-                f"Job '{job_name}' cannot be loaded because its media is no "
-                f"longer where it was saved:\n\n{e}",
-            )
-            return False
-
+            if not allow_source_less:
+                QMessageBox.critical(
+                    self,
+                    "Media Files Unavailable",
+                    f"Job '{job_name}' cannot be loaded because its media is no "
+                    f"longer where it was saved:\n\n{e}",
+                )
+                return False
         missing_images = [
             str(image)
             for image in (context.shared_data.loaded_images or ())
@@ -368,6 +465,26 @@ class MainWindowWizard(QWizard):
                 f"Not reusing the torrent saved with job '{job.name}': its "
                 "saved fingerprint details or current input path are missing",
             )
+            return
+
+        if getattr(job, "archived", False):
+            snapshot = details.get("snapshot")
+            if not archived_base_is_valid(stored, snapshot):
+                LOG.warning(
+                    LOG.LOG_SOURCE.FE,
+                    f"Not reusing archived torrent for '{job.name}': validation failed",
+                )
+                return
+            if isinstance(snapshot, dict):
+                content_size = snapshot.get("content_size")
+                if isinstance(content_size, int):
+                    context.media_input.content_size = content_size
+                mode = snapshot.get("mode")
+                if mode in {"singlefile", "multifile"}:
+                    context.media_input.input_kind = (
+                        "directory" if mode == "multifile" else "file"
+                    )
+            context.shared_data.base_torrent = stored
             return
 
         recorded = details.get("fingerprints")
@@ -428,24 +545,12 @@ class MainWindowWizard(QWizard):
         active profile has since turned off or renamed would otherwise only
         surface as a failure partway through the upload.
         """
-        problems: list[str] = []
-        tracker_map = self.config.settings.trackers.by_selection()
         template_selector = TemplateSelectorBackEnd()
-        available_templates = set(template_selector.load_templates())
-
-        for tracker in context.shared_data.tracker_image_hosts:
-            tracker_info = tracker_map.get(tracker)
-            if tracker_info is None:
-                problems.append(f"{tracker}: not configured in this config")
-                continue
-            if not tracker_info.upload_enabled:
-                problems.append(f"{tracker}: uploads are disabled in this config")
-            template = tracker_info.nfo_template
-            if template and template not in available_templates:
-                problems.append(
-                    f"{tracker}: NFO template '{template}' no longer exists"
-                )
-
+        problems = tracker_profile_problems(
+            context.shared_data.tracker_image_hosts,
+            self.config.settings.trackers.by_selection(),
+            template_selector,
+        )
         problems.extend(self._stale_template_warnings(context, template_selector))
 
         if not problems:
@@ -465,14 +570,23 @@ class MainWindowWizard(QWizard):
             is QMessageBox.StandardButton.Yes
         )
 
-    def _resume_job(self, context: ProcessingContext) -> None:
-        """Rebuild the wizard around a restored context, at the process page.
+    def _resume_job(
+        self,
+        context: ProcessingContext,
+        start_page: WizardPages = WizardPages.PROCESS_PAGE,
+    ) -> None:
+        """Rebuild the wizard around a restored context, at `start_page`.
 
-        Mirrors `reset_wizard`, except the start page is the process page:
-        everything earlier in the flow was already answered when the job was
-        saved, and `setStartId` + `restart()` (QWizard has no `setCurrentId`)
-        also leaves a clean history so Back cannot walk into pages this run
-        never visited.
+        Mirrors `reset_wizard`, except that it starts partway through: the pages
+        before `start_page` were already answered when the job was saved, and
+        `setStartId` + `restart()` (QWizard has no `setCurrentId`) also leaves a
+        clean history so Back cannot walk into pages this run never visited.
+
+        The process page is the usual entry, but a run that still has to
+        generate NFOs starts at the trackers page instead -- tracker choice and
+        NFO template assignment are read live from the profile rather than
+        stored in the job, so they cannot be inherited the way the rest of the
+        context is.
         """
         self.context = context
         self.currentIdChanged.disconnect()
@@ -484,21 +598,33 @@ class MainWindowWizard(QWizard):
         self._set_disabled(False)
         self.next_button.setText("Next")
         self.process_button.setText("Process (Dupe Check)")
-        self.process_button.show()
-        self.setStartId(WizardPages.PROCESS_PAGE.value)
-        self.setButtonLayout(self.ending_buttons)
+        self.setStartId(start_page.value)
+        self._apply_button_layout(
+            self.ending_buttons
+            if start_page is WizardPages.PROCESS_PAGE
+            else self.mid_flow_buttons
+        )
         self.restart()
-        GSigs().main_window_update_status_bar_label.emit("Process")
+        self._sync_button_layout()
+        GSigs().main_window_update_status_bar_label.emit(
+            str(start_page).removesuffix(" Page")
+        )
 
     def _build_wizard_pages(self) -> None:
         for idx, page in enumerate(self._PAGES):
             self.setPage(idx + 1, page)
 
     def _set_start_page(self) -> None:
-        if not self.config.settings.general.enable_plugins:
-            self.setStartId(WizardPages.INPUT_PAGE.value)
-            GSigs().main_window_update_status_bar_label.emit("Input")
-        elif (
+        """Point a fresh run at the page it begins on.
+
+        Always sets one, which is the whole point. `setStartId` is sticky and
+        `_resume_job` moves it to wherever a resumed job picks up, so leaving
+        it alone here does not mean "the default" -- it means "wherever the
+        last resumed job started". Plugins being enabled with no usable wizard
+        page took that path, and Start Over then opened a brand new run
+        partway through the wizard, on a context with nothing in it.
+        """
+        if (
             self.config.settings.general.enable_plugins
             and self.config.settings.plugins.wizard_page
             and self.config.plugin_manager.get(self.config.settings.plugins.wizard_page)
@@ -507,16 +633,51 @@ class MainWindowWizard(QWizard):
             GSigs().main_window_update_status_bar_label.emit(
                 self.config.settings.plugins.wizard_page
             )
+            return
+
+        self.setStartId(WizardPages.INPUT_PAGE.value)
+        GSigs().main_window_update_status_bar_label.emit("Input")
+
+    def _apply_button_layout(self, layout: Sequence[QWizard.WizardButton]) -> None:
+        """Apply a button row, Process button visibility included.
+
+        `setButtonLayout` only governs the buttons a layout names. A custom
+        button hidden or shown by hand keeps that state while absent from the
+        layout, with no place in the row -- which is how the Process button
+        came to sit beside Next on the trackers page: a finished run hides it,
+        and the next resumed job called `show()` on it while putting a layout
+        up that does not include it.
+
+        That button is not cosmetic where it does not belong. Pressing it
+        starts a run from whichever page is current, and a process page that
+        was never reached never built its tracker rows, so the run it starts
+        has no trackers at all.
+        """
+        self.setButtonLayout(layout)
+        self.process_button.setVisible(QWizard.WizardButton.CustomButton3 in layout)
+
+    def _sync_button_layout(self) -> None:
+        """Match the button row to the page that is actually showing.
+
+        `_handle_page_change` runs off `currentIdChanged`, which is an edge:
+        a rebuild landing back on the id the wizard was already on changes
+        nothing and fires nothing, leaving the previous run's buttons in
+        place. The layout left behind by a finished run is the one that hurts
+        -- it puts Process where Next belongs, on a page with nothing to
+        process -- so the rebuild states the layout rather than inferring it
+        from a signal that may not come.
+        """
+        self._handle_page_change(self.currentId())
 
     @Slot(int)
     def _handle_page_change(self, idx: int) -> None:
         if idx > -1 and WizardPages(idx) in self._START_PAGES:
-            self.setButtonLayout(self.starting_buttons)
+            self._apply_button_layout(self.starting_buttons)
         else:
             if idx != WizardPages.PROCESS_PAGE.value:
-                self.setButtonLayout(self.mid_flow_buttons)
+                self._apply_button_layout(self.mid_flow_buttons)
             else:
-                self.setButtonLayout(self.ending_buttons)
+                self._apply_button_layout(self.ending_buttons)
 
     @Slot(bool)
     def _set_disabled(self, value: bool) -> None:
@@ -527,7 +688,7 @@ class MainWindowWizard(QWizard):
         self.load_job_button.setDisabled(value)
 
     def end_early(self) -> None:
-        self.setButtonLayout(self.early_ending_buttons)
+        self._apply_button_layout(self.early_ending_buttons)
 
     def _insert_plugin_page(self) -> None:
         if (
@@ -574,7 +735,15 @@ class MainWindowWizard(QWizard):
             # settings_close) stay alive. Schedule the old instance for
             # deletion so "Start Over" doesn't keep accumulating live, still
             # connected page objects each time fresh pages are built.
+            #
+            # `deleteLater()` alone is not enough for a connection whose
+            # correctness depends on *when* it goes: it schedules the delete
+            # and nothing here waits for it. A page with something it must
+            # hand back now says so in `teardown()`.
             if page is not None:
+                teardown = getattr(page, "teardown", None)
+                if callable(teardown):
+                    teardown()
                 page.deleteLater()
 
     def _connect_current_id_changed(self) -> None:

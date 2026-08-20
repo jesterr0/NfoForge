@@ -224,3 +224,32 @@ def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(
     stored = live.tvr_title_overrides[EpisodeFormat.STANDARD]
     assert stored.enabled is True
     assert stored.token == "{title_clean} (my own)"  # noqa: S105
+
+
+def test_override_preview_follows_the_enable_checkbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The series preview mirrors the same enabled/fallback semantics as the
+    backend and refreshes immediately when the checkbox is toggled."""
+    widget, _manager = _make_series_management_settings(tmp_path, monkeypatch)
+    controls = widget._format_widgets[EpisodeFormat.STANDARD]
+    override = controls["tracker_override_map"][TrackerSelection.LST]
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        widget, "_update_example", lambda **kwargs: calls.append(kwargs) or ""
+    )
+    controls["title_token"].setText("GLOBAL")
+    override.over_ride_format_title.setText("OVERRIDE")
+    override.blockSignals(False)
+    override.enabled_checkbox.setChecked(True)
+
+    calls.clear()
+    override.enabled_checkbox.setChecked(False)
+    assert calls[-1]["token_str"] == "GLOBAL"  # noqa: S105
+    assert calls[-1]["override_title_rules"] is None
+
+    override.enabled_checkbox.setChecked(True)
+    assert calls[-1]["token_str"] == "OVERRIDE"  # noqa: S105
+    assert calls[-1]["override_title_rules"] == (
+        override.over_ride_replacement_table.get_replacements()
+    )

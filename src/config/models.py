@@ -8,6 +8,7 @@ from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.logging_settings import LogLevel
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.subtitles import SubtitleAlignment
@@ -98,6 +99,7 @@ class GeneralSettings:
     enable_plugins: bool
     releasers_name: str
     tmdb_language: str
+    media_search_mode: MediaSearchMode
     timeout: int
     enable_prompt_overview: bool
     enable_mkbrr: bool
@@ -201,6 +203,11 @@ class SeriesSettings:
     daily_episode_token: str
     anime_episode_token: str
     season_folder_token: str
+    # Blank means "use season_folder_token": in a single-season pack the
+    # opened folder IS the season folder, so one token covers both. This
+    # only diverges for a nested pack, where the root carries the season
+    # range and each subfolder carries its own season.
+    season_subfolder_token: str
     multi_episode_style: MultiEpisodeStyle
     standard_title_token: str
     daily_title_token: str

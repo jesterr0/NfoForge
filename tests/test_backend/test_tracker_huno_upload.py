@@ -130,7 +130,7 @@ def test_standard_unit3d_request_keeps_description_and_mediainfo_as_fields(
     assert files == {"torrent": torrent}
 
 
-@patch("src.backend.trackers.huno.niquests.get")
+@patch("niquests.Session.get")
 def test_huno_resolves_download_link_from_torrent_details(
     get: MagicMock, tmp_path: Path
 ) -> None:
@@ -161,7 +161,7 @@ def test_huno_resolves_download_link_from_torrent_details(
     response.raise_for_status.assert_called_once_with()
 
 
-@patch("src.backend.trackers.huno.niquests.get")
+@patch("niquests.Session.get")
 def test_huno_uses_download_link_from_upload_response_without_details_request(
     get: MagicMock, tmp_path: Path
 ) -> None:
@@ -210,7 +210,7 @@ def test_huno_resolves_relative_download_link_against_tracker(tmp_path: Path) ->
         "tmdb": "12345",
     },
 )
-@patch("src.backend.trackers.unit3d_base.niquests.post")
+@patch("niquests.Session.post")
 def test_huno_upload_accepts_nested_success_response(
     post: MagicMock,
     _build_payload: MagicMock,

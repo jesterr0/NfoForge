@@ -24,12 +24,14 @@ from PySide6.QtWidgets import (
     QTextBrowser,
     QVBoxLayout,
 )
+from typing_extensions import override
 
 from src.backend.jobs import (
     JobAssetError,
     JobCodecError,
     JobStoreError,
     JobSummary,
+    base_torrent_snapshot,
     build_job,
     capture_mediainfo,
     capture_nfos,
@@ -39,8 +41,13 @@ from src.backend.jobs import (
     filter_context_document,
     fingerprint_files,
     job_dir,
+    load_job,
+    mediainfo_sources,
+    prune_unreferenced_nfos,
+    rebuild_job_document,
     save_job,
     torrent_content_files,
+    write_job_document,
 )
 from src.backend.process import ProcessBackEnd
 from src.backend.torrents import BASE_TORRENT_SUFFIX
@@ -51,7 +58,7 @@ from src.backend.upload_retry import (
     UploadFailurePhase,
     UploadRetryAction,
 )
-from src.backend.utils.file_utilities import open_explorer
+from src.backend.utils.file_utilities import open_explorer, release_stem
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
@@ -73,6 +80,38 @@ from src.utils.secret_redaction import scrub_secrets
 
 if TYPE_CHECKING:
     from src.frontend.windows.main_window import MainWindow
+
+
+def _measure_content_size(input_path: Path) -> int | None:
+    """Total bytes of the release, or None when it cannot be measured.
+
+    Matches what a generated torrent reports (`Torrent.size`), so a job that
+    has a base torrent and one that does not record the same number: the sum of
+    every file for a pack, the file's own size for a single file. `stat()` on a
+    directory would report the directory entry instead, which is not a release
+    size at all.
+    """
+    try:
+        if input_path.is_dir():
+            return sum(
+                path.stat().st_size for path in torrent_content_files(input_path)
+            )
+        return input_path.stat().st_size if input_path.is_file() else None
+    except OSError as error:
+        LOG.warning(
+            LOG.LOG_SOURCE.FE,
+            f"Could not measure the size of '{input_path}' for this job: {error}",
+        )
+        return None
+
+
+_SOURCE_LESS_TEXT = (
+    "The original media is not available. Using the archived release package; "
+    "configured plugins and torrent clients will still be attempted. This does "
+    "not recreate the media, so ensure the content still exists where your "
+    "torrent client will seed it."
+)
+"""Shown when a run has no source left and is riding on its archived torrent."""
 
 
 class BaseWorker(QThread):
@@ -357,6 +396,34 @@ class ProcessPage(BaseWizardPage):
         self._run_outcomes: dict[TrackerSelection, TrackerRunOutcome] = {}
         self._run_phase = RunPhase.FULL
 
+        # The notice below describes the run as a whole rather than something
+        # that happened, so it is latched: `process_jobs` is entered once per
+        # press of the Process button (dupe check, then upload, and again for
+        # Prepare), and repeating it there reads as spam.
+        self._source_less_notice_shown = False
+
+        self.source_less_banner = QLabel(self, wordWrap=True)
+        self.source_less_banner.setText(f"⚠ {_SOURCE_LESS_TEXT}")
+        # Text and border only: the pane is themed by the app, and painting a
+        # background here would fight whichever theme is active.
+        self.source_less_banner.setStyleSheet(
+            "color: #d68c00; border: 1px solid #d68c00; border-radius: 4px; "
+            "padding: 6px;"
+        )
+        self.source_less_banner.hide()
+
+        # A row reading "Disabled" because the user chose it and one reading
+        # "Disabled" because its host went away look identical, so the
+        # substitution gets said out loud here. Built like the banner above
+        # and filled in by `add_tracker_items`, which is the only place that
+        # knows what a row was asked for versus what it could be given.
+        self.image_host_banner = QLabel(self, wordWrap=True)
+        self.image_host_banner.setStyleSheet(
+            "color: #d68c00; border: 1px solid #d68c00; border-radius: 4px; "
+            "padding: 6px;"
+        )
+        self.image_host_banner.hide()
+
         self.tracker_process_tree = ComboBoxTreeWidget(
             headers=("Tracker", "Image Host", "Status"), parent=self
         )
@@ -403,12 +470,49 @@ class ProcessPage(BaseWizardPage):
         button_row.addWidget(self.open_temp_output_btn)
 
         main_layout = QVBoxLayout(self)
+        main_layout.addWidget(self.source_less_banner)
+        main_layout.addWidget(self.image_host_banner)
         main_layout.addWidget(self.tracker_process_tree, stretch=3)
         main_layout.addWidget(text_widget_label, alignment=Qt.AlignmentFlag.AlignBottom)
         main_layout.addWidget(self.text_widget, stretch=5)
         main_layout.addWidget(self.progress_bar, stretch=1)
         main_layout.addLayout(button_row)
         self.setLayout(main_layout)
+
+    @override
+    def teardown(self) -> None:
+        """Stop answering the Process button once this page is not the run.
+
+        The button belongs to the wizard, not to any one page, so every
+        `ProcessPage` ever built subscribes to the same signal and a removed
+        one keeps its subscription until it is destroyed. Two pages answering
+        one press means two runs from two different contexts: the live one,
+        and a stale one that uploads to trackers its own context still names.
+        Start Over is the way to collect a page whose context is empty, whose
+        run then reports having no trackers at all.
+        """
+        try:
+            GSigs().wizard_process_btn_clicked.disconnect(self.process_jobs)
+        except (RuntimeError, TypeError):
+            # already gone -- torn down twice, or never connected
+            pass
+        super().teardown()
+
+    def _source_less_run(self) -> bool:
+        """Whether this run is riding on its archive rather than on the media.
+
+        The same condition `process_jobs` acts on, kept in one place so the
+        banner and the log line can never disagree about it.
+        """
+        if self.context.shared_data.base_torrent is None:
+            return False
+        try:
+            self.context.media_input.require_existing_media_paths(
+                include_comparison=False
+            )
+        except (FileNotFoundError, RuntimeError):
+            return True
+        return False
 
     def _announce_saved_job(self, name: str) -> None:
         """Note a save in the log pane.
@@ -435,6 +539,8 @@ class ProcessPage(BaseWizardPage):
         cannot re-upload them.
         """
         media_input = self.context.media_input
+        input_path = media_input.require_input_path()
+        media_input.input_kind = "directory" if input_path.is_dir() else "file"
         try:
             # capturing MediaInfo reads every input file, so the comparison
             # source has to be there too when one is in play
@@ -521,11 +627,22 @@ class ProcessPage(BaseWizardPage):
         longer covers.
         """
         media_input = self.context.media_input
+        input_path = media_input.require_input_path()
+        media_input.input_kind = "directory" if input_path.is_dir() else "file"
+        # Recorded whether or not a torrent was generated. Without it the two
+        # trackers that size a disc release fall back to reading the input path
+        # off the filesystem (`beyondhd.py`, `passthepopcorn.py`), which a
+        # source-less run cannot do -- and this is the last moment the media is
+        # guaranteed to be there to measure.
+        if media_input.content_size is None:
+            media_input.content_size = _measure_content_size(input_path)
 
-        # MediaInfo is captured for every file the payload knows about, which
-        # includes the comparison source when one is in play
+        # MediaInfo is captured for every object the context can reach, not
+        # just the run's own file list: a plugin holding a per-episode source
+        # MediaInfo needs its dump stored too, or a resumed run has nothing to
+        # rebuild it from
         mediainfo_assets = capture_mediainfo(
-            directory, list(media_input.file_list_mediainfo)
+            directory, list(mediainfo_sources(self.context))
         )
 
         # copied even when the images already uploaded and their URLs were
@@ -537,8 +654,11 @@ class ProcessPage(BaseWizardPage):
         )
 
         base_torrent = self._first_generated_torrent()
+        snapshot: dict[str, Any] | None = None
         if base_torrent:
             copy_base_torrent(directory, base_torrent)
+            snapshot = base_torrent_snapshot(base_torrent)
+            media_input.content_size = cast(int, snapshot["content_size"])
 
         # a prepared job's NFOs are the ones that get uploaded, so they cannot
         # be left in `processing/` where Clean Up would take them -- and a
@@ -558,9 +678,11 @@ class ProcessPage(BaseWizardPage):
                 str(image) for image in copied_images
             ]
         if base_torrent:
-            input_path = media_input.require_input_path()
+            if snapshot is None:
+                raise JobAssetError("Could not capture the base torrent snapshot")
             document["base_torrent"] = {
                 "media": str(input_path),
+                "snapshot": snapshot,
                 # every file, not just the first: the torrent is built from
                 # `input_path`, so one file of a pack cannot vouch for the rest
                 "fingerprints": fingerprint_files(torrent_content_files(input_path)),
@@ -587,7 +709,10 @@ class ProcessPage(BaseWizardPage):
         input_path = self.context.media_input.input_path
         if not working_dir or not input_path:
             return None
-        base = working_dir / f"{input_path.stem}{BASE_TORRENT_SUFFIX}"
+        base = working_dir / (
+            f"{release_stem(input_path, self.context.media_input.input_is_directory())}"
+            f"{BASE_TORRENT_SUFFIX}"
+        )
         return base if base.is_file() else None
 
     def _default_job_name(self) -> str:
@@ -611,10 +736,15 @@ class ProcessPage(BaseWizardPage):
             input_name=input_path.name if input_path else None,
             input_path=str(input_path) if input_path else "",
             file_count=len(self.context.media_input.file_list),
-            trackers=[
-                str(tracker)
-                for tracker in self.context.shared_data.tracker_image_hosts
-                if keep_trackers is None or tracker in keep_trackers
+            # `keep_trackers` is the authority when given. Filtering the run's
+            # image-host map by it would drop a tracker the run never touched --
+            # one left pending by an earlier run, whose row does not exist this
+            # time -- and the summary is what the picker shows and what decides
+            # whether a saved job can still be opened.
+            trackers=sorted(str(tracker) for tracker in keep_trackers)
+            if keep_trackers is not None
+            else [
+                str(tracker) for tracker in self.context.shared_data.tracker_image_hosts
             ],
         )
 
@@ -625,11 +755,31 @@ class ProcessPage(BaseWizardPage):
                 include_comparison=False
             )
         except (FileNotFoundError, RuntimeError) as error:
-            QMessageBox.critical(
+            if self.context.shared_data.base_torrent is None:
+                QMessageBox.critical(
+                    self,
+                    "Media Files Unavailable",
+                    f"Processing cannot start because its input paths are no longer "
+                    f"valid:\n\n{error}",
+                )
+                return
+            if not self._source_less_notice_shown:
+                self._source_less_notice_shown = True
+                self._on_text_update(
+                    f"<span style='color: #d68c00;'>{_SOURCE_LESS_TEXT}</span>"
+                    "<br /><br />"
+                )
+
+        # Nothing to upload to is a state the user can reach -- a job that has
+        # already been everywhere it was run for -- so it is answered here
+        # rather than left to fail as an unhandled exception further down.
+        if not self.context.shared_data.tracker_image_hosts:
+            QMessageBox.warning(
                 self,
-                "Media Files Unavailable",
-                f"Processing cannot start because its input paths are no longer "
-                f"valid:\n\n{error}",
+                "No Trackers",
+                "This run has no trackers to upload to.\n\nIf this came from a "
+                "saved job, reopen it from the Jobs dialog with 'Add Trackers' "
+                "to choose one, or use 'Start Over' to begin a new run.",
             )
             return
 
@@ -640,7 +790,9 @@ class ProcessPage(BaseWizardPage):
         # get tracker data and check for existing torrent files
         tracker_data = self._gather_tracker_data(detected_input)
         if not tracker_data:
-            raise AttributeError("Could not determine tracker data")
+            # None means the overwrite prompt was backed out of, which is the
+            # user cancelling rather than anything going wrong.
+            return
 
         GSigs().wizard_set_disabled.emit(True)
         self.tracker_process_tree.setDisabled(True)
@@ -812,10 +964,13 @@ class ProcessPage(BaseWizardPage):
             # the deferred-job offer
             self.processing_mode = UploadProcessMode.DUPE_CHECK
             self._on_text_update("<br /><span>📦 Prepared. Saving this job...</span>")
-            self._save_job()
+            if not self._save_prepared_archive():
+                self._save_job()
             return
         GSigs().wizard_process_btn_set_hidden.emit()
-        self._offer_deferred_job()
+        archive_completed = getattr(self, "_archive_completed_run", None)
+        if not callable(archive_completed) or not archive_completed():
+            self._offer_deferred_job()
 
     @Slot()
     def _on_cancelled(self) -> None:
@@ -828,14 +983,168 @@ class ProcessPage(BaseWizardPage):
         # Without this the process button restarts from the first tracker and
         # re-uploads the ones that already succeeded.
         GSigs().wizard_process_btn_set_hidden.emit()
-        self._offer_deferred_job()
+        archive_completed = getattr(self, "_archive_completed_run", None)
+        if not callable(archive_completed) or not archive_completed():
+            self._offer_deferred_job()
 
     @Slot(str, str)
     def _on_failed(self, e: str, trace_back: str) -> None:
         self._job_ended()
         self._on_text_update(f"<br /><p>{scrub_secrets(e)}</p>")
         LOG.error(LOG.LOG_SOURCE.FE, scrub_secrets(trace_back))
-        self._offer_deferred_job()
+        archive_completed = getattr(self, "_archive_completed_run", None)
+        if not callable(archive_completed) or not archive_completed():
+            self._offer_deferred_job()
+
+    def _archive_completed_run(self) -> bool:
+        """Persist one reusable archive and reconcile tracker outcomes into it."""
+        if self._run_phase is not RunPhase.FULL or not self._run_outcomes:
+            return False
+
+        landed = {
+            tracker
+            for tracker, outcome in self._run_outcomes.items()
+            if outcome
+            in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
+        }
+        uncertain = {
+            tracker
+            for tracker, outcome in self._run_outcomes.items()
+            if outcome is TrackerRunOutcome.MAY_HAVE_UPLOADED
+        }
+        context = self.context
+        working_dir = self.config.settings.general.working_dir
+        existing_path = context.loaded_job_path
+        creating = existing_path is None
+        created_directory: Path | None = None
+        try:
+            if existing_path is not None:
+                job = load_job(existing_path)
+                directory = existing_path
+            else:
+                job = build_job(
+                    name=self._default_job_name(),
+                    summary=JobSummary(),
+                    context={},
+                    config_profile=self.config.program.current_config,
+                    archived=True,
+                )
+                directory = job_dir(working_dir, job.job_id, ensure_exists=True)
+                created_directory = directory
+
+            uploaded_all = context.loaded_uploaded_trackers | landed
+            uncertain_all = (context.loaded_uncertain_trackers | uncertain) - landed
+            # A tracker left pending by an *earlier* run is not in
+            # `_run_outcomes`, but its prepared title and NFO are still on the
+            # context. Narrowing to only this run's leftovers would drop them
+            # from the document, and `prune_unreferenced_nfos` would then
+            # delete the sidecars -- silently discarding prepared work whose
+            # only way back is preparing that tracker over again.
+            pending = (
+                (
+                    set(self._run_outcomes)
+                    | set(context.shared_data.tracker_release_data)
+                )
+                - uploaded_all
+                - uncertain_all
+            )
+
+            if creating:
+                document = self._build_job_document(directory, None)
+            else:
+                document = rebuild_job_document(job, directory, context)
+
+            # An uncertain tracker keeps its title, NFO and image state while
+            # staying out of `selected_trackers`, so nothing can resume into a
+            # second upload -- and resolving it as "never landed" has the
+            # prepared work to put back. Narrowing it away instead left only
+            # its name, and offered a resolution the data could not support.
+            document = filter_context_document(
+                document, pending, retain_data_for=uncertain_all
+            )
+            job.context = document
+            job.archived = True
+            job.uploaded_trackers = sorted(tracker.name for tracker in uploaded_all)
+            job.uncertain_trackers = sorted(tracker.name for tracker in uncertain_all)
+            job.summary = self._job_summary(pending)
+            job.summary.uploaded_trackers = sorted(
+                str(tracker) for tracker in uploaded_all
+            )
+            job.summary.uncertain_trackers = sorted(
+                str(tracker) for tracker in uncertain_all
+            )
+            write_job_document(job, directory)
+            try:
+                prune_unreferenced_nfos(directory, job.context)
+            except OSError as error:
+                LOG.warning(
+                    LOG.LOG_SOURCE.FE,
+                    f"Archive saved but stale NFO cleanup failed: {error}",
+                )
+
+            context.loaded_job_path = directory
+            context.loaded_job_id = job.job_id
+            context.loaded_job_name = job.name
+            context.loaded_job_archived = True
+            context.loaded_uploaded_trackers = uploaded_all
+            context.loaded_uncertain_trackers = uncertain_all
+            self._on_text_update(
+                f"<br /><span>📦 Archived '{escape(job.name)}' for future "
+                "trackers.</span>"
+            )
+            return True
+        except (JobAssetError, JobCodecError, JobStoreError, OSError) as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to archive completed run: {error}")
+            if created_directory is not None:
+                shutil.rmtree(created_directory, ignore_errors=True)
+            QMessageBox.warning(
+                self,
+                "Archive Failed",
+                "The upload run finished, but its reusable job archive could not "
+                f"be saved:\n\n{error}",
+            )
+            return False
+
+    def _save_prepared_archive(self) -> bool:
+        """Update a loaded archive after preparing newly added trackers.
+
+        Only an archive takes this path. Preparing an ordinary saved job keeps
+        the named save it always had -- silently overwriting the job the user
+        opened is not what "Prepare Job" has ever meant, and that job still has
+        its media, so `_save_job` can capture MediaInfo the normal way. An
+        archive cannot: it may have no source left, which is what the stored
+        assets below are for.
+        """
+        if not self.context.loaded_job_archived:
+            return False
+        path = self.context.loaded_job_path
+        if path is None:
+            return False
+        try:
+            job = load_job(path)
+            job.context = rebuild_job_document(job, path, self.context)
+            job.summary = self._job_summary()
+            job.summary.uploaded_trackers = sorted(
+                str(tracker) for tracker in self.context.loaded_uploaded_trackers
+            )
+            job.summary.uncertain_trackers = sorted(
+                str(tracker) for tracker in self.context.loaded_uncertain_trackers
+            )
+            write_job_document(job, path)
+            self._on_text_update(
+                f"<br /><span>📦 Updated prepared archive '{escape(job.name)}'.</span>"
+            )
+            return True
+        except (JobAssetError, JobCodecError, JobStoreError, OSError) as error:
+            LOG.error(LOG.LOG_SOURCE.FE, f"Failed to update prepared archive: {error}")
+            QMessageBox.warning(
+                self,
+                "Archive Update Failed",
+                f"Could not update the prepared archive:\n\n{error}",
+            )
+            # The archive exists but could not be updated; do not fall through
+            # to the ordinary save path, which requires the missing source.
+            return True
 
     def _deferrable_trackers(self) -> dict[TrackerSelection, TrackerRunOutcome]:
         """Trackers this run left un-uploaded that can safely be retried later.
@@ -1164,6 +1473,10 @@ class ProcessPage(BaseWizardPage):
         self.context.shared_data.tracker_image_hosts.update(selections)
 
     def add_tracker_items(self) -> None:
+        # collected across every row so one notice names them all, rather than
+        # one banner per tracker overwriting the last
+        unavailable: list[str] = []
+
         # sort the trackers in the users desired order before displaying them
         if self.context.shared_data.selected_trackers:
             # snapshot before any rows are built: adding rows fires
@@ -1203,6 +1516,19 @@ class ProcessPage(BaseWizardPage):
                 if self._plugin_image_host_available():
                     enabled_img_hosts = enabled_img_hosts | {ImageHost.PLUGIN: True}
 
+            # A host this job already uploaded to can be served from the stored
+            # URLs alone -- no local screenshots, and no credentials, since
+            # nothing is sent. That is the only option a source-less archive
+            # has, so without this an archive whose `images/` is gone offered
+            # nothing but `Disabled` and silently uploaded to nobody.
+            enabled_img_hosts = enabled_img_hosts | {
+                host: True
+                for host in self.context.shared_data.uploaded_images_by_host
+                if isinstance(host, ImageHost)
+                and host is not ImageHost.DISABLED
+                and host not in enabled_img_hosts
+            }
+
             ordered_trackers = [
                 x
                 for x in sorted(
@@ -1235,29 +1561,95 @@ class ProcessPage(BaseWizardPage):
                 if not combo_box:
                     continue
 
-                # a restored job knows exactly which destination was chosen, so
-                # match it directly; otherwise fall back to the remembered
-                # preference, which only has the destination to go on
-                restored_host = restored_hosts.get(tracker)
-                if restored_host:
-                    restored_idx = combo_box.findText(
-                        self._image_host_label(upload_type, restored_host.img_to)
-                    )
-                    if restored_idx != -1:
-                        combo_box.setCurrentIndex(restored_idx)
-                        continue
-
-                last_used_host = self.config.settings.trackers.last_used_image_host.get(
-                    tracker
+                note = self._apply_remembered_image_host(
+                    combo_box, tracker, upload_type, restored_hosts.get(tracker)
                 )
-                if last_used_host:
-                    get_last = combo_box.findText(
-                        str(last_used_host), flags=Qt.MatchFlag.MatchContains
-                    )
-                    if get_last != -1:
-                        combo_box.setCurrentIndex(get_last)
+                if note:
+                    unavailable.append(note)
 
-            self._sync_tracker_image_hosts()
+        self._show_image_host_notice(unavailable)
+
+        # Outside the branch on purpose: the rows are the run, so with no
+        # tracker to build a row for there is no run, and the payload has to
+        # say so. A restored job can arrive carrying image hosts for trackers
+        # it is only holding state for -- an unconfirmed upload keeps its
+        # entry -- and leaving those in place let a run with no rows at all
+        # still hand the backend a tracker to upload to.
+        self._sync_tracker_image_hosts()
+
+    def _apply_remembered_image_host(
+        self,
+        combo_box: QComboBox,
+        tracker: TrackerSelection,
+        upload_type: ImageSource,
+        restored_host: ImageUploadFromTo | None,
+    ) -> str | None:
+        """Point one row at the destination it is meant to use.
+
+        A restored job knows exactly which destination was chosen, so it is
+        matched directly; otherwise the remembered preference applies, which
+        only has the destination to go on.
+
+        Returns a note when the remembered destination could not be offered.
+        Settings -> Image Hosts is read live, so a host turned off (or left
+        with a required field blank) since the job was saved simply is not in
+        the list, and the row quietly took whatever was first -- `Disabled`,
+        which uploads no screenshots at all. A saved job could also land on the
+        *global* last-used host instead of its own, sending its screenshots
+        somewhere it never chose and making the URLs it already holds
+        unusable. Both are still allowed to happen -- turning images off is a
+        legitimate choice and this is not the page to argue with it -- but the
+        caller says so out loud instead of letting the row imply the user
+        picked it.
+        """
+        if restored_host:
+            index = combo_box.findText(
+                self._image_host_label(upload_type, restored_host.img_to)
+            )
+            if index != -1:
+                combo_box.setCurrentIndex(index)
+                return None
+
+        last_used_host = self.config.settings.trackers.last_used_image_host.get(tracker)
+        if last_used_host:
+            index = combo_box.findText(
+                str(last_used_host), flags=Qt.MatchFlag.MatchContains
+            )
+            if index != -1:
+                combo_box.setCurrentIndex(index)
+                # the preference standing in for a job's own choice is the
+                # substitution worth reporting; standing in for nothing is
+                # just the preference doing its job
+                if not restored_host:
+                    return None
+
+        wanted = restored_host.img_to if restored_host else last_used_host
+        if wanted is None:
+            return None
+        return (
+            f"{tracker}: '{wanted}' is not available in this config, so this "
+            f"run will use '{combo_box.currentText()}'"
+        )
+
+    def _show_image_host_notice(self, unavailable: Sequence[str]) -> None:
+        """Put the image-host substitutions on the banner, or take it down.
+
+        Always one or the other: re-entering the page rebuilds the rows, and a
+        banner left up from a previous visit would describe a run that is no
+        longer the one on screen.
+        """
+        if not unavailable:
+            self.image_host_banner.clear()
+            self.image_host_banner.hide()
+            return
+        self.image_host_banner.setText(
+            "⚠ Image host unavailable for "
+            f"{'a tracker' if len(unavailable) == 1 else 'some trackers'}:\n"
+            + "\n".join(unavailable)
+            + "\nRe-enable it in Settings -> Image Hosts, or pick another "
+            "above, if this is not what you want."
+        )
+        self.image_host_banner.show()
 
     def _plugin_image_host_available(self) -> bool:
         """Whether a loaded plugin currently provides image host uploads.
@@ -1288,6 +1680,7 @@ class ProcessPage(BaseWizardPage):
             working_dir=process_dir,
             input_path=detected_input,
             tracker_image_hosts=self.context.shared_data.tracker_image_hosts,
+            input_is_directory=self.context.media_input.input_is_directory(),
         )
 
         # the prompt is the one part that needs a user, so it stays here rather
@@ -1349,4 +1742,5 @@ class ProcessPage(BaseWizardPage):
             open_explorer(self.context.media_input.working_dir)
 
     def initializePage(self) -> None:
+        self.source_less_banner.setVisible(self._source_less_run())
         self.add_tracker_items()

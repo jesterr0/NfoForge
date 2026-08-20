@@ -23,6 +23,8 @@ class JobSummary:
     input_name: str | None = None
     file_count: int = 0
     trackers: list[str] = field(default_factory=list)
+    uploaded_trackers: list[str] = field(default_factory=list)
+    uncertain_trackers: list[str] = field(default_factory=list)
     input_path: str = ""
     """Full path of the media, so the picker can tell a broken job at a glance.
 
@@ -39,12 +41,16 @@ class JobSummary:
             "input_name": self.input_name,
             "file_count": self.file_count,
             "trackers": list(self.trackers),
+            "uploaded_trackers": list(self.uploaded_trackers),
+            "uncertain_trackers": list(self.uncertain_trackers),
             "input_path": self.input_path,
         }
 
     @classmethod
     def from_dict(cls, document: dict[str, Any]) -> JobSummary:
         trackers = document.get("trackers")
+        uploaded_trackers = document.get("uploaded_trackers")
+        uncertain_trackers = document.get("uncertain_trackers")
         return cls(
             title=document.get("title"),
             year=document.get("year"),
@@ -53,6 +59,12 @@ class JobSummary:
             file_count=int(document.get("file_count") or 0),
             trackers=[str(tracker) for tracker in trackers]
             if isinstance(trackers, list)
+            else [],
+            uploaded_trackers=[str(tracker) for tracker in uploaded_trackers]
+            if isinstance(uploaded_trackers, list)
+            else [],
+            uncertain_trackers=[str(tracker) for tracker in uncertain_trackers]
+            if isinstance(uncertain_trackers, list)
             else [],
             input_path=str(document.get("input_path") or ""),
         )
@@ -84,6 +96,11 @@ class SavedJob:
     """
 
     schema_version: int = JOB_SCHEMA_VERSION
+    archived: bool = False
+    """Whether the stored base torrent is the canonical release snapshot."""
+
+    uploaded_trackers: list[str] = field(default_factory=list)
+    uncertain_trackers: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +110,9 @@ class SavedJob:
             "created_at": self.created_at,
             "nfoforge_version": self.nfoforge_version,
             "config_profile": self.config_profile,
+            "archived": self.archived,
+            "uploaded_trackers": list(self.uploaded_trackers),
+            "uncertain_trackers": list(self.uncertain_trackers),
             "summary": self.summary.to_dict(),
             "context": self.context,
         }
@@ -109,6 +129,17 @@ class SavedJob:
             summary=JobSummary.from_dict(summary if isinstance(summary, dict) else {}),
             context=context if isinstance(context, dict) else {},
             config_profile=str(document.get("config_profile") or ""),
+            archived=bool(document.get("archived")),
+            uploaded_trackers=[
+                str(value) for value in document.get("uploaded_trackers", [])
+            ]
+            if isinstance(document.get("uploaded_trackers"), list)
+            else [],
+            uncertain_trackers=[
+                str(value) for value in document.get("uncertain_trackers", [])
+            ]
+            if isinstance(document.get("uncertain_trackers"), list)
+            else [],
             schema_version=int(document.get("schema_version") or JOB_SCHEMA_VERSION),
         )
 
@@ -140,6 +171,8 @@ class JobListing:
     Checked when the list is built so a job that cannot run is visible as such
     before the user commits to loading it.
     """
+    archived: bool = False
+    source_less_ready: bool = False
 
     def matches_profile(self, active_profile: str | None) -> bool:
         """Whether this job belongs to the currently active config profile.

@@ -13,7 +13,7 @@ from src.enums.tracker_selection import TRACKER_ROOT_URLS, TrackerSelection
 from src.exceptions import TrackerError
 
 
-@patch("src.backend.trackers.health.niquests.get")
+@patch("niquests.Session.get")
 def test_health_check_accepts_reachable_tracker_and_caches_result(
     get: MagicMock,
 ) -> None:
@@ -35,7 +35,7 @@ def test_health_check_accepts_reachable_tracker_and_caches_result(
 
 
 @pytest.mark.parametrize("status_code", [500, 503])
-@patch("src.backend.trackers.health.niquests.get")
+@patch("niquests.Session.get")
 def test_health_check_blocks_http_failures_and_caches_failure(
     get: MagicMock, status_code: int
 ) -> None:
@@ -53,7 +53,7 @@ def test_health_check_blocks_http_failures_and_caches_failure(
 
 
 @pytest.mark.parametrize("status_code", [400, 401, 403, 404, 405, 429])
-@patch("src.backend.trackers.health.niquests.get")
+@patch("niquests.Session.get")
 def test_health_check_accepts_reachable_client_responses(
     get: MagicMock, status_code: int
 ) -> None:
@@ -66,7 +66,7 @@ def test_health_check_accepts_reachable_client_responses(
     assert cache == {TrackerSelection.TORRENT_LEECH: True}
 
 
-@patch("src.backend.trackers.health.niquests.get")
+@patch("niquests.Session.get")
 def test_health_check_blocks_request_failures(
     get: MagicMock,
 ) -> None:

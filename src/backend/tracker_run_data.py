@@ -46,6 +46,7 @@ def build_tracker_data(
     input_path: Path,
     tracker_image_hosts: dict[TrackerSelection, ImageUploadFromTo],
     create_dirs: bool = True,
+    input_is_directory: bool | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Assemble the run data for every tracker, prompting for nothing.
 
@@ -61,7 +62,8 @@ def build_tracker_data(
             output_dir.mkdir(parents=True, exist_ok=True)
 
         tracker_data[str(tracker)] = {
-            "path": output_dir / f"{release_stem(input_path)}.torrent",
+            "path": output_dir
+            / f"{release_stem(input_path, input_is_directory)}.torrent",
             "image_host": image_host_label(
                 image_host_data.img_from, image_host_data.img_to
             ),

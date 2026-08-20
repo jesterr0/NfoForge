@@ -176,6 +176,97 @@ def test_wizard_tracker_selector_keeps_series_filtering(
         )
 
 
+def _item_for(selector: TrackerSettingsWidget, tracker: TrackerSelection) -> Any:
+    for index in range(selector.tracker_list.count()):
+        item = selector.tracker_list.item(index)
+        if item is not None and item.data(Qt.ItemDataRole.UserRole) is tracker:
+            return item
+    raise AssertionError(f"{tracker} is not in the list")
+
+
+def test_locked_trackers_cannot_be_picked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resumed job must not be able to upload to a tracker it already used."""
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    locked = TrackerSelection.BEYOND_HD
+    manager.settings.trackers.by_selection()[locked].enabled = True
+    selector = TrackerSettingsWidget(manager)
+
+    selector.load_from_config(locked_trackers={locked}, persist_enabled=False)
+
+    item = _item_for(selector, locked)
+    assert not (item.flags() & Qt.ItemFlag.ItemIsEnabled)
+    assert item.checkState() == Qt.CheckState.Unchecked
+    assert locked not in (selector.get_selected_trackers() or [])
+
+
+def test_preselected_trackers_replace_the_configured_enabled_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resumed job starts from what the job carried, not from the profile."""
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    tracker_map = manager.settings.trackers.by_selection()
+    wanted = TrackerSelection.LST
+    unwanted = TrackerSelection.BEYOND_HD
+    tracker_map[wanted].enabled = False
+    tracker_map[unwanted].enabled = True
+    selector = TrackerSettingsWidget(manager)
+
+    selector.load_from_config(preselected=[wanted], persist_enabled=False)
+
+    assert _item_for(selector, wanted).checkState() == Qt.CheckState.Checked
+    assert _item_for(selector, unwanted).checkState() == Qt.CheckState.Unchecked
+    assert selector.get_selected_trackers() == [wanted]
+
+
+def test_a_run_scoped_selection_never_writes_back_to_the_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Otherwise re-running an archive disables every tracker it already used.
+
+    Two separate write paths have to stay quiet: the `itemChanged` handler,
+    which fires on every toggle, and the explicit sync inside
+    `save_editor_settings`.
+    """
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    tracker_map = manager.settings.trackers.by_selection()
+    for tracker in TrackerSelection:
+        tracker_map[tracker].enabled = True
+    selector = TrackerSettingsWidget(manager)
+    selector.load_from_config(preselected=[TrackerSelection.LST], persist_enabled=False)
+
+    # A real state change, not the blocked-signal population above -- and one
+    # that actually moves: setting an item to the state it already holds emits
+    # nothing, so it would exercise neither write path.
+    assert (
+        _item_for(selector, TrackerSelection.LST).checkState() == Qt.CheckState.Checked
+    )
+    _item_for(selector, TrackerSelection.LST).setCheckState(Qt.CheckState.Unchecked)
+    assert tracker_map[TrackerSelection.LST].enabled, (
+        "the itemChanged handler wrote back"
+    )
+
+    selector.save_editor_settings()
+
+    assert all(tracker_map[tracker].enabled for tracker in TrackerSelection)
+
+
+def test_the_settings_window_selection_still_writes_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`persist_enabled` defaults to on, so nothing else changes behaviour."""
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    tracker = TrackerSelection.BEYOND_HD
+    manager.settings.trackers.by_selection()[tracker].enabled = True
+    selector = TrackerSettingsWidget(manager)
+    selector.load_from_config()
+
+    _item_for(selector, tracker).setCheckState(Qt.CheckState.Unchecked)
+
+    assert manager.settings.trackers.by_selection()[tracker].enabled is False
+
+
 def test_tracker_editor_uses_open_bounded_form_sections(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -676,12 +676,29 @@ class ImagesPage(BaseWizardPage):
 
     @Slot(int)
     def _generate_finished(self, code: int) -> None:
-        if code == 0:
+        if code != 0:
+            QMessageBox.warning(
+                self,
+                "Error",
+                f"Failed to generate images, check logs for more information ({code})",
+            )
+            self._complete_loading()
+            return
+
+        if self.image_viewer is not None:
+            self.image_viewer.deleteLater()
+            self.image_viewer = None
+
+        # Opening the viewer is what re-enables the main window on this path,
+        # so nothing else will if it fails: `_execute_image_generation`
+        # disabled the window before starting the worker, and it would stay
+        # disabled for the rest of the session -- which is indistinguishable
+        # from a freeze. The viewer raises for real reasons (no frames
+        # produced, an empty comparison set), so it cannot be assumed to open.
+        try:
             ss_mode = self._determine_ss_mode()
             if not self.image_dir:
                 raise RuntimeError("Failed to determine image_dir")
-            if self.image_viewer is not None:
-                self.image_viewer.deleteLater()
             self.image_viewer = ImageViewer(
                 image_base_dir=self.image_dir,
                 comparison_mode=ss_mode,
@@ -690,16 +707,23 @@ class ImagesPage(BaseWizardPage):
                 parent=self,
             )
             self.image_viewer.show()
-            GSigs().main_window_set_disabled.emit(False)
-            self.image_viewer.exit_viewer.connect(self._on_exit_viewer)
-            self.image_viewer.re_sync_images.connect(self._re_sync)
-        else:
-            QMessageBox.warning(
+        except Exception as error:
+            if self.image_viewer is not None:
+                self.image_viewer.deleteLater()
+                self.image_viewer = None
+            LOG.error(LOG.LOG_SOURCE.FE, get_full_traceback(error))
+            self._complete_loading()
+            QMessageBox.critical(
                 self,
                 "Error",
-                f"Failed to generate images, check logs for more information ({code})",
+                "Images were generated but the viewer could not be opened, "
+                f"check logs for more information ({error})",
             )
-            self._complete_loading()
+            return
+
+        GSigs().main_window_set_disabled.emit(False)
+        self.image_viewer.exit_viewer.connect(self._on_exit_viewer)
+        self.image_viewer.re_sync_images.connect(self._re_sync)
 
     @Slot(list)
     def _on_exit_viewer(self, images: list[Path]) -> None:

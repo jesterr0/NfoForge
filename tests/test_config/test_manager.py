@@ -13,6 +13,7 @@ from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.series import EpisodeFormat
 from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
@@ -45,6 +46,29 @@ def test_manager_loads_nested_typed_settings(
     assert manager.settings.series.standard_episode_token
     assert manager.settings.trackers.beyond_hd.source == "BHD"
     assert manager.settings.templates.newline_sequence == "\n"
+
+
+def test_media_search_mode_is_backfilled_and_round_trips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "src.config.config.FindDependencies.update_dependencies",
+        lambda self, dependencies: None,
+    )
+    paths = _paths(tmp_path)
+    ConfigManager("test", paths)
+    profile = paths.user_configs / "test.toml"
+    document = tomlkit.parse(profile.read_text(encoding="utf-8"))
+    del document["general"]["media_search_mode"]  # type: ignore[index]
+    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+    manager = ConfigManager("test", paths)
+    assert manager.settings.general.media_search_mode is MediaSearchMode.BOTH
+
+    manager.settings.general.media_search_mode = MediaSearchMode.TV
+    manager.save()
+    reloaded = ConfigManager("test", paths)
+    assert reloaded.settings.general.media_search_mode is MediaSearchMode.TV
 
 
 def test_save_preserves_unknown_keys_and_comments(
@@ -928,6 +952,19 @@ def test_default_season_folder_token_is_scene_style() -> None:
     # no episode tokens belong in a season-pack folder name
     assert "{episode_number" not in token
     assert "{episode_title_clean}" not in token
+
+
+def test_default_season_subfolder_token_is_blank() -> None:
+    """Blank means "use the season folder token".
+
+    A non-blank packaged default would silently change how every existing
+    single-season pack is named, since the same token then stops covering both
+    the opened folder and the season inside it.
+    """
+    defaults = tomlkit.parse(DEFAULT_CONFIG_TOML.read_text(encoding="utf-8"))
+    series = cast(MutableMapping[str, Any], defaults["series_management"])
+
+    assert str(series["tvr_season_subfolder_token"]) == ""
 
 
 def test_series_title_override_loader_matches_serialiser_formats() -> None:

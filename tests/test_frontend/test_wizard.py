@@ -1,9 +1,10 @@
 from types import SimpleNamespace
 from typing import Any
 
-from PySide6.QtWidgets import QDialog, QWizard, QWizardPage
+from PySide6.QtWidgets import QDialog, QPushButton, QWizard, QWizardPage
 import pytest
 
+from src.enums.wizard import WizardPages
 import src.frontend.wizards.wizard as wizard_module
 from src.frontend.wizards.wizard import MainWindowWizard
 
@@ -165,3 +166,195 @@ def test_open_load_job_dialog_frees_the_dialog_after_accepting_a_queue(
 
     assert len(_FakeLoadJobDialog.instances) == 1
     assert _FakeLoadJobDialog.instances[0].delete_later_called is True
+
+
+def _wizard_for_start_page(
+    *, enable_plugins: bool, wizard_page: str | None, plugin_found: object | None
+) -> QWizard:
+    wizard = QWizard()
+    for page_id in range(1, WizardPages.PROCESS_PAGE.value + 1):
+        wizard.setPage(page_id, QWizardPage())
+    wizard.config = SimpleNamespace(  # pyright: ignore[reportAttributeAccessIssue]
+        settings=SimpleNamespace(
+            general=SimpleNamespace(enable_plugins=enable_plugins),
+            plugins=SimpleNamespace(wizard_page=wizard_page),
+        ),
+        plugin_manager=SimpleNamespace(get=lambda _name: plugin_found),
+    )
+    return wizard
+
+
+@pytest.mark.parametrize(
+    ("enable_plugins", "wizard_page", "plugin_found"),
+    [
+        (False, None, None),
+        (True, None, None),
+        (True, "a-plugin", None),
+    ],
+)
+def test_start_over_never_inherits_a_resumed_job_start_page(
+    enable_plugins: bool, wizard_page: str | None, plugin_found: object | None
+) -> None:
+    """`setStartId` is sticky, so not setting it is not the same as a default.
+
+    `_resume_job` moves the start page to wherever the job picks up. Leaving
+    it alone here -- which plugins being enabled with no usable wizard page
+    used to do -- meant the next Start Over opened a brand new run on the
+    *resumed* job's page, with a context that has nothing in it. The wizard
+    only recovered when the app was restarted.
+    """
+    wizard = _wizard_for_start_page(
+        enable_plugins=enable_plugins,
+        wizard_page=wizard_page,
+        plugin_found=plugin_found,
+    )
+    wizard.setStartId(WizardPages.TRACKERS_PAGE.value)  # a resumed job's page
+
+    MainWindowWizard._set_start_page(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert wizard.startId() == WizardPages.INPUT_PAGE.value
+
+
+def test_a_configured_plugin_page_is_still_where_a_fresh_run_starts() -> None:
+    wizard = _wizard_for_start_page(
+        enable_plugins=True, wizard_page="a-plugin", plugin_found=object()
+    )
+    wizard.setStartId(WizardPages.TRACKERS_PAGE.value)
+
+    MainWindowWizard._set_start_page(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert wizard.startId() == WizardPages.PLUGIN_INPUT_PAGE.value
+
+
+class _TeardownPage(QWizardPage):
+    def __init__(self) -> None:
+        super().__init__()
+        self.torn_down = False
+
+    def teardown(self) -> None:
+        self.torn_down = True
+
+
+def test_removing_pages_lets_each_one_hand_back_what_outlives_it() -> None:
+    """`deleteLater()` schedules a delete; it does not perform one.
+
+    A page subscribed to the global signal bus keeps answering it until it is
+    really destroyed, and nothing in the rebuild waits for that. Pages get a
+    say before they are dropped so anything order-sensitive can be released
+    now rather than whenever the event loop gets to it.
+    """
+    wizard = QWizard()
+    pages = [_TeardownPage(), _TeardownPage()]
+    for page_id, page in enumerate(pages, start=1):
+        wizard.setPage(page_id, page)
+
+    MainWindowWizard._remove_all_pages(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert all(page.torn_down for page in pages)
+
+
+def test_a_page_without_a_teardown_is_still_removed() -> None:
+    """`_remove_all_pages` also runs against plugin-supplied pages."""
+    wizard = QWizard()
+    wizard.setPage(1, QWizardPage())
+
+    MainWindowWizard._remove_all_pages(wizard)  # pyright: ignore[reportArgumentType]
+
+    assert wizard.pageIds() == []
+
+
+def test_the_button_row_is_stated_not_inferred_from_a_signal() -> None:
+    """`currentIdChanged` is an edge, and a rebuild may not move the id.
+
+    A run ends on the process page with its Process button showing. Rebuild
+    the wizard back onto that same id and no id changes, so nothing re-runs
+    `_handle_page_change` and the ending layout stays -- Process sitting where
+    Next belongs, on a page with nothing to process. The two symptoms of that
+    are a "Next" button reading "Process (Dupe Check)", and pressing it
+    reporting no trackers to upload to.
+    """
+    wizard = QWizard()
+    for page_id in range(1, WizardPages.PROCESS_PAGE.value + 1):
+        wizard.setPage(page_id, QWizardPage())
+    wizard._START_PAGES = (  # pyright: ignore[reportAttributeAccessIssue]
+        WizardPages.INPUT_PAGE,
+        WizardPages.PLUGIN_INPUT_PAGE,
+    )
+    seen: list[int] = []
+    wizard._apply_button_layout = lambda layout: seen.append(len(layout))  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.starting_buttons = (1, 2, 3, 4)  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.mid_flow_buttons = (1, 2, 3)  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.ending_buttons = (1, 2)  # pyright: ignore[reportAttributeAccessIssue]
+    wizard._handle_page_change = lambda idx: MainWindowWizard._handle_page_change(  # pyright: ignore[reportAttributeAccessIssue]
+        wizard,  # pyright: ignore[reportArgumentType]
+        idx,
+    )
+    wizard.setStartId(WizardPages.TRACKERS_PAGE.value)
+    wizard.restart()
+    seen.clear()
+
+    MainWindowWizard._sync_button_layout(wizard)  # pyright: ignore[reportArgumentType]
+
+    # the trackers page is mid-flow, so Next belongs there -- not Process
+    assert seen == [len((1, 2, 3))]
+
+
+def _wizard_with_process_button() -> QWizard:
+    wizard = QWizard()
+    button = QPushButton("Process (Dupe Check)")
+    wizard.setButton(QWizard.WizardButton.CustomButton3, button)
+    wizard.setOption(QWizard.WizardOption.HaveCustomButton3)
+    wizard.setPage(WizardPages.INPUT_PAGE.value, QWizardPage())
+    wizard.setPage(WizardPages.TRACKERS_PAGE.value, QWizardPage())
+    wizard.process_button = button  # pyright: ignore[reportAttributeAccessIssue]
+    wizard.show()
+    return wizard
+
+
+_MID_FLOW = (
+    QWizard.WizardButton.CustomButton2,
+    QWizard.WizardButton.Stretch,
+    QWizard.WizardButton.CommitButton,
+)
+_ENDING = (
+    QWizard.WizardButton.CustomButton2,
+    QWizard.WizardButton.Stretch,
+    QWizard.WizardButton.CustomButton3,
+)
+
+
+def test_the_process_button_does_not_follow_a_resumed_job_onto_a_mid_flow_page(
+    qapp: Any,
+) -> None:
+    """`setButtonLayout` only governs the buttons its layout names.
+
+    A finished run hides the Process button; the next resumed job called
+    `show()` on it while putting up a layout that does not contain it, and Qt
+    left it on screen with no place in the row -- sitting beside Next on the
+    trackers page. Pressing it there starts a run from a process page that was
+    never reached, so its tracker rows were never built and the run reports
+    having no trackers to upload to.
+    """
+    wizard = _wizard_with_process_button()
+    MainWindowWizard._apply_button_layout(wizard, _ENDING)  # pyright: ignore[reportArgumentType]
+    wizard.process_button.hide()  # pyright: ignore[reportAttributeAccessIssue]
+    qapp.processEvents()
+
+    MainWindowWizard._apply_button_layout(wizard, _MID_FLOW)  # pyright: ignore[reportArgumentType]
+    qapp.processEvents()
+
+    assert not wizard.process_button.isVisible()  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_the_process_button_comes_back_on_the_page_that_owns_it(qapp: Any) -> None:
+    """The other direction: a run's hide() must not outlive that run."""
+    wizard = _wizard_with_process_button()
+    MainWindowWizard._apply_button_layout(wizard, _ENDING)  # pyright: ignore[reportArgumentType]
+    wizard.process_button.hide()  # pyright: ignore[reportAttributeAccessIssue]
+    MainWindowWizard._apply_button_layout(wizard, _MID_FLOW)  # pyright: ignore[reportArgumentType]
+    qapp.processEvents()
+
+    MainWindowWizard._apply_button_layout(wizard, _ENDING)  # pyright: ignore[reportArgumentType]
+    qapp.processEvents()
+
+    assert wizard.process_button.isVisible()  # pyright: ignore[reportAttributeAccessIssue]

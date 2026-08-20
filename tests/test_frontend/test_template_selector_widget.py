@@ -235,6 +235,114 @@ def test_preview_button_unchecks_when_input_path_missing(
     assert selector.preview_btn.isChecked() is False
 
 
+def _make_selector_with_real_templates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> TemplateSelector:
+    """A selector backed by real files, for exercising cross-instance resync.
+
+    `TemplateSelectorBackEnd` uses `__slots__`, so its `load_templates`
+    can't be monkeypatched per-instance -- real files on a patched
+    `RUNTIME_DIR` stand in for "another open editor changed the directory".
+    """
+    monkeypatch.setattr(
+        "src.backend.template_selector.RUNTIME_DIR", tmp_path / "runtime"
+    )
+    return _make_selector(tmp_path, monkeypatch)
+
+
+def test_templates_changed_elsewhere_preserves_selection_and_unsaved_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # a template created/deleted through another open TemplateSelector (e.g.
+    # the wizard's "Configure NFO Templates" dialog vs. Settings > Templates)
+    # must not disturb this one's active selection or in-progress edits
+    selector = _make_selector_with_real_templates(tmp_path, monkeypatch)
+    template_dir = selector.backend.template_dir
+    (template_dir / "a.txt").write_text("A", encoding="utf-8")
+    (template_dir / "b.txt").write_text("B", encoding="utf-8")
+    selector.load_templates()
+    selector.template_combo.setCurrentText("b")
+    selector.text_edit.setPlainText("unsaved edit")
+
+    # another window creates "c" on disk
+    (template_dir / "c.txt").write_text("C", encoding="utf-8")
+
+    selector._templates_changed_elsewhere()
+
+    assert selector.template_combo.currentText() == "b"
+    assert selector.text_edit.toPlainText() == "unsaved edit"
+    assert {
+        selector.template_combo.itemText(i)
+        for i in range(selector.template_combo.count())
+    } == {"a", "b", "c"}
+
+
+def test_templates_changed_elsewhere_drops_selection_when_deleted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # this used to leave a dead entry selected forever, and the next
+    # save/read against it raised FileNotFoundError
+    selector = _make_selector_with_real_templates(tmp_path, monkeypatch)
+    template_dir = selector.backend.template_dir
+    (template_dir / "a.txt").write_text("A", encoding="utf-8")
+    b_path = template_dir / "b.txt"
+    b_path.write_text("B", encoding="utf-8")
+    selector.load_templates()
+    selector.template_combo.setCurrentText("b")
+    selector.text_edit.setPlainText("unsaved edit")
+
+    # another window deletes "b"
+    b_path.unlink()
+
+    selector._templates_changed_elsewhere()
+
+    assert selector.template_combo.count() == 1
+    assert selector.template_combo.currentText() == "a"
+    # falls back to whatever is now first on disk rather than the dead entry
+    assert selector.text_edit.toPlainText() == "A"
+
+
+def test_save_template_warns_and_reloads_when_selection_is_stale(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the combo can show a template already removed from the backend cache
+    # (deleted through another open editor); saving it must not KeyError
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.template_combo.addItem("ghost")
+    selector.template_combo.setCurrentText("ghost")
+
+    warnings = []
+    monkeypatch.setattr(
+        "src.frontend.custom_widgets.template_selector.QMessageBox.warning",
+        lambda *args, **kwargs: warnings.append(args),
+    )
+    reload_calls = []
+    monkeypatch.setattr(selector, "load_templates", lambda: reload_calls.append(True))
+
+    selector.save_template()
+
+    assert len(warnings) == 1
+    assert reload_calls == [True]
+
+
+def test_delete_template_reloads_when_selection_already_gone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the confirm click can land after the same template was already deleted
+    # elsewhere; it must reload instead of KeyError
+    selector = _make_selector(tmp_path, monkeypatch)
+    selector.template_combo.addItem("ghost")
+    selector.template_combo.setCurrentText("ghost")
+    selector._del_timer.start()  # simulate the first click having armed "Confirm?"
+
+    reload_calls = []
+    monkeypatch.setattr(selector, "load_templates", lambda: reload_calls.append(True))
+
+    selector.delete_template()
+
+    assert reload_calls == [True]
+
+
 def test_status_message_is_unchanged_when_everything_resolves() -> None:
     assert saved_status_message(0) == "Saved template"
 

@@ -34,6 +34,24 @@ class ProcessingContext:
     custom_edition_info: tuple[RenameNormalization, ...] = field(default_factory=tuple)
     custom_cut_names: frozenset[str] = field(default_factory=frozenset)
 
+    # Runtime-only identity/state for the saved job this run was loaded from,
+    # archived or not.  The job codec intentionally ignores these fields; the
+    # document is reconciled explicitly after an upload reaches a terminal
+    # outcome, which is what stops a finished job from still listing every
+    # tracker as pending and being uploaded a second time.
+    loaded_job_path: Path | None = None
+    loaded_job_id: str | None = None
+    loaded_job_name: str | None = None
+    loaded_job_archived: bool = False
+    """Whether that job was already a reusable archive.
+
+    Only an archive can be prepared without its original media, so this is what
+    separates "update the archive in place" from the ordinary named save.
+    """
+
+    loaded_uploaded_trackers: set[TrackerSelection] = field(default_factory=set)
+    loaded_uncertain_trackers: set[TrackerSelection] = field(default_factory=set)
+
     def __post_init__(self) -> None:
         self.jinja_engine.add_global("nf_shared_data", self.shared_data, True)
         self.jinja_engine.add_global("nf_media_search_payload", self.media_search, True)

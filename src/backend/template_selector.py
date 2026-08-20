@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.media_type import MediaType
+from src.logger.nfo_forge_logger import LOG
 
 DEF_MV_TEMPLATE = """\
 Info
@@ -73,9 +74,10 @@ class TemplateSelectorBackEnd:
 
     def load_templates(self) -> dict[str, Path]:
         self.templates.clear()
-        for item in self.template_dir.iterdir():
-            if item.is_file() and item.suffix == ".txt":
-                self.templates[item.stem] = item
+        if self.template_dir.is_dir():
+            for item in self.template_dir.iterdir():
+                if item.is_file() and item.suffix == ".txt":
+                    self.templates[item.stem] = item
         return self.templates
 
     def read_template(
@@ -86,6 +88,12 @@ class TemplateSelectorBackEnd:
 
         Returns:
             Optional[str]: Template text or None
+
+        A template can vanish out from under this cache -- deleted from disk,
+        or deleted through another open template editor pointed at the same
+        directory -- between it being listed and being read. That is treated
+        the same as "no template selected": the stale cache entry is dropped
+        and None is returned instead of letting FileNotFoundError escape.
         """
         if not name and idx is None:
             raise ValueError(
@@ -93,22 +101,36 @@ class TemplateSelectorBackEnd:
                 "(This is likely caused due to no templates being configured for the current tracker)"
             )
 
+        _key: str | None = None
         _path: Path | None = None
 
         if name:
-            for key in self.templates.keys():
-                if name == key:
-                    _path = self.templates[key]
-                    break
-        elif not _path and (idx is not None and idx != -1):
-            _path = tuple(self.templates.values())[idx]
+            if name in self.templates:
+                _key = name
+                _path = self.templates[name]
+        elif idx is not None and idx != -1:
+            keys = tuple(self.templates.keys())
+            if 0 <= idx < len(keys):
+                _key = keys[idx]
+                _path = self.templates[_key]
 
         if _path:
-            with open(_path, encoding="utf-8") as template:
-                return template.read()
+            try:
+                with open(_path, encoding="utf-8") as template:
+                    return template.read()
+            except OSError as error:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Template '{_key}' is missing on disk ({_path}), dropping "
+                    f"it from the cache: {error}",
+                )
+                if _key is not None:
+                    self.templates.pop(_key, None)
+                return None
         return None
 
     def create_template(self, path: PathLike[str] | str, media_type: MediaType) -> Path:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as new_template:
             # determine correct template based on media type selection from frontend
             new_template.write(
@@ -120,9 +142,10 @@ class TemplateSelectorBackEnd:
         return Path(path)
 
     def save_template(self, path: PathLike[str] | str, text: str) -> None:
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as save_file:
             save_file.write(text)
 
     def delete_template(self, path: PathLike[str] | str) -> None:
-        Path(path).unlink()
+        Path(path).unlink(missing_ok=True)
         self.load_templates()

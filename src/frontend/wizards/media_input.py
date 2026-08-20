@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.media_input import MediaInputBackEnd
+from src.backend.utils.media_files import filter_media_files
 from src.backend.utils.working_dir import processing_dir
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
@@ -246,16 +247,24 @@ class MediaInput(BaseWizardPage):
         # handle directory
         elif entry_data.is_dir():
             checked_items: list[dict[str, Any]] = self.file_tree.get_checked_items()
+            # The tree is read-only, so `get_checked_items` reports *everything*
+            # it walked, recursively and unfiltered. `file_list` is the release's
+            # episode set -- it is what MediaInfo parses, what the series episode
+            # mapper asks the user to map, and what `{episode_mediainfo}` renders
+            # -- so subtitles, .nfo files and sample clips have to be dropped here
+            # rather than travelling the whole pipeline as if they were episodes.
+            # They are not abandoned: the rename step names them after the episode
+            # they belong to (see `find_sidecars`).
             selected_files = sorted(
-                [
+                filter_media_files(
                     Path(item["path"])
                     for item in checked_items
                     if not item.get("is_dir", False)
-                ]
+                )
             )
             if not selected_files:
                 raise MediaFileNotFoundError(
-                    "No supported media files selected in directory"
+                    "No supported video files found in directory"
                 )
         else:
             raise MediaFileNotFoundError(f"Input does not exist: {entry_data}")

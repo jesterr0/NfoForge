@@ -23,6 +23,7 @@ from src.payloads.series import (
     SeriesReleaseInfo,
     build_series_release_info,
     describe_missing_upload_fields,
+    describe_multi_season_pack,
 )
 
 
@@ -1243,3 +1244,50 @@ def test_missing_upload_fields_ignores_movies() -> None:
 
     assert release_info.missing_upload_fields() == ()
     assert describe_missing_upload_fields(release_info) is None
+
+
+def _release(seasons: dict[Path, int]) -> SeriesReleaseInfo:
+    media_input = MediaInputPayload(
+        input_path=Path("Show Pack"),
+        media_type=MediaType.SERIES,
+        file_list=list(seasons),
+        series_episode_map={
+            path: {"season": season, "episode": index}
+            for index, (path, season) in enumerate(seasons.items(), start=1)
+        },
+        series_episode_format=EpisodeFormat.STANDARD,
+    )
+    return build_series_release_info(media_input)
+
+
+def test_describe_multi_season_pack_names_both_bounds() -> None:
+    message = describe_multi_season_pack(
+        _release({Path("Show.S01E01.mkv"): 1, Path("Show.S05E10.mkv"): 5})
+    )
+
+    assert message is not None
+    assert "seasons 1 to 5" in message
+    # the season it will actually be filed under has to be stated outright
+    assert "file it under season 1" in message
+
+
+def test_describe_multi_season_pack_silent_for_single_season() -> None:
+    assert (
+        describe_multi_season_pack(
+            _release({Path("Show.S01E01.mkv"): 1, Path("Show.S01E02.mkv"): 1})
+        )
+        is None
+    )
+
+
+def test_describe_multi_season_pack_silent_for_single_episode() -> None:
+    assert describe_multi_season_pack(_release({Path("Show.S01E01.mkv"): 1})) is None
+
+
+def test_describe_multi_season_pack_silent_for_movies() -> None:
+    media_input = MediaInputPayload(
+        input_path=Path("Movie.2024.mkv"),
+        media_type=MediaType.MOVIE,
+        file_list=[Path("Movie.2024.mkv")],
+    )
+    assert describe_multi_season_pack(build_series_release_info(media_input)) is None

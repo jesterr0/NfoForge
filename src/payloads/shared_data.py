@@ -36,6 +36,19 @@ class SharedPayload:
         default_factory=dict
     )
 
+    # The same URLs again, filed by the host that issued them. The two maps
+    # above answer "has *this tracker* already uploaded?"; this answers "does
+    # this bundle hold images for *this host*?", which is the question a
+    # tracker added after the fact asks -- and the one a narrowed job could not
+    # answer, because narrowing takes the per-tracker maps with it.
+    #
+    # Written as soon as a host's uploads come back, before anything can raise
+    # over a different host's failure, so a batch that succeeded is never lost
+    # to a batch that did not.
+    uploaded_images_by_host: dict[
+        ImageHost | ImageSource, dict[int, ImageUploadData]
+    ] = field(default_factory=dict)
+
     base_torrent: Path | None = None
     """An already-hashed torrent a resumed job brought with it, if any."""
 
@@ -58,13 +71,26 @@ class SharedPayload:
     purely to make that staleness visible instead of silent.
     """
 
-    def is_prepared(self) -> bool:
+    def is_prepared(self, trackers: Sequence[TrackerSelection] | None = None) -> bool:
         """Whether titles and NFOs are already generated for this run.
 
         Derived rather than stored as its own flag, so there is no second piece
         of state that can disagree with the data itself.
+
+        No trackers means nothing to be prepared *for*, so the answer is False
+        even when release data is present. An archive of a fully uploaded run
+        is exactly that: it keeps the title and NFO of any tracker whose upload
+        could not be confirmed, while selecting none of them. Reading that
+        leftover as "prepared" sent the job straight to the process page, which
+        then had no tracker to build a run from and failed there instead of
+        asking which tracker to add.
         """
-        return bool(self.tracker_release_data)
+        required = tuple(
+            trackers if trackers is not None else self.selected_trackers or ()
+        )
+        if not required:
+            return False
+        return all(tracker in self.tracker_release_data for tracker in required)
 
     def reset(self) -> None:
         self.url_data.clear()
@@ -77,6 +103,7 @@ class SharedPayload:
         self.tracker_image_hosts.clear()
         self.uploaded_images.clear()
         self.uploaded_image_hosts.clear()
+        self.uploaded_images_by_host.clear()
         self.base_torrent = None
         self.tracker_release_data.clear()
         self.prompt_token_answers.clear()

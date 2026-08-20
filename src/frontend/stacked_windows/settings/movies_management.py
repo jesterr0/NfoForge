@@ -350,13 +350,20 @@ class MoviesManagementSettings(BaseSettings):
     def _update_tracker_override_example(
         self, tracker_format_override: TrackerFormatOverride
     ) -> None:
-        token_str = tracker_format_override.over_ride_format_title.text()
         qline = tracker_format_override.over_ride_format_file_name_token_example
-        colon_replace = ColonReplace(
-            tracker_format_override.title_colon_replace.currentData()
+        enabled = tracker_format_override.enabled_checkbox.isChecked()
+        token_str = (
+            tracker_format_override.over_ride_format_title.text() if enabled else ""
+        )
+        colon_replace = (
+            ColonReplace(tracker_format_override.title_colon_replace.currentData())
+            if enabled
+            else ColonReplace(self.title_colon_replace.currentData())
         )
         over_ride_rules = (
             tracker_format_override.over_ride_replacement_table.get_replacements()
+            if enabled
+            else None
         )
         self._update_example(
             token_str=token_str

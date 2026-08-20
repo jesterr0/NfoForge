@@ -5,7 +5,7 @@ anything -- that silence is the precondition for running jobs from a queue.
 """
 
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -13,6 +13,7 @@ import pytest
 
 import src.backend.process as process_module
 from src.backend.process import ProcessBackEnd
+from src.backend.template_selector import TemplateSelectorBackEnd
 from src.backend.torrents import generate_torrent
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
@@ -80,6 +81,9 @@ def _context(tmp_path: Path) -> ProcessingContext:
     media.write_bytes(b"media")
     context.media_input.input_path = media
     context.media_input.working_dir = tmp_path
+    # nothing reaches processing without a tracker chosen, and "prepared" is
+    # answered against that selection
+    context.shared_data.selected_trackers = [TrackerSelection.AITHER]
     # the real flow creates each tracker's output dir when building the paths
     (tmp_path / "aither").mkdir(parents=True, exist_ok=True)
     # carrying a base torrent keeps these tests off real hashing, which is also
@@ -210,6 +214,42 @@ def test_an_unprepared_job_still_prompts(
     token_prompt.assert_called_once()
 
 
+def test_a_tracker_with_no_template_assigned_still_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
+) -> None:
+    """An unassigned template means "no NFO", not "abort the run".
+
+    Generation below already tolerates it -- the NFO simply comes out empty.
+    Asking the reader for a template by an empty name does not: that is a
+    programmer error to it, and the ValueError used to surface as a bare
+    "Failed to process trackers" partway through an archived re-run.
+    """
+    context = _context(tmp_path)
+    backend = _backend(monkeypatch)
+    backend.config.settings.trackers.by_selection()[
+        TrackerSelection.AITHER
+    ].nfo_template = ""
+    # the real reader, so this test cannot drift from what it actually raises
+    reader = cast(Any, SimpleNamespace(templates={}, load_templates=lambda: {}))
+    reader.read_template = MethodType(TemplateSelectorBackEnd.read_template, reader)
+    backend.template_selector_be = reader
+    monkeypatch.setattr(
+        backend, "generate_tracker_title", lambda **_k: "Generated", raising=False
+    )
+    token_prompt = MagicMock(return_value={})
+
+    backend.process_trackers(
+        **_kwargs(context, tmp_path, token_prompt_cb=token_prompt),
+        phase=RunPhase.PREPARE,
+    )
+
+    assert context.shared_data.tracker_release_data[TrackerSelection.AITHER] == {
+        "title": "Generated",
+        "nfo": "",
+    }
+    token_prompt.assert_not_called()
+
+
 # --------------------------------------------------------------------------
 # preparing records what a save needs, and publishes nothing
 # --------------------------------------------------------------------------
@@ -258,6 +298,78 @@ def test_generation_records_release_data_for_saving(
     backend.process_trackers(**_kwargs(context, tmp_path), phase=RunPhase.PREPARE)
 
     assert context.shared_data.is_prepared()
+    assert TrackerSelection.AITHER in context.shared_data.tracker_release_data
+
+
+def test_only_new_trackers_are_generated_in_a_mixed_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
+) -> None:
+    context = _context(tmp_path)
+    _prepare(context)
+    context.shared_data.selected_trackers = (
+        TrackerSelection.AITHER,
+        TrackerSelection.LST,
+    )
+    backend = _backend(monkeypatch)
+    info = _tracker_info()
+    backend.config.settings.trackers.by_selection = lambda: {
+        TrackerSelection.AITHER: info,
+        TrackerSelection.LST: info,
+    }
+    generated: list[TrackerSelection] = []
+    monkeypatch.setattr(
+        backend,
+        "generate_tracker_title",
+        lambda tracker, **_k: (generated.append(tracker), "Generated")[1],
+        raising=False,
+    )
+    monkeypatch.setattr(process_module, "get_prompt_tokens", lambda _t: [])
+    overview_payloads: list[dict[TrackerSelection, Any]] = []
+    process_dict = {
+        "Aither": {"path": tmp_path / "aither" / "release.torrent"},
+        "LST": {"path": tmp_path / "lst" / "release.torrent"},
+    }
+    (tmp_path / "lst").mkdir()
+
+    backend.process_trackers(
+        **_kwargs(
+            context,
+            tmp_path,
+            process_dict=process_dict,
+            overview_cb=lambda data: (overview_payloads.append(data), data)[1],
+        ),
+        phase=RunPhase.PREPARE,
+    )
+
+    assert generated == [TrackerSelection.LST]
+    assert list(overview_payloads[0]) == [TrackerSelection.LST]
+    assert (
+        context.shared_data.tracker_release_data[TrackerSelection.AITHER]["title"]
+        == "Frozen Title"
+    )
+    assert (
+        context.shared_data.tracker_release_data[TrackerSelection.LST]["title"]
+        == "Generated"
+    )
+
+
+def test_a_carried_archive_prepares_without_the_original_media(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
+) -> None:
+    context = _context(tmp_path)
+    context.media_input.input_kind = "file"
+    context.media_input.require_input_path().unlink()
+    backend = _backend(monkeypatch)
+    monkeypatch.setattr(
+        backend, "generate_tracker_title", lambda **_k: "Generated", raising=False
+    )
+    monkeypatch.setattr(process_module, "get_prompt_tokens", lambda _t: [])
+
+    backend.process_trackers(
+        **_kwargs(context, tmp_path),
+        phase=RunPhase.PREPARE,
+    )
+
     assert TrackerSelection.AITHER in context.shared_data.tracker_release_data
 
 

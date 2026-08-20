@@ -303,8 +303,15 @@ class Tokens:
         "{episode_metadata_mediainfo}",
         "Synopsis of all episodes metadata + mediainfo",
     )
-    TOTAL_SEASONS = NfoToken("{total_seasons}", "Total seasons in series")
-    TOTAL_EPISODES = NfoToken("{total_episodes}", "Total episodes in the series")
+    # Series-wide totals from TMDB/TVDB, NOT counts of what this release
+    # contains -- a five-season pack and one episode of it render the same
+    # value. Spelled out because "total seasons" reads like a pack count.
+    TOTAL_SEASONS = NfoToken(
+        "{total_seasons}", "Total seasons the series has (not in this release)"
+    )
+    TOTAL_EPISODES = NfoToken(
+        "{total_episodes}", "Total episodes the series has (not in this release)"
+    )
 
     # nfo forge specific tokens
     PROGRAM_INFO = NfoToken("{program_info}", "NfoForge vx.x.x")

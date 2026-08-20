@@ -38,6 +38,7 @@ from src.backend.jobs import (
     delete_job,
     list_jobs,
     load_job,
+    reselect_trackers,
     write_job_document,
 )
 from src.backend.utils.file_utilities import (
@@ -105,6 +106,7 @@ class LoadJobDialog(QDialog):
         self.active_profile = active_profile or ""
         self.selected_listing: JobListing | None = None
         self.switch_profile_requested = False
+        self.add_trackers_requested = False
         self.queued_listings: list[JobListing] = []
         """Jobs to run back to back, when the user chose Run Queue."""
         self._loader: _ListingLoader | None = None
@@ -292,6 +294,18 @@ class LoadJobDialog(QDialog):
         )
         self.switch_btn.clicked.connect(self._accept_with_switch)
 
+        self.add_trackers_btn = QPushButton("Add Trackers", self)
+        self.add_trackers_btn.setToolTip(
+            "Choose new trackers for a reusable archived release"
+        )
+        self.add_trackers_btn.clicked.connect(self._accept_add_trackers)
+
+        self.resolve_uncertain_btn = QPushButton("Resolve Uncertain", self)
+        self.resolve_uncertain_btn.setToolTip(
+            "Record whether an upload with an unknown result reached its tracker"
+        )
+        self.resolve_uncertain_btn.clicked.connect(self._resolve_uncertain)
+
         self.queue_btn = QPushButton("Run Queue", self)
         self.queue_btn.setToolTip("Upload the queued jobs one after another, in order")
         self.queue_btn.clicked.connect(self._accept_queue)
@@ -311,6 +325,8 @@ class LoadJobDialog(QDialog):
         bottom_row.addWidget(self.delete_btn)
         bottom_row.addWidget(self.rename_btn)
         bottom_row.addStretch(1)
+        bottom_row.addWidget(self.resolve_uncertain_btn)
+        bottom_row.addWidget(self.add_trackers_btn)
         bottom_row.addWidget(self.queue_btn)
         bottom_row.addWidget(self.switch_btn)
         bottom_row.addWidget(self.button_box)
@@ -402,18 +418,28 @@ class LoadJobDialog(QDialog):
                     listing.name,
                     self._title_text(listing),
                     listing.summary.media_type or "",
-                    ", ".join(listing.summary.trackers),
+                    self._tracker_column_text(listing),
                     listing.config_profile or "—",
-                    "Prepared" if listing.prepared else "Needs input",
+                    "Archive"
+                    if listing.archived and not listing.summary.trackers
+                    else "Prepared"
+                    if listing.prepared
+                    else "Needs input",
                     self._saved_text(listing.created_at),
                 )
             )
             item.setData(0, _LISTING_ROLE, listing)
-            item.setIcon(5, prepared_icon if listing.prepared else needs_input_icon)
+            item.setIcon(
+                5,
+                prepared_icon
+                if listing.prepared or listing.archived
+                else needs_input_icon,
+            )
             # the Trackers column is Interactive and elides, so the full list
             # has to be reachable somewhere
-            if listing.summary.trackers:
-                item.setToolTip(3, "\n".join(listing.summary.trackers))
+            tracker_tooltip = self._tracker_tooltip(listing)
+            if tracker_tooltip:
+                item.setToolTip(3, tracker_tooltip)
             if not listing.matches_profile(self.active_profile):
                 # muted rather than disabled: a disabled item cannot be
                 # selected at all, and selecting it is exactly how the user
@@ -431,9 +457,14 @@ class LoadJobDialog(QDialog):
                 item.setIcon(0, missing_icon)
                 item.setToolTip(
                     0,
-                    "The media this job was built from is no longer at "
-                    f"'{listing.summary.input_path}', so it cannot be processed "
-                    "until the file is back.",
+                    (
+                        "The original media is no longer present, but this "
+                        "archive can still add trackers from its saved package."
+                        if listing.source_less_ready
+                        else "The media this job was built from is no longer at "
+                        f"'{listing.summary.input_path}', so it cannot be processed "
+                        "until the file is back."
+                    ),
                 )
             self.job_tree.addTopLevelItem(item)
 
@@ -549,6 +580,8 @@ class LoadJobDialog(QDialog):
                         listing.summary.title or "",
                         listing.summary.input_name or "",
                         " ".join(listing.summary.trackers),
+                        " ".join(listing.summary.uploaded_trackers),
+                        " ".join(listing.summary.uncertain_trackers),
                     )
                 ).casefold()
                 hidden = bool(needle) and needle not in haystack
@@ -565,6 +598,28 @@ class LoadJobDialog(QDialog):
         title = listing.summary.title or listing.summary.input_name or ""
         year = listing.summary.year
         return f"{title} ({year})" if title and year else title
+
+    @staticmethod
+    def _tracker_column_text(listing: JobListing) -> str:
+        summary = listing.summary
+        if not summary.uploaded_trackers and not summary.uncertain_trackers:
+            return ", ".join(summary.trackers)
+        parts: list[str] = []
+        if summary.trackers:
+            parts.append(f"Pending: {', '.join(summary.trackers)}")
+        if summary.uploaded_trackers:
+            parts.append(f"Uploaded: {', '.join(summary.uploaded_trackers)}")
+        if summary.uncertain_trackers:
+            parts.append(f"Uncertain: {', '.join(summary.uncertain_trackers)}")
+        return "; ".join(parts)
+
+    @staticmethod
+    def _tracker_tooltip(listing: JobListing) -> str:
+        summary = listing.summary
+        lines = [f"Pending: {tracker}" for tracker in summary.trackers]
+        lines.extend(f"Uploaded: {tracker}" for tracker in summary.uploaded_trackers)
+        lines.extend(f"Uncertain: {tracker}" for tracker in summary.uncertain_trackers)
+        return "\n".join(lines)
 
     @staticmethod
     def _tracker_display_name(raw_name: object) -> str:
@@ -679,6 +734,35 @@ class LoadJobDialog(QDialog):
     def _can_queue(self, listing: JobListing) -> bool:
         return listing.prepared and listing.matches_profile(self.active_profile)
 
+    def _can_load(self, listing: JobListing) -> bool:
+        """Whether plain "Load" can open this job as it stands.
+
+        An archive with no trackers left has nothing for the process page to
+        run, so loading it lands the user on a page whose only button fails.
+        Its way back into a wizard is 'Add Trackers', which starts at the
+        tracker page instead.
+
+        This is the rule, not a copy of it: `_update_button_state` gates the
+        Load button on it and `_accept_selection` enforces it, because the
+        button being disabled never stopped a double click.
+        """
+        if not listing.matches_profile(self.active_profile):
+            return False
+        return not listing.archived or bool(listing.summary.trackers)
+
+    def _can_add_trackers(self, listing: JobListing) -> bool:
+        """Whether this job can be reopened to pick trackers it has not used.
+
+        Only an archive that still carries its own release package qualifies:
+        choosing new trackers is worth offering precisely when the media it
+        was built from may be long gone.
+        """
+        return (
+            listing.matches_profile(self.active_profile)
+            and listing.archived
+            and listing.source_less_ready
+        )
+
     def _queued_paths(self) -> set[Path]:
         """Paths already in the queue, for the duplicate check.
 
@@ -762,6 +846,22 @@ class LoadJobDialog(QDialog):
                     f"'{listing.name}' was saved under config "
                     f"'{listing.config_profile}'. Use 'Switch profile and load' "
                     "to open it."
+                )
+            if not self._can_load(listing):
+                # Pointing at 'Add Trackers' is only useful while that button
+                # is the one enabled; an archive missing its base torrent or
+                # its MediaInfo cannot take that route either, and saying so
+                # beats naming an action that does nothing.
+                if self._can_add_trackers(listing):
+                    return (
+                        f"'{listing.name}' has already uploaded to every tracker "
+                        "it was run for. Use 'Add Trackers' to send it somewhere "
+                        "new."
+                    )
+                return (
+                    f"'{listing.name}' has already uploaded to every tracker it "
+                    "was run for, and its saved release package is incomplete, "
+                    "so it cannot be reopened for new ones."
                 )
             if not listing.prepared:
                 return (
@@ -848,6 +948,12 @@ class LoadJobDialog(QDialog):
         self.switch_btn.setEnabled(
             len(selected) == 1 and listing is not None and not matches
         )
+        self.add_trackers_btn.setEnabled(
+            bool(listing is not None and self._can_add_trackers(listing))
+        )
+        self.resolve_uncertain_btn.setEnabled(
+            bool(listing and matches and listing.summary.uncertain_trackers)
+        )
         # every selected job has to be addable, so a mixed selection cannot
         # silently drop the ones it would skip
         addable = [listing for listing in selected if self._can_queue(listing)]
@@ -861,7 +967,9 @@ class LoadJobDialog(QDialog):
         self.queue_remove_btn.setEnabled(row >= 0)
         open_button = self.button_box.button(QDialogButtonBox.StandardButton.Open)
         if open_button:
-            open_button.setEnabled(matches and len(selected) == 1)
+            open_button.setEnabled(
+                bool(listing is not None and self._can_load(listing))
+            )
         self.status_lbl.setText(self._selection_hint())
         self._refresh_details()
 
@@ -890,7 +998,14 @@ class LoadJobDialog(QDialog):
                 if listing.config_profile
                 else "not recorded",
             ),
-            ("State", "Prepared" if listing.prepared else "Needs input"),
+            (
+                "State",
+                "Archive"
+                if listing.archived and not listing.summary.trackers
+                else "Prepared"
+                if listing.prepared
+                else "Needs input",
+            ),
         ]
         title_text = self._title_text(listing)
         if title_text:
@@ -900,8 +1015,25 @@ class LoadJobDialog(QDialog):
             rows.append(("Type", escape(summary.media_type)))
         if summary.file_count:
             rows.append(("Files", str(summary.file_count)))
+        if summary.uploaded_trackers:
+            rows.append(
+                ("Uploaded", "<br />".join(map(escape, summary.uploaded_trackers)))
+            )
+        if summary.uncertain_trackers:
+            rows.append(
+                (
+                    "Uncertain",
+                    "<br />".join(map(escape, summary.uncertain_trackers)),
+                )
+            )
         if summary.input_path:
-            note = "" if listing.media_available else "  (no longer there)"
+            note = (
+                ""
+                if listing.media_available
+                else "  (archived package available)"
+                if listing.source_less_ready
+                else "  (no longer there)"
+            )
             rows.append(("Media", f"{escape(summary.input_path)}{note}"))
 
         try:
@@ -989,19 +1121,27 @@ class LoadJobDialog(QDialog):
 
     @Slot(QTreeWidgetItem, int)
     def _on_double_click(self, item: QTreeWidgetItem, _column: int) -> None:
-        """Open on double click, routing a cross-profile job to the switch.
+        """Open on double click, routing a job to whatever it can actually do.
 
         Doing nothing is what this used to do, and it reads as the dialog being
-        broken rather than as the job needing a different config.
+        broken rather than as the job needing a different config. Each branch
+        picks the same action the row's own enabled button offers: a
+        cross-profile job goes through the profile switch, and an archive with
+        no trackers left goes to 'Add Trackers', since a plain load would drop
+        it on a process page with nothing to process.
         """
         listing = item.data(0, _LISTING_ROLE)
         if not isinstance(listing, JobListing):
             return
         self.job_tree.setCurrentItem(item)
-        if listing.matches_profile(self.active_profile):
-            self._accept_selection()
-        else:
+        if not listing.matches_profile(self.active_profile):
             self._accept_with_switch()
+        elif self._can_load(listing):
+            self._accept_selection()
+        elif self._can_add_trackers(listing):
+            self._accept_add_trackers()
+        # else: nothing this dialog can do with it, which `_selection_hint`
+        # says in words rather than leaving the click to look ignored
 
     @Slot()
     def _accept_selection(self) -> None:
@@ -1012,11 +1152,103 @@ class LoadJobDialog(QDialog):
         if len(selected) != 1:
             return
         listing = selected[0]
-        if not listing.matches_profile(self.active_profile):
+        if not self._can_load(listing):
             return
         self.selected_listing = listing
         self.switch_profile_requested = False
+        self.add_trackers_requested = False
         self.accept()
+
+    @Slot()
+    def _accept_add_trackers(self) -> None:
+        selected = self._selected_listings()
+        if len(selected) != 1:
+            return
+        listing = selected[0]
+        if not self._can_add_trackers(listing):
+            return
+        self.selected_listing = listing
+        self.switch_profile_requested = False
+        self.add_trackers_requested = True
+        self.accept()
+
+    @Slot()
+    def _resolve_uncertain(self) -> None:
+        selected = self._selected_listings()
+        if len(selected) != 1:
+            return
+        listing = selected[0]
+        try:
+            job = load_job(listing.path)
+        except JobStoreError as error:
+            QMessageBox.critical(self, "Update Failed", str(error))
+            return
+        uploaded = set(job.uploaded_trackers)
+        unresolved = list(job.uncertain_trackers)
+        # "it never landed" has to make the tracker runnable again, not just
+        # move its name between two lists. Its title, NFO and image host were
+        # kept in the context for exactly this moment (see
+        # `codec.filter_context_document`), so putting it back in
+        # `selected_trackers` restores the release the user already reviewed.
+        runnable: list[TrackerSelection] = []
+        for tracker_name in unresolved:
+            try:
+                display = str(TrackerSelection[tracker_name])
+            except KeyError:
+                display = tracker_name
+            result = QMessageBox.question(
+                self,
+                "Resolve Upload",
+                f"Did the upload to {display} reach the tracker?\n\n"
+                "Choose Yes if it is present, No if it is safe to upload, or "
+                "Cancel to leave it unresolved.",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
+            if result is QMessageBox.StandardButton.Cancel:
+                continue
+            job.uncertain_trackers.remove(tracker_name)
+            if result is QMessageBox.StandardButton.Yes:
+                uploaded.add(tracker_name)
+            elif tracker_name in TrackerSelection.__members__:
+                runnable.append(TrackerSelection[tracker_name])
+        job.uploaded_trackers = sorted(uploaded)
+        if runnable:
+            job.context = reselect_trackers(job.context, runnable)
+            # Only what `reselect_trackers` actually took. It refuses a tracker
+            # whose title and NFO are gone, and a summary claiming the job
+            # covers one the context cannot run is the mismatch that makes the
+            # picker offer a job the wizard then builds no row for.
+            #
+            # `JobSummary.trackers` holds display values while the context
+            # holds member names -- mixing the two fails silently.
+            shared = job.context.get("shared_data")
+            selected = (
+                shared.get("selected_trackers") if isinstance(shared, dict) else []
+            )
+            accepted = {
+                str(tracker)
+                for tracker in runnable
+                if isinstance(selected, list) and tracker.name in selected
+            }
+            job.summary.trackers = sorted(set(job.summary.trackers) | accepted)
+        job.summary.uncertain_trackers = [
+            str(TrackerSelection[name])
+            for name in job.uncertain_trackers
+            if name in TrackerSelection.__members__
+        ]
+        job.summary.uploaded_trackers = [
+            str(TrackerSelection[name])
+            for name in job.uploaded_trackers
+            if name in TrackerSelection.__members__
+        ]
+        try:
+            write_job_document(job, listing.path)
+        except JobStoreError as error:
+            QMessageBox.critical(self, "Update Failed", str(error))
+            return
+        self._load_listings()
 
     @Slot()
     def _accept_queue(self) -> None:

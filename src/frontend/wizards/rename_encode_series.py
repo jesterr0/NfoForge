@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
 from src.backend.rename_files import RenamePlan, RenameResult
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
+from src.backend.utils.media_files import find_sidecars_for
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
     FRAME_SIZE_INFO,
@@ -473,11 +474,30 @@ class RenameEncodeSeries(BaseWizardPage):
                 f"and will be left unchanged:\n\n{names}",
             )
 
-        # rename the opened folder to a season-pack name, mirroring the movie
-        # flow. build_folder_rename_targets only relocates the map when a
-        # directory was opened and every episode sits directly inside it.
+        # Subtitles and per-episode .nfo files are named after the episode they
+        # belong to, so they have to follow it -- otherwise the rename silently
+        # separates a pair the release depends on.
+        for media_file, sidecars in find_sidecars_for(rename_map).items():
+            renamed_output = rename_map[media_file]
+            for sidecar, suffix in sidecars.items():
+                rename_map[sidecar] = (
+                    renamed_output.parent / f"{renamed_output.stem}{suffix}"
+                )
+
+        # Rename the opened folder to a pack name, and each season subfolder
+        # within it to its own season's name. A pack spanning several seasons
+        # renders the root's {season_number} as a range (S01-S05); each season
+        # subfolder renders its own single season.
         release_info = build_series_release_info(self.context.media_input)
-        folder_name = ""
+        root_folder_name = ""
+        season_folder_names: dict[int, str] = {}
+        file_seasons = {
+            media_file: media_data["season"]
+            for media_file, media_data in (
+                self.context.media_input.series_episode_map or {}
+            ).items()
+            if media_data.get("season") is not None
+        }
         if release_info.season is not None:
             folder_path = self.backend.series_folder_renamer(
                 media_input_obj=self.context.media_input,
@@ -491,11 +511,36 @@ class RenameEncodeSeries(BaseWizardPage):
                 season_end=release_info.season_end,
             )
             if folder_path:
-                folder_name = folder_path.name
-        rename_map = self.backend.build_folder_rename_targets(
+                root_folder_name = folder_path.name
+
+            # A blank subfolder token means "same as the pack folder", which is
+            # already how a flat single-season pack behaves: the opened folder
+            # IS that season's folder.
+            subfolder_token = (
+                self.config.settings.series.season_subfolder_token.strip()
+                or self.config.settings.series.season_folder_token
+            )
+            for season in sorted(set(file_seasons.values())):
+                season_path = self.backend.series_folder_renamer(
+                    media_input_obj=self.context.media_input,
+                    token=subfolder_token,
+                    colon_replacement=self.config.settings.series.filename_colon_replace,
+                    media_search_payload=self.context.media_search,
+                    title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                    video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+                    user_tokens=user_tokens,
+                    season_num=season,
+                    season_end=season,
+                )
+                if season_path:
+                    season_folder_names[season] = season_path.name
+
+        rename_map, directory_targets = self.backend.build_pack_rename_targets(
             input_path=self.context.media_input.input_path,
             rename_map=rename_map,
-            folder_name=folder_name,
+            file_seasons=file_seasons,
+            root_folder_name=root_folder_name,
+            season_folder_names=season_folder_names,
         )
 
         # Check if there are any effective renames
@@ -504,21 +549,27 @@ class RenameEncodeSeries(BaseWizardPage):
             for src, trg in rename_map.items()
             if str(src.absolute()) != str(trg.absolute())
         }
+        effective_directories = {
+            src: trg
+            for src, trg in directory_targets.items()
+            if str(src.absolute()) != str(trg.absolute())
+        }
 
-        if not effective_renames:
+        if not effective_renames and not effective_directories:
             return self._complete_validation()
 
         try:
             plan = RenamePlan.build(
                 effective_renames,
                 self.context.media_input.input_path,
+                directory_targets=effective_directories,
             )
         except ValueError as error:
             QMessageBox.warning(self, "Invalid Rename", str(error))
             return False
 
         preview_dialog = RenamePreviewDialog(self)
-        preview_dialog.set_renames(plan.file_targets)
+        preview_dialog.set_renames(plan.file_targets, plan.directory_targets)
         if preview_dialog.exec() != QDialog.DialogCode.Accepted:
             return False
 

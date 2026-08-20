@@ -153,6 +153,12 @@ from src.plugins.api import (
 from src.utils.secret_redaction import scrub_secrets
 
 
+def _media_source_available(media_input: Any) -> bool:
+    """Report source availability while remaining compatible with test stubs."""
+    checker = getattr(media_input, "source_available", None)
+    return bool(checker()) if callable(checker) else True
+
+
 class ProcessBackEnd:
     def __init__(self, config: ConfigManager) -> None:
         self.config = config
@@ -352,6 +358,7 @@ class ProcessBackEnd:
                     media_input=media_input_payload,
                     media_search=media_search_payload,
                     timeout=timeout,
+                    source_available=_media_source_available(media_input_payload),
                 ),
             )
         except PluginExecutionError as error:
@@ -978,17 +985,27 @@ class ProcessBackEnd:
 
         # get media input - use context instead of config
         media_input = context.media_input.require_input_path()
+        input_kind = getattr(context.media_input, "input_is_directory", None)
+        input_is_directory = (
+            bool(input_kind()) if callable(input_kind) else media_input.is_dir()
+        )
         release_info = build_series_release_info(context.media_input)
 
         # process
         queued_text_update(
-            '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:'
+            '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:</h3>'
         )
 
         # A prepared job already carries finished titles and NFOs, so none of
         # the generation below runs and neither prompt fires -- that silence is
         # what lets such a job be uploaded unattended, by a queue or otherwise.
-        already_prepared = context.shared_data.is_prepared()
+        prepared_trackers = set(context.shared_data.tracker_release_data)
+        trackers_to_generate = tuple(
+            name
+            for name in process_dict
+            if TrackerSelection(name) not in prepared_trackers
+        )
+        already_prepared = not trackers_to_generate
         if already_prepared:
             queued_text_update(
                 "<br /><span>Using the titles and NFOs saved with this job</span>"
@@ -1000,9 +1017,15 @@ class ProcessBackEnd:
         # find all prompt tokens
         if token_prompt_cb and not already_prepared:
             all_prompt_tokens: list[str] = []
-            for tracker_name in process_dict.keys():
+            for tracker_name in trackers_to_generate:
                 cur_tracker = TrackerSelection(tracker_name)
                 tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
+                # An unassigned template is a legitimate state -- the tracker
+                # simply uploads without an NFO (see the `if nfo_template` guard
+                # around generation below). Reading one by an empty name is not:
+                # `read_template` treats that as a programmer error and raises.
+                if not tracker_info.nfo_template:
+                    continue
                 nfo_template = self.template_selector_be.read_template(
                     name=tracker_info.nfo_template
                 )
@@ -1011,9 +1034,14 @@ class ProcessBackEnd:
                     all_prompt_tokens.extend(prompt_tokens)
 
             # remove duplicates but maintain order from prompt tokens
-            if all_prompt_tokens:
+            unresolved_tokens = [
+                token
+                for token in dict.fromkeys(all_prompt_tokens)
+                if token not in base_usr_tokens
+            ]
+            if unresolved_tokens:
                 # use a callback to wait for a response from the frontend
-                response = token_prompt_cb(list(dict.fromkeys(all_prompt_tokens)))
+                response = token_prompt_cb(unresolved_tokens)
                 if response:
                     base_usr_tokens.update(response)
 
@@ -1023,7 +1051,6 @@ class ProcessBackEnd:
         )
         if not already_prepared:
             queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
-        trackers_to_generate = () if already_prepared else tuple(process_dict.keys())
         for tracker_name in trackers_to_generate:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
@@ -1042,8 +1069,10 @@ class ProcessBackEnd:
                         cur_tracker, generated_tracker_title
                     )
 
-            nfo_template = self.template_selector_be.read_template(
-                name=tracker_info.nfo_template
+            nfo_template = (
+                self.template_selector_be.read_template(name=tracker_info.nfo_template)
+                if tracker_info.nfo_template
+                else None
             )
             user_tokens = base_usr_tokens | {
                 k: v for k, (v, _) in self.config.settings.user_tokens.tokens.items()
@@ -1138,6 +1167,9 @@ class ProcessBackEnd:
                                 ),
                                 formatted_screens=formatted_screens,
                                 preview=False,
+                                source_available=_media_source_available(
+                                    context.media_input
+                                ),
                             ),
                         )
 
@@ -1149,11 +1181,15 @@ class ProcessBackEnd:
             and overview_cb
             and not already_prepared
         ):
-            confirm_overview = overview_cb(tracker_release_data)
+            generated_release_data = {
+                TrackerSelection(name): tracker_release_data[TrackerSelection(name)]
+                for name in trackers_to_generate
+            }
+            confirm_overview = overview_cb(generated_release_data)
             if confirm_overview:
                 nfo_updates = [
                     str(k)
-                    for k in tracker_release_data
+                    for k in generated_release_data
                     if k in confirm_overview
                     and tracker_release_data[k] != confirm_overview[k]
                 ]
@@ -1162,7 +1198,7 @@ class ProcessBackEnd:
                         "<br /><i><span>Applying user edits from overview to trackers "
                         f'<span style="font-weight: bold;">{", ".join(nfo_updates)}</span></span></i><br />'
                     )
-                tracker_release_data = confirm_overview
+                tracker_release_data.update(confirm_overview)
 
         # Record the finished titles/NFOs (including any overview edits) and the
         # prompt answers onto the context, so saving after this point produces a
@@ -1184,6 +1220,7 @@ class ProcessBackEnd:
                 media_input=media_input,
                 carried_torrent=base_torrent_file,
                 queued_text_update=queued_text_update,
+                input_is_directory=input_is_directory,
             )
 
         # loop from the start and process jobs
@@ -1489,6 +1526,7 @@ class ProcessBackEnd:
                         replace_last_line=queued_text_update_replace_last_line,
                         set_progress=self.progress_bar_cb or (lambda _value: None),
                     ),
+                    source_available=_media_source_available(context.media_input),
                 ),
             )
         except PluginExecutionError as error:
@@ -1538,12 +1576,20 @@ class ProcessBackEnd:
                     ),
                     outcome=outcome,
                     error=error,
+                    source_available=_media_source_available(context.media_input),
                 ),
             )
-        except PluginExecutionError as plugin_error:
+        except Exception as plugin_error:
+            # Deliberately every exception, not just `PluginExecutionError`.
+            # Anything escaping here lands in the generic handler around the
+            # upload block, which stamps `MAY_HAVE_UPLOADED` over an outcome
+            # that was already established -- so a notifier plugin raising
+            # `ValueError` would turn a tracker that provably failed into one
+            # nobody can account for, and take its prepared work with it.
             LOG.error(
                 LOG.LOG_SOURCE.BE,
-                f"Post-upload plugin failed for {cur_tracker}: {plugin_error}",
+                f"Post-upload plugin failed for {cur_tracker}: "
+                f"{scrub_secrets(str(plugin_error))}",
             )
 
     def handle_images_for_trackers(
@@ -1652,6 +1698,25 @@ class ProcessBackEnd:
                 files_to_upload = context.shared_data.loaded_images
 
             if not files_to_upload:
+                # A job that carries URLs for some other host is a job whose
+                # screenshots exist -- just not as files this run can send. It
+                # would be served by picking one of those hosts, so say which,
+                # rather than uploading nothing and calling it a supported
+                # outcome. Downloading its own images back off a host to
+                # re-upload them elsewhere is deliberately not done.
+                servable = sorted(
+                    str(host)
+                    for host in context.shared_data.uploaded_images_by_host
+                    if isinstance(host, ImageHost) and host is not ImageHost.DISABLED
+                )
+                if servable:
+                    raise ImageHostError(
+                        "No screenshot files are available to upload to "
+                        f"{', '.join(sorted(str(host) for host in to_image_hosts))}. "
+                        "This job already holds uploaded images for "
+                        f"{', '.join(servable)} -- select one of those, or "
+                        "restore the screenshots it was saved with."
+                    )
                 LOG.warning(
                     LOG.LOG_SOURCE.BE,
                     f"No images available to upload to {len(to_image_hosts)} image host(s), "
@@ -1706,6 +1771,17 @@ class ProcessBackEnd:
                     LOG.LOG_SOURCE.BE,
                     f"Upload results returned for image host(s): {sorted(str(h) for h in upload_results)}",
                 )
+
+                # Recorded here, before anything below can raise. A single
+                # image that failed to upload sends `assert_all_images_uploaded`
+                # out of this function, and the per-tracker recording at the end
+                # never runs -- which threw away every host that had just
+                # succeeded, so a later run uploaded all of them again.
+                for img_host, host_results in upload_results.items():
+                    if host_results:
+                        context.shared_data.uploaded_images_by_host[img_host] = dict(
+                            host_results
+                        )
 
                 # map the uploaded image hosts to the appropriate trackers
                 for tracker, img_host in tracker_to_host_map.items():
@@ -1822,13 +1898,22 @@ class ProcessBackEnd:
         nothing, and `DISABLED` has nothing to reuse. Reuse also requires the
         destination to be unchanged -- otherwise the stored URLs point at a
         host the user has since moved this tracker away from.
+
+        The tracker's own record is consulted first, then the job's by-host
+        record. The second is what serves a tracker added *after* the run that
+        uploaded the images: the URLs are the host's, not the tracker's, so a
+        tracker pointed at a host this job already uploaded to has nothing to
+        gain from sending the same screenshots again -- and an archive whose
+        local copies are gone has nothing to send.
         """
         if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
             return None
-        if context.shared_data.uploaded_image_hosts.get(tracker) is not destination:
-            return None
-        images = context.shared_data.uploaded_images.get(tracker)
-        return dict(images) if images else None
+        if context.shared_data.uploaded_image_hosts.get(tracker) is destination:
+            images = context.shared_data.uploaded_images.get(tracker)
+            if images:
+                return dict(images)
+        by_host = context.shared_data.uploaded_images_by_host.get(destination)
+        return dict(by_host) if by_host else None
 
     def _optimize_images(
         self, progress_bar_cb: Callable[[float], None], files_to_upload: Sequence[Path]
@@ -2086,6 +2171,7 @@ class ProcessBackEnd:
         media_input: Path,
         carried_torrent: Path | None,
         queued_text_update: Callable[[str], None],
+        input_is_directory: bool | None = None,
     ) -> Path:
         """Put a neutral base torrent in place for every tracker to clone.
 
@@ -2100,7 +2186,9 @@ class ProcessBackEnd:
         resumed job that gets re-saved keeps one, and the job's own stored file
         is never mutated.
         """
-        base_path = working_dir / f"{release_stem(media_input)}{BASE_TORRENT_SUFFIX}"
+        base_path = working_dir / (
+            f"{release_stem(media_input, input_is_directory)}{BASE_TORRENT_SUFFIX}"
+        )
 
         if carried_torrent:
             try:
@@ -2209,6 +2297,10 @@ class ProcessBackEnd:
                 is_pack=release_info.is_pack,
                 is_anime=is_anime_release(context.media_input, media_search_obj),
                 timeout=self.config.settings.general.timeout,
+                imdb_id=media_search_obj.imdb_id,
+                tvdb_id=media_search_obj.tvdb_id,
+                season=release_info.season,
+                episode=release_info.episode_start,
             )
         elif tracker is TrackerSelection.BEYOND_HD:
             bhd_payload = self.config.settings.trackers.beyond_hd
@@ -2244,6 +2336,7 @@ class ProcessBackEnd:
                 localization=localization,
                 add_localization_to_custom_edition=bhd_payload.add_localization_to_custom_edition,
                 stream_optimized=bhd_payload.stream_optimized,
+                content_size=context.media_input.content_size,
             )
         elif tracker is TrackerSelection.PASS_THE_POPCORN:
             ptp_payload = self.config.settings.trackers.pass_the_popcorn
@@ -2271,6 +2364,7 @@ class ProcessBackEnd:
                 cookie_dir=self.config.paths.tracker_cookies,
                 totp=ptp_payload.totp,
                 timeout=self.config.settings.general.timeout,
+                content_size=context.media_input.content_size,
             )
         # Unit3d trackers
         elif tracker is TrackerSelection.REELFLIX:

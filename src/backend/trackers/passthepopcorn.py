@@ -17,6 +17,7 @@ from src.backend.trackers.cookie_storage import load_cookies, save_cookies
 from src.backend.trackers.utils import DISC_TITLE_REGEX, TRACKER_HEADERS
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -50,6 +51,7 @@ def ptp_uploader(
     cookie_dir: Path,
     totp: str | None = None,
     timeout: int = 60,
+    content_size: int | None = None,
 ) -> bool | None:
     """Upload to PassThePopcorn.
 
@@ -92,6 +94,7 @@ def ptp_uploader(
         input_path=input_path,
         nfo=nfo,
         group_id=group_id,
+        content_size=content_size,
     )
 
 
@@ -272,7 +275,7 @@ class PTPUploader:
         self.totp = totp
         self.timeout = timeout
 
-        self._session = niquests.Session()
+        self._session = new_http_session()
 
     def upload(
         self,
@@ -282,6 +285,7 @@ class PTPUploader:
         input_path: Path,
         nfo: str,
         group_id: str | None = None,
+        content_size: int | None = None,
     ) -> bool | None:
         if not media_search_payload.tmdb_data:
             raise TrackerError("Missing TMDB data")
@@ -291,7 +295,7 @@ class PTPUploader:
             "remaster_title": self._remaster_title(input_path),
             "type": self._get_type(media_search_payload),
             "codec": "Other",  # sending the codec as Other to fill with other_codec
-            "other_codec": self._get_codec(input_path),
+            "other_codec": self._get_codec(input_path, content_size),
             "resolution": self._resolution(),
             "container": "Other",  # sending container as Other to fill with other_container
             "other_container": self._get_container(input_path),
@@ -418,7 +422,7 @@ class PTPUploader:
     def _upload_poster_to_imgbox(self, image_url: str) -> str:
         """Download a new-group poster and host it on ImageBox for PTP."""
         try:
-            response = niquests.get(image_url, timeout=self.timeout)
+            response = self._session.get(image_url, timeout=self.timeout)
             response.raise_for_status()
             poster_content = response.content
             if poster_content is None:
@@ -575,13 +579,15 @@ class PTPUploader:
         ptp_type = PTPType.SHORT_FILM if 0 < duration < 45 else PTPType.FEATURE_FILM
         return str(ptp_type.value)
 
-    def _get_codec(self, input_path: Path) -> str:
+    def _get_codec(self, input_path: Path, content_size: int | None = None) -> str:
         title_lowered = release_stem(input_path).lower()
         title_lowered_strip_periods = title_lowered.replace(".", "")
 
         # disc
         if DISC_TITLE_REGEX.search(title_lowered):
-            input_file_size = input_path.stat().st_size
+            input_file_size = (
+                content_size if content_size is not None else input_path.stat().st_size
+            )
             if input_file_size <= 26_843_545_600:
                 return str(PTPCodec.BD25.value)
             elif input_file_size <= 53_687_091_200:
@@ -840,6 +846,9 @@ class PTPUploader:
         return response, tried_totp
 
 
+_PTP_SEARCH_SESSION = new_http_session()
+
+
 class PTPSearch:
     """Search PassThePopcorn"""
 
@@ -882,7 +891,7 @@ class PTPSearch:
             f"Searching PassThePopcorn for title: {movie_title} ({movie_year})",
         )
         try:
-            response = niquests.get(
+            response = _PTP_SEARCH_SESSION.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
             if response.status_code != 200:
@@ -936,7 +945,7 @@ class PTPSearch:
         }
 
         try:
-            response = niquests.get(
+            response = _PTP_SEARCH_SESSION.get(
                 self.URL, headers=headers, params=params, timeout=self.timeout
             )
             if response.ok and response.status_code == 200:

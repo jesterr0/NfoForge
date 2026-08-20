@@ -27,21 +27,25 @@ import traceback
 from typing import TYPE_CHECKING, Any, cast
 
 from src.backend.jobs import (
+    JobAssetError,
     JobCodecError,
     JobStoreError,
     SavedJob,
+    archived_base_is_valid,
+    base_torrent_path,
     context_from_dict,
     delete_job,
     filter_context_document,
     load_job,
     prune_unreferenced_nfos,
     read_job_asset,
+    rebuild_job_document,
     write_job_document,
 )
 from src.backend.process import ProcessBackEnd
 from src.backend.tracker_run_data import build_tracker_data
 from src.backend.upload_retry import TrackerRunOutcome
-from src.backend.utils.media_info_utils import clear_full_mi_str_cache
+from src.backend.utils.media_info_utils import clear_restored_mediainfo
 from src.context.factory import create_processing_context
 from src.context.processing_context import ProcessingContext
 from src.enums.tracker_selection import TrackerSelection
@@ -235,6 +239,7 @@ class JobQueueRunner:
             working_dir=context.media_input.require_working_dir(),
             input_path=context.media_input.require_input_path(),
             tracker_image_hosts=context.shared_data.tracker_image_hosts,
+            input_is_directory=context.media_input.input_is_directory(),
         )
         if not tracker_data:
             return QueuedJobOutcome(
@@ -270,7 +275,7 @@ class JobQueueRunner:
             )
 
         outcome = self._upload(job, path, context, tracker_data)
-        self._settle(job, outcome)
+        self._settle(job, outcome, context)
         return outcome
 
     # ----------------------------------------------------------------------
@@ -278,7 +283,7 @@ class JobQueueRunner:
         """Build a fresh context for this job, or say why it could not be."""
         # never share the wizard's live context, and never inherit MediaInfo
         # cached for whichever job ran before this one
-        clear_full_mi_str_cache()
+        clear_restored_mediainfo()
         context = create_processing_context(
             self.config.settings, self.config.plugin_manager
         )
@@ -291,6 +296,22 @@ class JobQueueRunner:
                 LOG.LOG_SOURCE.BE, f"Queue could not restore '{job.name}': {error}"
             )
             return str(error)
+        if job.archived:
+            stored = base_torrent_path(path)
+            details = job.context.get("base_torrent")
+            snapshot = details.get("snapshot") if isinstance(details, dict) else None
+            if stored is None or not archived_base_is_valid(stored, snapshot):
+                return "saved base torrent is missing, corrupt, or invalid"
+            if isinstance(snapshot, dict):
+                content_size = snapshot.get("content_size")
+                if isinstance(content_size, int):
+                    context.media_input.content_size = content_size
+                mode = snapshot.get("mode")
+                if mode in {"singlefile", "multifile"}:
+                    context.media_input.input_kind = (
+                        "directory" if mode == "multifile" else "file"
+                    )
+            context.shared_data.base_torrent = stored
         return context
 
     @staticmethod
@@ -299,7 +320,8 @@ class JobQueueRunner:
         try:
             context.media_input.require_existing_media_paths(include_comparison=False)
         except (FileNotFoundError, RuntimeError) as error:
-            return str(error)
+            if context.shared_data.base_torrent is None:
+                return str(error)
 
         missing = [
             str(image)
@@ -420,7 +442,9 @@ class JobQueueRunner:
             outcomes=outcomes,
         )
 
-    def _settle(self, job: SavedJob, outcome: QueuedJobOutcome) -> None:
+    def _settle(
+        self, job: SavedJob, outcome: QueuedJobOutcome, context: ProcessingContext
+    ) -> None:
         """Bring a job's files into line with what actually uploaded.
 
         A job left on disk unchanged after uploading is a job the next queue run
@@ -436,11 +460,18 @@ class JobQueueRunner:
         correctly. `MAY_HAVE_UPLOADED` is neither retryable nor done, and
         neither is a tracker whose uploads are disabled in config; a two-way
         split counts both as finished and deletes their prepared work.
+
+        The document is rebuilt from the *live* context before any of that.
+        Narrowing what was loaded from disk would persist a job that still
+        knows nothing of what the run just did -- most consequentially the
+        screenshots it uploaded, which the next run would then upload again.
         """
         if not outcome.outcomes:
             # the run never reached the upload stage, so there is nothing to
             # reconcile -- a skipped job is kept for review as it was
             return
+
+        rebuilt = self._rebuild(job, outcome.path, context)
 
         landed = {
             tracker
@@ -448,9 +479,73 @@ class JobQueueRunner:
             if tracker_outcome
             in {TrackerRunOutcome.UPLOADED, TrackerRunOutcome.INJECTION_FAILED}
         }
-        if not landed:
-            # Nothing reached a tracker, so the job is still exactly itself.
+        if not landed and not job.archived:
+            # Nothing reached a tracker, so which trackers the job covers is
+            # unchanged -- but what the run produced along the way still has to
+            # be written, or the next attempt starts from scratch. A run that
+            # added nothing writes nothing, so an untouched job stays untouched
+            # on disk rather than being rewritten byte-for-byte.
+            if rebuilt:
+                self._write(job, outcome.path, "record what this run produced in")
             # It still needs saying when one of them cannot be accounted for.
+            self._warn_unconfirmed(job, outcome)
+            return
+
+        if job.archived:
+
+            def member_names(values: list[str]) -> set[TrackerSelection]:
+                members: set[TrackerSelection] = set()
+                for value in values:
+                    try:
+                        members.add(TrackerSelection[value])
+                    except KeyError:
+                        continue
+                return members
+
+            uploaded = member_names(job.uploaded_trackers) | landed
+            uncertain = member_names(job.uncertain_trackers) | {
+                tracker
+                for tracker, tracker_outcome in outcome.outcomes.items()
+                if tracker_outcome is TrackerRunOutcome.MAY_HAVE_UPLOADED
+            }
+            uncertain -= uploaded
+            pending = set(outcome.outcomes) - uploaded - uncertain
+            try:
+                # an uncertain tracker keeps its prepared title, NFO and image
+                # state without being runnable, so resolving it later has
+                # something to put back -- see `filter_context_document`
+                job.context = filter_context_document(
+                    job.context, pending, retain_data_for=uncertain
+                )
+                job.uploaded_trackers = sorted(tracker.name for tracker in uploaded)
+                job.uncertain_trackers = sorted(tracker.name for tracker in uncertain)
+                job.summary.trackers = sorted(str(tracker) for tracker in pending)
+                job.summary.uploaded_trackers = sorted(
+                    str(tracker) for tracker in uploaded
+                )
+                job.summary.uncertain_trackers = sorted(
+                    str(tracker) for tracker in uncertain
+                )
+                write_job_document(job, outcome.path)
+            except (JobStoreError, OSError) as error:
+                LOG.error(LOG.LOG_SOURCE.BE, f"Could not update archive: {error}")
+                self._text_update(
+                    f"<br /><span>⚠️ <b>{escape(job.name)}</b> uploaded, but its "
+                    f"archive state could not be updated: {escape(str(error))}</span>"
+                )
+                return
+            try:
+                prune_unreferenced_nfos(outcome.path, job.context)
+            except OSError as error:
+                LOG.warning(
+                    LOG.LOG_SOURCE.BE,
+                    f"Archive updated but stale NFO cleanup failed: {error}",
+                )
+            outcome.disposition = JobDisposition.NARROWED
+            self._text_update(
+                f"<br /><span>📦 Updated reusable archive "
+                f"<b>{escape(job.name)}</b></span>"
+            )
             self._warn_unconfirmed(job, outcome)
             return
 
@@ -510,6 +605,42 @@ class JobQueueRunner:
             "it</span>"
         )
         self._warn_unconfirmed(job, outcome)
+
+    def _rebuild(self, job: SavedJob, path: Path, context: ProcessingContext) -> bool:
+        """Re-serialize the run onto `job`, reporting whether anything changed.
+
+        A failure here costs the run's new state but must not cost the job: the
+        loaded document is left in place, so the worst case is the job being
+        exactly what it was before the run, which is what it was anyway.
+        """
+        before = job.context
+        try:
+            job.context = rebuild_job_document(job, path, context)
+        except (JobAssetError, JobCodecError, OSError) as error:
+            LOG.error(
+                LOG.LOG_SOURCE.BE,
+                f"Could not re-serialize '{job.name}' after running it: {error}",
+            )
+            self._text_update(
+                f"<br /><span>⚠️ <b>{escape(job.name)}</b> ran, but what it "
+                "produced could not be written back to it: "
+                f"{escape(str(error))}</span>"
+            )
+            return False
+        return job.context != before
+
+    def _write(self, job: SavedJob, path: Path, what: str) -> bool:
+        """Write `job.json`, reporting the failure to the user if it fails."""
+        try:
+            write_job_document(job, path)
+        except (JobStoreError, OSError) as error:
+            LOG.error(LOG.LOG_SOURCE.BE, f"Could not {what} a job: {error}")
+            self._text_update(
+                f"<br /><span>⚠️ Could not {escape(what)} "
+                f"<b>{escape(job.name)}</b>: {escape(str(error))}</span>"
+            )
+            return False
+        return True
 
     def _warn_unconfirmed(self, job: SavedJob, outcome: QueuedJobOutcome) -> None:
         """Name any tracker whose upload could not be established either way.

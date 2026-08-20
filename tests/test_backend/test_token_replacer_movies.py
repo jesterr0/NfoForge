@@ -468,6 +468,24 @@ def test_audio_codec_no_atmos_plus_atmos_reconstructs_audio_codec() -> None:
     assert rebuilt.strip() == replacer._audio_codec(_td())
 
 
+def test_audio_codec_override_feeds_the_split_audio_tokens() -> None:
+    """The wizard edits ``audio_codec``, while tracker formats can use the
+    split views to put the channel layout before Atmos.  All three must read
+    the same hand-corrected value."""
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{audio_codec}|{audio_codec_no_atmos}|{atmos}",  # noqa: S106
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        override_tokens={"audio_codec": "DD+ Atmos"},
+    ).get_output()
+
+    assert output == "DD+ Atmos|DD+|Atmos"
+
+
 def test_audio_codec_tokens_resolve_through_the_token_string() -> None:
     # The direct-resolver tests above would still pass if the registry entry
     # or the dispatch branch were deleted; this one goes through get_output()

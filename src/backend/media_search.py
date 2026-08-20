@@ -11,7 +11,9 @@ from rapidfuzz import fuzz
 from unidecode import unidecode
 
 from src.backend.utils.guessit_helpers import get_guessit_title
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.tvdb_client import AsyncTVDBClient, TVDBClient
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.enums.tvdb_season_type import TVDBSeasonType
@@ -19,6 +21,10 @@ from src.exceptions import MediaSearchError, MediaSearchUnavailableError
 from src.logger.nfo_forge_logger import LOG
 from src.utils.secret_redaction import scrub_secrets
 from src.utils.super_sub import normalize_super_sub
+
+# Shared by MatchAnilistTitle, which is instantiated fresh per search and so
+# has no long-lived session of its own to attach this to.
+_ANILIST_SESSION = new_http_session()
 
 
 class MediaSearchBackEnd:
@@ -30,7 +36,7 @@ class MediaSearchBackEnd:
         api_key: str = "",
     ) -> None:
         self.media_data: dict[str, dict[str, Any]] = {}
-        self.session = niquests.Session()
+        self.session = new_http_session()
         self._tvdb_client: AsyncTVDBClient | None = None
         self.use_base_language_for_images = use_base_language_for_images
         self.timeout = max(1, timeout)
@@ -58,7 +64,11 @@ class MediaSearchBackEnd:
         """Cleanup when object is destroyed"""
         self.close_session()
 
-    def _parse_tmdb_api(self, media_str: str) -> dict[str, dict[str, Any]]:
+    def _parse_tmdb_api(
+        self,
+        media_str: str,
+        search_mode: MediaSearchMode = MediaSearchMode.BOTH,
+    ) -> dict[str, dict[str, Any]]:
         media_title, media_year = self._guessit(media_str)
 
         # ensure we don't leave a previous successful search available while a new
@@ -70,19 +80,33 @@ class MediaSearchBackEnd:
             "page": 1,
             "query": media_title,
         }
-        if media_year:
-            search_params["year"] = media_year
+        forced_media_type: str | None = None
+        if search_mode is MediaSearchMode.MOVIES:
+            endpoint = "movie"
+            forced_media_type = "movie"
+            if media_year:
+                search_params["primary_release_year"] = media_year
+        elif search_mode is MediaSearchMode.TV:
+            endpoint = "tv"
+            forced_media_type = "tv"
+            if media_year:
+                search_params["first_air_date_year"] = media_year
+        else:
+            endpoint = "multi"
+            if media_year:
+                # Preserve the existing mixed-search request behavior.
+                search_params["year"] = media_year
 
-        multi_results = self._fetch_tmdb_results(
-            "https://api.themoviedb.org/3/search/multi",
+        search_results = self._fetch_tmdb_results(
+            f"https://api.themoviedb.org/3/search/{endpoint}",
             params=search_params,
         )
 
         media_dict: dict[str, dict[str, Any]] = {}
         base_num = 0
 
-        for result in multi_results:
-            media_type = result.get("media_type")
+        for result in search_results:
+            media_type = forced_media_type or result.get("media_type")
 
             # skip person results, only process movie and tv
             if media_type not in ["movie", "tv"]:
@@ -676,7 +700,7 @@ class MatchAnilistTitle:
         """
         variables = {"search": tmdb_title}
         response = await asyncio.to_thread(
-            niquests.post,
+            _ANILIST_SESSION.post,
             "https://graphql.anilist.co",
             json={"query": query, "variables": variables},
             timeout=self.timeout,

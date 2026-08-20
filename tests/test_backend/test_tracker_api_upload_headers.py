@@ -16,7 +16,7 @@ def test_json_api_headers_do_not_change_browser_form_headers() -> None:
 
 @patch.object(BHDUploader, "_files", return_value={})
 @patch.object(BHDUploader, "_build_upload_payload", return_value={})
-@patch("src.backend.trackers.beyondhd.niquests.post")
+@patch("niquests.Session.post")
 def test_beyondhd_upload_requests_json(
     post: MagicMock,
     _build_payload: MagicMock,

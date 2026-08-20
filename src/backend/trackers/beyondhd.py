@@ -13,6 +13,7 @@ from src.backend.trackers.utils import (
 )
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.http_client import new_http_session
 from src.backend.utils.media_info_utils import MinimalMediaInfo
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
@@ -27,6 +28,8 @@ from src.enums.trackers.beyondhd import (
 from src.exceptions import TrackerError
 from src.logger.nfo_forge_logger import LOG
 from src.payloads.tracker_search_result import TrackerSearchResult
+
+_SESSION = new_http_session()
 
 
 def process_edition(edition: str | None) -> tuple[str, str] | None:
@@ -106,6 +109,7 @@ def bhd_uploader(
     localization: str | None = None,
     add_localization_to_custom_edition: bool = False,
     stream_optimized: bool = False,
+    content_size: int | None = None,
 ) -> str | None:
     uploader = BHDUploader(
         api_key=api_key,
@@ -113,6 +117,7 @@ def bhd_uploader(
         input_path=input_path,
         media_type=media_type,
         timeout=timeout,
+        content_size=content_size,
     )
     return uploader.upload(
         tracker_title=tracker_title,
@@ -143,6 +148,7 @@ class BHDUploader:
         "is_pack",
         "is_special",
         "timeout",
+        "content_size",
     )
 
     def __init__(
@@ -154,6 +160,7 @@ class BHDUploader:
         is_pack: bool = False,
         is_special: bool = False,
         timeout: int = 60,
+        content_size: int | None = None,
     ) -> None:
         self._upload_url = (
             f"{TrackerSelection.BEYOND_HD.get_root_url()}api/upload/{api_key}"
@@ -164,6 +171,7 @@ class BHDUploader:
         self.is_pack = is_pack
         self.is_special = is_special
         self.timeout = timeout
+        self.content_size = content_size
 
     def upload(
         self,
@@ -205,7 +213,7 @@ class BHDUploader:
         )
 
         try:
-            response = niquests.post(
+            response = _SESSION.post(
                 self._upload_url,
                 data=upload_payload,
                 files=self._files(),
@@ -374,7 +382,11 @@ class BHDUploader:
 
         # disc
         elif DISC_TITLE_REGEX.search(title_lowered):
-            input_file_size = self.input_path.stat().st_size
+            input_file_size = (
+                self.content_size
+                if self.content_size is not None
+                else self.input_path.stat().st_size
+            )
             if input_file_size <= 26_843_545_600:
                 return BHDType.BD_25.value
             elif input_file_size <= 53_687_091_200:
@@ -483,7 +495,7 @@ class BHDSearch:
             LOG.info(
                 LOG.LOG_SOURCE.BE, f"Searching BeyondHD for release: {input_path.name}"
             )
-            response = niquests.post(
+            response = _SESSION.post(
                 url=self._search_url,
                 params=payload,
                 headers=TRACKER_HEADERS,

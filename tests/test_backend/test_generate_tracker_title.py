@@ -358,3 +358,29 @@ def test_the_user_setting_is_honored_rather_than_forced_on() -> None:
     )
 
     assert output == "Movie Name"
+
+
+def test_audio_codec_override_reaches_split_tracker_audio_tokens() -> None:
+    """Tracker templates can split Atmos from the codec even though the
+    wizard exposes the combined ``audio_codec`` token for editing."""
+    context = _context()
+    context.shared_data.dynamic_data["override_tokens"] = {
+        "audio_codec": "DD+ Atmos",
+        "audio_channel_s": "5.1",
+    }
+    live = TrackerInfo(
+        mvr_title_override_enabled=True,
+        mvr_title_token_override=(  # noqa: S106
+            "{audio_codec_no_atmos} {audio_channel_s} {atmos}"
+        ),
+        mvr_title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
+    )
+
+    output = _backend(TrackerInfo()).generate_tracker_title(
+        TrackerSelection.LST,
+        live,
+        context,
+        build_series_release_info(context.media_input),
+    )
+
+    assert output == "DD+ 5.1 Atmos"

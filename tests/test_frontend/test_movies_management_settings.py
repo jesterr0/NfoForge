@@ -122,6 +122,34 @@ def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(
     assert live.mvr_title_token_override == "{title_clean} (my own)"  # noqa: S105
 
 
+def test_override_preview_follows_the_enable_checkbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A disabled override falls through to the global title at runtime, so
+    its preview must do the same and refresh as soon as the checkbox changes."""
+    widget, _manager = _make_movies_management_settings(tmp_path, monkeypatch)
+    override = widget.tracker_override_map[TrackerSelection.LST]
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        widget, "_update_example", lambda **kwargs: calls.append(kwargs) or ""
+    )
+    widget.format_release_title_input.setText("GLOBAL")
+    override.over_ride_format_title.setText("OVERRIDE")
+    override.blockSignals(False)
+    override.enabled_checkbox.setChecked(True)
+
+    calls.clear()
+    override.enabled_checkbox.setChecked(False)
+    assert calls[-1]["token_str"] == "GLOBAL"  # noqa: S105
+    assert calls[-1]["override_title_rules"] is None
+
+    override.enabled_checkbox.setChecked(True)
+    assert calls[-1]["token_str"] == "OVERRIDE"  # noqa: S105
+    assert calls[-1]["override_title_rules"] == (
+        override.over_ride_replacement_table.get_replacements()
+    )
+
+
 def test_trackers_without_release_name_offer_no_title_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

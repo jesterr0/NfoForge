@@ -7,11 +7,14 @@ import wave
 
 from pymediainfo import MediaInfo
 import pytest
+from torf import Torrent
 
 from src.backend.jobs.assets import (
     JobAssetError,
     MediaFingerprint,
+    archived_base_is_valid,
     base_torrent_path,
+    base_torrent_snapshot,
     capture_mediainfo,
     copy_base_torrent,
     copy_images,
@@ -25,6 +28,7 @@ from src.backend.utils.media_info_utils import (
     cache_full_mi_str,
     clear_full_mi_str_cache,
 )
+from tests.conftest import write_sample_media
 
 
 @pytest.fixture(autouse=True)
@@ -90,19 +94,62 @@ def test_same_named_images_from_different_folders_both_survive(
     assert {path.read_bytes() for path in copied} == {b"first", b"second"}
 
 
-def test_a_missing_image_is_skipped_rather_than_failing_the_save(
+def test_a_missing_image_keeps_its_slot_rather_than_failing_the_save(
     tmp_path: Path, job_directory: Path
 ) -> None:
+    """A lost screenshot must not renumber the ones that survived.
+
+    `uploaded_images` is keyed by a screenshot's position in this list, so
+    dropping the missing entry -- which is what this used to do -- paired every
+    later image with the URL belonging to the one after it. The entry stays,
+    still pointing at the path that is gone.
+    """
     present = tmp_path / "there.png"
     present.write_bytes(b"x")
+    gone = tmp_path / "gone.png"
 
-    copied = copy_images(job_directory, [present, tmp_path / "gone.png"])
+    copied = copy_images(job_directory, [gone, present])
 
-    assert len(copied) == 1
+    assert len(copied) == 2
+    assert copied[0] == gone
+    assert copied[1].read_bytes() == b"x"
+    assert job_directory in copied[1].parents
 
 
 def test_no_images_creates_nothing(job_directory: Path) -> None:
     assert copy_images(job_directory, []) == []
+
+
+def test_archived_base_validates_without_the_source(
+    tmp_path: Path, job_directory: Path
+) -> None:
+    media = tmp_path / "release.bin"
+    media.write_bytes(b"archive payload")
+    torrent = Torrent(path=media, private=True)
+    torrent.generate()
+    base = job_directory / "base.torrent"
+    torrent.write(base)
+    snapshot = base_torrent_snapshot(base)
+
+    media.unlink()
+
+    assert snapshot["mode"] == "singlefile"
+    assert snapshot["content_size"] == len(b"archive payload")
+    assert archived_base_is_valid(base, snapshot)
+
+
+def test_archived_base_rejects_tampering(tmp_path: Path, job_directory: Path) -> None:
+    media = tmp_path / "release.bin"
+    media.write_bytes(b"archive payload")
+    torrent = Torrent(path=media, private=True)
+    torrent.generate()
+    base = job_directory / "base.torrent"
+    torrent.write(base)
+    snapshot = base_torrent_snapshot(base)
+
+    base.write_bytes(base.read_bytes() + b"tampered")
+
+    assert not archived_base_is_valid(base, snapshot)
 
 
 # --------------------------------------------------------------------------
@@ -135,6 +182,26 @@ def test_stored_xml_rebuilds_the_object_without_the_media(
     assert [track.to_data() for track in restored.tracks] == [
         track.to_data() for track in reference.tracks
     ]
+
+
+def test_capturing_again_adds_to_the_stored_dumps(
+    tmp_path: Path, job_directory: Path, sample_media: Path
+) -> None:
+    """Updating a job captures only what its document does not already cover.
+
+    Numbering that restarted at zero would write over the dumps the update was
+    meant to be extending, so the second call has to pick up where the first
+    left off.
+    """
+    second = write_sample_media(tmp_path / "Second.wav")
+
+    first_capture = capture_mediainfo(job_directory, [sample_media])
+    second_capture = capture_mediainfo(job_directory, [second])
+
+    assert first_capture[sample_media] != second_capture[second]
+    assert read_job_asset(job_directory, first_capture[sample_media]["xml"])
+    assert read_job_asset(job_directory, second_capture[second]["xml"])
+    assert len(list((job_directory / "mediainfo").iterdir())) == 4  # two xml/txt pairs
 
 
 def test_cached_text_means_the_media_is_never_re_read(

@@ -27,6 +27,7 @@ from src.backend.utils.file_utilities import (
 from src.backend.utils.working_dir import cleanable_items, cleanable_size
 from src.config.config import ConfigManager
 from src.enums.logging_settings import LogLevel
+from src.enums.media_search_mode import MediaSearchMode
 from src.enums.settings_window import SettingsTabs
 from src.enums.theme import NfoForgeTheme
 from src.enums.tmdb_languages import TMDBLanguage
@@ -114,6 +115,16 @@ class GeneralSettings(BaseSettings):
             completer=True, completer_strict=True, disable_mouse_wheel=True, parent=self
         )
         self.tmdb_language_combo.activated.connect(self._handle_language_selection)
+
+        media_search_mode_lbl = QLabel("Media Search Type", self)
+        media_search_mode_lbl.setToolTip(
+            "Controls whether title searches return movies, TV shows, or both.\n\nNote: this controls the "
+            "flow of the rest of the program and essentially disables what ever is not selected"
+        )
+        self.media_search_mode_combo = CustomComboBox(
+            disable_mouse_wheel=True, parent=self
+        )
+        self.media_search_mode_combo.setToolTip(media_search_mode_lbl.toolTip())
 
         tmdb_api_key_lbl = QLabel("TMDB API Key", self)
         tmdb_api_key_lbl.setToolTip(
@@ -239,6 +250,9 @@ class GeneralSettings(BaseSettings):
         )
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(tmdb_language_lbl, self.tmdb_language_combo))
+        self.add_layout(
+            create_form_layout(media_search_mode_lbl, self.media_search_mode_combo)
+        )
         self.add_layout(create_form_layout(tmdb_api_key_lbl, self.tmdb_api_key_entry))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(self.enable_prompt_overview))
@@ -267,6 +281,11 @@ class GeneralSettings(BaseSettings):
         self.releasers_name_entry.setText(payload.releasers_name)
         self.global_timeout_spinbox.setValue(payload.timeout)
         self._load_tmdb_language_combo(payload.tmdb_language)
+        self.load_combo_box(
+            self.media_search_mode_combo,
+            MediaSearchMode,
+            payload.media_search_mode,
+        )
         self.tmdb_api_key_entry.setText(self.config.settings.api_keys.tmdb_api_key)
         self.enable_prompt_overview.setChecked(payload.enable_prompt_overview)
         self.enable_mkbrr.setChecked(payload.enable_mkbrr)
@@ -522,6 +541,9 @@ class GeneralSettings(BaseSettings):
         self.config.settings.general.tmdb_language = (
             self.tmdb_language_combo.currentData()
         )
+        self.config.settings.general.media_search_mode = MediaSearchMode(
+            self.media_search_mode_combo.currentData()
+        )
         self.config.settings.api_keys.tmdb_api_key = (
             self.tmdb_api_key_entry.text().strip()
         )
@@ -554,6 +576,11 @@ class GeneralSettings(BaseSettings):
             ):
                 self.tmdb_language_combo.setCurrentIndex(i)
                 break
+        self.load_combo_box(
+            self.media_search_mode_combo,
+            MediaSearchMode,
+            self.config.defaults.general.media_search_mode,
+        )
         self.tmdb_api_key_entry.clear()
         self.global_timeout_spinbox.setValue(self.config.defaults.general.timeout)
         self.enable_prompt_overview.setChecked(

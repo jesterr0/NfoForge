@@ -285,3 +285,165 @@ def test_partial_episode_rename_failure_warns_but_does_not_abort(
     )
     assert bad_file.name in skipped_message
     assert good_file.name not in skipped_message
+
+
+def _captured_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    input_path: Path,
+    episode_map: dict,
+    renamed_stems: dict[Path, str],
+    root_folder_name: str = "Show.S01-S02",
+    season_folder_names: dict[int, str] | None = None,
+    subfolder_token: str = "",
+):
+    """Drive `validatePage` far enough to capture the RenamePlan it builds."""
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=next(iter(episode_map)),
+        episode_map=episode_map,
+    )
+    page.context.media_input.input_path = input_path
+    page.config.settings.series.season_subfolder_token = subfolder_token
+
+    monkeypatch.setattr(page, "_name_validations", lambda: True)
+    monkeypatch.setattr(page, "_quality_validations", lambda: True)
+    # the real `series_renamer` runs in file_name_mode, which appends the
+    # primary file's extension; the page then strips it back off with `.stem`
+    monkeypatch.setattr(
+        RenameEncodeSeriesBackEnd,
+        "series_renamer",
+        lambda self, *, media_file, **kwargs: Path(
+            f"{renamed_stems[media_file]}{media_file.suffix}"
+        ),
+    )
+
+    names = season_folder_names or {}
+
+    def _folder_renamer(self, *, season_num, season_end=None, **kwargs):
+        if season_end is not None and season_end != season_num:
+            return Path(root_folder_name)
+        return Path(names[season_num]) if season_num in names else None
+
+    monkeypatch.setattr(
+        RenameEncodeSeriesBackEnd, "series_folder_renamer", _folder_renamer
+    )
+
+    captured: dict = {}
+
+    def _capture(self, rename_map, directory_map=None):
+        captured["files"] = rename_map
+        captured["directories"] = directory_map
+
+    monkeypatch.setattr(
+        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.set_renames",
+        _capture,
+    )
+    monkeypatch.setattr(
+        "src.frontend.wizards.rename_encode_series.RenamePreviewDialog.exec",
+        lambda self: QDialog.DialogCode.Rejected,
+    )
+
+    assert page.validatePage() is False
+    return captured
+
+
+def test_nested_pack_renames_root_and_each_season_subfolder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "Show.Complete.Series"
+    season_one = root / "Season 01"
+    season_two = root / "Season 02"
+    season_one.mkdir(parents=True)
+    season_two.mkdir(parents=True)
+    ep1 = season_one / "raw1.mkv"
+    ep2 = season_two / "raw2.mkv"
+    ep1.write_text("1")
+    ep2.write_text("2")
+
+    captured = _captured_plan(
+        tmp_path,
+        monkeypatch,
+        input_path=root,
+        episode_map={
+            ep1: {"season": 1, "episode": 1},
+            ep2: {"season": 2, "episode": 1},
+        },
+        renamed_stems={ep1: "Show.S01E01", ep2: "Show.S02E01"},
+        season_folder_names={1: "Show.S01", 2: "Show.S02"},
+    )
+
+    new_root = tmp_path / "Show.S01-S02"
+    assert captured["directories"] == {
+        root: new_root,
+        season_one: new_root / "Show.S01",
+        season_two: new_root / "Show.S02",
+    }
+    assert captured["files"] == {
+        ep1: new_root / "Show.S01" / "Show.S01E01.mkv",
+        ep2: new_root / "Show.S02" / "Show.S02E01.mkv",
+    }
+
+
+def test_subfolder_token_overrides_the_season_folder_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A set subfolder token names the subfolders without touching the root."""
+    root = tmp_path / "Show.Complete.Series"
+    season_one = root / "S1"
+    season_one.mkdir(parents=True)
+    ep1 = season_one / "raw1.mkv"
+    ep1.write_text("1")
+
+    captured = _captured_plan(
+        tmp_path,
+        monkeypatch,
+        input_path=root,
+        episode_map={ep1: {"season": 1, "episode": 1}},
+        renamed_stems={ep1: "Show.S01E01"},
+        root_folder_name="Show.S01-S02",
+        season_folder_names={1: "Season 01"},
+        subfolder_token="Season {season_number|zfill(2)}",  # noqa: S106 - token template fixture, not a credential
+    )
+
+    # a single-season pack renders no range, so the root takes the season name
+    new_root = tmp_path / "Season 01"
+    assert captured["directories"] == {
+        root: new_root,
+        season_one: new_root / "Season 01",
+    }
+
+
+def test_sidecars_follow_their_episode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "Show.S01"
+    root.mkdir()
+    ep1 = root / "raw1.mkv"
+    ep1.write_text("1")
+    subtitle = root / "raw1.en.srt"
+    subtitle.write_text("s")
+    episode_nfo = root / "raw1.nfo"
+    episode_nfo.write_text("n")
+    unrelated = root / "poster.jpg"
+    unrelated.write_text("i")
+
+    captured = _captured_plan(
+        tmp_path,
+        monkeypatch,
+        input_path=root,
+        episode_map={ep1: {"season": 1, "episode": 1}},
+        renamed_stems={ep1: "Show.S01E01"},
+        season_folder_names={1: "Show.S01.Renamed"},
+    )
+
+    new_root = tmp_path / "Show.S01.Renamed"
+    assert captured["files"] == {
+        ep1: new_root / "Show.S01E01.mkv",
+        subtitle: new_root / "Show.S01E01.en.srt",
+        episode_nfo: new_root / "Show.S01E01.nfo",
+    }
+    # not named after the episode, so it is left alone and rides along
+    assert unrelated not in captured["files"]

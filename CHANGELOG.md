@@ -1,5 +1,67 @@
 # Changelog
 
+## [1.1.8] - 2026-08-19
+
+### Added
+
+- Completed uploads are now retained as reusable job archives. Use **Jobs → Add Trackers** to publish the same prepared release to additional trackers later, even when the original media is no longer available to NfoForge. The archive carries the neutral torrent, MediaInfo, screenshots and release metadata; adding trackers walks the usual **Trackers → Pre-upload → Process** pages, so their NFO templates, release notes and client options are all settled before the run starts.
+- Saved archives track confirmed and uncertain uploads separately, prevent selecting a confirmed tracker twice, and let uncertain results be resolved before retrying.
+- Ability to select media search type (movies vs. tv or both) in General -> Settings
+  - This controls the flow for the rest of the program and disables one or the other if not set to both
+- MediaSearch now gathers TVMaze metadata
+- Season packs can now be opened in any layout, including seasons kept in separate `Season NN` subfolders. The opened folder is renamed from the **Season Folder** token (rendering `{season_number}` as a range, e.g. `S01-S05`, for a multi-season pack) and each season subfolder is renamed for its own season. Previously a pack whose episodes were not all sitting directly in the opened folder had its filenames renamed but every folder left with the source's name.
+- New **Season Subfolder** token in Settings -> Series, for naming each season subfolder in a nested pack. Leave it blank (the default) to reuse the Season Folder token, which is what a flat single-season pack has always done.
+- Subtitles and per-episode `.nfo` files named after an episode now follow it through a rename, keeping any language or ordering segment (`ep01.en.srt` -> `Show.S01E01....en.srt`). Anything else in the pack, such as an `Extras` folder, is left untouched and moves with the folder around it.
+- A pack spanning several seasons now asks for confirmation before uploading to UNIT3D trackers, which record a single season per upload and will file it under the lowest one.
+
+### Changed
+
+- `{total_seasons}` and `{total_episodes}` are described as series-wide totals from TMDB/TVDB, which is what they have always returned -- they do not count what the release contains.
+- Improved **Media Search** UI
+  - Now shows poster
+  - Combines plot/info section
+- Now passes all media identifiers to TorrentLeech other than animeid (we'll let TL auto detect this one as we send it up as anime via the category)
+- Updated dependencies:
+  - Qbittorrent-API
+- Media search window now warns when there are multiple titles with the same name/year to make sure the user takes the time to select the correct one.
+
+### Fixed
+
+- Audio codec edits made in the rename wizard now reach tracker title templates that split Atmos into its own token. LST and Aither no longer ignore the edit, and LST's default E-AC-3 Atmos title remains ordered as `DD+ 5.1 Atmos` rather than `DD+ Atmos 5.1`. Tracker-override previews now also follow the Enable Override checkbox instead of always showing the stored override.
+- Opening a folder no longer treats subtitles, `.nfo` files, artwork and sample clips as episodes. They were sent to MediaInfo, listed on the **Series Match** page as files needing an episode number, and rendered into `{episode_mediainfo}`/`{episode_metadata}`. Only video files are collected now.
+- Saving a job no longer discards the state a plugin left on it. Anything a plugin stored as a file path, a MediaInfo object, a MediaInfo track, an enum, a tuple, a set, or a mapping keyed by one of those was dropped at save time without failing the save, so the loss only surfaced on resume, as the plugin failing to read data it had put there itself. These now round-trip, and a value NfoForge genuinely cannot store still costs only itself rather than the mapping around it. A restored track is the restored MediaInfo's own track, so an audio map keeps pointing at the file it describes.
+- A saved job now stores MediaInfo for every file it can reach, not just the ones in its own file list. A plugin holding a per-episode source had no dump saved for it and nothing to restore it from.
+- `{media_info_short}` renders from a saved job with the media absent, as `{media_info}` already did. It was the one token still reading the media file.
+- Uploaded screenshots are recorded against the host that issued the URLs, so a tracker added to an archive later reuses them instead of uploading the same images again -- and an archive with no screenshots left on disk can still publish to any host it already used. Pointing such a run at a different host now fails with a message naming the hosts it can serve, rather than uploading with no images at all.
+- A batch of screenshots that uploaded successfully is no longer thrown away when a different host in the same run drops an image.
+- Running a job from the queue writes back what the run produced. The queue re-saved the job as it had been read from disk, so newly uploaded image URLs were lost and the next run paid for them again.
+- A tracker whose upload could not be confirmed keeps its prepared title, NFO and image host in the archive while staying out of the run. Answering **Resolve uncertain → No, safe to upload** now makes it runnable again with the release you reviewed; previously only its name survived, so the answer had no effect.
+- Adding trackers to an archive no longer discards a tracker left unfinished by an earlier run. Its prepared title and NFO are kept, it stays listed as pending, and it is selectable again -- before, it was listed but the run built no row for it.
+- Updating a saved archive copies newly added screenshots into the job, so an updated archive no longer points into `processing/`, which **Clean Up** empties.
+- A screenshot that has gone missing at save time keeps its place in the list instead of renumbering the ones after it, which had paired each remaining image with the next one's URL.
+- Release size is recorded on every save, so the two trackers that size a disc release (BeyondHD, PassThePopcorn) no longer read the input path off the filesystem during a run that has no media.
+- A post-upload plugin that fails no longer rewrites the tracker's result. Anything it raised other than a plugin execution error was caught by the generic upload handler, which recorded a provably failed upload as one that could not be accounted for and held back its prepared work.
+- Adding trackers to an archive no longer dies partway through with `Failed to process trackers: You must supply 'name' or 'idx' arg when reading templates`. Resuming a job that still has NFOs to generate now starts on the **Trackers** page and continues through **Pre-upload**, which is where a tracker's NFO template is assigned; previously it jumped straight to processing, so a tracker that had never been given a template killed the run before it could generate anything or show the overview. A job that is already prepared still resumes directly at processing.
+- Trackers a job has already uploaded to (or whose result is unresolved) are shown greyed out with the reason rather than hidden, and a resumed job's tracker selection no longer writes back into the profile's enabled flags.
+- The "original media is not available" notice is logged once per run instead of on every press of **Process**, and no longer runs into the line above it. The Process page also carries it as a banner for the whole run.
+- The `Trackers:` heading in the process log is closed properly, so the lines under it are no longer rendered as part of the heading.
+- Preparing an ordinary saved job again prompts for a name as before, rather than silently overwriting the job that was opened.
+- Fixed a freeze that could occur a short while after image generation. Qt reports its own warnings on whichever thread raised them, including its internal network thread, and the handler was building an error dialog there — parenting a window across threads and then running a modal loop off the GUI thread, which wedged the client.
+- Qt warnings are now recorded in the log instead of interrupting with a dialog, and every Qt log line names the thread it came from. Genuine faults still raise a dialog, and only one at a time, so a burst of errors can no longer bury the window.
+- Suppressed a harmless `QSslSocket` warning from the Media Search poster download.
+- If the image viewer fails to open after generating images, the error is now reported and the client stays usable rather than remaining disabled.
+- Media Search SVGs now theme properly/automatically for dark/light modes
+- A bug when user selects **Start Over** in dark mode all the SVGs/icons could default to light mode even thought he client stayed in dark mode
+- Template system:
+  - Backend hardening: read_template now bounds-checks idx and catches OSError around the file open instead of letting it propagate; a stale entry is dropped from the cache and None is returned (every existing caller already treats None as "nothing to load," so this is a pure behavior improvement, not a contract change). delete_template uses unlink(missing_ok=True). load_templates tolerates a missing directory. save_template/create_template recreate the templates directory if it's gone.
+  - Cross-instance sync: added a templates_changed global signal, emitted whenever a TemplateSelector creates or deletes a template. Every open TemplateSelector listens and resyncs: if its current selection still exists it just refreshes the item list (preserving the active selection and any unsaved edits in the editor); if its selection was the one deleted elsewhere, it discards it and falls back cleanly (with a status-tip note if there was unsaved text). This is what actually prevents the reported crash rather than just catching it after the fact.
+  - Defense in depth: save_template()/delete_template() in the widget now look up the backend cache with .get() instead of [], so a stale selection warns/reloads instead of raising KeyError.
+- Tracker uploads, searches, torrent downloads, and metadata lookups (TVDB, TVmaze, AniList) no longer negotiate HTTP/3. Some tracker servers' HTTP/3 support is flaky, which could surface as an upload, search, or download failing for no clear reason; HTTP/2 (falling back to HTTP/1.1 where needed) is used instead, which every one of these servers already supports reliably.
+
+### Removed
+
+- Bundled un-used SVG files
+
 ## [1.1.7] - 2026-08-14
 
 ### Changed

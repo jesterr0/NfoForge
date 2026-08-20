@@ -19,6 +19,12 @@ class MediaInputPayload:
     working_dir: Path | None = None
     file_list: list[Path] = field(default_factory=list)  # all relevant files found
     file_list_mediainfo: dict[Path, MediaInfo] = field(default_factory=dict)
+    # Persisted release facts used when a saved archive is processed after the
+    # original paths have disappeared.  Paths remain useful lexical identifiers
+    # (title parsing and MediaInfo cache keys), but these facts must not be
+    # re-derived with ``Path.is_dir()``/``stat()`` in source-less mode.
+    input_kind: str | None = None
+    content_size: int | None = None
     comparison_pair: ComparisonPair | None = None
 
     # series stuff
@@ -134,6 +140,20 @@ class MediaInputPayload:
         if script and not script.is_file():
             raise FileNotFoundError(f"Comparison script no longer exists: {script}")
 
+    def source_available(self) -> bool:
+        """Whether every original media path is currently readable."""
+        try:
+            self.require_existing_media_paths(include_comparison=False)
+        except (FileNotFoundError, RuntimeError):
+            return False
+        return True
+
+    def input_is_directory(self) -> bool:
+        """Return the saved input kind without requiring the path to exist."""
+        if self.input_kind in {"file", "directory"}:
+            return self.input_kind == "directory"
+        return bool(self.input_path and self.input_path.is_dir())
+
     def apply_rename_mapping(
         self,
         rename_mapping: dict[Path, Path],
@@ -218,6 +238,8 @@ class MediaInputPayload:
         self.working_dir = None
         self.file_list.clear()
         self.file_list_mediainfo.clear()
+        self.input_kind = None
+        self.content_size = None
         self.comparison_pair = None
         self.series_episode_map = None
         self.series_episode_format = EpisodeFormat.STANDARD
