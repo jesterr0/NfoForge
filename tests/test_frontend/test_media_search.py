@@ -117,6 +117,56 @@ def test_search_results_are_colored_by_media_type(tmp_path: Path) -> None:
     assert page.listbox.item(1).background().color() == page.SERIES_ROW_COLOR
 
 
+def test_duplicate_result_titles_are_reported_as_ambiguous(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    first = "1) Bob (1992)"
+    second = "2) Bob (2012)"
+    page.backend.media_data = {
+        first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
+        second: {"title": " bob ", "year": "2012", "media_type": "Series"},
+    }
+    page.listbox.addItems([first, second])
+    page.listbox.setCurrentRow(1)
+
+    assert page._selected_title_is_ambiguous() is True
+
+
+def test_unique_result_title_is_not_reported_as_ambiguous(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    first = "1) Bob (1992)"
+    second = "2) Robert (2012)"
+    page.backend.media_data = {
+        first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
+        second: {"title": "Robert", "year": "2012", "media_type": "Movie"},
+    }
+    page.listbox.addItems([first, second])
+    page.listbox.setCurrentRow(0)
+
+    assert page._selected_title_is_ambiguous() is False
+
+
+def test_ambiguous_title_requires_confirmation_before_metadata_lookup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    first = "1) Bob (1992)"
+    second = "2) Bob (2012)"
+    page.backend.media_data = {
+        first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
+        second: {"title": "Bob", "year": "2012", "media_type": "Movie"},
+    }
+    page.listbox.addItems([first, second])
+    page.listbox.setCurrentRow(1)
+    page.loading_complete = True
+    page.tmdb_id_entry.setText("123")
+    lookup_calls: list[None] = []
+    monkeypatch.setattr(page, "_confirm_ambiguous_title_selection", lambda: False)
+    monkeypatch.setattr(page, "_search_other_ids", lambda: lookup_calls.append(None))
+
+    assert page.validatePage() is False
+    assert lookup_calls == []
+
+
 def test_selecting_media_requests_its_tmdb_poster(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

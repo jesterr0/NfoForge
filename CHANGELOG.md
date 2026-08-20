@@ -23,6 +23,7 @@
 - Now passes all media identifiers to TorrentLeech other than animeid (we'll let TL auto detect this one as we send it up as anime via the category)
 - Updated dependencies:
   - Qbittorrent-API
+- Media search window now warns when there are multiple titles with the same name/year to make sure the user takes the time to select the correct one.
 
 ### Fixed
 

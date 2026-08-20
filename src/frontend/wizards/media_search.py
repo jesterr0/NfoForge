@@ -437,6 +437,10 @@ class MediaSearch(BaseWizardPage):
         if invalid_entries or self._has_invalid_id_formats():
             return False
 
+        if not self.other_ids_parsed and self._selected_title_is_ambiguous():
+            if not self._confirm_ambiguous_title_selection():
+                return False
+
         if not self.other_ids_parsed:
             self.listbox.setDisabled(True)
             self._search_other_ids()
@@ -471,6 +475,71 @@ class MediaSearch(BaseWizardPage):
         for entry in invalid_entries:
             QWidgetTempStyle().set_temp_style(widget=entry).start()
         return bool(invalid_entries)
+
+    def _selected_title_is_ambiguous(self) -> bool:
+        """Whether another current result has the selected result's title.
+
+        TMDB can return remakes, reboots, and movie/series pairs with an
+        identical title. Years and media types distinguish their list rows,
+        but the duplicate title is the important signal to ask for a deliberate
+        selection before continuing.
+        """
+
+        selected = self._get_current_item_data()
+        if not selected:
+            return False
+
+        selected_title = self._normalized_result_title(selected.get("title"))
+        if not selected_title:
+            return False
+
+        return (
+            sum(
+                self._normalized_result_title(item.get("title")) == selected_title
+                for item in self.backend.media_data.values()
+                if isinstance(item, dict)
+            )
+            > 1
+        )
+
+    @staticmethod
+    def _normalized_result_title(title: object) -> str:
+        """Normalize a TMDB title for duplicate-title comparison."""
+
+        if not isinstance(title, str):
+            return ""
+        return " ".join(title.split()).casefold()
+
+    def _confirm_ambiguous_title_selection(self) -> bool:
+        """Require an explicit choice before accepting an ambiguous result."""
+
+        selected = self._get_current_item_data() or {}
+        title = str(selected.get("title") or "this title")
+        year = selected.get("year")
+        media_type = selected.get("media_type")
+        selected_details = " ".join(
+            str(value)
+            for value in (title, f"({year})" if year else "", media_type or "")
+            if value
+        )
+
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Icon.Warning)
+        message_box.setWindowTitle("Multiple Matching Titles")
+        message_box.setText(
+            f"More than one search result is named \u201c{title}\u201d.\n\n"
+            f"You selected: {selected_details}\n\n"
+            "Please verify the year, media type, poster, and plot before continuing."
+        )
+        review_button = message_box.addButton(
+            "Review Results", QMessageBox.ButtonRole.RejectRole
+        )
+        use_button = message_box.addButton(
+            "Use This Title", QMessageBox.ButtonRole.AcceptRole
+        )
+        message_box.setDefaultButton(review_button)
+        message_box.exec()
+        return message_box.clickedButton() is use_button
 
     @Slot(str)
     def _mark_metadata_dirty(self, _text: str) -> None:
