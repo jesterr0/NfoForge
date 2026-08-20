@@ -102,6 +102,7 @@ class TrackerFormatOverride(QWidget):
             self.over_ride_inner_widget.show()
         else:
             self.over_ride_inner_widget.hide()
+        self.setting_changed.emit()
 
     @Slot(int)
     def _colon_replace_changed(self, _idx: int) -> None:

@@ -35,6 +35,7 @@ Each needs a new token rather than an edit to the packaged defaults:
   fixed for titles alone.
 """
 
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
@@ -176,6 +177,45 @@ def test_encode_puts_the_audio_before_hdr_and_video_codec(
     assert rendered == (
         "Movie Name 2026 2160p BluRay TrueHD 7.1 Atmos DV HDR x265-SomeGroup"
     )
+
+
+def test_lst_formats_eac3_atmos_as_codec_channels_atmos(
+    packaged: dict[TrackerSelection, TrackerInfo], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pin LST's documented order and its DDP -> DD+ spelling together.
+
+    A test using TrueHD alone would not exercise LST's character-map rule,
+    whose lookahead only matches when the channel layout immediately follows
+    the codec.
+    """
+    media = deepcopy(_media(WEB_NAME))
+    audio = next(iter(media.file_list_mediainfo.values())).audio_tracks[0]
+    audio.channel_s = 6
+    audio.other_channel_s = ["6 channels"]
+    audio.channel_positions = "L R C LFE Ls Rs"
+    monkeypatch.setattr(
+        "src.backend.token_replacer.AudioCodecs.get_codec",
+        lambda *_args: "DDP Atmos",
+    )
+    info = packaged[TrackerSelection.LST]
+
+    rendered = TokenReplacer(
+        media_input_obj=media,
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        token_string=info.mvr_title_token_override,
+        colon_replace=info.mvr_title_colon_replace,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        parse_filename_attributes=True,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        override_tokens={"source": "WEB-DL"},
+        override_title_rules=info.mvr_title_replace_map,
+    ).get_output()
+
+    assert rendered is not None
+    assert "DD+ 5.1 Atmos" in rendered
+    assert "DD+ Atmos 5.1" not in rendered
 
 
 @pytest.mark.parametrize("tracker", AUDIO_LAST)

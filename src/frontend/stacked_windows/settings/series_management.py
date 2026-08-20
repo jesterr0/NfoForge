@@ -483,9 +483,16 @@ class SeriesManagementSettings(BaseSettings):
         self, fmt: EpisodeFormat, tfo: TrackerFormatOverride
     ) -> None:
         w = self._format_widgets[fmt]
-        token_str = tfo.over_ride_format_title.text()
-        colon_replace = ColonReplace(tfo.title_colon_replace.currentData())
-        over_ride_rules = tfo.over_ride_replacement_table.get_replacements()
+        enabled = tfo.enabled_checkbox.isChecked()
+        token_str = tfo.over_ride_format_title.text() if enabled else ""
+        colon_replace = (
+            ColonReplace(tfo.title_colon_replace.currentData())
+            if enabled
+            else ColonReplace(self.title_colon_replace.currentData())
+        )
+        over_ride_rules = (
+            tfo.over_ride_replacement_table.get_replacements() if enabled else None
+        )
         self._update_example(
             token_str=token_str if token_str else w["title_token"].text(),
             colon_replace=colon_replace,

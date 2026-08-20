@@ -27,6 +27,7 @@
 
 ### Fixed
 
+- Audio codec edits made in the rename wizard now reach tracker title templates that split Atmos into its own token. LST and Aither no longer ignore the edit, and LST's default E-AC-3 Atmos title remains ordered as `DD+ 5.1 Atmos` rather than `DD+ Atmos 5.1`. Tracker-override previews now also follow the Enable Override checkbox instead of always showing the stored override.
 - Opening a folder no longer treats subtitles, `.nfo` files, artwork and sample clips as episodes. They were sent to MediaInfo, listed on the **Series Match** page as files needing an episode number, and rendered into `{episode_mediainfo}`/`{episode_metadata}`. Only video files are collected now.
 - Saving a job no longer discards the state a plugin left on it. Anything a plugin stored as a file path, a MediaInfo object, a MediaInfo track, an enum, a tuple, a set, or a mapping keyed by one of those was dropped at save time without failing the save, so the loss only surfaced on resume, as the plugin failing to read data it had put there itself. These now round-trip, and a value NfoForge genuinely cannot store still costs only itself rather than the mapping around it. A restored track is the restored MediaInfo's own track, so an audio map keeps pointing at the file it describes.
 - A saved job now stores MediaInfo for every file it can reach, not just the ones in its own file list. A plugin holding a per-episode source had no dump saved for it and nothing to restore it from.
