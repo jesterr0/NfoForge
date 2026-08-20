@@ -88,17 +88,10 @@ class MoviesManagementSettings(BaseSettings):
         control_top_layout.addStretch()
         control_top_layout.addWidget(preview_example_data_btn)
 
-        # replace illegal chars
-        self.replace_illegal_chars = QCheckBox("Replace Illegal Characters", self)
-        self.replace_illegal_chars.setToolTip(
-            "Replace illegal characters. If unchecked, NfoForge will remove them instead"
-        )
-
         # layout
         self.controls_box = QGroupBox("Controls")
         self.controls_layout = QVBoxLayout(self.controls_box)
         self.controls_layout.addLayout(control_top_layout)
-        self.controls_layout.addWidget(self.replace_illegal_chars)
 
         # format file name
         # colon replace for file name
@@ -392,9 +385,6 @@ class MoviesManagementSettings(BaseSettings):
         self._live_video_dynamic_range = None
 
         self.rename_check_box.setChecked(self.config.settings.movie.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.settings.movie.replace_illegal_chars
-        )
         self.load_combo_box(
             self.fn_colon_replace,
             ColonReplace,
@@ -406,7 +396,7 @@ class MoviesManagementSettings(BaseSettings):
             self.config.settings.movie.title_colon_replace,
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.settings.movie.parse_filename_attributes
+            self.config.settings.movie.claims.enabled
         )
         if self.config.settings.movie.filename_token.strip():
             self._update_qline_cursor_0(
@@ -465,13 +455,10 @@ class MoviesManagementSettings(BaseSettings):
     @Slot()
     def _save_settings(self) -> None:
         self.config.settings.movie.enabled = self.rename_check_box.isChecked()
-        self.config.settings.movie.replace_illegal_chars = (
-            self.replace_illegal_chars.isChecked()
-        )
         self.config.settings.movie.filename_colon_replace = ColonReplace(
             self.fn_colon_replace.currentData()
         )
-        self.config.settings.movie.parse_filename_attributes = (
+        self.config.settings.movie.claims.enabled = (
             self.parse_input_file_attributes.isChecked()
         )
         self.config.settings.movie.title_colon_replace = ColonReplace(
@@ -504,14 +491,11 @@ class MoviesManagementSettings(BaseSettings):
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.movie.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.defaults.movie.replace_illegal_chars
-        )
         self.fn_colon_replace.setCurrentIndex(
             self.config.defaults.movie.filename_colon_replace.value - 1
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.defaults.movie.parse_filename_attributes
+            self.config.defaults.movie.claims.enabled
         )
         self.format_file_name_token_input.setText(
             self.config.defaults.movie.filename_token

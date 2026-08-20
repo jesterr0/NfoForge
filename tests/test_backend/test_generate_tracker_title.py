@@ -36,11 +36,11 @@ def _backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
                 movie=SimpleNamespace(
                     title_token="{title_clean} (global)",  # noqa: S106
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
-                    parse_filename_attributes=True,
+                    claims=SimpleNamespace(enabled=True),
                 ),
                 series=SimpleNamespace(
                     multi_episode_style=MultiEpisodeStyle.RANGE,
-                    parse_filename_attributes=True,
+                    claims=SimpleNamespace(enabled=True),
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
                 global_management=SimpleNamespace(
@@ -178,7 +178,7 @@ def _series_backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
                 movie=SimpleNamespace(
                     title_token="{title_clean} (global movie)",  # noqa: S106
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
-                    parse_filename_attributes=True,
+                    claims=SimpleNamespace(enabled=True),
                 ),
                 series=SimpleNamespace(
                     multi_episode_style=MultiEpisodeStyle.RANGE,
@@ -186,7 +186,7 @@ def _series_backend(packaged_default: TrackerInfo) -> ProcessBackEnd:
                     daily_title_token="{title_clean} (global daily)",  # noqa: S106
                     anime_title_token="{title_clean} (global anime)",  # noqa: S106
                     title_colon_replace=ColonReplace.REPLACE_WITH_DASH,
-                    parse_filename_attributes=True,
+                    claims=SimpleNamespace(enabled=True),
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
                 global_management=SimpleNamespace(
@@ -308,10 +308,9 @@ _ATTRIBUTE_TOKEN = "{title_clean}{:opt= :re_release}{:opt= :remux}"  # noqa: S10
 
 
 def _parse_attributes_backend(enabled: bool) -> ProcessBackEnd:
-    """A _backend whose movie config carries the given
-    parse_filename_attributes setting."""
+    """A _backend whose movie config carries the given claim master switch."""
     backend = _backend(TrackerInfo())
-    backend.config.settings.movie.parse_filename_attributes = enabled
+    backend.config.settings.movie.claims.enabled = enabled
     return backend
 
 

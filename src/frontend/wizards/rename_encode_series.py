@@ -441,7 +441,7 @@ class RenameEncodeSeries(BaseWizardPage):
                 episode_num=media_data["episode"],
                 episode_format=self.context.media_input.series_episode_format,
                 multi_episode_style=self.config.settings.series.multi_episode_style,
-                parse_filename_attributes=self.config.settings.series.parse_filename_attributes,
+                parse_filename_attributes=self.config.settings.series.claims.enabled,
                 # each renamed file belongs to exactly one season, so season_end
                 # matches season_num here (single-season, unchanged rendering);
                 # the multi-season {season_number} range only applies to the
@@ -936,7 +936,7 @@ class RenameEncodeSeries(BaseWizardPage):
             episode_num=media_data["episode"],
             episode_format=self.context.media_input.series_episode_format,
             multi_episode_style=self.config.settings.series.multi_episode_style,
-            parse_filename_attributes=self.config.settings.series.parse_filename_attributes,
+            parse_filename_attributes=self.config.settings.series.claims.enabled,
             season_end=media_data["season"],
         )
 

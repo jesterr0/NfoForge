@@ -32,6 +32,14 @@ The versions so far:
   0--100 freeleech percentage. Disabled migrates to 0 and enabled to 100.
 - 7 -> 8: LST's torrent source flag changed from the incorrect ``LST`` to
   the tracker-required ``LST.GG``. Other user-configured values are preserved.
+- 8 -> 9: filename settings. ``replace_illegal_chars`` is dropped (nothing
+  read it), the filename colon control's five values map onto three, and
+  ``parse_filename_attributes`` expands into a master switch plus six
+  per-category ones. HYBRID follows the old flag and the other five default
+  on, which is what keeps output byte-identical -- see the migration itself
+  for why. The two dropped keys still appear in
+  ``_MOVIE_MANAGEMENT_SCALAR_KEYS`` above because the 1 -> 2 hop must still
+  carry them forward; this hop is where they leave.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -80,6 +88,7 @@ SCHEMA_5_VERSION = 5
 SCHEMA_6_VERSION = 6
 SCHEMA_7_VERSION = 7
 SCHEMA_8_VERSION = 8
+SCHEMA_9_VERSION = 9
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -669,6 +678,79 @@ def migrate_v7_to_v8(
     return new_doc, []
 
 
+# ColonReplace values as persisted: 1 KEEP, 2 DELETE, 3 REPLACE_WITH_DASH,
+# 4 REPLACE_WITH_SPACE_DASH, 5 REPLACE_WITH_SPACE_DASH_SPACE.
+_FILENAME_COLON_REMAP = {4: 3, 5: 3}
+
+_CLAIM_NAMES = (
+    "edition",
+    "frame_size",
+    "localization",
+    "re_release",
+    "remux",
+    "hybrid",
+)
+
+
+def _migrate_management_section(
+    section: Mapping[str, Any], prefix: str
+) -> dict[str, Any]:
+    """Apply the v9 changes to one management section.
+
+    ``prefix`` is "mvr" or "tvr".
+    """
+    migrated = dict(section)
+    migrated.pop(f"{prefix}_replace_illegal_chars", None)
+
+    colon_key = f"{prefix}_colon_replace_filename"
+    colon_value = _unwrap(migrated.get(colon_key))
+    if isinstance(colon_value, int) and colon_value in _FILENAME_COLON_REMAP:
+        migrated[colon_key] = _FILENAME_COLON_REMAP[colon_value]
+
+    old_flag = _unwrap(migrated.pop(f"{prefix}_parse_filename_attributes", None))
+    master = True if old_flag is None else bool(old_flag)
+    migrated[f"{prefix}_parse_claims"] = master
+    for claim in _CLAIM_NAMES:
+        # HYBRID follows the old flag; it is the one claim that flag
+        # genuinely controlled, so a profile with it off must keep emitting
+        # no HYBRID. The other five were pre-filled into override_tokens
+        # before the gate was consulted, so the flag never reached them and
+        # leaving them on preserves output while making master meaningful
+        # if the user turns it back on.
+        migrated[f"{prefix}_parse_claim_{claim}"] = (
+            master if claim == "hybrid" else True
+        )
+    return migrated
+
+
+def migrate_v8_to_v9(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Drop the dead illegal-character flag, reduce the filename colon
+    control to three options, and expand the single claim-parsing flag into
+    a master plus six category switches.
+
+    Output is byte-identical for every existing profile.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_9_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    for section_key, prefix in (
+        ("movie_management", "mvr"),
+        ("series_management", "tvr"),
+    ):
+        section = new_doc.get(section_key)
+        if isinstance(section, Mapping):
+            new_doc[section_key] = _migrate_management_section(section, prefix)
+
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -677,6 +759,7 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_5_VERSION: migrate_v5_to_v6,
     SCHEMA_6_VERSION: migrate_v6_to_v7,
     SCHEMA_7_VERSION: migrate_v7_to_v8,
+    SCHEMA_8_VERSION: migrate_v8_to_v9,
 }
 
 

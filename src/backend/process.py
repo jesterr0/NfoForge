@@ -2773,9 +2773,9 @@ class ProcessBackEnd:
         # and the rename page displayed it -- and every REQUIRED tracker's
         # packaged token already asks for {re_release}.
         parse_filename_attributes = (
-            self.config.settings.series.parse_filename_attributes
+            self.config.settings.series.claims.enabled
             if release_info.is_series
-            else self.config.settings.movie.parse_filename_attributes
+            else self.config.settings.movie.claims.enabled
         )
         format_str = TokenReplacer(
             media_input_obj=context.media_input,

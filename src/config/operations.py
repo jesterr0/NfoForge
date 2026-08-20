@@ -10,6 +10,7 @@ from src.config.codec import TomlConfigCodec
 from src.config.models import (
     ApiKeysSettings,
     AppConfig,
+    ClaimSwitches,
     DependencySettings,
     DynamicRangeSettings,
     GeneralSettings,
@@ -87,6 +88,31 @@ from src.payloads.trackers import (
     YuSceneInfo,
 )
 from src.payloads.watch_folder import WatchFolder
+
+_CLAIM_KEYS = (
+    "edition",
+    "frame_size",
+    "localization",
+    "re_release",
+    "remux",
+    "hybrid",
+)
+
+
+def _load_claims(section: Mapping[str, Any], prefix: str) -> ClaimSwitches:
+    """Read the claim switches, defaulting anything absent to on.
+
+    `.get` throughout: these keys arrived with schema 9, and a profile
+    written before it that reached this code without the migration is still
+    readable rather than a hard failure.
+    """
+    return ClaimSwitches(
+        enabled=bool(section.get(f"{prefix}_parse_claims", True)),
+        **{
+            claim: bool(section.get(f"{prefix}_parse_claim_{claim}", True))
+            for claim in _CLAIM_KEYS
+        },
+    )
 
 
 class TypedTomlOperations:
@@ -997,18 +1023,17 @@ class TypedTomlOperations:
             # movie management
             movie_management = self._toml_table(self._toml_data, "movie_management")
             movie_management["mvr_enabled"] = self.settings.movie.enabled
-            movie_management["mvr_replace_illegal_chars"] = (
-                self.settings.movie.replace_illegal_chars
-            )
             movie_management["mvr_colon_replace_filename"] = ColonReplace(
                 self.settings.movie.filename_colon_replace
             ).value
             movie_management["mvr_colon_replace_title"] = ColonReplace(
                 self.settings.movie.title_colon_replace
             ).value
-            movie_management["mvr_parse_filename_attributes"] = (
-                self.settings.movie.parse_filename_attributes
-            )
+            movie_management["mvr_parse_claims"] = self.settings.movie.claims.enabled
+            for claim in _CLAIM_KEYS:
+                movie_management[f"mvr_parse_claim_{claim}"] = getattr(
+                    self.settings.movie.claims, claim
+                )
             movie_management["mvr_token"] = self.settings.movie.filename_token
             movie_management["mvr_title_token"] = self.settings.movie.title_token
             movie_management["mvr_release_group"] = self.settings.movie.release_group
@@ -1016,18 +1041,17 @@ class TypedTomlOperations:
             # series management
             series_management = self._toml_table(self._toml_data, "series_management")
             series_management["tvr_enabled"] = self.settings.series.enabled
-            series_management["tvr_replace_illegal_chars"] = (
-                self.settings.series.replace_illegal_chars
-            )
             series_management["tvr_colon_replace_filename"] = ColonReplace(
                 self.settings.series.filename_colon_replace
             ).value
             series_management["tvr_colon_replace_title"] = ColonReplace(
                 self.settings.series.title_colon_replace
             ).value
-            series_management["tvr_parse_filename_attributes"] = (
-                self.settings.series.parse_filename_attributes
-            )
+            series_management["tvr_parse_claims"] = self.settings.series.claims.enabled
+            for claim in _CLAIM_KEYS:
+                series_management[f"tvr_parse_claim_{claim}"] = getattr(
+                    self.settings.series.claims, claim
+                )
             series_management["tvr_standard_episode_token"] = (
                 self.settings.series.standard_episode_token
             )
@@ -2102,36 +2126,26 @@ class TypedTomlOperations:
                 ),
                 movie=MovieSettings(
                     enabled=bool(movie_management["mvr_enabled"]),
-                    replace_illegal_chars=bool(
-                        movie_management["mvr_replace_illegal_chars"]
-                    ),
                     filename_colon_replace=ColonReplace(
                         movie_management["mvr_colon_replace_filename"]
                     ),
                     title_colon_replace=ColonReplace(
                         movie_management["mvr_colon_replace_title"]
                     ),
-                    parse_filename_attributes=bool(
-                        movie_management["mvr_parse_filename_attributes"]
-                    ),
+                    claims=_load_claims(movie_management, "mvr"),
                     filename_token=str(movie_management["mvr_token"]),
                     title_token=str(movie_management["mvr_title_token"]),
                     release_group=str(movie_management["mvr_release_group"]),
                 ),
                 series=SeriesSettings(
                     enabled=bool(series_management["tvr_enabled"]),
-                    replace_illegal_chars=bool(
-                        series_management["tvr_replace_illegal_chars"]
-                    ),
                     filename_colon_replace=ColonReplace(
                         series_management["tvr_colon_replace_filename"]
                     ),
                     title_colon_replace=ColonReplace(
                         series_management["tvr_colon_replace_title"]
                     ),
-                    parse_filename_attributes=bool(
-                        series_management["tvr_parse_filename_attributes"]
-                    ),
+                    claims=_load_claims(series_management, "tvr"),
                     standard_episode_token=load_series_token(
                         "tvr_standard_episode_token"
                     ),

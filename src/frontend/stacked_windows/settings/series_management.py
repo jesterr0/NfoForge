@@ -107,11 +107,6 @@ class SeriesManagementSettings(BaseSettings):
         control_top_layout.addStretch()
         control_top_layout.addWidget(preview_example_data_btn)
 
-        self.replace_illegal_chars = QCheckBox("Replace Illegal Characters", self)
-        self.replace_illegal_chars.setToolTip(
-            "Replace illegal characters. If unchecked, NfoForge will remove them instead"
-        )
-
         self.parse_input_file_attributes = QCheckBox("Parse Filename Attributes", self)
         self.parse_input_file_attributes.setToolTip(
             "If enabled, attributes REMUX, HYBRID, PROPER, and REPACK will be detected from the filename"
@@ -211,7 +206,6 @@ class SeriesManagementSettings(BaseSettings):
         self.controls_box = QGroupBox("Controls")
         controls_layout = QVBoxLayout(self.controls_box)
         controls_layout.addLayout(control_top_layout)
-        controls_layout.addWidget(self.replace_illegal_chars)
         controls_layout.addWidget(self.parse_input_file_attributes)
         controls_layout.addLayout(fn_colon_replace_v_box)
         controls_layout.addLayout(title_colon_replace_v_box)
@@ -519,9 +513,6 @@ class SeriesManagementSettings(BaseSettings):
                 tfo.blockSignals(True)
 
         self.rename_check_box.setChecked(self.config.settings.series.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.settings.series.replace_illegal_chars
-        )
         self.load_combo_box(
             self.fn_colon_replace,
             ColonReplace,
@@ -533,7 +524,7 @@ class SeriesManagementSettings(BaseSettings):
             self.config.settings.series.title_colon_replace,
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.settings.series.parse_filename_attributes
+            self.config.settings.series.claims.enabled
         )
         self.load_combo_box(
             self.multi_episode_style_combo,
@@ -601,16 +592,13 @@ class SeriesManagementSettings(BaseSettings):
     @Slot()
     def _save_settings(self) -> None:
         self.config.settings.series.enabled = self.rename_check_box.isChecked()
-        self.config.settings.series.replace_illegal_chars = (
-            self.replace_illegal_chars.isChecked()
-        )
         self.config.settings.series.filename_colon_replace = ColonReplace(
             self.fn_colon_replace.currentData()
         )
         self.config.settings.series.title_colon_replace = ColonReplace(
             self.title_colon_replace.currentData()
         )
-        self.config.settings.series.parse_filename_attributes = (
+        self.config.settings.series.claims.enabled = (
             self.parse_input_file_attributes.isChecked()
         )
         self.config.settings.series.multi_episode_style = MultiEpisodeStyle(
@@ -652,14 +640,11 @@ class SeriesManagementSettings(BaseSettings):
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.series.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.defaults.series.replace_illegal_chars
-        )
         self.fn_colon_replace.setCurrentIndex(
             self.config.defaults.series.filename_colon_replace.value - 1
         )
         self.parse_input_file_attributes.setChecked(
-            self.config.defaults.series.parse_filename_attributes
+            self.config.defaults.series.claims.enabled
         )
         self.title_colon_replace.setCurrentIndex(
             self.config.defaults.series.title_colon_replace.value - 1
