@@ -32,6 +32,7 @@ from src.backend.utils.media_info_utils import (
 from src.backend.utils.rename_normalizations import (
     CUT_EDITION_NAMES,
     EDITION_INFO,
+    LOCALIZATION_INFO,
     is_imax,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
@@ -1422,12 +1423,21 @@ class TokenReplacer:
         )
 
     def _localization(self, token_data: TokenData) -> str:
+        """Dubbed/Subbed detected from the input filename.
+
+        Uses the shared LOCALIZATION_INFO table rather than an inline copy.
+        The copy this replaces tested "Dubbed" against a string it had
+        already lowercased, so no release was ever detected as dubbed.
+        """
         localization = ""
-        lowered_input = self.media_input.stem.lower()
-        if "subbed" in lowered_input:
-            localization = "Subbed"
-        elif "Dubbed" in lowered_input:
-            localization = "Dubbed"
+        filename = self.media_input.stem
+        for rename_normalize in LOCALIZATION_INFO:
+            if any(
+                re.search(regex_str, filename, flags=re.I)
+                for regex_str in rename_normalize.re_gex
+            ):
+                localization = rename_normalize.normalized
+                break
         return self._optional_user_input(localization, token_data)
 
     def _audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:

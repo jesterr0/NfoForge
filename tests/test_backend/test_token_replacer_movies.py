@@ -875,3 +875,35 @@ def test_dynamic_range_over_1080_survives_a_missing_resolution() -> None:
     ).get_output()
 
     assert output == ""
+
+
+@pytest.mark.parametrize(
+    ("stem", "expected"),
+    [
+        ("Movie.2024.1080p.BluRay.DUBBED.x264-GRP", "Dubbed"),
+        ("Movie.2024.1080p.BluRay.Dubbed.x264-GRP", "Dubbed"),
+        ("Movie.2024.1080p.BluRay.dubbed.x264-GRP", "Dubbed"),
+        ("Movie.2024.1080p.BluRay.SUBBED.x264-GRP", "Subbed"),
+        ("Movie.2024.1080p.BluRay.subbed.x264-GRP", "Subbed"),
+        ("Movie.2024.1080p.BluRay.x264-GRP", ""),
+    ],
+)
+def test_localization_detects_dubbed_and_subbed(stem: str, expected: str) -> None:
+    # "Dubbed" was tested against an already-lowercased filename, so the
+    # branch could never be taken and every dubbed release rendered nothing.
+    file_path = Path(f"{stem}.mkv")
+    output = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.MOVIE,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        token_string="{localization}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+    ).get_output()
+
+    assert output == expected
