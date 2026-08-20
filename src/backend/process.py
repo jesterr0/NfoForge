@@ -2767,16 +2767,6 @@ class ProcessBackEnd:
             for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
-        # The same setting the rename pages pass. Without it {remux}, {hybrid}
-        # and {re_release} cannot resolve at all here, so a tracker title
-        # silently dropped REPACK/REMUX even when the release name carried it
-        # and the rename page displayed it -- and every REQUIRED tracker's
-        # packaged token already asks for {re_release}.
-        parse_filename_attributes = (
-            self.config.settings.series.claims.enabled
-            if release_info.is_series
-            else self.config.settings.movie.claims.enabled
-        )
         format_str = TokenReplacer(
             media_input_obj=context.media_input,
             token_string=token_string,
@@ -2785,7 +2775,6 @@ class ProcessBackEnd:
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
-            parse_filename_attributes=parse_filename_attributes,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             edition_override=context.shared_data.dynamic_data.get("edition_override"),
             frame_size_override=context.shared_data.dynamic_data.get(

@@ -498,7 +498,11 @@ class RenameEncode(BaseWizardPage):
         The claims come back so the caller can reuse them without detecting
         twice -- the release group seed needs the same result.
         """
-        claims = detect_filename_claims([filename], self.config.settings.movie.claims)
+        claims = detect_filename_claims(
+            [filename],
+            self.config.settings.movie.claims,
+            self.context.custom_edition_info,
+        )
 
         for combo, value in (
             (self.edition_combo, claims.edition),
@@ -518,6 +522,7 @@ class RenameEncode(BaseWizardPage):
         return detect_filename_claims(
             [path.stem for path in self.context.media_input.file_list],
             self.config.settings.movie.claims,
+            self.context.custom_edition_info,
         )
 
     def _auto_check_remux_checkbox(self) -> None:

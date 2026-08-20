@@ -39,7 +39,11 @@ def test_series_renamer_uses_the_episode_being_rendered() -> None:
     result = RenameEncodeSeriesBackEnd().series_renamer(
         media_input_obj=payload,
         media_file=second_file,
-        token="{re_release} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        # {re_release} used to appear here. It is a claim now, and claims are
+        # pack-wide: they arrive as overrides rather than being read off the
+        # episode being rendered. {resolution} and {release_group} are still
+        # per-file, which is what this test is about.
+        token="{resolution} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replacement=ColonReplace.REPLACE_WITH_DASH,
         media_search_payload=_empty_series_search(),
         season_num=1,
@@ -49,10 +53,9 @@ def test_series_renamer_uses_the_episode_being_rendered() -> None:
         user_tokens=None,
         episode_format=EpisodeFormat.STANDARD,
         multi_episode_style=MultiEpisodeStyle.RANGE,
-        parse_filename_attributes=True,
     )
 
-    assert result == Path("REPACK.OTHER.mkv")
+    assert result == Path("720p.OTHER.mkv")
 
 
 def test_series_folder_renamer_renders_multi_season_range() -> None:

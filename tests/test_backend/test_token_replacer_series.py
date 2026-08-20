@@ -55,19 +55,21 @@ def test_active_file_drives_file_specific_tokens_in_series_pack() -> None:
         return TokenReplacer(
             media_input_obj=payload,
             media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
-            token_string="{resolution}|{release_group}|{re_release}|{original_filename}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+            # {re_release} is a claim now, detected pack-wide in stage 1 and
+            # supplied as an override, so it no longer varies per file. The
+            # rest still resolve from whichever file is active.
+            token_string="{resolution}|{release_group}|{original_filename}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
             colon_replace=ColonReplace.REPLACE_WITH_DASH,
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            parse_filename_attributes=True,
             season_number=1,
             active_file=active_file,
         ).get_output()
 
-    assert render(first_file) == f"1080p|GRP||{first_file.stem}"
-    assert render(second_file) == f"720p|OTHER|REPACK|{second_file.stem}"
+    assert render(first_file) == f"1080p|GRP|{first_file.stem}"
+    assert render(second_file) == f"720p|OTHER|{second_file.stem}"
 
 
 def _series_replacer(token: str) -> TokenReplacer:

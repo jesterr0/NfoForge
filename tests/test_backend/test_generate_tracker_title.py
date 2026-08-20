@@ -307,13 +307,6 @@ def test_no_live_series_override_falls_back_to_the_global() -> None:
 _ATTRIBUTE_TOKEN = "{title_clean}{:opt= :re_release}{:opt= :remux}"  # noqa: S105
 
 
-def _parse_attributes_backend(enabled: bool) -> ProcessBackEnd:
-    """A _backend whose movie config carries the given claim master switch."""
-    backend = _backend(TrackerInfo())
-    backend.config.settings.movie.claims.enabled = enabled
-    return backend
-
-
 def _attribute_live_info() -> TrackerInfo:
     return TrackerInfo(
         mvr_title_override_enabled=True,
@@ -322,18 +315,22 @@ def _attribute_live_info() -> TrackerInfo:
     )
 
 
-def test_filename_attributes_reach_the_tracker_title() -> None:
-    """{re_release}, {remux} and {hybrid} are gated on
-    parse_filename_attributes, and generate_tracker_title never passed it --
-    so those tokens resolved to nothing on every upload, even though the
-    packaged Aither/LST/ReelFliX templates ask for {re_release} and the
-    rename page (which does pass it) displayed the value.
+def test_accepted_claims_reach_the_tracker_title() -> None:
+    """A claim the user accepted must reach the tracker title.
 
-    The example payload's filename carries both REPACK and REMUX.
+    These tokens were gated on the old parse_filename_attributes flag, which
+    generate_tracker_title never passed -- so they resolved to nothing on
+    every upload even though the packaged Aither/LST/ReelFliX templates ask
+    for {re_release}. They now arrive as overrides, which is what the rename
+    page puts in shared_data.
     """
     context = _context()
+    context.shared_data.dynamic_data["override_tokens"] = {
+        "re_release": "REPACK",
+        "remux": "REMUX",
+    }
 
-    output = _parse_attributes_backend(True).generate_tracker_title(
+    output = _backend(TrackerInfo()).generate_tracker_title(
         TrackerSelection.AITHER,
         _attribute_live_info(),
         context,
@@ -343,13 +340,16 @@ def test_filename_attributes_reach_the_tracker_title() -> None:
     assert output == "Movie Name REPACK REMUX"
 
 
-def test_the_user_setting_is_honored_rather_than_forced_on() -> None:
-    """Turning the setting off means "do not infer these from the filename",
-    and a tracker title has to respect that the same way a rename does --
-    otherwise the two disagree about the same release."""
+def test_an_unclaimed_attribute_is_not_inferred_for_the_tracker_title() -> None:
+    """The other half: with nothing accepted, nothing is invented.
+
+    The example payload's filename carries REPACK and REMUX. Reaching for
+    them here would make the tracker title disagree with the rename page,
+    which is what a user switching a category off is asking not to happen.
+    """
     context = _context()
 
-    output = _parse_attributes_backend(False).generate_tracker_title(
+    output = _backend(TrackerInfo()).generate_tracker_title(
         TrackerSelection.AITHER,
         _attribute_live_info(),
         context,

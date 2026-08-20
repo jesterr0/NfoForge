@@ -30,7 +30,6 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         user_tokens: dict[str, str] | None,
         episode_format: EpisodeFormat,
         multi_episode_style: MultiEpisodeStyle,
-        parse_filename_attributes: bool = False,
         season_end: int | None = None,
     ) -> Path | None:
         """Rename series file.
@@ -46,8 +45,6 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             user_tokens: User-defined tokens
             episode_format: Episode format (Standard, Daily, Anime)
             multi_episode_style: How multi-episode spans render in {episode_number}
-            parse_filename_attributes: Detect per-file REMUX/HYBRID/REPACK/PROPER
-                attributes when they are not explicitly overridden
             season_end: Highest season number in a multi-season pack, for {season_number}
                 range rendering. None (or equal to season_num) keeps single-season output.
 
@@ -68,7 +65,6 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             video_dynamic_range=video_dynamic_range,
             override_tokens=self.override_tokens,
             user_tokens=user_tokens,
-            parse_filename_attributes=parse_filename_attributes,
             season_number=season_num,
             season_end=season_end,
             episode_number=episode_num,

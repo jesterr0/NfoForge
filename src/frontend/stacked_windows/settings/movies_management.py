@@ -301,7 +301,11 @@ class MoviesManagementSettings(BaseSettings):
     def _detected_claims(self) -> FilenameClaims:
         """Claims the example filename carries, per the current switches."""
         return detect_filename_claims(
-            [EXAMPLE_FILE_NAME.stem], self._current_claim_switches()
+            [EXAMPLE_FILE_NAME.stem],
+            self._current_claim_switches(),
+            self.config.plugin_manager.custom_edition_info(
+                enabled=self.config.settings.general.enable_plugins
+            ),
         )
 
     def _update_example(

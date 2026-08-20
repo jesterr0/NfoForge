@@ -84,7 +84,9 @@ def _pack_wide(values: Sequence[str]) -> str:
 
 
 def detect_filename_claims(
-    stems: Sequence[str], switches: ClaimSwitches
+    stems: Sequence[str],
+    switches: ClaimSwitches,
+    custom_edition_info: Sequence[RenameNormalization] = (),
 ) -> FilenameClaims:
     """Detect every claim the pack's filenames agree on.
 
@@ -95,7 +97,13 @@ def detect_filename_claims(
     guessit is run once per file and shared between the streaming service
     and the release group. Both read the same fields the token engine reads,
     so what a rename page shows is what an untouched release would render.
+
+    ``custom_edition_info`` carries plugin-contributed edition entries
+    (src.plugins.api.CustomEditionContribution). They are recognised
+    alongside the built-in table, because detection happens here now -- a
+    plugin's edition would otherwise be invisible to every caller.
     """
+    all_edition_info = (*EDITION_INFO, *custom_edition_info)
     if not stems:
         return FilenameClaims()
 
@@ -107,7 +115,9 @@ def detect_filename_claims(
         return _pack_wide([detect(stem) for stem in stems])
 
     return FilenameClaims(
-        edition=switched("edition", lambda stem: _normalized_value(EDITION_INFO, stem)),
+        edition=switched(
+            "edition", lambda stem: _normalized_value(all_edition_info, stem)
+        ),
         frame_size=switched(
             "frame_size", lambda stem: _normalized_value(FRAME_SIZE_INFO, stem)
         ),

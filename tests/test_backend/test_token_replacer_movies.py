@@ -10,7 +10,9 @@ from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.backend.utils.filename_claims import detect_filename_claims
 from src.backend.utils.resolution import VideoResolutionAnalyzer
+from src.config.models import ClaimSwitches
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.nf_jinja2 import Jinja2TemplateEngine
@@ -76,40 +78,37 @@ def _movie_replacer() -> TokenReplacer:
     )
 
 
-def test_frame_size_normalizes_imax_without_mutating_during_iteration() -> None:
-    # The example movie filename parses to two editions
-    # (["Director's Cut", "IMAX"]). _frame_size collapses any IMAX edition
-    # to "IMAX", and must do so without mutating the set it iterates.
-    #
-    # A dev regression cleared/added to `edition_set` mid-loop, raising
-    # "RuntimeError: Set changed size during iteration" whenever a non-IMAX
-    # edition was visited before IMAX. Because set iteration order is
-    # randomized per process, this crashed on roughly half of cold launches.
-    #
-    # Asserting the exact "IMAX" output fails deterministically on the buggy
-    # code under every ordering: either it raises, or (when IMAX is visited
-    # first) it returns the un-normalized "IMAX Director's Cut".
-    replacer = _movie_replacer()
+def _detected_claims_for(stem: str) -> str:
+    """The frame size stage 1 reads from a filename."""
+    from src.backend.utils.filename_claims import detect_filename_claims
 
-    editions = replacer.guess_name.get("edition")
-    assert isinstance(editions, list)
-    assert "IMAX" in editions
-    assert any("imax" not in str(e).lower() for e in editions)
-
-    assert replacer._frame_size(_td()) == "IMAX"
+    return detect_filename_claims(
+        [stem],
+        ClaimSwitches(
+            enabled=True,
+            edition=True,
+            frame_size=True,
+            localization=True,
+            re_release=True,
+            remux=True,
+            hybrid=True,
+        ),
+    ).frame_size
 
 
-def test_frame_size_does_not_normalize_climax_as_imax(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "src.backend.token_replacer.guessit",
-        lambda *_args, **_kwargs: {"edition": "Climax"},
-    )
-    replacer = _movie_replacer()
+def test_frame_size_is_detected_by_the_detector() -> None:
+    """IMAX detection moved to stage 1.
 
-    assert replacer._frame_size(_td()) == ""
-    edition = replacer._edition(_td())
-    assert "IMAX" not in edition
-    assert "Climax" in edition
+    This replaces a regression test for a set-mutation-during-iteration
+    crash in `_frame_size`'s own collection logic. That logic is gone, so
+    the crash cannot recur; what survives is the behaviour it protected.
+    """
+    assert _detected_claims_for("Movie.2024.IMAX.1080p.BluRay.x264-GRP") == "IMAX"
+
+
+def test_climax_is_not_read_as_imax() -> None:
+    # IMAX_REGEX carries word boundaries; "Climax" must not trip them.
+    assert _detected_claims_for("Movie.2024.Climax.1080p.BluRay.x264-GRP") == ""
 
 
 def _movie_replacer_with_edition_override(edition_override: str) -> TokenReplacer:
@@ -125,12 +124,11 @@ def _movie_replacer_with_edition_override(edition_override: str) -> TokenReplace
     )
 
 
-def test_cut_resolves_the_cut_classified_edition_from_the_default_fixture() -> None:
-    # The example movie filename parses to ["Director's Cut", "IMAX"] (see
-    # test_frame_size_normalizes_imax_without_mutating_during_iteration).
-    # Directors Cut is Cut-classified and must survive; IMAX is handled by
-    # {frame_size}, not {cut} or {edition}, and must not leak through.
+def test_cut_classifies_the_override_it_is_given() -> None:
+    # Directors Cut is Cut-classified and survives; IMAX belongs to
+    # {frame_size} and must not leak into {cut}.
     replacer = _movie_replacer()
+    replacer.edition_override = "Directors Cut"
 
     cut = replacer._cut(_td())
 
@@ -138,25 +136,10 @@ def test_cut_resolves_the_cut_classified_edition_from_the_default_fixture() -> N
     assert "IMAX" not in cut
 
 
-def test_cut_excludes_a_non_cut_edition_that_edition_still_includes(
-    monkeypatch,
-) -> None:
-    # The fixture's raw filename independently contains "Director's Cut", so
-    # both tokens still pick that up from the filename-scan path regardless
-    # of this guessit mock -- membership, not equality, isolates the thing
-    # actually under test: whether the mocked "Special Edition" leaks into
-    # {cut} the way it correctly does into {edition}.
-    monkeypatch.setattr(
-        "src.backend.token_replacer.guessit",
-        lambda *_args, **_kwargs: {"edition": "Special Edition"},
-    )
-    replacer = _movie_replacer()
-
-    cut = replacer._cut(_td())
-    edition = replacer._edition(_td())
-
-    assert "Special Edition" not in cut
-    assert "Special Edition" in edition
+# A non-Cut edition reaching {cut} is covered by
+# test_cut_override_rejects_a_non_cut_edition_that_edition_still_includes
+# below, which exercises the same classification through the override that
+# is now the only way a value arrives.
 
 
 def test_cut_override_matches_a_cut_pattern() -> None:
@@ -190,6 +173,7 @@ def test_cut_token_resolves_through_the_token_string() -> None:
         file_name_mode=True,
         token_type=FileToken,
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        edition_override="Directors Cut",
     ).get_output()
 
     assert output == "Directors.Cut.mkv"
@@ -231,26 +215,31 @@ def test_custom_edition_classified_as_cut_is_included_in_cut_override() -> None:
     assert replacer._cut(_td()) == "Fan Edit"
 
 
-def test_custom_edition_is_recognized_from_guessit_edition(monkeypatch) -> None:
-    # Membership, not equality: the fixture's raw filename independently
-    # contains "Director's Cut" (see test_cut_excludes_a_non_cut_edition...
-    # above), so {edition}'s filename-scan path still picks that up too.
-    monkeypatch.setattr(
-        "src.backend.token_replacer.guessit",
-        lambda *_args, **_kwargs: {"edition": "Fan Edit"},
-    )
-    replacer = TokenReplacer(
-        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
-        token_string="{edition}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
-        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
-        flatten=True,
-        file_name_mode=True,
-        token_type=FileToken,
-        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-        custom_edition_info=(RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),),
+def test_custom_edition_is_recognized_by_the_detector() -> None:
+    """Plugin-contributed editions must reach stage 1.
+
+    `_edition` used to recognise them itself. Detection now happens once,
+    before the token engine, so a plugin's entry has to be handed to the
+    detector or it becomes invisible to every caller.
+    """
+    from src.backend.utils.filename_claims import detect_filename_claims
+    from src.config.models import ClaimSwitches
+
+    claims = detect_filename_claims(
+        ["Movie.2024.Fan.Edit.1080p.BluRay.x264-GRP"],
+        ClaimSwitches(
+            enabled=True,
+            edition=True,
+            frame_size=True,
+            localization=True,
+            re_release=True,
+            remux=True,
+            hybrid=True,
+        ),
+        (RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),),
     )
 
-    assert "Fan Edit" in replacer._edition(_td())
+    assert claims.edition == "Fan Edit"
 
 
 def test_custom_edition_token_resolves_through_the_token_string() -> None:
@@ -606,13 +595,33 @@ def _title_replacer(
     *,
     title: str = "Movie Name",
     override_tokens: dict[str, str] | None = None,
-    parse_filename_attributes: bool = True,
+    remux: bool = True,
 ) -> TokenReplacer:
     """Render in title mode, the way generate_tracker_title does.
 
-    The example payload's filename is a REMUX, so `{remux}` resolves truthy
-    unless the caller turns filename-attribute parsing off or overrides it.
+    The example payload's filename is a REMUX. Stage 3 no longer reads that
+    off the filename, so the claim arrives as an override -- which is what
+    the rename page and the settings preview both supply.
     """
+    # Stage 1 over the example filename, which is what the rename page and
+    # the settings preview both feed in. Stage 3 no longer reads claims off
+    # the filename itself, so without these the example's REMUX, HYBRID and
+    # REPACK would not resolve.
+    detected = detect_filename_claims(
+        [EXAMPLE_MEDIA_INPUT_PAYLOAD.input_path.stem],
+        ClaimSwitches(
+            enabled=True,
+            edition=True,
+            frame_size=True,
+            localization=True,
+            re_release=True,
+            remux=True,
+            hybrid=True,
+        ),
+    ).as_override_tokens()
+    if not remux:
+        detected.pop("remux", None)
+    overrides = {**detected, **(override_tokens or {})}
     return TokenReplacer(
         media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
         token_string=token,
@@ -620,8 +629,7 @@ def _title_replacer(
         flatten=True,
         file_name_mode=False,
         token_type=FileToken,
-        parse_filename_attributes=parse_filename_attributes,
-        override_tokens=override_tokens,
+        override_tokens=overrides or None,
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
     )
 
@@ -647,9 +655,7 @@ def test_only_if_keeps_the_value_when_the_named_token_resolves() -> None:
 
 def test_only_if_drops_the_value_when_the_named_token_is_empty() -> None:
     assert (
-        _title_replacer(
-            "[{video_codec|only_if(remux)}]", parse_filename_attributes=False
-        ).get_output()
+        _title_replacer("[{video_codec|only_if(remux)}]", remux=False).get_output()
         == "[]"
     )
 
@@ -657,9 +663,7 @@ def test_only_if_drops_the_value_when_the_named_token_is_empty() -> None:
 def test_unless_is_the_inverse_of_only_if() -> None:
     assert _title_replacer("[{video_codec|unless(remux)}]").get_output() == "[]"
     assert (
-        _title_replacer(
-            "[{video_codec|unless(remux)}]", parse_filename_attributes=False
-        ).get_output()
+        _title_replacer("[{video_codec|unless(remux)}]", remux=False).get_output()
         == "[x265]"
     )
 
@@ -681,7 +685,7 @@ def test_conditional_filters_pick_one_of_two_component_orders() -> None:
 
     remux = _title_replacer(template, override_tokens={"source": "UHD BluRay"})
     encode = _title_replacer(
-        template, override_tokens={"source": "BluRay"}, parse_filename_attributes=False
+        template, override_tokens={"source": "BluRay"}, remux=False
     )
 
     assert remux.get_output() == "2160p UHD BluRay REMUX DV HDR HEVC TrueHD 7.1"
@@ -877,36 +881,19 @@ def test_dynamic_range_over_1080_survives_a_missing_resolution() -> None:
     assert output == ""
 
 
-@pytest.mark.parametrize(
-    ("stem", "expected"),
-    [
-        ("Movie.2024.1080p.BluRay.DUBBED.x264-GRP", "Dubbed"),
-        ("Movie.2024.1080p.BluRay.Dubbed.x264-GRP", "Dubbed"),
-        ("Movie.2024.1080p.BluRay.dubbed.x264-GRP", "Dubbed"),
-        ("Movie.2024.1080p.BluRay.SUBBED.x264-GRP", "Subbed"),
-        ("Movie.2024.1080p.BluRay.subbed.x264-GRP", "Subbed"),
-        ("Movie.2024.1080p.BluRay.x264-GRP", ""),
-    ],
-)
-def test_localization_detects_dubbed_and_subbed(stem: str, expected: str) -> None:
-    # "Dubbed" was tested against an already-lowercased filename, so the
-    # branch could never be taken and every dubbed release rendered nothing.
-    file_path = Path(f"{stem}.mkv")
-    output = TokenReplacer(
-        media_input_obj=MediaInputPayload(
-            input_path=file_path,
-            media_type=MediaType.MOVIE,
-            file_list=[file_path],
-        ),
-        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
-        token_string="{localization}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
-        flatten=True,
-        file_name_mode=False,
-        token_type=FileToken,
-        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-    ).get_output()
+def test_localization_renders_the_accepted_claim() -> None:
+    """Detection moved to stage 1; see test_filename_claims.py for the
+    Dubbed/Subbed table itself. What stage 3 owes is rendering what it was
+    given, and nothing when it was given nothing."""
+    stem = "Movie.2024.1080p.BluRay.DUBBED.x264-GRP"
 
-    assert output == expected
+    assert _claim_replacer("{localization}", stem) == ""
+    assert (
+        _claim_replacer(
+            "{localization}", stem, override_tokens={"localization": "Dubbed"}
+        )
+        == "Dubbed"
+    )
 
 
 def test_settings_preview_and_rename_render_the_same_claims() -> None:
@@ -955,3 +942,88 @@ def test_settings_preview_and_rename_render_the_same_claims() -> None:
         claims.hybrid,
     ]
     assert "" not in rendered.split("|")
+
+
+def _claim_replacer(token: str, stem: str, **kwargs: object) -> str | None:
+    file_path = Path(f"{stem}.mkv")
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.MOVIE,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        token_string=token,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        **kwargs,  # pyright: ignore[reportArgumentType]
+    ).get_output()
+
+
+def test_token_replacer_no_longer_accepts_parse_filename_attributes() -> None:
+    # Stage 3 resolves from explicit values, MediaInfo and online metadata.
+    # A filename scan here is a second detector, which is the thing this
+    # architecture removes.
+    import inspect
+
+    signature = inspect.signature(TokenReplacer.__init__)
+
+    assert "parse_filename_attributes" not in signature.parameters
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{edition}", "{cut}", "{frame_size}", "{hybrid}", "{re_release}", "{remux}"],
+)
+def test_claim_tokens_render_nothing_without_an_override(token: str) -> None:
+    # The filename claims Directors Cut, IMAX, REPACK, HYBRID and REMUX.
+    # None may reach the output unless stage 1 put it in overrides: a
+    # cleared control and an undetected claim are indistinguishable here,
+    # so a fallback would make the control disagree with the output.
+    output = _claim_replacer(
+        token,
+        "Movie.2024.Directors.Cut.IMAX.REPACK.HYBRID.1080p.BluRay.REMUX.AVC-GRP",
+    )
+
+    assert output == ""
+
+
+def test_claim_tokens_render_the_override_they_are_given() -> None:
+    output = _claim_replacer(
+        "{edition}|{frame_size}|{hybrid}",
+        "Movie.2024.1080p.BluRay.x264-GRP",
+        override_tokens={
+            "edition": "Directors Cut",
+            "frame_size": "IMAX",
+            "hybrid": "HYBRID",
+        },
+    )
+
+    assert output == "Directors Cut|IMAX|HYBRID"
+
+
+def test_nfo_repack_and_proper_tokens_need_an_override_too() -> None:
+    # The NFO-side tokens scanned the filename independently of the
+    # file-name side, so an NFO could claim a REPACK the filename did not.
+    output = _claim_replacer(
+        "{repack}|{proper}",
+        "Movie.2024.REPACK.PROPER.1080p.BluRay.x264-GRP",
+    )
+
+    assert output == "|"
+
+
+@pytest.mark.parametrize(
+    ("stem", "expected"),
+    [
+        ("Movie.2024.1080p.AMZN.WEB-DL.DDP5.1.H.264-GRP", "WEB-DL"),
+        ("Movie.2024.1080p.AMZN.WEBRip.DDP5.1.H.264-GRP", "WEBRip"),
+    ],
+)
+def test_web_source_still_distinguishes_dl_from_rip(stem: str, expected: str) -> None:
+    # Quality is always parsed and has no switch, so it keeps its detection.
+    # The discriminator moves from a raw filename regex to guessit's own
+    # `other: Rip`, which is the same information without a second scan.
+    assert _claim_replacer("{source}", stem) == expected

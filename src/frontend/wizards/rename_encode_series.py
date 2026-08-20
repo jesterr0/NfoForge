@@ -446,7 +446,6 @@ class RenameEncodeSeries(BaseWizardPage):
                 episode_num=media_data["episode"],
                 episode_format=self.context.media_input.series_episode_format,
                 multi_episode_style=self.config.settings.series.multi_episode_style,
-                parse_filename_attributes=self.config.settings.series.claims.enabled,
                 # each renamed file belongs to exactly one season, so season_end
                 # matches season_num here (single-season, unchanged rendering);
                 # the multi-season {season_number} range only applies to the
@@ -661,7 +660,11 @@ class RenameEncodeSeries(BaseWizardPage):
         The claims come back so the caller can reuse them without detecting
         twice -- the release group seed needs the same result.
         """
-        claims = detect_filename_claims(filenames, self.config.settings.series.claims)
+        claims = detect_filename_claims(
+            filenames,
+            self.config.settings.series.claims,
+            self.context.custom_edition_info,
+        )
 
         for combo, value in (
             (self.edition_combo, claims.edition),
@@ -683,6 +686,7 @@ class RenameEncodeSeries(BaseWizardPage):
         return detect_filename_claims(
             [Path(path).stem for path in self.context.media_input.file_list],
             self.config.settings.series.claims,
+            self.context.custom_edition_info,
         )
 
     def _auto_check_remux_checkbox(self) -> None:
@@ -945,7 +949,6 @@ class RenameEncodeSeries(BaseWizardPage):
             episode_num=media_data["episode"],
             episode_format=self.context.media_input.series_episode_format,
             multi_episode_style=self.config.settings.series.multi_episode_style,
-            parse_filename_attributes=self.config.settings.series.claims.enabled,
             season_end=media_data["season"],
         )
 

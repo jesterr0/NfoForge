@@ -414,3 +414,46 @@ def test_preview_shows_claims_the_example_filename_carries(
     assert "Directors.Cut" in example
     assert "IMAX" in example
     assert "HYBRID" in example
+
+
+def test_preview_drops_a_switched_off_category(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The switches are inputs to the detector the preview feeds, so ticking
+    # one changes the rendered example. This could not work until the token
+    # engine stopped re-detecting the claim from the filename downstream.
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    for check in widget.claim_checks.values():
+        check.setChecked(True)
+    widget.format_file_name_token_input.setText("{edition}|{frame_size}|{hybrid}")
+
+    # `click()` rather than `setChecked()`: the preview refresh is wired to
+    # `clicked`, which only fires on user interaction.
+    widget.claim_checks["frame_size"].click()
+
+    example = widget.format_file_name_token_example.text()
+    assert "IMAX" not in example
+    assert "Directors.Cut" in example
+
+
+def test_preview_drops_every_category_when_the_master_is_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
+    widget.claims_master.setChecked(True)
+    for check in widget.claim_checks.values():
+        check.setChecked(True)
+    # `{title_clean}` keeps the render non-empty. `_update_example` leaves
+    # the previous example in place when a token string resolves to nothing,
+    # so a claims-only token would show stale text rather than an empty one.
+    widget.format_file_name_token_input.setText(
+        "{title_clean}|{edition}|{frame_size}|{hybrid}"
+    )
+
+    widget.claims_master.click()
+
+    example = widget.format_file_name_token_example.text()
+    assert "IMAX" not in example
+    assert "Directors.Cut" not in example
+    assert "HYBRID" not in example

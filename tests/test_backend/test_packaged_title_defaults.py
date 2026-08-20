@@ -159,7 +159,6 @@ def _render_title(
         flatten=True,
         file_name_mode=False,
         token_type=FileToken,
-        parse_filename_attributes=True,
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
         # Passed live by generate_tracker_title, so a packaged token that
         # reads these renders differently per user.

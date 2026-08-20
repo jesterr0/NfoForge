@@ -32,8 +32,6 @@ from src.backend.utils.media_info_utils import (
 from src.backend.utils.rename_normalizations import (
     CUT_EDITION_NAMES,
     EDITION_INFO,
-    LOCALIZATION_INFO,
-    is_imax,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.streaming_services import abbreviate_streaming_service
@@ -76,8 +74,6 @@ _REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 
 
 class TokenReplacer:
-    FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
-
     # Overrides that must not be emitted verbatim. `source` comes from the
     # wizard's Quality combo, whose item text is a QualitySelection value, and
     # is also replayed from jobs saved by earlier versions -- where it is the
@@ -131,7 +127,6 @@ class TokenReplacer:
         "screen_shots_odd_str",
         "release_notes",
         "dummy_screen_shots",
-        "parse_filename_attributes",
         "preserve_literal_formatting",
         # series exclusive args
         "season_number",
@@ -187,7 +182,6 @@ class TokenReplacer:
         screen_shots_odd_str: Sequence[str] | None = None,
         release_notes: str | None = "",
         dummy_screen_shots: bool = False,
-        parse_filename_attributes: bool = False,
         preserve_literal_formatting: bool = False,
         season_number: int | None = None,
         season_end: int | None = None,
@@ -234,8 +228,6 @@ class TokenReplacer:
             release_notes (Optional[str]): Release notes.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
               screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
-            parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
-              detected from the filename.
             preserve_literal_formatting: Return flattened title-mode output
               without normalizing whitespace or punctuation. This is intended
               for templates whose literal text carries meaning, such as paths.
@@ -291,7 +283,6 @@ class TokenReplacer:
         self.screen_shots_odd_str = screen_shots_odd_str
         self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
-        self.parse_filename_attributes = parse_filename_attributes
         self.preserve_literal_formatting = preserve_literal_formatting
         # series exclusive args
         self.season_number = season_number
@@ -562,11 +553,6 @@ class TokenReplacer:
 
         for token_type in token_types:
             if token_type == FileToken:
-                if (
-                    not self.parse_filename_attributes
-                    and token_data.token in self.FILENAME_ATTRIBUTES
-                ):
-                    continue
                 media_value = self._media_tokens(token_data)
                 if media_value:
                     return media_value
@@ -1262,49 +1248,18 @@ class TokenReplacer:
         return self._optional_user_input(tvdb_data.get("firstAired", ""), token_data)
 
     def _edition(self, token_data: TokenData) -> str:
+        """The release's edition, as the user accepted it.
+
+        Stage 1 detects editions from EDITION_INFO plus any plugin-supplied
+        entries; stage 2 puts what the user left in the control into the
+        overrides. Nothing is inferred here, because a cleared control and
+        an undetected edition are indistinguishable at this point -- falling
+        back to a detection of our own would make the control disagree with
+        the output, which is the pattern this design removes.
+        """
         if self.edition_override:
             return self._optional_user_input(self.edition_override, token_data)
-
-        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
-            """Helper function to collect edition data from a source."""
-            values = source.get(key, [])
-            return values if isinstance(values, list) else [values]
-
-        # plugin-contributed entries (src.plugins.api.CustomEditionContribution)
-        # are recognized alongside the built-in table, same regex matching
-        all_edition_info = (*EDITION_INFO, *self.custom_edition_info)
-
-        # ensure we have unique editions
-        normalized_edition_set: set[object] = set()
-
-        # search the entire filename for edition patterns
-        filename = self.media_input.stem.lower()
-        for rename_normalize in all_edition_info:
-            for regex_str in rename_normalize.re_gex:
-                if re.search(regex_str, filename, flags=re.I):
-                    normalized_edition_set.add(rename_normalize.normalized)
-                    break  # only add once per edition type
-
-        # also process any editions from guess_name['edition']
-        edition_set = set(collect_editions(self.guess_name, "edition"))
-        for item in edition_set:
-            if is_imax(item):
-                continue
-            matched = False
-            for rename_normalize in all_edition_info:
-                for regex_str in rename_normalize.re_gex:
-                    if re.search(regex_str, str(item), flags=re.I):
-                        normalized_edition_set.add(rename_normalize.normalized)
-                        matched = True
-                        break
-                if matched:
-                    break
-            if not matched:
-                normalized_edition_set.add(item)
-
-        return self._optional_user_input(
-            " ".join(str(item) for item in normalized_edition_set), token_data
-        )
+        return self._optional_user_input("", token_data)
 
     def _cut(self, token_data: TokenData) -> str:
         """Subset of {edition} covering only "Cut"-classified entries (see
@@ -1315,10 +1270,15 @@ class TokenReplacer:
         Plugin-contributed entries (src.plugins.api.CustomEditionContribution)
         are recognized alongside the built-in table -- `custom_edition_info`
         for the entries themselves, `custom_cut_names` for which of those
-        entries count as a Cut here, same split as the built-in table.
+        count as a Cut.
+
+        The override is still classified rather than emitted verbatim: an
+        edition that is not a known Cut is dropped, because an unrecognized
+        string cannot confidently be called one and the guide's own default
+        for an omitted Cut is "assumed Theatrical".
         """
         all_edition_info = (*EDITION_INFO, *self.custom_edition_info)
-        all_cut_names = CUT_EDITION_NAMES | self.custom_cut_names
+        all_cut_names = {*CUT_EDITION_NAMES, *self.custom_cut_names}
 
         if self.edition_override:
             for rename_normalize in all_edition_info:
@@ -1329,116 +1289,26 @@ class TokenReplacer:
                         return self._optional_user_input(
                             rename_normalize.normalized, token_data
                         )
-            return self._optional_user_input("", token_data)
-
-        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
-            """Helper function to collect edition data from a source."""
-            values = source.get(key, [])
-            return values if isinstance(values, list) else [values]
-
-        # ensure we have unique cuts
-        normalized_cut_set: set[str] = set()
-
-        # search the entire filename for cut patterns
-        filename = self.media_input.stem.lower()
-        for rename_normalize in all_edition_info:
-            if rename_normalize.normalized not in all_cut_names:
-                continue
-            for regex_str in rename_normalize.re_gex:
-                if re.search(regex_str, filename, flags=re.I):
-                    normalized_cut_set.add(rename_normalize.normalized)
-                    break  # only add once per cut type
-
-        # also process any editions from guess_name['edition'] -- unlike
-        # _edition(), an item that doesn't match a known Cut (including one
-        # that matches a known, non-Cut Edition, or nothing at all) is
-        # dropped rather than carried through unnormalized: an unrecognized
-        # string can't be confidently called a Cut, and the guide's own
-        # default for an omitted Cut is "assumed Theatrical."
-        edition_set = set(collect_editions(self.guess_name, "edition"))
-        for item in edition_set:
-            if is_imax(item):
-                continue
-            matched = False
-            for rename_normalize in all_edition_info:
-                if rename_normalize.normalized not in all_cut_names:
-                    continue
-                for regex_str in rename_normalize.re_gex:
-                    if re.search(regex_str, str(item), flags=re.I):
-                        normalized_cut_set.add(rename_normalize.normalized)
-                        matched = True
-                        break
-                if matched:
-                    break
-
-        return self._optional_user_input(
-            " ".join(str(item) for item in normalized_cut_set), token_data
-        )
+        return self._optional_user_input("", token_data)
 
     def _frame_size(self, token_data: TokenData) -> str:
+        """IMAX / Open Matte, as the user accepted it.
+
+        Detected in stage 1 from FRAME_SIZE_INFO. Nothing is inferred here,
+        for the same reason as {edition}.
+        """
         if self.frame_size_override:
             return self._optional_user_input(self.frame_size_override, token_data)
-
-        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
-            """Helper function to collect edition data from a source."""
-            values = source.get(key, [])
-            return values if isinstance(values, list) else [values]
-
-        # ensure we have unique editions
-        edition_set: set[object] = set()
-
-        # collect editions from `guess_name`
-        edition_set.update(collect_editions(self.guess_name, "edition"))
-
-        # collect editions from `guess_source_name` if it exists
-        if self.guess_source_name:
-            edition_set.update(collect_editions(self.guess_source_name, "edition"))
-
-        # check for "Open Matte" in `other` fields of `guess_name` and `guess_source_name`
-        for source in [self.guess_name, self.guess_source_name]:
-            if source:
-                other = source.get("other", [])
-                items = other if isinstance(other, list) else [other]
-                if "Open Matte" in items:
-                    edition_set.add("Open Matte")
-                    break
-
-        # normalize some editions
-        if edition_set:
-            normalized_edition_set: set[object] = set()
-            for item in edition_set:
-                if is_imax(item):
-                    normalized_edition_set.add("IMAX")
-                    break
-            edition_set = normalized_edition_set
-
-        # convert the set back to a string, joining with spaces
-        return self._optional_user_input(
-            " ".join(str(item) for item in edition_set), token_data
-        )
+        return self._optional_user_input("", token_data)
 
     def _hybrid(self, token_data: TokenData) -> str:
-        return self._optional_user_input(
-            "HYBRID" if "hybrid" in self.media_input.stem.lower() else "", token_data
-        )
+        # Stage 1 detects this; an accepted claim arrives as an override.
+        return self._optional_user_input("", token_data)
 
     def _localization(self, token_data: TokenData) -> str:
-        """Dubbed/Subbed detected from the input filename.
-
-        Uses the shared LOCALIZATION_INFO table rather than an inline copy.
-        The copy this replaces tested "Dubbed" against a string it had
-        already lowercased, so no release was ever detected as dubbed.
-        """
-        localization = ""
-        filename = self.media_input.stem
-        for rename_normalize in LOCALIZATION_INFO:
-            if any(
-                re.search(regex_str, filename, flags=re.I)
-                for regex_str in rename_normalize.re_gex
-            ):
-                localization = rename_normalize.normalized
-                break
-        return self._optional_user_input(localization, token_data)
+        # Stage 1 detects Dubbed/Subbed from LOCALIZATION_INFO; an accepted
+        # claim arrives as an override.
+        return self._optional_user_input("", token_data)
 
     def _audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
         bitrate = ""
@@ -2226,17 +2096,12 @@ class TokenReplacer:
         """
         if self.override_tokens and "remux" in self.override_tokens:
             return self.override_tokens["remux"]
-        if self.parse_filename_attributes and "remux" in self.media_input.stem.lower():
-            return "REMUX"
         return ""
 
     def _re_release(self, token_data: TokenData) -> str:
-        search_re_release = re.findall(
-            r"\b(PROPER\d*|REPACK\d*)\b", self.media_input.name, flags=re.IGNORECASE
-        )
-        re_release_str = " ".join(str(x).upper() for x in search_re_release)
-
-        return self._optional_user_input(re_release_str, token_data)
+        # Stage 1 detects this; an accepted claim arrives as an override and
+        # short-circuits before this handler runs.
+        return self._optional_user_input("", token_data)
 
     def _get_source_quality(self) -> QualitySelection:
         """Get the detected source quality."""
@@ -2277,10 +2142,18 @@ class TokenReplacer:
         elif "hdtv" in source_quality:
             source_quality = QualitySelection.HDTV
         elif "web" in source_quality:
-            if re.search(r"web[-_\.]?dl", self.media_input.name, flags=re.I):
-                source_quality = QualitySelection.WEB_DL
-            else:
+            # guessit reports `source: Web` for both and marks a rip with
+            # `other: Rip`, so the distinction comes from its parse rather
+            # than a second regex of our own over the filename. Quality is
+            # always parsed and has no switch, so the detection stays -- it
+            # just stops being a separate scan.
+            source_other = self.guess_name.get("other", [])
+            if isinstance(source_other, str):
+                source_other = [source_other]
+            if any(str(item).lower() == "rip" for item in source_other):
                 source_quality = QualitySelection.WEB_RIP
+            else:
+                source_quality = QualitySelection.WEB_DL
         # if we can't detect we'll default to BluRay
         else:
             source_quality = QualitySelection.BLURAY
@@ -2691,23 +2564,20 @@ class TokenReplacer:
         return self._optional_user_input(output, token_data)
 
     def _repack(self, token_data: TokenData) -> str:
+        """REPACK for the NFO.
+
+        The filename scan this used to carry was a second detector, and it
+        ran independently of the file-name side -- so an NFO could claim a
+        REPACK the rendered filename did not. It now follows the same
+        accepted claim, through the jinja global the process page sets.
+        """
         repack = ""
-        if "repack" in self.media_input.stem.lower():
-            repack = "REPACK"
-        elif self.jinja_engine and self.jinja_engine.environment.globals.get(
-            "repack_n"
-        ):
+        if self.jinja_engine and self.jinja_engine.environment.globals.get("repack_n"):
             repack = "REPACK"
         return self._optional_user_input(repack, token_data)
 
     def _repack_n(self, token_data: TokenData) -> str:
         repack = ""
-        detect_repack = re.search(
-            r"(repack\d*)", self.media_input.stem, flags=re.IGNORECASE
-        )
-        if detect_repack:
-            repack = detect_repack.group(1)
-
         if self.jinja_engine:
             detect_jinja_repack_n = self.jinja_engine.environment.globals.get(
                 "repack_n", ""
@@ -2870,22 +2740,14 @@ class TokenReplacer:
         return self._optional_user_input(subtitles, token_data)
 
     def _proper(self, token_data: TokenData) -> str:
+        """PROPER for the NFO. See `_repack` for why the filename scan went."""
         proper = ""
-        if "proper" in self.media_input.stem.lower():
-            proper = "PROPER"
-        elif self.jinja_engine and self.jinja_engine.environment.globals.get(
-            "proper_n"
-        ):
+        if self.jinja_engine and self.jinja_engine.environment.globals.get("proper_n"):
             proper = "PROPER"
         return self._optional_user_input(proper, token_data)
 
     def _proper_n(self, token_data: TokenData) -> str:
         proper = ""
-        detect_proper = re.search(
-            r"(proper\d*)", self.media_input.stem, flags=re.IGNORECASE
-        )
-        if detect_proper:
-            proper = detect_proper.group(1)
 
         if self.jinja_engine:
             detect_jinja_proper_n = self.jinja_engine.environment.globals.get(

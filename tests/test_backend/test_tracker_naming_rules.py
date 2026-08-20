@@ -47,7 +47,9 @@ from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.backend.utils.filename_claims import detect_filename_claims
 from src.config.config import ConfigManager
+from src.config.models import ClaimSwitches
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
@@ -96,6 +98,26 @@ def _media(name: str):
     )
 
 
+_CLAIM_KEYS = ("edition", "frame_size", "localization", "re_release", "remux", "hybrid")
+
+
+def _claim_overrides(name: str) -> dict[str, str]:
+    """The six switchable claims stage 1 reads from a release name."""
+    detected = detect_filename_claims(
+        [Path(name).stem],
+        ClaimSwitches(
+            enabled=True,
+            edition=True,
+            frame_size=True,
+            localization=True,
+            re_release=True,
+            remux=True,
+            hybrid=True,
+        ),
+    ).as_override_tokens()
+    return {k: v for k, v in detected.items() if k in _CLAIM_KEYS}
+
+
 def _render(
     info: TrackerInfo,
     name: str,
@@ -114,7 +136,13 @@ def _render(
     generate_tracker_title fills, so the rules run in the real place rather
     than being reapplied by the test afterwards.
     """
-    overrides: dict[str, str] = {"source": source}
+    # Stage 3 no longer reads the six switchable claims off the filename, so
+    # they arrive as overrides -- exactly what generate_tracker_title
+    # receives from the rename page. Streaming service and release group are
+    # deliberately not injected: those are still detected downstream, and an
+    # override would bypass the service token's own web-source gating.
+    overrides: dict[str, str] = _claim_overrides(name)
+    overrides["source"] = source
     if release_group is not None:
         overrides["release_group"] = release_group
     if streaming_service is not None:
@@ -130,7 +158,6 @@ def _render(
         flatten=True,
         file_name_mode=False,
         token_type=FileToken,
-        parse_filename_attributes=True,
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
         override_tokens=overrides,
         override_title_rules=(
@@ -207,9 +234,8 @@ def test_lst_formats_eac3_atmos_as_codec_channels_atmos(
         flatten=True,
         file_name_mode=False,
         token_type=FileToken,
-        parse_filename_attributes=True,
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-        override_tokens={"source": "WEB-DL"},
+        override_tokens={**_claim_overrides(WEB_NAME), "source": "WEB-DL"},
         override_title_rules=info.mvr_title_replace_map,
     ).get_output()
 
