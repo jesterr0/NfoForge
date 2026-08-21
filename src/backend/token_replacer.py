@@ -2337,21 +2337,21 @@ class TokenReplacer:
         per the configured ``MultiEpisodeStyle``, or ``None`` when the file
         covers a single episode (the caller then emits the raw start number).
 
-        The span is read from the selected per-file mapping's ``episode_end``
-        (Task 4.1), and numbers are pre-padded to width 2 so a template's own
-        ``|zfill(2)`` on the composite string is a harmless no-op. Given
-        season S, start=1, end=3 the styles render:
+        Numbers are pre-padded to width 2 so a template's own ``|zfill(2)``
+        on the composite string is a harmless no-op. Given season 1 and a
+        file covering episodes 1 to 3 the styles render:
 
-        - EXTEND (0):          ``01-03``
-        - DUPLICATE (1):       ``01.S{S:02}E03`` (e.g. ``01.S01E03``)
-        - REPEAT (2):          ``01E03``
-        - SCENE (3):           ``01-E03``
+        - EXTEND (0):          ``01-02-03``
+        - DUPLICATE (1):       ``01.S01E02.S01E03``
+        - REPEAT (2):          ``01E02E03``
+        - SCENE (3):           ``01-E02-E03``
         - RANGE (4):           ``01-03``
         - PREFIXED_RANGE (5):  ``01-E03``
 
-        EXTEND collapses to RANGE and PREFIXED_RANGE collapses to SCENE
-        because the mapping stores only the start and end episode numbers, not
-        the full intermediate episode list those two styles would expand.
+        The split matches Sonarr's: the first four expand, naming every
+        episode the file holds, and the last two state a range from its ends.
+        A range cannot say which episodes between its ends are present, so
+        the two read ``episode_end`` while the four read the episode list.
         """
         season = self._validate_int_var(self.season_number)
         if season is None:
@@ -2362,16 +2362,22 @@ class TokenReplacer:
             return None
 
         start = f"{episode:02d}"
-        end = f"{end_episode:02d}"
         style = self.multi_episode_style
+
+        if style is MultiEpisodeStyle.RANGE:
+            return f"{start}-{end_episode:02d}"
+        if style is MultiEpisodeStyle.PREFIXED_RANGE:
+            return f"{start}-E{end_episode:02d}"
+
+        rest = self._span_episode_list(season, episode)[1:]
         if style is MultiEpisodeStyle.DUPLICATE:
-            return f"{start}.S{season:02d}E{end}"
+            return ".".join([start, *(f"S{season:02d}E{num:02d}" for num in rest)])
         if style is MultiEpisodeStyle.REPEAT:
-            return f"{start}E{end}"
-        if style in (MultiEpisodeStyle.SCENE, MultiEpisodeStyle.PREFIXED_RANGE):
-            return f"{start}-E{end}"
-        # EXTEND and RANGE (and any future member) -> plain zero-padded range
-        return f"{start}-{end}"
+            return "".join([start, *(f"E{num:02d}" for num in rest)])
+        if style is MultiEpisodeStyle.SCENE:
+            return "-".join([start, *(f"E{num:02d}" for num in rest)])
+        # EXTEND, and any future member
+        return "-".join([start, *(f"{num:02d}" for num in rest)])
 
     def _absolute_number_for(
         self, season: int, episode: int, episode_order_type_id: Any | None

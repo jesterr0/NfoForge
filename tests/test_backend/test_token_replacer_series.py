@@ -924,21 +924,25 @@ def _multi_episode_replacer(
     episode: int = 1,
     episode_end: int = 3,
     season: int = 1,
+    episode_list: list[int] | None = None,
 ) -> TokenReplacer:
     file_path = Path("Show.S01E01-E03.mkv")
+    mapping: dict[str, object] = {
+        "season": season,
+        "episode": episode,
+        "episode_end": episode_end,
+        "episode_name": "Multi Episode",
+    }
+    # Left absent by default, so the common fixture exercises the derived
+    # list a row written before the field existed still gets.
+    if episode_list is not None:
+        mapping["episode_list"] = episode_list
     return TokenReplacer(
         media_input_obj=MediaInputPayload(
             input_path=file_path,
             media_type=MediaType.SERIES,
             file_list=[file_path],
-            series_episode_map={
-                file_path: {
-                    "season": season,
-                    "episode": episode,
-                    "episode_end": episode_end,
-                    "episode_name": "Multi Episode",
-                }
-            },
+            series_episode_map={file_path: mapping},
         ),
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.SERIES, tvdb_data={"episodes": []}
@@ -958,15 +962,12 @@ def _multi_episode_replacer(
 @pytest.mark.parametrize(
     ("style", "expected"),
     [
-        # EXTEND and RANGE collapse to the same "start-end" form because the
-        # mapping (Task 4.1) only stores start/end, not the full intermediate
-        # episode list EXTEND would otherwise need.
-        (MultiEpisodeStyle.EXTEND, "01-03"),
-        (MultiEpisodeStyle.DUPLICATE, "01.S01E03"),
-        (MultiEpisodeStyle.REPEAT, "01E03"),
-        # SCENE and PREFIXED_RANGE likewise collapse to the same
-        # "start-Eend" form given only start/end data.
-        (MultiEpisodeStyle.SCENE, "01-E03"),
+        # Four styles expand: they name every episode in the file.
+        (MultiEpisodeStyle.EXTEND, "01-02-03"),
+        (MultiEpisodeStyle.DUPLICATE, "01.S01E02.S01E03"),
+        (MultiEpisodeStyle.REPEAT, "01E02E03"),
+        (MultiEpisodeStyle.SCENE, "01-E02-E03"),
+        # Two render a range from the ends alone.
         (MultiEpisodeStyle.RANGE, "01-03"),
         (MultiEpisodeStyle.PREFIXED_RANGE, "01-E03"),
     ],
@@ -977,6 +978,71 @@ def test_episode_number_renders_multi_episode_designator_per_style(
     output = _multi_episode_replacer("{episode_number}", style).get_output()
 
     assert output == expected
+
+
+@pytest.mark.parametrize(
+    ("style", "expected"),
+    [
+        (MultiEpisodeStyle.EXTEND, "01-02"),
+        (MultiEpisodeStyle.DUPLICATE, "01.S01E02"),
+        (MultiEpisodeStyle.REPEAT, "01E02"),
+        (MultiEpisodeStyle.SCENE, "01-E02"),
+        (MultiEpisodeStyle.RANGE, "01-02"),
+        (MultiEpisodeStyle.PREFIXED_RANGE, "01-E02"),
+    ],
+)
+def test_two_episode_spans_render_per_style(
+    style: MultiEpisodeStyle, expected: str
+) -> None:
+    # At two episodes Extend and Range agree, and the styles that differ do
+    # so on the separator alone. Worth pinning: two is the common case and
+    # the one where a wrong implementation still looks plausible.
+    output = _multi_episode_replacer(
+        "{episode_number}", style, episode_end=2
+    ).get_output()
+
+    assert output == expected
+
+
+def test_a_non_contiguous_span_names_only_the_episodes_it_holds() -> None:
+    # The reason the list is stored rather than derived. "S01E01E05" holds
+    # two episodes; a derived range would claim five.
+    output = _multi_episode_replacer(
+        "{episode_number}",
+        MultiEpisodeStyle.REPEAT,
+        episode_end=5,
+        episode_list=[1, 5],
+    ).get_output()
+
+    assert output == "01E05"
+
+
+def test_style_labels_name_the_output_each_one_produces() -> None:
+    # The combo labels come from the member names, and the four expand
+    # styles used to collapse onto the two range ones -- so picking "Scene"
+    # gave Prefixed Range's output. Now that both halves exist, the label a
+    # user picks and the shape they get have to stay tied together.
+    assert [str(style) for style in MultiEpisodeStyle] == [
+        "Extend",
+        "Duplicate",
+        "Repeat",
+        "Scene",
+        "Range",
+        "Prefixed Range",
+    ]
+
+
+def test_a_non_contiguous_range_style_still_reads_from_the_ends() -> None:
+    # Range says "first through last" and cannot say which of the episodes
+    # between are present, so the stored list does not change it.
+    output = _multi_episode_replacer(
+        "{episode_number}",
+        MultiEpisodeStyle.RANGE,
+        episode_end=5,
+        episode_list=[1, 5],
+    ).get_output()
+
+    assert output == "01-05"
 
 
 def test_episode_number_single_episode_unchanged_raw_number() -> None:
