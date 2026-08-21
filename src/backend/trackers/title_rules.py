@@ -528,24 +528,37 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             ),
         ),
         # The four below are transcribed from the shipped config rather than
-        # from published rules, none having been gathered for them. Their
-        # config reads as deliberate -- all four use {title_clean}, {edition}
-        # rather than {cut}, undivided {audio_codec}, dash colon handling and
-        # the over-1080 SDR form -- so it is copied, not improved. A change
-        # here would be a guess.
+        # from published rules, none having been gathered for them. What the
+        # config says is copied rather than improved -- {edition} rather than
+        # {cut}, undivided {audio_codec}, dash colon handling and the
+        # over-1080 SDR form all stand.
+        #
+        # Two things do not come from the config, because the config had
+        # nothing to say about either.
         #
         # Their shipped overrides cover films only, so a series on these
-        # trackers renders the user's global template today. An entry has no
+        # trackers used to render the user's global template. An entry has no
         # media-type split, so the composition now serves both, with the
-        # designator supplying the season and episode. That is the spec's
-        # call rather than the config's, and it is a real behaviour change.
+        # designator supplying the season and episode and an episode title
+        # beside it. Every tracker here except Blutopia names the episode.
+        #
+        # The title is {title_exact}, where the config said {title_clean}.
+        # Clean answers to the user's `title_clean_rules`, which ship
+        # aggressive: they unidecode, drop apostrophes and flatten every
+        # non-alphanumeric to a space, so "Amelie's Cafe: Fire & Ice" reached
+        # these four as "Amelies Cafe Fire and Ice" and reached the four with
+        # gathered rules intact. Nothing published asks for that, a tracker
+        # rule that varies with a user setting is not a rule, and the split
+        # tracked which entries were transcribed rather than anything about
+        # the trackers. The episode title matches at the same tier.
         TrackerSelection.DARK_PEERS: TrackerTitleEntry(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
             composition=Composition(
                 components=(
-                    "{title_clean}",
+                    "{title_exact}",
                     "{release_year}",
                     Designator.SIMPLE,
+                    "{episode_title_exact}",
                     "{frame_size}",
                     "{edition}",
                     "{re_release}",
@@ -565,9 +578,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
             composition=Composition(
                 components=(
-                    "{title_clean}",
+                    "{title_exact}",
                     "{release_year}",
                     Designator.SIMPLE,
+                    "{episode_title_exact}",
                     "{audio_language_all_full|upper|replace(' ',' - ')}",
                     "{frame_size}",
                     "{edition}",
@@ -586,9 +600,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
             composition=Composition(
                 components=(
-                    "{title_clean}",
+                    "{title_exact}",
                     "{release_year}",
                     Designator.SIMPLE,
+                    "{episode_title_exact}",
                     "{frame_size}",
                     "{edition}",
                     "{re_release}",
@@ -606,9 +621,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
             composition=Composition(
                 components=(
-                    "{title_clean}",
+                    "{title_exact}",
                     "{release_year}",
                     Designator.SIMPLE,
+                    "{episode_title_exact}",
                     "{frame_size}",
                     "{edition}",
                     "{re_release}",

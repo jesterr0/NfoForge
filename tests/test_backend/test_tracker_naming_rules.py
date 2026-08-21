@@ -510,11 +510,11 @@ def test_lst_carries_no_episode_title_in_any_shape(
     ),
 )
 @pytest.mark.parametrize(
-    ("season", "episodes", "designator"),
+    ("season", "episodes", "designator", "names_the_episode"),
     [
-        (*SINGLE_EPISODE, "S01E02"),
-        (*SEASON_PACK, "S01"),
-        (*EPISODE_SPAN, "S01E01-03"),
+        (*SINGLE_EPISODE, "S01E02", True),
+        (*SEASON_PACK, "S01", False),
+        (*EPISODE_SPAN, "S01E01-03", False),
     ],
     ids=["single episode", "season pack", "episode span"],
 )
@@ -523,18 +523,20 @@ def test_a_transcribed_entry_serves_series_as_well_as_film(
     season: int,
     episodes: tuple[int, ...],
     designator: str,
+    names_the_episode: bool,
 ) -> None:
     """These four were transcribed from a film-only shipped override.
 
-    An entry has no media-type split, so its composition now governs their
-    series titles too, where the user's global template used to. That is a
-    real behaviour change and the reason it is asserted: the designator has
-    to land, the release year has to leave, and no component may collapse
-    into a dangling separator or a doubled space.
+    An entry has no media-type split, so its composition governs their
+    series titles too, where the user's global template used to. The config
+    said nothing about series, so the shape follows every other tracker
+    here: name the episode where there is one episode to name, and let the
+    shared token suppress it for a pack or a span.
     """
     rendered = _render(tracker, ENCODE_NAME, "BluRay", season=season, episodes=episodes)
 
     assert f"Show Name {designator} " in rendered
+    assert (EPISODE_TITLE in rendered) is names_the_episode
     # {release_year} is omitted for a series, so the year must not survive
     assert "2026" not in rendered
     assert "  " not in rendered

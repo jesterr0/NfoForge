@@ -819,13 +819,50 @@ def test_the_assumed_four_are_transcribed_not_improved(
     tracker: TrackerSelection,
 ) -> None:
     """No published rules were gathered for these, so the shipped config is
-    the only source and is copied rather than corrected."""
+    the only source for what it covers, and is copied rather than corrected.
+
+    It covers films only, which is why the two departures below are not
+    contradictions: the config said nothing about either.
+    """
     composed = _composed(tracker)
 
-    assert "{title_clean}" in composed
     assert "{edition}" in composed
     assert "{cut}" not in composed
     assert "{audio_codec}" in composed
+
+
+@pytest.mark.parametrize(
+    "tracker",
+    [
+        TrackerSelection.DARK_PEERS,
+        TrackerSelection.SHARE_ISLAND,
+        TrackerSelection.UPLOAD_CX,
+        TrackerSelection.ONLY_ENCODES,
+    ],
+)
+def test_the_assumed_four_name_titles_at_the_exact_tier(
+    tracker: TrackerSelection,
+) -> None:
+    """A tracker rule that varies with a user setting is not a rule.
+
+    The shipped config said `{title_clean}`, which answers to
+    `title_clean_rules` -- and those ship aggressive enough to unidecode,
+    drop apostrophes and flatten every non-alphanumeric to a space. Two
+    trackers would then spell the same film differently on the strength of
+    a setting neither publishes. The colon is the clearest case: cleaning
+    erased it before the entry's own colon rule could apply, so the entry
+    said replace-with-dash and got deletion.
+
+    Every entry with gathered rules already names titles exactly, so this
+    is what the four look like when the split stops tracking which of them
+    happened to be transcribed.
+    """
+    composed = _composed(tracker)
+
+    assert "{title_exact}" in composed
+    assert "{title_clean}" not in composed
+    assert "{episode_title_exact}" in composed
+    assert "{episode_title_clean}" not in composed
 
 
 def test_only_shareisland_carries_a_language_component() -> None:
