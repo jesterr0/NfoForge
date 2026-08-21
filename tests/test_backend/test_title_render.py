@@ -3,11 +3,16 @@ import re
 import pytest
 
 from src.backend.trackers.hdb import HDBUploader
-from src.backend.trackers.title_render import normalise_title
+from src.backend.trackers.title_render import compose_token_string, normalise_title
 from src.backend.trackers.title_rules import (
     TITLE_RULES,
+    Composition,
+    ConditionalOrder,
     ConditionalRewrite,
+    Designator,
     Normalisation,
+    OmitRule,
+    ReleaseProperties,
     Separator,
 )
 from src.enums.token_replacer import ColonReplace
@@ -246,3 +251,173 @@ def test_the_entry_closes_a_gap_the_hdbits_uploader_leaves_open() -> None:
 
     assert "  " in HDBUploader.generate_release_title(title)
     assert "  " not in normalise_title(title, entry, global_colon=ColonReplace.KEEP)
+
+
+# ---------------------------------------------------------------- composition
+
+
+def _compose_body(composition: Composition, release: ReleaseProperties) -> str:
+    """The composed token string without its trailing tag.
+
+    Every composition ends with a release-group tag, which would otherwise
+    have to be repeated in the expectation of every test that is not about
+    tagging. The two that are assert the whole string.
+    """
+    return re.sub(
+        r"\{:opt=-:release_group.*$", "", compose_token_string(composition, release)
+    )
+
+
+def _release(**overrides: object) -> ReleaseProperties:
+    base: dict[str, object] = {
+        "is_remux": False,
+        "is_disc": False,
+        "is_dvd": False,
+        "resolution": 1080,
+        "hdr_identity": "SDR",
+        "season": None,
+        "episodes": (),
+    }
+    base.update(overrides)
+    return ReleaseProperties(**base)  # pyright: ignore[reportArgumentType]
+
+
+def test_components_compose_in_the_entrys_order() -> None:
+    composition = Composition(
+        components=("{title_exact}", "{release_year}", "{resolution}")
+    )
+
+    assert _compose_body(composition, _release()) == (
+        "{title_exact} {release_year} {resolution}"
+    )
+
+
+def test_a_conditional_order_swaps_on_remux() -> None:
+    """LST, Aither and ReelFliX put video before audio on a remux.
+
+    The shipped config said this by writing the same token twice at two
+    positions, one guarded by only_if(remux) and the other by unless(remux).
+    An entry says it once, in the place it applies.
+    """
+    composition = Composition(
+        components=(
+            "{source}",
+            ConditionalOrder(
+                when=lambda release: release.is_remux,
+                then=("{video_codec}", "{audio_codec}"),
+                otherwise=("{audio_codec}", "{video_codec}"),
+            ),
+            "{release_year}",
+        )
+    )
+
+    remux = _compose_body(composition, _release(is_remux=True))
+    encode = _compose_body(composition, _release(is_remux=False))
+
+    assert remux == "{source} {video_codec} {audio_codec} {release_year}"
+    assert encode == "{source} {audio_codec} {video_codec} {release_year}"
+
+
+def test_a_conditional_block_keeps_its_position_in_the_order() -> None:
+    # The swap happens mid-order, not at the end -- both trackers' published
+    # forms share a prefix *and* a suffix around the part that moves.
+    composition = Composition(
+        components=(
+            "{title_exact}",
+            ConditionalOrder(
+                when=lambda release: release.is_dvd,
+                then=(),
+                otherwise=("{resolution}",),
+            ),
+            "{source}",
+        )
+    )
+
+    assert _compose_body(composition, _release(is_dvd=True)) == (
+        "{title_exact} {source}"
+    )
+
+
+def test_an_omit_rule_drops_a_component_conditionally() -> None:
+    # LST and ReelFliX omit the video codec on a DVD remux while keeping it
+    # for a DVDRip encode.
+    composition = Composition(
+        components=("{source}", "{video_codec}", "{audio_codec}"),
+        omit=(
+            OmitRule(
+                when=lambda release: release.is_dvd and release.is_remux,
+                components=("{video_codec}",),
+            ),
+        ),
+    )
+
+    dvd_remux = _compose_body(composition, _release(is_dvd=True, is_remux=True))
+    dvd_rip = _compose_body(composition, _release(is_dvd=True))
+
+    assert dvd_remux == "{source} {audio_codec}"
+    assert dvd_rip == "{source} {video_codec} {audio_codec}"
+
+
+def test_the_tag_default_fills_an_untagged_release() -> None:
+    # LST and BeyondHD want NOGROUP where a release carries no tag.
+    composition = Composition(components=("{title_exact}",), tag_default="NOGROUP")
+
+    assert compose_token_string(composition, _release()) == (
+        "{title_exact}{:opt=-:release_group|default('NOGROUP')}"
+    )
+
+
+def test_no_tag_default_omits_the_tag_entirely() -> None:
+    # Aither and ReelFliX prefer a blank tag to a NOGROUP placeholder.
+    composition = Composition(components=("{title_exact}",), tag_default=None)
+
+    assert compose_token_string(composition, _release()) == (
+        "{title_exact}{:opt=-:release_group}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("episodes", "expected"),
+    [((1,), "S01E01"), ((1, 2), "S01E01-02"), ((1, 2, 3), "S01E01-03")],
+)
+def test_a_simple_designator_states_a_range(
+    episodes: tuple[int, ...], expected: str
+) -> None:
+    composition = Composition(components=(Designator.SIMPLE,))
+
+    assert _compose_body(composition, _release(season=1, episodes=episodes)) == expected
+
+
+@pytest.mark.parametrize(
+    ("episodes", "expected"),
+    [((1,), "S01E01"), ((1, 2), "S01E01E02"), ((1, 2, 3), "S01E01-03")],
+)
+def test_a_banded_designator_changes_form_at_three_episodes(
+    episodes: tuple[int, ...], expected: str
+) -> None:
+    """LST mandates S##E##E## at exactly two episodes and S##E##-## above.
+
+    No single user multi_episode_style satisfies both, which is why the
+    designator is a composition field rather than the user's setting.
+    """
+    composition = Composition(components=(Designator.BANDED_BY_COUNT,))
+
+    assert _compose_body(composition, _release(season=1, episodes=episodes)) == expected
+
+
+@pytest.mark.parametrize("designator", [Designator.SIMPLE, Designator.BANDED_BY_COUNT])
+def test_a_season_pack_designator_names_only_the_season(
+    designator: Designator,
+) -> None:
+    # Aither's own example is "Tom Clancy's Jack Ryan S04 1080p AMZN ...".
+    composition = Composition(components=(designator,))
+
+    assert _compose_body(composition, _release(season=4)) == "S04"
+
+
+@pytest.mark.parametrize("designator", [Designator.SIMPLE, Designator.BANDED_BY_COUNT])
+def test_a_film_has_no_designator_at_all(designator: Designator) -> None:
+    # The same entry serves both media types; a film simply has no season.
+    composition = Composition(components=("{title_exact}", designator, "{resolution}"))
+
+    assert _compose_body(composition, _release()) == ("{title_exact} {resolution}")

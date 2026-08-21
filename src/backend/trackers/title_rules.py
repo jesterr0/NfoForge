@@ -24,11 +24,12 @@ change every user's filenames as a side effect.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 
+from src.config.models import HdrType
 from src.enums.token_replacer import ColonReplace
 from src.enums.tracker_selection import TrackerSelection
 
@@ -83,14 +84,96 @@ class Normalisation:
     allowlist: str | None = None
 
 
+class Designator(StrEnum):
+    """How a season/episode designator states more than one episode.
+
+    `SIMPLE` always states a range. `BANDED_BY_COUNT` is LST's rule:
+    `S##E##E##` at exactly two episodes and `S##E##-##` above, which no
+    single user `multi_episode_style` can satisfy -- which is why the
+    designator is a composition field rather than that setting.
+    """
+
+    SIMPLE = "simple"
+    BANDED_BY_COUNT = "banded_by_count"
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseProperties:
+    """What a composition's conditions may ask about.
+
+    A small closed set rather than the whole payload: a condition that can
+    ask anything is a condition nobody can test exhaustively. Each field
+    earns its place from a checked tracker -- `is_remux` and `is_disc` from
+    the remux order swap and BeyondHD's dynamic range baseline, `is_dvd`
+    from BeyondHD's DVD order and the LST and ReelFliX omit rules,
+    `resolution` and `hdr_identity` from every dynamic range rule, and
+    `season`/`episodes` from the designator.
+    """
+
+    is_remux: bool = False
+    is_disc: bool = False
+    is_dvd: bool = False
+    resolution: int = 1080
+    hdr_identity: HdrType = "SDR"
+    season: int | None = None
+    episodes: tuple[int, ...] = ()
+
+    @property
+    def episode_count(self) -> int:
+        return len(self.episodes)
+
+
+@dataclass(frozen=True, slots=True)
+class ConditionalOrder:
+    """A run of components whose order or membership depends on the release.
+
+    LST, Aither and ReelFliX put the video components before the audio ones
+    on a remux and after them otherwise. BeyondHD swaps on DVD instead, so
+    the condition is a predicate over the release rather than a remux flag.
+    """
+
+    when: Callable[[ReleaseProperties], bool]
+    then: tuple[str, ...]
+    otherwise: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OmitRule:
+    """Components dropped when the release matches.
+
+    LST and ReelFliX omit the resolution on a DVD source, and the video
+    codec on a DVD remux while keeping it for a DVDRip encode.
+    """
+
+    when: Callable[[ReleaseProperties], bool]
+    components: tuple[str, ...]
+
+
+# A component is a token string, a run whose order depends on the release,
+# or a designator that is computed rather than rendered.
+Component = str | ConditionalOrder | Designator
+
+
 @dataclass(frozen=True, slots=True)
 class Composition:
     """A tracker's own component layout.
 
-    Fields land in the composition task. Until then an entry carrying one
-    would have nothing to say, so every entry below leaves it ``None`` and
-    renders the user's global template -- which is what they all do today.
+    `components` is one ordered sequence rather than a base list plus
+    separate conditional, episode-title and designator fields. The published
+    rules *are* an ordered component list, so the data mirrors the source
+    material -- and a separate "include the episode title" flag would be
+    strictly less expressive, since it could not say where in the order the
+    title goes. Aither carries one and LST does not; that difference is
+    membership in this tuple.
+
+    `tag_default` of ``None`` omits the release group entirely where a
+    release has none, which is what Aither and ReelFliX prefer. LST and
+    BeyondHD want the `NOGROUP` placeholder instead.
     """
+
+    components: tuple[Component, ...] = ()
+    tag_default: str | None = None
+    omit: tuple[OmitRule, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

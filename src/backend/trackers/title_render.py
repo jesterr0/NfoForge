@@ -15,7 +15,14 @@ from __future__ import annotations
 import re
 
 from src.backend.token_replacer import TokenReplacer
-from src.backend.trackers.title_rules import Normalisation, Separator
+from src.backend.trackers.title_rules import (
+    Composition,
+    ConditionalOrder,
+    Designator,
+    Normalisation,
+    ReleaseProperties,
+    Separator,
+)
 from src.backend.trackers.utils import dot_separate_title, strip_title_dots
 from src.enums.token_replacer import ColonReplace
 
@@ -75,6 +82,80 @@ def normalise_title(
         result = result.replace(" .", ".").replace("..", ".")
 
     return _REPEATED_WHITESPACE.sub(" ", result).strip()
+
+
+def compose_token_string(composition: Composition, release: ReleaseProperties) -> str:
+    """Build the token string a tracker's own layout asks for.
+
+    Returns a token string rather than a rendered title, so composition
+    stays pure: no MediaInfo, no TokenReplacer, no online metadata. The
+    caller renders it once and normalises the result.
+
+    Two things a reader might expect here and will not find. Unresolved
+    components are not removed -- the renderer's `TOKEN_ONLY` mode already
+    does that, and every component is conditional on its token resolving.
+    Nor is the gap one leaves behind closed here; normalisation does that
+    for every entry, including the gaps an omit rule and a suppressed
+    vocabulary value leave.
+    """
+    omitted = {
+        component
+        for rule in composition.omit
+        if rule.when(release)
+        for component in rule.components
+    }
+
+    parts: list[str] = []
+    for component in composition.components:
+        for token in _expand(component, release):
+            if token and token not in omitted:
+                parts.append(token)
+
+    token_string = " ".join(parts)
+    if not token_string:
+        return ""
+
+    # The tag is written as an optional prefix so it disappears with the
+    # group rather than leaving a trailing hyphen.
+    if composition.tag_default is not None:
+        return (
+            f"{token_string}"
+            f"{{:opt=-:release_group|default('{composition.tag_default}')}}"
+        )
+    return f"{token_string}{{:opt=-:release_group}}"
+
+
+def _expand(component: object, release: ReleaseProperties) -> tuple[str, ...]:
+    """One component as the token strings it stands for."""
+    if isinstance(component, ConditionalOrder):
+        return component.then if component.when(release) else component.otherwise
+    if isinstance(component, Designator):
+        designator = _designator(component, release)
+        return (designator,) if designator else ()
+    return (str(component),)
+
+
+def _designator(style: Designator, release: ReleaseProperties) -> str:
+    """The season/episode designator, computed rather than rendered.
+
+    `{episode_number}` renders per the user's `multi_episode_style`, which
+    is theirs to choose for filenames. A tracker that mandates a form needs
+    its own, so this is a literal rather than a token.
+    """
+    if release.season is None:
+        return ""
+
+    season = f"S{release.season:02d}"
+    episodes = release.episodes
+    if not episodes:
+        return season
+
+    first, last = episodes[0], episodes[-1]
+    if first == last:
+        return f"{season}E{first:02d}"
+    if style is Designator.BANDED_BY_COUNT and len(episodes) == 2:
+        return f"{season}E{first:02d}E{last:02d}"
+    return f"{season}E{first:02d}-{last:02d}"
 
 
 def _rewrite(title: str, match: str, replacement: str | None) -> str:
