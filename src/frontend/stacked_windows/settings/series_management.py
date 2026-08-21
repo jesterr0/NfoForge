@@ -38,6 +38,7 @@ from src.config.tv_tokens import (
     SUPPORTED_TVR_FORMATS,
     get_tvr_episode_token,
     get_tvr_title_token,
+    resolve_season_subfolder_token,
     set_tvr_episode_token,
     set_tvr_title_token,
 )
@@ -404,9 +405,8 @@ class SeriesManagementSettings(BaseSettings):
         the blank default previews what the user will actually get rather than
         an empty line.
         """
-        token_str = (
-            self.season_subfolder_token.text().strip()
-            or self.season_folder_token.text()
+        token_str = resolve_season_subfolder_token(
+            self.season_subfolder_token.text(), self.season_folder_token.text()
         )
         self._update_example(
             token_str=token_str,

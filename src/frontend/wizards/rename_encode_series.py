@@ -47,7 +47,10 @@ from src.backend.utils.streaming_services import (
     STREAMING_SERVICE_CHOICES,
 )
 from src.config.config import ConfigManager
-from src.config.tv_tokens import get_tvr_episode_token
+from src.config.tv_tokens import (
+    get_tvr_episode_token,
+    resolve_season_subfolder_token,
+)
 from src.context.processing_context import ProcessingContext
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
@@ -526,12 +529,9 @@ class RenameEncodeSeries(BaseWizardPage):
             if folder_path:
                 root_folder_name = folder_path.name
 
-            # A blank subfolder token means "same as the pack folder", which is
-            # already how a flat single-season pack behaves: the opened folder
-            # IS that season's folder.
-            subfolder_token = (
-                self.config.settings.series.season_subfolder_token.strip()
-                or self.config.settings.series.season_folder_token
+            subfolder_token = resolve_season_subfolder_token(
+                self.config.settings.series.season_subfolder_token,
+                self.config.settings.series.season_folder_token,
             )
             for season in sorted(set(file_seasons.values())):
                 season_path = self.backend.series_folder_renamer(
