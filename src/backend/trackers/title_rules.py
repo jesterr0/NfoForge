@@ -41,6 +41,23 @@ class Separator(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class ConditionalRewrite:
+    """A rewrite that only fires when some other value is absent.
+
+    `vocabulary` cannot express this: it maps a value to a replacement with
+    no reference to the rest of the title. HDBits needs one -- a bare `HDR`
+    means `HDR10`, but not in a title that already names `HDR10+` -- and a
+    conditional rule kept as data stays in the entry, where a reader looking
+    for that tracker's rules will find it, rather than becoming a branch in
+    the shared renderer.
+    """
+
+    match: str
+    replacement: str
+    unless_present: str
+
+
+@dataclass(frozen=True, slots=True)
 class Normalisation:
     """Rules that always apply, whether or not the entry composes.
 
@@ -62,6 +79,7 @@ class Normalisation:
     separator: Separator = Separator.SPACED
     colon: ColonReplace | None = None
     vocabulary: Mapping[str, str | None] = field(default_factory=dict)
+    conditional_vocabulary: tuple[ConditionalRewrite, ...] = ()
     allowlist: str | None = None
 
 
@@ -133,20 +151,25 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         #
         # HDBits is alone in wanting HEVC where NfoForge emits H.265; it
         # takes H.264 as written, which is why only one of the pair is
-        # mapped. Keys are matched after dot stripping, which now preserves
-        # a codec's internal period, so the key is spelled as the codec is.
-        #
-        # The HDR -> HDR10 rewrite is deliberately absent: it is conditional
-        # on HDR10+ being missing, and a flat map cannot express a
-        # condition. It lands with the normalisation stage, condition
-        # intact.
+        # mapped. Keys are matched after dot stripping, which preserves a
+        # codec's internal period, so "H.265" is the spelling that arrives
+        # from NfoForge's own token. The other two are reachable because
+        # HDBits has no composition and renders the user's global template,
+        # where the codec can be typed by hand.
         TrackerSelection.HDB: TrackerTitleEntry(
             normalisation=Normalisation(
                 vocabulary={
                     "H.265": "HEVC",
+                    "H 265": "HEVC",
+                    "H265": "HEVC",
                     "DV": "DoVi",
                     "REMUX": "Remux",
                 },
+                conditional_vocabulary=(
+                    ConditionalRewrite(
+                        match="HDR", replacement="HDR10", unless_present="HDR10+"
+                    ),
+                ),
                 allowlist=r"0-9a-zA-ZÀ-ÿ. :&+'\-\[\]",
             ),
         ),
