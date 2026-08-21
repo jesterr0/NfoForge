@@ -18,7 +18,6 @@ from src.backend.trackers.utils import (
     DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
-    strip_title_dots,
 )
 from src.backend.upload_retry import RETRY_ATTEMPTS, classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
@@ -454,12 +453,10 @@ class Unit3dBaseUploader:
         season_pack: bool = False,
     ) -> dict[str, Any]:
         upload_payload: dict[str, Any] = {
-            # applied to a supplied title as well, not only to the filename
-            # fallback -- a title edited in the overview dialog would otherwise
-            # ship its periods verbatim, which is not what that dialog promises
-            "name": self.generate_release_title(
-                tracker_title if tracker_title else release_stem(self.input_path)
-            ),
+            # The title arrives composed and normalised, and an empty one
+            # was already refused or replaced by the caller, which knows
+            # whether this tracker's rules permit a fallback.
+            "name": tracker_title,
             "description": nfo,
             "mediainfo": MinimalMediaInfo(self.input_path).get_full_mi_str(
                 cleansed=True
@@ -652,10 +649,6 @@ class Unit3dBaseUploader:
         if width < 1280 and height < 720:
             return True
         return False
-
-    @staticmethod
-    def generate_release_title(release_title: str) -> str:
-        return strip_title_dots(release_title)
 
 
 class Unit3dBaseSearch:

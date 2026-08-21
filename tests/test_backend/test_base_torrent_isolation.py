@@ -82,6 +82,12 @@ def _backend(monkeypatch: pytest.MonkeyPatch) -> ProcessBackEnd:
     monkeypatch.setattr(
         backend, "disconnect_from_clients", lambda *_a, **_k: None, raising=False
     )
+    # A prepared job rebuilds its title from the tracker's rules, so the title
+    # path runs even though these tests carry finished release data. They are
+    # about torrent isolation, so it renders to the value already stored.
+    monkeypatch.setattr(
+        backend, "generate_tracker_title", lambda **_k: "Release Title", raising=False
+    )
     return cast(ProcessBackEnd, backend)
 
 

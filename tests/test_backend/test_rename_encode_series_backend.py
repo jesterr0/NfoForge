@@ -39,7 +39,11 @@ def test_series_renamer_uses_the_episode_being_rendered() -> None:
     result = RenameEncodeSeriesBackEnd().series_renamer(
         media_input_obj=payload,
         media_file=second_file,
-        token="{re_release} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        # {re_release} used to appear here. It is a claim now, and claims are
+        # pack-wide: they arrive as overrides rather than being read off the
+        # episode being rendered. {resolution} and {release_group} are still
+        # per-file, which is what this test is about.
+        token="{resolution} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replacement=ColonReplace.REPLACE_WITH_DASH,
         media_search_payload=_empty_series_search(),
         season_num=1,
@@ -49,10 +53,9 @@ def test_series_renamer_uses_the_episode_being_rendered() -> None:
         user_tokens=None,
         episode_format=EpisodeFormat.STANDARD,
         multi_episode_style=MultiEpisodeStyle.RANGE,
-        parse_filename_attributes=True,
     )
 
-    assert result == Path("REPACK.OTHER.mkv")
+    assert result == Path("720p.OTHER.mkv")
 
 
 def test_series_folder_renamer_renders_multi_season_range() -> None:
@@ -101,6 +104,57 @@ def test_series_folder_renamer_omits_episode_context() -> None:
         season_end=1,
     )
     assert result == Path("S01")
+
+
+def _render_season_folder(
+    token: str,
+    *,
+    title: str = "Show",
+    override_tokens: dict[str, str] | None = None,
+) -> Path | None:
+    backend = RenameEncodeSeriesBackEnd()
+    if override_tokens:
+        backend.override_tokens.update(override_tokens)
+    return backend.series_folder_renamer(
+        media_input_obj=_minimal_series_payload(),
+        token=token,
+        colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+        media_search_payload=MediaSearchPayload(
+            media_type=MediaType.SERIES, title=title, tvdb_data={"episodes": []}
+        ),
+        season_num=1,
+        title_clean_rules=None,
+        video_dynamic_range=None,
+        user_tokens=None,
+        season_end=1,
+    )
+
+
+def test_folder_name_keeps_a_dotted_release_name_intact() -> None:
+    """A dotted release name has no extension, but pathlib cannot tell.
+
+    Path("Show.S01.1080p.BluRay.x264-GRP").suffix is ".x264-GRP", so
+    with_suffix("") drops the codec and the release group. Today that is
+    defused only by file_name_mode appending .mkv first, which the caller
+    then strips -- an invariant nothing enforces.
+    """
+    folder = _render_season_folder(
+        "{title_clean}.S{season_number|zfill(2)}.1080p.BluRay.x264-{release_group}",
+        override_tokens={"release_group": "GRP"},
+    )
+
+    assert folder is not None
+    assert folder.name == "Show.S01.1080p.BluRay.x264-GRP"
+
+
+def test_folder_name_is_not_capped_short_by_a_suffix_it_never_keeps() -> None:
+    # The length budget is 255 - len(suffix), so a folder name was capped
+    # four characters short for a .mkv input, for a suffix added and
+    # immediately removed.
+    folder = _render_season_folder("{title_clean}", title="A" * 400)
+
+    assert folder is not None
+    assert len(folder.name) == 255
 
 
 def test_build_pack_rename_targets_relocates_flat_pack(tmp_path: Path) -> None:
@@ -355,3 +409,67 @@ def test_nested_pack_rename_rolls_back_on_failure(tmp_path: Path) -> None:
     assert ep1.read_text() == "1"
     assert season_one.is_dir()
     assert not (root / "Show.S01").exists()
+
+
+def test_a_lone_repack_still_reaches_that_episodes_filename() -> None:
+    """A pack where one episode is a REPACK agrees on nothing, so no control
+    can carry the claim -- one combo cannot say "REPACK, but only episode
+    2". The episode's own claim fills that gap."""
+    first_file = Path("Show.S01E01.1080p.WEB-DL-GRP.mkv")
+    second_file = Path("Show.S01E02.REPACK.1080p.WEB-DL-GRP.mkv")
+    payload = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[first_file, second_file],
+    )
+
+    def render(media_file: Path, file_claims: dict[str, str]) -> Path | None:
+        return RenameEncodeSeriesBackEnd().series_renamer(
+            media_input_obj=payload,
+            media_file=media_file,
+            token="{re_release} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+            colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+            media_search_payload=_empty_series_search(),
+            season_num=1,
+            episode_num=1,
+            title_clean_rules=None,
+            video_dynamic_range=None,
+            user_tokens=None,
+            episode_format=EpisodeFormat.STANDARD,
+            multi_episode_style=MultiEpisodeStyle.RANGE,
+            file_claims=file_claims,
+        )
+
+    assert render(first_file, {}) == Path("GRP.mkv")
+    assert render(second_file, {"re_release": "REPACK"}) == Path("REPACK.GRP.mkv")
+
+
+def test_a_pack_wide_choice_wins_over_the_files_own_claim() -> None:
+    """File claims fill gaps; they do not overrule a decision. A user who
+    cleared the control must not have the claim handed back per file."""
+    media_file = Path("Show.S01E02.REPACK.1080p.WEB-DL-GRP.mkv")
+    payload = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[media_file],
+    )
+    backend = RenameEncodeSeriesBackEnd()
+    backend.override_tokens["re_release"] = "PROPER"
+
+    result = backend.series_renamer(
+        media_input_obj=payload,
+        media_file=media_file,
+        token="{re_release} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+        media_search_payload=_empty_series_search(),
+        season_num=1,
+        episode_num=2,
+        title_clean_rules=None,
+        video_dynamic_range=None,
+        user_tokens=None,
+        episode_format=EpisodeFormat.STANDARD,
+        multi_episode_style=MultiEpisodeStyle.RANGE,
+        file_claims={"re_release": "REPACK"},
+    )
+
+    assert result == Path("PROPER.GRP.mkv")

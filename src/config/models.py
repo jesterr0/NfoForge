@@ -181,12 +181,30 @@ class TorrentClientSettings:
 
 
 @dataclass(slots=True)
+class ClaimSwitches:
+    """Which claims are read out of the input filename.
+
+    A claim is parsed if and only if `enabled` and its own switch are both
+    true. The six are claims MediaInfo cannot verify; quality/source,
+    streaming service and release group are always parsed and have no
+    switch, because they are identity fields the user always wants.
+    """
+
+    enabled: bool
+    edition: bool
+    frame_size: bool
+    localization: bool
+    re_release: bool
+    remux: bool
+    hybrid: bool
+
+
+@dataclass(slots=True)
 class MovieSettings:
     enabled: bool
-    replace_illegal_chars: bool
     filename_colon_replace: ColonReplace
     title_colon_replace: ColonReplace
-    parse_filename_attributes: bool
+    claims: ClaimSwitches
     filename_token: str
     title_token: str
     release_group: str
@@ -195,10 +213,9 @@ class MovieSettings:
 @dataclass(slots=True)
 class SeriesSettings:
     enabled: bool
-    replace_illegal_chars: bool
     filename_colon_replace: ColonReplace
     title_colon_replace: ColonReplace
-    parse_filename_attributes: bool
+    claims: ClaimSwitches
     standard_episode_token: str
     daily_episode_token: str
     anime_episode_token: str

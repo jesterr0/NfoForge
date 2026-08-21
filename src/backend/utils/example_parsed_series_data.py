@@ -12,8 +12,12 @@ current_year = datetime.now().year
 EXAMPLE_FOLDER_NAME = Path(
     "Series.Name.S03.BluRay.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup"
 )
+# Carries every switchable claim, so each of the six claim switches in
+# Series settings visibly changes the rendered example. The movie example
+# does the same; a switch that appears inert reads as broken.
 EXAMPLE_FILE_NAME_1 = Path(
-    "Series.Name.S03E01.Episode.Name.1.1080p.TrueHD.5.1.AVC.REMUX-SomeGroup.mkv"
+    "Series.Name.S03E01.Episode.Name.1.Directors.Cut.IMAX.REPACK."
+    "1080p.TrueHD.5.1.AVC.HYBRID.REMUX-SomeGroup.mkv"
 )
 
 # fmt: off

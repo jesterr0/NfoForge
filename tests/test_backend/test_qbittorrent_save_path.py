@@ -28,6 +28,7 @@ from src.enums.torrent_client import (
 from src.exceptions import TrackerClientError
 from src.payloads.clients import QBittorrentConfig
 from src.payloads.media_inputs import MediaInputPayload
+from src.payloads.media_search import MediaSearchPayload
 
 
 def _config(
@@ -476,6 +477,75 @@ def test_template_rejects_remote_title_that_injects_an_absolute_root() -> None:
             ),
             context,
         )
+
+
+def _series_context_with_episode_title(name: str) -> ProcessingContext:
+    path = Path("Show.S01E02.mkv")
+    return ProcessingContext(
+        media_input=MediaInputPayload(
+            input_path=path,
+            media_type=MediaType.SERIES,
+            file_list=[path],
+            series_episode_map={
+                path: {
+                    "season": 1,
+                    "episode": 2,
+                    "episode_name": name,
+                    "episode_data": {
+                        "seasonNumber": 1,
+                        "number": 2,
+                        "name": name,
+                    },
+                }
+            },
+        ),
+        media_search=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            title="Show",
+            tvdb_data={"episodes": [{"seasonNumber": 1, "number": 2, "name": name}]},
+        ),
+    )
+
+
+def test_template_rejects_an_episode_title_that_injects_a_drive_root() -> None:
+    """The guard cannot be a list of the metadata fields it happens to know.
+
+    `_ensure_safe_remote_titles` inspects TMDB's title and original_title.
+    An episode name is TVDB metadata reaching the path through
+    {episode_title_exact}, which applies no formatting -- so the check that
+    catches this has to run on the rendered string, not on an enumeration
+    of fields that has to be kept in step with which tokens emit raw values.
+    """
+    context = _series_context_with_episode_title(r"C:\Windows\Temp\pwn")
+
+    with pytest.raises(TrackerClientError, match="outside the configured"):
+        resolve_qbittorrent_save_path(
+            _config(
+                QBittorrentSavePathMode.TEMPLATE,
+                r"D:\Media\{episode_title_exact}",
+                series_colon_replace=ColonReplace.KEEP,
+            ),
+            context,
+        )
+
+
+def test_template_allows_an_ordinary_punctuated_episode_title() -> None:
+    """The guard must not refuse titles that are merely punctuated.
+
+    A question mark is not a path instruction, and after the exact token
+    stopped stripping it this is the common case rather than the odd one.
+    """
+    context = _series_context_with_episode_title("Who Are You?")
+
+    path = resolve_qbittorrent_save_path(
+        _config(
+            QBittorrentSavePathMode.TEMPLATE,
+            "/mnt/media/{episode_title_exact}",
+        ),
+        context,
+    )
+
+    assert path == "/mnt/media/Who Are You?"
 
 
 def test_template_allows_a_separator_in_a_title_that_stays_under_the_root() -> None:

@@ -137,7 +137,8 @@ class GeneralSettings(BaseSettings):
 
         self.enable_prompt_overview = QCheckBox("Prompt for Overview", self)
         self.enable_prompt_overview.setToolTip(
-            "If enabled during processing an editable overview will pop up allowing the user to make final edits"
+            "If enabled processing pauses on an overview of each tracker's title and NFO\n"
+            "(titles are shown for review, NFOs can be edited)"
         )
 
         self.enable_mkbrr = QCheckBox("Enable mkbrr", self)

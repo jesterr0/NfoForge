@@ -442,6 +442,13 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
         side_effect=TrackerClientError("client offline")
     )
     backend.disconnect_from_clients = MagicMock()  # type: ignore[method-assign]
+    # These tests are about the upload lifecycle, not about titles. The
+    # context here is a stub with no metadata, which a tracker's hardcoded
+    # rules now refuse rather than quietly turning into a filename -- so the
+    # title is supplied the same way the upload itself is.
+    backend.generate_tracker_title = MagicMock(  # type: ignore[method-assign]
+        return_value="Example Release 2026 1080p BluRay x264-GRP"
+    )
 
     context = cast(
         ProcessingContext,
@@ -577,6 +584,13 @@ def _process_trackers_backend(
     else:
         backend._handle_injection = MagicMock(return_value=None)  # type: ignore[method-assign]
     backend.disconnect_from_clients = MagicMock()  # type: ignore[method-assign]
+    # These tests are about the upload lifecycle, not about titles. The
+    # context here is a stub with no metadata, which a tracker's hardcoded
+    # rules now refuse rather than quietly turning into a filename -- so the
+    # title is supplied the same way the upload itself is.
+    backend.generate_tracker_title = MagicMock(  # type: ignore[method-assign]
+        return_value="Example Release 2026 1080p BluRay x264-GRP"
+    )
     return backend, received
 
 

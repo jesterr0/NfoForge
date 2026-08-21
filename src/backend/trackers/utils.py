@@ -54,6 +54,19 @@ DISC_TITLE_REGEX = regex.compile(
 # .5 is not an LFE digit.
 _CHANNEL_LAYOUT_REGEX = re.compile(r"(?<!\d)[1-9]\.[01](?:\.[0-9])?(?!\d)")
 _CHANNEL_LAYOUT_SENTINEL = "\x00"
+# A video codec's internal period is the same casualty as a channel layout:
+# nothing in the string distinguishes it from a separator. `H.264` shipped as
+# `H 264` to every tracker that spaces its titles, including one whose own
+# published example spells it `H.264`.
+#
+# The left boundary excludes an alphanumeric rather than requiring whitespace,
+# because both title forms reach here: a composed title is space-separated,
+# while the release-name fallback is a dotted filename stem where the period
+# before the `H` is a real separator.
+#
+# Only the two codecs `_mediainfo_codec` can emit are listed. A wider pattern
+# would be inventing coverage for a codec NfoForge cannot currently produce.
+_VIDEO_CODEC_REGEX = re.compile(r"(?<![0-9A-Za-z])H\.26[45](?![0-9])")
 _REPEATED_WHITESPACE_REGEX = re.compile(r"\s{2,}")
 _REPEATED_PERIOD_REGEX = re.compile(r"\.{2,}")
 
@@ -61,9 +74,10 @@ _REPEATED_PERIOD_REGEX = re.compile(r"\.{2,}")
 def strip_title_dots(release_title: str) -> str:
     """
     Convert a dot separated release title into a space separated one, keeping
-    audio channel layouts (2.0, 5.1, 7.1.4, ...) intact.
+    audio channel layouts (2.0, 5.1, 7.1.4, ...) and video codec names
+    (H.264, H.265) intact.
 
-    The channel layout is protected before the periods are stripped rather than
+    Both are protected before the periods are stripped rather than
     reconstructed afterwards. Reconstruction requires knowing every codec that can
     precede the channels, and anything the list missed (AAC, Opus, LPCM, an Atmos
     suffix between the codec and the channels, ...) silently shipped as "5 1".
@@ -71,6 +85,10 @@ def strip_title_dots(release_title: str) -> str:
     name = _CHANNEL_LAYOUT_REGEX.sub(
         lambda match: match.group(0).replace(".", _CHANNEL_LAYOUT_SENTINEL),
         release_title,
+    )
+    name = _VIDEO_CODEC_REGEX.sub(
+        lambda match: match.group(0).replace(".", _CHANNEL_LAYOUT_SENTINEL),
+        name,
     )
     name = name.replace(".", " ")
     name = _REPEATED_WHITESPACE_REGEX.sub(" ", name)

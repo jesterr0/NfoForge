@@ -1,3 +1,5 @@
+from PySide6.QtTest import QTest
+
 from src.enums.tracker_selection import TrackerSelection
 from src.frontend.custom_widgets.overview_dialog import OverviewDialog
 
@@ -26,6 +28,47 @@ def test_untouched_dialog_returns_originals_verbatim() -> None:
     assert results[TrackerSelection.BEYOND_HD]["nfo"] == NORMALIZED_NFO
 
 
+def test_the_tracker_title_is_shown_but_not_editable() -> None:
+    """The mitigation for rules living in code.
+
+    The user sees the exact string that will be uploaded and can abort, but
+    cannot edit it -- a tracker changing its policy is visible before
+    upload rather than after rejection.
+    """
+    original: dict[TrackerSelection, dict[str, str | None]] = {
+        TrackerSelection.BEYOND_HD: {"title": "Some Title", "nfo": "some nfo"}
+    }
+
+    dialog = OverviewDialog(original)
+    title_edit = dialog.title_edits[TrackerSelection.BEYOND_HD]
+
+    assert title_edit.text() == "Some Title"
+    assert title_edit.isReadOnly()
+    # read-only rather than disabled: the user can still select the title and
+    # copy it, which is the point of showing the exact string.
+    assert title_edit.isEnabled()
+
+    QTest.keyClicks(title_edit, "typed")
+    assert title_edit.text() == "Some Title"
+
+
+def test_the_title_is_returned_from_the_generated_data_not_the_widget() -> None:
+    """Nothing the widget holds can reach a tracker.
+
+    ``setText`` bypasses read-only, so the guarantee cannot rest on the
+    widget alone -- ``get_results`` never reads it.
+    """
+    original: dict[TrackerSelection, dict[str, str | None]] = {
+        TrackerSelection.BEYOND_HD: {"title": "Some Title", "nfo": "original nfo"}
+    }
+
+    dialog = OverviewDialog(original)
+    dialog.title_edits[TrackerSelection.BEYOND_HD].setText("Edited Title")
+    dialog.accept()
+
+    assert dialog.get_results()[TrackerSelection.BEYOND_HD]["title"] == "Some Title"
+
+
 def test_user_edits_are_returned() -> None:
     original: dict[TrackerSelection, dict[str, str | None]] = {
         TrackerSelection.BEYOND_HD: {"title": "Some Title", "nfo": "original nfo"},
@@ -34,12 +77,11 @@ def test_user_edits_are_returned() -> None:
 
     dialog = OverviewDialog(original)
     dialog.nfo_edits[TrackerSelection.BEYOND_HD].setPlainText("edited nfo")
-    dialog.title_edits[TrackerSelection.BEYOND_HD].setText("Edited Title")
     dialog.accept()
 
     results = dialog.get_results()
     assert results[TrackerSelection.BEYOND_HD] == {
-        "title": "Edited Title",
+        "title": "Some Title",
         "nfo": "edited nfo",
     }
     # an edit to one tracker must not mark the others as edited

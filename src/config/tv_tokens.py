@@ -18,6 +18,24 @@ class TVTokenPayload(Protocol):
     anime_title_token: str
 
 
+def resolve_season_subfolder_token(
+    season_subfolder_token: str, season_folder_token: str
+) -> str:
+    """The token a season subfolder renders with.
+
+    Blank means "use the season folder token": in a single-season pack the
+    opened folder IS the season folder, so one token covers both. The two
+    diverge only for a nested pack, where the root carries the season range
+    and each subfolder carries its own season.
+
+    Takes the two token strings rather than a settings object because the
+    settings preview reads them from its line edits, before anything has
+    been saved. The fallback is returned as configured; only the subfolder
+    token is stripped, since space around it is not part of the token.
+    """
+    return season_subfolder_token.strip() or season_folder_token
+
+
 def get_tvr_episode_token(
     payload: TVTokenPayload, episode_format: EpisodeFormat
 ) -> str:

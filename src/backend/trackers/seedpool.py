@@ -3,7 +3,6 @@ from pathlib import Path
 from pymediainfo import MediaInfo
 
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
-from src.backend.trackers.utils import dot_separate_title
 from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.seedpool import (
@@ -83,23 +82,6 @@ class SeedPoolUploader(Unit3dBaseUploader):
             type_enum=SeedPoolType,
             timeout=timeout,
         )
-
-    @staticmethod
-    def generate_release_title(release_title: str) -> str:
-        """SeedPool names uploads after the release, not in prose.
-
-        Every other UNIT3D tracker here wants the spaced form, so the base
-        class strips periods; SeedPool is the exception and wants them. Both
-        reference implementations agree: Upload Assistant's SP uploader sends
-        the input's own name with spaces turned into periods, and upbrr's
-        seedpool profile resolves to the source release name, with expected
-        values like ``Example.Release.2026.1080p.WEB-DL.H.264-GRP``.
-
-        The base class was flattening the filename fallback -- which is the
-        release name already -- into the spaced form no other tracker here
-        would have wanted.
-        """
-        return dot_separate_title(release_title)
 
 
 class SeedPoolSearch(Unit3dBaseSearch):
