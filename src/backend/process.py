@@ -137,7 +137,6 @@ from src.payloads.series import (
     describe_missing_upload_fields,
 )
 from src.payloads.tracker_search_result import TrackerSearchResult
-from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
 from src.plugins.api import (
     DuplicateCheckRequest,
@@ -1077,7 +1076,6 @@ class ProcessBackEnd:
                 cur_tracker,
                 self.generate_tracker_title(
                     tracker=cur_tracker,
-                    tracker_info=tracker_info,
                     context=context,
                     release_info=release_info,
                 ),
@@ -2711,7 +2709,6 @@ class ProcessBackEnd:
     def generate_tracker_title(
         self,
         tracker: TrackerSelection,
-        tracker_info: TrackerInfo,
         context: ProcessingContext,
         release_info: SeriesReleaseInfo,
     ) -> str | None:
@@ -2719,11 +2716,10 @@ class ProcessBackEnd:
 
         Layout and normalisation come from that tracker's hardcoded entry
         where it has them, and from the user's global title settings
-        otherwise. `tracker_info` no longer carries a title override; it is
-        kept because callers pass it and later work reads other fields.
+        otherwise. Nothing here reads `TrackerInfo`: a title is a property
+        of the tracker's rules and the release, not of the user's settings
+        for that tracker.
         """
-        del tracker_info
-
         global_template = (
             get_tvr_title_token(
                 self.config.settings.series, release_info.episode_format

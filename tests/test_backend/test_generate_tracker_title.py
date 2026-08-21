@@ -106,7 +106,6 @@ def _title(
     backend = backend if backend is not None else _backend()
     return backend.generate_tracker_title(
         tracker,
-        TrackerInfo(),
         context,
         build_series_release_info(context.media_input),
     )

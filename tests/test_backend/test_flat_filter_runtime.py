@@ -16,7 +16,6 @@ from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.token_replacer import ColonReplace
 from src.enums.tracker_selection import TrackerSelection
 from src.payloads.series import build_series_release_info
-from src.payloads.trackers import TrackerInfo
 
 
 def _renders_the_users_template() -> TrackerSelection:
@@ -78,7 +77,6 @@ def test_tracker_title_applies_processing_context_flat_filters() -> None:
     # the day it gains rules.
     output = backend.generate_tracker_title(
         _renders_the_users_template(),
-        TrackerInfo(),
         context,
         build_series_release_info(context.media_input),
     )

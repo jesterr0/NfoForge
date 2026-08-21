@@ -500,6 +500,48 @@ def test_lst_carries_no_episode_title_in_any_shape(
     assert EPISODE_TITLE not in rendered
 
 
+@pytest.mark.parametrize(
+    "tracker",
+    (
+        TrackerSelection.DARK_PEERS,
+        TrackerSelection.SHARE_ISLAND,
+        TrackerSelection.UPLOAD_CX,
+        TrackerSelection.ONLY_ENCODES,
+    ),
+)
+@pytest.mark.parametrize(
+    ("season", "episodes", "designator"),
+    [
+        (*SINGLE_EPISODE, "S01E02"),
+        (*SEASON_PACK, "S01"),
+        (*EPISODE_SPAN, "S01E01-03"),
+    ],
+    ids=["single episode", "season pack", "episode span"],
+)
+def test_a_transcribed_entry_serves_series_as_well_as_film(
+    tracker: TrackerSelection,
+    season: int,
+    episodes: tuple[int, ...],
+    designator: str,
+) -> None:
+    """These four were transcribed from a film-only shipped override.
+
+    An entry has no media-type split, so its composition now governs their
+    series titles too, where the user's global template used to. That is a
+    real behaviour change and the reason it is asserted: the designator has
+    to land, the release year has to leave, and no component may collapse
+    into a dangling separator or a doubled space.
+    """
+    rendered = _render(tracker, ENCODE_NAME, "BluRay", season=season, episodes=episodes)
+
+    assert f"Show Name {designator} " in rendered
+    # {release_year} is omitted for a series, so the year must not survive
+    assert "2026" not in rendered
+    assert "  " not in rendered
+    assert not rendered.endswith(("-", ".", "_"))
+    assert rendered.endswith("-SomeGroup")
+
+
 def test_lst_bands_a_double_episode_and_ranges_a_longer_span() -> None:
     """LST's rule is `S##E##E##` at exactly two and `S##E##-##` above.
 

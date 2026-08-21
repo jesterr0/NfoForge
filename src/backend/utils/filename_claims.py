@@ -76,12 +76,6 @@ def _normalized_value(table: Sequence[RenameNormalization], stem: str) -> str:
     return ""
 
 
-def _pack_wide(values: Sequence[str]) -> str:
-    """A claim only counts when every file agrees on it."""
-    unique = set(values)
-    return next(iter(unique)) if len(unique) == 1 else ""
-
-
 def detect_file_claims(
     stem: str,
     switches: ClaimSwitches,
