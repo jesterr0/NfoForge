@@ -2305,6 +2305,33 @@ class TokenReplacer:
             return None
         return end_episode
 
+    def _span_episode_list(self, season: int, episode: int) -> list[int]:
+        """Every episode the file covers, lowest first.
+
+        A row written before ``episode_list`` existed carries only the ends,
+        so the range is derived. That is exact rather than approximate: the
+        old code took the first and last of a *sorted* guessit list, so every
+        span it could produce was contiguous. A stored list is preferred
+        where present, because it is the only thing that can describe a
+        non-contiguous file such as "S01E01E05".
+        """
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if mapped_episode:
+            stored = mapped_episode.get("episode_list")
+            if isinstance(stored, list):
+                numbers = [
+                    value
+                    for value in (self._validate_int_var(item) for item in stored)
+                    if value is not None
+                ]
+                if numbers:
+                    return sorted(numbers)
+
+        end_episode = self._span_end_episode(season, episode)
+        if end_episode is None:
+            return [episode]
+        return list(range(episode, end_episode + 1))
+
     def _multi_episode_designator(self, episode: int) -> str | None:
         """Render the season/episode span designator for a multi-episode file
         per the configured ``MultiEpisodeStyle``, or ``None`` when the file

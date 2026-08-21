@@ -613,6 +613,33 @@ def test_span_predicate_is_shared_by_episode_number_and_episode_title() -> None:
     assert replacer.get_output() == "2|Multi Episode"
 
 
+def test_span_episode_list_is_derived_for_a_row_without_one() -> None:
+    # Every saved job written before the list existed. The old code could
+    # only produce contiguous spans -- it kept the first and last of a
+    # sorted list -- so deriving the range is exact, not a guess.
+    replacer = _span_replacer("{episode_number}")
+
+    assert replacer._span_episode_list(1, 1) == [1, 2, 3]
+
+
+def test_span_episode_list_prefers_a_stored_non_contiguous_list() -> None:
+    # S01E01E05 is the shape a derived range gets wrong: it implies five
+    # episodes where the file holds two.
+    replacer = _span_replacer("{episode_number}", episode_end=5)
+    mapping = next(iter(replacer.media_input_obj.series_episode_map.values()))
+    mapping["episode_list"] = [1, 5]
+
+    assert replacer._span_episode_list(1, 1) == [1, 5]
+
+
+def test_span_episode_list_is_one_episode_when_the_file_covers_one() -> None:
+    # _series_replacer maps S01E02 with no episode_end. The list must still
+    # answer, so callers never special-case the single-episode file.
+    replacer = _series_replacer("{episode_number}")
+
+    assert replacer._span_episode_list(1, 2) == [2]
+
+
 @pytest.mark.parametrize("placeholder_name", ["TBA", "Episode 12"])
 def test_episode_metadata_omits_tvdb_placeholder_name(placeholder_name: str) -> None:
     # {episode_metadata} must not leak a TVDB placeholder episode name into
