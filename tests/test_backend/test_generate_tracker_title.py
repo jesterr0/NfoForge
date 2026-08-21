@@ -17,7 +17,10 @@ from copy import deepcopy
 from types import SimpleNamespace
 from typing import cast
 
+import pytest
+
 from src.backend.process import ProcessBackEnd
+from src.backend.trackers.title_rules import TITLE_RULES, Separator
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
@@ -67,6 +70,32 @@ def _context() -> ProcessingContext:
     )
 
 
+def _renders_the_users_template() -> TrackerSelection:
+    """Any tracker with no composition of its own.
+
+    Derived rather than named. Which tracker happens to lack rules today is
+    not what these tests are about, and naming one would break the day it
+    gains some -- for the same reason they were rewritten when the entries
+    landed.
+
+    Spaced, because these tests assert a spaced string. SeedPool defers
+    to the user too but renders the release form, which would make the
+    expectation about its separator rather than about precedence.
+    """
+    for tracker, entry in TITLE_RULES.items():
+        if (
+            entry.composition is None
+            and entry.has_release_name_field
+            and entry.normalisation.separator is Separator.SPACED
+        ):
+            return tracker
+    pytest.fail(
+        "Every tracker composes now, so nothing renders the user's global "
+        "template. That is a real change rather than a broken fixture: "
+        "decide what the global title template is still for."
+    )
+
+
 def _title(
     tracker: TrackerSelection,
     context: ProcessingContext | None = None,
@@ -98,7 +127,7 @@ def test_a_composing_tracker_ignores_the_users_global_template() -> None:
 def test_a_tracker_without_a_composition_renders_the_users_template() -> None:
     # Seven trackers have no layout of their own and render the user's
     # house style, which is exactly what they do today.
-    assert _title(TrackerSelection.BLUTOPIA) == "Movie Name (global)"
+    assert _title(_renders_the_users_template()) == "Movie Name (global)"
 
 
 def test_a_tracker_with_no_release_name_field_has_no_title() -> None:
@@ -118,13 +147,13 @@ def test_the_entry_colon_beats_the_users_global() -> None:
 
     # Aither's entry keeps colons; the user asked for them to be deleted.
     aither = _title(TrackerSelection.AITHER, context, backend)
-    # Blutopia names no colon rule, so the user's setting applies.
-    blutopia = _title(TrackerSelection.BLUTOPIA, context, backend)
+    # A tracker naming no colon rule lets the user's setting apply.
+    deferring = _title(_renders_the_users_template(), context, backend)
 
     assert aither is not None
     assert "Mission: Impossible" in aither
     # DELETE removes the colon and leaves the space that followed it.
-    assert blutopia == "Mission Impossible"
+    assert deferring == "Mission Impossible"
 
 
 def test_a_stored_title_override_no_longer_influences_the_title() -> None:
@@ -142,7 +171,7 @@ def test_a_stored_title_override_no_longer_influences_the_title() -> None:
     )
 
     title = _backend().generate_tracker_title(
-        TrackerSelection.BLUTOPIA,
+        _renders_the_users_template(),
         overridden,
         context,
         build_series_release_info(context.media_input),
