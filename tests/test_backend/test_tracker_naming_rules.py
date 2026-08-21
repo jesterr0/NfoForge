@@ -1,10 +1,12 @@
-"""The packaged titles must match the naming rules each tracker publishes.
+"""The hardcoded entries must match the naming rules each tracker publishes.
 
-`test_enforced_title_defaults.py` checks that a REQUIRED tracker enforces
-*something*. This file checks that what it enforces is *right*: the exact
-component order, spelling and separators from each tracker's own wiki.
+`test_title_rules.py` and `test_title_render.py` check the machinery: that
+an entry is well formed and that composing and normalising one behaves. This
+file checks that what the entries *say* is right -- the exact component
+order, spelling and separators from each tracker's own wiki -- by rendering
+through the real pipeline and reading the finished string.
 
-The templates being pinned, quoted from the rules as saved:
+The rules being pinned, quoted as saved:
 
 - Aither remux .... Title Year REPACK Resolution Source REMUX HDR VideoCodec
                     AudioCodec Channels Metadata-Crew
@@ -16,19 +18,23 @@ The templates being pinned, quoted from the rules as saved:
                     Acodec Channels Object - Tag
 - LST encode/web .. ... Resolution ... SOURCE TYPE Dub Acodec Channels Object
                     Hi10P HDR Vcodec - Tag
-- ReelFliX ........ order-free, every required element present, blank tag
-                    preferred over a NOGROUP placeholder
+- ReelFliX ........ the same remux/encode split as Aither and LST, video
+                    ahead of audio on a remux; blank tag preferred over a
+                    NOGROUP placeholder
 - BeyondHD ........ remux/encode/web-dl with no tag must end "-NOGROUP"
 
 Known gaps, deliberately not asserted because NfoForge has no token for them.
-Each needs a new token rather than an edit to the packaged defaults:
+Each needs a new token rather than an edit to an entry:
 
 - Full discs. Aither's Country and LST's Region, plus their disc-specific
   source spellings ("Blu-ray", "NTSC DVD9", "3xDVD9") where `{source}` renders
   "BluRay"/"DVD". Full-disc uploads are not supported yet, so this stays out.
-- Language and dub components: FRENCH/JAPANESE, Dual-Audio, Dubbed, ZXX.
-- LST-only: Hi10P, 3D, RERip, and "PQ10" where `{video_dynamic_range_type}`
-  renders "PQ".
+- Spoken-language components: FRENCH/JAPANESE and ZXX. Dual-Audio and Dubbed
+  are *not* gaps -- `{audio_language_dual}` and `{localization}` cover them,
+  and the Dub component composes the pair on Aither, LST and ReelFliX.
+- LST-only: Hi10P, 3D and RERip. "PQ10" is no longer a gap either: the
+  dynamic range resolves to an identity and each entry spells it, so LST and
+  ReelFliX say "PQ10" where Aither says nothing at all.
 - `{cut}` renders "Directors Cut" and "Extended Cut" where both trackers want
   "Director's Cut" and "Extended". The normalization table behind it is shared
   with filename generation, where an apostrophe is unwanted, so this cannot be
@@ -55,15 +61,12 @@ from src.backend.utils.example_parsed_movie_data import (
 )
 from src.backend.utils.filename_claims import detect_filename_claims
 from src.backend.utils.hdr_identity import resolve_hdr_identity
-from src.config.config import ConfigManager
 from src.config.models import ClaimSwitches
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
 from src.payloads.media_search import MediaSearchPayload
-from src.payloads.trackers import TrackerInfo
-from tests.test_config.config_tree import build_config_paths
 
 # The release shapes the rules distinguish. Only the *name* matters here: it
 # drives the filename attributes (REMUX/HYBRID/REPACK) and the source guess,
@@ -73,26 +76,6 @@ ENCODE_NAME = "Movie.Name.2026.1080p.BluRay.TrueHD.Atmos.7.1.DV.HEVC.x265-SomeGr
 WEB_NAME = (
     "Movie.Name.2026.2160p.AMZN.WEB-DL.TrueHD.Atmos.7.1.DV.HEVC.H.265-SomeGroup.mkv"
 )
-
-
-@pytest.fixture(scope="module")
-def packaged(
-    tmp_path_factory: pytest.TempPathFactory,
-) -> dict[TrackerSelection, TrackerInfo]:
-    """The packaged defaults as the running app sees them.
-
-    Loaded through the real ConfigManager rather than by parsing the TOML, so
-    the TrackerSelection -> section-name mapping in src/config/operations.py is
-    exercised too.
-    """
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
-        lambda self, dependencies: None,
-    )
-    manager = ConfigManager("test", build_config_paths(tmp_path_factory.mktemp("cfg")))
-    monkeypatch.undo()
-    return manager.defaults.trackers.by_selection()
 
 
 def _media(name: str):
@@ -127,6 +110,53 @@ def _claim_overrides(name: str) -> dict[str, str]:
     return {k: v for k, v in detected.items() if k in _CLAIM_KEYS}
 
 
+SERIES_TITLE = "Show Name"
+EPISODE_TITLE = "Some Episode Title"
+
+
+def _series_payloads(
+    media, season: int, episodes: tuple[int, ...], episode_name: str
+) -> tuple[object, MediaSearchPayload]:
+    """Turn the example payload into one of the three series shapes.
+
+    A season pack maps no episode at all, which is how the app represents
+    one. A span carries `episode_end`, which is the only definition of a
+    span in the token replacer -- so a test cannot accidentally build a
+    span that the tokens would not recognise as one.
+    """
+    path = media.input_path
+    episode_map: dict[Path, dict[str, object]] = {}
+    if episodes:
+        row: dict[str, object] = {
+            "season": season,
+            "episode": episodes[0],
+            "episode_name": episode_name,
+            "episode_data": {
+                "seasonNumber": season,
+                "number": episodes[0],
+                "name": episode_name,
+            },
+        }
+        if len(episodes) > 1:
+            row["episode_end"] = episodes[-1]
+        episode_map[path] = row
+
+    series_media = replace(
+        media, media_type=MediaType.SERIES, series_episode_map=episode_map
+    )
+    search = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title=SERIES_TITLE,
+        tvdb_data={
+            "episodes": [
+                {"seasonNumber": season, "number": number, "name": episode_name}
+                for number in episodes
+            ]
+        },
+    )
+    return series_media, search
+
+
 def _render(
     tracker: TrackerSelection,
     name: str,
@@ -136,12 +166,16 @@ def _render(
     streaming_service: str | None = None,
     season: int | None = None,
     episodes: tuple[int, ...] = (),
+    episode_name: str = EPISODE_TITLE,
 ) -> str:
     """Render a tracker's title exactly as generate_tracker_title would.
 
     Goes through the real pipeline -- compose from the entry, render, then
     normalise -- rather than reaching for a packaged token string, which no
     longer exists.
+
+    Passing a season switches the payload to a series one, so the episode
+    tokens are asked the same question the app asks them.
     """
     # Stage 3 no longer reads the six switchable claims off the filename, so
     # they arrive as overrides -- exactly what generate_tracker_title
@@ -157,6 +191,9 @@ def _render(
         overrides["streaming_service"] = streaming_service
 
     media = _media(name)
+    search = EXAMPLE_SEARCH_PAYLOAD
+    if season is not None:
+        media, search = _series_payloads(media, season, episodes, episode_name)
     media_info = next(iter(media.file_list_mediainfo.values()), None)
     height = 0
     if media_info and media_info.video_tracks:
@@ -175,7 +212,7 @@ def _render(
     def render(token_string: str) -> str | None:
         return TokenReplacer(
             media_input_obj=media,
-            media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+            media_search_obj=search,
             token_string=token_string,
             colon_replace=ColonReplace.KEEP,
             flatten=True,
@@ -203,7 +240,7 @@ AUDIO_LAST = (TrackerSelection.AITHER, TrackerSelection.LST)
 
 @pytest.mark.parametrize("tracker", AUDIO_LAST)
 def test_remux_puts_hdr_and_video_codec_before_the_audio(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
+    tracker: TrackerSelection,
 ) -> None:
     """Aither: "Source REMUX HDR VideoCodec AudioCodec Channels Metadata".
 
@@ -222,7 +259,7 @@ def test_remux_puts_hdr_and_video_codec_before_the_audio(
 
 @pytest.mark.parametrize("tracker", AUDIO_LAST)
 def test_encode_puts_the_audio_before_hdr_and_video_codec(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
+    tracker: TrackerSelection,
 ) -> None:
     """The other half of the split: "Source AudioCodec Channels Metadata HDR
     VideoCodec", as in Aither's "Halo S01 2160p UHD BluRay TrueHD 7.1 Atmos DV
@@ -235,7 +272,7 @@ def test_encode_puts_the_audio_before_hdr_and_video_codec(
 
 
 def test_lst_formats_eac3_atmos_as_codec_channels_atmos(
-    packaged: dict[TrackerSelection, TrackerInfo], monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pin LST's documented order and its DDP -> DD+ spelling together.
 
@@ -252,7 +289,6 @@ def test_lst_formats_eac3_atmos_as_codec_channels_atmos(
         "src.backend.token_replacer.AudioCodecs.get_codec",
         lambda *_args: "DDP Atmos",
     )
-    del packaged
     composition = TITLE_RULES[TrackerSelection.LST].composition
     normalisation = TITLE_RULES[TrackerSelection.LST].normalisation
     assert composition is not None
@@ -288,9 +324,7 @@ ALL_FOUR = (
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
-def test_web_releases_are_spelled_web_dl(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
+def test_web_releases_are_spelled_web_dl(tracker: TrackerSelection) -> None:
     """All four trackers require "WEB-DL".
 
     QualitySelection.WEB_DL was "WEBDL", and that value goes straight into the
@@ -305,9 +339,7 @@ def test_web_releases_are_spelled_web_dl(
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
-def test_a_legacy_webdl_override_is_canonicalized(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
+def test_a_legacy_webdl_override_is_canonicalized(tracker: TrackerSelection) -> None:
     """A job saved before the rename replays "WEBDL" from its stored
     dynamic_data, and must still render the current spelling."""
     rendered = _render(tracker, ENCODE_NAME, "WEBDL")
@@ -317,9 +349,7 @@ def test_a_legacy_webdl_override_is_canonicalized(
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
-def test_repack_survives_into_the_tracker_title(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
+def test_repack_survives_into_the_tracker_title(tracker: TrackerSelection) -> None:
     """Aither and LST both require REPACK in the title.
 
     `{re_release}` is gated on parse_filename_attributes, which
@@ -330,9 +360,7 @@ def test_repack_survives_into_the_tracker_title(
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
-def test_a_remux_keeps_the_container_codec_name(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
+def test_a_remux_keeps_the_container_codec_name(tracker: TrackerSelection) -> None:
     """A remux is HEVC/AVC; only an encode is x265/x264. Remux detection used
     to read the override alone, so a remux with no override was named as an
     encode."""
@@ -344,7 +372,7 @@ def test_a_remux_keeps_the_container_codec_name(
 
 @pytest.mark.parametrize("tracker", (TrackerSelection.BEYOND_HD, TrackerSelection.LST))
 def test_beyondhd_and_lst_tag_an_untagged_release_nogroup(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
+    tracker: TrackerSelection,
 ) -> None:
     """BeyondHD's rules name the exact spelling, and LST's own
     published example ends "x264-NOGROUP"."""
@@ -360,7 +388,7 @@ def test_beyondhd_and_lst_tag_an_untagged_release_nogroup(
     (TrackerSelection.AITHER, TrackerSelection.REELFLIX),
 )
 def test_aither_and_reelflix_leave_an_untagged_release_bare(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
+    tracker: TrackerSelection,
 ) -> None:
     """ReelFliX prefers a blank tag to a placeholder, and Aither asks
     for none either. The separator has to go with it.
@@ -376,15 +404,12 @@ def test_aither_and_reelflix_leave_an_untagged_release_bare(
 
 
 @pytest.mark.parametrize("tracker", AUDIO_LAST)
-def test_series_titles_carry_the_same_ordering_rule(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
+def test_series_titles_carry_the_same_ordering_rule(tracker: TrackerSelection) -> None:
     """An episode must not be ordered one way and a film another.
 
     One entry serves both media types, so this is now a statement about
     the same composition rather than about two templates agreeing.
     """
-    del packaged
     remux = _render(tracker, REMUX_NAME, "UHD BluRay", season=1, episodes=(2,))
     encode = _render(tracker, ENCODE_NAME, "BluRay", season=1, episodes=(2,))
 
@@ -392,13 +417,10 @@ def test_series_titles_carry_the_same_ordering_rule(
     assert encode.index("TrueHD") < encode.index("x265")
 
 
-def test_lst_series_titles_carry_no_episode_title(
-    packaged: dict[TrackerSelection, TrackerInfo],
-) -> None:
+def test_lst_series_titles_carry_no_episode_title() -> None:
     """LST's series template has no episode-title slot and none of its
     examples use one ("The Agency 2024 S01E10 2160p PMTP WEB-DL DD+ 5.1 DV
     HDR10+ H.265-NTb"). Aither's examples do, so the two differ on purpose."""
-    del packaged
     lst = TITLE_RULES[TrackerSelection.LST].composition
     aither = TITLE_RULES[TrackerSelection.AITHER].composition
     assert lst is not None
@@ -408,13 +430,106 @@ def test_lst_series_titles_carry_no_episode_title(
     assert "{episode_title_exact}" in aither.components
 
 
+# The three shapes a series release comes in, and the designator each gets.
+# A season pack maps no episode; a span maps a range.
+SINGLE_EPISODE = (1, (2,))
+SEASON_PACK = (1, ())
+EPISODE_SPAN = (1, (1, 2, 3))
+
+
+@pytest.mark.parametrize(
+    ("season", "episodes", "expected"),
+    [
+        (*SINGLE_EPISODE, f"Show Name S01E02 {EPISODE_TITLE} 2160p BluRay"),
+        (*SEASON_PACK, "Show Name S01 2160p BluRay"),
+        (*EPISODE_SPAN, "Show Name S01E01-03 2160p BluRay"),
+    ],
+    ids=["single episode", "season pack", "episode span"],
+)
+def test_aither_carries_an_episode_title_for_a_single_episode_only(
+    season: int, episodes: tuple[int, ...], expected: str
+) -> None:
+    """Aither's examples name the episode, and only one episode has a name.
+
+    A season pack has no episode to name. A span has several, so naming it
+    after the first would assert that one episode's title describes all of
+    them. Neither suppression lives in Aither's entry -- the entry carries
+    `{episode_title_exact}` unconditionally and no omit rule mentions it --
+    so both come from the token, which every tracker shares.
+    """
+    composition = TITLE_RULES[TrackerSelection.AITHER].composition
+    assert composition is not None
+    assert "{episode_title_exact}" in composition.components
+    for rule in composition.omit:
+        assert "{episode_title_exact}" not in rule.components
+
+    rendered = _render(
+        TrackerSelection.AITHER, ENCODE_NAME, "BluRay", season=season, episodes=episodes
+    )
+
+    assert rendered.startswith(expected)
+    assert rendered.endswith("TrueHD 7.1 Atmos DV HDR x265-SomeGroup")
+
+
+@pytest.mark.parametrize(
+    ("season", "episodes", "designator"),
+    [
+        (*SINGLE_EPISODE, "S01E02"),
+        (*SEASON_PACK, "S01"),
+        (*EPISODE_SPAN, "S01E01-03"),
+    ],
+    ids=["single episode", "season pack", "episode span"],
+)
+def test_lst_carries_no_episode_title_in_any_shape(
+    season: int, episodes: tuple[int, ...], designator: str
+) -> None:
+    """LST is unaffected across all three, which is the control.
+
+    Had the span suppression been written into Aither's entry instead of the
+    shared token, LST would read identically here for the wrong reason -- so
+    this is asserted alongside the entry check in the Aither test above,
+    which is what tells the two apart.
+    """
+    rendered = _render(
+        TrackerSelection.LST, ENCODE_NAME, "BluRay", season=season, episodes=episodes
+    )
+
+    assert rendered == (
+        f"Show Name {designator} 2160p BluRay TrueHD 7.1 Atmos DV HDR x265-SomeGroup"
+    )
+    assert EPISODE_TITLE not in rendered
+
+
+def test_lst_bands_a_double_episode_and_ranges_a_longer_span() -> None:
+    """LST's rule is `S##E##E##` at exactly two and `S##E##-##` above.
+
+    No single `multi_episode_style` produces both, which is why the
+    designator is a composition field rather than that user setting. Aither
+    ranges at two, so the same release is designated differently per
+    tracker.
+    """
+    double = _render(
+        TrackerSelection.LST, ENCODE_NAME, "BluRay", season=1, episodes=(1, 2)
+    )
+    many = _render(
+        TrackerSelection.LST, ENCODE_NAME, "BluRay", season=1, episodes=(1, 2, 3)
+    )
+    aither_double = _render(
+        TrackerSelection.AITHER, ENCODE_NAME, "BluRay", season=1, episodes=(1, 2)
+    )
+
+    assert "Show Name S01E01E02 " in double
+    assert "Show Name S01E01-03 " in many
+    assert "Show Name S01E01-02 " in aither_double
+
+
 @pytest.mark.parametrize(
     "punctuated", ["Who Are You?", "Chapter 1: The Beginning", "Face/Off"]
 )
 def test_aither_renders_a_film_and_an_episode_title_identically(
-    punctuated: str, packaged: dict[TrackerSelection, TrackerInfo]
+    punctuated: str,
 ) -> None:
-    """Aither is the only packaged entry carrying {episode_title_exact}.
+    """Aither is the only entry carrying {episode_title_exact}.
 
     Its film template carries {title_exact}, which applies no formatting, so
     a punctuated film title reaches the tracker as typed. The episode token
@@ -474,9 +589,7 @@ def test_aither_renders_a_film_and_an_episode_title_identically(
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
-def test_a_web_release_carries_its_streaming_service(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
+def test_a_web_release_carries_its_streaming_service(tracker: TrackerSelection) -> None:
     """Aither's WEB-DL template is "Resolution Service WEB-DL ...", and LST
     lists the service as the *source* for WEB-DLs and WEBRips -- so on both,
     the abbreviation sits immediately before WEB-DL."""
@@ -487,7 +600,7 @@ def test_a_web_release_carries_its_streaming_service(
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
 def test_a_non_web_release_carries_no_streaming_service(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
+    tracker: TrackerSelection,
 ) -> None:
     """Aither scopes the component to "Web content only". A disc or an encode
     never came from a service, and the AMZN in a filename must not survive a
@@ -507,9 +620,7 @@ def test_a_non_web_release_carries_no_streaming_service(
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
-def test_an_explicit_service_choice_is_honoured(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
+def test_an_explicit_service_choice_is_honoured(tracker: TrackerSelection) -> None:
     """The rename page's Service combo has to win over detection -- that is
     the whole point of offering it."""
     rendered = _render(tracker, WEB_NAME, "WEB-DL", streaming_service="PMTP")
