@@ -78,6 +78,29 @@ def test_discards_every_per_tracker_title_override() -> None:
             assert key not in tracker, key
 
 
+def test_discards_the_legacy_default_title_override_spelling() -> None:
+    """An earlier spelling of the same three fields, still in old profiles.
+
+    It was dropped from the codebase without ever being stripped from a
+    profile, so nothing has read it for some time -- removing it changes no
+    behaviour. It goes because it is a per-tracker title override, and this
+    hop says a profile no longer has one.
+    """
+    document = _doc()
+    document["tracker"]["huno"] = {
+        "enabled": True,
+        "mvr_default_title_override_enabled": True,
+        # pre-rename tokens, which is what dates these keys
+        "mvr_default_title_token_override": "{movie_clean_title} {mi_audio_codec}",
+        "mvr_default_title_replace_map": [["DDP", "DD+"]],
+    }
+
+    migrated, unhandled = migrate_v9_to_v10(document, None)
+
+    assert migrated["tracker"]["huno"] == {"enabled": True}
+    assert unhandled == []
+
+
 def test_leaves_a_trackers_other_settings_alone() -> None:
     # Only the title fields go; a tracker's credentials and enablement are
     # not this migration's business.

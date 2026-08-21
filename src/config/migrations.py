@@ -40,6 +40,12 @@ The versions so far:
   for why. The two dropped keys still appear in
   ``_MOVIE_MANAGEMENT_SCALAR_KEYS`` above because the 1 -> 2 hop must still
   carry them forward; this hop is where they leave.
+- 9 -> 10: every per-tracker title override is discarded, along with the
+  legacy ``mvr_default_title_*`` spelling of the same fields. Tracker titles
+  come from hardcoded rules now, so a stored override is a customisation the
+  design removes rather than a value to carry forward. The global movie and
+  series title tokens and the global title colon stay: the trackers with no
+  composition of their own render exactly those.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -551,6 +557,23 @@ _TITLE_OVERRIDE_KEYS = (
     "tvr_title_overrides",
 )
 
+# An earlier spelling of the same three fields, dropped from the codebase
+# without ever being stripped from a profile, so old ones still carry them
+# (with pre-rename tokens inside, e.g. `{movie_clean_title}`). Nothing has
+# read them for some time and `validate_types` ignores keys the default does
+# not declare, so they are inert -- but they are per-tracker title overrides,
+# and schema 10 says a profile no longer has any.
+#
+# Kept separate from the tuple above rather than appended to it: that one is
+# also read by `migrate_v5_to_v6`, which refreshes each key from the packaged
+# default. These are in no packaged default, so adding them there would
+# change that older hop to no purpose.
+_LEGACY_TITLE_OVERRIDE_KEYS = (
+    "mvr_default_title_override_enabled",
+    "mvr_default_title_token_override",
+    "mvr_default_title_replace_map",
+)
+
 
 def migrate_v5_to_v6(
     old_doc: Mapping[str, Any],
@@ -769,6 +792,11 @@ def migrate_v9_to_v10(
     preserved untouched. Seven trackers have no composition of their own and
     render exactly those, so discarding them would leave those trackers with
     no title at all.
+
+    The legacy `mvr_default_title_*` spelling goes too. Nothing has read it
+    for some time, so removing it changes no behaviour -- but leaving a
+    per-tracker title override sitting in a profile this hop claims to have
+    cleared would make the claim false on the only evidence a user can see.
     """
 
     del default_document
@@ -777,6 +805,7 @@ def migrate_v9_to_v10(
         if key != "schema_version":
             new_doc[key] = value
 
+    discarded = frozenset(_TITLE_OVERRIDE_KEYS + _LEGACY_TITLE_OVERRIDE_KEYS)
     trackers = new_doc.get("tracker")
     if isinstance(trackers, Mapping):
         migrated_trackers: dict[str, Any] = {}
@@ -785,9 +814,7 @@ def migrate_v9_to_v10(
                 migrated_trackers[name] = section
                 continue
             migrated_trackers[name] = {
-                key: value
-                for key, value in section.items()
-                if key not in _TITLE_OVERRIDE_KEYS
+                key: value for key, value in section.items() if key not in discarded
             }
         new_doc["tracker"] = migrated_trackers
 
