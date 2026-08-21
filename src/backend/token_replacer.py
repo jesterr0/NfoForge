@@ -2541,17 +2541,30 @@ class TokenReplacer:
         )
 
     def _episode_title_exact(self, token_data: TokenData) -> str:
+        """The episode title with no formatting at all, like {title_exact}.
+
+        The title tokens come in three tiers: {title}/{episode_title} strip
+        and unidecode, {title_clean}/{episode_title_clean} answer to the
+        configured clean rules, and the exact pair apply nothing. This token
+        used to strip ``[:\\/<>?*"|]``, which is tier-one behaviour under a
+        tier-three name and the one cell where the episode family did not
+        mirror the film family.
+
+        The colon is why that mattered beyond tidiness. Removing it here,
+        inside the handler, meant the configured colon rule -- which runs
+        once over the whole rendered string -- never saw it, so a tracker
+        set to keep colons kept them in film titles and lost them in
+        episode titles, with no setting that could say otherwise.
+
+        Filenames are unaffected: ``_sanitize_filename`` covers the same
+        characters downstream, and the two routes converge on the same
+        string. Characters a given tracker will not accept belong in that
+        tracker's own ``generate_release_title``, next to the allowlist
+        HDBits already applies there.
+        """
         title = self._selected_episode_title()
         if title is None:
             return ""
-
-        if title:
-            # Strip only what cannot appear in a path component. Deliberately
-            # no `unidecode` here, unlike `_title_formatting_standard` --
-            # this token's whole contract is that it is the exact title.
-            title = _REPEATED_WHITESPACE.sub(
-                " ", _TITLE_UNSAFE_CHARS.sub(" ", title)
-            ).strip()
         return self._optional_user_input(title, token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:

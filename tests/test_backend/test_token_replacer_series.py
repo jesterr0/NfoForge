@@ -436,16 +436,30 @@ def test_episode_title_tokens_none_name_stays_empty_no_crash() -> None:
     assert replacer._episode_title_exact(_td()) == ""
 
 
-def test_episode_title_exact_strips_filesystem_hostile_characters() -> None:
-    replacer = _series_replacer_with_episode_name("Who Are You: Part 1/2")
+def test_episode_title_exact_keeps_the_title_exactly() -> None:
+    """The token grid has three tiers, and this one is "no formatting".
 
-    output = replacer._episode_title_exact(_td())
+    It used to strip `[:\\/<>?*"|]`, which is tier-1 behaviour under a
+    tier-3 name -- the one cell where the episode family did not mirror
+    {title_exact}. The colon mattered most: stripping it inside the handler
+    meant the configured colon rule, which runs later over the whole
+    string, never saw it. A tracker set to keep colons kept them in film
+    titles and lost them in episode titles.
+    """
+    name = 'Who Are You: Part 1/2 <"*|>'
+    replacer = _series_replacer_with_episode_name(name)
 
-    assert ":" not in output
-    assert "/" not in output
-    # Separators become a space, matching `_title_formatting_standard`, so
-    # "Part 1/2" reads as "Part 1 2" rather than running together as "Part 12".
-    assert output == "Who Are You Part 1 2"
+    assert replacer._episode_title_exact(_td()) == name
+
+
+def test_episode_title_exact_matches_title_exact_on_the_same_string() -> None:
+    # The equivalence this restores, asserted directly rather than by
+    # spelling out the character class twice.
+    name = 'Cafe: Who Are You?/Part "2"'
+    replacer = _series_replacer_with_episode_name(name)
+    replacer.media_search_obj.title = name
+
+    assert replacer._episode_title_exact(_td()) == replacer._title_exact(_td())
 
 
 def test_episode_title_exact_preserves_non_ascii() -> None:
@@ -454,6 +468,78 @@ def test_episode_title_exact_preserves_non_ascii() -> None:
     replacer = _series_replacer_with_episode_name("Kimi no Na wa。")
 
     assert "。" in replacer._episode_title_exact(_td())
+
+
+def test_the_other_two_episode_title_tiers_are_unchanged() -> None:
+    # Only the exact tier moves. The standard tier still strips and
+    # unidecodes, and the clean tier still answers to the configured rules.
+    replacer = _series_replacer_with_episode_name("Who Are You: Part 1/2")
+
+    assert replacer._episode_title(_td()) == "Who Are You Part 1 2"
+    assert replacer._episode_title_clean(_td()) == "Who Are You: Part 1/2"
+
+
+@pytest.mark.parametrize(
+    "episode_name",
+    [
+        "Who Are You?",
+        "Face/Off",
+        "Chapter 1: The Beginning",
+        'The "Best" Episode',
+        "A|B<C>D*E",
+        "Back\\Slash",
+    ],
+)
+def test_a_raw_episode_title_does_not_change_any_filename(episode_name: str) -> None:
+    """The whole change is title-side. Filenames are sanitised downstream.
+
+    `_INVALID_FILENAME_CHARS` covers the same characters the token used to
+    strip, and the two routes converge: the token route substituted a space
+    then dotted it, the sanitiser substitutes a dot directly, and the
+    `\\.{2,}` collapse plus `strip(". -")` land both on the same string.
+    """
+    file_path = Path("Show.S01E01.mkv")
+    output = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": 1,
+                    "episode": 1,
+                    "episode_name": episode_name,
+                    "episode_data": {
+                        "seasonNumber": 1,
+                        "number": 1,
+                        "name": episode_name,
+                    },
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            title="Show",
+            tvdb_data={
+                "episodes": [{"seasonNumber": 1, "number": 1, "name": episode_name}]
+            },
+        ),
+        token_string=(  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+            "{title_clean}.S{season_number|zfill(2)}E{episode_number|zfill(2)}."
+            "{episode_title_exact}.1080p.BluRay.x264-GRP"
+        ),
+        colon_replace=ColonReplace.KEEP,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=1,
+    ).get_output()
+
+    assert output is not None
+    for character in ':\\/<>?*"|':
+        assert character not in output, character
 
 
 _SPAN_START_PAYLOAD: dict[str, object] = {

@@ -326,5 +326,14 @@ def _render_save_path_template(
             f"template: {', '.join(unresolved)}"
         )
 
+    # The rendered body must not carry a drive root of its own. The anchor
+    # split above took the only legitimate one, so a second can only have
+    # come out of a token. `_ensure_safe_remote_titles` catches this for the
+    # two TMDB title fields it knows about; checking the rendered string
+    # covers every token instead of a list that has to be kept in step with
+    # which tokens happen to emit raw metadata.
+    if _EMBEDDED_DRIVE_ROOT.search(output) or _WINDOWS_DRIVE_PATH.match(output.strip()):
+        raise _unsafe_save_path_error()
+
     _ensure_within_save_root(full_output, template)
     return full_output.strip()

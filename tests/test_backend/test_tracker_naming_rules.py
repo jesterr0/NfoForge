@@ -51,8 +51,10 @@ from src.backend.utils.filename_claims import detect_filename_claims
 from src.config.config import ConfigManager
 from src.config.models import ClaimSwitches
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from src.enums.media_type import MediaType
 from src.enums.token_replacer import UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
+from src.payloads.media_search import MediaSearchPayload
 from src.payloads.trackers import TrackerInfo
 from tests.test_config.config_tree import build_config_paths
 
@@ -402,6 +404,71 @@ def test_lst_series_titles_carry_no_episode_title(
     for episode_format in SUPPORTED_TVR_FORMATS:
         assert "episode_title" not in lst[episode_format].token
         assert "episode_title_exact" in aither[episode_format].token
+
+
+@pytest.mark.parametrize(
+    "punctuated", ["Who Are You?", "Chapter 1: The Beginning", "Face/Off"]
+)
+def test_aither_renders_a_film_and_an_episode_title_identically(
+    punctuated: str, packaged: dict[TrackerSelection, TrackerInfo]
+) -> None:
+    """Aither is the only packaged entry carrying {episode_title_exact}.
+
+    Its film template carries {title_exact}, which applies no formatting, so
+    a punctuated film title reaches the tracker as typed. The episode token
+    used to strip `[:\\/<>?*"|]` first, which meant the two halves of one
+    tracker's entry disagreed about the same string -- and, for the colon,
+    disagreed with Aither's own colon_replace setting, which is KEEP.
+    """
+    info = packaged[TrackerSelection.AITHER]
+    path = Path(ENCODE_NAME)
+    # One payload carrying the same string as the series name and as the
+    # episode name, so {title_exact} and {episode_title_exact} are asked the
+    # same question.
+    media_input = replace(
+        EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        input_path=path,
+        file_list=[path],
+        media_type=MediaType.SERIES,
+        series_episode_map={
+            path: {
+                "season": 1,
+                "episode": 2,
+                "episode_name": punctuated,
+                "episode_data": {
+                    "seasonNumber": 1,
+                    "number": 2,
+                    "name": punctuated,
+                },
+            }
+        },
+    )
+    search = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title=punctuated,
+        tvdb_data={"episodes": [{"seasonNumber": 1, "number": 2, "name": punctuated}]},
+    )
+
+    for episode_format in SUPPORTED_TVR_FORMATS:
+        entry = (info.tvr_title_overrides or {})[episode_format]
+        rendered = TokenReplacer(
+            media_input_obj=media_input,
+            media_search_obj=search,
+            token_string="{title_exact}|{episode_title_exact}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+            colon_replace=entry.colon_replace,
+            flatten=True,
+            file_name_mode=False,
+            token_type=FileToken,
+            unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+            season_number=1,
+            episode_number=2,
+        ).get_output()
+
+        assert rendered is not None
+        film, episode = rendered.split("|")
+        assert episode == film == punctuated, (
+            f"{episode_format}: film={film!r} episode={episode!r}"
+        )
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
