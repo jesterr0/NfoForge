@@ -994,19 +994,35 @@ class ProcessBackEnd:
             '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:</h3>'
         )
 
-        # A prepared job already carries finished titles and NFOs, so none of
-        # the generation below runs and neither prompt fires -- that silence is
-        # what lets such a job be uploaded unattended, by a queue or otherwise.
+        # A prepared job carries a finished NFO, so no NFO is rendered for it
+        # and neither prompt fires -- that silence is what lets such a job be
+        # uploaded unattended, by a queue or otherwise. Its title is a separate
+        # matter: titles come from the tracker's hardcoded rules and are always
+        # rebuilt, so a rules fix shipped in a release reaches a job that was
+        # prepared before it. Rebuilding one cannot prompt (see
+        # `generate_tracker_title`), so the unattended property is untouched.
         prepared_trackers = set(context.shared_data.tracker_release_data)
+        reused_nfo_trackers = tuple(
+            name for name in process_dict if TrackerSelection(name) in prepared_trackers
+        )
         trackers_to_generate = tuple(
             name
             for name in process_dict
             if TrackerSelection(name) not in prepared_trackers
         )
         already_prepared = not trackers_to_generate
-        if already_prepared:
+        if reused_nfo_trackers:
+            # a mixed job used to say nothing at all, since the old message was
+            # only printed when every tracker was prepared
+            scope = (
+                ""
+                if already_prepared
+                else ' for <span style="font-weight: bold;">'
+                f"{', '.join(reused_nfo_trackers)}</span>"
+            )
             queued_text_update(
-                "<br /><span>Using the titles and NFOs saved with this job</span>"
+                f"<br /><span>Reusing the NFOs saved with this job{scope}; titles "
+                "are rebuilt from the current tracker rules</span>"
             )
 
         # base user tokens, this will be filled with prompt tokens as well if needed
@@ -1049,7 +1065,7 @@ class ProcessBackEnd:
         )
         if not already_prepared:
             queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
-        for tracker_name in trackers_to_generate:
+        for tracker_name in process_dict:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
@@ -1067,6 +1083,14 @@ class ProcessBackEnd:
                 ),
                 context.media_input.require_input_path(),
             )
+
+            # Everything below renders an NFO, which a prepared tracker
+            # already has. Its stored body is kept verbatim and only the
+            # freshly built title replaces what was saved.
+            reused = tracker_release_data.get(cur_tracker)
+            if reused is not None:
+                tracker_release_data[cur_tracker] = {**reused, "title": tracker_title}
+                continue
 
             nfo_template = (
                 self.template_selector_be.read_template(name=tracker_info.nfo_template)
