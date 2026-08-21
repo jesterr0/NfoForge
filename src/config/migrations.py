@@ -89,6 +89,7 @@ SCHEMA_6_VERSION = 6
 SCHEMA_7_VERSION = 7
 SCHEMA_8_VERSION = 8
 SCHEMA_9_VERSION = 9
+SCHEMA_10_VERSION = 10
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -751,6 +752,48 @@ def migrate_v8_to_v9(
     return new_doc, []
 
 
+def migrate_v9_to_v10(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Discard every per-tracker title override.
+
+    Unlike the hop before it, this one changes output deliberately. Tracker
+    titles are enforced from hardcoded rules now, so a stored override is a
+    customisation the design removes rather than a value to carry forward.
+    That is the feature: the shipped config was not derived from tracker
+    rules, and all five trackers checked against their published rules
+    during design had defects.
+
+    The global movie and series title tokens and the global title colon are
+    preserved untouched. Seven trackers have no composition of their own and
+    render exactly those, so discarding them would leave those trackers with
+    no title at all.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_10_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    trackers = new_doc.get("tracker")
+    if isinstance(trackers, Mapping):
+        migrated_trackers: dict[str, Any] = {}
+        for name, section in trackers.items():
+            if not isinstance(section, Mapping):
+                migrated_trackers[name] = section
+                continue
+            migrated_trackers[name] = {
+                key: value
+                for key, value in section.items()
+                if key not in _TITLE_OVERRIDE_KEYS
+            }
+        new_doc["tracker"] = migrated_trackers
+
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -760,6 +803,7 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_6_VERSION: migrate_v6_to_v7,
     SCHEMA_7_VERSION: migrate_v7_to_v8,
     SCHEMA_8_VERSION: migrate_v8_to_v9,
+    SCHEMA_9_VERSION: migrate_v9_to_v10,
 }
 
 
