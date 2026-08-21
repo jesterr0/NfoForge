@@ -43,16 +43,23 @@ import pytest
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
+from src.backend.trackers.title_render import (
+    compose_token_string,
+    normalise_title,
+    render_tracker_title,
+)
+from src.backend.trackers.title_rules import TITLE_RULES, ReleaseProperties
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
 from src.backend.utils.filename_claims import detect_filename_claims
+from src.backend.utils.hdr_identity import resolve_hdr_identity
 from src.config.config import ConfigManager
 from src.config.models import ClaimSwitches
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.media_type import MediaType
-from src.enums.token_replacer import UnfilledTokenRemoval
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.trackers import TrackerInfo
@@ -121,28 +128,27 @@ def _claim_overrides(name: str) -> dict[str, str]:
 
 
 def _render(
-    info: TrackerInfo,
+    tracker: TrackerSelection,
     name: str,
     source: str,
     *,
     release_group: str | None = None,
     streaming_service: str | None = None,
-    token: str | None = None,
-    colon_replace=None,
-    replace_map=None,
-    **series_kwargs: object,
+    season: int | None = None,
+    episodes: tuple[int, ...] = (),
 ) -> str:
-    """Render a packaged token exactly as generate_tracker_title would.
+    """Render a tracker's title exactly as generate_tracker_title would.
 
-    The replace map is handed to `override_title_rules`, which is the field
-    generate_tracker_title fills, so the rules run in the real place rather
-    than being reapplied by the test afterwards.
+    Goes through the real pipeline -- compose from the entry, render, then
+    normalise -- rather than reaching for a packaged token string, which no
+    longer exists.
     """
     # Stage 3 no longer reads the six switchable claims off the filename, so
     # they arrive as overrides -- exactly what generate_tracker_title
     # receives from the rename page. Streaming service and release group are
-    # deliberately not injected: those are still detected downstream, and an
-    # override would bypass the service token's own web-source gating.
+    # deliberately not injected unless a test asks: those are still detected
+    # downstream, and an override would bypass the service token's own
+    # web-source gating.
     overrides: dict[str, str] = _claim_overrides(name)
     overrides["source"] = source
     if release_group is not None:
@@ -150,24 +156,44 @@ def _render(
     if streaming_service is not None:
         overrides["streaming_service"] = streaming_service
 
-    output = TokenReplacer(
-        media_input_obj=_media(name),
-        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
-        token_string=info.mvr_title_token_override if token is None else token,
-        colon_replace=(
-            info.mvr_title_colon_replace if colon_replace is None else colon_replace
-        ),
-        flatten=True,
-        file_name_mode=False,
-        token_type=FileToken,
-        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-        override_tokens=overrides,
-        override_title_rules=(
-            info.mvr_title_replace_map if replace_map is None else replace_map
-        ),
-        **series_kwargs,
-    ).get_output()
+    media = _media(name)
+    media_info = next(iter(media.file_list_mediainfo.values()), None)
+    height = 0
+    if media_info and media_info.video_tracks:
+        raw_height = media_info.video_tracks[0].height
+        height = int(raw_height) if raw_height else 0
 
+    release = ReleaseProperties(
+        is_remux=bool(overrides.get("remux")),
+        is_dvd="dvd" in source.lower(),
+        resolution=height,
+        hdr_identity=resolve_hdr_identity(media_info),
+        season=season,
+        episodes=episodes,
+    )
+
+    def render(token_string: str) -> str | None:
+        return TokenReplacer(
+            media_input_obj=media,
+            media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+            token_string=token_string,
+            colon_replace=ColonReplace.KEEP,
+            flatten=True,
+            file_name_mode=False,
+            token_type=FileToken,
+            unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+            override_tokens=overrides,
+            season_number=season,
+            episode_number=episodes[0] if episodes else None,
+        ).get_output()
+
+    output = render_tracker_title(
+        tracker,
+        release,
+        render=render,
+        global_template="",
+        global_colon=ColonReplace.KEEP,
+    )
     assert output is not None
     return output
 
@@ -186,7 +212,7 @@ def test_remux_puts_hdr_and_video_codec_before_the_audio(
     the Rings: The Two Towers 2002 2160p UHD BluRay REMUX DV HDR HEVC TrueHD
     7.1 Atmos-FraMeSToR".
     """
-    rendered = _render(packaged[tracker], REMUX_NAME, "UHD BluRay")
+    rendered = _render(tracker, REMUX_NAME, "UHD BluRay")
 
     assert rendered == (
         "Movie Name 2026 REPACK 2160p UHD BluRay REMUX DV HDR HEVC "
@@ -201,7 +227,7 @@ def test_encode_puts_the_audio_before_hdr_and_video_codec(
     """The other half of the split: "Source AudioCodec Channels Metadata HDR
     VideoCodec", as in Aither's "Halo S01 2160p UHD BluRay TrueHD 7.1 Atmos DV
     HDR x265-Stelks"."""
-    rendered = _render(packaged[tracker], ENCODE_NAME, "BluRay")
+    rendered = _render(tracker, ENCODE_NAME, "BluRay")
 
     assert rendered == (
         "Movie Name 2026 2160p BluRay TrueHD 7.1 Atmos DV HDR x265-SomeGroup"
@@ -226,40 +252,31 @@ def test_lst_formats_eac3_atmos_as_codec_channels_atmos(
         "src.backend.token_replacer.AudioCodecs.get_codec",
         lambda *_args: "DDP Atmos",
     )
-    info = packaged[TrackerSelection.LST]
+    del packaged
+    composition = TITLE_RULES[TrackerSelection.LST].composition
+    normalisation = TITLE_RULES[TrackerSelection.LST].normalisation
+    assert composition is not None
 
+    overrides = {**_claim_overrides(WEB_NAME), "source": "WEB-DL"}
+    release = ReleaseProperties(resolution=2160, hdr_identity="DV HDR10")
     rendered = TokenReplacer(
         media_input_obj=media,
         media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
-        token_string=info.mvr_title_token_override,
-        colon_replace=info.mvr_title_colon_replace,
+        token_string=compose_token_string(composition, release),
+        colon_replace=ColonReplace.KEEP,
         flatten=True,
         file_name_mode=False,
         token_type=FileToken,
         unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-        override_tokens={**_claim_overrides(WEB_NAME), "source": "WEB-DL"},
-        override_title_rules=info.mvr_title_replace_map,
+        override_tokens=overrides,
     ).get_output()
 
     assert rendered is not None
-    assert "DD+ 5.1 Atmos" in rendered
-    assert "DD+ Atmos 5.1" not in rendered
-
-
-@pytest.mark.parametrize("tracker", AUDIO_LAST)
-def test_the_two_orders_come_from_one_packaged_token(
-    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
-) -> None:
-    """Both orders live in a single template, selected by only_if/unless.
-
-    Pinned separately from the rendering tests so that replacing the mechanism
-    with two stored templates, or with a code-side builder, is a deliberate
-    decision rather than something these tests quietly accept.
-    """
-    token = packaged[tracker].mvr_title_token_override
-
-    assert "only_if(remux)" in token
-    assert "unless(remux)" in token
+    normalised = normalise_title(
+        rendered, normalisation, global_colon=ColonReplace.KEEP
+    )
+    assert "DD+ 5.1 Atmos" in normalised
+    assert "DD+ Atmos 5.1" not in normalised
 
 
 ALL_FOUR = (
@@ -281,7 +298,7 @@ def test_web_releases_are_spelled_web_dl(
     combo supplies it as an override, since the combo's item text *is* the
     enum value.
     """
-    rendered = _render(packaged[tracker], ENCODE_NAME, "WEB-DL")
+    rendered = _render(tracker, ENCODE_NAME, "WEB-DL")
 
     assert " WEB-DL " in rendered
     assert "WEBDL" not in rendered
@@ -293,7 +310,7 @@ def test_a_legacy_webdl_override_is_canonicalized(
 ) -> None:
     """A job saved before the rename replays "WEBDL" from its stored
     dynamic_data, and must still render the current spelling."""
-    rendered = _render(packaged[tracker], ENCODE_NAME, "WEBDL")
+    rendered = _render(tracker, ENCODE_NAME, "WEBDL")
 
     assert " WEB-DL " in rendered
     assert "WEBDL" not in rendered
@@ -309,7 +326,7 @@ def test_repack_survives_into_the_tracker_title(
     generate_tracker_title never used to pass -- so the token sat in the
     packaged template resolving to nothing on every upload.
     """
-    assert "REPACK" in _render(packaged[tracker], REMUX_NAME, "UHD BluRay")
+    assert "REPACK" in _render(tracker, REMUX_NAME, "UHD BluRay")
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
@@ -319,19 +336,19 @@ def test_a_remux_keeps_the_container_codec_name(
     """A remux is HEVC/AVC; only an encode is x265/x264. Remux detection used
     to read the override alone, so a remux with no override was named as an
     encode."""
-    rendered = _render(packaged[tracker], REMUX_NAME, "UHD BluRay")
+    rendered = _render(tracker, REMUX_NAME, "UHD BluRay")
 
     assert "HEVC" in rendered
     assert "x265" not in rendered
 
 
-def test_beyondhd_tags_an_untagged_release_nogroup(
-    packaged: dict[TrackerSelection, TrackerInfo],
+@pytest.mark.parametrize("tracker", (TrackerSelection.BEYOND_HD, TrackerSelection.LST))
+def test_beyondhd_and_lst_tag_an_untagged_release_nogroup(
+    tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
 ) -> None:
-    """BeyondHD's rule, which names the exact spelling."""
-    rendered = _render(
-        packaged[TrackerSelection.BEYOND_HD], ENCODE_NAME, "BluRay", release_group=""
-    )
+    """BeyondHD's rules name the exact spelling, and LST's own
+    published example ends "x264-NOGROUP"."""
+    rendered = _render(tracker, ENCODE_NAME, "BluRay", release_group="")
 
     assert rendered.endswith("-NOGROUP")
     for wrong in ("NoGroup", "NOGRP", "NOTAG"):
@@ -340,14 +357,19 @@ def test_beyondhd_tags_an_untagged_release_nogroup(
 
 @pytest.mark.parametrize(
     "tracker",
-    (TrackerSelection.AITHER, TrackerSelection.LST, TrackerSelection.REELFLIX),
+    (TrackerSelection.AITHER, TrackerSelection.REELFLIX),
 )
-def test_the_other_three_leave_an_untagged_release_bare(
+def test_aither_and_reelflix_leave_an_untagged_release_bare(
     tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
 ) -> None:
-    """ReelFliX prefers a blank tag to a placeholder, and neither Aither
-    nor LST asks for one. The separator has to go with it."""
-    rendered = _render(packaged[tracker], ENCODE_NAME, "BluRay", release_group="")
+    """ReelFliX prefers a blank tag to a placeholder, and Aither asks
+    for none either. The separator has to go with it.
+
+    LST was on this list and does not belong: its own published example is
+    "Transformers 2007 DVDRip DD 5.1 x264-NOGROUP". It is asserted with
+    BeyondHD below.
+    """
+    rendered = _render(tracker, ENCODE_NAME, "BluRay", release_group="")
 
     assert not rendered.endswith("-")
     assert "NOGROUP" not in rendered
@@ -357,39 +379,17 @@ def test_the_other_three_leave_an_untagged_release_bare(
 def test_series_titles_carry_the_same_ordering_rule(
     tracker: TrackerSelection, packaged: dict[TrackerSelection, TrackerInfo]
 ) -> None:
-    """Aither's and LST's season templates split on release type exactly as
-    their film templates do, so an episode must not be ordered one way and a
-    movie another."""
-    info = packaged[tracker]
-    for episode_format in SUPPORTED_TVR_FORMATS:
-        entry = (info.tvr_title_overrides or {})[episode_format]
-        remux = _render(
-            info,
-            REMUX_NAME,
-            "UHD BluRay",
-            token=entry.token,
-            colon_replace=entry.colon_replace,
-            replace_map=entry.replace_map,
-            season_number=1,
-            episode_number=2,
-        )
-        encode = _render(
-            info,
-            ENCODE_NAME,
-            "BluRay",
-            token=entry.token,
-            colon_replace=entry.colon_replace,
-            replace_map=entry.replace_map,
-            season_number=1,
-            episode_number=2,
-        )
+    """An episode must not be ordered one way and a film another.
 
-        assert remux.endswith("HEVC TrueHD 7.1 Atmos-SomeGroup"), (
-            f"{tracker} {episode_format} remux: {remux}"
-        )
-        assert encode.endswith("TrueHD 7.1 Atmos DV HDR x265-SomeGroup"), (
-            f"{tracker} {episode_format} encode: {encode}"
-        )
+    One entry serves both media types, so this is now a statement about
+    the same composition rather than about two templates agreeing.
+    """
+    del packaged
+    remux = _render(tracker, REMUX_NAME, "UHD BluRay", season=1, episodes=(2,))
+    encode = _render(tracker, ENCODE_NAME, "BluRay", season=1, episodes=(2,))
+
+    assert remux.index("{}".format("HEVC")) < remux.index("TrueHD")
+    assert encode.index("TrueHD") < encode.index("x265")
 
 
 def test_lst_series_titles_carry_no_episode_title(
@@ -398,12 +398,14 @@ def test_lst_series_titles_carry_no_episode_title(
     """LST's series template has no episode-title slot and none of its
     examples use one ("The Agency 2024 S01E10 2160p PMTP WEB-DL DD+ 5.1 DV
     HDR10+ H.265-NTb"). Aither's examples do, so the two differ on purpose."""
-    lst = packaged[TrackerSelection.LST].tvr_title_overrides or {}
-    aither = packaged[TrackerSelection.AITHER].tvr_title_overrides or {}
+    del packaged
+    lst = TITLE_RULES[TrackerSelection.LST].composition
+    aither = TITLE_RULES[TrackerSelection.AITHER].composition
+    assert lst is not None
+    assert aither is not None
 
-    for episode_format in SUPPORTED_TVR_FORMATS:
-        assert "episode_title" not in lst[episode_format].token
-        assert "episode_title_exact" in aither[episode_format].token
+    assert "{episode_title_exact}" not in lst.components
+    assert "{episode_title_exact}" in aither.components
 
 
 @pytest.mark.parametrize(
@@ -420,7 +422,6 @@ def test_aither_renders_a_film_and_an_episode_title_identically(
     tracker's entry disagreed about the same string -- and, for the colon,
     disagreed with Aither's own colon_replace setting, which is KEEP.
     """
-    info = packaged[TrackerSelection.AITHER]
     path = Path(ENCODE_NAME)
     # One payload carrying the same string as the series name and as the
     # episode name, so {title_exact} and {episode_title_exact} are asked the
@@ -449,13 +450,14 @@ def test_aither_renders_a_film_and_an_episode_title_identically(
         tvdb_data={"episodes": [{"seasonNumber": 1, "number": 2, "name": punctuated}]},
     )
 
+    normalisation = TITLE_RULES[TrackerSelection.AITHER].normalisation
+    assert normalisation.colon is not None
     for episode_format in SUPPORTED_TVR_FORMATS:
-        entry = (info.tvr_title_overrides or {})[episode_format]
         rendered = TokenReplacer(
             media_input_obj=media_input,
             media_search_obj=search,
             token_string="{title_exact}|{episode_title_exact}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
-            colon_replace=entry.colon_replace,
+            colon_replace=normalisation.colon,
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
@@ -478,7 +480,7 @@ def test_a_web_release_carries_its_streaming_service(
     """Aither's WEB-DL template is "Resolution Service WEB-DL ...", and LST
     lists the service as the *source* for WEB-DLs and WEBRips -- so on both,
     the abbreviation sits immediately before WEB-DL."""
-    rendered = _render(packaged[tracker], WEB_NAME, "WEB-DL")
+    rendered = _render(tracker, WEB_NAME, "WEB-DL")
 
     assert " AMZN WEB-DL " in rendered
 
@@ -490,12 +492,18 @@ def test_a_non_web_release_carries_no_streaming_service(
     """Aither scopes the component to "Web content only". A disc or an encode
     never came from a service, and the AMZN in a filename must not survive a
     source change into a BluRay title."""
-    rendered = _render(packaged[tracker], WEB_NAME, "BluRay")
+    rendered = _render(tracker, WEB_NAME, "BluRay")
+
+    # BeyondHD puts Atmos with the codec and the channels after it,
+    # where the other three spell it the other way round.
+    audio = (
+        "TrueHD Atmos 7.1"
+        if tracker is TrackerSelection.BEYOND_HD
+        else "TrueHD 7.1 Atmos"
+    )
 
     assert "AMZN" not in rendered
-    assert rendered == (
-        "Movie Name 2026 2160p BluRay TrueHD 7.1 Atmos DV HDR x265-SomeGroup"
-    )
+    assert rendered == (f"Movie Name 2026 2160p BluRay {audio} DV HDR x265-SomeGroup")
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
@@ -504,7 +512,7 @@ def test_an_explicit_service_choice_is_honoured(
 ) -> None:
     """The rename page's Service combo has to win over detection -- that is
     the whole point of offering it."""
-    rendered = _render(packaged[tracker], WEB_NAME, "WEB-DL", streaming_service="PMTP")
+    rendered = _render(tracker, WEB_NAME, "WEB-DL", streaming_service="PMTP")
 
     assert " PMTP WEB-DL " in rendered
     assert "AMZN" not in rendered

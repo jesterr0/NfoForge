@@ -7,10 +7,9 @@ reversal is the feature rather than a cost of it: the shipped title config
 was not derived from tracker rules, and every tracker checked against its
 published rules during design had defects.
 
-`TrackerInfo` still carries its title override fields and still reaches this
-function, because removing them from the configuration is separate work. A
-test below pins that they are ignored rather than merely unused, so the
-removal cannot quietly change behaviour when it lands.
+`TrackerInfo` still reaches this function, because callers hold one and
+later work reads other fields from it. A test below pins that no title
+field remains on it to be read.
 """
 
 from copy import deepcopy
@@ -158,28 +157,25 @@ def test_the_entry_colon_beats_the_users_global() -> None:
     assert deferring == "Mission Impossible"
 
 
-def test_a_stored_title_override_no_longer_influences_the_title() -> None:
-    """The 57 override slots stop governing here before they are deleted.
+def test_no_title_override_field_remains_on_a_tracker() -> None:
+    """The 57 override slots are gone, and cannot be smuggled back.
 
-    A TrackerInfo still reaches this function and still carries the fields
-    until the configuration is removed, so this pins that they are ignored
-    rather than merely unused.
+    This replaces a test that pinned them as *ignored* while they still
+    existed, which is what let the configuration be removed afterwards
+    without changing behaviour. A TrackerInfo still reaches
+    generate_tracker_title, so a title field left on it could silently
+    start governing again.
     """
-    context = _context()
-    overridden = TrackerInfo(
-        mvr_title_override_enabled=True,
-        mvr_title_token_override="{title_clean} OVERRIDDEN",  # noqa: S106
-        mvr_title_colon_replace=ColonReplace.KEEP,
-    )
+    info = TrackerInfo()
 
-    title = _backend().generate_tracker_title(
-        _renders_the_users_template(),
-        overridden,
-        context,
-        build_series_release_info(context.media_input),
-    )
-
-    assert title == "Movie Name (global)"
+    for field in (
+        "mvr_title_override_enabled",
+        "mvr_title_colon_replace",
+        "mvr_title_token_override",
+        "mvr_title_replace_map",
+        "tvr_title_overrides",
+    ):
+        assert not hasattr(info, field), field
 
 
 def test_accepted_claims_reach_the_tracker_title() -> None:

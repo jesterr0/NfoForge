@@ -13,7 +13,6 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.factory import create_processing_context
 from src.enums.token_replacer import ColonReplace
-from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.movies_management import (
     MoviesManagementSettings,
 )
@@ -68,112 +67,6 @@ def _make_movies_management_settings(
     # the Qt event loop next (e.g. via QTest.qWait elsewhere).
     QTest.qWait(20)
     return widget, manager
-
-
-def test_every_offered_tracker_is_editable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """No tracker's title override is locked any more.
-
-    Overrides used to be locked for the trackers that ship a packaged format.
-    That lock is gone: a locked template cannot differ between profiles, so a
-    user with separate encode and disc profiles could not give a tracker the
-    right title for each. ReelFliX stands in for that group -- it ships a
-    packaged format and used to be locked to it.
-    """
-    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
-
-    for tracker, override_widget in widget.tracker_override_map.items():
-        assert override_widget.enabled_checkbox.isEnabled(), f"{tracker} is locked"
-        assert override_widget.over_ride_format_title.isEnabled(), (
-            f"{tracker}'s token field is locked"
-        )
-
-    combo = widget.tracker_selection
-    combo_trackers = {combo.itemData(i) for i in range(combo.count())}
-    assert TrackerSelection.REELFLIX in widget.tracker_override_map
-    assert TrackerSelection.REELFLIX in combo_trackers
-
-    live_reelflix = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
-    assert (
-        widget.tracker_override_map[
-            TrackerSelection.REELFLIX
-        ].over_ride_format_title.text()
-        == live_reelflix.mvr_title_token_override
-    )
-
-
-def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The save path used to skip these trackers entirely. Now their widget
-    contents are what gets stored -- otherwise unlocking the control would
-    change nothing."""
-    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
-
-    reelflix = widget.tracker_override_map[TrackerSelection.REELFLIX]
-    reelflix.enabled_checkbox.setChecked(True)
-    reelflix.over_ride_format_title.setText("{title_clean} (my own)")
-
-    widget._save_settings()
-
-    live = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
-    assert live.mvr_title_override_enabled is True
-    assert live.mvr_title_token_override == "{title_clean} (my own)"  # noqa: S105
-
-
-def test_override_preview_follows_the_enable_checkbox(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A disabled override falls through to the global title at runtime, so
-    its preview must do the same and refresh as soon as the checkbox changes."""
-    widget, _manager = _make_movies_management_settings(tmp_path, monkeypatch)
-    override = widget.tracker_override_map[TrackerSelection.LST]
-    calls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        widget, "_update_example", lambda **kwargs: calls.append(kwargs) or ""
-    )
-    widget.format_release_title_input.setText("GLOBAL")
-    override.over_ride_format_title.setText("OVERRIDE")
-    override.blockSignals(False)
-    override.enabled_checkbox.setChecked(True)
-
-    calls.clear()
-    override.enabled_checkbox.setChecked(False)
-    assert calls[-1]["token_str"] == "GLOBAL"  # noqa: S105
-    assert calls[-1]["override_title_rules"] is None
-
-    override.enabled_checkbox.setChecked(True)
-    assert calls[-1]["token_str"] == "OVERRIDE"  # noqa: S105
-    assert calls[-1]["override_title_rules"] == (
-        override.over_ride_replacement_table.get_replacements()
-    )
-
-
-def test_trackers_without_release_name_offer_no_title_override(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Do not offer an override that neither uploader can transmit."""
-    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
-
-    combo = widget.tracker_selection
-    combo_trackers = {combo.itemData(i) for i in range(combo.count())}
-    excluded = (TrackerSelection.PASS_THE_POPCORN, TrackerSelection.HUNO)
-    for tracker in excluded:
-        assert tracker not in widget.tracker_override_map
-        assert tracker not in combo_trackers
-
-        # Existing profile values remain inert rather than being destroyed.
-        live = manager.settings.trackers.by_selection()[tracker]
-        live.mvr_title_override_enabled = True
-        live.mvr_title_token_override = "{title_clean} (untouched)"  # noqa: S105
-
-    widget._save_settings()
-
-    for tracker in excluded:
-        live = manager.settings.trackers.by_selection()[tracker]
-        assert live.mvr_title_override_enabled is True
-        assert live.mvr_title_token_override == "{title_clean} (untouched)"  # noqa: S105
 
 
 def test_plugin_flat_filter_matches_settings_preview_and_runtime_rename(

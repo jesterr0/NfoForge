@@ -28,7 +28,7 @@ import pytest
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
 from src.backend.trackers.title_render import normalise_title
-from src.backend.trackers.title_rules import TITLE_RULES
+from src.backend.trackers.title_rules import TITLE_RULES, Separator
 from src.backend.trackers.utils import strip_title_dots
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
@@ -214,38 +214,29 @@ def _apply_title_rules(title: str, rules: list[tuple[str, str]]) -> str | None:
 
 
 @pytest.mark.parametrize("layout", LAYOUTS)
-def test_no_packaged_title_rule_destroys_a_layout(
-    layout: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("tracker", list(TrackerSelection))
+def test_no_entry_vocabulary_destroys_a_layout(
+    tracker: TrackerSelection, layout: str
 ) -> None:
-    """The tracker formatters above are the last step, not the only one.
+    """The separator is not the only thing that can eat a layout.
 
-    A tracker's packaged `replace_map` runs earlier, at title generation, and
-    is a plain regex substitution with none of `strip_title_dots`' layout
-    protection. TorrentLeech shipped a bare escaped-dot-to-space rule, so its
-    titles reached the safe formatter already reading "7 1" and there was
-    nothing left to protect -- the fix in `strip_title_dots` could never have
-    covered it.
+    A tracker's rewrites run over the same string, and the packaged ones
+    they replaced were plain regex substitutions with none of
+    `strip_title_dots`' protection -- TorrentLeech shipped a bare
+    escaped-dot-to-space rule, so its titles reached the safe formatter
+    already reading "7 1" and there was nothing left to protect.
+
+    Asserted for every entry rather than the three sampled above, since a
+    vocabulary is the one part of normalisation each tracker writes for
+    itself.
     """
-    manager = _config_manager(tmp_path, monkeypatch)
+    entry = TITLE_RULES[tracker].normalisation
     title = f"Example Movie 2026 1080p BluRay TrueHD Atmos {layout} x264-GRP"
 
-    for tracker, info in manager.defaults.trackers.by_selection().items():
-        rule_sets: list[tuple[str, list[tuple[str, str]] | None]] = [
-            ("movie", info.mvr_title_replace_map)
-        ]
-        rule_sets.extend(
-            (str(fmt), entry.replace_map)
-            for fmt, entry in (info.tvr_title_overrides or {}).items()
-        )
-        for label, rules in rule_sets:
-            if not rules:
-                continue
-            output = _apply_title_rules(title, rules)
-            assert output is not None
-            assert f" {layout} " in output, (
-                f"{tracker}'s packaged {label} replace_map turned "
-                f"{layout} into something else: {output}"
-            )
+    output = normalise_title(title, entry, global_colon=ColonReplace.KEEP)
+
+    separator = "." if entry.separator is Separator.DOTTED else " "
+    assert f"{separator}{layout}{separator}" in output, output
 
 
 @pytest.mark.parametrize("codec", CODECS)

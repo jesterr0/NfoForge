@@ -135,13 +135,13 @@ def test_editor_values_save_without_overwriting_other_tracker_settings(
     editor = cast(BHDTrackerEdit, widget._editor_map[tracker])
     editor.api_key.setText("new-api-key")
 
-    manager.settings.trackers.beyond_hd.mvr_title_token_override = "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
+    # A field this editor does not own, standing in for every setting
+    # another page writes to the same tracker.
+    manager.settings.trackers.beyond_hd.nfo_template = "set-elsewhere"
     widget._save_settings()
 
     assert manager.settings.trackers.beyond_hd.api_key == "new-api-key"
-    assert (
-        manager.settings.trackers.beyond_hd.mvr_title_token_override == "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
-    )
+    assert manager.settings.trackers.beyond_hd.nfo_template == "set-elsewhere"
 
 
 def test_reset_loads_tracker_defaults_into_controls(

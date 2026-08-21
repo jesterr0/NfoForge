@@ -3,17 +3,10 @@ from pathlib import Path
 from PySide6.QtWidgets import QWidget
 import pytest
 
-from src.backend.trackers.media_support import (
-    UNSUPPORTED_SERIES_TRACKERS,
-)
-from src.backend.trackers.title_rules import accepts_a_release_name
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
-from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.series import EpisodeFormat
 from src.enums.token_replacer import ColonReplace
-from src.enums.tracker_selection import TrackerSelection
 from src.frontend.stacked_windows.settings.series_management import (
     SeriesManagementSettings,
 )
@@ -59,30 +52,6 @@ def _make_series_management_settings(
         config=manager, main_window=None, parent=fake_settings_window
     )
     return widget, manager
-
-
-def test_movie_only_trackers_are_not_offered_as_series_overrides(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Only series-capable trackers that accept a name are offered."""
-    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
-
-    assert UNSUPPORTED_SERIES_TRACKERS, "expected at least one movie-only tracker"
-    all_trackers = set(manager.settings.trackers.by_selection().keys())
-    expected_offered = {
-        tracker
-        for tracker in all_trackers - UNSUPPORTED_SERIES_TRACKERS
-        if accepts_a_release_name(tracker)
-    }
-
-    for fmt, fmt_widgets in widget._format_widgets.items():
-        override_trackers = set(fmt_widgets["tracker_override_map"].keys())
-        combo = fmt_widgets["tracker_selection"]
-        combo_trackers = {combo.itemData(i) for i in range(combo.count())}
-
-        assert override_trackers == expected_offered, fmt
-        assert combo_trackers == expected_offered, fmt
-        assert override_trackers.isdisjoint(UNSUPPORTED_SERIES_TRACKERS), fmt
 
 
 def test_multi_episode_style_combo_loads_from_config(
@@ -144,117 +113,6 @@ def test_multi_episode_style_round_trips_through_reload(
     assert (
         MultiEpisodeStyle(widget.multi_episode_style_combo.currentData())
         == MultiEpisodeStyle.DUPLICATE
-    )
-
-
-def test_every_tracker_with_a_title_field_is_editable_on_the_series_page(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Aither and LST ship a packaged series format and used to be locked to
-    it on every episode-format tab. Unlocked now, so a profile can carry a
-    different series title -- and the row shows the profile's value, not the
-    packaged one.
-    """
-    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
-
-    for tracker in (TrackerSelection.AITHER, TrackerSelection.LST):
-        live = manager.settings.trackers.by_selection()[tracker]
-        for fmt in SUPPORTED_TVR_FORMATS:
-            tfo = widget._format_widgets[fmt]["tracker_override_map"][tracker]
-            expected = (live.tvr_title_overrides or {})[fmt]
-            assert tfo.over_ride_format_title.text() == expected.token
-            assert tfo.enabled_checkbox.isEnabled()
-            assert tfo.over_ride_format_title.isEnabled()
-            assert tfo.title_colon_replace.isEnabled()
-
-
-def test_huno_auto_mode_offers_no_series_title_override(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """HUNO generates its name and has no auto-mode name input to override."""
-    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
-
-    packaged = manager.defaults.trackers.by_selection()[TrackerSelection.HUNO]
-    for fmt in SUPPORTED_TVR_FORMATS:
-        entry = (packaged.tvr_title_overrides or {})[fmt]
-        assert not entry.token
-        assert not entry.replace_map
-
-    for fmt in SUPPORTED_TVR_FORMATS:
-        controls = widget._format_widgets[fmt]
-        assert TrackerSelection.HUNO not in controls["tracker_override_map"]
-        combo = controls["tracker_selection"]
-        combo_trackers = {combo.itemData(i) for i in range(combo.count())}
-        assert TrackerSelection.HUNO not in combo_trackers
-
-
-def test_huno_existing_series_override_is_left_untouched(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Hiding the inert control must not destructively rewrite old profiles."""
-    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
-
-    live = manager.settings.trackers.by_selection()[TrackerSelection.HUNO]
-    assert live.tvr_title_overrides is not None
-    existing = live.tvr_title_overrides[EpisodeFormat.STANDARD]
-    existing.enabled = True
-    existing.token = "{title_clean} (untouched)"  # noqa: S105
-
-    widget._save_settings()
-
-    saved = (live.tvr_title_overrides or {})[EpisodeFormat.STANDARD]
-    assert saved.enabled is True
-    assert saved.token == "{title_clean} (untouched)"  # noqa: S105
-
-
-def test_a_formerly_locked_tracker_now_persists_what_the_user_typed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The save path used to skip these trackers on every episode-format tab.
-    Now the widget contents are what gets stored."""
-    widget, manager = _make_series_management_settings(tmp_path, monkeypatch)
-
-    tfo = widget._format_widgets[EpisodeFormat.STANDARD]["tracker_override_map"][
-        TrackerSelection.AITHER
-    ]
-    tfo.enabled_checkbox.setChecked(True)
-    tfo.over_ride_format_title.setText("{title_clean} (my own)")
-
-    widget._save_settings()
-
-    live = manager.settings.trackers.by_selection()[TrackerSelection.AITHER]
-    assert live.tvr_title_overrides is not None
-    stored = live.tvr_title_overrides[EpisodeFormat.STANDARD]
-    assert stored.enabled is True
-    assert stored.token == "{title_clean} (my own)"  # noqa: S105
-
-
-def test_override_preview_follows_the_enable_checkbox(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The series preview mirrors the same enabled/fallback semantics as the
-    backend and refreshes immediately when the checkbox is toggled."""
-    widget, _manager = _make_series_management_settings(tmp_path, monkeypatch)
-    controls = widget._format_widgets[EpisodeFormat.STANDARD]
-    override = controls["tracker_override_map"][TrackerSelection.LST]
-    calls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        widget, "_update_example", lambda **kwargs: calls.append(kwargs) or ""
-    )
-    controls["title_token"].setText("GLOBAL")
-    override.over_ride_format_title.setText("OVERRIDE")
-    override.blockSignals(False)
-    override.enabled_checkbox.setChecked(True)
-
-    calls.clear()
-    override.enabled_checkbox.setChecked(False)
-    assert calls[-1]["token_str"] == "GLOBAL"  # noqa: S105
-    assert calls[-1]["override_title_rules"] is None
-
-    override.enabled_checkbox.setChecked(True)
-    assert calls[-1]["token_str"] == "OVERRIDE"  # noqa: S105
-    assert calls[-1]["override_title_rules"] == (
-        override.over_ride_replacement_table.get_replacements()
     )
 
 
