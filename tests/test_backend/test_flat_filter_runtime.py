@@ -48,8 +48,12 @@ def test_tracker_title_applies_processing_context_flat_filters() -> None:
         ),
     )
 
+    # Blutopia has no composition, so it renders the user's global
+    # template -- which is what carries the plugin's filter. A composing
+    # tracker would impose its own layout and the filter would have nothing
+    # to act on, which is the design rather than a regression.
     output = backend.generate_tracker_title(
-        TrackerSelection.BEYOND_HD,  # FREE policy -- reads tracker_info as before
+        TrackerSelection.BLUTOPIA,
         TrackerInfo(),
         context,
         build_series_release_info(context.media_input),

@@ -12,12 +12,13 @@ what they do today through their own `generate_release_title`.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 import re
 from types import MappingProxyType
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.trackers.title_rules import (
+    TITLE_RULES,
     Composition,
     ConditionalOrder,
     Designator,
@@ -29,6 +30,7 @@ from src.backend.trackers.title_rules import (
 from src.backend.trackers.utils import dot_separate_title, strip_title_dots
 from src.config.models import HdrType
 from src.enums.token_replacer import ColonReplace
+from src.enums.tracker_selection import TrackerSelection
 
 _REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 # A key must not rewrite the release group, which is a name rather than a
@@ -154,6 +156,51 @@ def compose_token_string(
             f"{{:opt=-:release_group|default('{composition.tag_default}')}}"
         )
     return f"{token_string}{{:opt=-:release_group}}"
+
+
+def render_tracker_title(
+    tracker: TrackerSelection,
+    release: ReleaseProperties,
+    *,
+    render: Callable[[str], str | None],
+    global_template: str,
+    global_colon: ColonReplace,
+    custom_strings: Mapping[HdrType, str] | None = None,
+) -> str | None:
+    """One tracker's release title: compose, render, normalise.
+
+    Field-level precedence in one place. The entry's composition governs
+    where it has one and the user's global template applies otherwise;
+    likewise the entry's colon, then the user's. That is the whole of what
+    a tracker imposes and what a user keeps.
+
+    Returns ``None`` where nothing rendered, which the caller turns into
+    either a refusal or a fallback depending on whether the entry composes.
+    A tracker with no release name field returns ``None`` immediately --
+    there is nothing to shape.
+    """
+    entry = TITLE_RULES.get(tracker)
+    if entry is None:
+        # Not a tracker NfoForge ships. Render the user's template with no
+        # rules imposed rather than guessing at any.
+        return render(global_template) or None
+
+    if not entry.has_release_name_field:
+        return None
+
+    if entry.composition is not None:
+        token_string = compose_token_string(entry.composition, release, custom_strings)
+    else:
+        token_string = global_template
+
+    rendered = render(token_string)
+    if not rendered:
+        return None
+
+    normalised = normalise_title(
+        rendered, entry.normalisation, global_colon=global_colon
+    )
+    return normalised or None
 
 
 def resolve_dynamic_range(

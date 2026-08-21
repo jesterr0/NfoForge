@@ -84,17 +84,14 @@ from src.backend.trackers import (
     utp_uploader,
     yus_uploader,
 )
-from src.backend.trackers.beyondhd import BHDUploader
-from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.health import ensure_tracker_health
 from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
-from src.backend.trackers.seedpool import SeedPoolUploader
-from src.backend.trackers.torrentleech import TLUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
+from src.backend.trackers.title_render import render_tracker_title
+from src.backend.trackers.title_rules import ReleaseProperties
+from src.backend.trackers.unit3d_base import Unit3dBaseSearch
 from src.backend.trackers.utils import format_image_tag
 from src.backend.upload_retry import (
     RETRY_ATTEMPTS,
@@ -105,6 +102,7 @@ from src.backend.upload_retry import (
 )
 from src.backend.utils.anime import is_anime_release
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.hdr_identity import resolve_hdr_identity
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
     format_image_data_to_comparison,
@@ -119,7 +117,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.token_replacer import UnfilledTokenRemoval
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import RunPhase
@@ -1055,19 +1053,16 @@ class ProcessBackEnd:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
-            # generate tracker title first
-            tracker_title = None
-            if cur_tracker not in NO_RELEASE_NAME_FIELD:
-                generated_tracker_title = self.generate_tracker_title(
-                    tracker=cur_tracker,
-                    tracker_info=tracker_info,
-                    context=context,
-                    release_info=release_info,
-                )
-                if generated_tracker_title:
-                    tracker_title = self.tracker_title_formatting(
-                        cur_tracker, generated_tracker_title
-                    )
+            # Generate the tracker title first. It arrives already
+            # normalised -- the entry's separator, colon and vocabulary are
+            # part of rendering it now, rather than a second pass applied
+            # here and again in the uploader.
+            tracker_title = self.generate_tracker_title(
+                tracker=cur_tracker,
+                tracker_info=tracker_info,
+                context=context,
+                release_info=release_info,
+            )
 
             nfo_template = (
                 self.template_selector_be.read_template(name=tracker_info.nfo_template)
@@ -2692,109 +2687,121 @@ class ProcessBackEnd:
         context: ProcessingContext,
         release_info: SeriesReleaseInfo,
     ) -> str | None:
-        # The user's own override governs, for every tracker. Some were once
-        # locked to the packaged default here instead; that was dropped,
-        # because a locked template cannot differ between profiles (an encode
-        # profile and a disc profile want different titles) and what a tracker
-        # actually demands is applied in code at upload regardless -- see
-        # `tracker_title_formatting`.
-        override_source: TrackerInfo | None = tracker_info
+        """The release title one tracker will receive.
 
-        if release_info.is_series:
-            default_title = get_tvr_title_token(
-                self.config.settings.series,
-                release_info.episode_format,
+        Layout and normalisation come from that tracker's hardcoded entry
+        where it has them, and from the user's global title settings
+        otherwise. `tracker_info` no longer carries a title override; it is
+        kept because callers pass it and later work reads other fields.
+        """
+        del tracker_info
+
+        global_template = (
+            get_tvr_title_token(
+                self.config.settings.series, release_info.episode_format
             )
-            series_override = (
-                override_source.tvr_title_overrides.get(release_info.episode_format)
-                if override_source is not None
-                else None
-            )
-            override_enabled = bool(series_override and series_override.enabled)
-            token_string = (
-                series_override.token
-                if (
-                    override_enabled
-                    and series_override is not None
-                    and series_override.token
-                )
-                else default_title
-            )
-            colon_replace = (
-                series_override.colon_replace
-                if override_enabled and series_override is not None
-                else self.config.settings.series.title_colon_replace
-            )
-            override_title_rules = (
-                series_override.replace_map
-                if (
-                    override_enabled
-                    and series_override is not None
-                    and series_override.replace_map
-                )
-                else None
-            )
-        else:
-            token_string = (
-                override_source.mvr_title_token_override
-                if (
-                    override_source is not None
-                    and override_source.mvr_title_token_override
-                    and override_source.mvr_title_override_enabled
-                )
-                else self.config.settings.movie.title_token
-            )
-            colon_replace = (
-                override_source.mvr_title_colon_replace
-                if (
-                    override_source is not None
-                    and override_source.mvr_title_colon_replace
-                    and override_source.mvr_title_override_enabled
-                )
-                else self.config.settings.movie.title_colon_replace
-            )
-            override_title_rules = (
-                override_source.mvr_title_replace_map
-                if (
-                    override_source is not None
-                    and override_source.mvr_title_replace_map
-                    and override_source.mvr_title_override_enabled
-                )
-                else None
-            )
+            if release_info.is_series
+            else self.config.settings.movie.title_token
+        )
+        global_colon = (
+            self.config.settings.series.title_colon_replace
+            if release_info.is_series
+            else self.config.settings.movie.title_colon_replace
+        )
         user_tokens = {
             k: v
             for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
-        format_str = TokenReplacer(
-            media_input_obj=context.media_input,
-            token_string=token_string,
-            colon_replace=colon_replace,
-            media_search_obj=context.media_search,
-            flatten=True,
-            file_name_mode=False,
-            token_type=FileToken,
-            unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            edition_override=context.shared_data.dynamic_data.get("edition_override"),
-            frame_size_override=context.shared_data.dynamic_data.get(
-                "frame_size_override"
-            ),
-            override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
-            title_clean_rules=self.config.settings.global_management.title_clean_rules,
-            user_tokens=user_tokens,
-            override_title_rules=override_title_rules,
-            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-            flat_filters=context.flat_filters,
-            custom_edition_info=context.custom_edition_info,
-            custom_cut_names=context.custom_cut_names,
-            **self._release_info_token_kwargs(
-                release_info,
-                self.config.settings.series.multi_episode_style,
-            ),
+        dynamic_range = self.config.settings.global_management.video_dynamic_range
+
+        def render(token_string: str) -> str | None:
+            return TokenReplacer(
+                media_input_obj=context.media_input,
+                token_string=token_string,
+                colon_replace=ColonReplace.KEEP,
+                media_search_obj=context.media_search,
+                flatten=True,
+                file_name_mode=False,
+                token_type=FileToken,
+                unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+                edition_override=context.shared_data.dynamic_data.get(
+                    "edition_override"
+                ),
+                frame_size_override=context.shared_data.dynamic_data.get(
+                    "frame_size_override"
+                ),
+                override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
+                title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                user_tokens=user_tokens,
+                video_dynamic_range=dynamic_range,
+                flat_filters=context.flat_filters,
+                custom_edition_info=context.custom_edition_info,
+                custom_cut_names=context.custom_cut_names,
+                **self._release_info_token_kwargs(
+                    release_info,
+                    self.config.settings.series.multi_episode_style,
+                ),
+            ).get_output()
+
+        # Colon handling belongs to the entry, so the replacer is told to
+        # keep colons and normalisation applies the rule -- the entry's
+        # where it names one, the user's otherwise.
+        return render_tracker_title(
+            tracker,
+            self._release_properties(context, release_info),
+            render=render,
+            global_template=global_template,
+            global_colon=global_colon,
+            custom_strings=dynamic_range.custom_strings if dynamic_range else None,
         )
-        output = format_str.get_output()
-        return output if output else None
+
+    def _release_properties(
+        self, context: ProcessingContext, release_info: SeriesReleaseInfo
+    ) -> ReleaseProperties:
+        """The facts a tracker entry's conditions ask about.
+
+        Every field is a question about the release rather than a rule, so
+        answering them here duplicates no tracker's logic. Two are worth
+        noting:
+
+        `is_remux` reads the override token, which is the single answer the
+        rest of the codebase already uses -- the {remux} token, the codec
+        picker and the only_if/unless filters all resolve from it, so a
+        composition keyed off it cannot disagree with what is printed.
+
+        `episodes` is derived from the span's ends. Every span NfoForge
+        produces is contiguous -- the mapper sorts guessit's list and keeps
+        first and last -- so the range is exact rather than approximate for
+        everything but a hand-built non-contiguous mapping.
+        """
+        overrides = context.shared_data.dynamic_data.get("override_tokens") or {}
+        media_info = None
+        if context.media_input.file_list_mediainfo:
+            media_info = next(
+                iter(context.media_input.file_list_mediainfo.values()), None
+            )
+
+        resolution = 0
+        if media_info and media_info.video_tracks:
+            height = media_info.video_tracks[0].height
+            resolution = int(height) if height else 0
+
+        source = str(overrides.get("source", "")).lower()
+        episodes: tuple[int, ...] = ()
+        if release_info.episode_start is not None:
+            end = release_info.episode_end or release_info.episode_start
+            episodes = tuple(range(release_info.episode_start, end + 1))
+
+        return ReleaseProperties(
+            is_remux=bool(overrides.get("remux")),
+            is_disc=False,
+            is_dvd="dvd" in source,
+            resolution=resolution,
+            hdr_identity=resolve_hdr_identity(media_info),
+            season=release_info.season,
+            episodes=episodes,
+        )
 
     @staticmethod
     def _release_info_token_kwargs(
@@ -2810,37 +2817,6 @@ class ProcessBackEnd:
             "episode_format": release_info.episode_format,
             "multi_episode_style": multi_episode_style,
         }
-
-    def tracker_title_formatting(self, tracker: TrackerSelection, title: str) -> str:
-        """Apply tracker specific formatting if it has any, else return the title as it is."""
-        if tracker is TrackerSelection.TORRENT_LEECH:
-            return TLUploader.generate_release_title(title)
-        elif tracker is TrackerSelection.BEYOND_HD:
-            return BHDUploader.generate_release_title(title)
-        elif tracker is TrackerSelection.HDB:
-            return HDBUploader.generate_release_title(title)
-        # SeedPool is UNIT3D but names uploads after the release, so it wants
-        # the dotted form the rest of the family strips
-        elif tracker is TrackerSelection.SEEDPOOL:
-            return SeedPoolUploader.generate_release_title(title)
-        # Unit3d trackers
-        elif tracker in {
-            TrackerSelection.REELFLIX,
-            TrackerSelection.AITHER,
-            TrackerSelection.HUNO,
-            TrackerSelection.LST,
-            TrackerSelection.DARK_PEERS,
-            TrackerSelection.SHARE_ISLAND,
-            TrackerSelection.UPLOAD_CX,
-            TrackerSelection.ONLY_ENCODES,
-            TrackerSelection.BLUTOPIA,
-            TrackerSelection.UTOPIA,
-            TrackerSelection.YU_SCENE,
-            TrackerSelection.FEAR_NO_PEER,
-        }:
-            return Unit3dBaseUploader.generate_release_title(title)
-
-        return title
 
     def torrent_gen_cb(
         self,
