@@ -133,8 +133,8 @@ class ConditionalOrder:
     """
 
     when: Callable[[ReleaseProperties], bool]
-    then: tuple[str, ...]
-    otherwise: tuple[str, ...]
+    then: tuple[Component, ...]
+    otherwise: tuple[Component, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +219,35 @@ class TrackerTitleEntry:
     has_release_name_field: bool = True
 
 
+# Questions about the release, shared freely between entries. A predicate is
+# not a rule -- it asks what the release *is*, where a rule says what a
+# tracker wants -- so sharing one couples nothing.
+def _is_disc_or_remux(release: ReleaseProperties) -> bool:
+    return release.is_disc or release.is_remux
+
+
+def _is_dvd(release: ReleaseProperties) -> bool:
+    return release.is_dvd
+
+
+def _is_dvd_remux(release: ReleaseProperties) -> bool:
+    return release.is_dvd and release.is_remux
+
+
+def _is_series(release: ReleaseProperties) -> bool:
+    return release.season is not None
+
+
+# The Dub component, composable from tokens that already exist. Dual audio
+# wins where present; a dubbed release says so; a subbed one is suppressed by
+# the entry's vocabulary rather than by a token that refuses to render it.
+_DUB = ("{audio_language_dual}", "{localization|unless(audio_language_dual)}")
+
+# Components carry no `:opt= :` prefix. The shipped templates needed one to
+# avoid a double space where a token did not resolve; normalisation closes
+# that gap for every entry now, so the plain form is enough and reads as the
+# published rules are written.
+
 # Every entry is constructed inline. Two that read alike are still two
 # objects, so editing one cannot reach the other.
 TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
@@ -288,29 +317,310 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # -- composing entries ----------------------------------------------
         # Their compositions land in a later task. Until then each carries
         # normalisation only, which is its current behaviour.
+        # LST: "... Resolution ... SOURCE TYPE Hi10P HDR Vcodec Dub Acodec
+        # Channels Object - Tag" on a disc or remux, and "... SOURCE TYPE Dub
+        # Acodec Channels Object Hi10P HDR Vcodec - Tag" otherwise. Hi10P has
+        # no token and is out of scope; its absence is a gap, not an
+        # oversight.
         TrackerSelection.LST: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.KEEP),
+            normalisation=Normalisation(
+                colon=ColonReplace.KEEP,
+                vocabulary={
+                    "DDP": "DD+",
+                    "HYBRID": "Hybrid",
+                    "Dual Audio": "Dual-Audio",
+                    "Subbed": None,
+                },
+            ),
+            composition=Composition(
+                components=(
+                    "{title_exact}",
+                    "{release_year}",
+                    Designator.BANDED_BY_COUNT,
+                    "{cut}",
+                    "{frame_size}",
+                    "{hybrid}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{streaming_service}",
+                    "{source}",
+                    "{remux}",
+                    ConditionalOrder(
+                        when=_is_disc_or_remux,
+                        then=(
+                            DynamicRangeRule(spellings={"PQ": "PQ10"}),
+                            "{video_codec}",
+                            *_DUB,
+                            "{audio_codec_no_atmos}",
+                            "{audio_channel_s}",
+                            "{atmos}",
+                        ),
+                        otherwise=(
+                            *_DUB,
+                            "{audio_codec_no_atmos}",
+                            "{audio_channel_s}",
+                            "{atmos}",
+                            DynamicRangeRule(spellings={"PQ": "PQ10"}),
+                            "{video_codec}",
+                        ),
+                    ),
+                ),
+                tag_default="NOGROUP",
+                omit=(
+                    OmitRule(when=_is_series, components=("{release_year}",)),
+                    OmitRule(when=_is_dvd, components=("{resolution}",)),
+                    OmitRule(when=_is_dvd_remux, components=("{video_codec}",)),
+                ),
+            ),
         ),
+        # Aither: "Title Year REPACK Resolution Source REMUX HDR VideoCodec
+        # AudioCodec Channels Metadata-Crew" for a remux, with the audio
+        # ahead of HDR and the codec otherwise. Its series shapes carry the
+        # episode title, which LST's do not.
         TrackerSelection.AITHER: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.KEEP),
+            normalisation=Normalisation(
+                colon=ColonReplace.KEEP,
+                vocabulary={
+                    "DDP": "DD+",
+                    "HYBRID": "Hybrid",
+                    "Dual Audio": "Dual-Audio",
+                    "Subbed": None,
+                },
+            ),
+            composition=Composition(
+                components=(
+                    "{title_exact}",
+                    "{release_year}",
+                    Designator.SIMPLE,
+                    "{episode_title_exact}",
+                    "{cut}",
+                    "{frame_size}",
+                    "{hybrid}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{streaming_service}",
+                    "{source}",
+                    "{remux}",
+                    ConditionalOrder(
+                        when=_is_disc_or_remux,
+                        then=(
+                            DynamicRangeRule(spellings={"PQ": None}),
+                            "{video_codec}",
+                            *_DUB,
+                            "{audio_codec_no_atmos}",
+                            "{audio_channel_s}",
+                            "{atmos}",
+                        ),
+                        otherwise=(
+                            *_DUB,
+                            "{audio_codec_no_atmos}",
+                            "{audio_channel_s}",
+                            "{atmos}",
+                            DynamicRangeRule(spellings={"PQ": None}),
+                            "{video_codec}",
+                        ),
+                    ),
+                ),
+                omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
+            ),
         ),
+        # ReelFliX. Its shipped template was a near copy of BeyondHD's,
+        # but its published rules match LST and Aither -- so every remux was
+        # emitting audio before video where its rules require video first.
+        # That defect is why entries do not share objects.
         TrackerSelection.REELFLIX: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.KEEP),
+            normalisation=Normalisation(
+                colon=ColonReplace.KEEP,
+                vocabulary={
+                    "DDP": "DD+",
+                    "HYBRID": "Hybrid",
+                    "Dual Audio": "Dual-Audio",
+                    "Subbed": None,
+                },
+            ),
+            composition=Composition(
+                components=(
+                    "{title_exact}",
+                    "{release_year}",
+                    Designator.SIMPLE,
+                    "{cut}",
+                    "{frame_size}",
+                    "{hybrid}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{streaming_service}",
+                    "{source}",
+                    "{remux}",
+                    ConditionalOrder(
+                        when=_is_disc_or_remux,
+                        then=(
+                            DynamicRangeRule(spellings={"PQ": "PQ10"}),
+                            "{video_codec}",
+                            *_DUB,
+                            "{audio_codec_no_atmos}",
+                            "{audio_channel_s}",
+                            "{atmos}",
+                        ),
+                        otherwise=(
+                            *_DUB,
+                            "{audio_codec_no_atmos}",
+                            "{audio_channel_s}",
+                            "{atmos}",
+                            DynamicRangeRule(spellings={"PQ": "PQ10"}),
+                            "{video_codec}",
+                        ),
+                    ),
+                ),
+                omit=(
+                    OmitRule(when=_is_series, components=("{release_year}",)),
+                    OmitRule(when=_is_dvd, components=("{resolution}",)),
+                    OmitRule(when=_is_dvd_remux, components=("{video_codec}",)),
+                ),
+            ),
         ),
+        # BeyondHD. Four differences from the shipped template, all from its
+        # published rules:
+        #
+        # - audio is {audio_codec} plus channels, giving "DDP Atmos 5.1" as
+        #   BeyondHD requires, not the "DDP 5.1 Atmos" the other three want.
+        # - DDP is not rewritten to DD+; BHD uses DDP throughout.
+        # - HYBRID sits against REMUX, since BeyondHD requires them adjacent.
+        # - the DVD order is "MPEG-2 DD2.0", so the codec leads there
+        #   where audio leads everywhere else.
         TrackerSelection.BEYOND_HD: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.KEEP),
+            normalisation=Normalisation(
+                colon=ColonReplace.KEEP,
+                vocabulary={"HYBRID": "Hybrid"},
+            ),
+            composition=Composition(
+                components=(
+                    "{title_exact}",
+                    "{release_year}",
+                    Designator.SIMPLE,
+                    "{cut}",
+                    "{frame_size}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{streaming_service}",
+                    "{source}",
+                    "{hybrid}",
+                    "{remux}",
+                    ConditionalOrder(
+                        when=_is_dvd,
+                        then=(
+                            "{video_codec}",
+                            "{audio_codec}",
+                            "{audio_channel_s}",
+                        ),
+                        otherwise=(
+                            "{audio_codec}",
+                            "{audio_channel_s}",
+                            DynamicRangeRule(
+                                emit_sdr_above_1080=True,
+                                assumes_hdr10_on_disc_or_remux=True,
+                            ),
+                            "{video_codec}",
+                        ),
+                    ),
+                ),
+                tag_default="NOGROUP",
+                omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
+            ),
         ),
+        # The four below are transcribed from the shipped config rather than
+        # from published rules, none having been gathered for them. Their
+        # config reads as deliberate -- all four use {title_clean}, {edition}
+        # rather than {cut}, undivided {audio_codec}, dash colon handling and
+        # the over-1080 SDR form -- so it is copied, not improved. A change
+        # here would be a guess.
+        #
+        # Their shipped overrides cover films only, so a series on these
+        # trackers renders the user's global template today. An entry has no
+        # media-type split, so the composition now serves both, with the
+        # designator supplying the season and episode. That is the spec's
+        # call rather than the config's, and it is a real behaviour change.
         TrackerSelection.DARK_PEERS: TrackerTitleEntry(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            composition=Composition(
+                components=(
+                    "{title_clean}",
+                    "{release_year}",
+                    Designator.SIMPLE,
+                    "{frame_size}",
+                    "{edition}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{source}",
+                    "{audio_codec}",
+                    "{audio_channel_s}",
+                    DynamicRangeRule(emit_sdr_above_1080=True),
+                    "{video_codec}",
+                ),
+                omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
+            ),
         ),
+        # ShareIsland alone carries a language component, immediately after
+        # the year.
         TrackerSelection.SHARE_ISLAND: TrackerTitleEntry(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            composition=Composition(
+                components=(
+                    "{title_clean}",
+                    "{release_year}",
+                    Designator.SIMPLE,
+                    "{audio_language_all_full|upper|replace(' ',' - ')}",
+                    "{frame_size}",
+                    "{edition}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{source}",
+                    "{audio_codec}",
+                    "{audio_channel_s}",
+                    DynamicRangeRule(emit_sdr_above_1080=True),
+                    "{video_codec}",
+                ),
+                omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
+            ),
         ),
         TrackerSelection.UPLOAD_CX: TrackerTitleEntry(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            composition=Composition(
+                components=(
+                    "{title_clean}",
+                    "{release_year}",
+                    Designator.SIMPLE,
+                    "{frame_size}",
+                    "{edition}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{source}",
+                    "{audio_codec}",
+                    "{audio_channel_s}",
+                    DynamicRangeRule(emit_sdr_above_1080=True),
+                    "{video_codec}",
+                ),
+                omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
+            ),
         ),
         TrackerSelection.ONLY_ENCODES: TrackerTitleEntry(
             normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            composition=Composition(
+                components=(
+                    "{title_clean}",
+                    "{release_year}",
+                    Designator.SIMPLE,
+                    "{frame_size}",
+                    "{edition}",
+                    "{re_release}",
+                    "{resolution}",
+                    "{source}",
+                    "{audio_codec}",
+                    "{audio_channel_s}",
+                    DynamicRangeRule(emit_sdr_above_1080=True),
+                    "{video_codec}",
+                ),
+                omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
+            ),
         ),
     }
 )

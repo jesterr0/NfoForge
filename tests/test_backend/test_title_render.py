@@ -644,3 +644,169 @@ def test_a_user_spelling_overrides_the_default_spelling() -> None:
         resolve_dynamic_range(_EMITS_SDR, release, custom_strings={"HDR10": "HDR10"})
         == "HDR10"
     )
+
+
+# ------------------------------------------------------------- the entries
+#
+# These assert the composed token *order*, which is what an entry controls.
+# The published golden strings need a rendered title, so they land with the
+# wiring that renders one.
+
+
+def _composed(tracker: TrackerSelection, **release: object) -> str:
+    composition = TITLE_RULES[tracker].composition
+    assert composition is not None
+    return compose_token_string(composition, _release(**release))
+
+
+COMPOSING = [
+    TrackerSelection.LST,
+    TrackerSelection.AITHER,
+    TrackerSelection.REELFLIX,
+    TrackerSelection.BEYOND_HD,
+    TrackerSelection.DARK_PEERS,
+    TrackerSelection.SHARE_ISLAND,
+    TrackerSelection.UPLOAD_CX,
+    TrackerSelection.ONLY_ENCODES,
+]
+
+
+def test_exactly_the_expected_trackers_compose() -> None:
+    composing = {t for t, e in TITLE_RULES.items() if e.composition is not None}
+
+    assert composing == set(COMPOSING)
+
+
+@pytest.mark.parametrize(
+    "tracker",
+    [TrackerSelection.LST, TrackerSelection.AITHER, TrackerSelection.REELFLIX],
+)
+def test_video_leads_on_a_remux_and_trails_on_an_encode(
+    tracker: TrackerSelection,
+) -> None:
+    """The order swap all three publish, and the ReelFliX defect.
+
+    ReelFliX's shipped template was a near copy of BeyondHD's, which does
+    not swap, so every ReelFliX remux emitted audio before video where its
+    own rules require video first.
+    """
+    remux = _composed(tracker, is_remux=True, resolution=2160)
+    encode = _composed(tracker, resolution=1080)
+
+    assert remux.index("{video_codec}") < remux.index("{audio_codec_no_atmos}")
+    assert encode.index("{audio_codec_no_atmos}") < encode.index("{video_codec}")
+
+
+def test_aither_carries_an_episode_title_and_lst_does_not() -> None:
+    # The two genuinely differ, and Aither's published examples carry one.
+    aither = _composed(TrackerSelection.AITHER, season=1, episodes=(1,))
+    lst = _composed(TrackerSelection.LST, season=1, episodes=(1,))
+
+    assert "{episode_title_exact}" in aither
+    assert "{episode_title_exact}" not in lst
+
+
+@pytest.mark.parametrize("tracker", COMPOSING)
+def test_the_year_is_omitted_for_a_series(tracker: TrackerSelection) -> None:
+    """Aither and BHD both make the year conditional on a name
+    collision that is not determinable, so omitting it is correct."""
+    film = _composed(tracker)
+    series = _composed(tracker, season=1, episodes=(1,))
+
+    assert "{release_year}" in film
+    assert "{release_year}" not in series
+
+
+@pytest.mark.parametrize("tracker", [TrackerSelection.LST, TrackerSelection.REELFLIX])
+def test_dvd_omits_the_resolution_and_a_dvd_remux_omits_the_codec(
+    tracker: TrackerSelection,
+) -> None:
+    # LST's own example: "Transformers 2007 DVDRip DD 5.1 x264-NOGROUP" --
+    # no resolution, but a DVDRip encode keeps its codec.
+    dvd_rip = _composed(tracker, is_dvd=True)
+    dvd_remux = _composed(tracker, is_dvd=True, is_remux=True)
+
+    assert "{resolution}" not in dvd_rip
+    assert "{video_codec}" in dvd_rip
+    assert "{video_codec}" not in dvd_remux
+
+
+@pytest.mark.parametrize(
+    "tracker",
+    [TrackerSelection.LST, TrackerSelection.AITHER, TrackerSelection.REELFLIX],
+)
+def test_the_dub_component_sits_immediately_before_the_audio_codec(
+    tracker: TrackerSelection,
+) -> None:
+    composed = _composed(tracker)
+    parts = composed.split(" ")
+
+    assert parts[parts.index("{audio_codec_no_atmos}") - 1] == (
+        "{localization|unless(audio_language_dual)}"
+    )
+    assert "{audio_language_dual}" in parts
+
+
+def test_beyondhd_keeps_its_audio_codec_undivided() -> None:
+    """BeyondHD wants "DDP Atmos 5.1", which {audio_codec} emits natively.
+
+    The audio_codec_no_atmos plus separate {atmos} split produces
+    "DDP 5.1 Atmos", which is the LST, Aither and ReelFliX spelling.
+    """
+    composed = _composed(TrackerSelection.BEYOND_HD)
+
+    assert "{audio_codec}" in composed
+    assert "{audio_codec_no_atmos}" not in composed
+    assert "{atmos}" not in composed
+
+
+def test_beyondhd_does_not_rewrite_ddp() -> None:
+    # BHD uses DDP throughout, where the other three list DD+.
+    assert "DDP" not in TITLE_RULES[TrackerSelection.BEYOND_HD].normalisation.vocabulary
+    assert TITLE_RULES[TrackerSelection.LST].normalisation.vocabulary["DDP"] == "DD+"
+
+
+def test_beyondhd_keeps_hybrid_against_remux() -> None:
+    # BeyondHD requires "HYBRID REMUX" adjacent.
+    parts = _composed(TrackerSelection.BEYOND_HD).split(" ")
+
+    assert parts[parts.index("{remux}") - 1] == "{hybrid}"
+
+
+def test_beyondhd_leads_with_the_codec_on_a_dvd() -> None:
+    # 3.4.6: "MPEG-2 DD2.0", not "DD2.0 MPEG-2".
+    dvd = _composed(TrackerSelection.BEYOND_HD, is_dvd=True)
+
+    assert dvd.index("{video_codec}") < dvd.index("{audio_codec}")
+
+
+@pytest.mark.parametrize(
+    "tracker",
+    [
+        TrackerSelection.DARK_PEERS,
+        TrackerSelection.SHARE_ISLAND,
+        TrackerSelection.UPLOAD_CX,
+        TrackerSelection.ONLY_ENCODES,
+    ],
+)
+def test_the_assumed_four_are_transcribed_not_improved(
+    tracker: TrackerSelection,
+) -> None:
+    """No published rules were gathered for these, so the shipped config is
+    the only source and is copied rather than corrected."""
+    composed = _composed(tracker)
+
+    assert "{title_clean}" in composed
+    assert "{edition}" in composed
+    assert "{cut}" not in composed
+    assert "{audio_codec}" in composed
+
+
+def test_only_shareisland_carries_a_language_component() -> None:
+    carrying = {
+        tracker
+        for tracker in COMPOSING
+        if "audio_language_all_full" in _composed(tracker)
+    }
+
+    assert carrying == {TrackerSelection.SHARE_ISLAND}

@@ -206,7 +206,13 @@ def _expand(
 ) -> tuple[str, ...]:
     """One component as the token strings it stands for."""
     if isinstance(component, ConditionalOrder):
-        return component.then if component.when(release) else component.otherwise
+        # Recursive because a branch holds components rather than plain
+        # tokens: what moves between a remux order and an encode order is
+        # the dynamic range as much as the codec.
+        branch = component.then if component.when(release) else component.otherwise
+        return tuple(
+            token for item in branch for token in _expand(item, release, custom_strings)
+        )
     if isinstance(component, Designator):
         designator = _designator(component, release)
         return (designator,) if designator else ()
