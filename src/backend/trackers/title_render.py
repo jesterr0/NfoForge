@@ -40,6 +40,17 @@ _REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 # "H.265-GRP" does.
 _TAG_SEPARATOR_LOOKBEHIND = r"(?<!-)"
 
+# Whitespace left between the last rendered component and the group tag. The
+# tag is the trailing "-<name>", and a group name may itself carry hyphens
+# ("-D-Z0N3"), so this matches to the end rather than to the next hyphen. It
+# anchors, so a legitimate interior " - " (ShareIsland joins its languages
+# that way) is untouched.
+_TRAILING_TAG_GAP = re.compile(r"\s+-(\S+)$")
+
+# BeyondHD's DD exception, carried over verbatim from the uploader's
+# own rule so the spelling cannot drift from what it enforced.
+_DD_CHANNELS = re.compile(r"\bDD\s+(\d\.[01])")
+
 # How NfoForge already spells each identity, mirroring
 # `{video_dynamic_range_type}`. Four of the eight are not written the way the
 # identity is named -- HDR10 is "HDR", HDR10+ is "HDR10Plus", and the two
@@ -74,26 +85,30 @@ def normalise_title(
 
     Four stages, in this order:
 
-    1. **Separator**, first, so every later stage sees the form the tracker
-       will actually receive. HDBits' "H.265" only looks like that once the
-       dot-separated release form has been converted.
-    2. **Colon**, from the entry where it names one and from the user's
+    1. **Colon**, from the entry where it names one and from the user's
        global title setting otherwise. That is field-level precedence, the
-       same rule that governs layout.
-    3. **Vocabulary**, plain rewrites then conditional ones.
+       same rule that governs layout. It runs before the separator because
+       three of the five colon forms insert a space, and on a dotted entry
+       a space is exactly what must not survive: replacing after dotting
+       gave SeedPool "Movie.Name - .The.Subtitle".
+    2. **Separator**, so every later stage sees the form the tracker will
+       actually receive -- and, for a dotted entry, so the spaces stage 1
+       introduced become periods like any other.
+    3. **Vocabulary**, plain rewrites then conditional ones. Both spellings
+       of a spaced key ("H 265") need the separator to have run.
     4. **Allowlist**, last, so a rewrite cannot reintroduce a character the
        tracker forbids.
     """
-    if normalisation.separator is Separator.DOTTED:
-        result = dot_separate_title(title)
-    else:
-        result = strip_title_dots(title)
-
     colon = normalisation.colon if normalisation.colon is not None else global_colon
     # Reused rather than reimplemented: a second definition of what a colon
     # becomes is exactly the kind of drift this design removes, and the
     # filename side already owns one.
-    result = TokenReplacer._colon_replace(colon, result)
+    result = TokenReplacer._colon_replace(colon, title)
+
+    if normalisation.separator is Separator.DOTTED:
+        result = dot_separate_title(result)
+    else:
+        result = strip_title_dots(result)
 
     for match, replacement in normalisation.vocabulary.items():
         result = _rewrite(result, match, replacement)
@@ -103,6 +118,11 @@ def normalise_title(
             continue
         result = _rewrite(result, rule.match, rule.replacement)
 
+    if normalisation.glue_dd_to_channels:
+        # `\bDD\s` is what keeps this off `DDP 5.1`, which the same rule
+        # leaves spaced: the character after `DD` there is `P`, not a space.
+        result = _DD_CHANNELS.sub(r"DD\1", result)
+
     if normalisation.allowlist is not None:
         result = re.sub(rf"[^{normalisation.allowlist}]+", "", result)
         # Removing a character that sat between a space and a period leaves
@@ -110,7 +130,13 @@ def normalise_title(
         # takes it out, and the separator stage has already run.
         result = result.replace(" .", ".").replace("..", ".")
 
-    return _REPEATED_WHITESPACE.sub(" ", result).strip()
+    result = _REPEATED_WHITESPACE.sub(" ", result).strip()
+    # A component that renders empty leaves a gap. Collapsing runs of spaces
+    # closes it everywhere except against the tag, where one space plus the
+    # tag's own hyphen is not a run -- so "DTS-HD MA 7.1 -GRP" survived it.
+    # The last component of a remux order is `{atmos}`, which is empty on
+    # every non-Atmos remux, so this was the common case rather than an edge.
+    return _TRAILING_TAG_GAP.sub(r"-\1", result)
 
 
 def compose_token_string(

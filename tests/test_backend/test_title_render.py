@@ -27,6 +27,55 @@ def _normalise(title: str, normalisation: Normalisation) -> str:
     return normalise_title(title, normalisation, global_colon=ColonReplace.KEEP)
 
 
+@pytest.mark.parametrize("colon", list(ColonReplace))
+def test_a_dotted_entry_never_ships_a_space_whatever_the_colon_rule(
+    colon: ColonReplace,
+) -> None:
+    """Three of the five colon forms insert a space.
+
+    On a dotted entry that space has to become a period like any other, so
+    the colon must be replaced before the separator runs. Replacing after
+    it gave SeedPool "Movie.Name - .The.Subtitle" -- a space in the one
+    title that names an upload after the release, where a space is exactly
+    what cannot survive.
+    """
+    dotted = Normalisation(separator=Separator.DOTTED)
+
+    rendered = normalise_title(
+        "Movie Name: The Subtitle 2026 1080p BluRay DD 5.1 x264-GRP",
+        dotted,
+        global_colon=colon,
+    )
+
+    # The only requirement is that no space survives. What the colon itself
+    # leaves behind ("Name:.The", "Name-.The") is whatever the user's rule
+    # produces, dotted like the rest -- which is what SeedPool shipped
+    # before the separator moved ahead of it, and is not this test's call.
+    assert " " not in rendered
+
+
+def test_an_empty_trailing_component_leaves_no_gap_before_the_tag() -> None:
+    """One space plus the tag's hyphen is not a run of whitespace.
+
+    So collapsing runs never closed it. Anchored to the end, because a
+    title may legitimately carry " - " inside it -- ShareIsland joins its
+    language list that way.
+    """
+    assert (
+        _normalise("Movie Name DTS-HD MA 7.1 -GRP", Normalisation())
+        == "Movie Name DTS-HD MA 7.1-GRP"
+    )
+    # a group name may carry its own hyphens
+    assert (
+        _normalise("Movie Name 7.1 -D-Z0N3", Normalisation()) == "Movie Name 7.1-D-Z0N3"
+    )
+    # an interior " - " is not a tag boundary and stays
+    assert (
+        _normalise("Movie Name ENGLISH - ITALIAN 7.1-GRP", Normalisation())
+        == "Movie Name ENGLISH - ITALIAN 7.1-GRP"
+    )
+
+
 def test_spaced_separator_strips_dots_but_keeps_layouts_and_codecs() -> None:
     result = _normalise(
         "Movie.2024.TrueHD.7.1.Atmos.H.265-GRP",

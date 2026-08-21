@@ -13,8 +13,9 @@ whose published rules differ, which propagated an error into a tracker that
 never shared those rules. `test_no_two_entries_share_an_object` pins it.
 
 An entry has two sections. Normalisation always applies. Composition is
-optional -- seven trackers have none and render the user's global title
-template, which is exactly what they do today.
+optional -- nine entries have none. Seven of those render the user's global
+title template, which is exactly what they do today; the remaining two
+render no title at all, having no release name field to put one in.
 
 A tracker rule never reaches a filename. Every rule lives in an entry, never
 in a token handler: handlers are shared, and `file_name_mode` selects only
@@ -75,6 +76,12 @@ class Normalisation:
     `allowlist` is a regex character class of what may survive. Only HDBits
     publishes one; ``None`` means no character filtering, and inventing one
     for another tracker would strip punctuation its own examples carry.
+
+    `glue_dd_to_channels` writes `DD 5.1` as `DD5.1`, BeyondHD's own
+    exception. It is a flag rather than a `vocabulary` entry because the
+    layout varies: a value map would need a row per layout, and each row
+    would have to avoid matching `DDP 5.1`, which the same rule leaves
+    spaced. Only BeyondHD publishes it.
     """
 
     separator: Separator = Separator.SPACED
@@ -82,6 +89,7 @@ class Normalisation:
     vocabulary: Mapping[str, str | None] = field(default_factory=dict)
     conditional_vocabulary: tuple[ConditionalRewrite, ...] = ()
     allowlist: str | None = None
+    glue_dd_to_channels: bool = False
 
 
 class Designator(StrEnum):
@@ -315,8 +323,6 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             ),
         ),
         # -- composing entries ----------------------------------------------
-        # Their compositions land in a later task. Until then each carries
-        # normalisation only, which is its current behaviour.
         # LST: "... Resolution ... SOURCE TYPE Hi10P HDR Vcodec Dub Acodec
         # Channels Object - Tag" on a disc or remux, and "... SOURCE TYPE Dub
         # Acodec Channels Object Hi10P HDR Vcodec - Tag" otherwise. Hi10P has
@@ -327,6 +333,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 colon=ColonReplace.KEEP,
                 vocabulary={
                     "DDP": "DD+",
+                    "HDR10Plus": "HDR10+",
                     "HYBRID": "Hybrid",
                     "Dual Audio": "Dual-Audio",
                     "Subbed": None,
@@ -382,6 +389,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 colon=ColonReplace.KEEP,
                 vocabulary={
                     "DDP": "DD+",
+                    "HDR10Plus": "HDR10+",
                     "HYBRID": "Hybrid",
                     "Dual Audio": "Dual-Audio",
                     "Subbed": None,
@@ -433,6 +441,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 colon=ColonReplace.KEEP,
                 vocabulary={
                     "DDP": "DD+",
+                    "HDR10Plus": "HDR10+",
                     "HYBRID": "Hybrid",
                     "Dual Audio": "Dual-Audio",
                     "Subbed": None,
@@ -491,6 +500,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             normalisation=Normalisation(
                 colon=ColonReplace.KEEP,
                 vocabulary={"HYBRID": "Hybrid"},
+                glue_dd_to_channels=True,
             ),
             composition=Composition(
                 components=(
@@ -540,7 +550,8 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # trackers used to render the user's global template. An entry has no
         # media-type split, so the composition now serves both, with the
         # designator supplying the season and episode and an episode title
-        # beside it. Every tracker here except Blutopia names the episode.
+        # beside it. Aither names the episode from its published examples;
+        # only LST, ReelFliX and BeyondHD are known to leave it out.
         #
         # The title is {title_exact}, where the config said {title_clean}.
         # Clean answers to the user's `title_clean_rules`, which ship
@@ -552,7 +563,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # tracked which entries were transcribed rather than anything about
         # the trackers. The episode title matches at the same tier.
         TrackerSelection.DARK_PEERS: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            normalisation=Normalisation(
+                colon=ColonReplace.REPLACE_WITH_DASH,
+                vocabulary={"DDP": "DD+", "HDR10Plus": "HDR10+"},
+            ),
             composition=Composition(
                 components=(
                     "{title_exact}",
@@ -575,7 +589,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # ShareIsland alone carries a language component, immediately after
         # the year.
         TrackerSelection.SHARE_ISLAND: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            normalisation=Normalisation(
+                colon=ColonReplace.REPLACE_WITH_DASH,
+                vocabulary={"DDP": "DD+", "HDR10Plus": "HDR10+"},
+            ),
             composition=Composition(
                 components=(
                     "{title_exact}",
@@ -597,7 +614,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             ),
         ),
         TrackerSelection.UPLOAD_CX: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            normalisation=Normalisation(
+                colon=ColonReplace.REPLACE_WITH_DASH,
+                vocabulary={"DDP": "DD+", "HDR10Plus": "HDR10+"},
+            ),
             composition=Composition(
                 components=(
                     "{title_exact}",
@@ -618,7 +638,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
             ),
         ),
         TrackerSelection.ONLY_ENCODES: TrackerTitleEntry(
-            normalisation=Normalisation(colon=ColonReplace.REPLACE_WITH_DASH),
+            normalisation=Normalisation(
+                colon=ColonReplace.REPLACE_WITH_DASH,
+                vocabulary={"DDP": "DD+", "HDR10Plus": "HDR10+"},
+            ),
             composition=Composition(
                 components=(
                     "{title_exact}",
@@ -647,9 +670,12 @@ def accepts_a_release_name(tracker: TrackerSelection) -> bool:
 
     Was a frozenset beside the media-type support tables, which answers a
     different question. A tracker's title rules are one object now, and
-    "there is no title" is one of them -- so the settings pages, the
-    renderer and the uploader contracts all read the same field rather than
-    a list that has to be kept in step with it.
+    "there is no title" is one of them, so the answer comes from the entry
+    rather than from a list that has to be kept in step with it.
+
+    This is the accessor for a caller holding only a `TrackerSelection`.
+    The renderer and `resolve_tracker_title` have the entry in hand already
+    and read `has_release_name_field` off it directly.
     """
     entry = TITLE_RULES.get(tracker)
     return entry.has_release_name_field if entry is not None else True

@@ -53,8 +53,15 @@ from src.backend.trackers.title_render import (
     compose_token_string,
     normalise_title,
     render_tracker_title,
+    resolve_dynamic_range,
 )
-from src.backend.trackers.title_rules import TITLE_RULES, ReleaseProperties
+from src.backend.trackers.title_rules import (
+    TITLE_RULES,
+    Composition,
+    ConditionalOrder,
+    DynamicRangeRule,
+    ReleaseProperties,
+)
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
@@ -112,6 +119,19 @@ def _claim_overrides(name: str) -> dict[str, str]:
 
 SERIES_TITLE = "Show Name"
 EPISODE_TITLE = "Some Episode Title"
+
+
+def _dynamic_range_rule(composition: Composition) -> DynamicRangeRule:
+    """The entry's dynamic range rule, wherever it sits in the composition."""
+    for component in composition.components:
+        if isinstance(component, DynamicRangeRule):
+            return component
+        if isinstance(component, ConditionalOrder):
+            for branch in (component.then, component.otherwise):
+                for inner in branch:
+                    if isinstance(inner, DynamicRangeRule):
+                        return inner
+    raise AssertionError("composition carries no dynamic range rule")
 
 
 def _series_payloads(
@@ -321,6 +341,138 @@ ALL_FOUR = (
     TrackerSelection.REELFLIX,
     TrackerSelection.BEYOND_HD,
 )
+
+TRANSCRIBED_FOUR = (
+    TrackerSelection.DARK_PEERS,
+    TrackerSelection.SHARE_ISLAND,
+    TrackerSelection.UPLOAD_CX,
+    TrackerSelection.ONLY_ENCODES,
+)
+
+
+# The three whose remux order ends on `{atmos}`, so an empty one falls
+# against the tag. BeyondHD and the four transcribed put the codec last.
+REMUX_AUDIO_LAST = (
+    TrackerSelection.AITHER,
+    TrackerSelection.LST,
+    TrackerSelection.REELFLIX,
+)
+
+
+@pytest.mark.parametrize("tracker", REMUX_AUDIO_LAST)
+def test_a_non_atmos_remux_leaves_no_gap_before_the_tag(
+    tracker: TrackerSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last component of these three's remux order is `{atmos}`.
+
+    On anything but an Atmos track it renders empty, and the join left the
+    space that would have preceded it sitting against the tag's own hyphen:
+    "DTS-HD MA 7.1 -SomeGroup". Collapsing runs of whitespace never saw it,
+    because one space is not a run. DTS-HD MA is the common remux audio, so
+    this was the ordinary case rather than an edge one, and it contradicts
+    Aither's published example, which ends "DTS-HD MA 7.1-FraMeSToR".
+    """
+    monkeypatch.setattr(
+        "src.backend.token_replacer.AudioCodecs.get_codec",
+        lambda *_args: "DTS-HD MA",
+    )
+
+    rendered = _render(tracker, REMUX_NAME, "UHD BluRay")
+
+    assert " -" not in rendered
+    assert rendered.endswith("7.1-SomeGroup")
+
+
+@pytest.mark.parametrize("tracker", ALL_FOUR + TRANSCRIBED_FOUR)
+def test_no_entry_ships_a_gap_before_its_tag(
+    tracker: TrackerSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same guard for every composing entry, whatever sits last.
+
+    Which component ends a composition is a rule that can change; that an
+    empty one must not strand a space against the tag cannot.
+    """
+    monkeypatch.setattr(
+        "src.backend.token_replacer.AudioCodecs.get_codec",
+        lambda *_args: "DTS-HD MA",
+    )
+
+    for name, source in (
+        (REMUX_NAME, "UHD BluRay"),
+        (ENCODE_NAME, "BluRay"),
+        (WEB_NAME, "WEB-DL"),
+    ):
+        assert " -" not in _render(tracker, name, source)
+
+
+@pytest.mark.parametrize("tracker", (TrackerSelection.LST, TrackerSelection.AITHER))
+def test_hdr10_plus_is_spelled_with_a_plus(tracker: TrackerSelection) -> None:
+    """NfoForge spells the identity "HDR10Plus"; three trackers publish "+".
+
+    The entry's vocabulary is what converts it. Without that row the token's
+    own spelling shipped, so LST's published example -- which ends
+    "DV HDR10+ H.265-NTb" -- came out as "DV HDR10Plus".
+    """
+    entry = TITLE_RULES[tracker]
+    assert entry.normalisation.vocabulary["HDR10Plus"] == "HDR10+"
+
+    normalisation = entry.normalisation
+    for identity, expected in (("HDR10+", "HDR10+"), ("DV HDR10+", "DV HDR10+")):
+        composition = entry.composition
+        assert composition is not None
+        rule = _dynamic_range_rule(composition)
+        raw = resolve_dynamic_range(
+            rule, ReleaseProperties(resolution=2160, hdr_identity=identity), None
+        )
+        assert raw is not None
+        spelled = normalise_title(raw, normalisation, global_colon=ColonReplace.KEEP)
+        assert spelled == expected
+
+
+@pytest.mark.parametrize("tracker", TRANSCRIBED_FOUR)
+def test_a_transcribed_entry_keeps_both_shipped_rewrites(
+    tracker: TrackerSelection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Their shipped `mvr_title_replace_map` carried exactly two rules.
+
+    `DDP -> DD+` and `hdr10plus -> HDR10+`, on all four. The config is the
+    only source these entries have, so dropping a rule it carried is drift
+    rather than a decision -- unlike `{title_clean}`, which was departed
+    from deliberately and said so.
+    """
+    vocabulary = TITLE_RULES[tracker].normalisation.vocabulary
+    assert vocabulary["DDP"] == "DD+"
+    assert vocabulary["HDR10Plus"] == "HDR10+"
+
+    monkeypatch.setattr(
+        "src.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DDP"
+    )
+    rendered = _render(tracker, WEB_NAME, "WEB-DL")
+
+    assert "DD+ " in rendered
+    assert "DDP" not in rendered
+
+
+def test_beyondhd_glues_dd_to_its_channel_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BeyondHD's exception: "DD5.1", but "DDP 5.1" stays spaced.
+
+    The uploader enforced this and was deleted with it. A vocabulary row
+    cannot express it -- the layout varies, and any row would have to avoid
+    matching the DDP form that the same rule leaves alone.
+    """
+    monkeypatch.setattr(
+        "src.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DD"
+    )
+    assert "DD7.1" in _render(TrackerSelection.BEYOND_HD, WEB_NAME, "WEB-DL")
+
+    monkeypatch.setattr(
+        "src.backend.token_replacer.AudioCodecs.get_codec", lambda *_args: "DDP"
+    )
+    ddp = _render(TrackerSelection.BEYOND_HD, WEB_NAME, "WEB-DL")
+    assert "DDP 7.1" in ddp
+    assert "DDP7.1" not in ddp
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
