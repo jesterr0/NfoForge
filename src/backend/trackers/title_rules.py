@@ -131,13 +131,10 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # has no layout template at all, which is why composition had to be
         # optional rather than assumed.
         #
-        # "H 265" is spelled with a space because a key is matched against
-        # the title *after* dot stripping, where "H.265-GRP" has become
-        # "H 265-GRP". That also settles how keys match: on word boundaries
-        # rather than on whole space-delimited components, since the
-        # components there are "H" and "265-GRP" and neither is the key.
-        # Word boundaries still leave "DVDRip" alone, which is what a
-        # component rule was reaching for.
+        # HDBits is alone in wanting HEVC where NfoForge emits H.265; it
+        # takes H.264 as written, which is why only one of the pair is
+        # mapped. Keys are matched after dot stripping, which now preserves
+        # a codec's internal period, so the key is spelled as the codec is.
         #
         # The HDR -> HDR10 rewrite is deliberately absent: it is conditional
         # on HDR10+ being missing, and a flat map cannot express a
@@ -146,7 +143,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         TrackerSelection.HDB: TrackerTitleEntry(
             normalisation=Normalisation(
                 vocabulary={
-                    "H 265": "HEVC",
+                    "H.265": "HEVC",
                     "DV": "DoVi",
                     "REMUX": "Remux",
                 },

@@ -397,7 +397,11 @@ class HDBUploader:
     @staticmethod
     def generate_release_title(release_title: str) -> str:
         name = strip_title_dots(release_title)
-        name = re.sub(r"\bH\s?265\b", "HEVC", name)
+        # The separator is optional and may be a period: `strip_title_dots`
+        # preserves a codec's internal period, so this sees "H.265" where it
+        # used to see "H 265". HDBits wants HEVC here and takes H.264 as
+        # written, so only the one codec is rewritten.
+        name = re.sub(r"\bH[\s.]?265\b", "HEVC", name)
         name = re.sub(r"(?<!\S)DV(?!\S)", "DoVi", name)
         if "HDR10+" not in name:
             name = re.sub(r"(?<!\S)HDR(?!\S)", "HDR10", name)

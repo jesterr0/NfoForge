@@ -239,7 +239,7 @@ def test_supplied_tracker_title_is_formatted_in_the_payload(
     )
 
     # separators converted, audio channel layout kept intact
-    assert payload["name"] == "Example Movie 2026 1080p WEB-DL AAC 2.0 H 264-GRP"
+    assert payload["name"] == "Example Movie 2026 1080p WEB-DL AAC 2.0 H.264-GRP"
 
 
 def test_seedpool_names_the_upload_after_the_release(
@@ -301,7 +301,7 @@ def test_the_other_unit3d_trackers_still_want_the_spaced_form(
         tracker_title="Example.Movie.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP",
     )
 
-    assert payload["name"] == "Example Movie 2026 1080p WEB-DL AAC 2.0 H 264-GRP"
+    assert payload["name"] == "Example Movie 2026 1080p WEB-DL AAC 2.0 H.264-GRP"
 
 
 @pytest.mark.parametrize(

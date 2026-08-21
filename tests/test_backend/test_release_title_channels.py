@@ -122,12 +122,12 @@ def test_every_tracker_keeps_layout_from_a_dotted_filename(
         # a year/resolution boundary is not a layout
         (
             "Example.Movie.2019.1080p.WEB-DL.DDP.2.0.H.264-GRP",
-            "Example Movie 2019 1080p WEB-DL DDP 2.0 H 264-GRP",
+            "Example Movie 2019 1080p WEB-DL DDP 2.0 H.264-GRP",
         ),
         # an Atmos suffix between codec and channels was the common failure
         (
             "Example Movie 2026 1080p WEB-DL DDP Atmos 5.1 H.264-GRP",
-            "Example Movie 2026 1080p WEB-DL DDP Atmos 5.1 H 264-GRP",
+            "Example Movie 2026 1080p WEB-DL DDP Atmos 5.1 H.264-GRP",
         ),
         # a bare part number followed by a resolution is not a layout
         (
@@ -142,7 +142,7 @@ def test_every_tracker_keeps_layout_from_a_dotted_filename(
         # hyphenated digits are untouched
         (
             "9-1-1 S01E01 Pilot 1080p WEB-DL AAC 2.0 H.264-GRP",
-            "9-1-1 S01E01 Pilot 1080p WEB-DL AAC 2.0 H 264-GRP",
+            "9-1-1 S01E01 Pilot 1080p WEB-DL AAC 2.0 H.264-GRP",
         ),
         # repeated whitespace is still collapsed
         ("Example  Movie   2026 1080p AAC 2.0", "Example Movie 2026 1080p AAC 2.0"),
@@ -254,3 +254,75 @@ def test_seedpool_release_title_is_idempotent(title: str) -> None:
     once = SeedPoolUploader.generate_release_title(title)
 
     assert SeedPoolUploader.generate_release_title(once) == once
+
+
+# A video codec's internal period is the same casualty as a channel layout:
+# `strip_title_dots` cannot tell it from a separator, so `H.264` shipped as
+# `H 264` to every tracker that spaces its titles -- including LST, whose own
+# published example spells it `H.264`.
+VIDEO_CODECS_WITH_A_PERIOD = ("H.264", "H.265")
+
+
+@pytest.mark.parametrize("codec", VIDEO_CODECS_WITH_A_PERIOD)
+@pytest.mark.parametrize(
+    "title_form",
+    [
+        "Example Movie 2026 1080p AMZN WEB-DL DD+ 5.1 Atmos {codec}-GRP",
+        "Example.Movie.2026.1080p.AMZN.WEB-DL.DD+.5.1.Atmos.{codec}-GRP",
+    ],
+)
+def test_strip_title_dots_keeps_a_video_codec_period(
+    codec: str, title_form: str
+) -> None:
+    # Both forms matter: a composed title arrives space-separated, while the
+    # release-name fallback arrives as a dotted filename stem.
+    result = strip_title_dots(title_form.format(codec=codec))
+
+    assert f" {codec}-GRP" in result, result
+
+
+@pytest.mark.parametrize("codec", VIDEO_CODECS_WITH_A_PERIOD)
+def test_a_video_codec_period_survives_every_spaced_tracker(codec: str) -> None:
+    """LST publishes "... DD+ 5.1 Atmos H.264-GROUP" as a model name.
+
+    Every tracker below routes through `strip_title_dots`, so all of them
+    were emitting `H 264`. HDBits is excluded because it deliberately
+    rewrites H.265 to HEVC; its H.264 case is covered above.
+    """
+    title = f"Example Movie 2026 1080p AMZN WEB-DL DD+ 5.1 Atmos {codec}-GRP"
+
+    for uploader in (Unit3dBaseUploader, TLUploader):
+        assert codec in uploader.generate_release_title(title), uploader.__name__
+
+
+def test_a_channel_layout_and_a_codec_period_survive_together() -> None:
+    # The two protections must not undo each other -- they share a sentinel.
+    result = strip_title_dots(
+        "Example.Movie.2026.2160p.WEB-DL.TrueHD.7.1.4.Atmos.H.265-GRP"
+    )
+
+    assert result == "Example Movie 2026 2160p WEB-DL TrueHD 7.1.4 Atmos H.265-GRP"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected_codec"),
+    [
+        ("Example Movie 2026 1080p AMZN WEB-DL DD+ 5.1 H.265-GRP", "HEVC"),
+        ("Example Movie 2026 1080p AMZN WEB-DL DD+ 5.1 H 265-GRP", "HEVC"),
+        ("Example Movie 2026 1080p AMZN WEB-DL DD+ 5.1 H265-GRP", "HEVC"),
+        # HDBits takes H.264 as written; only the one codec is rewritten.
+        ("Example Movie 2026 1080p AMZN WEB-DL DD+ 5.1 H.264-GRP", "H.264"),
+    ],
+)
+def test_hdbits_rewrites_h265_but_not_h264(title: str, expected_codec: str) -> None:
+    """HDBits is the one tracker that wants HEVC where NfoForge emits H.265.
+
+    Its rewrite has to tolerate every separator, because the codec reaches it
+    as `H.265` now that `strip_title_dots` preserves the period, as `H 265`
+    from a title that was spaced before it arrived, and as `H265` from a
+    hand-typed template -- HDBits has no composition, so a user's own global
+    template is what it renders.
+    """
+    result = HDBUploader.generate_release_title(title)
+
+    assert result.endswith(f"{expected_codec}-GRP"), result

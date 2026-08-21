@@ -83,5 +83,5 @@ def test_seedpool_keeps_the_dotted_form_its_siblings_lose() -> None:
         SOURCE_NAME
     )
     assert backend.tracker_title_formatting(TrackerSelection.AITHER, SOURCE_NAME) == (
-        "Example Movie 2026 1080p WEB-DL AAC 2.0 H 264-GRP"
+        "Example Movie 2026 1080p WEB-DL AAC 2.0 H.264-GRP"
     )
