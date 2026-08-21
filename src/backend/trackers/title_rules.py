@@ -624,3 +624,16 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         ),
     }
 )
+
+
+def accepts_a_release_name(tracker: TrackerSelection) -> bool:
+    """Whether an upload to `tracker` carries a release name at all.
+
+    Was a frozenset beside the media-type support tables, which answers a
+    different question. A tracker's title rules are one object now, and
+    "there is no title" is one of them -- so the settings pages, the
+    renderer and the uploader contracts all read the same field rather than
+    a list that has to be kept in step with it.
+    """
+    entry = TITLE_RULES.get(tracker)
+    return entry.has_release_name_field if entry is not None else True

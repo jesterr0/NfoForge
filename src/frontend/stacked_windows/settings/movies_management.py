@@ -18,10 +18,8 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
-from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
-    UNSUPPORTED_MOVIE_TRACKERS,
-)
+from src.backend.trackers.media_support import UNSUPPORTED_MOVIE_TRACKERS
+from src.backend.trackers.title_rules import accepts_a_release_name
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
@@ -223,9 +221,8 @@ class MoviesManagementSettings(BaseSettings):
         self.tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
         self.tracker_over_ride_stacked_widget = ResizableStackedWidget(self)
         for tracker in self.config.settings.trackers.by_selection().keys():
-            if (
-                tracker in UNSUPPORTED_MOVIE_TRACKERS
-                or tracker in NO_RELEASE_NAME_FIELD
+            if tracker in UNSUPPORTED_MOVIE_TRACKERS or not accepts_a_release_name(
+                tracker
             ):
                 continue
             tracker_format_override = TrackerFormatOverride(self)

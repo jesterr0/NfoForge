@@ -18,10 +18,8 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
-from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
-    UNSUPPORTED_SERIES_TRACKERS,
-)
+from src.backend.trackers.media_support import UNSUPPORTED_SERIES_TRACKERS
+from src.backend.trackers.title_rules import accepts_a_release_name
 from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_FILE_NAME_1,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
@@ -303,9 +301,8 @@ class SeriesManagementSettings(BaseSettings):
         tracker_stacked = ResizableStackedWidget(container)
 
         for tracker in self.config.settings.trackers.by_selection().keys():
-            if (
-                tracker in UNSUPPORTED_SERIES_TRACKERS
-                or tracker in NO_RELEASE_NAME_FIELD
+            if tracker in UNSUPPORTED_SERIES_TRACKERS or not accepts_a_release_name(
+                tracker
             ):
                 continue
             tfo = TrackerFormatOverride(container)

@@ -4,9 +4,9 @@ from PySide6.QtWidgets import QWidget
 import pytest
 
 from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
     UNSUPPORTED_SERIES_TRACKERS,
 )
+from src.backend.trackers.title_rules import accepts_a_release_name
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
@@ -69,9 +69,11 @@ def test_movie_only_trackers_are_not_offered_as_series_overrides(
 
     assert UNSUPPORTED_SERIES_TRACKERS, "expected at least one movie-only tracker"
     all_trackers = set(manager.settings.trackers.by_selection().keys())
-    expected_offered = (
-        all_trackers - UNSUPPORTED_SERIES_TRACKERS - NO_RELEASE_NAME_FIELD
-    )
+    expected_offered = {
+        tracker
+        for tracker in all_trackers - UNSUPPORTED_SERIES_TRACKERS
+        if accepts_a_release_name(tracker)
+    }
 
     for fmt, fmt_widgets in widget._format_widgets.items():
         override_trackers = set(fmt_widgets["tracker_override_map"].keys())
