@@ -3,13 +3,18 @@ import re
 import pytest
 
 from src.backend.trackers.hdb import HDBUploader
-from src.backend.trackers.title_render import compose_token_string, normalise_title
+from src.backend.trackers.title_render import (
+    compose_token_string,
+    normalise_title,
+    resolve_dynamic_range,
+)
 from src.backend.trackers.title_rules import (
     TITLE_RULES,
     Composition,
     ConditionalOrder,
     ConditionalRewrite,
     Designator,
+    DynamicRangeRule,
     Normalisation,
     OmitRule,
     ReleaseProperties,
@@ -421,3 +426,175 @@ def test_a_film_has_no_designator_at_all(designator: Designator) -> None:
     composition = Composition(components=("{title_exact}", designator, "{resolution}"))
 
     assert _compose_body(composition, _release()) == ("{title_exact} {resolution}")
+
+
+# -------------------------------------------------------------- dynamic range
+
+# The three shapes the checked trackers divide into.
+_OMITS_SDR = DynamicRangeRule()
+_EMITS_SDR = DynamicRangeRule(emit_sdr_above_1080=True)
+_BEYOND_HD = DynamicRangeRule(
+    emit_sdr_above_1080=True, assumes_hdr10_on_disc_or_remux=True
+)
+
+
+@pytest.mark.parametrize(
+    ("resolution", "disc_or_remux", "identity", "expected"),
+    [
+        # At or below 1080p nothing is assumed, so the type is stated as it is
+        # and SDR is not stated at all.
+        (1080, False, "SDR", ""),
+        (1080, False, "HDR10", "HDR10"),
+        (1080, True, "SDR", ""),
+        (1080, True, "HDR10", "HDR10"),
+        # On a 2160p disc or remux the assumed HDR10 baseline is dropped.
+        (2160, True, "HDR10", ""),
+        (2160, True, "DV HDR10", "DV"),
+        # Neither of these is plain HDR10, so neither is touched.
+        (2160, True, "HDR10+", "HDR10+"),
+        (2160, True, "DV HDR10+", "DV HDR10+"),
+        # Where HDR is assumed, silence reads as HDR -- so the exception has
+        # to be spelled out.
+        (2160, True, "SDR", "SDR"),
+        # Nothing is assumed off a disc or remux, so everything is stated.
+        (2160, False, "SDR", "SDR"),
+        (2160, False, "HDR10", "HDR10"),
+        (2160, False, "DV HDR10", "DV HDR10"),
+    ],
+)
+def test_beyondhd_dynamic_range(
+    resolution: int, disc_or_remux: bool, identity: str, expected: str
+) -> None:
+    """BeyondHD assumes HDR10 on a 2160p disc or remux and nowhere else.
+
+    One rule, not twelve rows: on a 2160p disc or remux the assumed HDR10
+    baseline is dropped, so HDR10 becomes nothing and DV HDR10 becomes DV,
+    while HDR10+ and DV HDR10+ pass through untouched because neither is
+    plain HDR10.
+
+    The shipped config got this wrong in both directions -- HDR on a 2160p
+    remux where BHD assumes it, and nothing on a 2160p WEB SDR release
+    where BHD requires it.
+    """
+    release = _release(
+        resolution=resolution, is_remux=disc_or_remux, hdr_identity=identity
+    )
+
+    assert resolve_dynamic_range(_BEYOND_HD, release) == expected
+
+
+@pytest.mark.parametrize("disc", [True, False])
+def test_a_disc_counts_the_same_as_a_remux(disc: bool) -> None:
+    # The rule is "disc or remux", and BHD's own wording names both.
+    release = _release(
+        resolution=2160,
+        is_disc=disc,
+        is_remux=not disc,
+        hdr_identity="DV HDR10",
+    )
+
+    assert resolve_dynamic_range(_BEYOND_HD, release) == "DV"
+
+
+@pytest.mark.parametrize("rule", [_OMITS_SDR, _EMITS_SDR, _BEYOND_HD])
+@pytest.mark.parametrize("resolution", [720, 1080])
+def test_sdr_is_never_emitted_at_or_below_1080p(
+    rule: DynamicRangeRule, resolution: int
+) -> None:
+    """1080p is SDR by default, so the component carries no information.
+
+    Convention rather than a published rule, which is why it lives in the
+    resolver rather than being restated in each entry -- and why there is
+    no "always include SDR" state to reach. That output is wanted by
+    nobody.
+    """
+    release = _release(resolution=resolution, hdr_identity="SDR")
+
+    assert resolve_dynamic_range(rule, release) == ""
+
+
+def test_an_entry_that_omits_sdr_omits_it_above_1080p_too() -> None:
+    # Aither and LST publish the omit-SDR form at every resolution.
+    release = _release(resolution=2160, hdr_identity="SDR")
+
+    assert resolve_dynamic_range(_OMITS_SDR, release) == ""
+    assert resolve_dynamic_range(_EMITS_SDR, release) == "SDR"
+
+
+@pytest.mark.parametrize("identity", ["PQ", "HLG"])
+def test_pq_and_hlg_pass_through_a_disc_or_remux_unchanged(identity: str) -> None:
+    # Not covered by the supplied rules. The baseline drop names HDR10 and
+    # DV HDR10 only, so these pass through and no rule is invented.
+    release = _release(resolution=2160, is_disc=True, hdr_identity=identity)
+
+    assert resolve_dynamic_range(_BEYOND_HD, release) == identity
+
+
+def test_a_user_spelling_applies_where_the_tracker_publishes_none() -> None:
+    # BHD accepts HDR10+, HDR10P and HDR10Plus alike, so it has no rule and
+    # the user's choice reaches the title.
+    release = _release(resolution=2160, hdr_identity="HDR10+")
+
+    assert (
+        resolve_dynamic_range(_BEYOND_HD, release, custom_strings={"HDR10+": "HDR10P"})
+        == "HDR10P"
+    )
+
+
+def test_a_published_spelling_outranks_the_users() -> None:
+    """LST publishes PQ10, so a user spelling of PQ does not survive there.
+
+    Keyed on the identity rather than on the rendered string: a map keyed
+    on what was spelled would miss a user who spells PQ unusually, which is
+    exactly the case the override exists for.
+    """
+    rule = DynamicRangeRule(spellings={"PQ": "PQ10"})
+    release = _release(resolution=2160, hdr_identity="PQ")
+
+    assert (
+        resolve_dynamic_range(rule, release, custom_strings={"PQ": "PeeQue"}) == "PQ10"
+    )
+
+
+def test_a_published_suppression_removes_the_component() -> None:
+    # Aither suppresses PQ rather than spelling it.
+    rule = DynamicRangeRule(spellings={"PQ": None})
+    release = _release(resolution=2160, hdr_identity="PQ")
+
+    assert resolve_dynamic_range(rule, release, custom_strings={"PQ": "PQ"}) == ""
+
+
+def test_the_resolver_cannot_see_the_user_toggles() -> None:
+    """A tracker rule must not be subject to a user preference.
+
+    `resolutions` and `hdr_types` blank the component by resolution or by
+    type, which is right for a filename the user owns. BeyondHD's 2160p WEB
+    row requires SDR from a user who may have SDR switched off, so those
+    switches do not reach here -- enforced by the signature rather than by
+    remembering not to pass them.
+    """
+    import inspect
+
+    parameters = inspect.signature(resolve_dynamic_range).parameters
+
+    assert list(parameters) == ["rule", "release", "custom_strings"]
+
+
+def test_a_dynamic_range_component_composes_in_place() -> None:
+    composition = Composition(
+        components=("{source}", _BEYOND_HD, "{video_codec}"),
+    )
+    release = _release(resolution=2160, is_remux=True, hdr_identity="DV HDR10")
+
+    assert _compose_body(composition, release) == "{source} DV {video_codec}"
+
+
+def test_a_dropped_dynamic_range_leaves_no_component_behind() -> None:
+    # A 2160p remux that is HDR10 only emits nothing, and the components
+    # either side must close up.
+    composition = Composition(
+        components=("{source}", _BEYOND_HD, "{video_codec}"),
+    )
+    release = _release(resolution=2160, is_remux=True, hdr_identity="HDR10")
+
+    assert _compose_body(composition, release) == "{source} {video_codec}"

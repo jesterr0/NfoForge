@@ -138,6 +138,35 @@ class ConditionalOrder:
 
 
 @dataclass(frozen=True, slots=True)
+class DynamicRangeRule:
+    """How one tracker states a release's dynamic range.
+
+    Applied to the *identity* rather than to a rendered string. A rule such
+    as "assume HDR10 on a disc or remux" is about what the release is --
+    `DV HDR10` contains an assumed HDR10 and `DV HDR10+` does not -- and a
+    rewrite over "DV HDR" would be inferring that from how it was spelled.
+
+    `assumes_hdr10_on_disc_or_remux` drops the assumed baseline where the
+    tracker takes HDR10 as read above 1080p: `HDR10` becomes nothing and
+    `DV HDR10` becomes `DV`. The other identities pass through, including
+    `PQ` and `HLG`, for which no rule was supplied and none is invented.
+
+    `emit_sdr_above_1080` is the only place any entry states SDR. Below
+    that it is never stated by anyone, which is convention rather than a
+    published rule and so lives in the resolver.
+
+    `spellings` is the tracker's published spelling for an identity, which
+    outranks the user's. A value of ``None`` suppresses the component, as
+    Aither does with `PQ`. An absent key means the tracker publishes no
+    rule and the user's spelling stands.
+    """
+
+    assumes_hdr10_on_disc_or_remux: bool = False
+    emit_sdr_above_1080: bool = False
+    spellings: Mapping[HdrType, str | None] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
 class OmitRule:
     """Components dropped when the release matches.
 
@@ -149,9 +178,9 @@ class OmitRule:
     components: tuple[str, ...]
 
 
-# A component is a token string, a run whose order depends on the release,
-# or a designator that is computed rather than rendered.
-Component = str | ConditionalOrder | Designator
+# A component is a token string, a run whose order depends on the release, or
+# one of the two values computed rather than rendered.
+Component = str | ConditionalOrder | Designator | DynamicRangeRule
 
 
 @dataclass(frozen=True, slots=True)
