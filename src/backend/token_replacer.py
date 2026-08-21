@@ -1283,20 +1283,29 @@ class TokenReplacer:
         for the entries themselves, `custom_cut_names` for which of those
         count as a Cut.
 
-        The override is still classified rather than emitted verbatim: an
-        edition that is not a known Cut is dropped, because an unrecognized
-        string cannot confidently be called one and the guide's own default
-        for an omitted Cut is "assumed Theatrical".
+        The edition is still classified rather than emitted verbatim: one
+        that is not a known Cut is dropped, because an unrecognized string
+        cannot confidently be called one and the guide's own default for an
+        omitted Cut is "assumed Theatrical".
+
+        Both carriers of the user's edition are read. {edition} is satisfied
+        by either -- an override token short-circuits its handler before it
+        runs -- and this token has no override of its own to be satisfied by,
+        so reading one carrier would blank it wherever the other is used.
+        The rename page carries the edition in `override_tokens`; the upload
+        path passes `edition_override`. Same precedence as {edition}: the
+        override token wins.
         """
         all_edition_info = (*EDITION_INFO, *self.custom_edition_info)
         all_cut_names = {*CUT_EDITION_NAMES, *self.custom_cut_names}
+        edition = (self.override_tokens or {}).get("edition") or self.edition_override
 
-        if self.edition_override:
+        if edition:
             for rename_normalize in all_edition_info:
                 if rename_normalize.normalized not in all_cut_names:
                     continue
                 for regex_str in rename_normalize.re_gex:
-                    if re.search(regex_str, self.edition_override, flags=re.I):
+                    if re.search(regex_str, edition, flags=re.I):
                         return self._optional_user_input(
                             rename_normalize.normalized, token_data
                         )

@@ -1004,6 +1004,47 @@ def test_claim_tokens_render_the_override_they_are_given() -> None:
     assert output == "Directors Cut|IMAX|HYBRID"
 
 
+def test_cut_classifies_an_edition_given_as_an_override_token() -> None:
+    """{cut} is derived from {edition}, so it must see the same value.
+
+    The user's edition reaches the engine by two carriers: the rename page
+    puts it in override_tokens, while process.py passes edition_override.
+    {edition} is satisfied by either, because an override token
+    short-circuits its handler. {cut} has no override token of its own --
+    it classifies the edition -- so reading only edition_override left it
+    blank on the page that renders filenames.
+    """
+    output = _claim_replacer(
+        "{edition}|{cut}",
+        "Movie.2024.1080p.BluRay.x264-GRP",
+        override_tokens={"edition": "Directors Cut"},
+    )
+
+    assert output == "Directors Cut|Directors Cut"
+
+
+def test_cut_still_classifies_the_edition_override_argument() -> None:
+    output = _claim_replacer(
+        "{cut}",
+        "Movie.2024.1080p.BluRay.x264-GRP",
+        edition_override="Directors Cut",
+    )
+
+    assert output == "Directors Cut"
+
+
+def test_cut_drops_an_edition_that_is_not_a_cut() -> None:
+    # The classification is the point: a marketing edition is not a Cut,
+    # and the naming guide's default for an omitted Cut is "Theatrical".
+    output = _claim_replacer(
+        "{edition}|{cut}",
+        "Movie.2024.1080p.BluRay.x264-GRP",
+        override_tokens={"edition": "Criterion"},
+    )
+
+    assert output == "Criterion|"
+
+
 def test_nfo_repack_and_proper_tokens_need_an_override_too() -> None:
     # The NFO-side tokens scanned the filename independently of the
     # file-name side, so an NFO could claim a REPACK the filename did not.
