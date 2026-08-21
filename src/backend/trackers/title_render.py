@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 import re
+from types import MappingProxyType
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.trackers.title_rules import (
@@ -36,6 +37,29 @@ _REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 # out while still letting a key match where a tag abuts it on the right, as
 # "H.265-GRP" does.
 _TAG_SEPARATOR_LOOKBEHIND = r"(?<!-)"
+
+# How NfoForge already spells each identity, mirroring
+# `{video_dynamic_range_type}`. Four of the eight are not written the way the
+# identity is named -- HDR10 is "HDR", HDR10+ is "HDR10Plus", and the two
+# Dolby Vision composites follow -- so the identity name is not usable as a
+# default. That token is what every packaged tracker template uses, so this
+# is what every tracker has been receiving; Aither's published "REMUX HDR
+# HEVC" and LST's "REMUX DV HDR HEVC" both show it.
+#
+# It is also the vocabulary the per-tracker overrides are written against:
+# the three trackers publishing "HDR10+" map it from "HDR10Plus".
+_DEFAULT_SPELLINGS: Mapping[HdrType, str] = MappingProxyType(
+    {
+        "SDR": "SDR",
+        "PQ": "PQ",
+        "HLG": "HLG",
+        "HDR10": "HDR",
+        "HDR10+": "HDR10Plus",
+        "DV": "DV",
+        "DV HDR10": "DV HDR",
+        "DV HDR10+": "DV HDR10Plus",
+    }
+)
 
 
 def normalise_title(
@@ -172,9 +196,7 @@ def resolve_dynamic_range(
     if identity in rule.spellings:
         return rule.spellings[identity] or ""
 
-    # An identity's own value is its default spelling, so a tracker with no
-    # rule and a user with no preference both land on the same string.
-    return (custom_strings or {}).get(identity, "") or identity
+    return (custom_strings or {}).get(identity, "") or _DEFAULT_SPELLINGS[identity]
 
 
 def _expand(

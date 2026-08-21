@@ -444,22 +444,22 @@ _BEYOND_HD = DynamicRangeRule(
         # At or below 1080p nothing is assumed, so the type is stated as it is
         # and SDR is not stated at all.
         (1080, False, "SDR", ""),
-        (1080, False, "HDR10", "HDR10"),
+        (1080, False, "HDR10", "HDR"),
         (1080, True, "SDR", ""),
-        (1080, True, "HDR10", "HDR10"),
+        (1080, True, "HDR10", "HDR"),
         # On a 2160p disc or remux the assumed HDR10 baseline is dropped.
         (2160, True, "HDR10", ""),
         (2160, True, "DV HDR10", "DV"),
         # Neither of these is plain HDR10, so neither is touched.
-        (2160, True, "HDR10+", "HDR10+"),
-        (2160, True, "DV HDR10+", "DV HDR10+"),
+        (2160, True, "HDR10+", "HDR10Plus"),
+        (2160, True, "DV HDR10+", "DV HDR10Plus"),
         # Where HDR is assumed, silence reads as HDR -- so the exception has
         # to be spelled out.
         (2160, True, "SDR", "SDR"),
         # Nothing is assumed off a disc or remux, so everything is stated.
         (2160, False, "SDR", "SDR"),
-        (2160, False, "HDR10", "HDR10"),
-        (2160, False, "DV HDR10", "DV HDR10"),
+        (2160, False, "HDR10", "HDR"),
+        (2160, False, "DV HDR10", "DV HDR"),
     ],
 )
 def test_beyondhd_dynamic_range(
@@ -598,3 +598,49 @@ def test_a_dropped_dynamic_range_leaves_no_component_behind() -> None:
     release = _release(resolution=2160, is_remux=True, hdr_identity="HDR10")
 
     assert _compose_body(composition, release) == "{source} {video_codec}"
+
+
+@pytest.mark.parametrize(
+    ("identity", "expected"),
+    [
+        ("SDR", "SDR"),
+        ("PQ", "PQ"),
+        ("HLG", "HLG"),
+        ("HDR10", "HDR"),
+        ("HDR10+", "HDR10Plus"),
+        ("DV", "DV"),
+        ("DV HDR10", "DV HDR"),
+        ("DV HDR10+", "DV HDR10Plus"),
+    ],
+)
+def test_the_default_spelling_is_what_the_token_already_emits(
+    identity: str, expected: str
+) -> None:
+    """An identity's default spelling is NfoForge's, not the identity name.
+
+    The eight `HdrType` values are identities, and four of them are not
+    spelled the way `{video_dynamic_range_type}` renders them: HDR10 is
+    written "HDR", HDR10+ is "HDR10Plus", and the two Dolby Vision
+    composites follow. That token is what every packaged tracker template
+    uses, so it is what every tracker has been receiving, and both Aither's
+    "REMUX HDR HEVC" and LST's "REMUX DV HDR HEVC" confirm it.
+
+    It is also what the per-tracker spelling overrides are written against:
+    the three trackers that publish "HDR10+" map it from "HDR10Plus", which
+    only makes sense if that is the default.
+    """
+    release = _release(resolution=2160, hdr_identity=identity)
+
+    assert resolve_dynamic_range(_EMITS_SDR, release) == expected
+
+
+def test_a_user_spelling_overrides_the_default_spelling() -> None:
+    # The user's custom_strings are keyed on the identity, so a preference
+    # for HDR10 reaches the title even though the default spells it "HDR".
+    release = _release(resolution=2160, hdr_identity="HDR10")
+
+    assert resolve_dynamic_range(_EMITS_SDR, release) == "HDR"
+    assert (
+        resolve_dynamic_range(_EMITS_SDR, release, custom_strings={"HDR10": "HDR10"})
+        == "HDR10"
+    )
