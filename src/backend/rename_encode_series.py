@@ -104,9 +104,8 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
         """Render the season pack folder name from the season folder token.
 
         Mirrors ``series_renamer`` but with no episode context, so episode
-        tokens drop out. Because ``file_name_mode`` appends the primary file's
-        extension (token_replacer.py:951), the trailing extension is stripped so
-        the result is a bare folder name.
+        tokens drop out, and with ``append_suffix`` off because a folder has
+        no extension.
 
         Args:
             season_num: Lowest season number in the pack.
@@ -124,6 +123,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             media_search_obj=media_search_payload,
             flatten=True,
             file_name_mode=True,
+            append_suffix=False,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             title_clean_rules=title_clean_rules,
@@ -139,9 +139,7 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
 
         data = self.token_replacer.get_output()
         if data:
-            # file_name_mode appends the primary file's extension; a folder has
-            # none, so strip the single trailing suffix it added.
-            return Path(data).with_suffix("")
+            return Path(data)
         return None
 
     @staticmethod

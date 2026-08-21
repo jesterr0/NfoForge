@@ -106,6 +106,57 @@ def test_series_folder_renamer_omits_episode_context() -> None:
     assert result == Path("S01")
 
 
+def _render_season_folder(
+    token: str,
+    *,
+    title: str = "Show",
+    override_tokens: dict[str, str] | None = None,
+) -> Path | None:
+    backend = RenameEncodeSeriesBackEnd()
+    if override_tokens:
+        backend.override_tokens.update(override_tokens)
+    return backend.series_folder_renamer(
+        media_input_obj=_minimal_series_payload(),
+        token=token,
+        colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+        media_search_payload=MediaSearchPayload(
+            media_type=MediaType.SERIES, title=title, tvdb_data={"episodes": []}
+        ),
+        season_num=1,
+        title_clean_rules=None,
+        video_dynamic_range=None,
+        user_tokens=None,
+        season_end=1,
+    )
+
+
+def test_folder_name_keeps_a_dotted_release_name_intact() -> None:
+    """A dotted release name has no extension, but pathlib cannot tell.
+
+    Path("Show.S01.1080p.BluRay.x264-GRP").suffix is ".x264-GRP", so
+    with_suffix("") drops the codec and the release group. Today that is
+    defused only by file_name_mode appending .mkv first, which the caller
+    then strips -- an invariant nothing enforces.
+    """
+    folder = _render_season_folder(
+        "{title_clean}.S{season_number|zfill(2)}.1080p.BluRay.x264-{release_group}",
+        override_tokens={"release_group": "GRP"},
+    )
+
+    assert folder is not None
+    assert folder.name == "Show.S01.1080p.BluRay.x264-GRP"
+
+
+def test_folder_name_is_not_capped_short_by_a_suffix_it_never_keeps() -> None:
+    # The length budget is 255 - len(suffix), so a folder name was capped
+    # four characters short for a .mkv input, for a suffix added and
+    # immediately removed.
+    folder = _render_season_folder("{title_clean}", title="A" * 400)
+
+    assert folder is not None
+    assert len(folder.name) == 255
+
+
 def test_build_pack_rename_targets_relocates_flat_pack(tmp_path: Path) -> None:
     src_dir = tmp_path / "show-season-1"
     src_dir.mkdir()

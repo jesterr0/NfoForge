@@ -109,6 +109,7 @@ class TokenReplacer:
         "custom_edition_info",
         "custom_cut_names",
         "file_name_mode",
+        "append_suffix",
         "token_type",
         "unfilled_token_mode",
         "releasers_name",
@@ -164,6 +165,7 @@ class TokenReplacer:
         custom_edition_info: Sequence[RenameNormalization] | None = None,
         custom_cut_names: frozenset[str] | None = None,
         file_name_mode: bool = True,
+        append_suffix: bool = True,
         token_type: Iterable[TokenType] | type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
@@ -203,6 +205,10 @@ class TokenReplacer:
             file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
               with no newlines or extra white space (used for filenames). `colon_replace` is ignored
               when this is used.
+            append_suffix (bool): Whether `file_name_mode` ends the name with the input
+              file's extension. Set False for a folder name, which has none: the
+              extension is then neither appended nor charged against the 255-character
+              budget. Ignored outside `file_name_mode`.
             token_type (Optional[Iterable[TokenType]]): Specific `TokenType`'s to use, or None for all.
             unfilled_token_mode (UnfilledTokenRemoval): What to do with unused tokens.
             eg. (TokenType, TokenType).
@@ -265,6 +271,7 @@ class TokenReplacer:
         self.custom_edition_info = custom_edition_info or ()
         self.custom_cut_names = custom_cut_names or frozenset()
         self.file_name_mode = file_name_mode
+        self.append_suffix = append_suffix
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
         self.releasers_name = releasers_name
@@ -1208,8 +1215,12 @@ class TokenReplacer:
         becoming path separators and makes the final rename target portable to
         Windows. Returning ``None`` for an empty or reserved device name lets
         the rename page reject the result before it creates a plan.
+
+        ``append_suffix`` is False for a folder name, which has no extension.
+        The suffix then costs nothing against the length budget either, so a
+        folder is not capped short for an extension it never carries.
         """
-        suffix = self.media_input.suffix
+        suffix = self.media_input.suffix if self.append_suffix else ""
         filename = _INVALID_FILENAME_CHARS.sub(".", filename)
         filename = re.sub(r"\.{2,}", ".", filename)
         filename = filename.strip(". -")
