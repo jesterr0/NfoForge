@@ -13,7 +13,6 @@ from src.backend.trackers.utils import (
     DISC_TITLE_REGEX,
     TRACKER_HEADERS,
     looks_like_torrent,
-    strip_title_dots,
 )
 from src.backend.upload_retry import classify_upload_post_error
 from src.backend.utils.file_utilities import release_stem
@@ -237,9 +236,7 @@ class HDBUploader:
         medium_id = hdb_medium_id(self.input_path)
 
         upload_payload: dict[str, Any] = {
-            "name": tracker_title
-            if tracker_title
-            else self.generate_release_title(release_stem(self.input_path)),
+            "name": tracker_title,
             "category": category_id,
             "codec": codec_id,
             "medium": medium_id,
@@ -393,22 +390,6 @@ class HDBUploader:
             ) from error
         finally:
             temporary_path.unlink(missing_ok=True)
-
-    @staticmethod
-    def generate_release_title(release_title: str) -> str:
-        name = strip_title_dots(release_title)
-        # The separator is optional and may be a period: `strip_title_dots`
-        # preserves a codec's internal period, so this sees "H.265" where it
-        # used to see "H 265". HDBits wants HEVC here and takes H.264 as
-        # written, so only the one codec is rewritten.
-        name = re.sub(r"\bH[\s.]?265\b", "HEVC", name)
-        name = re.sub(r"(?<!\S)DV(?!\S)", "DoVi", name)
-        if "HDR10+" not in name:
-            name = re.sub(r"(?<!\S)HDR(?!\S)", "HDR10", name)
-        name = name.replace("REMUX", "Remux")
-        name = re.sub(r"[^0-9a-zA-ZÀ-ÿ. :&+'\-\[\]]+", "", name)
-        name = name.replace(" .", ".").replace("..", ".")
-        return name
 
 
 _HDB_SEARCH_SESSION = new_http_session()

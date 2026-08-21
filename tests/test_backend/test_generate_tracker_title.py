@@ -14,6 +14,7 @@ removal cannot quietly change behaviour when it lands.
 """
 
 from copy import deepcopy
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -30,6 +31,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.token_replacer import ColonReplace
 from src.enums.tracker_selection import TrackerSelection
+from src.exceptions import TrackerError
 from src.payloads.series import build_series_release_info
 from src.payloads.trackers import TrackerInfo
 
@@ -247,3 +249,85 @@ def test_beyondhd_keeps_its_audio_undivided_where_lst_splits_it() -> None:
     assert "DDP Atmos 5.1" in beyond_hd
     assert lst is not None
     assert "DD+ 5.1 Atmos" in lst
+
+
+def _composing_tracker() -> TrackerSelection:
+    """Any tracker with a composition of its own."""
+    for tracker, entry in TITLE_RULES.items():
+        if entry.composition is not None:
+            return tracker
+    pytest.fail("No tracker composes, so there are no hardcoded rules left.")
+
+
+def test_an_empty_title_with_a_composition_is_refused() -> None:
+    """A hardcoded composition producing nothing means something is broken.
+
+    Failing is better than uploading a name the tracker's rules will
+    reject. generate_tracker_title returns None whenever get_output() is
+    falsy, and _format_token_string returns None on ValueError, KeyError or
+    IndexError with only a warning -- so a malformed rule used to degrade
+    silently into uploading a filename to a tracker with strict naming
+    requirements.
+    """
+    tracker = _composing_tracker()
+    backend = _backend()
+
+    with pytest.raises(TrackerError, match=str(tracker)):
+        backend.resolve_tracker_title(tracker, None, Path("Some.Release-GRP.mkv"))
+
+
+def test_an_empty_title_without_a_composition_falls_back_and_says_so() -> None:
+    """Correct for SeedPool, which names uploads after the release.
+
+    A tracker with no composition is rendering the user's global template,
+    where the release name is the sensible last resort. What it must never
+    be is silent -- that is the defect this replaces.
+    """
+    tracker = _renders_the_users_template()
+    backend = _backend()
+
+    resolved = backend.resolve_tracker_title(
+        tracker, None, Path("Some.Release.1080p.BluRay.x264-GRP.mkv")
+    )
+
+    # Spaced, because the fallback is normalised like any other title --
+    # see below.
+    assert resolved == "Some Release 1080p BluRay x264-GRP"
+
+
+def test_a_tracker_with_no_release_name_field_needs_no_title() -> None:
+    # Nothing to shape, so an absent title is the expected state rather
+    # than a failure or a fallback.
+    resolved = _backend().resolve_tracker_title(
+        TrackerSelection.PASS_THE_POPCORN, None, Path("Some.Release-GRP.mkv")
+    )
+
+    assert resolved is None
+
+
+def test_a_rendered_title_is_returned_unchanged() -> None:
+    backend = _backend()
+
+    assert (
+        backend.resolve_tracker_title(
+            _composing_tracker(), "Movie Name 2024", Path("x.mkv")
+        )
+        == "Movie Name 2024"
+    )
+
+
+def test_the_fallback_is_normalised_like_any_other_title() -> None:
+    """A release name is a filename stem, so it arrives dotted.
+
+    That is what SeedPool wants and the opposite of what every other
+    tracker here does, so the fallback goes through the entry's
+    normalisation rather than being passed along raw.
+    """
+    backend = _backend()
+    stem = Path("Some.Release.1080p.BluRay.x264-GRP.mkv")
+
+    spaced = backend.resolve_tracker_title(_renders_the_users_template(), None, stem)
+    dotted = backend.resolve_tracker_title(TrackerSelection.SEEDPOOL, None, stem)
+
+    assert spaced == "Some Release 1080p BluRay x264-GRP"
+    assert dotted == "Some.Release.1080p.BluRay.x264-GRP"

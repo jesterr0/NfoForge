@@ -27,17 +27,16 @@ import pytest
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
-from src.backend.trackers.hdb import HDBUploader
-from src.backend.trackers.seedpool import SeedPoolUploader
-from src.backend.trackers.torrentleech import TLUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseUploader
+from src.backend.trackers.title_render import normalise_title
+from src.backend.trackers.title_rules import TITLE_RULES
 from src.backend.trackers.utils import strip_title_dots
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_SEARCH_PAYLOAD,
 )
 from src.config.config import ConfigManager
-from src.enums.token_replacer import UnfilledTokenRemoval
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
+from src.enums.tracker_selection import TrackerSelection
 from tests.test_config.config_tree import build_config_paths
 
 # every codec runtime/config/audio_conventions/default.json can emit
@@ -86,19 +85,37 @@ LAYOUTS = (
     "7.1.4",
 )
 
+
+def _normaliser(tracker: TrackerSelection) -> Callable[[str], str]:
+    """One tracker's normalisation, as a plain string transform.
+
+    The uploaders each had their own formatter when this file was written;
+    all of it is an entry's normalisation now. The three below still cover
+    what they covered: a plain spaced entry, one that logs a correction,
+    and the most heavily normalised tracker in the codebase.
+    """
+    normalisation = TITLE_RULES[tracker].normalisation
+
+    def normalise(title: str) -> str:
+        return normalise_title(title, normalisation, global_colon=ColonReplace.KEEP)
+
+    return normalise
+
+
 GENERATORS: tuple[Callable[[str], str], ...] = (
-    Unit3dBaseUploader.generate_release_title,
-    TLUploader.generate_release_title,
-    HDBUploader.generate_release_title,
+    _normaliser(TrackerSelection.BLUTOPIA),
+    _normaliser(TrackerSelection.TORRENT_LEECH),
+    _normaliser(TrackerSelection.HDB),
 )
+_SEEDPOOL = _normaliser(TrackerSelection.SEEDPOOL)
 
 
 @pytest.mark.parametrize("codec", CODECS)
 @pytest.mark.parametrize("layout", LAYOUTS)
-def test_unit3d_keeps_every_codec_and_layout(codec: str, layout: str) -> None:
+def test_a_spaced_entry_keeps_every_codec_and_layout(codec: str, layout: str) -> None:
     title = f"Example Movie 2026 1080p BluRay {codec} {layout} AVC-GRP"
 
-    assert f"{codec} {layout} " in Unit3dBaseUploader.generate_release_title(title)
+    assert f"{codec} {layout} " in _normaliser(TrackerSelection.BLUTOPIA)(title)
 
 
 @pytest.mark.parametrize("layout", LAYOUTS)
@@ -161,7 +178,7 @@ def test_strip_title_dots(title: str, expected: str) -> None:
     ],
 )
 @pytest.mark.parametrize("generate", GENERATORS)
-def test_generate_release_title_is_idempotent(
+def test_normalisation_is_idempotent(
     generate: Callable[[str], str], title: str
 ) -> None:
     once = generate(title)
@@ -239,7 +256,7 @@ def test_seedpool_keeps_every_codec_and_layout(codec: str, layout: str) -> None:
     the separator it emits is the one a layout is made of."""
     title = f"Example Movie 2026 1080p BluRay {codec} {layout} AVC-GRP"
 
-    assert f".{layout}." in SeedPoolUploader.generate_release_title(title)
+    assert f".{layout}." in _SEEDPOOL(title)
 
 
 @pytest.mark.parametrize(
@@ -251,9 +268,9 @@ def test_seedpool_keeps_every_codec_and_layout(codec: str, layout: str) -> None:
     ],
 )
 def test_seedpool_release_title_is_idempotent(title: str) -> None:
-    once = SeedPoolUploader.generate_release_title(title)
+    once = _SEEDPOOL(title)
 
-    assert SeedPoolUploader.generate_release_title(once) == once
+    assert _SEEDPOOL(once) == once
 
 
 # A video codec's internal period is the same casualty as a channel layout:
@@ -291,8 +308,11 @@ def test_a_video_codec_period_survives_every_spaced_tracker(codec: str) -> None:
     """
     title = f"Example Movie 2026 1080p AMZN WEB-DL DD+ 5.1 Atmos {codec}-GRP"
 
-    for uploader in (Unit3dBaseUploader, TLUploader):
-        assert codec in uploader.generate_release_title(title), uploader.__name__
+    for name, normalise in (
+        ("spaced", _normaliser(TrackerSelection.BLUTOPIA)),
+        ("torrentleech", _normaliser(TrackerSelection.TORRENT_LEECH)),
+    ):
+        assert codec in normalise(title), name
 
 
 def test_a_channel_layout_and_a_codec_period_survive_together() -> None:
@@ -323,6 +343,6 @@ def test_hdbits_rewrites_h265_but_not_h264(title: str, expected_codec: str) -> N
     hand-typed template -- HDBits has no composition, so a user's own global
     template is what it renders.
     """
-    result = HDBUploader.generate_release_title(title)
+    result = _normaliser(TrackerSelection.HDB)(title)
 
     assert result.endswith(f"{expected_codec}-GRP"), result

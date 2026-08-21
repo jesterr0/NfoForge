@@ -2,7 +2,6 @@ import re
 
 import pytest
 
-from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.title_render import (
     compose_token_string,
     normalise_title,
@@ -192,33 +191,60 @@ def test_an_allowlist_cleans_up_the_gap_it_leaves() -> None:
     assert ".." not in result
 
 
+# What the HDBits entry produces, captured from its own uploader while both
+# existed. The uploader's formatter is gone now, so these are the record of
+# what it did: separator, plain rewrites, a conditional rewrite, and an
+# allowlist with its cleanup, on one tracker.
 HDB_CORPUS = [
-    "Movie Name 2024 2160p UHD BluRay REMUX DV HDR HEVC TrueHD 7.1 Atmos-GRP",
-    "Movie.Name.2024.1080p.AMZN.WEB-DL.DD+.5.1.H.265-GRP",
-    "Movie.Name.2024.1080p.AMZN.WEB-DL.DD+.5.1.H.264-GRP",
-    "Show Name 2024 S01E10 2160p PMTP WEB-DL DD+ 5.1 DV HDR10+ H.265-GRP",
-    "Transformers 2007 DVDRip DD 5.1 x264-GRP",
-    'Who Are You? 2024 1080p BluRay <"*> DD 2.0 x264-GRP',
-    "Movie Name 2024 1080p BluRay TrueHD 7.1.4 Atmos x265-GRP",
+    (
+        "Movie Name 2024 2160p UHD BluRay REMUX DV HDR HEVC TrueHD 7.1 Atmos-GRP",
+        "Movie Name 2024 2160p UHD BluRay Remux DoVi HDR10 HEVC TrueHD 7.1 Atmos-GRP",
+    ),
+    (
+        "Movie.Name.2024.1080p.AMZN.WEB-DL.DD+.5.1.H.265-GRP",
+        "Movie Name 2024 1080p AMZN WEB-DL DD+ 5.1 HEVC-GRP",
+    ),
+    (
+        # H.264 is taken as written; only the one codec is rewritten.
+        "Movie.Name.2024.1080p.AMZN.WEB-DL.DD+.5.1.H.264-GRP",
+        "Movie Name 2024 1080p AMZN WEB-DL DD+ 5.1 H.264-GRP",
+    ),
+    (
+        # The conditional rewrite stands down: HDR10+ is already present.
+        "Show Name 2024 S01E10 2160p PMTP WEB-DL DD+ 5.1 DV HDR10+ H.265-GRP",
+        "Show Name 2024 S01E10 2160p PMTP WEB-DL DD+ 5.1 DoVi HDR10+ HEVC-GRP",
+    ),
+    (
+        # DVDRip survives a DV -> DoVi rule, which a substring replace would
+        # have turned into DoViDRip.
+        "Transformers 2007 DVDRip DD 5.1 x264-GRP",
+        "Transformers 2007 DVDRip DD 5.1 x264-GRP",
+    ),
+    (
+        # The allowlist strips, and the gap it leaves closes.
+        'Who Are You? 2024 1080p BluRay <"*> DD 2.0 x264-GRP',
+        "Who Are You 2024 1080p BluRay DD 2.0 x264-GRP",
+    ),
+    (
+        "Movie Name 2024 1080p BluRay TrueHD 7.1.4 Atmos x265-GRP",
+        "Movie Name 2024 1080p BluRay TrueHD 7.1.4 Atmos x265-GRP",
+    ),
 ]
 
 
-@pytest.mark.parametrize("title", HDB_CORPUS)
-def test_the_hdbits_entry_reproduces_its_uploader(title: str) -> None:
-    """The entry must be a faithful transcription, not an approximation.
+@pytest.mark.parametrize(("title", "expected"), HDB_CORPUS)
+def test_the_hdbits_entry_normalises_as_its_uploader_did(
+    title: str, expected: str
+) -> None:
+    """The transcription, now that there is nothing left to compare against.
 
-    HDBits is the most heavily normalised tracker in the codebase, so it
-    exercises every stage: separator, plain rewrites, a conditional
-    rewrite, and an allowlist with its cleanup. While both implementations
-    exist this can be asserted directly; once the uploader's own formatter
-    goes, this test is what proves nothing was lost with it.
-
-    Repeated whitespace is collapsed on both sides before comparing, so
-    the rest of the comparison stays exact. That is the one place the two
-    differ, and the entry is the correct one -- see the two tests below.
+    HDBits is the most heavily normalised tracker in the codebase, so one
+    corpus exercises every stage. These expectations were taken from its own
+    formatter before that formatter was deleted, with one deliberate
+    difference already recorded: it left a double space where the allowlist
+    stripped a token, and the entry closes the gap.
     """
     entry = TITLE_RULES[TrackerSelection.HDB].normalisation
-    expected = re.sub(r"\s{2,}", " ", HDBUploader.generate_release_title(title))
 
     assert normalise_title(title, entry, global_colon=ColonReplace.KEEP) == expected
 
@@ -244,17 +270,17 @@ def test_no_entry_can_emit_a_gap(tracker: TrackerSelection) -> None:
     assert ".." not in result, result
 
 
-def test_the_entry_closes_a_gap_the_hdbits_uploader_leaves_open() -> None:
-    """The one place the entry and hdb.py differ, and why.
+def test_the_entry_closes_a_gap_the_old_formatter_left_open() -> None:
+    """The one place the entry differed from hdb.py's formatter.
 
-    hdb.py's cleanup handles the period case (`" ."`) but not the space
-    case, so a title carrying a forbidden token has shipped to HDBits with
-    a visible gap in it.
+    That formatter cleaned up the period case (`" ."`) but not the space
+    case, so a title carrying a forbidden token shipped to HDBits with a
+    visible gap in it. Kept as its own test because it is the single
+    behaviour change in the transcription.
     """
     title = 'Who Are You? 2024 1080p BluRay <"*> DD 2.0 x264-GRP'
     entry = TITLE_RULES[TrackerSelection.HDB].normalisation
 
-    assert "  " in HDBUploader.generate_release_title(title)
     assert "  " not in normalise_title(title, entry, global_colon=ColonReplace.KEEP)
 
 

@@ -89,8 +89,8 @@ from src.backend.trackers.media_support import (
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
-from src.backend.trackers.title_render import render_tracker_title
-from src.backend.trackers.title_rules import ReleaseProperties
+from src.backend.trackers.title_render import normalise_title, render_tracker_title
+from src.backend.trackers.title_rules import TITLE_RULES, ReleaseProperties
 from src.backend.trackers.unit3d_base import Unit3dBaseSearch
 from src.backend.trackers.utils import format_image_tag
 from src.backend.upload_retry import (
@@ -1057,11 +1057,15 @@ class ProcessBackEnd:
             # normalised -- the entry's separator, colon and vocabulary are
             # part of rendering it now, rather than a second pass applied
             # here and again in the uploader.
-            tracker_title = self.generate_tracker_title(
-                tracker=cur_tracker,
-                tracker_info=tracker_info,
-                context=context,
-                release_info=release_info,
+            tracker_title = self.resolve_tracker_title(
+                cur_tracker,
+                self.generate_tracker_title(
+                    tracker=cur_tracker,
+                    tracker_info=tracker_info,
+                    context=context,
+                    release_info=release_info,
+                ),
+                context.media_input.require_input_path(),
             )
 
             nfo_template = (
@@ -2755,6 +2759,55 @@ class ProcessBackEnd:
             global_colon=global_colon,
             custom_strings=dynamic_range.custom_strings if dynamic_range else None,
         )
+
+    @staticmethod
+    def resolve_tracker_title(
+        tracker: TrackerSelection, generated: str | None, input_path: Path
+    ) -> str | None:
+        """What a tracker receives when the title came back empty.
+
+        Whether a fallback is permitted is derived from the entry rather
+        than declared, which is what stops it firing where it should not:
+
+        - a tracker with a composition is refused, naming itself. A
+          hardcoded composition producing nothing means something is
+          broken, and failing beats uploading a name its rules reject.
+        - a tracker without one falls back to the release name and logs
+          that it did. It is rendering the user's global template, where
+          the release name is the sensible last resort.
+
+        The old fallback was neither derived nor announced: an empty title
+        uploaded the renamed filename with no warning and no log, so a
+        malformed rule degraded silently into shipping a filename to a
+        tracker with strict naming requirements.
+        """
+        entry = TITLE_RULES.get(tracker)
+        if entry is not None and not entry.has_release_name_field:
+            return None
+        if generated:
+            return generated
+
+        if entry is not None and entry.composition is not None:
+            raise TrackerError(
+                f"{tracker} has hardcoded title rules that produced no title "
+                "for this release. Refusing to upload rather than send a "
+                "name its rules would reject."
+            )
+
+        # Normalised like any other title. The release name is a filename
+        # stem, so it arrives dotted -- which is what SeedPool wants and the
+        # opposite of what every other tracker here does.
+        fallback = release_stem(input_path)
+        if entry is not None:
+            fallback = normalise_title(
+                fallback, entry.normalisation, global_colon=ColonReplace.KEEP
+            )
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"{tracker} title rendered empty; falling back to the release "
+            f"name '{fallback}'.",
+        )
+        return fallback
 
     def _release_properties(
         self, context: ProcessingContext, release_info: SeriesReleaseInfo
