@@ -203,9 +203,9 @@ def test_the_hdbits_entry_reproduces_its_uploader(title: str) -> None:
     exist this can be asserted directly; once the uploader's own formatter
     goes, this test is what proves nothing was lost with it.
 
-    One intentional difference, applied to both sides here so the rest of
-    the comparison stays exact: the entry collapses repeated whitespace and
-    hdb.py does not. See the test below.
+    Repeated whitespace is collapsed on both sides before comparing, so
+    the rest of the comparison stays exact. That is the one place the two
+    differ, and the entry is the correct one -- see the two tests below.
     """
     entry = TITLE_RULES[TrackerSelection.HDB].normalisation
     expected = re.sub(r"\s{2,}", " ", HDBUploader.generate_release_title(title))
@@ -213,14 +213,33 @@ def test_the_hdbits_entry_reproduces_its_uploader(title: str) -> None:
     assert normalise_title(title, entry, global_colon=ColonReplace.KEEP) == expected
 
 
-def test_the_entry_closes_a_gap_the_uploader_leaves_open() -> None:
-    """Stripping a disallowed value must not leave a double space.
+@pytest.mark.parametrize("tracker", list(TrackerSelection))
+def test_no_entry_can_emit_a_gap(tracker: TrackerSelection) -> None:
+    """No tracker wants two separators in a row, so no entry may emit them.
 
-    hdb.py's cleanup handles the period case (`" ."`) but not this one, so
-    a title carrying a forbidden token shipped to HDBits with a visible gap
-    in it. The entry collapses whitespace instead, which it has to do
-    anyway: a vocabulary rule that suppresses a value leaves exactly the
-    same gap, and closing it is what makes suppression usable.
+    A gap is not exotic: a vocabulary rule that suppresses a value leaves
+    one, an allowlist that strips a token leaves one, and a component that
+    does not resolve leaves one. Closing it belongs at the end of
+    normalisation rather than in each rule that can open it.
+
+    Asserted per separator, since the dotted entry's version of a gap is a
+    repeated period rather than a repeated space.
+    """
+    entry = TITLE_RULES[tracker].normalisation
+    gappy = 'Movie Name 2024  1080p BluRay <"*>  DD 2.0 x264-GRP'
+
+    result = normalise_title(gappy, entry, global_colon=ColonReplace.KEEP)
+
+    assert "  " not in result, result
+    assert ".." not in result, result
+
+
+def test_the_entry_closes_a_gap_the_hdbits_uploader_leaves_open() -> None:
+    """The one place the entry and hdb.py differ, and why.
+
+    hdb.py's cleanup handles the period case (`" ."`) but not the space
+    case, so a title carrying a forbidden token has shipped to HDBits with
+    a visible gap in it.
     """
     title = 'Who Are You? 2024 1080p BluRay <"*> DD 2.0 x264-GRP'
     entry = TITLE_RULES[TrackerSelection.HDB].normalisation
