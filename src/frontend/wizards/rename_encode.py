@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from src.backend.rename_encode import RenameEncodeBackEnd
 from src.backend.rename_files import RenamePlan, RenameResult
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
+from src.backend.utils.filename_claims import FilenameClaims, detect_filename_claims
 from src.backend.utils.rename_normalizations import (
     EDITION_INFO,
     FRAME_SIZE_INFO,
@@ -39,7 +40,6 @@ from src.backend.utils.rename_normalizations import (
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.streaming_services import (
     STREAMING_SERVICE_CHOICES,
-    detect_streaming_service,
 )
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
@@ -326,7 +326,7 @@ class RenameEncode(BaseWizardPage):
         self.media_label.setText(media_file.stem)
         self.media_label.setToolTip(media_file.stem)
 
-        self._pre_load_attribute_combos(media_file.stem)
+        claims = self._pre_load_attribute_combos(media_file.stem)
 
         # apply localization override from plugin if present # TODO: handle all potential overrides later
         localization_override = self.context.shared_data.dynamic_data.get(
@@ -348,9 +348,12 @@ class RenameEncode(BaseWizardPage):
             if quality_idx > -1:
                 self.quality_combo.setCurrentIndex(quality_idx)
 
-        self.release_group_entry.setText(
-            release_group_name if release_group_name else ""
-        )
+        # The settings value means "my group"; the detected one means
+        # "whoever made the source file". Configured wins, but a blank
+        # setting must not leave the field empty while the output silently
+        # carries the detected group -- that is the invisible claim this
+        # design removes everywhere else.
+        self.release_group_entry.setText(release_group_name or claims.release_group)
 
         self.update_generated_name()
 
@@ -480,43 +483,57 @@ class RenameEncode(BaseWizardPage):
         super().validatePage()
         return True
 
-    def _pre_load_attribute_combos(self, filename: str) -> None:
-        def select_combo_by_regex(
-            norm_list: Sequence[RenameNormalization], combo: CustomComboBox
-        ) -> None:
-            for item in norm_list:
-                for pat in item.re_gex:
-                    if re.search(pat, filename, flags=re.I):
-                        idx = combo.findText(item.normalized)
-                        if idx > -1:
-                            combo.setCurrentIndex(idx)
-                            return
+    def _pre_load_attribute_combos(self, filename: str) -> FilenameClaims:
+        """Pre-fill the claim controls from stage 1, and return what it found.
 
-        select_combo_by_regex(EDITION_INFO, self.edition_combo)
-        select_combo_by_regex(FRAME_SIZE_INFO, self.frame_size_combo)
-        select_combo_by_regex(LOCALIZATION_INFO, self.localization_combo)
-        select_combo_by_regex(RE_RELEASE_INFO, self.re_release_combo)
-        self._pre_load_service_combo(filename)
+        The detection itself lives in `detect_filename_claims`, which the
+        settings preview also calls, so what this page shows and what the
+        preview shows cannot diverge. Everything here is presentation.
 
-    def _pre_load_service_combo(self, filename: str) -> None:
-        """Show the detected streaming service in the combo.
+        Preselecting the streaming service changes no output -- the token
+        detects it independently. It makes the detection visible, which is
+        the only way a user can tell it read the release wrong and correct
+        it before uploading to a tracker that requires the abbreviation.
 
-        The token detects this on its own, so preselecting changes no output --
-        it makes the detection visible, which is the only way a user can tell
-        it read the release wrong and correct it before uploading to a tracker
-        that requires the abbreviation.
+        The claims come back so the caller can reuse them without detecting
+        twice -- the release group seed needs the same result.
         """
-        detected = detect_streaming_service(filename)
-        if not detected:
-            return
-        idx = self.service_combo.findText(detected)
-        if idx > -1:
-            self.service_combo.setCurrentIndex(idx)
+        claims = detect_filename_claims(
+            [filename],
+            self.config.settings.movie.claims,
+            self.context.custom_edition_info,
+        )
+
+        for combo, value in (
+            (self.edition_combo, claims.edition),
+            (self.frame_size_combo, claims.frame_size),
+            (self.localization_combo, claims.localization),
+            (self.re_release_combo, claims.re_release),
+            (self.service_combo, claims.streaming_service),
+        ):
+            idx = combo.findText(value)
+            combo.setCurrentIndex(idx if idx > -1 else 0)
+
+        self.remux_checkbox.setChecked(bool(claims.remux))
+        self.hybrid_checkbox.setChecked(bool(claims.hybrid))
+        return claims
+
+    def _detected_claims(self) -> FilenameClaims:
+        return detect_filename_claims(
+            [path.stem for path in self.context.media_input.file_list],
+            self.config.settings.movie.claims,
+            self.context.custom_edition_info,
+        )
 
     def _auto_check_remux_checkbox(self) -> None:
-        media_file = self.context.media_input.file_list[0]
-        if media_file and "remux" in media_file.stem.lower():
-            self.remux_checkbox.setChecked(True)
+        """Re-apply the detected REMUX claim.
+
+        Called when the quality combo moves to a disc source, which
+        re-enables the checkbox after a non-disc quality forced it off.
+        Goes through the same detector as the initial pre-fill, so a
+        switched-off REMUX category stays off.
+        """
+        self.remux_checkbox.setChecked(bool(self._detected_claims().remux))
 
     @Slot(bool)
     def _on_override_group_toggled(self, checked: bool) -> None:

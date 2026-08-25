@@ -32,7 +32,6 @@ from src.backend.utils.media_info_utils import (
 from src.backend.utils.rename_normalizations import (
     CUT_EDITION_NAMES,
     EDITION_INFO,
-    is_imax,
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.streaming_services import abbreviate_streaming_service
@@ -75,8 +74,6 @@ _REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 
 
 class TokenReplacer:
-    FILENAME_ATTRIBUTES = ("remux", "hybrid", "re_release")
-
     # Overrides that must not be emitted verbatim. `source` comes from the
     # wizard's Quality combo, whose item text is a QualitySelection value, and
     # is also replayed from jobs saved by earlier versions -- where it is the
@@ -112,6 +109,7 @@ class TokenReplacer:
         "custom_edition_info",
         "custom_cut_names",
         "file_name_mode",
+        "append_suffix",
         "token_type",
         "unfilled_token_mode",
         "releasers_name",
@@ -130,7 +128,6 @@ class TokenReplacer:
         "screen_shots_odd_str",
         "release_notes",
         "dummy_screen_shots",
-        "parse_filename_attributes",
         "preserve_literal_formatting",
         # series exclusive args
         "season_number",
@@ -168,6 +165,7 @@ class TokenReplacer:
         custom_edition_info: Sequence[RenameNormalization] | None = None,
         custom_cut_names: frozenset[str] | None = None,
         file_name_mode: bool = True,
+        append_suffix: bool = True,
         token_type: Iterable[TokenType] | type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
@@ -186,7 +184,6 @@ class TokenReplacer:
         screen_shots_odd_str: Sequence[str] | None = None,
         release_notes: str | None = "",
         dummy_screen_shots: bool = False,
-        parse_filename_attributes: bool = False,
         preserve_literal_formatting: bool = False,
         season_number: int | None = None,
         season_end: int | None = None,
@@ -208,6 +205,10 @@ class TokenReplacer:
             file_name_mode: bool: Returned string will be in 'x.x.ext' format (ignored if not using flatten).
               with no newlines or extra white space (used for filenames). `colon_replace` is ignored
               when this is used.
+            append_suffix (bool): Whether `file_name_mode` ends the name with the input
+              file's extension. Set False for a folder name, which has none: the
+              extension is then neither appended nor charged against the 255-character
+              budget. Ignored outside `file_name_mode`.
             token_type (Optional[Iterable[TokenType]]): Specific `TokenType`'s to use, or None for all.
             unfilled_token_mode (UnfilledTokenRemoval): What to do with unused tokens.
             eg. (TokenType, TokenType).
@@ -233,8 +234,6 @@ class TokenReplacer:
             release_notes (Optional[str]): Release notes.
             dummy_screen_shots (Optional[bool]): If set to True will generate some dummy screenshot data for the
               screenshot token (This overrides screen_shots if used, so only use when you have screenshot data).
-            parse_filename_attributes (Optional[bool]): If set to True attributes REMUX, HYBRID, PROPER, and REPACK will be
-              detected from the filename.
             preserve_literal_formatting: Return flattened title-mode output
               without normalizing whitespace or punctuation. This is intended
               for templates whose literal text carries meaning, such as paths.
@@ -272,6 +271,7 @@ class TokenReplacer:
         self.custom_edition_info = custom_edition_info or ()
         self.custom_cut_names = custom_cut_names or frozenset()
         self.file_name_mode = file_name_mode
+        self.append_suffix = append_suffix
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
         self.releasers_name = releasers_name
@@ -290,7 +290,6 @@ class TokenReplacer:
         self.screen_shots_odd_str = screen_shots_odd_str
         self.release_notes = release_notes
         self.dummy_screen_shots = dummy_screen_shots
-        self.parse_filename_attributes = parse_filename_attributes
         self.preserve_literal_formatting = preserve_literal_formatting
         # series exclusive args
         self.season_number = season_number
@@ -314,7 +313,11 @@ class TokenReplacer:
 
         # series counts and episode lookups have different key/value shapes
         self._series_counts: dict[str, int] = {}
-        self._series_episode_cache: dict[int, dict[int, dict[str, Any]]] = {}
+        # keyed by ordering type id first: TVDB serves several episode
+        # orderings and the same (season, episode) pair names a different
+        # episode in each, so a cache keyed only on the pair would answer a
+        # DVD-order lookup with an aired-order episode.
+        self._series_episode_cache: dict[Any, dict[int, dict[int, dict[str, Any]]]] = {}
 
         # the conventions file is read from disk per lookup, and three tokens
         # share the result, so resolve it once per instance
@@ -557,11 +560,6 @@ class TokenReplacer:
 
         for token_type in token_types:
             if token_type == FileToken:
-                if (
-                    not self.parse_filename_attributes
-                    and token_data.token in self.FILENAME_ATTRIBUTES
-                ):
-                    continue
                 media_value = self._media_tokens(token_data)
                 if media_value:
                     return media_value
@@ -1217,8 +1215,12 @@ class TokenReplacer:
         becoming path separators and makes the final rename target portable to
         Windows. Returning ``None`` for an empty or reserved device name lets
         the rename page reject the result before it creates a plan.
+
+        ``append_suffix`` is False for a folder name, which has no extension.
+        The suffix then costs nothing against the length budget either, so a
+        folder is not capped short for an extension it never carries.
         """
-        suffix = self.media_input.suffix
+        suffix = self.media_input.suffix if self.append_suffix else ""
         filename = _INVALID_FILENAME_CHARS.sub(".", filename)
         filename = re.sub(r"\.{2,}", ".", filename)
         filename = filename.strip(". -")
@@ -1257,49 +1259,18 @@ class TokenReplacer:
         return self._optional_user_input(tvdb_data.get("firstAired", ""), token_data)
 
     def _edition(self, token_data: TokenData) -> str:
+        """The release's edition, as the user accepted it.
+
+        Stage 1 detects editions from EDITION_INFO plus any plugin-supplied
+        entries; stage 2 puts what the user left in the control into the
+        overrides. Nothing is inferred here, because a cleared control and
+        an undetected edition are indistinguishable at this point -- falling
+        back to a detection of our own would make the control disagree with
+        the output, which is the pattern this design removes.
+        """
         if self.edition_override:
             return self._optional_user_input(self.edition_override, token_data)
-
-        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
-            """Helper function to collect edition data from a source."""
-            values = source.get(key, [])
-            return values if isinstance(values, list) else [values]
-
-        # plugin-contributed entries (src.plugins.api.CustomEditionContribution)
-        # are recognized alongside the built-in table, same regex matching
-        all_edition_info = (*EDITION_INFO, *self.custom_edition_info)
-
-        # ensure we have unique editions
-        normalized_edition_set: set[object] = set()
-
-        # search the entire filename for edition patterns
-        filename = self.media_input.stem.lower()
-        for rename_normalize in all_edition_info:
-            for regex_str in rename_normalize.re_gex:
-                if re.search(regex_str, filename, flags=re.I):
-                    normalized_edition_set.add(rename_normalize.normalized)
-                    break  # only add once per edition type
-
-        # also process any editions from guess_name['edition']
-        edition_set = set(collect_editions(self.guess_name, "edition"))
-        for item in edition_set:
-            if is_imax(item):
-                continue
-            matched = False
-            for rename_normalize in all_edition_info:
-                for regex_str in rename_normalize.re_gex:
-                    if re.search(regex_str, str(item), flags=re.I):
-                        normalized_edition_set.add(rename_normalize.normalized)
-                        matched = True
-                        break
-                if matched:
-                    break
-            if not matched:
-                normalized_edition_set.add(item)
-
-        return self._optional_user_input(
-            " ".join(str(item) for item in normalized_edition_set), token_data
-        )
+        return self._optional_user_input("", token_data)
 
     def _cut(self, token_data: TokenData) -> str:
         """Subset of {edition} covering only "Cut"-classified entries (see
@@ -1310,121 +1281,54 @@ class TokenReplacer:
         Plugin-contributed entries (src.plugins.api.CustomEditionContribution)
         are recognized alongside the built-in table -- `custom_edition_info`
         for the entries themselves, `custom_cut_names` for which of those
-        entries count as a Cut here, same split as the built-in table.
+        count as a Cut.
+
+        The edition is still classified rather than emitted verbatim: one
+        that is not a known Cut is dropped, because an unrecognized string
+        cannot confidently be called one and the guide's own default for an
+        omitted Cut is "assumed Theatrical".
+
+        Both carriers of the user's edition are read. {edition} is satisfied
+        by either -- an override token short-circuits its handler before it
+        runs -- and this token has no override of its own to be satisfied by,
+        so reading one carrier would blank it wherever the other is used.
+        The rename page carries the edition in `override_tokens`; the upload
+        path passes `edition_override`. Same precedence as {edition}: the
+        override token wins.
         """
         all_edition_info = (*EDITION_INFO, *self.custom_edition_info)
-        all_cut_names = CUT_EDITION_NAMES | self.custom_cut_names
+        all_cut_names = {*CUT_EDITION_NAMES, *self.custom_cut_names}
+        edition = (self.override_tokens or {}).get("edition") or self.edition_override
 
-        if self.edition_override:
+        if edition:
             for rename_normalize in all_edition_info:
                 if rename_normalize.normalized not in all_cut_names:
                     continue
                 for regex_str in rename_normalize.re_gex:
-                    if re.search(regex_str, self.edition_override, flags=re.I):
+                    if re.search(regex_str, edition, flags=re.I):
                         return self._optional_user_input(
                             rename_normalize.normalized, token_data
                         )
-            return self._optional_user_input("", token_data)
-
-        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
-            """Helper function to collect edition data from a source."""
-            values = source.get(key, [])
-            return values if isinstance(values, list) else [values]
-
-        # ensure we have unique cuts
-        normalized_cut_set: set[str] = set()
-
-        # search the entire filename for cut patterns
-        filename = self.media_input.stem.lower()
-        for rename_normalize in all_edition_info:
-            if rename_normalize.normalized not in all_cut_names:
-                continue
-            for regex_str in rename_normalize.re_gex:
-                if re.search(regex_str, filename, flags=re.I):
-                    normalized_cut_set.add(rename_normalize.normalized)
-                    break  # only add once per cut type
-
-        # also process any editions from guess_name['edition'] -- unlike
-        # _edition(), an item that doesn't match a known Cut (including one
-        # that matches a known, non-Cut Edition, or nothing at all) is
-        # dropped rather than carried through unnormalized: an unrecognized
-        # string can't be confidently called a Cut, and the guide's own
-        # default for an omitted Cut is "assumed Theatrical."
-        edition_set = set(collect_editions(self.guess_name, "edition"))
-        for item in edition_set:
-            if is_imax(item):
-                continue
-            matched = False
-            for rename_normalize in all_edition_info:
-                if rename_normalize.normalized not in all_cut_names:
-                    continue
-                for regex_str in rename_normalize.re_gex:
-                    if re.search(regex_str, str(item), flags=re.I):
-                        normalized_cut_set.add(rename_normalize.normalized)
-                        matched = True
-                        break
-                if matched:
-                    break
-
-        return self._optional_user_input(
-            " ".join(str(item) for item in normalized_cut_set), token_data
-        )
+        return self._optional_user_input("", token_data)
 
     def _frame_size(self, token_data: TokenData) -> str:
+        """IMAX / Open Matte, as the user accepted it.
+
+        Detected in stage 1 from FRAME_SIZE_INFO. Nothing is inferred here,
+        for the same reason as {edition}.
+        """
         if self.frame_size_override:
             return self._optional_user_input(self.frame_size_override, token_data)
-
-        def collect_editions(source: dict[str, Any], key: str) -> list[object]:
-            """Helper function to collect edition data from a source."""
-            values = source.get(key, [])
-            return values if isinstance(values, list) else [values]
-
-        # ensure we have unique editions
-        edition_set: set[object] = set()
-
-        # collect editions from `guess_name`
-        edition_set.update(collect_editions(self.guess_name, "edition"))
-
-        # collect editions from `guess_source_name` if it exists
-        if self.guess_source_name:
-            edition_set.update(collect_editions(self.guess_source_name, "edition"))
-
-        # check for "Open Matte" in `other` fields of `guess_name` and `guess_source_name`
-        for source in [self.guess_name, self.guess_source_name]:
-            if source:
-                other = source.get("other", [])
-                items = other if isinstance(other, list) else [other]
-                if "Open Matte" in items:
-                    edition_set.add("Open Matte")
-                    break
-
-        # normalize some editions
-        if edition_set:
-            normalized_edition_set: set[object] = set()
-            for item in edition_set:
-                if is_imax(item):
-                    normalized_edition_set.add("IMAX")
-                    break
-            edition_set = normalized_edition_set
-
-        # convert the set back to a string, joining with spaces
-        return self._optional_user_input(
-            " ".join(str(item) for item in edition_set), token_data
-        )
+        return self._optional_user_input("", token_data)
 
     def _hybrid(self, token_data: TokenData) -> str:
-        return self._optional_user_input(
-            "HYBRID" if "hybrid" in self.media_input.stem.lower() else "", token_data
-        )
+        # Stage 1 detects this; an accepted claim arrives as an override.
+        return self._optional_user_input("", token_data)
 
     def _localization(self, token_data: TokenData) -> str:
-        localization = ""
-        lowered_input = self.media_input.stem.lower()
-        if "subbed" in lowered_input:
-            localization = "Subbed"
-        elif "Dubbed" in lowered_input:
-            localization = "Dubbed"
-        return self._optional_user_input(localization, token_data)
+        # Stage 1 detects Dubbed/Subbed from LOCALIZATION_INFO; an accepted
+        # claim arrives as an override.
+        return self._optional_user_input("", token_data)
 
     def _audio_bitrate(self, token_data: TokenData, formatted: bool) -> str:
         bitrate = ""
@@ -1938,13 +1842,23 @@ class TokenReplacer:
 
         return self._optional_user_input(hdr_string, token_data)
 
+    def _resolution_over_1080(self) -> bool:
+        """Whether the release is above 1080p.
+
+        An unparseable or missing resolution answers False rather than
+        raising. ``_detect_resolution`` falls back to guessit's
+        ``screen_size``, which carries the scan letter ("1080p"), and an
+        int() over that raised out of token rendering.
+        """
+        resolution = self._detect_resolution(self.media_info_obj, True)
+        leading_digits = re.match(r"\d+", resolution)
+        if not leading_digits:
+            return False
+        return int(leading_digits.group()) > 1080
+
     def _video_dynamic_range_type(
         self, token_data: TokenData, include_sdr: bool = False, uhd_only: bool = False
     ) -> str:
-        if uhd_only:
-            if int(self._detect_resolution(self.media_info_obj, True)) <= 1080:
-                return ""
-
         dv = "DV" if "Dolby Vision" in self.guess_name.get("other", "") else ""
         hdr10 = "HDR" if "HDR10" in self.guess_name.get("other", "") else ""
         hdr10_plus = "HDR10Plus" if "HDR10+" in self.guess_name.get("other", "") else ""
@@ -1983,11 +1897,15 @@ class TokenReplacer:
         else:
             if any([hlg, pq]):
                 dynamic_range_type = hlg if hlg else pq
+            elif include_sdr and (not uhd_only or self._resolution_over_1080()):
+                # `uhd_only` gates the SDR spelling alone, not the whole
+                # token: 2160p is usually HDR so SDR is worth stating there,
+                # while 1080p is SDR by default and does not need it. Gating
+                # the method entrypoint suppressed DV, HDR10Plus, HDR, HLG
+                # and PQ at 1080p as well.
+                dynamic_range_type = "SDR"
             else:
-                if include_sdr:
-                    dynamic_range_type = "SDR"
-                else:
-                    dynamic_range_type = ""
+                dynamic_range_type = ""
 
         return self._optional_user_input(dynamic_range_type, token_data)
 
@@ -2198,17 +2116,12 @@ class TokenReplacer:
         """
         if self.override_tokens and "remux" in self.override_tokens:
             return self.override_tokens["remux"]
-        if self.parse_filename_attributes and "remux" in self.media_input.stem.lower():
-            return "REMUX"
         return ""
 
     def _re_release(self, token_data: TokenData) -> str:
-        search_re_release = re.findall(
-            r"\b(PROPER\d*|REPACK\d*)\b", self.media_input.name, flags=re.IGNORECASE
-        )
-        re_release_str = " ".join(str(x).upper() for x in search_re_release)
-
-        return self._optional_user_input(re_release_str, token_data)
+        # Stage 1 detects this; an accepted claim arrives as an override and
+        # short-circuits before this handler runs.
+        return self._optional_user_input("", token_data)
 
     def _get_source_quality(self) -> QualitySelection:
         """Get the detected source quality."""
@@ -2249,10 +2162,18 @@ class TokenReplacer:
         elif "hdtv" in source_quality:
             source_quality = QualitySelection.HDTV
         elif "web" in source_quality:
-            if re.search(r"web[-_\.]?dl", self.media_input.name, flags=re.I):
-                source_quality = QualitySelection.WEB_DL
-            else:
+            # guessit reports `source: Web` for both and marks a rip with
+            # `other: Rip`, so the distinction comes from its parse rather
+            # than a second regex of our own over the filename. Quality is
+            # always parsed and has no switch, so the detection stays -- it
+            # just stops being a separate scan.
+            source_other = self.guess_name.get("other", [])
+            if isinstance(source_other, str):
+                source_other = [source_other]
+            if any(str(item).lower() == "rip" for item in source_other):
                 source_quality = QualitySelection.WEB_RIP
+            else:
+                source_quality = QualitySelection.WEB_DL
         # if we can't detect we'll default to BluRay
         else:
             source_quality = QualitySelection.BLURAY
@@ -2332,15 +2253,43 @@ class TokenReplacer:
         return self._optional_user_input(int_val, token_data)
 
     def _episode_air_date(self, token_data: TokenData) -> str:
+        """Air date of the selected episode.
+
+        A file spanning several episodes keeps the date only when every
+        episode in it aired that day -- a two-parter broadcast in one block.
+        Where the episodes aired apart, or the end episode's date cannot be
+        read, the token blanks rather than presenting the first episode's
+        date as the date of the whole file.
+
+        Unlike an episode title this is not simply dropped for a span. In
+        the packaged daily templates the air date is the only episode
+        identifier, with no SxxExx anywhere, so blanking unconditionally
+        would trade a wrong claim for no claim. A date range is not an
+        option either: ISO dates already contain hyphens, so
+        "2024-01-15-2024-01-17" has no unambiguous reading.
+        """
         get_info = self._verify_series_info()
         if not get_info:
             return ""
 
-        # get episode dict
-        air_date = ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            air_date = episode_data.get("aired", "")
+        season, episode = get_info
+        type_id = self._selected_order_type_id(season, episode)
+        episode_data = self._get_selected_episode_data(season, episode, type_id)
+        air_date = episode_data.get("aired", "") if episode_data else ""
+
+        # An absent date is not a date two episodes can share: the two
+        # synthesized payloads spell it "" and None respectively, and
+        # comparing them would call that a match.
+        if not air_date:
+            return self._optional_user_input("", token_data)
+
+        end_episode = self._span_end_episode(season, episode)
+        if end_episode is not None:
+            end_data = self._get_selected_episode_data(season, end_episode, type_id)
+            end_air_date = end_data.get("aired", "") if end_data else ""
+            if not end_air_date or end_air_date != air_date:
+                air_date = ""
+
         return self._optional_user_input(air_date, token_data)
 
     def _episode_number(self, token_data: TokenData) -> str:
@@ -2355,31 +2304,18 @@ class TokenReplacer:
         int_val = designator if designator is not None else str(episode)
         return self._optional_user_input(int_val, token_data)
 
-    def _multi_episode_designator(self, episode: int) -> str | None:
-        """Render the season/episode span designator for a multi-episode file
-        per the configured ``MultiEpisodeStyle``, or ``None`` when the file
-        covers a single episode (the caller then emits the raw start number).
+    def _span_end_episode(self, season: int, episode: int) -> int | None:
+        """Last episode number for a file spanning more than one episode.
 
-        The span is read from the selected per-file mapping's ``episode_end``
-        (Task 4.1), and numbers are pre-padded to width 2 so a template's own
-        ``|zfill(2)`` on the composite string is a harmless no-op. Given
-        season S, start=1, end=3 the styles render:
+        ``None`` when the file covers a single episode -- either no mapping
+        row exists for it, or the row's ``episode_end`` is absent, invalid,
+        or not greater than the start.
 
-        - EXTEND (0):          ``01-03``
-        - DUPLICATE (1):       ``01.S{S:02}E03`` (e.g. ``01.S01E03``)
-        - REPEAT (2):          ``01E03``
-        - SCENE (3):           ``01-E03``
-        - RANGE (4):           ``01-03``
-        - PREFIXED_RANGE (5):  ``01-E03``
-
-        EXTEND collapses to RANGE and PREFIXED_RANGE collapses to SCENE
-        because the mapping stores only the start and end episode numbers, not
-        the full intermediate episode list those two styles would expand.
+        This is the only definition of "span" in the class. Every token that
+        behaves differently for a multi-episode file asks here, so the token
+        that renders ``E01-03`` and the tokens that suppress an episode's
+        own metadata cannot disagree about what they are looking at.
         """
-        season = self._validate_int_var(self.season_number)
-        if season is None:
-            return None
-
         mapped_episode = self._get_mapped_episode_payload(season, episode)
         if not mapped_episode:
             return None
@@ -2387,35 +2323,153 @@ class TokenReplacer:
         end_episode = self._validate_int_var(mapped_episode.get("episode_end"))
         if end_episode is None or end_episode <= episode:
             return None
+        return end_episode
+
+    def _span_episode_list(self, season: int, episode: int) -> list[int]:
+        """Every episode the file covers, lowest first.
+
+        A row written before ``episode_list`` existed carries only the ends,
+        so the range is derived. That is exact rather than approximate: the
+        old code took the first and last of a *sorted* guessit list, so every
+        span it could produce was contiguous. A stored list is preferred
+        where present, because it is the only thing that can describe a
+        non-contiguous file such as "S01E01E05".
+        """
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if mapped_episode:
+            stored = mapped_episode.get("episode_list")
+            if isinstance(stored, list):
+                numbers = [
+                    value
+                    for value in (self._validate_int_var(item) for item in stored)
+                    if value is not None
+                ]
+                if numbers:
+                    return sorted(numbers)
+
+        end_episode = self._span_end_episode(season, episode)
+        if end_episode is None:
+            return [episode]
+        return list(range(episode, end_episode + 1))
+
+    def _multi_episode_designator(self, episode: int) -> str | None:
+        """Render the season/episode span designator for a multi-episode file
+        per the configured ``MultiEpisodeStyle``, or ``None`` when the file
+        covers a single episode (the caller then emits the raw start number).
+
+        Numbers are pre-padded to width 2 so a template's own ``|zfill(2)``
+        on the composite string is a harmless no-op. Given season 1 and a
+        file covering episodes 1 to 3 the styles render:
+
+        - EXTEND (0):          ``01-02-03``
+        - DUPLICATE (1):       ``01.S01E02.S01E03``
+        - REPEAT (2):          ``01E02E03``
+        - SCENE (3):           ``01-E02-E03``
+        - RANGE (4):           ``01-03``
+        - PREFIXED_RANGE (5):  ``01-E03``
+
+        The split matches Sonarr's: the first four expand, naming every
+        episode the file holds, and the last two state a range from its ends.
+        A range cannot say which episodes between its ends are present, so
+        the two read ``episode_end`` while the four read the episode list.
+        """
+        season = self._validate_int_var(self.season_number)
+        if season is None:
+            return None
+
+        end_episode = self._span_end_episode(season, episode)
+        if end_episode is None:
+            return None
 
         start = f"{episode:02d}"
-        end = f"{end_episode:02d}"
         style = self.multi_episode_style
+
+        if style is MultiEpisodeStyle.RANGE:
+            return f"{start}-{end_episode:02d}"
+        if style is MultiEpisodeStyle.PREFIXED_RANGE:
+            return f"{start}-E{end_episode:02d}"
+
+        rest = self._span_episode_list(season, episode)[1:]
         if style is MultiEpisodeStyle.DUPLICATE:
-            return f"{start}.S{season:02d}E{end}"
+            return ".".join([start, *(f"S{season:02d}E{num:02d}" for num in rest)])
         if style is MultiEpisodeStyle.REPEAT:
-            return f"{start}E{end}"
-        if style in (MultiEpisodeStyle.SCENE, MultiEpisodeStyle.PREFIXED_RANGE):
-            return f"{start}-E{end}"
-        # EXTEND and RANGE (and any future member) -> plain zero-padded range
-        return f"{start}-{end}"
+            return "".join([start, *(f"E{num:02d}" for num in rest)])
+        if style is MultiEpisodeStyle.SCENE:
+            return "-".join([start, *(f"E{num:02d}" for num in rest)])
+        # EXTEND, and any future member
+        return "-".join([start, *(f"{num:02d}" for num in rest)])
+
+    def _absolute_number_for(
+        self, season: int, episode: int, episode_order_type_id: Any | None
+    ) -> int | None:
+        """One episode's TVDB absolute number, or ``None`` when it has none.
+
+        TVDB stores ``absoluteNumber: 0`` for non-anime episodes, which
+        means "no absolute number" rather than zero.
+        """
+        episode_data = self._get_selected_episode_data(
+            season, episode, episode_order_type_id
+        )
+        if not episode_data:
+            return None
+        absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
+        if not absolute_number:
+            return None
+        return absolute_number
 
     def _episode_number_absolute(self, token_data: TokenData) -> str:
+        """Absolute episode number, or the absolute range for a span.
+
+        A span renders "001-003" rather than the first episode's number.
+        This is an identifier, so blanking it the way an episode title is
+        blanked could leave a file with no episode in its name at all.
+
+        Deliberately not styled by ``MultiEpisodeStyle``: Duplicate's
+        "01.S01E03", Repeat's "01E03" and Scene's "01-E03" all embed
+        season/episode structure that absolute numbering does not have. Both
+        ends are padded to width 3, the width every packaged anime template
+        applies via ``|zfill(3)``, so that filter is a no-op on the
+        composite. A single episode still returns its raw unpadded number,
+        keeping the asymmetry ``{episode_number}`` already has.
+
+        Both ends come from the same source or neither does. The end
+        episode's data is read through the start row's ordering, since no
+        mapping row matches the end of a span. When either end has no
+        absolute number, or the two are inconsistent with the span's length
+        -- a TVDB gap, or an end episode a user typed by hand -- both
+        components fall back to the plain episode numbers. A
+        wrong-but-plausible absolute range is worse than a designator
+        repeated from the token beside it.
+        """
         get_info = self._verify_series_info()
         if not get_info:
             return ""
 
-        absolute_number = None
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            absolute_number = self._validate_int_var(episode_data.get("absoluteNumber"))
-        if not absolute_number:  # None or 0 (TVDB uses 0 for non-anime episodes)
-            absolute_number = self._validate_int_var(self.episode_number)
+        season, episode = get_info
+        type_id = self._selected_order_type_id(season, episode)
+        start_absolute = self._absolute_number_for(season, episode, type_id)
+        end_episode = self._span_end_episode(season, episode)
 
-        return self._optional_user_input(
-            str(absolute_number) if absolute_number is not None else "",
-            token_data,
-        )
+        if end_episode is None:
+            absolute_number = start_absolute
+            if absolute_number is None:
+                absolute_number = self._validate_int_var(self.episode_number)
+            return self._optional_user_input(
+                str(absolute_number) if absolute_number is not None else "",
+                token_data,
+            )
+
+        end_absolute = self._absolute_number_for(season, end_episode, type_id)
+        if (
+            start_absolute is not None
+            and end_absolute is not None
+            and end_absolute - start_absolute == end_episode - episode
+        ):
+            return self._optional_user_input(
+                f"{start_absolute:03d}-{end_absolute:03d}", token_data
+            )
+
+        return self._optional_user_input(f"{episode:02d}-{end_episode:02d}", token_data)
 
     def _end_episode_number(self, token_data: TokenData) -> str:
         """Range end for a multi-episode file; blank when the file covers a
@@ -2436,57 +2490,81 @@ class TokenReplacer:
 
         return self._optional_user_input(str(end_episode), token_data)
 
-    def _episode_title(self, token_data: TokenData) -> str:
+    def _selected_episode_title(self) -> str | None:
+        """Raw title for the selected episode, before any formatting.
+
+        ``None`` means there is no series context at all: no season or
+        episode number, or no TVDB data. Callers surface that as a bare ""
+        without running filters, preserving the early return these tokens
+        have always had.
+
+        ``""`` means there is series context but no usable title: no episode
+        data, a TVDB placeholder such as "TBA" or "Episode 12", or a file
+        spanning more than one episode. A span has no single episode title,
+        so naming it after the first episode would assert that one episode's
+        title describes all of them.
+        """
         get_info = self._verify_series_info()
         if not get_info:
+            return None
+
+        season, episode = get_info
+        if self._span_end_episode(season, episode) is not None:
             return ""
 
-        # get episode dict
         title = ""
-        episode_data = self._get_selected_episode_data(*get_info)
+        episode_data = self._get_selected_episode_data(season, episode)
         if episode_data:
             title = episode_data.get("name", "")
         if self._is_placeholder_episode_title(title):
             title = ""
+        # a manually mapped episode with no TVDB match synthesizes name: None
+        return title or ""
+
+    def _episode_title(self, token_data: TokenData) -> str:
+        title = self._selected_episode_title()
+        if title is None:
+            return ""
 
         # apply basic formatting
-        title = self._title_formatting_standard(title)
-        return self._optional_user_input(title, token_data)
+        return self._optional_user_input(
+            self._title_formatting_standard(title), token_data
+        )
 
     def _episode_title_clean(self, token_data: TokenData) -> str:
-        get_info = self._verify_series_info()
-        if not get_info:
+        title = self._selected_episode_title()
+        if title is None:
             return ""
 
-        # get episode dict
-        title = ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            title = episode_data.get("name", "")
-        if self._is_placeholder_episode_title(title):
-            title = ""
-        title = self._title_formatting_cleaned(title, self.title_clean_rules)
-        return self._optional_user_input(title, token_data)
+        return self._optional_user_input(
+            self._title_formatting_cleaned(title, self.title_clean_rules), token_data
+        )
 
     def _episode_title_exact(self, token_data: TokenData) -> str:
-        get_info = self._verify_series_info()
-        if not get_info:
-            return ""
+        """The episode title with no formatting at all, like {title_exact}.
 
-        # get episode dict
-        title = ""
-        episode_data = self._get_selected_episode_data(*get_info)
-        if episode_data:
-            title = episode_data.get("name", "")
-        if self._is_placeholder_episode_title(title):
-            title = ""
-        if title:
-            # Strip only what cannot appear in a path component. Deliberately
-            # no `unidecode` here, unlike `_title_formatting_standard` --
-            # this token's whole contract is that it is the exact title.
-            title = _REPEATED_WHITESPACE.sub(
-                " ", _TITLE_UNSAFE_CHARS.sub(" ", title)
-            ).strip()
+        The title tokens come in three tiers: {title}/{episode_title} strip
+        and unidecode, {title_clean}/{episode_title_clean} answer to the
+        configured clean rules, and the exact pair apply nothing. This token
+        used to strip ``[:\\/<>?*"|]``, which is tier-one behaviour under a
+        tier-three name and the one cell where the episode family did not
+        mirror the film family.
+
+        The colon is why that mattered beyond tidiness. Removing it here,
+        inside the handler, meant the configured colon rule -- which runs
+        once over the whole rendered string -- never saw it, so a tracker
+        set to keep colons kept them in film titles and lost them in
+        episode titles, with no setting that could say otherwise.
+
+        Filenames are unaffected: ``_sanitize_filename`` covers the same
+        characters downstream, and the two routes converge on the same
+        string. Characters a given tracker will not accept belong in that
+        tracker's own ``generate_release_title``, next to the allowlist
+        HDBits already applies there.
+        """
+        title = self._selected_episode_title()
+        if title is None:
+            return ""
         return self._optional_user_input(title, token_data)
 
     def _chapter_type(self, token_data: TokenData) -> str:
@@ -2552,23 +2630,20 @@ class TokenReplacer:
         return self._optional_user_input(output, token_data)
 
     def _repack(self, token_data: TokenData) -> str:
+        """REPACK for the NFO.
+
+        The filename scan this used to carry was a second detector, and it
+        ran independently of the file-name side -- so an NFO could claim a
+        REPACK the rendered filename did not. It now follows the same
+        accepted claim, through the jinja global the process page sets.
+        """
         repack = ""
-        if "repack" in self.media_input.stem.lower():
-            repack = "REPACK"
-        elif self.jinja_engine and self.jinja_engine.environment.globals.get(
-            "repack_n"
-        ):
+        if self.jinja_engine and self.jinja_engine.environment.globals.get("repack_n"):
             repack = "REPACK"
         return self._optional_user_input(repack, token_data)
 
     def _repack_n(self, token_data: TokenData) -> str:
         repack = ""
-        detect_repack = re.search(
-            r"(repack\d*)", self.media_input.stem, flags=re.IGNORECASE
-        )
-        if detect_repack:
-            repack = detect_repack.group(1)
-
         if self.jinja_engine:
             detect_jinja_repack_n = self.jinja_engine.environment.globals.get(
                 "repack_n", ""
@@ -2731,22 +2806,14 @@ class TokenReplacer:
         return self._optional_user_input(subtitles, token_data)
 
     def _proper(self, token_data: TokenData) -> str:
+        """PROPER for the NFO. See `_repack` for why the filename scan went."""
         proper = ""
-        if "proper" in self.media_input.stem.lower():
-            proper = "PROPER"
-        elif self.jinja_engine and self.jinja_engine.environment.globals.get(
-            "proper_n"
-        ):
+        if self.jinja_engine and self.jinja_engine.environment.globals.get("proper_n"):
             proper = "PROPER"
         return self._optional_user_input(proper, token_data)
 
     def _proper_n(self, token_data: TokenData) -> str:
         proper = ""
-        detect_proper = re.search(
-            r"(proper\d*)", self.media_input.stem, flags=re.IGNORECASE
-        )
-        if detect_proper:
-            proper = detect_proper.group(1)
 
         if self.jinja_engine:
             detect_jinja_proper_n = self.jinja_engine.environment.globals.get(
@@ -3362,11 +3429,47 @@ class TokenReplacer:
 
         return season_num, episode_num
 
+    def _tvdb_episode_list(
+        self, episode_order_type_id: Any | None
+    ) -> list[dict[str, Any]]:
+        """Episode list for one TVDB ordering, or the flat list.
+
+        ``episodes_by_type`` holds one list per ordering; the flat
+        ``episodes`` key is the official/aired order. An id that is absent,
+        or names an ordering this payload does not carry, falls back to the
+        flat list, which is what every lookup did before orderings were
+        recorded.
+
+        The id is matched against both the int and str forms of each key: a
+        saved job round-trips ``tvdb_data`` through JSON, which turns the int
+        keys of ``episodes_by_type`` into strings, while the mapping row's
+        id stays an int.
+        """
+        tvdb_data = self.media_search_obj.tvdb_data if self.media_search_obj else None
+        if not tvdb_data:
+            return []
+
+        if episode_order_type_id is not None:
+            episodes_by_type = tvdb_data.get("episodes_by_type") or {}
+            if isinstance(episodes_by_type, dict):
+                type_data = episodes_by_type.get(episode_order_type_id)
+                if type_data is None:
+                    type_data = episodes_by_type.get(str(episode_order_type_id))
+                if isinstance(type_data, dict):
+                    episodes = type_data.get("episodes")
+                    if isinstance(episodes, list):
+                        return cast(list[dict[str, Any]], episodes)
+
+        return cast(list[dict[str, Any]], tvdb_data.get("episodes", []))
+
     def _get_tvdb_episode_dict(
-        self, season: int, episode: int
+        self, season: int, episode: int, episode_order_type_id: Any | None = None
     ) -> dict[str, Any] | None:
         """
         Iterate TVDB data and return episode data as a dictionary or None.
+
+        ``episode_order_type_id`` selects which episode ordering to search;
+        ``None`` searches the flat official/aired list.
 
         Example output:
         ```python
@@ -3378,16 +3481,14 @@ class TokenReplacer:
         ```
         """
         # check cache first for a faster lookup
-        if self._series_episode_cache:
-            cached_data = self._series_episode_cache.get(season, {}).get(episode)
+        cached_order = self._series_episode_cache.get(episode_order_type_id)
+        if cached_order:
+            cached_data = cached_order.get(season, {}).get(episode)
             if cached_data:
                 return cached_data
 
-        if not self.media_search_obj or not self.media_search_obj.tvdb_data:
-            return None
-
         # search through TVDB data
-        for ep in self.media_search_obj.tvdb_data.get("episodes", []):
+        for ep in self._tvdb_episode_list(episode_order_type_id):
             s = ep.get("seasonNumber")
             e = ep.get("number")
             if s is None or e is None:
@@ -3396,19 +3497,36 @@ class TokenReplacer:
                 if int(s) == season and int(e) == episode:
                     episode_data = cast(dict[str, Any], ep)
                     # initialize season dict if it doesn't exist
-                    if season not in self._series_episode_cache:
-                        self._series_episode_cache[season] = {}
-                    self._series_episode_cache[season][episode] = episode_data
+                    order_cache = self._series_episode_cache.setdefault(
+                        episode_order_type_id, {}
+                    )
+                    order_cache.setdefault(season, {})[episode] = episode_data
                     return episode_data
             except ValueError:
                 continue
 
         return None
 
+    def _selected_order_type_id(self, season: int, episode: int) -> Any | None:
+        """Which TVDB ordering the mapping row for this episode was built
+        from, or ``None`` when the row predates the field or no row exists.
+        """
+        mapped_episode = self._get_mapped_episode_payload(season, episode)
+        if not mapped_episode:
+            return None
+        return mapped_episode.get("episode_order_type_id")
+
     def _get_selected_episode_data(
-        self, season: int, episode: int
+        self, season: int, episode: int, episode_order_type_id: Any | None = None
     ) -> dict[str, Any] | None:
-        """Return episode data from the user's selected mapping before TVDB fallback."""
+        """Return episode data from the user's selected mapping before TVDB fallback.
+
+        ``episode_order_type_id`` is only consulted for the TVDB fallback. A
+        caller looking up a *different* episode of the same file -- the end
+        of a multi-episode span -- passes the start row's ordering, because
+        no mapping row matches the end and the fallback would otherwise read
+        the aired list whatever the row was built from.
+        """
         mapped_episode = self._get_mapped_episode_payload(season, episode)
         if mapped_episode:
             episode_data = mapped_episode.get("episode_data")
@@ -3421,7 +3539,9 @@ class TokenReplacer:
                     "name": mapped_episode.get("episode_name", ""),
                     "aired": "",
                 }
-        return self._get_tvdb_episode_dict(season, episode)
+            if episode_order_type_id is None:
+                episode_order_type_id = mapped_episode.get("episode_order_type_id")
+        return self._get_tvdb_episode_dict(season, episode, episode_order_type_id)
 
     def _get_mapped_episode_payload(
         self, season: int, episode: int

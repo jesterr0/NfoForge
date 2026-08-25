@@ -32,6 +32,20 @@ The versions so far:
   0--100 freeleech percentage. Disabled migrates to 0 and enabled to 100.
 - 7 -> 8: LST's torrent source flag changed from the incorrect ``LST`` to
   the tracker-required ``LST.GG``. Other user-configured values are preserved.
+- 8 -> 9: filename settings. ``replace_illegal_chars`` is dropped (nothing
+  read it), the filename colon control's five values map onto three, and
+  ``parse_filename_attributes`` expands into a master switch plus six
+  per-category ones. HYBRID follows the old flag and the other five default
+  on, which is what keeps output byte-identical -- see the migration itself
+  for why. The two dropped keys still appear in
+  ``_MOVIE_MANAGEMENT_SCALAR_KEYS`` above because the 1 -> 2 hop must still
+  carry them forward; this hop is where they leave.
+- 9 -> 10: every per-tracker title override is discarded, along with the
+  legacy ``mvr_default_title_*`` spelling of the same fields. Tracker titles
+  come from hardcoded rules now, so a stored override is a customisation the
+  design removes rather than a value to carry forward. The global movie and
+  series title tokens and the global title colon stay: the trackers with no
+  composition of their own render exactly those.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -80,6 +94,8 @@ SCHEMA_5_VERSION = 5
 SCHEMA_6_VERSION = 6
 SCHEMA_7_VERSION = 7
 SCHEMA_8_VERSION = 8
+SCHEMA_9_VERSION = 9
+SCHEMA_10_VERSION = 10
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -541,6 +557,23 @@ _TITLE_OVERRIDE_KEYS = (
     "tvr_title_overrides",
 )
 
+# An earlier spelling of the same three fields, dropped from the codebase
+# without ever being stripped from a profile, so old ones still carry them
+# (with pre-rename tokens inside, e.g. `{movie_clean_title}`). Nothing has
+# read them for some time and `validate_types` ignores keys the default does
+# not declare, so they are inert -- but they are per-tracker title overrides,
+# and schema 10 says a profile no longer has any.
+#
+# Kept separate from the tuple above rather than appended to it: that one is
+# also read by `migrate_v5_to_v6`, which refreshes each key from the packaged
+# default. These are in no packaged default, so adding them there would
+# change that older hop to no purpose.
+_LEGACY_TITLE_OVERRIDE_KEYS = (
+    "mvr_default_title_override_enabled",
+    "mvr_default_title_token_override",
+    "mvr_default_title_replace_map",
+)
+
 
 def migrate_v5_to_v6(
     old_doc: Mapping[str, Any],
@@ -669,6 +702,125 @@ def migrate_v7_to_v8(
     return new_doc, []
 
 
+# ColonReplace values as persisted: 1 KEEP, 2 DELETE, 3 REPLACE_WITH_DASH,
+# 4 REPLACE_WITH_SPACE_DASH, 5 REPLACE_WITH_SPACE_DASH_SPACE.
+_FILENAME_COLON_REMAP = {4: 3, 5: 3}
+
+_CLAIM_NAMES = (
+    "edition",
+    "frame_size",
+    "localization",
+    "re_release",
+    "remux",
+    "hybrid",
+)
+
+
+def _migrate_management_section(
+    section: Mapping[str, Any], prefix: str
+) -> dict[str, Any]:
+    """Apply the v9 changes to one management section.
+
+    ``prefix`` is "mvr" or "tvr".
+    """
+    migrated = dict(section)
+    migrated.pop(f"{prefix}_replace_illegal_chars", None)
+
+    colon_key = f"{prefix}_colon_replace_filename"
+    colon_value = _unwrap(migrated.get(colon_key))
+    if isinstance(colon_value, int) and colon_value in _FILENAME_COLON_REMAP:
+        migrated[colon_key] = _FILENAME_COLON_REMAP[colon_value]
+
+    old_flag = _unwrap(migrated.pop(f"{prefix}_parse_filename_attributes", None))
+    master = True if old_flag is None else bool(old_flag)
+    migrated[f"{prefix}_parse_claims"] = master
+    for claim in _CLAIM_NAMES:
+        # HYBRID follows the old flag; it is the one claim that flag
+        # genuinely controlled, so a profile with it off must keep emitting
+        # no HYBRID. The other five were pre-filled into override_tokens
+        # before the gate was consulted, so the flag never reached them and
+        # leaving them on preserves output while making master meaningful
+        # if the user turns it back on.
+        migrated[f"{prefix}_parse_claim_{claim}"] = (
+            master if claim == "hybrid" else True
+        )
+    return migrated
+
+
+def migrate_v8_to_v9(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Drop the dead illegal-character flag, reduce the filename colon
+    control to three options, and expand the single claim-parsing flag into
+    a master plus six category switches.
+
+    Output is byte-identical for every existing profile.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_9_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    for section_key, prefix in (
+        ("movie_management", "mvr"),
+        ("series_management", "tvr"),
+    ):
+        section = new_doc.get(section_key)
+        if isinstance(section, Mapping):
+            new_doc[section_key] = _migrate_management_section(section, prefix)
+
+    return new_doc, []
+
+
+def migrate_v9_to_v10(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Discard every per-tracker title override.
+
+    Unlike the hop before it, this one changes output deliberately. Tracker
+    titles are enforced from hardcoded rules now, so a stored override is a
+    customisation the design removes rather than a value to carry forward.
+    That is the feature: the shipped config was not derived from tracker
+    rules, and all five trackers checked against their published rules
+    during design had defects.
+
+    The global movie and series title tokens and the global title colon are
+    preserved untouched. Seven trackers have no composition of their own and
+    render exactly those, so discarding them would leave those trackers with
+    no title at all.
+
+    The legacy `mvr_default_title_*` spelling goes too. Nothing has read it
+    for some time, so removing it changes no behaviour -- but leaving a
+    per-tracker title override sitting in a profile this hop claims to have
+    cleared would make the claim false on the only evidence a user can see.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_10_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    discarded = frozenset(_TITLE_OVERRIDE_KEYS + _LEGACY_TITLE_OVERRIDE_KEYS)
+    trackers = new_doc.get("tracker")
+    if isinstance(trackers, Mapping):
+        migrated_trackers: dict[str, Any] = {}
+        for name, section in trackers.items():
+            if not isinstance(section, Mapping):
+                migrated_trackers[name] = section
+                continue
+            migrated_trackers[name] = {
+                key: value for key, value in section.items() if key not in discarded
+            }
+        new_doc["tracker"] = migrated_trackers
+
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -677,6 +829,8 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_5_VERSION: migrate_v5_to_v6,
     SCHEMA_6_VERSION: migrate_v6_to_v7,
     SCHEMA_7_VERSION: migrate_v7_to_v8,
+    SCHEMA_8_VERSION: migrate_v8_to_v9,
+    SCHEMA_9_VERSION: migrate_v9_to_v10,
 }
 
 

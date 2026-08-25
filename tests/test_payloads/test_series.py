@@ -376,6 +376,211 @@ def test_auto_match_files_single_episode_has_no_episode_end() -> None:
     assert mapping["episode_end"] is None
 
 
+def test_auto_match_carries_the_full_episode_list() -> None:
+    # The expand styles need every episode, not just the ends: for a
+    # three-episode file, Duplicate rendered S01E01.S01E03 and Repeat
+    # rendered S01E01E03, both asserting the file contains 1 and 3 but not 2.
+    file_path = Path("Show.S01E01E02E03.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {1: {"name": "One"}, 2: {"name": "Two"}, 3: {"name": "Three"}}
+    }
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["episode"] == 1
+    assert mapping["episode_end"] == 3
+    assert mapping["episode_list"] == [1, 2, 3]
+
+
+def test_auto_match_single_episode_carries_a_one_item_list() -> None:
+    # Every row carries a list, so no caller has to special-case the file
+    # that covers exactly one episode.
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {1: {1: {"name": "One"}}}
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["episode_list"] == [1]
+    assert mapping["episode_end"] is None
+
+
+def test_auto_match_keeps_a_non_contiguous_episode_list() -> None:
+    # "S01E01E05" holds two episodes; its ends alone say five. This is the
+    # case a derived range cannot express, and the reason the list is stored.
+    file_path = Path("Show.S01E01E05.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {number: {"name": f"Episode {number}"} for number in range(1, 6)}
+    }
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["episode_end"] == 5
+    assert mapping["episode_list"] == [1, 5]
+
+
+def test_manual_episode_edit_rebuilds_a_stale_episode_list() -> None:
+    # Retyping the episode moves the file's start, so the list detected from
+    # the old start no longer describes it. Carrying it forward would leave
+    # the row naming episodes the file does not claim.
+    file_path = Path("Show.S01E01E02E03.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {number: {"name": f"Episode {number}"} for number in range(1, 6)}
+    }
+    mapper._auto_match_files()
+
+    episode_item = mapper.files_table.item(0, 2)
+    assert episode_item is not None
+    episode_item.setText("2")
+    mapper._on_table_item_changed(episode_item)
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["episode"] == 2
+    assert mapping["episode_list"] == [2, 3]
+
+
+def test_manual_season_edit_keeps_a_non_contiguous_episode_list() -> None:
+    # The other half of the same rule: the start is unchanged, so the list
+    # still describes the file and rebuilding it would quietly turn a
+    # two-episode file into a five-episode one.
+    file_path = Path("Show.S01E01E05.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper._populate_files_table()
+    mapper.available_episodes = {
+        1: {number: {"name": f"Episode {number}"} for number in range(1, 6)}
+    }
+    mapper._auto_match_files()
+
+    season_item = mapper.files_table.item(0, 1)
+    assert season_item is not None
+    season_item.setText("2")
+    mapper._on_table_item_changed(season_item)
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["season"] == 2
+    assert mapping["episode_list"] == [1, 5]
+
+
+def test_auto_match_records_the_selected_episode_ordering() -> None:
+    # The row must carry which TVDB ordering its payload came from, so a
+    # later lookup for a different episode reads the same list.
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper.media_search_payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title="Show",
+        tvdb_data={
+            "episodes_by_type": {
+                4: {
+                    "type_name": "DVD Order",
+                    "type": "dvd",
+                    "episodes": [
+                        {"seasonNumber": 1, "number": 1, "name": "Pilot"},
+                    ],
+                }
+            }
+        },
+    )
+    mapper._load_episode_data()
+    mapper._populate_files_table()
+
+    mapper._auto_match_files()
+
+    assert mapper.file_episode_mappings[file_path]["episode_order_type_id"] == 4
+
+
+def test_manual_assignment_records_the_selected_episode_ordering() -> None:
+    # The manual edit path stores its own row and must record the ordering
+    # too, otherwise a hand-corrected episode silently loses it.
+    file_path = Path("Show.S01E01.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper.media_search_payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title="Show",
+        tvdb_data={
+            "episodes_by_type": {
+                4: {
+                    "type_name": "DVD Order",
+                    "type": "dvd",
+                    "episodes": [
+                        {"seasonNumber": 1, "number": 1, "name": "Pilot"},
+                        {"seasonNumber": 1, "number": 2, "name": "Second"},
+                    ],
+                }
+            }
+        },
+    )
+    mapper._load_episode_data()
+    mapper._populate_files_table()
+
+    season_item = mapper.files_table.item(0, 1)
+    episode_item = mapper.files_table.item(0, 2)
+    assert season_item is not None
+    assert episode_item is not None
+    season_item.setText("1")
+    episode_item.setText("2")
+    mapper._on_table_item_changed(episode_item)
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["episode"] == 2
+    assert mapping["episode_order_type_id"] == 4
+
+
+def test_absolute_match_records_the_absolute_list_it_matched_against() -> None:
+    # The absolute matcher deliberately scans every season type regardless
+    # of the combo, so its row came from a different list than its
+    # neighbours. A session-level value would be wrong here; the row must
+    # carry the absolute list's own type id.
+    file_path = Path("[Group] Show - 025.mkv")
+    mapper = _make_mapper_with_files([file_path])
+    mapper.media_search_payload = MediaSearchPayload(
+        media_type=MediaType.SERIES,
+        title="Show",
+        tvdb_data={
+            "episodes_by_type": {
+                0: {
+                    "type_name": "Aired Order",
+                    "type": "official",
+                    "episodes": [
+                        {"seasonNumber": 2, "number": 4, "name": "Later"},
+                    ],
+                },
+                3: {
+                    "type_name": "Absolute Order",
+                    "type": "absolute",
+                    "episodes": [
+                        {
+                            "seasonNumber": 2,
+                            "number": 4,
+                            "absoluteNumber": 25,
+                            "name": "Later",
+                        },
+                    ],
+                },
+            }
+        },
+    )
+    mapper._load_episode_data()
+    mapper._set_release_format(EpisodeFormat.ANIME_ABSOLUTE, manually_selected=True)
+    mapper._populate_files_table()
+
+    mapper._auto_match_files()
+
+    mapping = mapper.file_episode_mappings[file_path]
+    assert mapping["assignment_method"] == "absolute"
+    assert mapping["episode_order_type_id"] == 3
+
+
 def test_fuzzy_match_falls_back_to_filename_without_episode_title() -> None:
     file_path = Path("Show.S01.Some.Episode.mkv")
     mapper = _make_mapper_with_files([file_path])

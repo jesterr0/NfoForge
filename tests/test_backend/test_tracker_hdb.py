@@ -13,7 +13,11 @@ from src.backend.trackers.hdb import (
     hdb_codec_id,
     hdb_medium_id,
 )
+from src.backend.trackers.title_render import normalise_title
+from src.backend.trackers.title_rules import TITLE_RULES
 from src.enums.media_type import MediaType
+from src.enums.token_replacer import ColonReplace
+from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.hdb import HDBCategory, HDBCodec, HDBMedium
 from src.exceptions import TrackerError
 
@@ -103,7 +107,18 @@ def test_hdb_medium_id_raises_when_unmappable() -> None:
 
 
 # ---------------------------------------------------------------------------
-# generate_release_title
+
+
+def _normalise(title: str) -> str:
+    """The HDBits entry's normalisation, which replaced its own formatter."""
+    return normalise_title(
+        title,
+        TITLE_RULES[TrackerSelection.HDB].normalisation,
+        global_colon=ColonReplace.KEEP,
+    )
+
+
+# title normalisation, which is the HDBits entry's job now
 # ---------------------------------------------------------------------------
 
 
@@ -120,14 +135,12 @@ def test_hdb_medium_id_raises_when_unmappable() -> None:
         ("Example.2026.1080p.WEB-DL.AAC.2.0.H.264-GRP", "AAC 2.0"),
     ],
 )
-def test_generate_release_title_substitutions(
-    title: str, expected_substring: str
-) -> None:
-    assert expected_substring in HDBUploader.generate_release_title(title)
+def test_hdbits_entry_substitutions(title: str, expected_substring: str) -> None:
+    assert expected_substring in _normalise(title)
 
 
-def test_generate_release_title_does_not_downgrade_hdr10_plus() -> None:
-    result = HDBUploader.generate_release_title("Example.2026.1080p.HDR10+.HEVC-GRP")
+def test_the_hdbits_entry_does_not_downgrade_hdr10_plus() -> None:
+    result = _normalise("Example.2026.1080p.HDR10+.HEVC-GRP")
     assert "HDR10+" in result
     # must not have been further rewritten into "HDR1010+" by the plain
     # HDR->HDR10 substitution running a second time on top of "HDR10+"

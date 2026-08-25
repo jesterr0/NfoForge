@@ -10,6 +10,7 @@ from src.config.codec import TomlConfigCodec
 from src.config.models import (
     ApiKeysSettings,
     AppConfig,
+    ClaimSwitches,
     DependencySettings,
     DynamicRangeSettings,
     GeneralSettings,
@@ -32,7 +33,6 @@ from src.config.models import (
 )
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
-from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.cropping import Cropping
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.image_plugin import ImagePlugin
@@ -41,7 +41,6 @@ from src.enums.logging_settings import LogLevel
 from src.enums.media_search_mode import MediaSearchMode
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.series import EpisodeFormat
 from src.enums.subtitles import SubtitleAlignment
 from src.enums.theme import NfoForgeTheme
 from src.enums.token_replacer import ColonReplace
@@ -79,14 +78,37 @@ from src.payloads.trackers import (
     ReelFlixInfo,
     SeedPoolInfo,
     ShareIslandInfo,
-    TitleOverridePayload,
     TorrentLeechInfo,
-    TrackerInfo,
     UploadCXInfo,
     UTPInfo,
     YuSceneInfo,
 )
 from src.payloads.watch_folder import WatchFolder
+
+_CLAIM_KEYS = (
+    "edition",
+    "frame_size",
+    "localization",
+    "re_release",
+    "remux",
+    "hybrid",
+)
+
+
+def _load_claims(section: Mapping[str, Any], prefix: str) -> ClaimSwitches:
+    """Read the claim switches, defaulting anything absent to on.
+
+    `.get` throughout: these keys arrived with schema 9, and a profile
+    written before it that reached this code without the migration is still
+    readable rather than a hard failure.
+    """
+    return ClaimSwitches(
+        enabled=bool(section.get(f"{prefix}_parse_claims", True)),
+        **{
+            claim: bool(section.get(f"{prefix}_parse_claim_{claim}", True))
+            for claim in _CLAIM_KEYS
+        },
+    )
 
 
 class TypedTomlOperations:
@@ -213,18 +235,6 @@ class TypedTomlOperations:
             tl_data["column_s"] = self.settings.trackers.torrent_leech.column_s
             tl_data["column_space"] = self.settings.trackers.torrent_leech.column_space
             tl_data["row_space"] = self.settings.trackers.torrent_leech.row_space
-            tl_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.torrent_leech.mvr_title_override_enabled
-            )
-            tl_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.torrent_leech.mvr_title_colon_replace
-            ).value
-            tl_data["mvr_title_token_override"] = (
-                self.settings.trackers.torrent_leech.mvr_title_token_override
-            )
-            tl_data["mvr_title_replace_map"] = (
-                self.settings.trackers.torrent_leech.mvr_title_replace_map
-            )
             tl_data["username"] = self.settings.trackers.torrent_leech.username
             tl_data["password"] = self.settings.trackers.torrent_leech.password
             tl_data["torrent_passkey"] = (
@@ -248,18 +258,6 @@ class TypedTomlOperations:
             bhd_data["column_s"] = self.settings.trackers.beyond_hd.column_s
             bhd_data["column_space"] = self.settings.trackers.beyond_hd.column_space
             bhd_data["row_space"] = self.settings.trackers.beyond_hd.row_space
-            bhd_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.beyond_hd.mvr_title_override_enabled
-            )
-            bhd_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.beyond_hd.mvr_title_colon_replace
-            ).value
-            bhd_data["mvr_title_token_override"] = (
-                self.settings.trackers.beyond_hd.mvr_title_token_override
-            )
-            bhd_data["mvr_title_replace_map"] = (
-                self.settings.trackers.beyond_hd.mvr_title_replace_map
-            )
             bhd_data["anonymous"] = self.settings.trackers.beyond_hd.anonymous
             bhd_data["api_key"] = self.settings.trackers.beyond_hd.api_key
             bhd_data["rss_key"] = self.settings.trackers.beyond_hd.rss_key
@@ -298,18 +296,6 @@ class TypedTomlOperations:
                 self.settings.trackers.pass_the_popcorn.column_space
             )
             ptp_data["row_space"] = self.settings.trackers.pass_the_popcorn.row_space
-            ptp_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.pass_the_popcorn.mvr_title_override_enabled
-            )
-            ptp_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.pass_the_popcorn.mvr_title_colon_replace
-            ).value
-            ptp_data["mvr_title_token_override"] = (
-                self.settings.trackers.pass_the_popcorn.mvr_title_token_override
-            )
-            ptp_data["mvr_title_replace_map"] = (
-                self.settings.trackers.pass_the_popcorn.mvr_title_replace_map
-            )
             ptp_data["api_user"] = self.settings.trackers.pass_the_popcorn.api_user
             ptp_data["api_key"] = self.settings.trackers.pass_the_popcorn.api_key
             ptp_data["username"] = self.settings.trackers.pass_the_popcorn.username
@@ -330,18 +316,6 @@ class TypedTomlOperations:
             rf_data["column_s"] = self.settings.trackers.reelflix.column_s
             rf_data["column_space"] = self.settings.trackers.reelflix.column_space
             rf_data["row_space"] = self.settings.trackers.reelflix.row_space
-            rf_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.reelflix.mvr_title_override_enabled
-            )
-            rf_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.reelflix.mvr_title_colon_replace
-            ).value
-            rf_data["mvr_title_token_override"] = (
-                self.settings.trackers.reelflix.mvr_title_token_override
-            )
-            rf_data["mvr_title_replace_map"] = (
-                self.settings.trackers.reelflix.mvr_title_replace_map
-            )
             rf_data["api_key"] = self.settings.trackers.reelflix.api_key
             rf_data["anonymous"] = self.settings.trackers.reelflix.anonymous
             rf_data["internal"] = self.settings.trackers.reelflix.internal
@@ -374,18 +348,6 @@ class TypedTomlOperations:
             aither_data["column_s"] = self.settings.trackers.aither.column_s
             aither_data["column_space"] = self.settings.trackers.aither.column_space
             aither_data["row_space"] = self.settings.trackers.aither.row_space
-            aither_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.aither.mvr_title_override_enabled
-            )
-            aither_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.aither.mvr_title_colon_replace
-            ).value
-            aither_data["mvr_title_token_override"] = (
-                self.settings.trackers.aither.mvr_title_token_override
-            )
-            aither_data["mvr_title_replace_map"] = (
-                self.settings.trackers.aither.mvr_title_replace_map
-            )
             aither_data["api_key"] = self.settings.trackers.aither.api_key
             aither_data["anonymous"] = self.settings.trackers.aither.anonymous
             aither_data["internal"] = self.settings.trackers.aither.internal
@@ -416,18 +378,6 @@ class TypedTomlOperations:
             huno_data["column_s"] = self.settings.trackers.huno.column_s
             huno_data["column_space"] = self.settings.trackers.huno.column_space
             huno_data["row_space"] = self.settings.trackers.huno.row_space
-            huno_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.huno.mvr_title_override_enabled
-            )
-            huno_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.huno.mvr_title_colon_replace
-            ).value
-            huno_data["mvr_title_token_override"] = (
-                self.settings.trackers.huno.mvr_title_token_override
-            )
-            huno_data["mvr_title_replace_map"] = (
-                self.settings.trackers.huno.mvr_title_replace_map
-            )
             huno_data["api_key"] = self.settings.trackers.huno.api_key
             huno_data["anonymous"] = self.settings.trackers.huno.anonymous
             huno_data["internal"] = self.settings.trackers.huno.internal
@@ -446,18 +396,6 @@ class TypedTomlOperations:
             lst_data["column_s"] = self.settings.trackers.lst.column_s
             lst_data["column_space"] = self.settings.trackers.lst.column_space
             lst_data["row_space"] = self.settings.trackers.lst.row_space
-            lst_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.lst.mvr_title_override_enabled
-            )
-            lst_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.lst.mvr_title_colon_replace
-            ).value
-            lst_data["mvr_title_token_override"] = (
-                self.settings.trackers.lst.mvr_title_token_override
-            )
-            lst_data["mvr_title_replace_map"] = (
-                self.settings.trackers.lst.mvr_title_replace_map
-            )
             lst_data["api_key"] = self.settings.trackers.lst.api_key
             lst_data["anonymous"] = self.settings.trackers.lst.anonymous
             lst_data["internal"] = self.settings.trackers.lst.internal
@@ -494,18 +432,6 @@ class TypedTomlOperations:
                 self.settings.trackers.dark_peers.column_space
             )
             dark_peers_data["row_space"] = self.settings.trackers.dark_peers.row_space
-            dark_peers_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.dark_peers.mvr_title_override_enabled
-            )
-            dark_peers_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.dark_peers.mvr_title_colon_replace
-            ).value
-            dark_peers_data["mvr_title_token_override"] = (
-                self.settings.trackers.dark_peers.mvr_title_token_override
-            )
-            dark_peers_data["mvr_title_replace_map"] = (
-                self.settings.trackers.dark_peers.mvr_title_replace_map
-            )
             dark_peers_data["api_key"] = self.settings.trackers.dark_peers.api_key
             dark_peers_data["anonymous"] = self.settings.trackers.dark_peers.anonymous
             dark_peers_data["internal"] = self.settings.trackers.dark_peers.internal
@@ -539,18 +465,6 @@ class TypedTomlOperations:
             )
             shareisland_data["row_space"] = (
                 self.settings.trackers.share_island.row_space
-            )
-            shareisland_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.share_island.mvr_title_override_enabled
-            )
-            shareisland_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.share_island.mvr_title_colon_replace
-            ).value
-            shareisland_data["mvr_title_token_override"] = (
-                self.settings.trackers.share_island.mvr_title_token_override
-            )
-            shareisland_data["mvr_title_replace_map"] = (
-                self.settings.trackers.share_island.mvr_title_replace_map
             )
             shareisland_data["api_key"] = self.settings.trackers.share_island.api_key
             shareisland_data["anonymous"] = (
@@ -589,18 +503,6 @@ class TypedTomlOperations:
                 self.settings.trackers.upload_cx.column_space
             )
             uploadcx_data["row_space"] = self.settings.trackers.upload_cx.row_space
-            uploadcx_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.upload_cx.mvr_title_override_enabled
-            )
-            uploadcx_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.upload_cx.mvr_title_colon_replace
-            ).value
-            uploadcx_data["mvr_title_token_override"] = (
-                self.settings.trackers.upload_cx.mvr_title_token_override
-            )
-            uploadcx_data["mvr_title_replace_map"] = (
-                self.settings.trackers.upload_cx.mvr_title_replace_map
-            )
             uploadcx_data["api_key"] = self.settings.trackers.upload_cx.api_key
             uploadcx_data["anonymous"] = self.settings.trackers.upload_cx.anonymous
             uploadcx_data["internal"] = self.settings.trackers.upload_cx.internal
@@ -625,18 +527,6 @@ class TypedTomlOperations:
             oe_data["column_s"] = self.settings.trackers.only_encodes.column_s
             oe_data["column_space"] = self.settings.trackers.only_encodes.column_space
             oe_data["row_space"] = self.settings.trackers.only_encodes.row_space
-            oe_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.only_encodes.mvr_title_override_enabled
-            )
-            oe_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.only_encodes.mvr_title_colon_replace
-            ).value
-            oe_data["mvr_title_token_override"] = (
-                self.settings.trackers.only_encodes.mvr_title_token_override
-            )
-            oe_data["mvr_title_replace_map"] = (
-                self.settings.trackers.only_encodes.mvr_title_replace_map
-            )
             oe_data["api_key"] = self.settings.trackers.only_encodes.api_key
             oe_data["anonymous"] = self.settings.trackers.only_encodes.anonymous
             oe_data["internal"] = self.settings.trackers.only_encodes.internal
@@ -657,18 +547,6 @@ class TypedTomlOperations:
             hdb_data["column_s"] = self.settings.trackers.hdb.column_s
             hdb_data["column_space"] = self.settings.trackers.hdb.column_space
             hdb_data["row_space"] = self.settings.trackers.hdb.row_space
-            hdb_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.hdb.mvr_title_override_enabled
-            )
-            hdb_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.hdb.mvr_title_colon_replace
-            ).value
-            hdb_data["mvr_title_token_override"] = (
-                self.settings.trackers.hdb.mvr_title_token_override
-            )
-            hdb_data["mvr_title_replace_map"] = (
-                self.settings.trackers.hdb.mvr_title_replace_map
-            )
             hdb_data["username"] = self.settings.trackers.hdb.username
             hdb_data["passkey"] = self.settings.trackers.hdb.passkey
             hdb_data["session_cookie"] = self.settings.trackers.hdb.session_cookie
@@ -691,18 +569,6 @@ class TypedTomlOperations:
             blutopia_data["column_s"] = self.settings.trackers.blutopia.column_s
             blutopia_data["column_space"] = self.settings.trackers.blutopia.column_space
             blutopia_data["row_space"] = self.settings.trackers.blutopia.row_space
-            blutopia_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.blutopia.mvr_title_override_enabled
-            )
-            blutopia_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.blutopia.mvr_title_colon_replace
-            ).value
-            blutopia_data["mvr_title_token_override"] = (
-                self.settings.trackers.blutopia.mvr_title_token_override
-            )
-            blutopia_data["mvr_title_replace_map"] = (
-                self.settings.trackers.blutopia.mvr_title_replace_map
-            )
             blutopia_data["api_key"] = self.settings.trackers.blutopia.api_key
             blutopia_data["anonymous"] = self.settings.trackers.blutopia.anonymous
             blutopia_data["internal"] = self.settings.trackers.blutopia.internal
@@ -730,18 +596,6 @@ class TypedTomlOperations:
             seedpool_data["column_s"] = self.settings.trackers.seedpool.column_s
             seedpool_data["column_space"] = self.settings.trackers.seedpool.column_space
             seedpool_data["row_space"] = self.settings.trackers.seedpool.row_space
-            seedpool_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.seedpool.mvr_title_override_enabled
-            )
-            seedpool_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.seedpool.mvr_title_colon_replace
-            ).value
-            seedpool_data["mvr_title_token_override"] = (
-                self.settings.trackers.seedpool.mvr_title_token_override
-            )
-            seedpool_data["mvr_title_replace_map"] = (
-                self.settings.trackers.seedpool.mvr_title_replace_map
-            )
             seedpool_data["api_key"] = self.settings.trackers.seedpool.api_key
             seedpool_data["anonymous"] = self.settings.trackers.seedpool.anonymous
             seedpool_data["internal"] = self.settings.trackers.seedpool.internal
@@ -762,18 +616,6 @@ class TypedTomlOperations:
             utp_data["column_s"] = self.settings.trackers.utp.column_s
             utp_data["column_space"] = self.settings.trackers.utp.column_space
             utp_data["row_space"] = self.settings.trackers.utp.row_space
-            utp_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.utp.mvr_title_override_enabled
-            )
-            utp_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.utp.mvr_title_colon_replace
-            ).value
-            utp_data["mvr_title_token_override"] = (
-                self.settings.trackers.utp.mvr_title_token_override
-            )
-            utp_data["mvr_title_replace_map"] = (
-                self.settings.trackers.utp.mvr_title_replace_map
-            )
             utp_data["api_key"] = self.settings.trackers.utp.api_key
             utp_data["anonymous"] = self.settings.trackers.utp.anonymous
             utp_data["internal"] = self.settings.trackers.utp.internal
@@ -796,18 +638,6 @@ class TypedTomlOperations:
             yuscene_data["column_s"] = self.settings.trackers.yuscene.column_s
             yuscene_data["column_space"] = self.settings.trackers.yuscene.column_space
             yuscene_data["row_space"] = self.settings.trackers.yuscene.row_space
-            yuscene_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.yuscene.mvr_title_override_enabled
-            )
-            yuscene_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.yuscene.mvr_title_colon_replace
-            ).value
-            yuscene_data["mvr_title_token_override"] = (
-                self.settings.trackers.yuscene.mvr_title_token_override
-            )
-            yuscene_data["mvr_title_replace_map"] = (
-                self.settings.trackers.yuscene.mvr_title_replace_map
-            )
             yuscene_data["api_key"] = self.settings.trackers.yuscene.api_key
             yuscene_data["anonymous"] = self.settings.trackers.yuscene.anonymous
             yuscene_data["internal"] = self.settings.trackers.yuscene.internal
@@ -838,18 +668,6 @@ class TypedTomlOperations:
                 self.settings.trackers.fearnopeer.column_space
             )
             fearnopeer_data["row_space"] = self.settings.trackers.fearnopeer.row_space
-            fearnopeer_data["mvr_title_override_enabled"] = (
-                self.settings.trackers.fearnopeer.mvr_title_override_enabled
-            )
-            fearnopeer_data["mvr_title_colon_replace"] = ColonReplace(
-                self.settings.trackers.fearnopeer.mvr_title_colon_replace
-            ).value
-            fearnopeer_data["mvr_title_token_override"] = (
-                self.settings.trackers.fearnopeer.mvr_title_token_override
-            )
-            fearnopeer_data["mvr_title_replace_map"] = (
-                self.settings.trackers.fearnopeer.mvr_title_replace_map
-            )
             fearnopeer_data["api_key"] = self.settings.trackers.fearnopeer.api_key
             fearnopeer_data["anonymous"] = self.settings.trackers.fearnopeer.anonymous
             fearnopeer_data["internal"] = self.settings.trackers.fearnopeer.internal
@@ -860,29 +678,26 @@ class TypedTomlOperations:
                 self.settings.trackers.fearnopeer.image_width
             )
 
-            for tracker_key, tracker_info in (
-                ("torrent_leech", self.settings.trackers.torrent_leech),
-                ("beyond_hd", self.settings.trackers.beyond_hd),
-                ("pass_the_popcorn", self.settings.trackers.pass_the_popcorn),
-                ("reelflix", self.settings.trackers.reelflix),
-                ("aither", self.settings.trackers.aither),
-                ("huno", self.settings.trackers.huno),
-                ("lst", self.settings.trackers.lst),
-                ("dark_peers", self.settings.trackers.dark_peers),
-                ("shareisland", self.settings.trackers.share_island),
-                ("uploadcx", self.settings.trackers.upload_cx),
-                ("only_encodes", self.settings.trackers.only_encodes),
-                ("hdb", self.settings.trackers.hdb),
-                ("blutopia", self.settings.trackers.blutopia),
-                ("seedpool", self.settings.trackers.seedpool),
-                ("utp", self.settings.trackers.utp),
-                ("yuscene", self.settings.trackers.yuscene),
-                ("fearnopeer", self.settings.trackers.fearnopeer),
+            for tracker_key in (
+                "torrent_leech",
+                "beyond_hd",
+                "pass_the_popcorn",
+                "reelflix",
+                "aither",
+                "huno",
+                "lst",
+                "dark_peers",
+                "shareisland",
+                "uploadcx",
+                "only_encodes",
+                "hdb",
+                "blutopia",
+                "seedpool",
+                "utp",
+                "yuscene",
+                "fearnopeer",
             ):
                 tracker_table = self._ensure_toml_table(tracker_data, tracker_key)
-                tracker_table["tvr_title_overrides"] = (
-                    self._serialize_series_title_overrides(tracker_info)
-                )
                 # Retired: piece size now comes from one hardcoded curve that is
                 # the same for every tracker (see
                 # src/backend/torrents/piece_size.py), so a per-tracker maximum
@@ -997,18 +812,17 @@ class TypedTomlOperations:
             # movie management
             movie_management = self._toml_table(self._toml_data, "movie_management")
             movie_management["mvr_enabled"] = self.settings.movie.enabled
-            movie_management["mvr_replace_illegal_chars"] = (
-                self.settings.movie.replace_illegal_chars
-            )
             movie_management["mvr_colon_replace_filename"] = ColonReplace(
                 self.settings.movie.filename_colon_replace
             ).value
             movie_management["mvr_colon_replace_title"] = ColonReplace(
                 self.settings.movie.title_colon_replace
             ).value
-            movie_management["mvr_parse_filename_attributes"] = (
-                self.settings.movie.parse_filename_attributes
-            )
+            movie_management["mvr_parse_claims"] = self.settings.movie.claims.enabled
+            for claim in _CLAIM_KEYS:
+                movie_management[f"mvr_parse_claim_{claim}"] = getattr(
+                    self.settings.movie.claims, claim
+                )
             movie_management["mvr_token"] = self.settings.movie.filename_token
             movie_management["mvr_title_token"] = self.settings.movie.title_token
             movie_management["mvr_release_group"] = self.settings.movie.release_group
@@ -1016,18 +830,17 @@ class TypedTomlOperations:
             # series management
             series_management = self._toml_table(self._toml_data, "series_management")
             series_management["tvr_enabled"] = self.settings.series.enabled
-            series_management["tvr_replace_illegal_chars"] = (
-                self.settings.series.replace_illegal_chars
-            )
             series_management["tvr_colon_replace_filename"] = ColonReplace(
                 self.settings.series.filename_colon_replace
             ).value
             series_management["tvr_colon_replace_title"] = ColonReplace(
                 self.settings.series.title_colon_replace
             ).value
-            series_management["tvr_parse_filename_attributes"] = (
-                self.settings.series.parse_filename_attributes
-            )
+            series_management["tvr_parse_claims"] = self.settings.series.claims.enabled
+            for claim in _CLAIM_KEYS:
+                series_management[f"tvr_parse_claim_{claim}"] = getattr(
+                    self.settings.series.claims, claim
+                )
             series_management["tvr_standard_episode_token"] = (
                 self.settings.series.standard_episode_token
             )
@@ -1395,15 +1208,6 @@ class TypedTomlOperations:
                 column_s=tl_tracker_data["column_s"],
                 column_space=tl_tracker_data["column_space"],
                 row_space=tl_tracker_data["row_space"],
-                mvr_title_override_enabled=tl_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    tl_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=tl_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=tl_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(tl_tracker_data),
                 username=tl_tracker_data["username"],
                 password=tl_tracker_data["password"],
                 torrent_passkey=tl_tracker_data["torrent_passkey"],
@@ -1422,15 +1226,6 @@ class TypedTomlOperations:
                 column_s=bhd_tracker_data["column_s"],
                 column_space=bhd_tracker_data["column_space"],
                 row_space=bhd_tracker_data["row_space"],
-                mvr_title_override_enabled=bhd_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    bhd_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=bhd_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=bhd_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(bhd_tracker_data),
                 anonymous=bhd_tracker_data["anonymous"],
                 api_key=bhd_tracker_data["api_key"],
                 rss_key=bhd_tracker_data["rss_key"],
@@ -1456,15 +1251,6 @@ class TypedTomlOperations:
                 column_s=ptp_tracker_data["column_s"],
                 column_space=ptp_tracker_data["column_space"],
                 row_space=ptp_tracker_data["row_space"],
-                mvr_title_override_enabled=ptp_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    ptp_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=ptp_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=ptp_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(ptp_tracker_data),
                 api_user=ptp_tracker_data["api_user"],
                 api_key=ptp_tracker_data["api_key"],
                 username=ptp_tracker_data["username"],
@@ -1484,15 +1270,6 @@ class TypedTomlOperations:
                 column_s=rf_tracker_data["column_s"],
                 column_space=rf_tracker_data["column_space"],
                 row_space=rf_tracker_data["row_space"],
-                mvr_title_override_enabled=rf_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    rf_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=rf_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=rf_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(rf_tracker_data),
                 api_key=rf_tracker_data["api_key"],
                 anonymous=rf_tracker_data["anonymous"],
                 internal=rf_tracker_data["internal"],
@@ -1518,19 +1295,6 @@ class TypedTomlOperations:
                 column_s=aither_tracker_data["column_s"],
                 column_space=aither_tracker_data["column_space"],
                 row_space=aither_tracker_data["row_space"],
-                mvr_title_override_enabled=aither_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    aither_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=aither_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=aither_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    aither_tracker_data
-                ),
                 api_key=aither_tracker_data["api_key"],
                 anonymous=aither_tracker_data["anonymous"],
                 internal=aither_tracker_data["internal"],
@@ -1556,17 +1320,6 @@ class TypedTomlOperations:
                 column_s=huno_tracker_data["column_s"],
                 column_space=huno_tracker_data["column_space"],
                 row_space=huno_tracker_data["row_space"],
-                mvr_title_override_enabled=huno_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    huno_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=huno_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=huno_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    huno_tracker_data
-                ),
                 api_key=huno_tracker_data["api_key"],
                 anonymous=huno_tracker_data["anonymous"],
                 internal=huno_tracker_data["internal"],
@@ -1586,15 +1339,6 @@ class TypedTomlOperations:
                 column_s=lst_tracker_data["column_s"],
                 column_space=lst_tracker_data["column_space"],
                 row_space=lst_tracker_data["row_space"],
-                mvr_title_override_enabled=lst_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    lst_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=lst_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=lst_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(lst_tracker_data),
                 api_key=lst_tracker_data["api_key"],
                 anonymous=lst_tracker_data["anonymous"],
                 internal=lst_tracker_data["internal"],
@@ -1620,19 +1364,6 @@ class TypedTomlOperations:
                 column_s=darkpeers_tracker_data["column_s"],
                 column_space=darkpeers_tracker_data["column_space"],
                 row_space=darkpeers_tracker_data["row_space"],
-                mvr_title_override_enabled=darkpeers_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    darkpeers_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=darkpeers_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=darkpeers_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    darkpeers_tracker_data
-                ),
                 api_key=darkpeers_tracker_data["api_key"],
                 anonymous=darkpeers_tracker_data["anonymous"],
                 internal=darkpeers_tracker_data["internal"],
@@ -1652,17 +1383,6 @@ class TypedTomlOperations:
                 column_s=shri_tracker_data["column_s"],
                 column_space=shri_tracker_data["column_space"],
                 row_space=shri_tracker_data["row_space"],
-                mvr_title_override_enabled=shri_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    shri_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=shri_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=shri_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    shri_tracker_data
-                ),
                 api_key=shri_tracker_data["api_key"],
                 anonymous=shri_tracker_data["anonymous"],
                 internal=shri_tracker_data["internal"],
@@ -1683,17 +1403,6 @@ class TypedTomlOperations:
                 column_s=ulcx_tracker_data["column_s"],
                 column_space=ulcx_tracker_data["column_space"],
                 row_space=ulcx_tracker_data["row_space"],
-                mvr_title_override_enabled=ulcx_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    ulcx_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=ulcx_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=ulcx_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    ulcx_tracker_data
-                ),
                 api_key=ulcx_tracker_data["api_key"],
                 anonymous=ulcx_tracker_data["anonymous"],
                 internal=ulcx_tracker_data["internal"],
@@ -1713,15 +1422,6 @@ class TypedTomlOperations:
                 column_s=oe_tracker_data["column_s"],
                 column_space=oe_tracker_data["column_space"],
                 row_space=oe_tracker_data["row_space"],
-                mvr_title_override_enabled=oe_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    oe_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=oe_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=oe_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(oe_tracker_data),
                 api_key=oe_tracker_data["api_key"],
                 anonymous=oe_tracker_data["anonymous"],
                 internal=oe_tracker_data["internal"],
@@ -1741,15 +1441,6 @@ class TypedTomlOperations:
                 column_s=hdb_tracker_data["column_s"],
                 column_space=hdb_tracker_data["column_space"],
                 row_space=hdb_tracker_data["row_space"],
-                mvr_title_override_enabled=hdb_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    hdb_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=hdb_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=hdb_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(hdb_tracker_data),
                 username=hdb_tracker_data["username"],
                 passkey=hdb_tracker_data["passkey"],
                 session_cookie=hdb_tracker_data["session_cookie"],
@@ -1769,19 +1460,6 @@ class TypedTomlOperations:
                 column_s=blutopia_tracker_data["column_s"],
                 column_space=blutopia_tracker_data["column_space"],
                 row_space=blutopia_tracker_data["row_space"],
-                mvr_title_override_enabled=blutopia_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    blutopia_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=blutopia_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=blutopia_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    blutopia_tracker_data
-                ),
                 api_key=blutopia_tracker_data["api_key"],
                 anonymous=blutopia_tracker_data["anonymous"],
                 internal=blutopia_tracker_data["internal"],
@@ -1802,19 +1480,6 @@ class TypedTomlOperations:
                 column_s=seedpool_tracker_data["column_s"],
                 column_space=seedpool_tracker_data["column_space"],
                 row_space=seedpool_tracker_data["row_space"],
-                mvr_title_override_enabled=seedpool_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    seedpool_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=seedpool_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=seedpool_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    seedpool_tracker_data
-                ),
                 api_key=seedpool_tracker_data["api_key"],
                 anonymous=seedpool_tracker_data["anonymous"],
                 internal=seedpool_tracker_data["internal"],
@@ -1834,15 +1499,6 @@ class TypedTomlOperations:
                 column_s=utp_tracker_data["column_s"],
                 column_space=utp_tracker_data["column_space"],
                 row_space=utp_tracker_data["row_space"],
-                mvr_title_override_enabled=utp_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    utp_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=utp_tracker_data["mvr_title_token_override"],
-                mvr_title_replace_map=utp_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(utp_tracker_data),
                 api_key=utp_tracker_data["api_key"],
                 anonymous=utp_tracker_data["anonymous"],
                 internal=utp_tracker_data["internal"],
@@ -1862,19 +1518,6 @@ class TypedTomlOperations:
                 column_s=yuscene_tracker_data["column_s"],
                 column_space=yuscene_tracker_data["column_space"],
                 row_space=yuscene_tracker_data["row_space"],
-                mvr_title_override_enabled=yuscene_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    yuscene_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=yuscene_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=yuscene_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    yuscene_tracker_data
-                ),
                 api_key=yuscene_tracker_data["api_key"],
                 anonymous=yuscene_tracker_data["anonymous"],
                 internal=yuscene_tracker_data["internal"],
@@ -1894,19 +1537,6 @@ class TypedTomlOperations:
                 column_s=fearnopeer_tracker_data["column_s"],
                 column_space=fearnopeer_tracker_data["column_space"],
                 row_space=fearnopeer_tracker_data["row_space"],
-                mvr_title_override_enabled=fearnopeer_tracker_data[
-                    "mvr_title_override_enabled"
-                ],
-                mvr_title_colon_replace=ColonReplace(
-                    fearnopeer_tracker_data["mvr_title_colon_replace"]
-                ),
-                mvr_title_token_override=fearnopeer_tracker_data[
-                    "mvr_title_token_override"
-                ],
-                mvr_title_replace_map=fearnopeer_tracker_data["mvr_title_replace_map"],
-                tvr_title_overrides=self._load_series_title_overrides(
-                    fearnopeer_tracker_data
-                ),
                 api_key=fearnopeer_tracker_data["api_key"],
                 anonymous=fearnopeer_tracker_data["anonymous"],
                 internal=fearnopeer_tracker_data["internal"],
@@ -2102,36 +1732,26 @@ class TypedTomlOperations:
                 ),
                 movie=MovieSettings(
                     enabled=bool(movie_management["mvr_enabled"]),
-                    replace_illegal_chars=bool(
-                        movie_management["mvr_replace_illegal_chars"]
-                    ),
                     filename_colon_replace=ColonReplace(
                         movie_management["mvr_colon_replace_filename"]
                     ),
                     title_colon_replace=ColonReplace(
                         movie_management["mvr_colon_replace_title"]
                     ),
-                    parse_filename_attributes=bool(
-                        movie_management["mvr_parse_filename_attributes"]
-                    ),
+                    claims=_load_claims(movie_management, "mvr"),
                     filename_token=str(movie_management["mvr_token"]),
                     title_token=str(movie_management["mvr_title_token"]),
                     release_group=str(movie_management["mvr_release_group"]),
                 ),
                 series=SeriesSettings(
                     enabled=bool(series_management["tvr_enabled"]),
-                    replace_illegal_chars=bool(
-                        series_management["tvr_replace_illegal_chars"]
-                    ),
                     filename_colon_replace=ColonReplace(
                         series_management["tvr_colon_replace_filename"]
                     ),
                     title_colon_replace=ColonReplace(
                         series_management["tvr_colon_replace_title"]
                     ),
-                    parse_filename_attributes=bool(
-                        series_management["tvr_parse_filename_attributes"]
-                    ),
+                    claims=_load_claims(series_management, "tvr"),
                     standard_episode_token=load_series_token(
                         "tvr_standard_episode_token"
                     ),
@@ -2310,38 +1930,3 @@ class TypedTomlOperations:
             return str(Path(path_attr))
         else:
             return ""
-
-    @staticmethod
-    def _serialize_series_title_overrides(
-        tracker_info: TrackerInfo,
-    ) -> dict[str, dict[str, Any]]:
-        overrides: dict[str, dict[str, Any]] = {}
-        existing = tracker_info.tvr_title_overrides or {}
-        for episode_format in SUPPORTED_TVR_FORMATS:
-            override = existing.get(episode_format, TitleOverridePayload())
-            overrides[str(episode_format).lower()] = {
-                "enabled": override.enabled,
-                "colon_replace": ColonReplace(override.colon_replace).value,
-                "token": override.token,
-                "replace_map": override.replace_map or [],
-            }
-        return overrides
-
-    @staticmethod
-    def _load_series_title_overrides(
-        tracker_data: Mapping[str, Any],
-    ) -> dict[EpisodeFormat, TitleOverridePayload]:
-        override_data = cast(
-            Mapping[str, Any], tracker_data.get("tvr_title_overrides", {})
-        )
-        overrides: dict[EpisodeFormat, TitleOverridePayload] = {}
-        for episode_format in SUPPORTED_TVR_FORMATS:
-            key = str(episode_format).lower()
-            data = cast(Mapping[str, Any], override_data.get(key, {}))
-            overrides[episode_format] = TitleOverridePayload(
-                enabled=bool(data.get("enabled", False)),
-                colon_replace=ColonReplace(data.get("colon_replace", 3)),
-                token=data.get("token", ""),
-                replace_map=data.get("replace_map", []),
-            )
-        return overrides

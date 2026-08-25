@@ -9,12 +9,9 @@ import tomlkit
 
 from src.config.codec import TomlConfigCodec
 from src.config.config import ConfigManager
-from src.config.operations import TypedTomlOperations
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
-from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
 from src.enums.media_search_mode import MediaSearchMode
-from src.enums.series import EpisodeFormat
 from src.enums.torrent_client import QBittorrentSavePathMode
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ConfigError, ConfigSchemaError
@@ -24,7 +21,7 @@ from src.payloads.clients import (
     RTorrentConfig,
     TransmissionConfig,
 )
-from src.payloads.trackers import BeyondHDInfo, TrackerInfo
+from src.payloads.trackers import BeyondHDInfo
 from tests.repo_paths import CONFIG_FIXTURE_DIR, DEFAULT_CONFIG_TOML
 from tests.test_config.config_tree import (
     build_config_paths as _paths,
@@ -967,72 +964,6 @@ def test_default_season_subfolder_token_is_blank() -> None:
     assert str(series["tvr_season_subfolder_token"]) == ""
 
 
-def test_series_title_override_loader_matches_serialiser_formats() -> None:
-    """The loader must read exactly the episode formats the serialiser
-    writes -- no more, no less.
-
-    ``SUPPORTED_TVR_FORMATS`` deliberately excludes ``EpisodeFormat.DVD``
-    (a documented placeholder that reuses the Standard token set and is not
-    yet wired up -- see ``src/enums/series.py``), so the relationship
-    between the two must stay a subset, not equality. Before this loader
-    was narrowed to ``SUPPORTED_TVR_FORMATS`` it iterated all of
-    ``EpisodeFormat``, so a ``dvd`` override would load into memory and
-    then be silently dropped the next time the serialiser (which only ever
-    wrote the three supported formats) ran.
-    """
-    assert set(SUPPORTED_TVR_FORMATS) <= set(EpisodeFormat)
-
-    serialised = TypedTomlOperations._serialize_series_title_overrides(TrackerInfo())
-    loaded = TypedTomlOperations._load_series_title_overrides({})
-
-    assert set(loaded.keys()) == set(SUPPORTED_TVR_FORMATS)
-    assert {str(fmt).lower() for fmt in loaded} == set(serialised.keys())
-
-
-def test_on_disk_dvd_title_override_is_ignored_cleanly(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A ``dvd`` title-override table hand-edited (or left over from a
-    build that once wrote one) into a profile must be ignored on load --
-    not loaded into memory and then silently dropped on the next save.
-    Loading and saving such a profile must not raise, and the ``dvd``
-    table must not reappear once ``save`` rewrites the file.
-    """
-    monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
-        lambda self, dependencies: None,
-    )
-    paths = _paths(tmp_path)
-    profile = paths.user_configs / "test.toml"
-    profile.parent.mkdir(parents=True)
-    document = tomlkit.parse(paths.default_config.read_text(encoding="utf-8"))
-    tracker = cast(MutableMapping[str, Any], document["tracker"])
-    beyond_hd = cast(MutableMapping[str, Any], tracker["beyond_hd"])
-    beyond_hd["tvr_title_overrides"] = {
-        "dvd": {
-            "enabled": True,
-            "colon_replace": 3,
-            "token": "probe-dvd-token",
-            "replace_map": [],
-        }
-    }
-    profile.write_text(tomlkit.dumps(document), encoding="utf-8")
-
-    manager = ConfigManager("test", paths)  # must not raise
-
-    overrides = manager.settings.trackers.beyond_hd.tvr_title_overrides
-    assert EpisodeFormat.DVD not in overrides
-    assert set(overrides.keys()) == set(SUPPORTED_TVR_FORMATS)
-
-    manager.save()  # must not raise
-
-    saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
-    saved_tracker = cast(MutableMapping[str, Any], saved["tracker"])
-    saved_bhd = cast(MutableMapping[str, Any], saved_tracker["beyond_hd"])
-    saved_overrides = cast(MutableMapping[str, Any], saved_bhd["tvr_title_overrides"])
-    assert "dvd" not in saved_overrides
-
-
 def _write_fixture_profile(paths: ConfigPaths, fixture: str) -> tuple[Path, str]:
     """Install a fixture config as the "test" profile. Returns the profile
     path and the exact text written, so a test can assert the file was left
@@ -1434,39 +1365,3 @@ def test_duplicate_checker_is_written_on_save(
     saved = tomlkit.parse(profile.read_text(encoding="utf-8"))
     plugin_settings = cast(MutableMapping[str, Any], saved["plugins"])
     assert plugin_settings["duplicate_checker"] == "example.dupechecker"
-
-
-def test_locked_tracker_keeps_its_stale_user_override(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The config layer preserves a locked tracker's stored title override
-    across a save/reload cycle: ``ConfigManager.save()`` and
-    ``load_profile()`` round-trip every tracker's override fields
-    unconditionally, with no FREE/REQUIRED branching, so a value already
-    present on a settings object survives a disk round trip regardless of
-    policy.
-
-    This does not exercise the actual guard that keeps a locked tracker's
-    settings from being overwritten by its UI widget in the first place --
-    that is ``MoviesManagementSettings._save_settings`` skipping non-FREE
-    trackers, pinned separately by
-    ``test_required_tracker_movie_overrides_are_not_persisted`` in
-    ``tests/test_frontend/test_movies_management_settings.py``.
-    """
-    monkeypatch.setattr(
-        "src.config.config.FindDependencies.update_dependencies",
-        lambda self, dependencies: None,
-    )
-    manager = ConfigManager("test", _paths(tmp_path))
-    manager.load_profile("test")
-
-    reelflix = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
-    reelflix.mvr_title_override_enabled = True
-    reelflix.mvr_title_token_override = "{title_clean} (user custom)"  # noqa: S105
-
-    manager.save()
-    manager.load_profile("test")
-
-    restored = manager.settings.trackers.by_selection()[TrackerSelection.REELFLIX]
-    assert restored.mvr_title_override_enabled is True
-    assert restored.mvr_title_token_override == "{title_clean} (user custom)"  # noqa: S105

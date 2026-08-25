@@ -34,10 +34,9 @@ class OverviewDialog(QDialog):
 
         info_lbl = QLabel(
             f'<h3 style="margin: 0; margin-bottom: 6px;">{self.windowTitle()}</h3>'
-            '<i><span>Some <span style="font-weight: bold;">tracker titles</span> require special '
-            "formatting during upload. You can edit the title below, but any "
-            '<span style="font-weight: bold;">required</span> formatting will be applied '
-            "automatically.</span></i>",
+            '<i><span>Each <span style="font-weight: bold;">tracker title</span> is built from '
+            "that tracker's own naming rules and is shown here for review. Cancel if one "
+            "looks wrong. NFOs can still be edited.</span></i>",
             wordWrap=True,
             parent=self,
         )
@@ -55,9 +54,9 @@ class OverviewDialog(QDialog):
 
         # Qt rewrites some characters on the way into its editors (CRLF/CR and
         # U+2028/U+2029 collapse to "\n", non breaking spaces become plain
-        # spaces). Record what each widget actually holds after being seeded so
-        # `get_results` can tell a real user edit apart from Qt's own rewriting.
-        self._title_baseline: dict[TrackerSelection, str] = {}
+        # spaces). Record what the NFO editor actually holds after being seeded
+        # so `get_results` can tell a real user edit apart from Qt's own
+        # rewriting. Titles need no baseline -- they are never read back.
         self._nfo_baseline: dict[TrackerSelection, str] = {}
 
         for tracker, data in tracker_nfos.items():
@@ -77,10 +76,12 @@ class OverviewDialog(QDialog):
                 group_layout.addWidget(title_label)
                 title_edit = QLineEdit(group_box)
                 title_edit.setText(title)
-                title_edit.setPlaceholderText("Release title")
+                # read-only rather than disabled, so the exact string that will
+                # be uploaded can still be selected and copied
+                title_edit.setReadOnly(True)
+                title_edit.setCursorPosition(0)
                 group_layout.addWidget(title_edit)
                 self.title_edits[tracker] = title_edit
-                self._title_baseline[tracker] = title_edit.text()
 
                 if nfo:
                     group_layout.addSpacing(6)
@@ -130,18 +131,11 @@ class OverviewDialog(QDialog):
 
         # Iterate the original data rather than the widgets so trackers without
         # a title (or without an NFO) are carried through instead of dropped.
+        # The title is never read back from its widget: it comes from the
+        # tracker's rules, and this dialog only shows it.
         results: dict[TrackerSelection, dict[str, str | None]] = {}
         for tracker, data in self._original.items():
             entry = dict(data)
-
-            title_edit = self.title_edits.get(tracker)
-            if title_edit is not None:
-                title = title_edit.text()
-                # only an actual user edit overwrites the original, otherwise
-                # the original is kept verbatim so Qt's normalization of
-                # untouched text never reaches the tracker
-                if title != self._title_baseline[tracker]:
-                    entry["title"] = title
 
             nfo_edit = self.nfo_edits.get(tracker)
             if nfo_edit is not None:

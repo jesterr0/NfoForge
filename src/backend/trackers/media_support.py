@@ -79,12 +79,7 @@ UNIT3D_TRACKERS: frozenset[TrackerSelection] = frozenset(
     }
 )
 
-# Trackers whose upload has no release-name field in the mode NfoForge uses --
-# there is nothing for a title override to shape, so the settings and overview
-# pages must not offer an editor whose value never reaches the tracker. PTP
-# derives its release from structured fields plus the name inside the torrent;
-# HUNO auto mode builds its name from the torrent filename, MediaInfo and TMDB.
-# This is independent of media-type support above.
-NO_RELEASE_NAME_FIELD: frozenset[TrackerSelection] = frozenset(
-    {TrackerSelection.PASS_THE_POPCORN, TrackerSelection.HUNO}
-)
+# Whether a tracker's upload has a release-name field at all is a title rule,
+# so it lives on that tracker's entry -- see `accepts_a_release_name` in
+# `title_rules.py`. It used to be a frozenset here, beside the media-type
+# support tables, which answer a different question.

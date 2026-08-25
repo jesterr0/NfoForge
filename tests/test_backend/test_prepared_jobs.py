@@ -1,7 +1,8 @@
 """Coverage for preparing a job and resuming a prepared one.
 
-A prepared job must not regenerate its titles/NFOs and must not stop to ask
-anything -- that silence is the precondition for running jobs from a queue.
+A prepared job must not stop to ask anything -- that silence is the
+precondition for running jobs from a queue. Its NFO is reused as saved; its
+title is rebuilt from the tracker's current rules, which cannot prompt.
 """
 
 from pathlib import Path
@@ -139,23 +140,47 @@ def _prepare(context: ProcessingContext) -> None:
     }
 
 
+def _record_titles(
+    backend: ProcessBackEnd,
+    monkeypatch: pytest.MonkeyPatch,
+    value: str = "Regenerated",
+) -> list[TrackerSelection]:
+    """Stub title generation and return the log of trackers it ran for."""
+    rebuilt: list[TrackerSelection] = []
+    monkeypatch.setattr(
+        backend,
+        "generate_tracker_title",
+        lambda tracker, **_k: (rebuilt.append(tracker), value)[1],
+        raising=False,
+    )
+    return rebuilt
+
+
 # --------------------------------------------------------------------------
-# a prepared job asks nothing and regenerates nothing
+# a prepared job asks nothing, reuses its NFO and rebuilds its title
 # --------------------------------------------------------------------------
 def test_a_prepared_job_never_prompts_for_tokens(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Re-asking on every resume is what would block an unattended queue."""
+    """Re-asking on every resume is what would block an unattended queue.
+
+    Rebuilding the title must not reintroduce prompting. It cannot:
+    `generate_tracker_title` passes only `TokenSelection.FILE_TOKEN` user
+    tokens, and prompt answers are collected from NFO templates alone. The
+    title path having run here is what makes the silence meaningful.
+    """
     context = _context(tmp_path)
     _prepare(context)
     token_prompt = MagicMock(return_value={"prompt_group": "x"})
     backend = _backend(monkeypatch)
+    rebuilt = _record_titles(backend, monkeypatch)
 
     backend.process_trackers(
         **_kwargs(context, tmp_path, token_prompt_cb=token_prompt),
         phase=RunPhase.PREPARE,
     )
 
+    assert rebuilt == [TrackerSelection.AITHER]
     token_prompt.assert_not_called()
 
 
@@ -166,6 +191,7 @@ def test_a_prepared_job_never_opens_the_overview(
     _prepare(context)
     overview = MagicMock(return_value=None)
     backend = _backend(monkeypatch)
+    _record_titles(backend, monkeypatch)
 
     backend.process_trackers(
         **_kwargs(context, tmp_path, overview_cb=overview), phase=RunPhase.PREPARE
@@ -174,22 +200,92 @@ def test_a_prepared_job_never_opens_the_overview(
     overview.assert_not_called()
 
 
-def test_a_prepared_job_keeps_its_frozen_nfo(
+def test_a_prepared_job_reuses_its_stored_nfo_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Frozen wins: a since-edited template must not rewrite what was prepared."""
+    """Frozen wins for the NFO: a since-edited template must not rewrite it.
+
+    This is the half that preserves the unattended-upload property -- NFO
+    generation is what reads templates and asks for prompt tokens.
+    """
     context = _context(tmp_path)
     _prepare(context)
     backend = _backend(monkeypatch)
+    _record_titles(backend, monkeypatch)
 
     backend.process_trackers(**_kwargs(context, tmp_path), phase=RunPhase.PREPARE)
 
     written = (tmp_path / "aither" / "release.nfo").read_text(encoding="utf-8")
     assert written == "frozen nfo body"
-    assert context.shared_data.tracker_release_data[TrackerSelection.AITHER] == {
-        "title": "Frozen Title",
-        "nfo": "frozen nfo body",
+    assert (
+        context.shared_data.tracker_release_data[TrackerSelection.AITHER]["nfo"]
+        == "frozen nfo body"
+    )
+
+
+def test_a_prepared_job_uploads_the_regenerated_title(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reported bug: an override edited after a job was prepared had no
+    effect on that job, and nothing said so.
+
+    The "Using the titles and NFOs saved with this job" line only printed
+    when *every* tracker was prepared, so a mixed job was silent. Under this
+    design the frozen value would be a hardcoded rule, so a tracker rules
+    fix shipped in a release would never reach an already-prepared job.
+    """
+    context = _context(tmp_path)
+    _prepare(context)
+    backend = _backend(monkeypatch)
+    rebuilt = _record_titles(backend, monkeypatch)
+
+    backend.process_trackers(**_kwargs(context, tmp_path), phase=RunPhase.PREPARE)
+
+    assert rebuilt == [TrackerSelection.AITHER]
+    assert (
+        context.shared_data.tracker_release_data[TrackerSelection.AITHER]["title"]
+        == "Regenerated"
+    )
+
+
+def test_reusing_a_stored_nfo_is_announced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
+) -> None:
+    """A mixed job used to say nothing at all about what it reused."""
+    context = _context(tmp_path)
+    _prepare(context)
+    context.shared_data.selected_trackers = (
+        TrackerSelection.AITHER,
+        TrackerSelection.LST,
+    )
+    backend = _backend(monkeypatch)
+    info = _tracker_info()
+    backend.config.settings.trackers.by_selection = lambda: {
+        TrackerSelection.AITHER: info,
+        TrackerSelection.LST: info,
     }
+    _record_titles(backend, monkeypatch)
+    monkeypatch.setattr(process_module, "get_prompt_tokens", lambda _t: [])
+    text_update = MagicMock()
+    (tmp_path / "lst").mkdir()
+
+    backend.process_trackers(
+        **_kwargs(
+            context,
+            tmp_path,
+            process_dict={
+                "Aither": {"path": tmp_path / "aither" / "release.torrent"},
+                "LST": {"path": tmp_path / "lst" / "release.torrent"},
+            },
+            queued_text_update=text_update,
+        ),
+        phase=RunPhase.PREPARE,
+    )
+
+    said = " ".join(str(call.args[0]) for call in text_update.call_args_list)
+    assert "Reusing the NFOs saved with this job" in said
+    # the mixed job names which tracker it reused
+    assert "Aither" in said
 
 
 def test_an_unprepared_job_still_prompts(
@@ -260,6 +356,7 @@ def test_preparing_never_uploads_or_injects(
     context = _context(tmp_path)
     _prepare(context)
     backend = _backend(monkeypatch)
+    _record_titles(backend, monkeypatch)
     upload = MagicMock()
     inject = MagicMock()
     monkeypatch.setattr(backend, "_upload_tracker_with_retry", upload, raising=False)
@@ -277,6 +374,7 @@ def test_preparing_still_writes_the_torrent_and_nfo(
     context = _context(tmp_path)
     _prepare(context)
     backend = _backend(monkeypatch)
+    _record_titles(backend, monkeypatch)
 
     backend.process_trackers(**_kwargs(context, tmp_path), phase=RunPhase.PREPARE)
 
@@ -301,9 +399,15 @@ def test_generation_records_release_data_for_saving(
     assert TrackerSelection.AITHER in context.shared_data.tracker_release_data
 
 
-def test_only_new_trackers_are_generated_in_a_mixed_archive(
+def test_only_new_trackers_have_their_nfo_generated_in_a_mixed_archive(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, generating: None
 ) -> None:
+    """The two fields separate: every title is rebuilt, only new NFOs are.
+
+    The overview stays scoped to the trackers whose NFO was generated --
+    there is nothing to review on a tracker whose NFO is frozen and whose
+    title is read-only.
+    """
     context = _context(tmp_path)
     _prepare(context)
     context.shared_data.selected_trackers = (
@@ -316,13 +420,7 @@ def test_only_new_trackers_are_generated_in_a_mixed_archive(
         TrackerSelection.AITHER: info,
         TrackerSelection.LST: info,
     }
-    generated: list[TrackerSelection] = []
-    monkeypatch.setattr(
-        backend,
-        "generate_tracker_title",
-        lambda tracker, **_k: (generated.append(tracker), "Generated")[1],
-        raising=False,
-    )
+    generated = _record_titles(backend, monkeypatch, value="Generated")
     monkeypatch.setattr(process_module, "get_prompt_tokens", lambda _t: [])
     overview_payloads: list[dict[TrackerSelection, Any]] = []
     process_dict = {
@@ -341,16 +439,16 @@ def test_only_new_trackers_are_generated_in_a_mixed_archive(
         phase=RunPhase.PREPARE,
     )
 
-    assert generated == [TrackerSelection.LST]
+    assert generated == [TrackerSelection.AITHER, TrackerSelection.LST]
     assert list(overview_payloads[0]) == [TrackerSelection.LST]
-    assert (
-        context.shared_data.tracker_release_data[TrackerSelection.AITHER]["title"]
-        == "Frozen Title"
-    )
-    assert (
-        context.shared_data.tracker_release_data[TrackerSelection.LST]["title"]
-        == "Generated"
-    )
+    assert context.shared_data.tracker_release_data[TrackerSelection.AITHER] == {
+        "title": "Generated",
+        "nfo": "frozen nfo body",
+    }
+    assert context.shared_data.tracker_release_data[TrackerSelection.LST] == {
+        "title": "Generated",
+        "nfo": "generated nfo",
+    }
 
 
 def test_a_carried_archive_prepares_without_the_original_media(
@@ -360,9 +458,7 @@ def test_a_carried_archive_prepares_without_the_original_media(
     context.media_input.input_kind = "file"
     context.media_input.require_input_path().unlink()
     backend = _backend(monkeypatch)
-    monkeypatch.setattr(
-        backend, "generate_tracker_title", lambda **_k: "Generated", raising=False
-    )
+    _record_titles(backend, monkeypatch, value="Generated")
     monkeypatch.setattr(process_module, "get_prompt_tokens", lambda _t: [])
 
     backend.process_trackers(
@@ -371,6 +467,32 @@ def test_a_carried_archive_prepares_without_the_original_media(
     )
 
     assert TrackerSelection.AITHER in context.shared_data.tracker_release_data
+
+
+def test_a_prepared_tracker_rebuilds_its_title_without_the_original_media(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A queued job may run long after the media was moved or deleted.
+
+    Rebuilding titles is the one thing a prepared tracker now reaches that
+    it previously skipped, so the surrounding path must not need the file.
+    It does not: `require_input_path` checks only that a path was recorded,
+    and `resolve_tracker_title` reads the stem only in its fallback branch.
+    """
+    context = _context(tmp_path)
+    _prepare(context)
+    context.media_input.input_kind = "file"
+    context.media_input.require_input_path().unlink()
+    backend = _backend(monkeypatch)
+    rebuilt = _record_titles(backend, monkeypatch)
+
+    backend.process_trackers(**_kwargs(context, tmp_path), phase=RunPhase.PREPARE)
+
+    assert rebuilt == [TrackerSelection.AITHER]
+    assert context.shared_data.tracker_release_data[TrackerSelection.AITHER] == {
+        "title": "Regenerated",
+        "nfo": "frozen nfo body",
+    }
 
 
 def test_generation_records_prompt_answers_for_saving(

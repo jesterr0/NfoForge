@@ -24,6 +24,24 @@ class ColonReplace(CaseInsensitiveEnum):
         return str_map[self]
 
 
+# The filename side offers three options, not five. Verified against the
+# real `_sanitize_filename` path: the five members produce at most three
+# distinct filenames, never more, because the space-to-period pass and the
+# `\.-\.|\.-|-\.` normalisation collapse the three dash variants together.
+#
+# Keep and Delete do NOT collapse. They differ whenever a colon has no
+# following space -- "Re:Zero" renders "Re.Zero" under Keep and "ReZero"
+# under Delete -- so both survive, relabelled for what they actually do to
+# a filename.
+#
+# The title side keeps all five and is untouched by this.
+FILENAME_COLON_OPTIONS: tuple[tuple[ColonReplace, str], ...] = (
+    (ColonReplace.KEEP, "Dot"),
+    (ColonReplace.DELETE, "Remove"),
+    (ColonReplace.REPLACE_WITH_DASH, "Dash"),
+)
+
+
 class UnfilledTokenRemoval(CaseInsensitiveEnum):
     KEEP = auto_enum()
     TOKEN_ONLY = auto_enum()

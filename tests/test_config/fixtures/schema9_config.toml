@@ -1,4 +1,4 @@
-schema_version = 10
+schema_version = 9
 
 [general]
 ui_suffix = ""
@@ -39,6 +39,10 @@ url_type = 2
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 username = ""
 password = ""
 torrent_passkey = ""
@@ -55,6 +59,29 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+# BeyondHD's rules are order-free: "Movie Name / Movie Year / Edition /
+# Relevant Information / Group Tag". The tag rule is the one hard requirement --
+# a remux, encode or web-dl with no release group must end in "-NOGROUP"
+# (not NoGroup, NOGRP or NOTAG), which is what `default('NOGROUP')` supplies.
+# BeyondHD's policy is FREE, so this is a starting point a user can edit,
+# not an enforced format.
+mvr_title_token_override = "{title_exact} {release_year} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type}{:opt= :video_codec}{:opt=-:release_group|default('NOGROUP')}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+mvr_title_colon_replace = 1
 anonymous = false
 api_key = ""
 rss_key = ""
@@ -68,6 +95,63 @@ stream_optimized = false
 # The series rule: "Series Name / Series Year / Season Number(+Episode Number for
 # Single Episodes) / Edition / Relevant Information / Group Tag". No episode
 # title is called for, so none is emitted.
+[tracker.beyond_hd.tvr_title_overrides.standard]
+enabled = true
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type}{:opt= :video_codec}{:opt=-:release_group|default('NOGROUP')}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
+[tracker.beyond_hd.tvr_title_overrides."daily / date"]
+enabled = true
+colon_replace = 1
+token = "{title_exact} {episode_air_date} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type}{:opt= :video_codec}{:opt=-:release_group|default('NOGROUP')}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
+[tracker.beyond_hd.tvr_title_overrides."anime / absolute"]
+enabled = true
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type}{:opt= :video_codec}{:opt=-:release_group|default('NOGROUP')}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
 [tracker.pass_the_popcorn]
 upload_enabled = true
 announce_url = ""
@@ -79,6 +163,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_user = ""
 api_key = ""
 username = ""
@@ -96,6 +184,27 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+# ReelFliX's rules state the elements may appear in any order as long as
+# every required one is present, so this needs no source-dependent ordering --
+# unlike Aither and LST below. Its rules also prefer an absent tag over a
+# "NOGROUP" placeholder, which `{:opt=-:release_group}` gives for free.
+mvr_title_token_override = "{title_exact} {release_year} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type}{:opt= :video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+mvr_title_colon_replace = 1
 api_key = ""
 anonymous = false
 internal = false
@@ -119,9 +228,31 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
 # Aither publishes a different component order per release type. Encodes and
 # web releases run "... Source AudioCodec Channels Metadata HDR VideoCodec";
 # remuxes run "... Source REMUX HDR VideoCodec AudioCodec Channels Metadata".
+# Both orders are written out here and the `only_if`/`unless` filters emit the
+# one that fits the release. Everything else follows Aither's component table:
+# HDR is omitted for SDR (so `{video_dynamic_range_type}`, not the
+# `_inc_sdr_over_1080` variant), Cut precedes Ratio, and an untagged release
+# gets no tag rather than a "NOGROUP" placeholder.
+mvr_title_token_override = "{title_exact} {release_year} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+mvr_title_colon_replace = 1
 api_key = ""
 anonymous = false
 internal = false
@@ -134,6 +265,63 @@ double_up = false
 sticky = false
 image_width = 350
 
+[tracker.aither.tvr_title_overrides.standard]
+enabled = true
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_exact} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
+[tracker.aither.tvr_title_overrides."daily / date"]
+enabled = true
+colon_replace = 1
+token = "{title_exact} {episode_air_date} {episode_title_exact} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
+[tracker.aither.tvr_title_overrides."anime / absolute"]
+enabled = true
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_exact} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
 [tracker.huno]
 upload_enabled = true
 announce_url = ""
@@ -145,6 +333,19 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year_parentheses} {edition} {frame_size} ({resolution} {source} {video_codec} {video_dynamic_range} {audio_codec} {audio_channel_s} {audio_language_1_full}{:opt= - :release_group}) {:opt=[:re_release:opt=]:}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -162,9 +363,30 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
 # LST publishes two templates. Full discs and remuxes run
 # "... SOURCE TYPE Hi10P HDR Vcodec Dub Acodec Channels Object"; encodes, WEB-DLs,
 # WEBRips and HDTV run "... SOURCE TYPE Dub Acodec Channels Object Hi10P HDR Vcodec".
+# Both orders are written out here and the `only_if`/`unless` filters emit the
+# one that fits the release. LST also declares Cut before Ratio, and omits HDR
+# entirely for SDR sources -- hence `{video_dynamic_range_type}` rather than the
+# `_inc_sdr_over_1080` variant, which prints "SDR" at 2160p.
+mvr_title_token_override = "{title_exact} {release_year} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+mvr_title_colon_replace = 1
 api_key = ""
 anonymous = false
 internal = false
@@ -180,6 +402,63 @@ image_width = 500
 # LST's series template carries no episode-title slot and none of its published
 # examples include one ("The Agency 2024 S01E10 2160p PMTP WEB-DL DD+ 5.1
 # DV HDR10+ H.265-NTb"), so -- unlike Aither -- these omit {episode_title_exact}.
+[tracker.lst.tvr_title_overrides.standard]
+enabled = true
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
+[tracker.lst.tvr_title_overrides."daily / date"]
+enabled = true
+colon_replace = 1
+token = "{title_exact} {episode_air_date} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
+[tracker.lst.tvr_title_overrides."anime / absolute"]
+enabled = true
+colon_replace = 1
+token = "{title_exact} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {cut} {frame_size} {hybrid} {re_release} {resolution}{:opt= :streaming_service} {source}{:opt= :remux}{:opt= :video_dynamic_range_type|only_if(remux)}{:opt= :video_codec|only_if(remux)}{:opt= :audio_codec_no_atmos}{:opt= :audio_channel_s}{:opt= :atmos}{:opt= :video_dynamic_range_type|unless(remux)}{:opt= :video_codec|unless(remux)}{:opt=-:release_group}"
+replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+    [
+        '''\bHYBRID\b''',
+        "Hybrid",
+    ],
+]
+
 [tracker.dark_peers]
 upload_enabled = true
 announce_url = ""
@@ -191,6 +470,19 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -208,6 +500,19 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {audio_language_all_full|upper|replace(' ',' - ')} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -226,6 +531,19 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -243,6 +561,19 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = true
+mvr_title_token_override = "{title_clean} {release_year} {frame_size} {edition} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+mvr_title_replace_map = [
+    [
+        '''(?<=\s)DDP(?=\s\d)''',
+        "DD+",
+    ],
+    [
+        '''(?i)hdr10plus''',
+        "HDR10+",
+    ],
+]
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -260,6 +591,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 username = ""
 passkey = ""
 session_cookie = ""
@@ -277,6 +612,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -295,6 +634,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -312,6 +655,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -329,6 +676,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
@@ -346,6 +697,10 @@ url_type = 1
 column_s = 1
 column_space = 1
 row_space = 0
+mvr_title_override_enabled = false
+mvr_title_token_override = ""
+mvr_title_replace_map = []
+mvr_title_colon_replace = 3
 api_key = ""
 anonymous = false
 internal = false
