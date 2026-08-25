@@ -35,6 +35,7 @@
 - The over-1080 dynamic range token no longer drops HDR at 1080p.
 - An episode's own claims still reach its filename in a pack where the episodes disagree.
 - Folder names render without a round-trip through a filename extension.
+- Checked trackers could be un-checked during tv flow if they didn't support it and would stay un-checked for the next movie run
 
 ## [1.1.8] - 2026-08-19
 
