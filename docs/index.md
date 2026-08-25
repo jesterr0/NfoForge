@@ -57,7 +57,7 @@ Movies are supported, and series support is now available for standard TV episod
 
 ## Supported Image Hosts
 
-- Chevereto v3/v4
+- Chevereto v3/v4 -- add as many sites as you like, each with a label of your choosing. Any site running Chevereto works, including [ptscreens.com](https://ptscreens.com/), which is offered as a preset.
 - ImageBox
 - ImageBB
 - OnlyImage

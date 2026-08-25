@@ -1,4 +1,4 @@
-schema_version = 11
+schema_version = 10
 
 [general]
 ui_suffix = ""
@@ -26,7 +26,7 @@ tmdb_api_key = ""
 
 [tracker.settings]
 tracker_order = []
-last_used_img_host = {}
+last_used_img_host = {Aither = "Chevereto v4", ReelFliX = "Lensdump"}
 
 [tracker.torrent_leech]
 upload_enabled = true
@@ -519,16 +519,16 @@ optimize_dl_url_images_percentage = 0.25
 indexer = 1
 image_plugin = 1
 
-# Chevereto sites are user-managed: each configured instance is added here as
-# its own sub-table, keyed by a generated id, e.g.
-#   [image_hosts.chevereto_v4.5f2c9a1e]
-#   label = "PTScreens"
-#   enabled = true
-#   base_url = "https://ptscreens.com/"
-#   api_key = ""
 [image_hosts.chevereto_v3]
+enabled = true
+base_url = "https://v3.example.com/"
+user = "someone"
+password = "hunter2"
 
 [image_hosts.chevereto_v4]
+enabled = true
+base_url = "https://ptscreens.com/"
+api_key = "v4-key"
 
 [image_hosts.image_bb]
 enabled = false

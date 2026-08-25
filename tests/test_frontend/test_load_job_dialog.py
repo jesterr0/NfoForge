@@ -2521,3 +2521,40 @@ def test_saved_text_preserves_the_instant() -> None:
 
 def test_saved_text_falls_back_to_the_input_verbatim_when_unparseable() -> None:
     assert LoadJobDialog._saved_text("not a date") == "not a date"
+
+
+def test_a_chevereto_instance_destination_renders_as_its_kind(
+    qapp: Any, working_dir: Path, patched_working_dirs: None
+) -> None:
+    """`img_to_type` says `ImageHostRef` since Chevereto went multi-instance.
+    The pane cannot name the site (the archive stores the instance id, and the
+    label lives in a config profile this listing spans several of), but it must
+    still resolve the kind rather than fall through to the raw member name."""
+    job = store.build_job(
+        "Instanced",
+        JobSummary(title="Instanced", year=2021, trackers=["Aither"]),
+        {
+            "shared_data": {
+                "loaded_images": ["a.png"],
+                "tracker_image_hosts": {
+                    "AITHER": {
+                        "img_from": "IMAGES",
+                        "img_to": "CHEVERETO_V4",
+                        "img_to_type": "ImageHostRef",
+                        "img_to_instance": "5f2c9a1e",
+                    }
+                },
+            }
+        },
+        config_profile="default",
+    )
+    job.created_at = "2021-01-01T00:00:00+00:00"
+    store.save_job(job, working_dir)
+
+    dialog = _open_dialog(qapp)
+    item = dialog.job_tree.findItems("Instanced", Qt.MatchFlag.MatchExactly, 0)[0]
+    dialog.job_tree.setCurrentItem(item)
+
+    text = dialog.details_lbl.text()
+    assert "Chevereto v4" in text
+    assert "CHEVERETO_V4" not in text

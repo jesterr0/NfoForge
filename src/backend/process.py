@@ -4,7 +4,7 @@ from html import escape
 from pathlib import Path
 import shutil
 import traceback
-from typing import Any
+from typing import Any, TypeVar
 
 from PySide6.QtCore import SignalInstance
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
@@ -128,7 +128,13 @@ from src.exceptions import (
     TrackerError,
 )
 from src.logger.nfo_forge_logger import LOG
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import (
+    DISABLED_HOST,
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
+from src.payloads.image_hosts import CheveretoV3Payload, CheveretoV4Payload
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.series import (
@@ -148,6 +154,8 @@ from src.plugins.api import (
     UploadReporter,
 )
 from src.utils.secret_redaction import scrub_secrets
+
+PayloadT = TypeVar("PayloadT", bound=CheveretoV3Payload | CheveretoV4Payload)
 
 
 def _media_source_available(media_input: Any) -> bool:
@@ -1639,9 +1647,9 @@ class ProcessBackEnd:
             dict[TrackerSelection, dict[int, ImageUploadData]]: A dictionary mapping trackers to their
             corresponding uploaded image data.
         """
-        to_image_hosts: set[ImageHost] = set()
+        to_image_hosts: set[ImageHostRef] = set()
         to_url = False
-        tracker_to_host_map: dict[TrackerSelection, ImageHost | ImageSource] = {}
+        tracker_to_host_map: dict[TrackerSelection, ImageHostRef | ImageSource] = {}
         img_from: ImageSource | None = None
         files_to_upload: Sequence[Path] | None = None
 
@@ -1675,7 +1683,7 @@ class ProcessBackEnd:
                     continue
 
                 # track the image host to be used for each tracker
-                if isinstance(img_to, ImageHost) and img_to is not ImageHost.DISABLED:
+                if isinstance(img_to, ImageHostRef) and img_to != DISABLED_HOST:
                     to_image_hosts.add(img_to)
                 elif not to_url and img_to is ImageSource.URLS:
                     to_url = True
@@ -1728,7 +1736,7 @@ class ProcessBackEnd:
                 servable = sorted(
                     str(host)
                     for host in context.shared_data.uploaded_images_by_host
-                    if isinstance(host, ImageHost) and host is not ImageHost.DISABLED
+                    if isinstance(host, ImageHostRef) and host != DISABLED_HOST
                 )
                 if servable:
                     raise ImageHostError(
@@ -1779,7 +1787,7 @@ class ProcessBackEnd:
                 )
                 async_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(async_loop)
-                upload_results: dict[ImageHost, dict[int, ImageUploadData]] = (
+                upload_results: dict[ImageHostRef, dict[int, ImageUploadData]] = (
                     async_loop.run_until_complete(
                         self.handle_image_upload(
                             to_image_hosts, files_to_upload, progress_bar_cb
@@ -1890,7 +1898,7 @@ class ProcessBackEnd:
     def needs_local_images(
         context: ProcessingContext,
         tracker: TrackerSelection,
-        destination: ImageHost | ImageSource,
+        destination: ImageHostRef | ImageSource,
     ) -> bool:
         """Whether this tracker still needs screenshot files on disk.
 
@@ -1900,7 +1908,7 @@ class ProcessBackEnd:
         uploads nothing (a URL passthrough, or `DISABLED`), and one whose
         images already went to that same host.
         """
-        if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
+        if not isinstance(destination, ImageHostRef) or destination == DISABLED_HOST:
             return False
         return (
             ProcessBackEnd._reusable_uploaded_images(context, tracker, destination)
@@ -1911,7 +1919,7 @@ class ProcessBackEnd:
     def _reusable_uploaded_images(
         context: ProcessingContext,
         tracker: TrackerSelection,
-        destination: ImageHost | ImageSource,
+        destination: ImageHostRef | ImageSource,
     ) -> dict[int, ImageUploadData] | None:
         """Previously uploaded images for `tracker`, when still valid.
 
@@ -1927,9 +1935,11 @@ class ProcessBackEnd:
         gain from sending the same screenshots again -- and an archive whose
         local copies are gone has nothing to send.
         """
-        if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
+        if not isinstance(destination, ImageHostRef) or destination == DISABLED_HOST:
             return None
-        if context.shared_data.uploaded_image_hosts.get(tracker) is destination:
+        # `==`, not `is`: a destination is a value now, and two refs naming
+        # the same host are equal without being the same object
+        if context.shared_data.uploaded_image_hosts.get(tracker) == destination:
             images = context.shared_data.uploaded_images.get(tracker)
             if images:
                 return dict(images)
@@ -1963,20 +1973,20 @@ class ProcessBackEnd:
 
     async def handle_image_upload(
         self,
-        to_image_hosts: set[ImageHost],
+        to_image_hosts: set[ImageHostRef],
         filepaths: Sequence[Path],
         progress_bar_cb: Callable[[float], None],
-    ) -> dict[ImageHost, dict[int, ImageUploadData]]:
+    ) -> dict[ImageHostRef, dict[int, ImageUploadData]]:
         """
         Handles the image upload process to multiple image hosts asynchronously.
 
         Args:
-            to_image_hosts (set[ImageHost]): The set of image hosts to upload to.
+            to_image_hosts (set[ImageHostRef]): The set of image hosts to upload to.
             filepaths (Sequence[Path]): The file paths of the images to be uploaded.
             progress_bar_cb (Callable[[float], None): Callback function to track upload progress.
 
         Returns:
-            dict[ImageHost, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
+            dict[ImageHostRef, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
         """
 
         def progress_callback(_job: str, _ind: float, overall: float) -> None:
@@ -1984,8 +1994,8 @@ class ProcessBackEnd:
 
         image_uploader = ImageUploader(progress_signal=progress_callback)
 
-        jobs: dict[str, ImageHost] = {}
-        host_to_job: dict[ImageHost, str] = {}
+        jobs: dict[str, ImageHostRef] = {}
+        host_to_job: dict[ImageHostRef, str] = {}
 
         # register image hosts and their corresponding uploaders
         self._register_image_hosts(
@@ -2002,17 +2012,17 @@ class ProcessBackEnd:
 
     def _register_image_hosts(
         self,
-        to_image_hosts: set[ImageHost],
+        to_image_hosts: set[ImageHostRef],
         filepaths: Sequence[Path],
         image_uploader: ImageUploader,
-        jobs: dict[str, ImageHost],
-        host_to_job: dict[ImageHost, str],
+        jobs: dict[str, ImageHostRef],
+        host_to_job: dict[ImageHostRef, str],
     ) -> None:
         """
         Registers image hosts and associates them with upload jobs.
 
         Args:
-            to_image_hosts (set[ImageHost]): The set of image hosts to register.
+            to_image_hosts (set[ImageHostRef]): The set of image hosts to register.
             filepaths (Sequence[Path]): The file paths of images to be uploaded.
             image_uploader (ImageUploader): The image uploader instance.
             jobs (dict): Dictionary mapping job IDs to image hosts.
@@ -2023,20 +2033,23 @@ class ProcessBackEnd:
                 continue
 
             uploader = self._get_uploader_for_host(img_host)
-            image_uploader.register_uploader(str(img_host), uploader)
+            # `key()`, not `str()`: two Chevereto instances may carry the same
+            # user-chosen label, and would then collide in the uploader registry
+            image_uploader.register_uploader(img_host.key(), uploader)
 
             job_id = image_uploader.add_job(
-                str(img_host), ImageUploadRequest(filepaths=filepaths)
+                img_host.key(), ImageUploadRequest(filepaths=filepaths)
             )
             jobs[job_id] = img_host
             host_to_job[img_host] = job_id
 
-    def _get_uploader_for_host(self, img_host: ImageHost) -> BaseImageHostUploader:
+    def _get_uploader_for_host(self, img_host: ImageHostRef) -> BaseImageHostUploader:
         """
         Retrieves the appropriate uploader instance for a given image host.
 
         Args:
-            img_host (ImageHost): The image host.
+            img_host (ImageHostRef): The image host, including which Chevereto
+                instance is meant when the kind holds several.
 
         Returns:
             BaseImageHostUploader: The corresponding uploader instance.
@@ -2044,24 +2057,41 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If the image host is unsupported.
         """
-        if img_host is ImageHost.CHEVERETO_V4:
-            return self._create_chevereto_v4_uploader()
-        elif img_host is ImageHost.CHEVERETO_V3:
-            return self._create_chevereto_v3_uploader()
-        elif img_host is ImageHost.IMAGE_BOX:
+        kind = img_host.kind
+        if kind is ImageHost.CHEVERETO_V4:
+            return self._create_chevereto_v4_uploader(img_host)
+        elif kind is ImageHost.CHEVERETO_V3:
+            return self._create_chevereto_v3_uploader(img_host)
+        elif kind is ImageHost.IMAGE_BOX:
             return ImageBoxUploader()
-        elif img_host is ImageHost.IMAGE_BB:
+        elif kind is ImageHost.IMAGE_BB:
             return self._create_imgbb_uploader()
-        elif img_host is ImageHost.ONLY_IMAGE:
+        elif kind is ImageHost.ONLY_IMAGE:
             return self._create_onlyimage_uploader()
-        elif img_host is ImageHost.PIXHOST:
+        elif kind is ImageHost.PIXHOST:
             return PixhostUploader()
-        elif img_host is ImageHost.LENSDUMP:
+        elif kind is ImageHost.LENSDUMP:
             return self._create_lensdump_uploader()
-        elif img_host is ImageHost.PLUGIN:
+        elif kind is ImageHost.PLUGIN:
             return self._get_plugin_image_host_uploader()
         else:
             raise ImageHostError(f"Unsupported image host: {img_host}")
+
+    def _resolve_chevereto_instance(
+        self, img_host: ImageHostRef, instances: Sequence[PayloadT]
+    ) -> PayloadT:
+        """The configured instance `img_host` names.
+
+        A job or a per-tracker selection can outlive the instance it points at,
+        so say which one went missing rather than failing on a blank credential.
+        """
+        for instance in instances:
+            if instance.instance_id == img_host.instance_id:
+                return instance
+        raise ImageHostError(
+            f"Image host '{img_host}' is no longer configured. Add it back under "
+            "Settings > Screenshots > Image Hosts, or pick another host."
+        )
 
     def _get_plugin_image_host_uploader(self) -> BaseImageHostUploader:
         """Retrieve the plugin configured as the image host uploader.
@@ -2084,40 +2114,54 @@ class ProcessBackEnd:
             )
         return record.definition.image_host_uploader
 
-    def _create_chevereto_v4_uploader(self) -> CheveretoV4Uploader:
+    def _create_chevereto_v4_uploader(
+        self, img_host: ImageHostRef
+    ) -> CheveretoV4Uploader:
         """
-        Creates an uploader instance for Chevereto V4.
+        Creates an uploader instance for one configured Chevereto V4 site.
 
         Returns:
             CheveretoV4Uploader: The uploader instance.
 
         Raises:
-            ImageHostError: If required credentials are missing.
+            ImageHostError: If the instance is gone or its credentials are missing.
         """
-        chv4_payload = self.config.settings.image_hosts.chevereto_v4
+        chv4_payload = self._resolve_chevereto_instance(
+            img_host, self.config.settings.image_hosts.chevereto_v4
+        )
         if not chv4_payload.api_key or not chv4_payload.base_url:
-            raise ImageHostError("Missing 'API Key' or 'Base URL' for CheveretoV4.")
+            raise ImageHostError(
+                f"Missing 'API Key' or 'Base URL' for Chevereto v4 host '{img_host}'."
+            )
         return CheveretoV4Uploader(
-            api_key=chv4_payload.api_key, url=chv4_payload.base_url
+            api_key=chv4_payload.api_key,
+            url=chv4_payload.base_url,
+            host_name=str(img_host),
         )
 
-    def _create_chevereto_v3_uploader(self) -> CheveretoV3Uploader:
+    def _create_chevereto_v3_uploader(
+        self, img_host: ImageHostRef
+    ) -> CheveretoV3Uploader:
         """
-        Creates an uploader instance for Chevereto V3.
+        Creates an uploader instance for one configured Chevereto V3 site.
 
         Returns:
             CheveretoV3Uploader: The uploader instance.
 
         Raises:
-            ImageHostError: If required credentials are missing.
+            ImageHostError: If the instance is gone or its credentials are missing.
         """
-        chv3_payload = self.config.settings.image_hosts.chevereto_v3
+        chv3_payload = self._resolve_chevereto_instance(
+            img_host, self.config.settings.image_hosts.chevereto_v3
+        )
         if (
             not chv3_payload.base_url
             or not chv3_payload.user
             or not chv3_payload.password
         ):
-            raise ImageHostError("Missing credentials for CheveretoV3.")
+            raise ImageHostError(
+                f"Missing credentials for Chevereto v3 host '{img_host}'."
+            )
         return CheveretoV3Uploader(
             base_url=chv3_payload.base_url,
             user=chv3_payload.user,
@@ -2171,9 +2215,9 @@ class ProcessBackEnd:
 
     def _map_uploaded_urls(
         self,
-        host_to_job: dict[ImageHost, str],
+        host_to_job: dict[ImageHostRef, str],
         results: dict[str, dict[int, ImageUploadData]],
-    ) -> dict[ImageHost, dict[int, ImageUploadData]]:
+    ) -> dict[ImageHostRef, dict[int, ImageUploadData]]:
         """
         Maps uploaded URLs to their respective image hosts.
 
@@ -2182,7 +2226,7 @@ class ProcessBackEnd:
             results (dict[str, dict[int, ImageUploadData]]): The upload results.
 
         Returns:
-            dict[ImageHost, dict[int, ImageUploadData]]: The mapped results.
+            dict[ImageHostRef, dict[int, ImageUploadData]]: The mapped results.
         """
         return {tracker: results[job_id] for tracker, job_id in host_to_job.items()}
 

@@ -4,11 +4,13 @@
 
 ### Added
 
+- **Chevereto v3 and v4 hold as many sites as you like**, each labeled however you want, instead of one site each. Use **Add Chevereto Site** above the list in **Settings -> Screenshots -> Image Hosts Configuration** to add one, and the **Remove Site** button on a site's own row to delete it. Any site running Chevereto works -- [ptscreens.com](https://ptscreens.com/) is offered as a preset that fills in its URL for you. Renaming a site keeps every per-tracker selection and saved job pointed at it.
 - Six per-category switches for what NfoForge reads out of an input filename -- edition, frame size, localization, re-release, remux and hybrid -- under a master toggle, on both the movie and series settings pages. These replace a single flag that no longer reached anything, so a claim you did not want could not be turned off and one you did want could not be turned on.
 - Season and episode mapping rows record which TVDB ordering they came from. The same season/episode pair names a different episode in each ordering, so a lookup now answers from the ordering the row was matched against.
 
 ### Changed
 
+- Configuration schema 11. A profile that had a Chevereto v3 or v4 site configured keeps it as a labeled site named "Chevereto v3"/"Chevereto v4", and the trackers pointed at it stay pointed at it. A slot never configured migrates to no site at all rather than an empty one.
 - **Tracker release titles are built from each tracker's own published naming rules.** Those rules are enforced rather than offered as an editable per-tracker template, so the **Format Title Tracker Overrides** controls are gone from the movie and series settings pages. The global **Format Title Tokens** template stays yours: it is what trackers with no published rules of their own still render.
   - BeyondHD changes most -- dynamic range, audio spelling and order, DVD component order, and a bug that mangled channel layouts.
   - ReelFliX puts video ahead of audio on a remux, which its rules require. Its shipped template was a near copy of BeyondHD's, so every remux had been emitting audio first.

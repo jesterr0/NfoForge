@@ -46,6 +46,12 @@ The versions so far:
   design removes rather than a value to carry forward. The global movie and
   series title tokens and the global title colon stay: the trackers with no
   composition of their own render exactly those.
+- 10 -> 11: `[image_hosts.chevereto_v3]` and `[image_hosts.chevereto_v4]` stop
+  being one site each and become containers of user-labeled instances, keyed
+  by a generated id. A configured site migrates to a single instance with id
+  ``"1"``, labeled with the name it used to show in the UI; an unconfigured
+  one migrates to nothing. `last_used_img_host` values are rewritten from
+  display names to the new stable keys.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -96,6 +102,7 @@ SCHEMA_7_VERSION = 7
 SCHEMA_8_VERSION = 8
 SCHEMA_9_VERSION = 9
 SCHEMA_10_VERSION = 10
+SCHEMA_11_VERSION = 11
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -821,6 +828,110 @@ def migrate_v9_to_v10(
     return new_doc, []
 
 
+# The Chevereto instance a schema 10 profile's single slot becomes. Fixed
+# rather than generated so the hop is reproducible -- only the UI's "add
+# instance" action mints random ids.
+_MIGRATED_CHEVERETO_ID = "1"
+
+# Per Chevereto kind: its `[image_hosts.*]` key, the label its single slot
+# used to carry in the UI, and the credential keys that decide whether it was
+# configured at all.
+_CHEVERETO_KINDS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("chevereto_v3", "Chevereto v3", ("base_url", "user", "password")),
+    ("chevereto_v4", "Chevereto v4", ("base_url", "api_key")),
+)
+
+# Old `last_used_img_host` values were the enum's *display* value; schema 11
+# stores `ImageHostRef.key()` instead. Only the two Chevereto kinds gain an
+# instance suffix; the rest just change spelling.
+_LAST_USED_HOST_REMAP = {
+    "chevereto v3": f"CHEVERETO_V3:{_MIGRATED_CHEVERETO_ID}",
+    "chevereto v4": f"CHEVERETO_V4:{_MIGRATED_CHEVERETO_ID}",
+    "imagebox": "IMAGE_BOX",
+    "imagebb": "IMAGE_BB",
+    "onlyimage": "ONLY_IMAGE",
+    "pixhost": "PIXHOST",
+    "lensdump": "LENSDUMP",
+    "plugin": "PLUGIN",
+    "disabled": "DISABLED",
+}
+
+
+def _migrate_chevereto_slot(
+    slot: Mapping[str, Any], label: str, credential_keys: tuple[str, ...]
+) -> dict[str, Any]:
+    """Turn one Chevereto slot into its container of instances.
+
+    An untouched slot (no credentials, not enabled) becomes an empty
+    container rather than an instance with nothing in it -- an empty instance
+    would show up in the settings list and the per-tracker picker as a host
+    the user never configured.
+    """
+    configured = any(
+        str(_unwrap(slot.get(key)) or "").strip() for key in credential_keys
+    )
+    if not configured and not bool(_unwrap(slot.get("enabled")) or False):
+        return {}
+
+    instance: dict[str, Any] = {"label": label}
+    for key in ("enabled", *credential_keys):
+        if key in slot:
+            instance[key] = slot[key]
+    return {_MIGRATED_CHEVERETO_ID: instance}
+
+
+def migrate_v10_to_v11(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Give the two Chevereto slots room for more than one site each.
+
+    One Chevereto build powers many sites -- ptscreens, and the OnlyImage and
+    Lensdump entries that only exist as their own hosts because this slot held
+    exactly one. A profile that had configured a Chevereto site keeps it, as
+    an instance labeled the way the UI used to label it, so nothing a user
+    selected per tracker is lost.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_11_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    image_hosts = new_doc.get("image_hosts")
+    if isinstance(image_hosts, Mapping):
+        migrated_hosts = dict(image_hosts)
+        for host_key, label, credential_keys in _CHEVERETO_KINDS:
+            slot = migrated_hosts.get(host_key)
+            migrated_hosts[host_key] = (
+                _migrate_chevereto_slot(slot, label, credential_keys)
+                if isinstance(slot, Mapping)
+                else {}
+            )
+        new_doc["image_hosts"] = migrated_hosts
+
+    trackers = new_doc.get("tracker")
+    if isinstance(trackers, Mapping):
+        settings = trackers.get("settings")
+        if isinstance(settings, Mapping):
+            last_used = settings.get("last_used_img_host")
+            if isinstance(last_used, Mapping):
+                migrated_last_used = {
+                    tracker: _LAST_USED_HOST_REMAP.get(
+                        str(_unwrap(value)).strip().lower(), _unwrap(value)
+                    )
+                    for tracker, value in last_used.items()
+                }
+                migrated_settings = dict(settings)
+                migrated_settings["last_used_img_host"] = migrated_last_used
+                migrated_trackers = dict(trackers)
+                migrated_trackers["settings"] = migrated_settings
+                new_doc["tracker"] = migrated_trackers
+
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -831,6 +942,7 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_7_VERSION: migrate_v7_to_v8,
     SCHEMA_8_VERSION: migrate_v8_to_v9,
     SCHEMA_9_VERSION: migrate_v9_to_v10,
+    SCHEMA_10_VERSION: migrate_v10_to_v11,
 }
 
 

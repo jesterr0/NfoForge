@@ -1,6 +1,7 @@
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping, Sequence
+from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 import tomlkit
 from tomlkit.items import AbstractTable
@@ -34,7 +35,7 @@ from src.config.models import (
 from src.config.paths import ConfigPaths
 from src.config.persistence import atomic_write_text
 from src.enums.cropping import Cropping
-from src.enums.image_host import ImageHost, ImageSource
+from src.enums.image_host import ImageSource
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.logging_settings import LogLevel
@@ -49,6 +50,7 @@ from src.enums.tracker_selection import TrackerSelection
 from src.enums.trackers.beyondhd import BHDLiveRelease, BHDPromo
 from src.enums.url_type import URLType
 from src.exceptions import ConfigError
+from src.packages.custom_types import ImageHostRef
 from src.payloads.clients import (
     DelugeConfig,
     QBittorrentConfig,
@@ -84,6 +86,8 @@ from src.payloads.trackers import (
     YuSceneInfo,
 )
 from src.payloads.watch_folder import WatchFolder
+
+PayloadT = TypeVar("PayloadT", bound=CheveretoV3Payload | CheveretoV4Payload)
 
 _CLAIM_KEYS = (
     "edition",
@@ -145,6 +149,55 @@ class TypedTomlOperations:
         if key not in parent:
             parent[key] = tomlkit.table()
         return cls._toml_table(parent, key)
+
+    @staticmethod
+    def _chevereto_instances_table(
+        instances: Sequence[CheveretoV3Payload] | Sequence[CheveretoV4Payload],
+        credential_keys: tuple[str, ...],
+    ) -> AbstractTable:
+        """One TOML table per Chevereto instance, keyed by `instance_id`.
+
+        A table of sub-tables rather than an array of tables: tomlkit drops an
+        *empty* array-of-tables entirely on dump, which would make the key
+        vanish from a profile that has no instances configured.
+        """
+        container = tomlkit.table()
+        for instance in instances:
+            if not instance.instance_id:
+                continue
+            table = tomlkit.table()
+            table["label"] = instance.label
+            table["enabled"] = instance.enabled
+            table["base_url"] = instance.base_url or ""
+            for key in credential_keys:
+                table[key] = getattr(instance, key) or ""
+            container[instance.instance_id] = table
+        return cast(AbstractTable, container)
+
+    @staticmethod
+    def _decode_chevereto_instances(
+        table: Any,
+        payload_cls: type[PayloadT],
+    ) -> list[PayloadT]:
+        """Rebuild the Chevereto instance list from its keyed sub-tables.
+
+        Nothing validates *inside* this table -- `validate_types` only walks
+        keys the packaged default declares, and the default declares it empty
+        -- so a malformed entry is skipped rather than trusted.
+        """
+        if not isinstance(table, Mapping):
+            return []
+        fields = {field.name for field in dataclass_fields(payload_cls)}
+        instances: list[PayloadT] = []
+        for instance_id, values in table.items():
+            if not isinstance(values, Mapping):
+                continue
+            known = {
+                str(key): value for key, value in values.items() if str(key) in fields
+            }
+            known["instance_id"] = str(instance_id)
+            instances.append(payload_cls(**known))
+        return instances
 
     @classmethod
     def _toml_mapping(
@@ -216,7 +269,13 @@ class TypedTomlOperations:
                 tracker,
                 image_host,
             ) in self.settings.trackers.last_used_image_host.items():
-                last_used_img_host[str(tracker)] = str(image_host)
+                # `key()` for a host, not its display label -- a Chevereto
+                # instance's label is the user's to rename at any time
+                last_used_img_host[str(tracker)] = (
+                    image_host.key()
+                    if isinstance(image_host, ImageHostRef)
+                    else str(image_host)
+                )
             tracker_settings["last_used_img_host"] = last_used_img_host
 
             # torrent_leech tracker
@@ -954,29 +1013,15 @@ class TypedTomlOperations:
             # image hosts
             image_hosts = self._toml_table(self._toml_data, "image_hosts")
 
-            # chevereto_v3
-            chevereto_v3_data = self._ensure_toml_table(image_hosts, "chevereto_v3")
-            chevereto_v3_data["enabled"] = (
-                self.settings.image_hosts.chevereto_v3.enabled
+            # chevereto_v3 / chevereto_v4 -- user-managed instances, keyed by
+            # `instance_id` so a renamed label does not move the entry
+            image_hosts["chevereto_v3"] = self._chevereto_instances_table(
+                self.settings.image_hosts.chevereto_v3,
+                ("user", "password"),
             )
-            chevereto_v3_data["base_url"] = (
-                self.settings.image_hosts.chevereto_v3.base_url
-            )
-            chevereto_v3_data["user"] = self.settings.image_hosts.chevereto_v3.user
-            chevereto_v3_data["password"] = (
-                self.settings.image_hosts.chevereto_v3.password
-            )
-
-            # chevereto_v4
-            chevereto_v4_data = self._ensure_toml_table(image_hosts, "chevereto_v4")
-            chevereto_v4_data["enabled"] = (
-                self.settings.image_hosts.chevereto_v4.enabled
-            )
-            chevereto_v4_data["base_url"] = (
-                self.settings.image_hosts.chevereto_v4.base_url
-            )
-            chevereto_v4_data["api_key"] = (
-                self.settings.image_hosts.chevereto_v4.api_key
+            image_hosts["chevereto_v4"] = self._chevereto_instances_table(
+                self.settings.image_hosts.chevereto_v4,
+                ("api_key",),
             )
 
             # image bb
@@ -1176,7 +1221,7 @@ class TypedTomlOperations:
                 if x in TrackerSelection._value2member_map_
             ]
             tracker_order.extend(e for e in TrackerSelection if e not in tracker_order)
-            last_used_img_host: dict[TrackerSelection, ImageHost | ImageSource] = {}
+            last_used_img_host: dict[TrackerSelection, ImageHostRef | ImageSource] = {}
             for tracker, image_dest in tracker_settings.get(
                 "last_used_img_host", {}
             ).items():
@@ -1185,15 +1230,23 @@ class TypedTomlOperations:
                 except (TypeError, ValueError):
                     continue
 
+                # `ImageHostRef.from_key` also accepts the pre-schema-11 bare
+                # display name ("Chevereto v4", "Lensdump"), so a hand-edited
+                # or partially migrated profile still resolves.
+                host_ref = (
+                    ImageHostRef.from_key(image_dest)
+                    if isinstance(image_dest, str)
+                    else None
+                )
+                if host_ref is not None:
+                    last_used_img_host[tracker_selection] = host_ref
+                    continue
                 try:
-                    last_used_img_host[tracker_selection] = ImageHost(image_dest)
+                    last_used_img_host[tracker_selection] = ImageSource(image_dest)
                 except (TypeError, ValueError):
-                    try:
-                        last_used_img_host[tracker_selection] = ImageSource(image_dest)
-                    except (TypeError, ValueError):
-                        # A removed or future image destination must not make
-                        # an otherwise valid profile un-loadable.
-                        continue
+                    # A removed or future image destination must not make
+                    # an otherwise valid profile un-loadable.
+                    continue
 
             # tracker data
             tl_tracker_data = tracker_data["torrent_leech"]
@@ -1646,8 +1699,12 @@ class TypedTomlOperations:
             image_hosts = self._toml_mapping(toml_data, "image_hosts")
 
             # hosts
-            chevereto_v3 = CheveretoV3Payload(**image_hosts["chevereto_v3"])
-            chevereto_v4 = CheveretoV4Payload(**image_hosts["chevereto_v4"])
+            chevereto_v3 = self._decode_chevereto_instances(
+                image_hosts.get("chevereto_v3"), CheveretoV3Payload
+            )
+            chevereto_v4 = self._decode_chevereto_instances(
+                image_hosts.get("chevereto_v4"), CheveretoV4Payload
+            )
             image_bb = ImageBBPayload(**image_hosts["image_bb"])
             image_box = ImageBoxPayload(**image_hosts["image_box"])
             only_image = OnlyImagePayload(**image_hosts["only_image"])

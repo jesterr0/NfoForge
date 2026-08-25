@@ -15,8 +15,13 @@ import pytest
 from src.backend.image_host_uploading.api_key_upload import (
     _post_image,
     api_key_image_upload,
+    extract_image_urls,
 )
 from src.backend.image_host_uploading.base_image_host import ImageUploadRequest
+from src.backend.image_host_uploading.chevereto_v4 import (
+    CheveretoV4Uploader,
+    _create_api_url,
+)
 from src.backend.image_host_uploading.imgbb import ImageBBUploader
 from src.backend.image_host_uploading.lensdump import LensdumpUploader
 from src.backend.image_host_uploading.onlyimage import OnlyImageUploader
@@ -177,3 +182,120 @@ def test_onlyimage_and_lensdump_target_their_own_url_with_header_auth(
         assert args[0] == expected_url
         assert kwargs["headers"] == {"X-API-Key": "my-key"}
         assert "key" not in kwargs["data"]
+
+
+# --------------------------------------------------------------------------
+# Chevereto response shapes
+# --------------------------------------------------------------------------
+# The same API v1 has shipped three of these across versions and deployments,
+# and the hosts on this code path span all three. ptscreens is the reason the
+# third is here: the reference implementation vendored under `scraps/` reads
+# `image.url` at the top level, where ImgBB puts it under `data`.
+_DATA_IMAGE_NESTED = {
+    "data": {
+        "image": {"url": "https://example.com/full.png"},
+        "medium": {"url": "https://example.com/medium.png"},
+    }
+}
+_DATA_FLAT = {
+    "data": {
+        "url": "https://example.com/full.png",
+        "medium": {"url": "https://example.com/medium.png"},
+    }
+}
+_TOP_LEVEL_IMAGE = {
+    "image": {
+        "url": "https://example.com/full.png",
+        "medium": {"url": "https://example.com/medium.png"},
+    }
+}
+
+
+@pytest.mark.parametrize(
+    "response",
+    [_DATA_IMAGE_NESTED, _DATA_FLAT, _TOP_LEVEL_IMAGE],
+    ids=["data.image.url", "data.url", "image.url"],
+)
+def test_every_chevereto_response_shape_yields_the_same_urls(
+    response: dict[str, Any],
+) -> None:
+    assert extract_image_urls(response) == ImageUploadData(
+        "https://example.com/full.png", "https://example.com/medium.png"
+    )
+
+
+def test_a_missing_medium_stays_empty_rather_than_repeating_the_full_url() -> None:
+    """Chevereto omits `medium` for images under its medium threshold. The
+    token layer already documents "medium_url if available, else url", so
+    substituting here would hide the distinction it is making."""
+    assert extract_image_urls({"data": {"image": {"url": "https://x/full.png"}}}) == (
+        ImageUploadData("https://x/full.png", "")
+    )
+
+
+def test_an_error_response_yields_no_urls() -> None:
+    """`assert_all_images_uploaded` turns a falsy url into a reported failure,
+    so a rejected upload must not come back looking like a successful one."""
+    assert extract_image_urls({"status": 429, "reason": "Too Many Requests"}) == (
+        ImageUploadData("", "")
+    )
+
+
+def test_both_auth_mode_sends_the_key_in_the_body_and_the_header() -> None:
+    """Chevereto accepts either, and which one a given site honours varies by
+    version and configuration -- ptscreens.com documents only the header."""
+    post = _patched_post(_MockResponse(200, _SUCCESS_RESPONSE))
+    with patch("aiohttp.ClientSession.post", post):
+        asyncio.run(
+            _post_image(
+                "https://ptscreens.com/api/1/upload",
+                "my-key",
+                "both",
+                "base64data",
+                "PTScreens",
+            )
+        )
+
+    _, kwargs = post.call_args
+    assert kwargs["data"] == {"image": "base64data", "key": "my-key"}
+    assert kwargs["headers"] == {"X-API-Key": "my-key"}
+
+
+def test_chevereto_v4_uploader_targets_the_instance_url_with_both_auth(
+    tmp_path: Path,
+) -> None:
+    image = tmp_path / "shot.png"
+    image.write_bytes(b"fake image data")
+
+    post = _patched_post(_MockResponse(200, _TOP_LEVEL_IMAGE))
+    with patch("aiohttp.ClientSession.post", post):
+        results = asyncio.run(
+            CheveretoV4Uploader(
+                api_key="my-key", url="https://ptscreens.com/", host_name="PTScreens"
+            ).upload(ImageUploadRequest(filepaths=[image]))
+        )
+
+    assert results[0] == ImageUploadData(
+        "https://example.com/full.png", "https://example.com/medium.png"
+    )
+    args, kwargs = post.call_args
+    assert args[0] == "https://ptscreens.com/api/1/upload"
+    assert kwargs["headers"] == {"X-API-Key": "my-key"}
+    assert kwargs["data"]["key"] == "my-key"
+
+
+@pytest.mark.parametrize(
+    "configured_url",
+    [
+        "https://ptscreens.com",
+        "https://ptscreens.com/",
+        "https://ptscreens.com/api/1/upload",
+        "https://ptscreens.com/api/1/upload/",
+    ],
+)
+def test_the_api_path_is_appended_only_when_it_is_not_already_there(
+    configured_url: str,
+) -> None:
+    assert _create_api_url(configured_url).startswith(
+        "https://ptscreens.com/api/1/upload"
+    )

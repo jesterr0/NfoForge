@@ -11,6 +11,7 @@ import pytest
 from src.backend.jobs.assets import capture_mediainfo, read_job_asset
 from src.backend.jobs.codec import (
     JobCodecError,
+    _shared_data_from_dict,
     context_from_dict,
     context_to_dict,
     filter_context_document,
@@ -33,6 +34,7 @@ from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.packages.custom_types import (
     ComparisonPair,
+    ImageHostRef,
     ImageUploadData,
     ImageUploadFromTo,
 )
@@ -94,7 +96,7 @@ def _populate(context: ProcessingContext, media: Path) -> None:
     shared.release_notes = "notes"
     shared.dynamic_data["edition_override"] = "Director's Cut"
     shared.tracker_image_hosts[TrackerSelection.AITHER] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
     shared.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
         ImageSource.URLS, ImageSource.URLS
@@ -729,3 +731,71 @@ def test_an_unserializable_provider_payload_is_dropped_not_fatal() -> None:
     assert document["media_search"]["tvdb_data"] is None
     # the whole document must still survive a round trip through JSON
     json.dumps(document)
+
+
+# --------------------------------------------------------------------------
+# image destinations saved before schema 11
+# --------------------------------------------------------------------------
+def test_a_pre_schema_11_destination_still_decodes() -> None:
+    """Archives written before Chevereto became multi-instance name a bare
+    `ImageHost` member with no instance, and must not be dropped."""
+    restored = _new_context()
+    _shared_data_from_dict(
+        {
+            "uploaded_image_hosts": {
+                "AITHER": {"name": "PIXHOST", "type": "ImageHost"}
+            },
+            "uploaded_images_by_host": [
+                {
+                    "name": "PIXHOST",
+                    "type": "ImageHost",
+                    "images": {"0": {"url": "https://p/0.png", "medium_url": None}},
+                }
+            ],
+        },
+        restored,
+    )
+
+    pixhost = ImageHostRef(ImageHost.PIXHOST)
+    assert restored.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] == pixhost
+    assert restored.shared_data.uploaded_images_by_host[pixhost] == {
+        0: ImageUploadData(url="https://p/0.png", medium_url=None)
+    }
+
+
+def test_a_pre_schema_11_chevereto_destination_lands_on_the_migrated_instance() -> None:
+    """The 10 -> 11 config hop turns a profile's single Chevereto slot into
+    instance "1", so an archive naming the bare kind has to resolve onto it --
+    otherwise the job points at a site the profile no longer knows about."""
+    restored = _new_context()
+    _shared_data_from_dict(
+        {
+            "tracker_image_hosts": {
+                "AITHER": {
+                    "img_from": "IMAGES",
+                    "img_to": "CHEVERETO_V4",
+                    "img_to_type": "ImageHost",
+                }
+            }
+        },
+        restored,
+    )
+
+    assert restored.shared_data.tracker_image_hosts[
+        TrackerSelection.AITHER
+    ] == ImageUploadFromTo(
+        ImageSource.IMAGES,
+        ImageHostRef(ImageHost.CHEVERETO_V4, instance_id="1"),
+    )
+
+
+def test_an_image_source_destination_is_not_turned_into_a_host() -> None:
+    restored = _new_context()
+    _shared_data_from_dict(
+        {"uploaded_image_hosts": {"AITHER": {"name": "URLS", "type": "ImageSource"}}},
+        restored,
+    )
+
+    assert restored.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] is (
+        ImageSource.URLS
+    )

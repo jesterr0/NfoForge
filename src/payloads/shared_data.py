@@ -3,9 +3,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.enums.image_host import ImageHost, ImageSource
+from src.enums.image_host import ImageSource
 from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import (
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
 
 
 @dataclass(slots=True)
@@ -32,7 +36,7 @@ class SharedPayload:
     uploaded_images: dict[TrackerSelection, dict[int, ImageUploadData]] = field(
         default_factory=dict
     )
-    uploaded_image_hosts: dict[TrackerSelection, ImageHost | ImageSource] = field(
+    uploaded_image_hosts: dict[TrackerSelection, ImageHostRef | ImageSource] = field(
         default_factory=dict
     )
 
@@ -46,7 +50,7 @@ class SharedPayload:
     # over a different host's failure, so a batch that succeeded is never lost
     # to a batch that did not.
     uploaded_images_by_host: dict[
-        ImageHost | ImageSource, dict[int, ImageUploadData]
+        ImageHostRef | ImageSource, dict[int, ImageUploadData]
     ] = field(default_factory=dict)
 
     base_torrent: Path | None = None

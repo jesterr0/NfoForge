@@ -17,13 +17,17 @@ from pathlib import Path
 from typing import Any
 
 from src.backend.utils.file_utilities import release_stem
-from src.enums.image_host import ImageHost, ImageSource
+from src.enums.image_host import ImageSource
 from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageUploadFromTo
+from src.packages.custom_types import (
+    DISABLED_HOST,
+    ImageHostRef,
+    ImageUploadFromTo,
+)
 
 
 def image_host_label(
-    upload_type: ImageSource, img_host: ImageHost | ImageSource
+    upload_type: ImageSource, img_host: ImageHostRef | ImageSource
 ) -> str:
     """Human label for one image source -> destination pairing.
 
@@ -31,7 +35,7 @@ def image_host_label(
     data so a saved selection can be matched back to its combo entry without
     duplicating the formatting.
     """
-    if img_host in {ImageHost.DISABLED, ImageSource.URLS}:
+    if img_host == DISABLED_HOST or img_host is ImageSource.URLS:
         return str(img_host)
     return f"{upload_type} ➔ {img_host}"
 

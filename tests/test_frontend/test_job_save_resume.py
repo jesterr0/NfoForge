@@ -44,7 +44,7 @@ from src.frontend.global_signals import GSigs
 from src.frontend.wizards import process as process_module, wizard as wizard_module
 from src.frontend.wizards.process import ProcessPage
 from src.frontend.wizards.wizard import MainWindowWizard
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
 from src.payloads.image_hosts import ImagePayloadBase
 
 
@@ -116,7 +116,7 @@ def _populate(context: ProcessingContext, media: Path) -> None:
     shared.loaded_images = [media.parent / "img1.png"]
     shared.generated_images = True
     shared.tracker_image_hosts[TrackerSelection.AITHER] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
 
@@ -168,10 +168,10 @@ def _fake_page(context: ProcessingContext, *, last_used: dict | None = None) -> 
                 plugins=SimpleNamespace(image_host_uploader=None),
                 image_hosts=SimpleNamespace(
                     by_selection=lambda: {
-                        ImageHost.CHEVERETO_V3: ImagePayloadBase(
+                        ImageHostRef(ImageHost.CHEVERETO_V3): ImagePayloadBase(
                             base_url="https://example.test", enabled=True
                         ),
-                        ImageHost.PIXHOST: ImagePayloadBase(
+                        ImageHostRef(ImageHost.PIXHOST): ImagePayloadBase(
                             base_url="https://pix.test", enabled=True
                         ),
                     }
@@ -185,6 +185,7 @@ def _fake_page(context: ProcessingContext, *, last_used: dict | None = None) -> 
         ),
     )
     page._image_host_label = ProcessPage._image_host_label
+    page._find_destination_index = ProcessPage._find_destination_index
     page._plugin_image_host_available = lambda: False
     page.image_host_banner = QLabel()
     page._apply_remembered_image_host = lambda combo, tracker, upload_type, restored: (
@@ -232,7 +233,7 @@ def test_saved_job_round_trips_through_the_store(
     assert restored.shared_data.selected_trackers == [TrackerSelection.AITHER]
     assert restored.shared_data.tracker_image_hosts == {
         TrackerSelection.AITHER: ImageUploadFromTo(
-            ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+            ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
         )
     }
     assert restored.media_input.require_mediainfo(sample_media).tracks  # pyright: ignore[reportAttributeAccessIssue]
@@ -344,7 +345,7 @@ def test_adding_trackers_keeps_one_left_pending_by_an_earlier_run(
     }
     context.shared_data.tracker_image_hosts.clear()
     context.shared_data.tracker_image_hosts[TrackerSelection.LST] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
     page._run_outcomes = {TrackerSelection.LST: TrackerRunOutcome.UPLOADED}
 
@@ -385,7 +386,7 @@ def test_an_uncertain_tracker_keeps_everything_but_the_ability_to_run(
         TrackerSelection.HUNO,
     ]
     context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.PIXHOST
+        ImageSource.IMAGES, ImageHostRef(ImageHost.PIXHOST)
     )
     context.shared_data.tracker_release_data = {
         TrackerSelection.AITHER: {"title": "Example", "nfo": "aither nfo"},
@@ -449,10 +450,12 @@ def test_a_fully_uploaded_archive_still_carries_its_image_urls(
     context.media_input.require_working_dir().mkdir()
     uploaded = {0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)}
     context.shared_data.uploaded_images[TrackerSelection.AITHER] = dict(uploaded)
-    context.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = (
+    context.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = ImageHostRef(
         ImageHost.PIXHOST
     )
-    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = dict(uploaded)
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = dict(
+        uploaded
+    )
 
     page = SimpleNamespace(
         context=context,
@@ -479,7 +482,10 @@ def test_a_fully_uploaded_archive_still_carries_its_image_urls(
     assert shared["uploaded_images_by_host"] == [
         {
             "name": "PIXHOST",
-            "type": "ImageHost",
+            "type": "ImageHostRef",
+            # empty for every host but a Chevereto instance, the only kind
+            # that holds more than one site
+            "instance": "",
             "images": {"0": {"url": "https://pixhost/0.png", "medium_url": None}},
         }
     ]
@@ -538,14 +544,14 @@ def test_restored_image_host_wins_over_the_last_used_preference(
     _populate(context, sample_media)
     page = _fake_page(
         context,
-        last_used={TrackerSelection.AITHER: ImageHost.PIXHOST},
+        last_used={TrackerSelection.AITHER: ImageHostRef(ImageHost.PIXHOST)},
     )
 
     ProcessPage.add_tracker_items(page)
 
     assert context.shared_data.tracker_image_hosts == {
         TrackerSelection.AITHER: ImageUploadFromTo(
-            ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+            ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
         )
     }
 
@@ -556,14 +562,15 @@ def test_last_used_preference_still_applies_to_a_fresh_run(
     context = ProcessingContext()
     _populate(context, sample_media)
     context.shared_data.tracker_image_hosts.clear()
-    page = _fake_page(context, last_used={TrackerSelection.AITHER: ImageHost.PIXHOST})
+    page = _fake_page(
+        context, last_used={TrackerSelection.AITHER: ImageHostRef(ImageHost.PIXHOST)}
+    )
 
     ProcessPage.add_tracker_items(page)
 
-    assert (
-        context.shared_data.tracker_image_hosts[TrackerSelection.AITHER].img_to
-        is ImageHost.PIXHOST
-    )
+    assert context.shared_data.tracker_image_hosts[
+        TrackerSelection.AITHER
+    ].img_to == ImageHostRef(ImageHost.PIXHOST)
 
 
 def test_a_tracker_with_no_screenshots_only_offers_disabled_and_does_not_crash(
@@ -587,7 +594,7 @@ def test_a_tracker_with_no_screenshots_only_offers_disabled_and_does_not_crash(
 
     assert context.shared_data.tracker_image_hosts == {
         TrackerSelection.AITHER: ImageUploadFromTo(
-            ImageSource.IMAGES, ImageHost.DISABLED
+            ImageSource.IMAGES, ImageHostRef(ImageHost.DISABLED)
         )
     }
 
@@ -609,7 +616,7 @@ def test_a_source_less_archive_offers_the_hosts_it_already_uploaded_to(
     context.shared_data.generated_images = False
     context.shared_data.url_data.clear()
     context.shared_data.tracker_image_hosts.clear()
-    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = {
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
         0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
     }
     page = _fake_page(context)
@@ -642,10 +649,9 @@ def test_a_saved_host_that_is_gone_is_named_instead_of_silently_dropped(
 
     ProcessPage.add_tracker_items(page)
 
-    assert (
-        context.shared_data.tracker_image_hosts[TrackerSelection.AITHER].img_to
-        is ImageHost.DISABLED
-    )
+    assert context.shared_data.tracker_image_hosts[
+        TrackerSelection.AITHER
+    ].img_to == ImageHostRef(ImageHost.DISABLED)
     assert not page.image_host_banner.isHidden()
     notice = page.image_host_banner.text()
     assert "Chevereto v3" in notice
@@ -663,17 +669,20 @@ def test_a_saved_host_replaced_by_the_global_preference_is_named_too(
     """
     context = ProcessingContext()
     _populate(context, sample_media)  # saved against Chevereto v3
-    page = _fake_page(context, last_used={TrackerSelection.AITHER: ImageHost.PIXHOST})
+    page = _fake_page(
+        context, last_used={TrackerSelection.AITHER: ImageHostRef(ImageHost.PIXHOST)}
+    )
     page.config.settings.image_hosts.by_selection = lambda: {
-        ImageHost.PIXHOST: ImagePayloadBase(base_url="https://pix.test", enabled=True)
+        ImageHostRef(ImageHost.PIXHOST): ImagePayloadBase(
+            base_url="https://pix.test", enabled=True
+        )
     }
 
     ProcessPage.add_tracker_items(page)
 
-    assert (
-        context.shared_data.tracker_image_hosts[TrackerSelection.AITHER].img_to
-        is ImageHost.PIXHOST
-    )
+    assert context.shared_data.tracker_image_hosts[
+        TrackerSelection.AITHER
+    ].img_to == ImageHostRef(ImageHost.PIXHOST)
     notice = page.image_host_banner.text()
     assert "Chevereto v3" in notice
     assert "Pixhost" in notice
@@ -802,7 +811,7 @@ def test_gathered_tracker_data_comes_from_the_payload(
     assert list(tracker_data) == ["Aither"]
     entry = tracker_data["Aither"]
     assert entry["image_host_data"] == ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
     assert entry["path"].name == f"{sample_media.stem}.torrent"
 
@@ -816,15 +825,16 @@ def test_a_selection_change_reaches_the_payload(qapp: Any, sample_media: Path) -
 
     combo.setCurrentIndex(
         combo.findText(
-            ProcessPage._image_host_label(ImageSource.IMAGES, ImageHost.PIXHOST)
+            ProcessPage._image_host_label(
+                ImageSource.IMAGES, ImageHostRef(ImageHost.PIXHOST)
+            )
         )
     )
     page._sync_tracker_image_hosts()
 
-    assert (
-        context.shared_data.tracker_image_hosts[TrackerSelection.AITHER].img_to
-        is ImageHost.PIXHOST
-    )
+    assert context.shared_data.tracker_image_hosts[
+        TrackerSelection.AITHER
+    ].img_to == ImageHostRef(ImageHost.PIXHOST)
 
 
 # --------------------------------------------------------------------------
@@ -946,7 +956,7 @@ def test_a_deferred_job_only_stores_nfos_for_the_trackers_it_keeps(
     context = ProcessingContext()
     _populate(context, sample_media)
     context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
     context.shared_data.tracker_release_data = {
         TrackerSelection.AITHER: {"title": "a", "nfo": "already uploaded"},

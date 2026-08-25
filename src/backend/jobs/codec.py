@@ -24,7 +24,7 @@ envelopes instead of dropping the key they sit in. See `values.py`.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from enum import Enum
 import json
 from pathlib import Path
@@ -52,6 +52,7 @@ from src.enums.tracker_selection import TrackerSelection
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import (
     ComparisonPair,
+    ImageHostRef,
     ImageUploadData,
     ImageUploadFromTo,
 )
@@ -87,6 +88,12 @@ def _enum_name(member: Enum | None) -> str | None:
 def _enum_from_name(enum_cls: type[EnumT], name: Any) -> EnumT | None:
     """Resolve an enum member by name, tolerating a member that has since gone."""
     return cast("EnumT | None", enum_from_name(enum_cls, name))
+
+
+# The instance id the 10 -> 11 config migration gives a profile's single
+# pre-schema-11 Chevereto site. Job archives written before that hop name the
+# kind with no instance, and resolve onto it.
+_LEGACY_CHEVERETO_INSTANCE_ID = "1"
 
 
 def _registered_enum(raw_name: Any, *allowed: type[Enum]) -> type[Enum] | None:
@@ -166,10 +173,7 @@ def _image_upload_data_from_dict(document: Any) -> ImageUploadData | None:
 def _image_upload_from_to_to_dict(data: ImageUploadFromTo) -> dict[str, Any]:
     return {
         "img_from": _enum_name(data.img_from),
-        "img_to": _enum_name(data.img_to),
-        # `img_to` is an ImageHost *or* an ImageSource; the member name alone
-        # cannot say which, so the type travels with it
-        "img_to_type": type(data.img_to).__name__,
+        **_image_destination_to_dict(data.img_to, _IMG_TO_KEYS),
     }
 
 
@@ -177,15 +181,10 @@ def _image_upload_from_to_from_dict(document: Any) -> ImageUploadFromTo | None:
     if not isinstance(document, dict):
         return None
     img_from = _enum_from_name(ImageSource, document.get("img_from"))
-    destination_cls = _registered_enum(
-        document.get("img_to_type"), ImageHost, ImageSource
-    )
-    if img_from is None or destination_cls is None:
+    img_to = _image_destination_from_dict(document, _IMG_TO_KEYS)
+    if img_from is None or img_to is None:
         return None
-    img_to = _enum_from_name(destination_cls, document.get("img_to"))
-    if img_to is None:
-        return None
-    return ImageUploadFromTo(img_from=img_from, img_to=img_to)  # pyright: ignore[reportArgumentType]
+    return ImageUploadFromTo(img_from=img_from, img_to=img_to)
 
 
 def _indexed_images_from_dict(document: Any) -> dict[int, ImageUploadData]:
@@ -604,10 +603,68 @@ def _media_search_from_dict(
 # --------------------------------------------------------------------------
 # shared data
 # --------------------------------------------------------------------------
-def _image_destination_to_dict(host: ImageHost | ImageSource) -> dict[str, Any]:
-    # a destination is an ImageHost *or* an ImageSource; the member name alone
-    # cannot say which, so the type travels with it
-    return {"name": host.name, "type": type(host).__name__}
+# The three keys one destination occupies. `tracker_image_hosts` has always
+# spelled them differently from the host-scoped maps, and both spellings are
+# already on disk in saved jobs, so each keeps its own.
+_DESTINATION_KEYS = ("name", "type", "instance")
+_IMG_TO_KEYS = ("img_to", "img_to_type", "img_to_instance")
+
+
+def _image_destination_to_dict(
+    host: ImageHostRef | ImageSource,
+    keys: tuple[str, str, str] = _DESTINATION_KEYS,
+) -> dict[str, Any]:
+    # a destination is an image host *or* an ImageSource; the member name alone
+    # cannot say which, so the type travels with it. For a host the *kind* name
+    # is not enough either -- Chevereto kinds hold several user-configured
+    # instances -- so the instance id travels with it too.
+    name_key, type_key, instance_key = keys
+    if isinstance(host, ImageHostRef):
+        return {
+            name_key: host.kind.name,
+            type_key: "ImageHostRef",
+            instance_key: host.instance_id,
+        }
+    return {name_key: host.name, type_key: type(host).__name__}
+
+
+def _image_destination_from_dict(
+    document: Mapping[str, Any],
+    keys: tuple[str, str, str] = _DESTINATION_KEYS,
+) -> ImageHostRef | ImageSource | None:
+    """Rebuild one destination, including archives written before schema 11.
+
+    Those name a bare `ImageHost` member with no instance. The two Chevereto
+    kinds map onto the single instance the 10 -> 11 config migration creates,
+    so a job saved against the old single-slot Chevereto still points at the
+    site that slot became; every other kind has no instance either way.
+    """
+    name_key, type_key, instance_key = keys
+    raw_type = document.get(type_key)
+    raw_name = document.get(name_key)
+    if raw_type == "ImageHostRef":
+        kind = _enum_from_name(ImageHost, raw_name)
+        if kind is None:
+            return None
+        instance = document.get(instance_key)
+        return ImageHostRef(
+            kind=kind, instance_id=str(instance) if isinstance(instance, str) else ""
+        )
+
+    destination_cls = _registered_enum(raw_type, ImageHost, ImageSource)
+    if destination_cls is None:
+        return None
+    member = _enum_from_name(destination_cls, raw_name)
+    if isinstance(member, ImageHost):
+        return ImageHostRef(
+            kind=member,
+            instance_id=_LEGACY_CHEVERETO_INSTANCE_ID
+            if member in (ImageHost.CHEVERETO_V3, ImageHost.CHEVERETO_V4)
+            else "",
+        )
+    if isinstance(member, ImageSource):
+        return member
+    return None
 
 
 def _shared_data_to_dict(
@@ -753,15 +810,12 @@ def _shared_data_from_dict(
         for entry in by_host:
             if not isinstance(entry, dict):
                 continue
-            host_cls = _registered_enum(entry.get("type"), ImageHost, ImageSource)
-            if host_cls is None:
-                continue
-            host = _enum_from_name(host_cls, entry.get("name"))
+            host = _image_destination_from_dict(entry)
             if host is None:
                 continue
             restored_images = _indexed_images_from_dict(entry.get("images"))
             if restored_images:
-                payload.uploaded_images_by_host[host] = restored_images  # pyright: ignore[reportArgumentType]
+                payload.uploaded_images_by_host[host] = restored_images
 
     uploaded_image_hosts = document.get("uploaded_image_hosts")
     if isinstance(uploaded_image_hosts, dict):
@@ -769,12 +823,9 @@ def _shared_data_from_dict(
             tracker = _enum_from_name(TrackerSelection, raw_tracker)
             if tracker is None or not isinstance(raw_host, dict):
                 continue
-            host_cls = _registered_enum(raw_host.get("type"), ImageHost, ImageSource)
-            if host_cls is None:
-                continue
-            host = _enum_from_name(host_cls, raw_host.get("name"))
+            host = _image_destination_from_dict(raw_host)
             if host is not None:
-                payload.uploaded_image_hosts[tracker] = host  # pyright: ignore[reportArgumentType]
+                payload.uploaded_image_hosts[tracker] = host
 
     release_data = document.get("tracker_release_data")
     if isinstance(release_data, dict):
