@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QGroupBox, QMessageBox
 import pytest
 
 from src.backend.media_search import MediaSearchBackEnd
+from src.backend.utils.tmdb_reference import TmdbReference
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
@@ -16,6 +17,7 @@ from src.frontend.wizards.media_search import (
     MediaSearch,
     MediaSearchJobResult,
     _run_media_search_job,
+    _run_tmdb_id_lookup_job,
 )
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
@@ -241,6 +243,9 @@ def test_automatic_search_uses_inferred_title_and_selected_files(
             search_modes.append(search_mode)
             return OrderedDict([(media_str, {"title": media_str})])
 
+        def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
+            raise AssertionError("not used by this test")
+
     monkeypatch.setattr(
         "src.frontend.wizards.media_search.MediaTitleInferer", FakeInferer
     )
@@ -272,6 +277,9 @@ def test_manual_search_bypasses_title_inference(monkeypatch) -> None:
             search_modes.append(search_mode)
             return OrderedDict([(media_str, {"title": media_str})])
 
+        def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
+            raise AssertionError("not used by this test")
+
     monkeypatch.setattr(
         "src.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
     )
@@ -301,6 +309,9 @@ def test_title_inference_failure_returns_manual_search_error(
         def _parse_tmdb_api(self, media_str: str, search_mode: MediaSearchMode):
             return OrderedDict([(media_str, {"title": media_str})])
 
+        def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
+            raise AssertionError("not used by this test")
+
     monkeypatch.setattr(
         "src.frontend.wizards.media_search.MediaTitleInferer", FailingInferer
     )
@@ -315,6 +326,131 @@ def test_title_inference_failure_returns_manual_search_error(
     assert result.query is None
     assert not result.results
     assert result.title_error == "No usable title evidence"
+
+
+def test_id_lookup_job_returns_the_resolved_row() -> None:
+    reference = TmdbReference(tmdb_id="603", media_type=MediaType.MOVIE)
+    calls: list[tuple[str, MediaType | None, MediaSearchMode]] = []
+
+    class FakeBackend:
+        def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
+            calls.append((tmdb_id, media_type, search_mode))
+            return {"1) The Matrix (1999)": {"title": "The Matrix"}}
+
+        def _parse_tmdb_api(self, media_str, search_mode):
+            raise AssertionError("not used by this test")
+
+    result = _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+
+    assert result == MediaSearchJobResult(
+        query=None,
+        results=OrderedDict([("1) The Matrix (1999)", {"title": "The Matrix"})]),
+    )
+    assert calls == [("603", MediaType.MOVIE, MediaSearchMode.BOTH)]
+
+
+def test_id_lookup_job_reports_a_bad_id_as_zero_results() -> None:
+    """A `MediaSearchError` (bad id, not found, ...) is the same UX as a
+    zero-hit text search -- no special error path needed."""
+    reference = TmdbReference(tmdb_id="999999", media_type=None)
+
+    class FakeBackend:
+        def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
+            raise MediaSearchError("TMDB ID not found.")
+
+        def _parse_tmdb_api(self, media_str, search_mode):
+            raise AssertionError("not used by this test")
+
+    result = _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+
+    assert result == MediaSearchJobResult(query=None, results=OrderedDict())
+
+
+def test_id_lookup_job_propagates_a_network_outage() -> None:
+    """Unlike a bad id, a network outage must surface as a real failure."""
+    reference = TmdbReference(tmdb_id="603", media_type=MediaType.MOVIE)
+
+    class FakeBackend:
+        def resolve_tmdb_reference(self, tmdb_id, media_type, search_mode):
+            raise MediaSearchUnavailableError("TMDB search is unavailable.")
+
+        def _parse_tmdb_api(self, media_str, search_mode):
+            raise AssertionError("not used by this test")
+
+    with pytest.raises(MediaSearchUnavailableError):
+        _run_tmdb_id_lookup_job(FakeBackend(), reference, MediaSearchMode.BOTH)
+
+
+class _FakeSignal:
+    def connect(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+class _FakeWorker:
+    """Stands in for `GeneralWorker` so `_search_tmdb_api` can be exercised
+    without spinning a real `QThread` (which would call the real, unmocked
+    `MediaSearchBackEnd` and hit the network)."""
+
+    def __init__(self, func, parent, *args: object, **kwargs: object) -> None:
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+        self.finished = _FakeSignal()
+        self.job_finished = _FakeSignal()
+        self.job_failed = _FakeSignal()
+        self.started = False
+
+    def isRunning(self) -> bool:
+        return False
+
+    def start(self) -> None:
+        self.started = True
+
+
+def test_search_box_routes_a_pasted_tmdb_url_to_the_id_lookup_job(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    page.search_entry.setText("https://www.themoviedb.org/movie/603-the-matrix")
+    monkeypatch.setattr("src.frontend.wizards.media_search.GeneralWorker", _FakeWorker)
+
+    page._search_tmdb_api()
+
+    worker = page.search_worker
+    assert isinstance(worker, _FakeWorker)
+    assert worker.func is _run_tmdb_id_lookup_job
+    assert worker.args[0] is page.backend
+    assert worker.args[1] == TmdbReference(tmdb_id="603", media_type=MediaType.MOVIE)
+    assert worker.started is True
+
+
+def test_search_box_routes_a_tmdb_id_prefix_to_the_id_lookup_job(
+    monkeypatch, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    page.search_entry.setText("tmdb:603")
+    monkeypatch.setattr("src.frontend.wizards.media_search.GeneralWorker", _FakeWorker)
+
+    page._search_tmdb_api()
+
+    worker = page.search_worker
+    assert isinstance(worker, _FakeWorker)
+    assert worker.func is _run_tmdb_id_lookup_job
+    assert worker.args[1] == TmdbReference(tmdb_id="603", media_type=None)
+
+
+def test_search_box_still_runs_a_plain_text_search(monkeypatch, tmp_path: Path) -> None:
+    """A bare number or ordinary title is unaffected -- only a recognized
+    URL/prefix reroutes to the id-lookup job."""
+    page = _make_page(tmp_path)
+    page.search_entry.setText("300")
+    monkeypatch.setattr("src.frontend.wizards.media_search.GeneralWorker", _FakeWorker)
+
+    page._search_tmdb_api()
+
+    worker = page.search_worker
+    assert isinstance(worker, _FakeWorker)
+    assert worker.func is _run_media_search_job
 
 
 def test_failed_search_clears_payload_and_preserves_query(

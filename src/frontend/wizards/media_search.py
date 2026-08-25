@@ -38,6 +38,7 @@ from qtawesome import IconWidget
 
 from src.backend.media_search import MediaSearchBackEnd
 from src.backend.utils.title_inference import MediaTitleInferer
+from src.backend.utils.tmdb_reference import TmdbReference, parse_tmdb_reference
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.config import ConfigManager
 from src.context.processing_context import ProcessingContext
@@ -48,6 +49,11 @@ from src.exceptions import (
     MediaFileNotFoundError,
     MediaSearchError,
     MediaSearchUnavailableError,
+)
+from src.frontend.custom_widgets.adv_tooltip import (
+    AdvPopupBtn,
+    PopupTrigger,
+    QTAIconStr,
 )
 from src.frontend.custom_widgets.image_label import ImageLabel
 from src.frontend.global_signals import GSigs
@@ -67,6 +73,13 @@ from src.utils.super_sub import normalize_super_sub
 class _MediaSearchBackend(Protocol):
     def _parse_tmdb_api(
         self, media_str: str, search_mode: MediaSearchMode
+    ) -> dict[str, dict[str, Any]]: ...
+
+    def resolve_tmdb_reference(
+        self,
+        tmdb_id: str,
+        media_type: MediaType | None,
+        search_mode: MediaSearchMode,
     ) -> dict[str, dict[str, Any]]: ...
 
 
@@ -119,6 +132,31 @@ def _run_media_search_job(
         query=query,
         results=OrderedDict(backend._parse_tmdb_api(query, search_mode)),
     )
+
+
+def _run_tmdb_id_lookup_job(
+    backend: _MediaSearchBackend,
+    reference: TmdbReference,
+    search_mode: MediaSearchMode = MediaSearchMode.BOTH,
+) -> MediaSearchJobResult:
+    """Resolve a TMDB URL/ID pulled directly out of the search box.
+
+    A `MediaSearchError` (bad ID, no such record, missing release date, ...)
+    is reported the same way a zero-hit text search already is -- an empty
+    result set -- rather than a special error path. A
+    `MediaSearchUnavailableError` (network outage) is left to propagate so
+    `GeneralWorker` reports it exactly like a failed text search does today.
+    """
+    try:
+        results = backend.resolve_tmdb_reference(
+            reference.tmdb_id, reference.media_type, search_mode
+        )
+    except MediaSearchUnavailableError:
+        raise
+    except MediaSearchError:
+        results = {}
+
+    return MediaSearchJobResult(query=None, results=OrderedDict(results))
 
 
 class IDParseWorker(QThread):
@@ -409,6 +447,23 @@ class MediaSearch(BaseWizardPage):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.MinimumExpanding
         )
         self.search_label.setCursor(QCursor(Qt.CursorShape.WhatsThisCursor))
+
+        search_help_icon = AdvPopupBtn(
+            title="",
+            # text=("<span>You can also search via TMDB URL "
+            # "<b><i>(https://www.themoviedb.org/movie/10378-big-buck-bunny)</i></b> "
+            # "<br />or with a prefix <b><i>(tmdb:10378)</i></b></span> to help filter results"),
+            text="""\
+            To help filter results you can search via <b>TMDB URL</b> or <b>TMDB ID</b>
+            <ul>
+                <li>tmdb:10378</li>
+                <li>https://www.themoviedb.org/movie/10378-big-buck-bunny</li>
+            </ul>
+            """,
+            trigger=PopupTrigger.HOVER,
+            qta_icon_str=QTAIconStr.PH_QUESTION,
+        )
+
         self.search_entry = QLineEdit()
         self.search_entry.returnPressed.connect(self._search_tmdb_api)
         self.search_button = QToolButton(self)
@@ -420,7 +475,8 @@ class MediaSearch(BaseWizardPage):
 
         search_box = QGroupBox("Search")
         search_layout = QGridLayout(search_box)
-        search_layout.addWidget(self.search_label, 0, 0, 1, 5)
+        search_layout.addWidget(self.search_label, 0, 0, 1, 4)
+        search_layout.addWidget(search_help_icon, 0, 4, 1, 1)
         search_layout.addWidget(self.search_entry, 1, 0, 1, 4)
         search_layout.addWidget(self.search_button, 1, 4, 1, 1)
 
@@ -968,25 +1024,41 @@ class MediaSearch(BaseWizardPage):
             self.listbox.addItem("Enter a title to search...")
             return
 
-        request_id = self._search_generation
-        status = (
-            "Inferring title and searching TMDB, please wait..."
-            if infer_title
-            else "Searching TMDB, please wait..."
+        # A pasted TMDB URL or a `tmdb:`/`tmdbid:` reference bypasses the
+        # fuzzy title search entirely and resolves the exact record by ID.
+        tmdb_reference = (
+            None if infer_title or query is None else parse_tmdb_reference(query)
         )
+
+        request_id = self._search_generation
+        if tmdb_reference is not None:
+            status = "Looking up TMDB ID, please wait..."
+        elif infer_title:
+            status = "Inferring title and searching TMDB, please wait..."
+        else:
+            status = "Searching TMDB, please wait..."
         self.listbox.addItem("Loading please wait...")
         GSigs().main_window_set_disabled.emit(True)
         GSigs().main_window_update_status_tip.emit(status, 0)
 
-        worker = GeneralWorker(
-            _run_media_search_job,
-            self,
-            self.backend,
-            query,
-            input_path,
-            selected_files,
-            self.config.settings.general.media_search_mode,
-        )
+        if tmdb_reference is not None:
+            worker = GeneralWorker(
+                _run_tmdb_id_lookup_job,
+                self,
+                self.backend,
+                tmdb_reference,
+                self.config.settings.general.media_search_mode,
+            )
+        else:
+            worker = GeneralWorker(
+                _run_media_search_job,
+                self,
+                self.backend,
+                query,
+                input_path,
+                selected_files,
+                self.config.settings.general.media_search_mode,
+            )
         self.search_worker = worker
         worker.finished.connect(
             lambda worker=worker: self._release_search_worker(worker)

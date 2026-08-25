@@ -499,3 +499,156 @@ def test_tmdb_metadata_failure_scrubs_the_api_key_from_the_error(
 
     assert "topsecretkeyvalue" not in str(error.value)
     assert "[redacted]" in str(error.value)
+
+
+def _movie_record(tmdb_id: int = 603) -> dict[str, Any]:
+    return {
+        "id": tmdb_id,
+        "title": "The Matrix",
+        "original_title": "The Matrix",
+        "release_date": "1999-03-30",
+        "overview": "A hacker learns the truth.",
+        "vote_average": 8.234,
+        "poster_path": "/poster.jpg",
+        "genres": [{"id": 28, "name": "Action"}],
+        "original_language": "en",
+    }
+
+
+def _series_record(tmdb_id: int = 1396) -> dict[str, Any]:
+    return {
+        "id": tmdb_id,
+        "name": "Breaking Bad",
+        "original_name": "Breaking Bad",
+        "first_air_date": "2008-01-20",
+        "overview": "A teacher turns to crime.",
+        "vote_average": 8.9,
+        "poster_path": "/poster2.jpg",
+        "genres": [{"id": 18, "name": "Drama"}],
+        "original_language": "en",
+    }
+
+
+def test_resolve_tmdb_reference_uses_the_hinted_media_type() -> None:
+    """A URL-derived reference already knows its media type, so only that
+    one endpoint should ever be hit."""
+    backend = MediaSearchBackEnd()
+    calls: list[MediaType] = []
+
+    def fake_fetch(_tmdb_id: str, media_type: MediaType) -> dict[str, Any]:
+        calls.append(media_type)
+        return _movie_record()
+
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        fake_fetch
+    )
+
+    result = backend.resolve_tmdb_reference(
+        "603", MediaType.MOVIE, MediaSearchMode.BOTH
+    )
+
+    assert calls == [MediaType.MOVIE]
+    row = next(iter(result.values()))
+    assert row["tmdb_id"] == "603"
+    assert row["title"] == "The Matrix"
+    assert row["year"] == "1999"
+    assert row["full_release_date"] == "03-30-1999"
+    assert row["media_type"] == "Movie"
+    assert row["genre_ids"] == [TMDBGenreIDsMovies.ACTION]
+    assert backend.media_data == result
+
+
+def test_resolve_tmdb_reference_falls_back_to_tv_when_movie_lookup_fails() -> None:
+    """A bare `tmdb:` id carries no media-type marker, so `BOTH` mode tries
+    movie first and falls back to tv on a `MediaSearchError`."""
+    backend = MediaSearchBackEnd()
+    calls: list[MediaType] = []
+
+    def fake_fetch(_tmdb_id: str, media_type: MediaType) -> dict[str, Any]:
+        calls.append(media_type)
+        if media_type is MediaType.MOVIE:
+            raise MediaSearchError("TMDB returned a different ID than requested.")
+        return _series_record()
+
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        fake_fetch
+    )
+
+    result = backend.resolve_tmdb_reference("1396", None, MediaSearchMode.BOTH)
+
+    assert calls == [MediaType.MOVIE, MediaType.SERIES]
+    row = next(iter(result.values()))
+    assert row["media_type"] == "Series"
+    assert row["title"] == "Breaking Bad"
+
+
+@pytest.mark.parametrize(
+    "search_mode,expected_calls",
+    [
+        (MediaSearchMode.MOVIES, [MediaType.MOVIE]),
+        (MediaSearchMode.TV, [MediaType.SERIES]),
+    ],
+)
+def test_resolve_tmdb_reference_respects_a_restricted_search_mode(
+    search_mode: MediaSearchMode, expected_calls: list[MediaType]
+) -> None:
+    """A restricted search mode never tries the other media type, even on
+    failure."""
+    backend = MediaSearchBackEnd()
+    calls: list[MediaType] = []
+
+    def fake_fetch(_tmdb_id: str, media_type: MediaType) -> dict[str, Any]:
+        calls.append(media_type)
+        raise MediaSearchError("not found")
+
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        fake_fetch
+    )
+
+    with pytest.raises(MediaSearchError):
+        backend.resolve_tmdb_reference("999999", None, search_mode)
+
+    assert calls == expected_calls
+
+
+def test_resolve_tmdb_reference_raises_when_no_candidate_matches() -> None:
+    backend = MediaSearchBackEnd()
+
+    def fake_fetch(_tmdb_id: str, media_type: MediaType) -> dict[str, Any]:
+        raise MediaSearchError(f"not found as {media_type.value}")
+
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        fake_fetch
+    )
+
+    with pytest.raises(MediaSearchError, match="Series"):
+        backend.resolve_tmdb_reference("999999", None, MediaSearchMode.BOTH)
+
+
+def test_resolve_tmdb_reference_stops_immediately_on_network_outage() -> None:
+    """No point trying the other media type against a dead connection."""
+    backend = MediaSearchBackEnd()
+    calls: list[MediaType] = []
+
+    def fake_fetch(_tmdb_id: str, media_type: MediaType) -> dict[str, Any]:
+        calls.append(media_type)
+        raise MediaSearchUnavailableError("TMDB search is unavailable.")
+
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        fake_fetch
+    )
+
+    with pytest.raises(MediaSearchUnavailableError):
+        backend.resolve_tmdb_reference("603", None, MediaSearchMode.BOTH)
+
+    assert calls == [MediaType.MOVIE]
+
+
+def test_resolve_tmdb_reference_rejects_a_record_with_no_release_date() -> None:
+    backend = MediaSearchBackEnd()
+    backend.fetch_complete_tmdb_data_for_selection = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {**_movie_record(), "release_date": ""}
+    )
+
+    with pytest.raises(MediaSearchError, match="release date"):
+        backend.resolve_tmdb_reference("603", MediaType.MOVIE, MediaSearchMode.BOTH)
