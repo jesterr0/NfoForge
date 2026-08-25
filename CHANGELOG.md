@@ -25,6 +25,8 @@
 - A file covering several episodes no longer describes itself by the first of them. `{episode_title}`, `{episode_air_date}` and `{episode_number_absolute}` are omitted for a span rather than naming one episode as though it described all of them.
 - All six multi-episode styles render distinctly. Some previously produced identical output.
 - `{episode_title_exact}` applies no formatting, matching `{title_exact}`. It used to strip characters, which meant the two halves of one tracker's title disagreed about the same string.
+- Updated dependencies:
+  - platformdirs
 
 ### Fixed
 

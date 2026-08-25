@@ -17,7 +17,7 @@ dependencies = [
     "shortuuid>=1.0.13",
     "torf>=4.3.0",
     "pillow>=12.3.0",
-    "platformdirs>=4.11.3",
+    "platformdirs>=4.11.4",
     "pyside6-essentials==6.11.1",
     "psutil>=7.2.0",
     "pyimgbox>=1.0.7",
