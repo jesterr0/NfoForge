@@ -9,6 +9,10 @@
   - Frame size, cut and localization are stated in that order immediately ahead of the source: "IMAX Directors Cut Subbed REPACK UHD BluRay 2160p". The frame size and the cut previously came the other way round.
   - A subbed or dubbed release is marked as one. BeyondHD had no localization component at all, so the claim was detected and shown on the rename page but never reached the title. It is the only tracker that states Subbed: Aither, LST and ReelFliX suppress it.
 
+### Fixed
+
+- A season pack is named after its season on every tracker with hardcoded title rules -- "Show S01 BluRay ..." rather than "Show S01E01-05 BluRay ...". A pack maps every episode it contains, and the title was reading those mappings as an episode range, so it disagreed with the filename beside it and with the season/episode values sent to the tracker.
+
 ## [1.1.9] - 2026-08-26
 
 ### Added
