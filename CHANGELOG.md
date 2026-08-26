@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **BeyondHD release titles order their components differently.** Three changes, to BeyondHD alone:
+  - A Blu-ray, UHD Blu-ray or DVD source leads its resolution -- "BluRay 1080p" rather than "1080p BluRay". A WEB-DL is unaffected.
+  - Frame size, cut and localization are stated in that order immediately ahead of the source: "IMAX Directors Cut Subbed REPACK UHD BluRay 2160p". The frame size and the cut previously came the other way round.
+  - A subbed or dubbed release is marked as one. BeyondHD had no localization component at all, so the claim was detected and shown on the rename page but never reached the title. It is the only tracker that states Subbed: Aither, LST and ReelFliX suppress it.
+
 ## [1.1.9] - 2026-08-26
 
 ### Added
