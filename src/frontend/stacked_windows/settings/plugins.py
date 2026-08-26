@@ -50,8 +50,8 @@ class PluginsSettings(BaseSettings):
         intro = QLabel(
             "External plugins are imported only when enabled at startup. Disabling "
             "plugins keeps saved selections but prevents plugin code, hooks, and "
-            "template contributions from loading. Restart NfoForge after changing "
-            "this setting.",
+            "template contributions from loading. Applying a change to this "
+            "setting will prompt you to restart NfoForge so it can take effect.",
             self,
         )
         intro.setWordWrap(True)
@@ -231,7 +231,8 @@ class PluginsSettings(BaseSettings):
             details = (
                 "Plugin modules were not imported. Saved capability selections "
                 "will be available again after plugins are enabled and NfoForge "
-                "is restarted."
+                "is restarted (you'll be prompted to restart automatically after "
+                "applying this setting)."
             )
             for column in range(self.plugin_status.columnCount()):
                 item.setToolTip(column, details)
