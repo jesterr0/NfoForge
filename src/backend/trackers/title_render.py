@@ -1,13 +1,12 @@
 """Render a release title through a tracker's entry.
 
-Two stages, replacing the four rewriting layers that grew up separately:
-compose from the entry (or the user's global template when it has none),
-then normalise from the entry. This module is the normalisation half.
+Two stages: compose from the entry (or the user's global template when it
+has none), then normalise from the entry. This module is the normalisation
+half.
 
 Normalisation always applies, whether or not the entry composes, so the
-seven trackers with no layout of their own still get their separator,
-colon and vocabulary imposed on the user's house style -- which is exactly
-what they do today through their own `generate_release_title`.
+seven trackers with no layout of their own still get their separator, colon
+and vocabulary imposed on the user's house style.
 """
 
 from __future__ import annotations
@@ -47,20 +46,18 @@ _TAG_SEPARATOR_LOOKBEHIND = r"(?<!-)"
 # that way) is untouched.
 _TRAILING_TAG_GAP = re.compile(r"\s+-(\S+)$")
 
-# BeyondHD's DD exception, carried over verbatim from the uploader's
-# own rule so the spelling cannot drift from what it enforced.
+# BeyondHD's DD exception: "DD5.1" closed up, where "DDP 5.1" stays spaced.
 _DD_CHANNELS = re.compile(r"\bDD\s+(\d\.[01])")
 
-# How NfoForge already spells each identity, mirroring
-# `{video_dynamic_range_type}`. Four of the eight are not written the way the
-# identity is named -- HDR10 is "HDR", HDR10+ is "HDR10Plus", and the two
-# Dolby Vision composites follow -- so the identity name is not usable as a
-# default. That token is what every packaged tracker template uses, so this
-# is what every tracker has been receiving; Aither's published "REMUX HDR
-# HEVC" and LST's "REMUX DV HDR HEVC" both show it.
+# How NfoForge spells each identity, mirroring `{video_dynamic_range_type}`.
+# Four of the eight are not written the way the identity is named -- HDR10 is
+# "HDR", HDR10+ is "HDR10Plus", and the two Dolby Vision composites follow --
+# so the identity name is not usable as a default. These spellings are what
+# trackers expect: Aither's published "REMUX HDR HEVC" and LST's "REMUX DV
+# HDR HEVC" both show it.
 #
-# It is also the vocabulary the per-tracker overrides are written against:
-# the three trackers publishing "HDR10+" map it from "HDR10Plus".
+# They are also what an entry's vocabulary is written against: the three
+# trackers publishing "HDR10+" map it from "HDR10Plus".
 _DEFAULT_SPELLINGS: Mapping[HdrType, str] = MappingProxyType(
     {
         "SDR": "SDR",
