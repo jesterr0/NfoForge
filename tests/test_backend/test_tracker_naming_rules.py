@@ -21,7 +21,11 @@ The rules being pinned, quoted as saved:
 - ReelFliX ........ the same remux/encode split as Aither and LST, video
                     ahead of audio on a remux; blank tag preferred over a
                     NOGROUP placeholder
-- BeyondHD ........ remux/encode/web-dl with no tag must end "-NOGROUP"
+- BeyondHD ........ remux/encode/web-dl with no tag must end "-NOGROUP";
+                    an optical source leads its resolution ("BluRay 1080p"),
+                    while web keeps "2160p AMZN WEB-DL"; frame size, cut and
+                    localization are stated in that order ahead of the source
+                    ("IMAX Directors Cut Subbed REPACK UHD BluRay 2160p")
 
 Known gaps, deliberately not asserted because NfoForge has no token for them.
 Each needs a new token rather than an edit to an entry:
@@ -82,6 +86,13 @@ REMUX_NAME = "Movie.Name.2026.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.R
 ENCODE_NAME = "Movie.Name.2026.1080p.BluRay.TrueHD.Atmos.7.1.DV.HEVC.x265-SomeGroup.mkv"
 WEB_NAME = (
     "Movie.Name.2026.2160p.AMZN.WEB-DL.TrueHD.Atmos.7.1.DV.HEVC.H.265-SomeGroup.mkv"
+)
+# Carries all three of the components BeyondHD states ahead of its source,
+# which the other three trackers order differently and one of which they do
+# not state at all.
+CLAIMED_NAME = (
+    "Movie.Name.2026.IMAX.Directors.Cut.Subbed.REPACK.UHD.BluRay.2160p."
+    "TrueHD.Atmos.7.1.DV.HEVC.REMUX-SomeGroup.mkv"
 )
 
 
@@ -223,6 +234,7 @@ def _render(
     release = ReleaseProperties(
         is_remux=bool(overrides.get("remux")),
         is_dvd="dvd" in source.lower(),
+        is_optical_source="dvd" in source.lower() or "bluray" in source.lower(),
         resolution=height,
         hdr_identity=resolve_hdr_identity(media_info),
         season=season,
@@ -473,6 +485,78 @@ def test_beyondhd_glues_dd_to_its_channel_layout(
     ddp = _render(TrackerSelection.BEYOND_HD, WEB_NAME, "WEB-DL")
     assert "DDP 7.1" in ddp
     assert "DDP7.1" not in ddp
+
+
+@pytest.mark.parametrize(
+    ("name", "source", "expected"),
+    [
+        (ENCODE_NAME, "BluRay", "BluRay 2160p"),
+        (REMUX_NAME, "UHD BluRay", "UHD BluRay 2160p"),
+        (ENCODE_NAME, "DVD", "DVD 2160p"),
+        (WEB_NAME, "WEB-DL", "2160p AMZN WEB-DL"),
+    ],
+    ids=["encode", "remux", "dvd", "web"],
+)
+def test_beyondhd_leads_an_optical_source_with_the_source(
+    name: str, source: str, expected: str
+) -> None:
+    """BeyondHD writes "BluRay 1080p" where the other three write "1080p
+    BluRay". Web is the exception: the resolution still comes first, which
+    keeps the service abbreviation against WEB-DL where every tracker
+    asking for one wants it.
+
+    The DVD row pairs a source with the fixture's own 2160p, which no real
+    release does. What it pins is the branch rather than the pairing -- a
+    DVD is optical, so it leads on the same rule as the two Blu-ray shapes
+    rather than by way of the codec-first order it separately triggers.
+    """
+    assert expected in _render(TrackerSelection.BEYOND_HD, name, source)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("UHD BluRay", "IMAX Directors Cut Subbed REPACK UHD BluRay 2160p"),
+        ("WEB-DL", "IMAX Directors Cut Subbed REPACK 2160p AMZN WEB-DL"),
+    ],
+    ids=["optical", "web"],
+)
+def test_beyondhd_states_frame_size_cut_and_localization_before_the_source(
+    source: str, expected: str
+) -> None:
+    """Frame size, cut and localization, in that order, against the source.
+
+    The group travels with the source under the same optical rule, so a
+    WEB-DL reads the same up to the point where the resolution and source
+    swap places. REPACK keeps its own position between the group and the
+    source rather than moving with either.
+
+    The service is supplied rather than detected because the name carries
+    none, and it is supplied for both rows: the optical branch has no
+    `{streaming_service}` component, so an explicit choice cannot put one in
+    a Blu-ray title.
+    """
+    rendered = _render(
+        TrackerSelection.BEYOND_HD, CLAIMED_NAME, source, streaming_service="AMZN"
+    )
+
+    assert f"Movie Name 2026 {expected} " in rendered
+
+
+@pytest.mark.parametrize("tracker", REMUX_AUDIO_LAST)
+def test_the_other_three_order_the_cut_first_and_state_no_subbed(
+    tracker: TrackerSelection,
+) -> None:
+    """The control, so the BeyondHD test above is about BeyondHD.
+
+    Aither, LST and ReelFliX write the cut ahead of the frame size, and
+    their vocabulary maps "Subbed" to nothing -- so a subbed release is
+    named as one on BeyondHD alone.
+    """
+    rendered = _render(tracker, CLAIMED_NAME, "UHD BluRay")
+
+    assert "Directors Cut IMAX" in rendered
+    assert "Subbed" not in rendered
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
@@ -803,16 +887,15 @@ def test_a_non_web_release_carries_no_streaming_service(
     source change into a BluRay title."""
     rendered = _render(tracker, WEB_NAME, "BluRay")
 
-    # BeyondHD puts Atmos with the codec and the channels after it,
-    # where the other three spell it the other way round.
-    audio = (
-        "TrueHD Atmos 7.1"
-        if tracker is TrackerSelection.BEYOND_HD
-        else "TrueHD 7.1 Atmos"
-    )
+    # Two spellings BeyondHD does not share with the other three: an
+    # optical source leads its resolution, and Atmos goes with the codec
+    # rather than after the channels.
+    beyond_hd = tracker is TrackerSelection.BEYOND_HD
+    quality = "BluRay 2160p" if beyond_hd else "2160p BluRay"
+    audio = "TrueHD Atmos 7.1" if beyond_hd else "TrueHD 7.1 Atmos"
 
     assert "AMZN" not in rendered
-    assert rendered == (f"Movie Name 2026 2160p BluRay {audio} DV HDR x265-SomeGroup")
+    assert rendered == (f"Movie Name 2026 {quality} {audio} DV HDR x265-SomeGroup")
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)

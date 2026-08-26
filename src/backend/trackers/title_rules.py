@@ -114,13 +114,25 @@ class ReleaseProperties:
     earns its place from a checked tracker -- `is_remux` and `is_disc` from
     the remux order swap and BeyondHD's dynamic range baseline, `is_dvd`
     from BeyondHD's DVD order and the LST and ReelFliX omit rules,
+    `is_optical_source` from BeyondHD's source-before-resolution rule,
     `resolution` and `hdr_identity` from every dynamic range rule, and
     `season`/`episodes` from the designator.
+
+    `is_optical_source` is not `is_disc`. It says the release came off
+    optical media -- Blu-ray, UHD Blu-ray or DVD -- however it was encoded,
+    where `is_disc` says the upload *is* a full disc. An encode from a
+    Blu-ray is the first and not the second.
+
+    It is a positive test for optical media rather than a negative one for
+    web, so a release whose source could not be determined keeps the order
+    every tracker used before this rule existed instead of being named as a
+    disc on a guess.
     """
 
     is_remux: bool = False
     is_disc: bool = False
     is_dvd: bool = False
+    is_optical_source: bool = False
     resolution: int = 1080
     hdr_identity: HdrType = "SDR"
     season: int | None = None
@@ -236,6 +248,10 @@ def _is_disc_or_remux(release: ReleaseProperties) -> bool:
 
 def _is_dvd(release: ReleaseProperties) -> bool:
     return release.is_dvd
+
+
+def _is_optical_source(release: ReleaseProperties) -> bool:
+    return release.is_optical_source
 
 
 def _is_dvd_remux(release: ReleaseProperties) -> bool:
@@ -487,8 +503,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 ),
             ),
         ),
-        # BeyondHD. Four differences from the shipped template, all from its
-        # published rules:
+        # BeyondHD. Six differences from the shipped template:
         #
         # - audio is {audio_codec} plus channels, giving "DDP Atmos 5.1" as
         #   BeyondHD requires, not the "DDP 5.1 Atmos" the other three want.
@@ -496,6 +511,17 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # - HYBRID sits against REMUX, since BeyondHD requires them adjacent.
         # - the DVD order is "MPEG-2 DD2.0", so the codec leads there
         #   where audio leads everywhere else.
+        # - an optical source leads its resolution -- "BluRay 1080p", "UHD
+        #   BluRay 2160p", "DVD 480p" -- where the other three write the
+        #   resolution first. Web keeps the resolution first, so a WEB-DL
+        #   still reads "2160p AMZN WEB-DL" with the service against WEB-DL
+        #   as every tracker requiring one wants it.
+        # - frame size, cut and localization are stated in that order ahead
+        #   of the source run: "IMAX Directors Cut Subbed REPACK UHD BluRay
+        #   2160p", or "... REPACK 2160p AMZN WEB-DL" off optical. The other
+        #   three order the first two the opposite way and suppress Subbed
+        #   through their vocabulary, so BeyondHD is the only entry that
+        #   states a subbed release at all.
         TrackerSelection.BEYOND_HD: TrackerTitleEntry(
             normalisation=Normalisation(
                 colon=ColonReplace.KEEP,
@@ -507,12 +533,19 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                     "{title_exact}",
                     "{release_year}",
                     Designator.SIMPLE,
-                    "{cut}",
                     "{frame_size}",
+                    "{cut}",
+                    "{localization}",
                     "{re_release}",
-                    "{resolution}",
-                    "{streaming_service}",
-                    "{source}",
+                    ConditionalOrder(
+                        when=_is_optical_source,
+                        then=("{source}", "{resolution}"),
+                        otherwise=(
+                            "{resolution}",
+                            "{streaming_service}",
+                            "{source}",
+                        ),
+                    ),
                     "{hybrid}",
                     "{remux}",
                     ConditionalOrder(

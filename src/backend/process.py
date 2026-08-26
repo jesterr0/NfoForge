@@ -2891,6 +2891,12 @@ class ProcessBackEnd:
         produces is contiguous -- the mapper sorts guessit's list and keeps
         first and last -- so the range is exact rather than approximate for
         everything but a hand-built non-contiguous mapping.
+
+        `is_dvd` and `is_optical_source` both read the source override, so
+        an entry ordering its components by source cannot disagree with the
+        source the `{source}` token prints beside them. A source that is
+        absent or unrecognised leaves both false, which is the answer that
+        changes no tracker's order.
         """
         overrides = context.shared_data.dynamic_data.get("override_tokens") or {}
         media_info = None
@@ -2914,6 +2920,7 @@ class ProcessBackEnd:
             is_remux=bool(overrides.get("remux")),
             is_disc=False,
             is_dvd="dvd" in source,
+            is_optical_source="dvd" in source or "bluray" in source,
             resolution=resolution,
             hdr_identity=resolve_hdr_identity(media_info),
             season=release_info.season,
