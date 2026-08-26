@@ -48,9 +48,11 @@ Each needs a new token rather than an edit to an entry:
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+import re
 
 import pytest
 
+from src.backend.process import ProcessBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
 from src.backend.trackers.title_render import (
@@ -74,10 +76,12 @@ from src.backend.utils.filename_claims import detect_filename_claims
 from src.backend.utils.hdr_identity import resolve_hdr_identity
 from src.config.models import ClaimSwitches
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.series import build_series_release_info
 
 # The release shapes the rules distinguish. Only the *name* matters here: it
 # drives the filename attributes (REMUX/HYBRID/REPACK) and the source guess,
@@ -150,10 +154,16 @@ def _series_payloads(
 ) -> tuple[object, MediaSearchPayload]:
     """Turn the example payload into one of the three series shapes.
 
-    A season pack maps no episode at all, which is how the app represents
-    one. A span carries `episode_end`, which is the only definition of a
-    span in the token replacer -- so a test cannot accidentally build a
-    span that the tokens would not recognise as one.
+    Passing no episodes stands in for a pack here, because `_render` builds
+    `ReleaseProperties` directly and a pack resolves to no episodes. It is
+    not how the app represents one: `build_series_release_info` reads the
+    per-file mappings, so a real pack carries every episode it covers. See
+    `test_a_season_pack_is_designated_by_its_season_alone`, which goes
+    through that derivation rather than around it.
+
+    A span carries `episode_end`, which is the only definition of a span in
+    the token replacer -- so a test cannot accidentally build a span that
+    the tokens would not recognise as one.
     """
     path = media.input_path
     episode_map: dict[Path, dict[str, object]] = {}
@@ -906,3 +916,88 @@ def test_an_explicit_service_choice_is_honoured(tracker: TrackerSelection) -> No
 
     assert " PMTP WEB-DL " in rendered
     assert "AMZN" not in rendered
+
+
+# -- the designator, from a real payload ----------------------------------
+#
+# Every test above builds ReleaseProperties by hand. That is right for
+# pinning what an entry says and wrong for pinning what a release resolves
+# to: a hand-built season pack passes `episodes=()`, which
+# `build_series_release_info` never produces for one. A real pack maps every
+# file it contains, so its episodes are exactly as populated as a span's and
+# `is_pack` is the only thing telling the two apart. The two tests below go
+# through the production derivation instead.
+
+
+def _pack_media(episode_count: int):
+    """A season pack as the app builds one: a file per episode, each mapped."""
+    files = [
+        Path(f"Show.Name.S01E{number:02d}.2160p.UHD.BluRay.x265-SomeGroup.mkv")
+        for number in range(1, episode_count + 1)
+    ]
+    source_info = next(iter(EXAMPLE_MEDIA_INPUT_PAYLOAD.file_list_mediainfo.values()))
+    return replace(
+        EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        media_type=MediaType.SERIES,
+        input_path=Path("Show.Name.S01.2160p.UHD.BluRay.x265-SomeGroup"),
+        file_list=files,
+        file_list_mediainfo={path: source_info for path in files},
+        series_episode_map={
+            path: {"season": 1, "episode": number + 1}
+            for number, path in enumerate(files)
+        },
+    )
+
+
+def _span_media():
+    """One file covering two episodes, which is a span rather than a pack."""
+    path = Path("Show.Name.S01E01E02.2160p.UHD.BluRay.x265-SomeGroup.mkv")
+    source_info = next(iter(EXAMPLE_MEDIA_INPUT_PAYLOAD.file_list_mediainfo.values()))
+    return replace(
+        EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        media_type=MediaType.SERIES,
+        input_path=path,
+        file_list=[path],
+        file_list_mediainfo={path: source_info},
+        series_episode_map={path: {"season": 1, "episode": 1, "episode_end": 2}},
+    )
+
+
+def _designator_for(media) -> str:
+    """The designator a payload resolves to, through the production path."""
+    release_info = build_series_release_info(media)
+    context = ProcessingContext(media_input=media, media_search=EXAMPLE_SEARCH_PAYLOAD)
+    backend = object.__new__(ProcessBackEnd)
+    release = backend._release_properties(context, release_info)
+
+    composition = TITLE_RULES[TrackerSelection.AITHER].composition
+    assert composition is not None
+    token_string = compose_token_string(composition, release)
+    designator = re.search(r"\bS\d\d(?:E[\dE-]+)?", token_string)
+    assert designator is not None, token_string
+    return designator.group(0)
+
+
+def test_a_season_pack_is_designated_by_its_season_alone() -> None:
+    """A pack is "Show S01 ...", never "Show S01E01-05 ...".
+
+    It carries every episode it covers, so the range says nothing a reader
+    wants: the release is the season. `is_pack` is what distinguishes it,
+    and the filename side already reads that flag -- both
+    `SeriesReleaseInfo.display_tag` and the `{episode_number}` token kwarg
+    consult it, so a title that does not disagrees with the filename beside
+    it.
+    """
+    media = _pack_media(5)
+    assert build_series_release_info(media).is_pack
+
+    assert _designator_for(media) == "S01"
+
+
+def test_a_single_file_span_keeps_its_episode_range() -> None:
+    """The control. One file covering two episodes is not a pack, and its
+    range is the whole point of the designator."""
+    media = _span_media()
+    assert not build_series_release_info(media).is_pack
+
+    assert _designator_for(media) == "S01E01-02"

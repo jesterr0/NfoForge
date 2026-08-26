@@ -2887,7 +2887,12 @@ class ProcessBackEnd:
         picker and the only_if/unless filters all resolve from it, so a
         composition keyed off it cannot disagree with what is printed.
 
-        `episodes` is derived from the span's ends. Every span NfoForge
+        `episodes` is derived from the span's ends, and only where the
+        release is a span. A pack maps every file it contains, so its ends
+        are exactly as populated as a span's and `is_pack` is the only thing
+        telling the two apart -- a pack that kept them is designated
+        "S01E01-05" where `display_tag` and the `{episode_number}` token
+        kwarg, which both read that flag, say "S01". Every span NfoForge
         produces is contiguous -- the mapper sorts guessit's list and keeps
         first and last -- so the range is exact rather than approximate for
         everything but a hand-built non-contiguous mapping.
@@ -2912,7 +2917,7 @@ class ProcessBackEnd:
 
         source = str(overrides.get("source", "")).lower()
         episodes: tuple[int, ...] = ()
-        if release_info.episode_start is not None:
+        if release_info.episode_start is not None and not release_info.is_pack:
             end = release_info.episode_end or release_info.episode_start
             episodes = tuple(range(release_info.episode_start, end + 1))
 
