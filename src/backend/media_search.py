@@ -106,82 +106,196 @@ class MediaSearchBackEnd:
         base_num = 0
 
         for result in search_results:
-            media_type = forced_media_type or result.get("media_type")
+            media_type_str = forced_media_type or result.get("media_type")
 
             # skip person results, only process movie and tv
-            if media_type not in ["movie", "tv"]:
+            if media_type_str not in ["movie", "tv"]:
                 continue
 
-            # check if the result has a valid release date and extract it
-            release_date = None
-            if media_type == "movie" and result.get("release_date"):
-                release_date = str(result["release_date"]).split("-")
-            elif media_type == "tv" and result.get("first_air_date"):
-                release_date = str(result["first_air_date"]).split("-")
-
-            if not release_date:
-                continue
-
-            full_release_date = f"{release_date[1]}-{release_date[2]}-{release_date[0]}"
-            base_num += 1
-
-            tmdb_id = str(result.get("id", ""))
-            plot = result.get("overview", "")
-            vote_get = result.get("vote_average")
-            vote_average = str(round(vote_get, 1)) if vote_get else ""
-            year = release_date[0]
-
-            if media_type == "movie":
+            media_type = (
+                MediaType.MOVIE if media_type_str == "movie" else MediaType.SERIES
+            )
+            if media_type is MediaType.MOVIE:
                 title = result.get("title", "")
                 original_title = result.get("original_title", "")
-                genre_enum_class: (
-                    type[TMDBGenreIDsMovies] | type[TMDBGenreIDsSeries]
-                ) = TMDBGenreIDsMovies
-                display_media_type = "Movie"
+                release_date_raw = result.get("release_date") or ""
             else:
                 title = result.get("name", "")
                 original_title = result.get("original_name", "")
-                genre_enum_class = TMDBGenreIDsSeries
-                display_media_type = "Series"
+                release_date_raw = result.get("first_air_date") or ""
 
-            poster_path = result.get("poster_path", "")
-            original_language = result.get("original_language", "")
-
-            # convert genre IDs to enums
-            get_genre_ids = result.get("genre_ids")
-            genre_ids = []
-            if get_genre_ids:
-                for genre in get_genre_ids:
-                    try:
-                        genre_ids.append(genre_enum_class(genre))
-                    except ValueError:
-                        genre_ids.append(genre_enum_class.UNDEFINED)
-
-            # use TMDB title directly since we don't have alternative titles at this stage
-            # proper title selection happens later with complete TMDB data
-            selected_title = title
-
-            media_dict.update(
-                {
-                    f"{str(base_num)}) {selected_title} ({year})": {
-                        "tmdb_id": tmdb_id,
-                        "plot": plot,
-                        "vote_average": vote_average,
-                        "full_release_date": full_release_date,
-                        "year": year,
-                        "title": normalize_super_sub(selected_title),
-                        "original_title": original_title,
-                        "poster_path": poster_path,
-                        "genre_ids": genre_ids,
-                        "media_type": display_media_type,
-                        "raw_data": result,
-                        "original_language": original_language,
-                    }
-                }
+            row = self._build_media_row(
+                media_type=media_type,
+                tmdb_id=str(result.get("id", "")),
+                # use TMDB title directly since we don't have alternative titles
+                # at this stage; proper title selection happens later with
+                # complete TMDB data
+                title=title,
+                original_title=original_title,
+                release_date_raw=str(release_date_raw),
+                plot=result.get("overview", ""),
+                vote_average_raw=result.get("vote_average"),
+                poster_path=result.get("poster_path", ""),
+                genre_ids=result.get("genre_ids") or [],
+                raw_data=result,
+                original_language=result.get("original_language", ""),
             )
+            if row is None:
+                continue
+
+            base_num += 1
+            media_dict[f"{base_num}) {title} ({row['year']})"] = row
+
         self.media_data.clear()
         self.media_data = media_dict
         return self.media_data
+
+    def _build_media_row(
+        self,
+        media_type: MediaType,
+        tmdb_id: str,
+        title: str,
+        original_title: str,
+        release_date_raw: str,
+        plot: str,
+        vote_average_raw: float | int | None,
+        poster_path: str,
+        genre_ids: Sequence[int],
+        raw_data: dict[str, Any],
+        original_language: str,
+    ) -> dict[str, Any] | None:
+        """Build one `media_data` row from either a `/search/*` result or a
+        complete `/movie|tv/{id}` detail record -- the two differ only in how
+        genres are represented (`genre_ids: list[int]` vs `genres:
+        list[{id, name}]`), which callers normalize to `genre_ids` before
+        reaching this shared body.
+
+        Returns `None` when `release_date_raw` doesn't parse into a
+        `YYYY-MM-DD`-shaped date. A search result list just skips that row;
+        a direct ID lookup has nothing else to fall back on, so its caller
+        treats `None` as a failed lookup.
+        """
+        if not release_date_raw:
+            return None
+        release_date_parts = str(release_date_raw).split("-")
+        if len(release_date_parts) != 3:
+            return None
+
+        full_release_date = (
+            f"{release_date_parts[1]}-{release_date_parts[2]}-{release_date_parts[0]}"
+        )
+        year = release_date_parts[0]
+
+        genre_enum_class: type[TMDBGenreIDsMovies] | type[TMDBGenreIDsSeries] = (
+            TMDBGenreIDsMovies if media_type is MediaType.MOVIE else TMDBGenreIDsSeries
+        )
+        resolved_genre_ids = []
+        for genre in genre_ids:
+            try:
+                resolved_genre_ids.append(genre_enum_class(genre))
+            except ValueError:
+                resolved_genre_ids.append(genre_enum_class.UNDEFINED)
+
+        vote_average = str(round(vote_average_raw, 1)) if vote_average_raw else ""
+
+        return {
+            "tmdb_id": tmdb_id,
+            "plot": plot,
+            "vote_average": vote_average,
+            "full_release_date": full_release_date,
+            "year": year,
+            "title": normalize_super_sub(title),
+            "original_title": original_title,
+            "poster_path": poster_path,
+            "genre_ids": resolved_genre_ids,
+            "media_type": "Movie" if media_type is MediaType.MOVIE else "Series",
+            "raw_data": raw_data,
+            "original_language": original_language,
+        }
+
+    def resolve_tmdb_reference(
+        self,
+        tmdb_id: str,
+        media_type: MediaType | None,
+        search_mode: MediaSearchMode = MediaSearchMode.BOTH,
+    ) -> dict[str, dict[str, Any]]:
+        """Resolve a TMDB ID pulled directly from a pasted URL or a `tmdb:`
+        reference in the search box, bypassing the fuzzy title search.
+
+        When `media_type` is unknown (a bare `tmdb:` id carries no movie/tv
+        marker) the candidates tried are driven by `search_mode`, movie
+        first when both are in play -- matching this file's existing
+        default bias for mixed search.
+        """
+        candidates: list[MediaType]
+        if media_type is not None:
+            candidates = [media_type]
+        elif search_mode is MediaSearchMode.MOVIES:
+            candidates = [MediaType.MOVIE]
+        elif search_mode is MediaSearchMode.TV:
+            candidates = [MediaType.SERIES]
+        else:
+            candidates = [MediaType.MOVIE, MediaType.SERIES]
+
+        last_error: MediaSearchError | None = None
+        for candidate in candidates:
+            try:
+                complete_data = self.fetch_complete_tmdb_data_for_selection(
+                    tmdb_id, candidate
+                )
+            except MediaSearchUnavailableError:
+                # No point trying the other media type against a dead
+                # connection -- surface the outage immediately.
+                raise
+            except MediaSearchError as error:
+                last_error = error
+                continue
+
+            row = self._row_from_complete_data(candidate, complete_data)
+            if row is None:
+                last_error = MediaSearchError(
+                    "TMDB has no usable release date for this title."
+                )
+                continue
+
+            media_dict = {f"1) {row['title']} ({row['year']})": row}
+            self.media_data.clear()
+            self.media_data = media_dict
+            return media_dict
+
+        raise last_error or MediaSearchError("TMDB ID not found.")
+
+    def _row_from_complete_data(
+        self, media_type: MediaType, data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        is_movie = media_type is MediaType.MOVIE
+        raw_genres = data.get("genres")
+        genre_ids = (
+            [
+                genre["id"]
+                for genre in raw_genres
+                if isinstance(genre, dict) and isinstance(genre.get("id"), int)
+            ]
+            if isinstance(raw_genres, list)
+            else []
+        )
+        return self._build_media_row(
+            media_type=media_type,
+            tmdb_id=str(data.get("id", "")),
+            title=data.get("title" if is_movie else "name", ""),
+            original_title=data.get(
+                "original_title" if is_movie else "original_name", ""
+            ),
+            release_date_raw=str(
+                data.get("release_date" if is_movie else "first_air_date") or ""
+            ),
+            plot=data.get("overview", ""),
+            vote_average_raw=data.get("vote_average"),
+            poster_path=data.get("poster_path", ""),
+            genre_ids=genre_ids,
+            raw_data=data,
+            original_language=data.get("original_language", ""),
+        )
 
     def _fetch_tmdb_results(
         self,

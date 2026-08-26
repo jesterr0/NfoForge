@@ -5,6 +5,7 @@ from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.backend.main_window import restart_application
 from src.config.config import ConfigManager
 from src.enums.settings_window import SettingsTabs
 from src.frontend.global_signals import GSigs
@@ -49,6 +51,7 @@ class Settings(QWidget):
 
         self.config = config
         self.main_window = parent
+        self._enable_plugins_before_apply = config.settings.general.enable_plugins
         self.re_load_settings.connect(self._reload_settings)
         GSigs().settings_refresh.connect(self._reload_settings)
         GSigs().settings_swap_tab.connect(self._swap_tab)
@@ -177,6 +180,7 @@ class Settings(QWidget):
 
     def _apply_settings(self) -> None:
         self._save_approved_counter = 0
+        self._enable_plugins_before_apply = self.config.settings.general.enable_plugins
         self.general_settings_content.update_saved_settings.emit()
         self.plugins_settings_content.update_saved_settings.emit()
         self.movies_settings_content.update_saved_settings.emit()
@@ -199,8 +203,26 @@ class Settings(QWidget):
     def _save_all_settings(self) -> None:
         self._save_approved_counter = 0
         self.config.save()
+        plugins_toggled = (
+            self.config.settings.general.enable_plugins
+            != self._enable_plugins_before_apply
+        )
         GSigs().settings_close.emit()
         self._reload_settings()
+        if plugins_toggled:
+            self._prompt_restart_for_plugins()
+
+    def _prompt_restart_for_plugins(self) -> None:
+        response = QMessageBox.question(
+            self,
+            "Restart Required",
+            "External plugins were enabled or disabled. NfoForge must be "
+            "restarted for this change to take effect. Restart now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if response == QMessageBox.StandardButton.Yes:
+            restart_application(self.main_window)
 
     def _reload_settings(self) -> None:
         self._save_approved_counter = 0

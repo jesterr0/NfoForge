@@ -65,7 +65,19 @@ class Logger:
 
         # console handler (print to console)
         if self.console_handler is None and self.to_console:
-            self.console_handler = logging.StreamHandler(sys.stdout)
+            # On Windows the console's codepage often isn't UTF-8, so a
+            # message containing e.g. an arrow (→) can't be encoded and
+            # raises UnicodeEncodeError. logging swallows that in
+            # handleError() -- it just prints "Logging error" and the line
+            # is lost -- so fall back to escaping instead of failing to encode.
+            console_stream = sys.stdout
+            reconfigure = getattr(console_stream, "reconfigure", None)
+            if console_stream is not None and callable(reconfigure):
+                try:
+                    reconfigure(errors="backslashreplace")
+                except (AttributeError, ValueError, OSError):
+                    pass
+            self.console_handler = logging.StreamHandler(console_stream)
             self.console_handler.setFormatter(
                 logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             )

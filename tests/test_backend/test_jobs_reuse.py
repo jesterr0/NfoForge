@@ -17,7 +17,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ImageHostError, ImageUploadError
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
 from tests.conftest import SourceLessBundle
 
 
@@ -30,7 +30,7 @@ def _uploaded() -> dict[int, ImageUploadData]:
 
 
 def _context_with_upload(
-    tracker: TrackerSelection, host: ImageHost | ImageSource
+    tracker: TrackerSelection, host: ImageHostRef | ImageSource
 ) -> ProcessingContext:
     context = ProcessingContext()
     context.shared_data.uploaded_images[tracker] = _uploaded()
@@ -42,10 +42,12 @@ def _context_with_upload(
 # image reuse
 # --------------------------------------------------------------------------
 def test_images_are_reused_when_the_destination_is_unchanged() -> None:
-    context = _context_with_upload(TrackerSelection.AITHER, ImageHost.CHEVERETO_V3)
+    context = _context_with_upload(
+        TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
+    )
 
     reusable = ProcessBackEnd._reusable_uploaded_images(
-        context, TrackerSelection.AITHER, ImageHost.CHEVERETO_V3
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
     assert reusable == _uploaded()
@@ -53,10 +55,12 @@ def test_images_are_reused_when_the_destination_is_unchanged() -> None:
 
 def test_images_are_not_reused_after_the_image_host_changes() -> None:
     """The stored URLs point at a host this tracker no longer uploads to."""
-    context = _context_with_upload(TrackerSelection.AITHER, ImageHost.CHEVERETO_V3)
+    context = _context_with_upload(
+        TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
+    )
 
     reusable = ProcessBackEnd._reusable_uploaded_images(
-        context, TrackerSelection.AITHER, ImageHost.PIXHOST
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)
     )
 
     assert reusable is None
@@ -68,10 +72,12 @@ def test_a_tracker_without_recorded_uploads_gets_none() -> None:
     Reusing across trackers is keyed on the *host*, not on the fact that some
     other tracker uploaded -- see the by-host tests below.
     """
-    context = _context_with_upload(TrackerSelection.AITHER, ImageHost.CHEVERETO_V3)
+    context = _context_with_upload(
+        TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
+    )
 
     reusable = ProcessBackEnd._reusable_uploaded_images(
-        context, TrackerSelection.HUNO, ImageHost.CHEVERETO_V3
+        context, TrackerSelection.HUNO, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
     assert reusable is None
@@ -89,10 +95,12 @@ def test_a_new_tracker_reuses_urls_the_job_holds_for_that_host() -> None:
     to send at all.
     """
     context = ProcessingContext()
-    context.shared_data.uploaded_images_by_host[ImageHost.CHEVERETO_V3] = _uploaded()
+    context.shared_data.uploaded_images_by_host[
+        ImageHostRef(ImageHost.CHEVERETO_V3)
+    ] = _uploaded()
 
     reusable = ProcessBackEnd._reusable_uploaded_images(
-        context, TrackerSelection.HUNO, ImageHost.CHEVERETO_V3
+        context, TrackerSelection.HUNO, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
     assert reusable == _uploaded()
@@ -100,27 +108,33 @@ def test_a_new_tracker_reuses_urls_the_job_holds_for_that_host() -> None:
 
 def test_a_new_tracker_pointed_at_another_host_still_uploads() -> None:
     context = ProcessingContext()
-    context.shared_data.uploaded_images_by_host[ImageHost.CHEVERETO_V3] = _uploaded()
+    context.shared_data.uploaded_images_by_host[
+        ImageHostRef(ImageHost.CHEVERETO_V3)
+    ] = _uploaded()
 
     assert (
         ProcessBackEnd._reusable_uploaded_images(
-            context, TrackerSelection.HUNO, ImageHost.PIXHOST
+            context, TrackerSelection.HUNO, ImageHostRef(ImageHost.PIXHOST)
         )
         is None
     )
     assert ProcessBackEnd.needs_local_images(
-        context, TrackerSelection.HUNO, ImageHost.PIXHOST
+        context, TrackerSelection.HUNO, ImageHostRef(ImageHost.PIXHOST)
     )
 
 
 def test_moving_a_tracker_to_a_host_the_job_already_served_reuses_it() -> None:
     """Its own record is the wrong host's; the job's by-host record is not."""
-    context = _context_with_upload(TrackerSelection.AITHER, ImageHost.CHEVERETO_V3)
+    context = _context_with_upload(
+        TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
+    )
     pixhost = {0: ImageUploadData(url="https://pixhost/a.png", medium_url=None)}
-    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = dict(pixhost)
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = dict(
+        pixhost
+    )
 
     reusable = ProcessBackEnd._reusable_uploaded_images(
-        context, TrackerSelection.AITHER, ImageHost.PIXHOST
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)
     )
 
     assert reusable == pixhost
@@ -128,15 +142,22 @@ def test_moving_a_tracker_to_a_host_the_job_already_served_reuses_it() -> None:
 
 def test_by_host_reuse_is_a_copy_not_the_stored_mapping() -> None:
     context = ProcessingContext()
-    context.shared_data.uploaded_images_by_host[ImageHost.CHEVERETO_V3] = _uploaded()
+    context.shared_data.uploaded_images_by_host[
+        ImageHostRef(ImageHost.CHEVERETO_V3)
+    ] = _uploaded()
 
     reusable = ProcessBackEnd._reusable_uploaded_images(
-        context, TrackerSelection.HUNO, ImageHost.CHEVERETO_V3
+        context, TrackerSelection.HUNO, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
     assert reusable is not None
     reusable[99] = ImageUploadData(url="https://host/injected.png", medium_url=None)
 
-    assert 99 not in context.shared_data.uploaded_images_by_host[ImageHost.CHEVERETO_V3]
+    assert (
+        99
+        not in context.shared_data.uploaded_images_by_host[
+            ImageHostRef(ImageHost.CHEVERETO_V3)
+        ]
+    )
 
 
 def test_by_host_urls_survive_narrowing_a_job_to_no_trackers() -> None:
@@ -171,18 +192,21 @@ def test_by_host_urls_round_trip_through_the_codec(tmp_path: Path) -> None:
 
     source = ProcessingContext()
     source.media_input.input_path = tmp_path / "media.mkv"
-    source.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = _uploaded()
+    source.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = (
+        _uploaded()
+    )
 
     restored = ProcessingContext()
     context_from_dict(context_to_dict(source, {}), restored)
 
     assert restored.shared_data.uploaded_images_by_host == {
-        ImageHost.PIXHOST: _uploaded()
+        ImageHostRef(ImageHost.PIXHOST): _uploaded()
     }
 
 
 @pytest.mark.parametrize(
-    "destination", [ImageHost.DISABLED, ImageSource.URLS, ImageSource.IMAGES]
+    "destination",
+    [ImageHostRef(ImageHost.DISABLED), ImageSource.URLS, ImageSource.IMAGES],
 )
 def test_non_host_destinations_are_never_reused(destination: Any) -> None:
     """Nothing was uploaded for these, so there is nothing to reuse."""
@@ -198,10 +222,12 @@ def test_non_host_destinations_are_never_reused(destination: Any) -> None:
 
 def test_reused_images_are_a_copy_not_the_stored_mapping() -> None:
     """Mutating a run's image map must not corrupt what the job recorded."""
-    context = _context_with_upload(TrackerSelection.AITHER, ImageHost.CHEVERETO_V3)
+    context = _context_with_upload(
+        TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
+    )
 
     reusable = ProcessBackEnd._reusable_uploaded_images(
-        context, TrackerSelection.AITHER, ImageHost.CHEVERETO_V3
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
     assert reusable is not None
     reusable[99] = ImageUploadData(url="https://host/injected.png", medium_url=None)
@@ -213,14 +239,18 @@ def test_reused_images_are_a_copy_not_the_stored_mapping() -> None:
 # "does this tracker still need the screenshot files on disk?"
 # --------------------------------------------------------------------------
 def test_a_tracker_with_reusable_urls_needs_no_local_files() -> None:
-    context = _context_with_upload(TrackerSelection.AITHER, ImageHost.CHEVERETO_V3)
+    context = _context_with_upload(
+        TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
+    )
 
     assert not ProcessBackEnd.needs_local_images(
-        context, TrackerSelection.AITHER, ImageHost.CHEVERETO_V3
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
 
-@pytest.mark.parametrize("destination", [ImageHost.DISABLED, ImageSource.URLS])
+@pytest.mark.parametrize(
+    "destination", [ImageHostRef(ImageHost.DISABLED), ImageSource.URLS]
+)
 def test_a_tracker_that_uploads_nothing_needs_no_local_files(
     destination: Any,
 ) -> None:
@@ -240,10 +270,12 @@ def test_changing_the_image_host_puts_a_tracker_back_on_local_files() -> None:
     """Regression guard: the stored URLs are the old host's, so they cannot be
     reused -- a check that only asked "are there any recorded uploads?" let a
     job with missing screenshots through and uploaded none."""
-    context = _context_with_upload(TrackerSelection.AITHER, ImageHost.CHEVERETO_V3)
+    context = _context_with_upload(
+        TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
+    )
 
     assert ProcessBackEnd.needs_local_images(
-        context, TrackerSelection.AITHER, ImageHost.PIXHOST
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)
     )
 
 
@@ -251,20 +283,20 @@ def test_a_tracker_with_no_uploads_yet_needs_local_files() -> None:
     context = ProcessingContext()
 
     assert ProcessBackEnd.needs_local_images(
-        context, TrackerSelection.AITHER, ImageHost.CHEVERETO_V3
+        context, TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
 
 def test_empty_recorded_uploads_do_not_count_as_reusable() -> None:
     context = ProcessingContext()
     context.shared_data.uploaded_images[TrackerSelection.AITHER] = {}
-    context.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = (
+    context.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = ImageHostRef(
         ImageHost.CHEVERETO_V3
     )
 
     assert (
         ProcessBackEnd._reusable_uploaded_images(
-            context, TrackerSelection.AITHER, ImageHost.CHEVERETO_V3
+            context, TrackerSelection.AITHER, ImageHostRef(ImageHost.CHEVERETO_V3)
         )
         is None
     )
@@ -297,7 +329,7 @@ def _image_backend(
     return cast(ProcessBackEnd, backend)
 
 
-def _process_dict(*trackers: tuple[TrackerSelection, ImageHost]) -> dict[str, Any]:
+def _process_dict(*trackers: tuple[TrackerSelection, ImageHostRef]) -> dict[str, Any]:
     return {
         tracker.value: {"image_host_data": ImageUploadFromTo(ImageSource.IMAGES, host)}
         for tracker, host in trackers
@@ -318,20 +350,25 @@ def test_a_hosts_uploads_are_recorded_before_another_hosts_failure(
     context.shared_data.loaded_images = [tmp_path / "shot.png"]
     good = {0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)}
     bad = {0: ImageUploadData(url=None, medium_url=None)}
-    backend = _image_backend({ImageHost.PIXHOST: good, ImageHost.LENSDUMP: bad})
+    backend = _image_backend(
+        {ImageHostRef(ImageHost.PIXHOST): good, ImageHostRef(ImageHost.LENSDUMP): bad}
+    )
 
     with pytest.raises(ImageUploadError):
         backend.handle_images_for_trackers(
             context=context,
             process_dict=_process_dict(
-                (TrackerSelection.AITHER, ImageHost.PIXHOST),
-                (TrackerSelection.HUNO, ImageHost.LENSDUMP),
+                (TrackerSelection.AITHER, ImageHostRef(ImageHost.PIXHOST)),
+                (TrackerSelection.HUNO, ImageHostRef(ImageHost.LENSDUMP)),
             ),
             queued_text_update=lambda _text: None,
             progress_bar_cb=lambda _value: None,
         )
 
-    assert context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] == good
+    assert (
+        context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)]
+        == good
+    )
 
 
 def test_no_local_images_names_the_hosts_the_job_can_still_serve(
@@ -347,7 +384,7 @@ def test_no_local_images_names_the_hosts_the_job_can_still_serve(
     """
     context = ProcessingContext()
     context.shared_data.loaded_images = None
-    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = {
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
         0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
     }
     backend = _image_backend({})
@@ -355,7 +392,9 @@ def test_no_local_images_names_the_hosts_the_job_can_still_serve(
     with pytest.raises(ImageHostError) as excinfo:
         backend.handle_images_for_trackers(
             context=context,
-            process_dict=_process_dict((TrackerSelection.HUNO, ImageHost.LENSDUMP)),
+            process_dict=_process_dict(
+                (TrackerSelection.HUNO, ImageHostRef(ImageHost.LENSDUMP))
+            ),
             queued_text_update=lambda _text: None,
             progress_bar_cb=lambda _value: None,
         )
@@ -374,7 +413,9 @@ def test_no_local_images_and_no_stored_urls_still_runs_without_images(
 
     result = backend.handle_images_for_trackers(
         context=context,
-        process_dict=_process_dict((TrackerSelection.HUNO, ImageHost.LENSDUMP)),
+        process_dict=_process_dict(
+            (TrackerSelection.HUNO, ImageHostRef(ImageHost.LENSDUMP))
+        ),
         queued_text_update=lambda _text: None,
         progress_bar_cb=lambda _value: None,
     )
@@ -409,7 +450,9 @@ def test_a_source_less_bundle_serves_a_new_tracker_on_a_host_it_already_used(
 
     result = _image_backend({}).handle_images_for_trackers(
         context=context,
-        process_dict=_process_dict((TrackerSelection.HUNO, ImageHost.PIXHOST)),
+        process_dict=_process_dict(
+            (TrackerSelection.HUNO, ImageHostRef(ImageHost.PIXHOST))
+        ),
         queued_text_update=messages.append,
         progress_bar_cb=lambda _value: None,
     )
@@ -429,7 +472,9 @@ def test_a_source_less_bundle_refuses_a_host_it_cannot_serve(
     with pytest.raises(ImageHostError) as excinfo:
         _image_backend({}).handle_images_for_trackers(
             context=context,
-            process_dict=_process_dict((TrackerSelection.HUNO, ImageHost.LENSDUMP)),
+            process_dict=_process_dict(
+                (TrackerSelection.HUNO, ImageHostRef(ImageHost.LENSDUMP))
+            ),
             queued_text_update=lambda _text: None,
             progress_bar_cb=lambda _value: None,
         )
@@ -554,11 +599,11 @@ def test_uploaded_images_round_trip_through_the_codec(tmp_path: Path) -> None:
     source = ProcessingContext()
     source.media_input.input_path = tmp_path / "media.mkv"
     source.shared_data.uploaded_images[TrackerSelection.AITHER] = _uploaded()
-    source.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = (
+    source.shared_data.uploaded_image_hosts[TrackerSelection.AITHER] = ImageHostRef(
         ImageHost.CHEVERETO_V3
     )
     source.shared_data.tracker_image_hosts[TrackerSelection.AITHER] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
     restored = ProcessingContext()
@@ -568,5 +613,5 @@ def test_uploaded_images_round_trip_through_the_codec(tmp_path: Path) -> None:
         TrackerSelection.AITHER: _uploaded()
     }
     assert restored.shared_data.uploaded_image_hosts == {
-        TrackerSelection.AITHER: ImageHost.CHEVERETO_V3
+        TrackerSelection.AITHER: ImageHostRef(ImageHost.CHEVERETO_V3)
     }

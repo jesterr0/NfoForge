@@ -135,13 +135,13 @@ def test_editor_values_save_without_overwriting_other_tracker_settings(
     editor = cast(BHDTrackerEdit, widget._editor_map[tracker])
     editor.api_key.setText("new-api-key")
 
-    manager.settings.trackers.beyond_hd.mvr_title_token_override = "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
+    # A field this editor does not own, standing in for every setting
+    # another page writes to the same tracker.
+    manager.settings.trackers.beyond_hd.nfo_template = "set-elsewhere"
     widget._save_settings()
 
     assert manager.settings.trackers.beyond_hd.api_key == "new-api-key"
-    assert (
-        manager.settings.trackers.beyond_hd.mvr_title_token_override == "movie-page"  # noqa: S105 - tracker settings field value used as test fixture data, not a credential
-    )
+    assert manager.settings.trackers.beyond_hd.nfo_template == "set-elsewhere"
 
 
 def test_reset_loads_tracker_defaults_into_controls(
@@ -161,6 +161,8 @@ def test_wizard_tracker_selector_keeps_series_filtering(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    tracker_map = manager.settings.trackers.by_selection()
+    original_enabled = {tracker: info.enabled for tracker, info in tracker_map.items()}
     selector = TrackerSettingsWidget(manager)
     selector.load_from_config(
         unsupported_trackers=UNSUPPORTED_SERIES_TRACKERS,
@@ -174,6 +176,14 @@ def test_wizard_tracker_selector_keeps_series_filtering(
         assert bool(item.flags() & Qt.ItemFlag.ItemIsEnabled) is (
             tracker not in UNSUPPORTED_SERIES_TRACKERS
         )
+
+    # Committing the page (as the wizard does) must not touch the profile's
+    # enabled flags for trackers only unchecked because of this run's content
+    # type -- see test_unsupported_trackers_never_write_back_to_the_profile.
+    selector.save_editor_settings()
+    assert {
+        tracker: info.enabled for tracker, info in tracker_map.items()
+    } == original_enabled
 
 
 def _item_for(selector: TrackerSettingsWidget, tracker: TrackerSelection) -> Any:
@@ -250,6 +260,33 @@ def test_a_run_scoped_selection_never_writes_back_to_the_profile(
     selector.save_editor_settings()
 
     assert all(tracker_map[tracker].enabled for tracker in TrackerSelection)
+
+
+def test_unsupported_trackers_never_write_back_to_the_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A series flow filtering out a movie-only tracker must not disable it
+    for movies too.
+
+    Same failure mode as `test_a_run_scoped_selection_never_writes_back_to_
+    the_profile`, but for content-type filtering instead of a resumed job,
+    and exercised through the wizard's real (non-resumed) `persist_enabled`
+    default rather than an explicit override.
+    """
+    _, manager = _make_tracker_settings(tmp_path, monkeypatch)
+    tracker_map = manager.settings.trackers.by_selection()
+    unsupported = next(iter(UNSUPPORTED_SERIES_TRACKERS))
+    tracker_map[unsupported].enabled = True
+    selector = TrackerSettingsWidget(manager)
+
+    selector.load_from_config(unsupported_trackers=UNSUPPORTED_SERIES_TRACKERS)
+
+    assert _item_for(selector, unsupported).checkState() == Qt.CheckState.Unchecked
+    assert unsupported not in (selector.get_selected_trackers() or [])
+
+    selector.save_editor_settings()
+
+    assert tracker_map[unsupported].enabled is True
 
 
 def test_the_settings_window_selection_still_writes_back(

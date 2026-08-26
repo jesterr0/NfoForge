@@ -140,7 +140,7 @@ class Tokens:
     )
     VIDEO_DYNAMIC_RANGE_TYPE_INC_SDR_OVER_1080 = FileToken(
         "{video_dynamic_range_type_inc_sdr_over_1080}",
-        "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ and SDR) when video width >= 1080",
+        "Video dynamic range type (DV, DV HDR, HDR, HDR10Plus, HLG, PQ), plus SDR only above 1080p",
     )
     VIDEO_FORMAT = FileToken("{video_format}", "Video format (AVC/HEVC/MPEG Video)")
     FILE_VIDEO_HEIGHT = FileToken("{video_height}", "Video height (1040)")
@@ -160,7 +160,13 @@ class Tokens:
         "{title_exact}",
         "Title parsed from media databases with no modifications",
     )
+    PLOT = NfoToken(
+        "{plot}", "Plot/overview text (already follows the selected TMDB language)"
+    )
     IMDB_ID = FileToken("{imdb_id}", "IMDb ID")
+    IMDB_URL = NfoToken(
+        "{imdb_url}", "Full IMDb URL (https://www.imdb.com/title/tt.../)"
+    )
     ORIGINAL_TITLE = FileToken("{original_title}", "Original title")
     ORIGINAL_TITLE_FALLBACK_TITLE = FileToken(
         "{original_title_fallback_title}",
@@ -171,6 +177,10 @@ class Tokens:
         "Original title (fallback to {title_clean})",
     )
     TMDB_ID = FileToken("{tmdb_id}", "TMDB ID")
+    TMDB_URL = NfoToken(
+        "{tmdb_url}",
+        "Full TMDB URL, /movie/ or /tv/ path depending on media type",
+    )
     TVDB_ID = FileToken("{tvdb_id}", "TVDB ID")
     MAL_ID = FileToken("{mal_id}", "MAL ID")
     ORIGINAL_FILENAME = FileToken("{original_filename}", "Original filename")

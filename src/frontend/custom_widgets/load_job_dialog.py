@@ -58,8 +58,13 @@ _LISTING_ROLE = Qt.ItemDataRole.UserRole
 # either ImageHost or ImageSource -- see `_image_host_display_name`, and
 # `_image_upload_from_to_to_dict` in `src/backend/jobs/codec.py`, which is why
 # `img_to_type` is carried alongside it in the first place.
+#
+# `ImageHostRef` is what that field says now; a host saved before Chevereto
+# became multi-instance says `ImageHost`. Both name an `ImageHost` member --
+# the ref's extra half is its instance id, which this pane does not render.
 _IMAGE_DESTINATION_ENUMS: dict[str, type[Enum]] = {
     "ImageHost": ImageHost,
+    "ImageHostRef": ImageHost,
     "ImageSource": ImageSource,
 }
 
@@ -649,6 +654,10 @@ class LoadJobDialog(QDialog):
         the raw name and the pane shows "Aither -> CHEVERETO_V3": a humanized
         tracker arrowing at an internal identifier, in a table whose whole job
         is to be readable.
+
+        A Chevereto destination renders as its kind ("Chevereto v4") rather
+        than the site's label: the archive stores the instance id, and the
+        label belongs to a config profile this listing spans several of.
 
         Falls back to the raw string, so a destination retired since the job
         was saved still shows something.

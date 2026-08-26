@@ -1,8 +1,7 @@
 from collections.abc import Sequence
-from functools import partial
 from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QSize, QTimer, Slot
+from PySide6.QtCore import QSize, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -18,25 +17,29 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
-from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
-    UNSUPPORTED_MOVIE_TRACKERS,
-)
 from src.backend.utils.example_parsed_movie_data import (
     EXAMPLE_FILE_NAME,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
 )
+from src.backend.utils.filename_claims import (
+    FilenameClaims,
+    detect_filename_claims,
+)
 from src.config.config import ConfigManager
-from src.config.models import DynamicRangeSettings, DynamicRangeSettingsData
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
-from src.enums.tracker_selection import TrackerSelection
+from src.config.models import (
+    DynamicRangeSettings,
+    DynamicRangeSettingsData,
+)
+from src.enums.token_replacer import (
+    FILENAME_COLON_OPTIONS,
+    ColonReplace,
+    UnfilledTokenRemoval,
+)
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.custom_widgets.resizable_stacked_widget import ResizableStackedWidget
 from src.frontend.custom_widgets.token_table import TokenTable
-from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, set_top_parent_geometry
@@ -88,35 +91,39 @@ class MoviesManagementSettings(BaseSettings):
         control_top_layout.addStretch()
         control_top_layout.addWidget(preview_example_data_btn)
 
-        # replace illegal chars
-        self.replace_illegal_chars = QCheckBox("Replace Illegal Characters", self)
-        self.replace_illegal_chars.setToolTip(
-            "Replace illegal characters. If unchecked, NfoForge will remove them instead"
-        )
-
         # layout
         self.controls_box = QGroupBox("Controls")
         self.controls_layout = QVBoxLayout(self.controls_box)
         self.controls_layout.addLayout(control_top_layout)
-        self.controls_layout.addWidget(self.replace_illegal_chars)
 
-        # format file name
-        # colon replace for file name
+        # claims read out of the input filename. These live in Controls
+        # rather than the Filename box because claims feed titles too.
+        self.claims_master = self._build_claims_master(self)
+        self.claims_master.toggled.connect(self._on_claims_master_toggled)
+        self.claims_master.clicked.connect(self._update_file_token_example)
+        self.claim_checks = self._build_claim_checks(self)
+        for claim_check in self.claim_checks.values():
+            claim_check.clicked.connect(self._update_file_token_example)
+        self.controls_layout.addWidget(self.claims_master)
+        self.controls_layout.addLayout(
+            self._build_claim_checks_layout(self.claim_checks)
+        )
+
+        # colon replace for file name. Also in Controls, for symmetry with
+        # the Series tab, where it cannot sit inside the Filename box: that
+        # box is per-format and colon handling is shared across all three.
         fn_colon_replace_lbl, self.fn_colon_replace = self._build_colon_replace_combo(
-            "Colon Replacement", self
+            "Colon Replacement", self, FILENAME_COLON_OPTIONS
         )
         self.fn_colon_replace.currentIndexChanged.connect(
             self._update_file_token_example
         )
-
-        # parse from input filename
-        self.parse_input_file_attributes = QCheckBox("Parse Filename Attributes", self)
-        self.parse_input_file_attributes.setToolTip(
-            "If enabled, attributes REMUX, HYBRID, PROPER, and REPACK will be detected from the filename"
-        )
-        self.parse_input_file_attributes.clicked.connect(
-            self._update_file_token_example
-        )
+        fn_colon_layout = QHBoxLayout()
+        fn_colon_layout.setContentsMargins(0, 0, 0, 0)
+        fn_colon_layout.addWidget(fn_colon_replace_lbl)
+        fn_colon_layout.addWidget(self.fn_colon_replace)
+        fn_colon_layout.addStretch()
+        self.controls_layout.addLayout(fn_colon_layout)
 
         # format file name
         format_file_name_lbl = QLabel("Token", self)
@@ -145,12 +152,9 @@ class MoviesManagementSettings(BaseSettings):
         )
 
         self.format_file_name_layout = self._build_token_layout(
-            fn_colon_replace_lbl,
-            self.fn_colon_replace,
             format_file_name_lbl,
             self.format_file_name_token_input,
             filename_example_section,
-            header_widgets=(self.parse_input_file_attributes,),
         )
         self.filename_box.setLayout(self.format_file_name_layout)
         self.filename_nested_layout = self._build_nested_groupbox_layout(
@@ -191,50 +195,16 @@ class MoviesManagementSettings(BaseSettings):
         )
 
         self.format_release_title_layout = self._build_token_layout(
-            title_colon_replace_lbl,
-            self.title_colon_replace,
             format_release_title_lbl,
             self.format_release_title_input,
             title_example_section,
+            colon_replace_lbl=title_colon_replace_lbl,
+            colon_replace=self.title_colon_replace,
         )
         self.title_box.setLayout(self.format_release_title_layout)
         self.title_nested_layout = self._build_nested_groupbox_layout(
             title_box_lbl, self.title_box
         )
-
-        # tracker overrides
-        # tracker override selection
-        tracker_lbl = QLabel("Tracker", self)
-        self.tracker_selection = CustomComboBox(disable_mouse_wheel=True, parent=self)
-
-        # tracker override map
-        self.tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
-        self.tracker_over_ride_stacked_widget = ResizableStackedWidget(self)
-        for tracker in self.config.settings.trackers.by_selection().keys():
-            if (
-                tracker in UNSUPPORTED_MOVIE_TRACKERS
-                or tracker in NO_RELEASE_NAME_FIELD
-            ):
-                continue
-            tracker_format_override = TrackerFormatOverride(self)
-            tracker_format_override.setting_changed.connect(
-                partial(self._update_tracker_override_example, tracker_format_override)
-            )
-            self.tracker_selection.addItem(str(tracker), tracker)
-            self.tracker_over_ride_stacked_widget.addWidget(tracker_format_override)
-            self.tracker_override_map[tracker] = tracker_format_override
-
-        # connect to signal to swap stacked widget
-        self.tracker_selection.currentIndexChanged.connect(
-            self._change_over_ride_tracker
-        )
-
-        self.over_ride_box = QGroupBox("Format Title Tracker Overrides")
-        self.over_ride_inner_layout = QVBoxLayout(self.over_ride_box)
-        self.over_ride_inner_layout.addWidget(tracker_lbl)
-        self.over_ride_inner_layout.addWidget(self.tracker_selection)
-        self.over_ride_inner_layout.addWidget(build_h_line((6, 1, 6, 1)))
-        self.over_ride_inner_layout.addWidget(self.tracker_over_ride_stacked_widget)
 
         # token table
         self.token_table = TokenTable(
@@ -250,7 +220,6 @@ class MoviesManagementSettings(BaseSettings):
         self.add_widget(self.controls_box)
         self.add_layout(self.filename_nested_layout)
         self.add_layout(self.title_nested_layout)
-        self.add_widget(self.over_ride_box)
         self.add_widget(self.token_table_box)
         self.add_layout(self.reset_layout, add_stretch=True)
 
@@ -267,24 +236,22 @@ class MoviesManagementSettings(BaseSettings):
 
     @Slot()
     def _update_title_token_example(self) -> None:
-        txt_data = self._update_example(
+        self._update_example(
             token_str=self.format_release_title_input.text(),
             colon_replace=ColonReplace(self.title_colon_replace.currentData()),
             file_name_mode=False,
             qline=self.format_release_title_example,
         )
 
-        # if override widget is enabled we'll update the title portion of it's widget if
-        # there is no token for that widget
-        override_widget = cast(
-            TrackerFormatOverride,
-            self.tracker_over_ride_stacked_widget.currentWidget(),
+    def _detected_claims(self) -> FilenameClaims:
+        """Claims the example filename carries, per the current switches."""
+        return detect_filename_claims(
+            [EXAMPLE_FILE_NAME.stem],
+            self._current_claim_switches(),
+            self.config.plugin_manager.custom_edition_info(
+                enabled=self.config.settings.general.enable_plugins
+            ),
         )
-        if (
-            override_widget.enabled_checkbox.isChecked()
-            and not override_widget.over_ride_format_title.text()
-        ):
-            override_widget.over_ride_format_file_name_token_example.setText(txt_data)
 
     def _update_example(
         self,
@@ -314,7 +281,10 @@ class MoviesManagementSettings(BaseSettings):
             video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
-            parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
+            # Stage 1 detection, the same function the rename pages call,
+            # so the preview and the wizard cannot disagree about what the
+            # example filename claims.
+            override_tokens=self._detected_claims().as_override_tokens(),
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),
@@ -336,45 +306,6 @@ class MoviesManagementSettings(BaseSettings):
         self._update_file_token_example()
         self._update_title_token_example()
 
-    @Slot(int)
-    def _change_over_ride_tracker(self, idx: int) -> None:
-        curr_tracker = self.tracker_selection.itemData(idx)
-        if curr_tracker:
-            tracker_override_widget = self.tracker_override_map[curr_tracker]
-            self.tracker_over_ride_stacked_widget.setCurrentWidget(
-                tracker_override_widget
-            )
-            self._update_tracker_override_example(tracker_override_widget)
-
-    @Slot(TrackerFormatOverride)
-    def _update_tracker_override_example(
-        self, tracker_format_override: TrackerFormatOverride
-    ) -> None:
-        qline = tracker_format_override.over_ride_format_file_name_token_example
-        enabled = tracker_format_override.enabled_checkbox.isChecked()
-        token_str = (
-            tracker_format_override.over_ride_format_title.text() if enabled else ""
-        )
-        colon_replace = (
-            ColonReplace(tracker_format_override.title_colon_replace.currentData())
-            if enabled
-            else ColonReplace(self.title_colon_replace.currentData())
-        )
-        over_ride_rules = (
-            tracker_format_override.over_ride_replacement_table.get_replacements()
-            if enabled
-            else None
-        )
-        self._update_example(
-            token_str=token_str
-            if token_str
-            else self.format_release_title_input.text(),
-            colon_replace=colon_replace,
-            file_name_mode=False,
-            qline=qline,
-            override_title_rules=over_ride_rules,
-        )
-
     @Slot()
     def _load_saved_settings(self) -> None:
         """Applies user saved settings from the config"""
@@ -383,8 +314,6 @@ class MoviesManagementSettings(BaseSettings):
         self.fn_colon_replace.blockSignals(True)
         self.format_release_title_input.blockSignals(True)
         self.title_colon_replace.blockSignals(True)
-        for over_ride_widget in self.tracker_override_map.values():
-            over_ride_widget.blockSignals(True)
 
         # load settings
         # initialize live cache with current config values
@@ -392,12 +321,8 @@ class MoviesManagementSettings(BaseSettings):
         self._live_video_dynamic_range = None
 
         self.rename_check_box.setChecked(self.config.settings.movie.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.settings.movie.replace_illegal_chars
-        )
-        self.load_combo_box(
+        self._load_filename_colon_combo(
             self.fn_colon_replace,
-            ColonReplace,
             self.config.settings.movie.filename_colon_replace,
         )
         self.load_combo_box(
@@ -405,9 +330,7 @@ class MoviesManagementSettings(BaseSettings):
             ColonReplace,
             self.config.settings.movie.title_colon_replace,
         )
-        self.parse_input_file_attributes.setChecked(
-            self.config.settings.movie.parse_filename_attributes
-        )
+        self._load_claim_switches(self.config.settings.movie.claims)
         if self.config.settings.movie.filename_token.strip():
             self._update_qline_cursor_0(
                 self.format_file_name_token_input,
@@ -418,62 +341,20 @@ class MoviesManagementSettings(BaseSettings):
                 self.format_release_title_input,
                 self.config.settings.movie.title_token,
             )
-        # load saved tracker overrides
-        for idx, tracker in enumerate(self.tracker_override_map.keys()):
-            over_ride_widget = self.tracker_override_map[tracker]
-            default_info = self.config.defaults.trackers.by_selection()[tracker]
-            tracker_info = self.config.settings.trackers.by_selection()[tracker]
-            over_ride_widget.enabled_checkbox.setChecked(
-                tracker_info.mvr_title_override_enabled
-            )
-            over_ride_widget.set_colon_replace(
-                str(tracker_info.mvr_title_colon_replace)
-            )
-            self._update_qline_cursor_0(
-                over_ride_widget.over_ride_format_title,
-                tracker_info.mvr_title_token_override,
-            )
-            over_ride_widget.over_ride_replacement_table.set_default_rules(
-                default_info.mvr_title_replace_map
-            )
-            over_ride_widget.over_ride_replacement_table.reset()
-            if tracker_info.mvr_title_replace_map:
-                over_ride_widget.over_ride_replacement_table.add_rows(
-                    tracker_info.mvr_title_replace_map
-                )
-            # we only want to pay the cost of running the token engine on the currently visible tracker
-            # override the others will be updated as they are clicked through
-            if idx == 0:
-                self._update_tracker_override_example(over_ride_widget)
-
         # unblock signals
         self.format_file_name_token_input.blockSignals(False)
         self.fn_colon_replace.blockSignals(False)
         self.format_release_title_input.blockSignals(False)
         self.title_colon_replace.blockSignals(False)
         self._update_all_examples()
-        QTimer.singleShot(1, self._delayed_unblock_override_widgets)
-
-    def _delayed_unblock_override_widgets(self) -> None:
-        """
-        This prevents un-needed calls that are slightly 'expensive' that can happen when
-        loading data into the override UI elements.
-        """
-        for over_ride_widget in self.tracker_override_map.values():
-            over_ride_widget.blockSignals(False)
 
     @Slot()
     def _save_settings(self) -> None:
         self.config.settings.movie.enabled = self.rename_check_box.isChecked()
-        self.config.settings.movie.replace_illegal_chars = (
-            self.replace_illegal_chars.isChecked()
-        )
         self.config.settings.movie.filename_colon_replace = ColonReplace(
             self.fn_colon_replace.currentData()
         )
-        self.config.settings.movie.parse_filename_attributes = (
-            self.parse_input_file_attributes.isChecked()
-        )
+        self.config.settings.movie.claims = self._current_claim_switches()
         self.config.settings.movie.title_colon_replace = ColonReplace(
             self.title_colon_replace.currentData()
         )
@@ -481,38 +362,14 @@ class MoviesManagementSettings(BaseSettings):
             self.format_file_name_token_input.text()
         )
         self.config.settings.movie.title_token = self.format_release_title_input.text()
-        # save tracker overrides
-        for tracker in self.tracker_override_map.keys():
-            over_ride_widget = self.tracker_override_map[tracker]
-            self.config.settings.trackers.by_selection()[
-                tracker
-            ].mvr_title_override_enabled = over_ride_widget.enabled_checkbox.isChecked()
-            self.config.settings.trackers.by_selection()[
-                tracker
-            ].mvr_title_colon_replace = (
-                over_ride_widget.title_colon_replace.currentData()
-            )
-            self.config.settings.trackers.by_selection()[
-                tracker
-            ].mvr_title_token_override = over_ride_widget.over_ride_format_title.text()
-            self.config.settings.trackers.by_selection()[
-                tracker
-            ].mvr_title_replace_map = (
-                over_ride_widget.over_ride_replacement_table.get_replacements()
-            )
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.movie.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.defaults.movie.replace_illegal_chars
+        self._select_filename_colon(
+            self.fn_colon_replace, self.config.defaults.movie.filename_colon_replace
         )
-        self.fn_colon_replace.setCurrentIndex(
-            self.config.defaults.movie.filename_colon_replace.value - 1
-        )
-        self.parse_input_file_attributes.setChecked(
-            self.config.defaults.movie.parse_filename_attributes
-        )
+        self._load_claim_switches(self.config.defaults.movie.claims)
         self.format_file_name_token_input.setText(
             self.config.defaults.movie.filename_token
         )
@@ -520,26 +377,7 @@ class MoviesManagementSettings(BaseSettings):
             self.config.defaults.movie.title_colon_replace.value - 1
         )
         self.format_release_title_input.setText(self.config.defaults.movie.title_token)
-        self._apply_override_defaults()
         self.token_table.reset()
-
-    def _apply_override_defaults(self) -> None:
-        for tracker in self.tracker_override_map.keys():
-            over_ride_widget = self.tracker_override_map[tracker]
-            tracker_info = self.config.defaults.trackers.by_selection()[tracker]
-            over_ride_widget.enabled_checkbox.setChecked(
-                tracker_info.mvr_title_override_enabled
-            )
-            over_ride_widget.title_colon_replace.setCurrentIndex(2)
-            self._update_qline_cursor_0(
-                over_ride_widget.over_ride_format_title,
-                tracker_info.mvr_title_token_override,
-            )
-            over_ride_widget.over_ride_replacement_table.reset()
-            if tracker_info.mvr_title_replace_map:
-                over_ride_widget.over_ride_replacement_table.add_rows(
-                    tracker_info.mvr_title_replace_map
-                )
 
     @Slot()
     def _show_example_input_data(self) -> None:
@@ -627,7 +465,15 @@ class MoviesManagementSettings(BaseSettings):
     def _build_colon_replace_combo(
         lbl_txt: str,
         parent: QWidget,
+        options: Sequence[tuple[ColonReplace, str]] | None = None,
     ) -> tuple[QLabel, CustomComboBox]:
+        """Build a colon-replacement combo.
+
+        ``options`` defaults to every ColonReplace member, which is what the
+        title side wants. The filename side passes FILENAME_COLON_OPTIONS:
+        three members with their own labels, because "Keep" and "Delete"
+        describe the enum rather than what a filename ends up looking like.
+        """
         colon_replacement_lbl = QLabel(lbl_txt, parent)
         colon_replacement_lbl.setToolTip(
             "Select how NfoForge handles colon replacement"
@@ -635,31 +481,38 @@ class MoviesManagementSettings(BaseSettings):
         colon_replacement_combo = CustomComboBox(
             disable_mouse_wheel=True, parent=parent
         )
-        for colon_enum in ColonReplace:
-            colon_replacement_combo.addItem(str(colon_enum), colon_enum.value)
+        for colon_enum, label in options or [
+            (member, str(member)) for member in ColonReplace
+        ]:
+            colon_replacement_combo.addItem(label, colon_enum)
         return colon_replacement_lbl, colon_replacement_combo
 
     @staticmethod
     def _build_token_layout(
-        colon_replace_lbl: QLabel,
-        colon_replace: QComboBox,
         widget_1: QWidget,
         widget_2: QWidget,
         example_section: QWidget,
+        colon_replace_lbl: QLabel | None = None,
+        colon_replace: QComboBox | None = None,
         header_widgets: Sequence[QWidget] | None = None,
         footer_widgets: Sequence[QWidget] | None = None,
         margins: tuple[int, int, int, int] | None = None,
     ) -> QVBoxLayout:
-        """margins (tuple[int, int, int, int] | None, optional): Left, top, right, bottom"""
+        """margins (tuple[int, int, int, int] | None, optional): Left, top, right, bottom
+
+        The colon widgets are optional: filename colon handling moved into
+        Controls, so only the title box still carries its own.
+        """
         layout = QVBoxLayout()
         if margins:
             layout.setContentsMargins(*margins)
         if header_widgets:
             for hw in header_widgets:
                 layout.addWidget(hw)
-        layout.addWidget(colon_replace_lbl)
-        layout.addWidget(colon_replace, stretch=1)
-        layout.addWidget(build_h_line((6, 1, 6, 1)))
+        if colon_replace_lbl is not None and colon_replace is not None:
+            layout.addWidget(colon_replace_lbl)
+            layout.addWidget(colon_replace, stretch=1)
+            layout.addWidget(build_h_line((6, 1, 6, 1)))
         layout.addWidget(widget_1)
         layout.addWidget(widget_2)
         layout.addWidget(example_section)

@@ -55,19 +55,32 @@ def test_active_file_drives_file_specific_tokens_in_series_pack() -> None:
         return TokenReplacer(
             media_input_obj=payload,
             media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
-            token_string="{resolution}|{release_group}|{re_release}|{original_filename}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+            # {re_release} is a claim now, detected pack-wide in stage 1 and
+            # supplied as an override, so it no longer varies per file. The
+            # rest still resolve from whichever file is active.
+            token_string="{resolution}|{release_group}|{original_filename}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
             colon_replace=ColonReplace.REPLACE_WITH_DASH,
             flatten=True,
             file_name_mode=False,
             token_type=FileToken,
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            parse_filename_attributes=True,
             season_number=1,
             active_file=active_file,
         ).get_output()
 
-    assert render(first_file) == f"1080p|GRP||{first_file.stem}"
-    assert render(second_file) == f"720p|OTHER|REPACK|{second_file.stem}"
+    assert render(first_file) == f"1080p|GRP|{first_file.stem}"
+    assert render(second_file) == f"720p|OTHER|{second_file.stem}"
+
+
+def test_tmdb_url_token_uses_the_tv_path_for_a_series() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ tmdb_url }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == f"https://www.themoviedb.org/tv/{EXAMPLE_SEARCH_PAYLOAD.tmdb_id}/"
 
 
 def _series_replacer(token: str) -> TokenReplacer:
@@ -232,6 +245,127 @@ def test_episode_tokens_prefer_selected_series_mapping() -> None:
     assert output == "Selected Order Title 2024-02-03 22"
 
 
+def _ordering_replacer(
+    token: str, episode_order_type_id: object = 4, episode: int = 2
+) -> TokenReplacer:
+    """A series whose DVD ordering disagrees with the flat aired list.
+
+    The same (season, episode) pair names a different episode in each,
+    which is the only situation where honouring the recorded ordering is
+    observable. The mapping row carries no ``episode_data``, forcing the
+    TVDB lookup rather than reading the payload straight off the row.
+    """
+    file_path = Path("Show.S01E02.mkv")
+    mapping: dict[str, object] = {
+        "season": 1,
+        "episode": episode,
+        "episode_name": "",
+    }
+    if episode_order_type_id is not None:
+        mapping["episode_order_type_id"] = episode_order_type_id
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={file_path: mapping},
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={
+                "episodes": [
+                    {
+                        "seasonNumber": 1,
+                        "number": 2,
+                        "absoluteNumber": 2,
+                        "name": "Aired Order Episode",
+                        "aired": "2020-01-02",
+                    }
+                ],
+                "episodes_by_type": {
+                    0: {
+                        "type_name": "Aired Order",
+                        "type": "official",
+                        "episodes": [
+                            {
+                                "seasonNumber": 1,
+                                "number": 2,
+                                "absoluteNumber": 2,
+                                "name": "Aired Order Episode",
+                                "aired": "2020-01-02",
+                            }
+                        ],
+                    },
+                    4: {
+                        "type_name": "DVD Order",
+                        "type": "dvd",
+                        "episodes": [
+                            {
+                                "seasonNumber": 1,
+                                "number": 2,
+                                "absoluteNumber": 9,
+                                "name": "DVD Order Episode",
+                                "aired": "2020-06-06",
+                            }
+                        ],
+                    },
+                },
+            },
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=episode,
+    )
+
+
+def test_episode_lookup_uses_the_ordering_the_row_recorded() -> None:
+    assert _ordering_replacer("{episode_title}").get_output() == "DVD Order Episode"
+
+
+def test_episode_lookup_falls_back_to_the_flat_list_without_a_recorded_ordering() -> (
+    None
+):
+    # Every mapping row written before the ordering field existed. Absent
+    # must keep meaning the flat list, or every saved job changes output.
+    replacer = _ordering_replacer("{episode_title}", episode_order_type_id=None)
+
+    assert replacer.get_output() == "Aired Order Episode"
+
+
+def test_episode_lookup_accepts_a_string_ordering_key_from_a_saved_job() -> None:
+    # tvdb_data is persisted through json.dumps, which turns the int keys of
+    # episodes_by_type into strings, while the mapping row's id stays an int.
+    # A saved job must not silently fall back to the aired list.
+    replacer = _ordering_replacer("{episode_title}")
+    tvdb_data = replacer.media_search_obj.tvdb_data
+    assert tvdb_data is not None
+    tvdb_data["episodes_by_type"] = {
+        str(key): value for key, value in tvdb_data["episodes_by_type"].items()
+    }
+
+    assert replacer.get_output() == "DVD Order Episode"
+
+
+def test_episode_lookup_cache_does_not_leak_across_orderings() -> None:
+    # The cache was keyed [season][episode]. Two lookups for the same pair
+    # under different orderings must return the two different episodes, not
+    # whichever was asked for first.
+    replacer = _ordering_replacer("{episode_title}")
+
+    dvd = replacer._get_tvdb_episode_dict(1, 2, 4)
+    aired = replacer._get_tvdb_episode_dict(1, 2, 0)
+    dvd_again = replacer._get_tvdb_episode_dict(1, 2, 4)
+
+    assert dvd is not None and dvd["name"] == "DVD Order Episode"
+    assert aired is not None and aired["name"] == "Aired Order Episode"
+    assert dvd_again is not None and dvd_again["name"] == "DVD Order Episode"
+
+
 def _series_replacer_with_episode_name(name: str | None) -> TokenReplacer:
     """Selected-mapping episode data with a caller-supplied ``name``, so
     episode-title placeholder handling can be exercised directly without
@@ -313,16 +447,30 @@ def test_episode_title_tokens_none_name_stays_empty_no_crash() -> None:
     assert replacer._episode_title_exact(_td()) == ""
 
 
-def test_episode_title_exact_strips_filesystem_hostile_characters() -> None:
-    replacer = _series_replacer_with_episode_name("Who Are You: Part 1/2")
+def test_episode_title_exact_keeps_the_title_exactly() -> None:
+    """The token grid has three tiers, and this one is "no formatting".
 
-    output = replacer._episode_title_exact(_td())
+    It used to strip `[:\\/<>?*"|]`, which is tier-1 behaviour under a
+    tier-3 name -- the one cell where the episode family did not mirror
+    {title_exact}. The colon mattered most: stripping it inside the handler
+    meant the configured colon rule, which runs later over the whole
+    string, never saw it. A tracker set to keep colons kept them in film
+    titles and lost them in episode titles.
+    """
+    name = 'Who Are You: Part 1/2 <"*|>'
+    replacer = _series_replacer_with_episode_name(name)
 
-    assert ":" not in output
-    assert "/" not in output
-    # Separators become a space, matching `_title_formatting_standard`, so
-    # "Part 1/2" reads as "Part 1 2" rather than running together as "Part 12".
-    assert output == "Who Are You Part 1 2"
+    assert replacer._episode_title_exact(_td()) == name
+
+
+def test_episode_title_exact_matches_title_exact_on_the_same_string() -> None:
+    # The equivalence this restores, asserted directly rather than by
+    # spelling out the character class twice.
+    name = 'Cafe: Who Are You?/Part "2"'
+    replacer = _series_replacer_with_episode_name(name)
+    replacer.media_search_obj.title = name
+
+    assert replacer._episode_title_exact(_td()) == replacer._title_exact(_td())
 
 
 def test_episode_title_exact_preserves_non_ascii() -> None:
@@ -331,6 +479,262 @@ def test_episode_title_exact_preserves_non_ascii() -> None:
     replacer = _series_replacer_with_episode_name("Kimi no Na wa。")
 
     assert "。" in replacer._episode_title_exact(_td())
+
+
+def test_the_other_two_episode_title_tiers_are_unchanged() -> None:
+    # Only the exact tier moves. The standard tier still strips and
+    # unidecodes, and the clean tier still answers to the configured rules.
+    replacer = _series_replacer_with_episode_name("Who Are You: Part 1/2")
+
+    assert replacer._episode_title(_td()) == "Who Are You Part 1 2"
+    assert replacer._episode_title_clean(_td()) == "Who Are You: Part 1/2"
+
+
+@pytest.mark.parametrize(
+    "episode_name",
+    [
+        "Who Are You?",
+        "Face/Off",
+        "Chapter 1: The Beginning",
+        'The "Best" Episode',
+        "A|B<C>D*E",
+        "Back\\Slash",
+    ],
+)
+def test_a_raw_episode_title_does_not_change_any_filename(episode_name: str) -> None:
+    """The whole change is title-side. Filenames are sanitised downstream.
+
+    `_INVALID_FILENAME_CHARS` covers the same characters the token used to
+    strip, and the two routes converge: the token route substituted a space
+    then dotted it, the sanitiser substitutes a dot directly, and the
+    `\\.{2,}` collapse plus `strip(". -")` land both on the same string.
+    """
+    file_path = Path("Show.S01E01.mkv")
+    output = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": 1,
+                    "episode": 1,
+                    "episode_name": episode_name,
+                    "episode_data": {
+                        "seasonNumber": 1,
+                        "number": 1,
+                        "name": episode_name,
+                    },
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            title="Show",
+            tvdb_data={
+                "episodes": [{"seasonNumber": 1, "number": 1, "name": episode_name}]
+            },
+        ),
+        token_string=(  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+            "{title_clean}.S{season_number|zfill(2)}E{episode_number|zfill(2)}."
+            "{episode_title_exact}.1080p.BluRay.x264-GRP"
+        ),
+        colon_replace=ColonReplace.KEEP,
+        flatten=True,
+        file_name_mode=True,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=1,
+    ).get_output()
+
+    assert output is not None
+    for character in ':\\/<>?*"|':
+        assert character not in output, character
+
+
+_SPAN_START_PAYLOAD: dict[str, object] = {
+    "seasonNumber": 1,
+    "number": 1,
+    "absoluteNumber": 1,
+    "name": "Pilot",
+    "aired": "2024-01-01",
+}
+
+
+def _span_replacer(
+    token: str,
+    *,
+    file_name_mode: bool = False,
+    episodes: list[dict[str, object]] | None = None,
+    start_payload: dict[str, object] | None = None,
+    episode_end: int = 3,
+) -> TokenReplacer:
+    """A file covering S01E01-E03, mapped to episode 1 with a real title.
+
+    ``episodes`` is the flat TVDB list. The start episode is read straight
+    off the mapping row, so this list only matters for the *end* of the
+    span: the row keys on the start episode, so no row matches the end and
+    it resolves through the TVDB fallback exactly as it does in the app.
+    """
+    file_path = Path("Show.S01E01-E03.mkv")
+    return TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+            series_episode_map={
+                file_path: {
+                    "season": 1,
+                    "episode": 1,
+                    "episode_end": episode_end,
+                    "episode_name": "Pilot",
+                    "episode_data": (
+                        start_payload
+                        if start_payload is not None
+                        else dict(_SPAN_START_PAYLOAD)
+                    ),
+                }
+            },
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={
+                "episodes": (
+                    episodes if episodes is not None else [dict(_SPAN_START_PAYLOAD)]
+                )
+            },
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=file_name_mode,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+        episode_number=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+def test_episode_title_tokens_blank_for_a_multi_episode_span(token: str) -> None:
+    # A file covering S01E01-E03 has no single episode title. Naming it
+    # after episode 1 asserts that one episode's title describes all three.
+    assert _span_replacer(token).get_output() == ""
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+@pytest.mark.parametrize(
+    ("file_name_mode", "expected"),
+    [(False, "Show S01E01-03 1080p"), (True, "Show.S01E01-03.1080p.mkv")],
+)
+def test_multi_episode_span_drops_the_title_from_a_whole_template(
+    token: str, file_name_mode: bool, expected: str
+) -> None:
+    # Both output modes, because the handlers are shared: file_name_mode
+    # selects only the final formatting stage, not token resolution.
+    #
+    # A whole template rather than the bare token: in file_name_mode a name
+    # that resolves to nothing at all is rejected and get_output() returns
+    # None, so a bare-token assertion would pass without proving the
+    # surrounding components survived. This asserts the designator still
+    # renders E01-03 and no stray separator is left where the title was.
+    output = _span_replacer(
+        f"Show S{{season_number|zfill(2)}}E{{episode_number|zfill(2)}} {token} 1080p",
+        file_name_mode=file_name_mode,
+    ).get_output()
+
+    assert output == expected
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+def test_episode_title_tokens_keep_the_title_for_a_single_episode(
+    token: str,
+) -> None:
+    # The guard for the span check: a normal single-episode file is
+    # untouched. _series_replacer maps S01E02 with no episode_end.
+    assert _series_replacer(token).get_output() == "Selected Order Title"
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["{episode_title}", "{episode_title_clean}", "{episode_title_exact}"],
+)
+def test_episode_title_tokens_stay_blank_for_a_season_pack(token: str) -> None:
+    # Already correct today and must not regress while adding the span
+    # check: _verify_series_info needs an episode number and a pack has none.
+    file_path = Path("Show.S01.mkv")
+    replacer = TokenReplacer(
+        media_input_obj=MediaInputPayload(
+            input_path=file_path,
+            media_type=MediaType.SERIES,
+            file_list=[file_path],
+        ),
+        media_search_obj=MediaSearchPayload(
+            media_type=MediaType.SERIES,
+            tvdb_data={"episodes": [{"seasonNumber": 1, "number": 1, "name": "Pilot"}]},
+        ),
+        token_string=token,
+        colon_replace=ColonReplace.REPLACE_WITH_DASH,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        season_number=1,
+    )
+
+    assert replacer.get_output() == ""
+
+
+def test_span_predicate_is_shared_by_episode_number_and_episode_title() -> None:
+    # episode_end present but not greater than the start is not a span.
+    # Both the designator and the title must agree, which is what makes
+    # extracting the predicate worth doing: a fixture that renders the raw
+    # start number must also render the title.
+    replacer = _multi_episode_replacer(
+        "{episode_number}|{episode_title}",
+        MultiEpisodeStyle.RANGE,
+        episode=2,
+        episode_end=2,
+    )
+
+    assert replacer.get_output() == "2|Multi Episode"
+
+
+def test_span_episode_list_is_derived_for_a_row_without_one() -> None:
+    # Every saved job written before the list existed. The old code could
+    # only produce contiguous spans -- it kept the first and last of a
+    # sorted list -- so deriving the range is exact, not a guess.
+    replacer = _span_replacer("{episode_number}")
+
+    assert replacer._span_episode_list(1, 1) == [1, 2, 3]
+
+
+def test_span_episode_list_prefers_a_stored_non_contiguous_list() -> None:
+    # S01E01E05 is the shape a derived range gets wrong: it implies five
+    # episodes where the file holds two.
+    replacer = _span_replacer("{episode_number}", episode_end=5)
+    mapping = next(iter(replacer.media_input_obj.series_episode_map.values()))
+    mapping["episode_list"] = [1, 5]
+
+    assert replacer._span_episode_list(1, 1) == [1, 5]
+
+
+def test_span_episode_list_is_one_episode_when_the_file_covers_one() -> None:
+    # _series_replacer maps S01E02 with no episode_end. The list must still
+    # answer, so callers never special-case the single-episode file.
+    replacer = _series_replacer("{episode_number}")
+
+    assert replacer._span_episode_list(1, 2) == [2]
 
 
 @pytest.mark.parametrize("placeholder_name", ["TBA", "Episode 12"])
@@ -486,27 +890,156 @@ def test_end_episode_number_blank_for_single_episode() -> None:
     assert output == ""
 
 
+_SAME_DAY_END: list[dict[str, object]] = [
+    {
+        "seasonNumber": 1,
+        "number": 3,
+        "absoluteNumber": 3,
+        "name": "Part Three",
+        "aired": "2024-01-01",
+    }
+]
+_LATER_END: list[dict[str, object]] = [
+    {
+        "seasonNumber": 1,
+        "number": 3,
+        "absoluteNumber": 3,
+        "name": "Part Three",
+        "aired": "2024-01-15",
+    }
+]
+
+
+def test_air_date_survives_a_span_whose_episodes_aired_together() -> None:
+    # A two- or three-parter broadcast in one block: every episode in the
+    # file aired that day, so the date does describe the whole file. Daily
+    # templates carry no SxxExx at all, so blanking here would leave a name
+    # with no episode identifier in it.
+    output = _span_replacer("{episode_air_date}", episodes=_SAME_DAY_END).get_output()
+
+    assert output == "2024-01-01"
+
+
+def test_air_date_blanks_for_a_span_whose_episodes_aired_apart() -> None:
+    output = _span_replacer("{episode_air_date}", episodes=_LATER_END).get_output()
+
+    assert output == ""
+
+
+def test_air_date_blanks_when_the_end_episode_is_missing_from_tvdb() -> None:
+    # Cannot prove the dates match, so the date cannot be asserted of the
+    # whole file.
+    output = _span_replacer("{episode_air_date}", episodes=[]).get_output()
+
+    assert output == ""
+
+
+@pytest.mark.parametrize("absent", ["", None])
+def test_air_date_blanks_rather_than_matching_two_absent_dates(
+    absent: str | None,
+) -> None:
+    # Two synthesized payloads spell "no date" differently -- "" from the
+    # episode_name-only branch, None from the mapper's manual edit path.
+    # Comparing them directly calls two absent dates a match and keeps the
+    # start value. That is harmless only because `_optional_user_input`
+    # blanks anything falsy; this pins the outcome so a later change that
+    # substitutes a placeholder for an absent date cannot leak it into a
+    # name through the same-day branch.
+    output = _span_replacer(
+        "{episode_air_date}",
+        episodes=[
+            {
+                "seasonNumber": 1,
+                "number": 3,
+                "name": "Part Three",
+                "aired": absent,
+            }
+        ],
+        start_payload={
+            "seasonNumber": 1,
+            "number": 1,
+            "name": "Part One",
+            "aired": absent,
+        },
+    ).get_output()
+
+    assert output == ""
+
+
+def test_absolute_number_renders_the_span() -> None:
+    # An identifier, so a span is more informative than the first episode's
+    # number and never leaves a file unnumbered. Padded to 3 so a template's
+    # own |zfill(3) is a no-op on the composite.
+    output = _span_replacer(
+        "{episode_number_absolute}", episodes=_SAME_DAY_END
+    ).get_output()
+
+    assert output == "001-003"
+
+
+def test_absolute_number_single_episode_is_unchanged_and_still_pads() -> None:
+    # The guard: a single episode keeps the raw unpadded number so the
+    # template's own filter still pads it.
+    assert _series_replacer("{episode_number_absolute}").get_output() == "22"
+    assert _series_replacer("{episode_number_absolute|zfill(3)}").get_output() == "022"
+
+
+def test_absolute_number_falls_back_to_episode_numbers_for_both_ends() -> None:
+    # The end episode has no absoluteNumber, so mixing sources would render
+    # "001-03". Both components come from the same place or neither does.
+    output = _span_replacer(
+        "{episode_number_absolute}",
+        episodes=[{"seasonNumber": 1, "number": 3, "name": "Part Three", "aired": ""}],
+    ).get_output()
+
+    assert output == "01-03"
+
+
+def test_absolute_number_rejects_a_span_length_that_does_not_match() -> None:
+    # An end absolute number inconsistent with the span -- what an ordering
+    # mismatch or a TVDB gap produces. "001-047" is wrong and plausible,
+    # which is worse than a duplicated designator.
+    output = _span_replacer(
+        "{episode_number_absolute}",
+        episodes=[
+            {
+                "seasonNumber": 1,
+                "number": 3,
+                "absoluteNumber": 47,
+                "name": "Part Three",
+                "aired": "2024-01-01",
+            }
+        ],
+    ).get_output()
+
+    assert output == "01-03"
+
+
 def _multi_episode_replacer(
     token: str,
     multi_episode_style: MultiEpisodeStyle,
     episode: int = 1,
     episode_end: int = 3,
     season: int = 1,
+    episode_list: list[int] | None = None,
 ) -> TokenReplacer:
     file_path = Path("Show.S01E01-E03.mkv")
+    mapping: dict[str, object] = {
+        "season": season,
+        "episode": episode,
+        "episode_end": episode_end,
+        "episode_name": "Multi Episode",
+    }
+    # Left absent by default, so the common fixture exercises the derived
+    # list a row written before the field existed still gets.
+    if episode_list is not None:
+        mapping["episode_list"] = episode_list
     return TokenReplacer(
         media_input_obj=MediaInputPayload(
             input_path=file_path,
             media_type=MediaType.SERIES,
             file_list=[file_path],
-            series_episode_map={
-                file_path: {
-                    "season": season,
-                    "episode": episode,
-                    "episode_end": episode_end,
-                    "episode_name": "Multi Episode",
-                }
-            },
+            series_episode_map={file_path: mapping},
         ),
         media_search_obj=MediaSearchPayload(
             media_type=MediaType.SERIES, tvdb_data={"episodes": []}
@@ -526,15 +1059,12 @@ def _multi_episode_replacer(
 @pytest.mark.parametrize(
     ("style", "expected"),
     [
-        # EXTEND and RANGE collapse to the same "start-end" form because the
-        # mapping (Task 4.1) only stores start/end, not the full intermediate
-        # episode list EXTEND would otherwise need.
-        (MultiEpisodeStyle.EXTEND, "01-03"),
-        (MultiEpisodeStyle.DUPLICATE, "01.S01E03"),
-        (MultiEpisodeStyle.REPEAT, "01E03"),
-        # SCENE and PREFIXED_RANGE likewise collapse to the same
-        # "start-Eend" form given only start/end data.
-        (MultiEpisodeStyle.SCENE, "01-E03"),
+        # Four styles expand: they name every episode in the file.
+        (MultiEpisodeStyle.EXTEND, "01-02-03"),
+        (MultiEpisodeStyle.DUPLICATE, "01.S01E02.S01E03"),
+        (MultiEpisodeStyle.REPEAT, "01E02E03"),
+        (MultiEpisodeStyle.SCENE, "01-E02-E03"),
+        # Two render a range from the ends alone.
         (MultiEpisodeStyle.RANGE, "01-03"),
         (MultiEpisodeStyle.PREFIXED_RANGE, "01-E03"),
     ],
@@ -545,6 +1075,71 @@ def test_episode_number_renders_multi_episode_designator_per_style(
     output = _multi_episode_replacer("{episode_number}", style).get_output()
 
     assert output == expected
+
+
+@pytest.mark.parametrize(
+    ("style", "expected"),
+    [
+        (MultiEpisodeStyle.EXTEND, "01-02"),
+        (MultiEpisodeStyle.DUPLICATE, "01.S01E02"),
+        (MultiEpisodeStyle.REPEAT, "01E02"),
+        (MultiEpisodeStyle.SCENE, "01-E02"),
+        (MultiEpisodeStyle.RANGE, "01-02"),
+        (MultiEpisodeStyle.PREFIXED_RANGE, "01-E02"),
+    ],
+)
+def test_two_episode_spans_render_per_style(
+    style: MultiEpisodeStyle, expected: str
+) -> None:
+    # At two episodes Extend and Range agree, and the styles that differ do
+    # so on the separator alone. Worth pinning: two is the common case and
+    # the one where a wrong implementation still looks plausible.
+    output = _multi_episode_replacer(
+        "{episode_number}", style, episode_end=2
+    ).get_output()
+
+    assert output == expected
+
+
+def test_a_non_contiguous_span_names_only_the_episodes_it_holds() -> None:
+    # The reason the list is stored rather than derived. "S01E01E05" holds
+    # two episodes; a derived range would claim five.
+    output = _multi_episode_replacer(
+        "{episode_number}",
+        MultiEpisodeStyle.REPEAT,
+        episode_end=5,
+        episode_list=[1, 5],
+    ).get_output()
+
+    assert output == "01E05"
+
+
+def test_style_labels_name_the_output_each_one_produces() -> None:
+    # The combo labels come from the member names, and the four expand
+    # styles used to collapse onto the two range ones -- so picking "Scene"
+    # gave Prefixed Range's output. Now that both halves exist, the label a
+    # user picks and the shape they get have to stay tied together.
+    assert [str(style) for style in MultiEpisodeStyle] == [
+        "Extend",
+        "Duplicate",
+        "Repeat",
+        "Scene",
+        "Range",
+        "Prefixed Range",
+    ]
+
+
+def test_a_non_contiguous_range_style_still_reads_from_the_ends() -> None:
+    # Range says "first through last" and cannot say which of the episodes
+    # between are present, so the stored list does not change it.
+    output = _multi_episode_replacer(
+        "{episode_number}",
+        MultiEpisodeStyle.RANGE,
+        episode_end=5,
+        episode_list=[1, 5],
+    ).get_output()
+
+    assert output == "01-05"
 
 
 def test_episode_number_single_episode_unchanged_raw_number() -> None:

@@ -30,7 +30,7 @@ from src.backend.upload_retry import TrackerRunOutcome
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
 
 _TRACKERS = (TrackerSelection.AITHER, TrackerSelection.HUNO)
 _NFOS = {TrackerSelection.AITHER: "a", TrackerSelection.HUNO: "h"}
@@ -470,7 +470,7 @@ def test_urls_uploaded_during_the_run_are_written_back(working_dir: Path) -> Non
     """
     job, directory = _job(working_dir)
     context = _context(directory)
-    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = {
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
         0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
     }
     outcome = QueuedJobOutcome(
@@ -489,7 +489,10 @@ def test_urls_uploaded_during_the_run_are_written_back(working_dir: Path) -> Non
     assert reloaded.context["shared_data"]["uploaded_images_by_host"] == [
         {
             "name": "PIXHOST",
-            "type": "ImageHost",
+            "type": "ImageHostRef",
+            # empty for every host but a Chevereto instance, which is the only
+            # kind that holds more than one site
+            "instance": "",
             "images": {"0": {"url": "https://pixhost/0.png", "medium_url": None}},
         }
     ]
@@ -503,7 +506,7 @@ def test_urls_are_written_back_even_when_every_tracker_failed(
     again."""
     job, directory = _job(working_dir)
     context = _context(directory)
-    context.shared_data.uploaded_images_by_host[ImageHost.PIXHOST] = {
+    context.shared_data.uploaded_images_by_host[ImageHostRef(ImageHost.PIXHOST)] = {
         0: ImageUploadData(url="https://pixhost/0.png", medium_url=None)
     }
     outcome = QueuedJobOutcome(
@@ -576,10 +579,10 @@ def test_an_uncertain_tracker_in_an_archive_keeps_its_image_host(
     store.write_job_document(job, directory)
     context = _context(directory)
     context.shared_data.tracker_image_hosts[TrackerSelection.AITHER] = (
-        ImageUploadFromTo(ImageSource.IMAGES, ImageHost.PIXHOST)
+        ImageUploadFromTo(ImageSource.IMAGES, ImageHostRef(ImageHost.PIXHOST))
     )
     context.shared_data.tracker_image_hosts[TrackerSelection.HUNO] = ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
     store.write_job_document(
         store.build_job(

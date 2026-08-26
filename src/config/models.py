@@ -17,6 +17,7 @@ from src.enums.token_replacer import ColonReplace
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.url_type import URLType
+from src.packages.custom_types import ImageHostRef
 from src.payloads.clients import (
     DelugeConfig,
     NetworkTorrentClientConfig,
@@ -119,7 +120,7 @@ class DependencySettings:
 @dataclass(slots=True)
 class TrackerSettings:
     order: list[TrackerSelection]
-    last_used_image_host: dict[TrackerSelection, ImageHost | ImageSource]
+    last_used_image_host: dict[TrackerSelection, ImageHostRef | ImageSource]
     torrent_leech: TorrentLeechInfo
     beyond_hd: BeyondHDInfo
     pass_the_popcorn: PassThePopcornInfo
@@ -181,12 +182,30 @@ class TorrentClientSettings:
 
 
 @dataclass(slots=True)
+class ClaimSwitches:
+    """Which claims are read out of the input filename.
+
+    A claim is parsed if and only if `enabled` and its own switch are both
+    true. The six are claims MediaInfo cannot verify; quality/source,
+    streaming service and release group are always parsed and have no
+    switch, because they are identity fields the user always wants.
+    """
+
+    enabled: bool
+    edition: bool
+    frame_size: bool
+    localization: bool
+    re_release: bool
+    remux: bool
+    hybrid: bool
+
+
+@dataclass(slots=True)
 class MovieSettings:
     enabled: bool
-    replace_illegal_chars: bool
     filename_colon_replace: ColonReplace
     title_colon_replace: ColonReplace
-    parse_filename_attributes: bool
+    claims: ClaimSwitches
     filename_token: str
     title_token: str
     release_group: str
@@ -195,10 +214,9 @@ class MovieSettings:
 @dataclass(slots=True)
 class SeriesSettings:
     enabled: bool
-    replace_illegal_chars: bool
     filename_colon_replace: ColonReplace
     title_colon_replace: ColonReplace
-    parse_filename_attributes: bool
+    claims: ClaimSwitches
     standard_episode_token: str
     daily_episode_token: str
     anime_episode_token: str
@@ -351,24 +369,44 @@ class ScreenshotSettings:
 
 @dataclass(slots=True)
 class ImageHostSettings:
-    chevereto_v3: CheveretoV3Payload
-    chevereto_v4: CheveretoV4Payload
+    # Chevereto sites are user-managed lists rather than single slots: one
+    # Chevereto build powers many sites (ptscreens, and the OnlyImage/Lensdump
+    # entries below), so a single slot meant choosing one of them per profile.
+    chevereto_v3: list[CheveretoV3Payload]
+    chevereto_v4: list[CheveretoV4Payload]
     image_bb: ImageBBPayload
     image_box: ImageBoxPayload
     only_image: OnlyImagePayload
     pixhost: PixhostPayload
     lensdump: LensdumpPayload
 
-    def by_selection(self) -> dict[ImageHost, ImagePayloadBase]:
-        return {
-            ImageHost.CHEVERETO_V3: self.chevereto_v3,
-            ImageHost.CHEVERETO_V4: self.chevereto_v4,
-            ImageHost.IMAGE_BB: self.image_bb,
-            ImageHost.IMAGE_BOX: self.image_box,
-            ImageHost.ONLY_IMAGE: self.only_image,
-            ImageHost.PIXHOST: self.pixhost,
-            ImageHost.LENSDUMP: self.lensdump,
-        }
+    def by_selection(self) -> dict[ImageHostRef, ImagePayloadBase]:
+        hosts: dict[ImageHostRef, ImagePayloadBase] = {}
+        for kind, instances in (
+            (ImageHost.CHEVERETO_V3, self.chevereto_v3),
+            (ImageHost.CHEVERETO_V4, self.chevereto_v4),
+        ):
+            for instance in instances:
+                hosts[
+                    ImageHostRef(
+                        kind=kind,
+                        instance_id=instance.instance_id,
+                        label=instance.label,
+                    )
+                ] = instance
+        for kind, payload in (
+            (ImageHost.IMAGE_BB, self.image_bb),
+            (ImageHost.IMAGE_BOX, self.image_box),
+            (ImageHost.ONLY_IMAGE, self.only_image),
+            (ImageHost.PIXHOST, self.pixhost),
+            (ImageHost.LENSDUMP, self.lensdump),
+        ):
+            hosts[ImageHostRef(kind=kind)] = payload
+        return hosts
+
+    def instance_for(self, ref: ImageHostRef) -> ImagePayloadBase | None:
+        """The payload `ref` points at, or None once it has been deleted."""
+        return self.by_selection().get(ref)
 
 
 @dataclass(slots=True)

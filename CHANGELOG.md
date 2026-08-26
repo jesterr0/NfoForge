@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.1.9] - 2026-08-26
+
+### Added
+
+- **Chevereto v3 and v4 hold as many sites as you like**, each labeled however you want, instead of one site each. Use **Add Chevereto Site** above the list in **Settings -> Screenshots -> Image Hosts Configuration** to add one, and the **Remove Site** button on a site's own row to delete it. Any site running Chevereto works -- [ptscreens.com](https://ptscreens.com/) is offered as a preset that fills in its URL for you. Renaming a site keeps every per-tracker selection and saved job pointed at it.
+- Six per-category switches for what NfoForge reads out of an input filename -- edition, frame size, localization, re-release, remux and hybrid -- under a master toggle, on both the movie and series settings pages. These replace a single flag that no longer reached anything, so a claim you did not want could not be turned off and one you did want could not be turned on.
+- Season and episode mapping rows record which TVDB ordering they came from. The same season/episode pair names a different episode in each ordering, so a lookup now answers from the ordering the row was matched against.
+- Can now search via TMDBID/TMDB URL.
+  - Improved code related to search.
+  - Added a new help button to the right of the search label for information regarding these changes
+- New NFO template tokens: `{{ plot }}` for the overview/plot text, and `{{ imdb_url }}` / `{{ tmdb_url }}` for the full IMDb/TMDB links (TMDB uses the correct `/movie/` or `/tv/` path automatically). `{{ plot }}` follows your selected TMDB language, the same as `{{ title }}` already does.
+
+### Changed
+
+- Configuration schema 11. A profile that had a Chevereto v3 or v4 site configured keeps it as a labeled site named "Chevereto v3"/"Chevereto v4", and the trackers pointed at it stay pointed at it. A slot never configured migrates to no site at all rather than an empty one.
+- **Tracker release titles are built from each tracker's own published naming rules.** Those rules are enforced rather than offered as an editable per-tracker template, so the **Format Title Tracker Overrides** controls are gone from the movie and series settings pages. The global **Format Title Tokens** template stays yours: it is what trackers with no published rules of their own still render.
+  - BeyondHD changes most -- dynamic range, audio spelling and order, DVD component order, and a bug that mangled channel layouts.
+  - ReelFliX puts video ahead of audio on a remux, which its rules require. Its shipped template was a near copy of BeyondHD's, so every remux had been emitting audio first.
+  - Aither, LST and ReelFliX gain a Dub component, marking a dual-audio or dubbed release.
+  - Dark Peers, ShareIsland, UploadCX and OnlyEncodes: series titles follow the tracker's own layout rather than your global template, punctuation in a title is preserved rather than flattened, and an episode title is included where the release covers a single episode.
+  - The **Overview** dialog shows each tracker's title for review rather than for editing. Cancel if one looks wrong; NFOs are still editable.
+- A prepared job builds its title from current rules when it uploads, rather than reusing the one frozen when it was prepared, so a rules correction reaches a job prepared before it. Its NFO is still reused as saved, so a queued job still runs unattended.
+- Configuration schema 10. Loading an older profile discards its per-tracker title overrides; the global movie and series title tokens and colon settings are preserved.
+- A file covering several episodes no longer describes itself by the first of them. `{episode_title}`, `{episode_air_date}` and `{episode_number_absolute}` are omitted for a span rather than naming one episode as though it described all of them.
+- All six multi-episode styles render distinctly. Some previously produced identical output.
+- `{episode_title_exact}` applies no formatting, matching `{title_exact}`. It used to strip characters, which meant the two halves of one tracker's title disagreed about the same string.
+- Now restarts NfoForge when the plugin system is toggled on/off.
+- Updated dependencies:
+  - platformdirs
+
+### Fixed
+
+- `H.264` and `H.265` keep their period in tracker titles. On every tracker that strips dots from a release name they were reaching the tracker as `H 264` and `H 265`.
+- An empty release title is never silently uploaded as the filename. A tracker with hardcoded rules refuses the upload and names itself; a tracker rendering your own template falls back to the release name and logs that it did.
+- `{cut}` sees an edition supplied on the rename page, not only one supplied by the upload path.
+- Dubbed releases are detected and marked.
+- The over-1080 dynamic range token no longer drops HDR at 1080p.
+- An episode's own claims still reach its filename in a pack where the episodes disagree.
+- Folder names render without a round-trip through a filename extension.
+- Checked trackers could be un-checked during tv flow if they didn't support it and would stay un-checked for the next movie run
+- Small logging related error
+
 ## [1.1.8] - 2026-08-19
 
 ### Added

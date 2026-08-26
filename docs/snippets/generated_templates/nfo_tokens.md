@@ -12,12 +12,14 @@
 | `{{ file_size }}` | File size (7.89 GiB) |
 | `{{ file_size_bytes }}` | File size in bytes (8469985859) |
 | `{{ format_profile }}` | Format Profile (Main@L4) |
+| `{{ imdb_url }}` | Full IMDb URL (https://www.imdb.com/title/tt.../) |
 | `{{ is_anime }}` | Returns 'Anime' if the release is anime |
 | `{{ media_file }}` | Media filename with extension |
 | `{{ media_file_no_ext }}` | Media filename without extension |
 | `{{ media_info }}` | Mediainfo output with filepath cleansed |
 | `{{ media_info_short }}` | Shortened Mediainfo output with filepath cleansed |
 | `{{ media_type }}` | Media type (Movie/Series) |
+| `{{ plot }}` | Plot/overview text (already follows the selected TMDB language) |
 | `{{ program_info }}` | NfoForge vx.x.x |
 | `{{ proper }}` | Returns 'PROPER' if proper was detected |
 | `{{ proper_n }}` | Proper and proper number if exists (PROPER2) |
@@ -38,8 +40,9 @@
 | `{{ source_file }}` | Source filename with extension |
 | `{{ source_file_no_ext }}` | Source filename without extension |
 | `{{ subtitle_s }}` | English, French, ... |
-| `{{ total_episodes }}` | Total episodes in the series |
-| `{{ total_seasons }}` | Total seasons in series |
+| `{{ tmdb_url }}` | Full TMDB URL, /movie/ or /tv/ path depending on media type |
+| `{{ total_episodes }}` | Total episodes the series has (not in this release) |
+| `{{ total_seasons }}` | Total seasons the series has (not in this release) |
 | `{{ video_bit_rate }}` | Average video bit-rate in kbps (9975 kbps) |
 | `{{ video_bit_rate_num_only }}` | Average video bit-rate in kbps, numbers only (9975) |
 | `{{ video_frame_rate }}` | FPS (23.976) |

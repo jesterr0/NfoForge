@@ -11,13 +11,13 @@ from src.backend.tracker_run_data import (
 )
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageUploadFromTo
+from src.packages.custom_types import ImageHostRef, ImageUploadFromTo
 
 
 def _hosts() -> dict[TrackerSelection, ImageUploadFromTo]:
     return {
         TrackerSelection.AITHER: ImageUploadFromTo(
-            ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+            ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
         ),
         TrackerSelection.HUNO: ImageUploadFromTo(ImageSource.URLS, ImageSource.URLS),
     }
@@ -61,7 +61,7 @@ def test_image_host_data_is_carried_through(tmp_path: Path) -> None:
     data = build_tracker_data(tmp_path, tmp_path / "Release.mkv", _hosts())
 
     assert data["Aither"]["image_host_data"] == ImageUploadFromTo(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
 
@@ -69,7 +69,7 @@ def test_labels_match_what_the_combo_boxes_show(tmp_path: Path) -> None:
     data = build_tracker_data(tmp_path, tmp_path / "Release.mkv", _hosts())
 
     assert data["Aither"]["image_host"] == image_host_label(
-        ImageSource.IMAGES, ImageHost.CHEVERETO_V3
+        ImageSource.IMAGES, ImageHostRef(ImageHost.CHEVERETO_V3)
     )
 
 
@@ -96,8 +96,12 @@ def test_building_never_prompts(
 @pytest.mark.parametrize(
     ("source", "destination", "expected"),
     [
-        (ImageSource.IMAGES, ImageHost.CHEVERETO_V3, "IMGs ➔ Chevereto v3"),
-        (ImageSource.IMAGES, ImageHost.DISABLED, "Disabled"),
+        (
+            ImageSource.IMAGES,
+            ImageHostRef(ImageHost.CHEVERETO_V3),
+            "IMGs ➔ Chevereto v3",
+        ),
+        (ImageSource.IMAGES, ImageHostRef(ImageHost.DISABLED), "Disabled"),
         (ImageSource.URLS, ImageSource.URLS, "URLs"),
     ],
 )

@@ -1,6 +1,6 @@
 # Plugin System
 
-NfoForge plugins are trusted Python code loaded into the application process. Install only plugins whose source and author you trust. Enabled plugins are loaded once at startup; changing a plugin or the enabled setting requires restarting NfoForge.
+NfoForge plugins are trusted Python code loaded into the application process. Install only plugins whose source and author you trust. Enabled plugins are loaded once at startup; changing the enabled setting prompts you to restart NfoForge, and a restart is still required afterward for a new or changed plugin to actually be picked up.
 
 ## Local plugins
 

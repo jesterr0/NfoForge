@@ -371,10 +371,13 @@ class TrackerSettingsWidget(QWidget):
             # profile would silently disable it everywhere.
             if tracker in self._locked_trackers:
                 continue
-            tracker_map[tracker].enabled = (
-                item.checkState() == Qt.CheckState.Checked
-                and tracker not in self._unsupported_trackers
-            )
+            # An unsupported tracker is unchecked because the current content
+            # type doesn't support it, not because the user disabled it --
+            # copying that into the profile would silently disable it for
+            # every future run, including ones where it IS supported.
+            if tracker in self._unsupported_trackers:
+                continue
+            tracker_map[tracker].enabled = item.checkState() == Qt.CheckState.Checked
 
     def save_editor_settings(self) -> None:
         """Save all visible editor values into the configured object.

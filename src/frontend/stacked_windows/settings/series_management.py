@@ -1,8 +1,7 @@
 from collections.abc import Sequence
-from functools import partial
 from typing import TYPE_CHECKING, TypedDict, cast
 
-from PySide6.QtCore import QSize, QTimer, Slot
+from PySide6.QtCore import QSize, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -18,15 +17,15 @@ from PySide6.QtWidgets import (
 
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
-from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
-    UNSUPPORTED_SERIES_TRACKERS,
-)
 from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_FILE_NAME_1,
     EXAMPLE_MEDIA_INPUT_PAYLOAD,
     EXAMPLE_MEDIAINFO_OUTPUT_STR,
     EXAMPLE_SEARCH_PAYLOAD,
+)
+from src.backend.utils.filename_claims import (
+    FilenameClaims,
+    detect_filename_claims,
 )
 from src.config.config import ConfigManager
 from src.config.models import DynamicRangeSettings, DynamicRangeSettingsData
@@ -34,23 +33,24 @@ from src.config.tv_tokens import (
     SUPPORTED_TVR_FORMATS,
     get_tvr_episode_token,
     get_tvr_title_token,
+    resolve_season_subfolder_token,
     set_tvr_episode_token,
     set_tvr_title_token,
 )
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
-from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
-from src.enums.tracker_selection import TrackerSelection
+from src.enums.token_replacer import (
+    FILENAME_COLON_OPTIONS,
+    ColonReplace,
+    UnfilledTokenRemoval,
+)
 from src.frontend.custom_widgets.basic_code_editor import CodeEditor
 from src.frontend.custom_widgets.combo_box import CustomComboBox
-from src.frontend.custom_widgets.resizable_stacked_widget import ResizableStackedWidget
 from src.frontend.custom_widgets.token_table import TokenTable
-from src.frontend.custom_widgets.tracker_format_override import TrackerFormatOverride
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
-from src.frontend.utils import build_h_line, set_top_parent_geometry
+from src.frontend.utils import set_top_parent_geometry
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
-from src.payloads.trackers import TitleOverridePayload
 
 if TYPE_CHECKING:
     from src.frontend.stacked_windows.settings.settings import Settings
@@ -62,9 +62,6 @@ class FormatWidgets(TypedDict):
     title_token: QLineEdit
     file_example: QLineEdit
     title_example: QLineEdit
-    tracker_override_map: dict[TrackerSelection, TrackerFormatOverride]
-    tracker_selection: CustomComboBox
-    tracker_stacked: ResizableStackedWidget
 
 
 class SeriesManagementSettings(BaseSettings):
@@ -107,22 +104,18 @@ class SeriesManagementSettings(BaseSettings):
         control_top_layout.addStretch()
         control_top_layout.addWidget(preview_example_data_btn)
 
-        self.replace_illegal_chars = QCheckBox("Replace Illegal Characters", self)
-        self.replace_illegal_chars.setToolTip(
-            "Replace illegal characters. If unchecked, NfoForge will remove them instead"
-        )
-
-        self.parse_input_file_attributes = QCheckBox("Parse Filename Attributes", self)
-        self.parse_input_file_attributes.setToolTip(
-            "If enabled, attributes REMUX, HYBRID, PROPER, and REPACK will be detected from the filename"
-        )
-        self.parse_input_file_attributes.clicked.connect(
-            self._update_current_tab_file_example
-        )
+        # claims read out of the input filename
+        self.claims_master = self._build_claims_master(self)
+        self.claims_master.toggled.connect(self._on_claims_master_toggled)
+        self.claims_master.clicked.connect(self._update_current_tab_file_example)
+        self.claim_checks = self._build_claim_checks(self)
+        for claim_check in self.claim_checks.values():
+            claim_check.clicked.connect(self._update_current_tab_file_example)
 
         fn_colon_replace_lbl, self.fn_colon_replace = self._build_colon_replace_combo(
             """<span><span style="font-weight: bold;">Filename</span> Colon Replacement</span>""",
             self,
+            FILENAME_COLON_OPTIONS,
         )
         self.fn_colon_replace.currentIndexChanged.connect(
             self._update_current_tab_file_example
@@ -211,8 +204,8 @@ class SeriesManagementSettings(BaseSettings):
         self.controls_box = QGroupBox("Controls")
         controls_layout = QVBoxLayout(self.controls_box)
         controls_layout.addLayout(control_top_layout)
-        controls_layout.addWidget(self.replace_illegal_chars)
-        controls_layout.addWidget(self.parse_input_file_attributes)
+        controls_layout.addWidget(self.claims_master)
+        controls_layout.addLayout(self._build_claim_checks_layout(self.claim_checks))
         controls_layout.addLayout(fn_colon_replace_v_box)
         controls_layout.addLayout(title_colon_replace_v_box)
         controls_layout.addLayout(multi_episode_style_v_box)
@@ -291,51 +284,16 @@ class SeriesManagementSettings(BaseSettings):
             container,
         )
 
-        # tracker overrides
-        tracker_lbl = QLabel("Tracker", container)
-        tracker_selection = CustomComboBox(disable_mouse_wheel=True, parent=container)
-        tracker_override_map: dict[TrackerSelection, TrackerFormatOverride] = {}
-        tracker_stacked = ResizableStackedWidget(container)
-
-        for tracker in self.config.settings.trackers.by_selection().keys():
-            if (
-                tracker in UNSUPPORTED_SERIES_TRACKERS
-                or tracker in NO_RELEASE_NAME_FIELD
-            ):
-                continue
-            tfo = TrackerFormatOverride(container)
-            tfo.setting_changed.connect(
-                partial(self._update_tracker_override_example, fmt, tfo)
-            )
-            tracker_selection.addItem(str(tracker), tracker)
-            tracker_stacked.addWidget(tfo)
-            tracker_override_map[tracker] = tfo
-
-        tracker_selection.currentIndexChanged.connect(
-            partial(self._change_override_tracker, fmt)
-        )
-
-        over_ride_box = QGroupBox("Format Title Tracker Overrides")
-        over_ride_inner = QVBoxLayout(over_ride_box)
-        over_ride_inner.addWidget(tracker_lbl)
-        over_ride_inner.addWidget(tracker_selection)
-        over_ride_inner.addWidget(build_h_line((6, 1, 6, 1)))
-        over_ride_inner.addWidget(tracker_stacked)
-
         layout.addLayout(
             self._build_nested_groupbox_layout(filename_box_lbl, filename_box)
         )
         layout.addLayout(self._build_nested_groupbox_layout(title_box_lbl, title_box))
-        layout.addWidget(over_ride_box)
 
         self._format_widgets[fmt] = {
             "file_token": file_token_input,
             "title_token": title_token_input,
             "file_example": file_example,
             "title_example": title_example,
-            "tracker_override_map": tracker_override_map,
-            "tracker_selection": tracker_selection,
-            "tracker_stacked": tracker_stacked,
         }
         return container
 
@@ -350,21 +308,12 @@ class SeriesManagementSettings(BaseSettings):
 
     def _update_tab_title_example(self, fmt: EpisodeFormat) -> None:
         w = self._format_widgets[fmt]
-        txt_data = self._update_example(
+        self._update_example(
             token_str=w["title_token"].text(),
             colon_replace=ColonReplace(self.title_colon_replace.currentData()),
             file_name_mode=False,
             qline=w["title_example"],
         )
-        override_widget = cast(
-            TrackerFormatOverride, w["tracker_stacked"].currentWidget()
-        )
-        if (
-            override_widget
-            and override_widget.enabled_checkbox.isChecked()
-            and not override_widget.over_ride_format_title.text()
-        ):
-            override_widget.over_ride_format_file_name_token_example.setText(txt_data)
 
     @Slot()
     def _update_current_tab_file_example(self) -> None:
@@ -400,9 +349,8 @@ class SeriesManagementSettings(BaseSettings):
         the blank default previews what the user will actually get rather than
         an empty line.
         """
-        token_str = (
-            self.season_subfolder_token.text().strip()
-            or self.season_folder_token.text()
+        token_str = resolve_season_subfolder_token(
+            self.season_subfolder_token.text(), self.season_folder_token.text()
         )
         self._update_example(
             token_str=token_str,
@@ -413,6 +361,16 @@ class SeriesManagementSettings(BaseSettings):
             # equal to the example's season_number, so {season_number} renders
             # a single season rather than the range the pack folder shows
             season_end=1,
+        )
+
+    def _detected_claims(self) -> FilenameClaims:
+        """Claims the example filename carries, per the current switches."""
+        return detect_filename_claims(
+            [EXAMPLE_FILE_NAME_1.stem],
+            self._current_claim_switches(),
+            self.config.plugin_manager.custom_edition_info(
+                enabled=self.config.settings.general.enable_plugins
+            ),
         )
 
     def _update_example(
@@ -445,7 +403,10 @@ class SeriesManagementSettings(BaseSettings):
             video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
-            parse_filename_attributes=self.parse_input_file_attributes.isChecked(),
+            # Stage 1 detection, the same function the rename pages call,
+            # so the preview and the wizard cannot disagree about what the
+            # example filename claims.
+            override_tokens=self._detected_claims().as_override_tokens(),
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),
@@ -469,38 +430,6 @@ class SeriesManagementSettings(BaseSettings):
         self._update_qline_cursor_0(qline, example_txt)
         return example_txt
 
-    @Slot(EpisodeFormat, int)
-    def _change_override_tracker(self, fmt: EpisodeFormat, idx: int) -> None:
-        w = self._format_widgets[fmt]
-        curr_tracker = w["tracker_selection"].itemData(idx)
-        if curr_tracker:
-            tfo = w["tracker_override_map"][curr_tracker]
-            w["tracker_stacked"].setCurrentWidget(tfo)
-            self._update_tracker_override_example(fmt, tfo)
-
-    @Slot(EpisodeFormat, TrackerFormatOverride)
-    def _update_tracker_override_example(
-        self, fmt: EpisodeFormat, tfo: TrackerFormatOverride
-    ) -> None:
-        w = self._format_widgets[fmt]
-        enabled = tfo.enabled_checkbox.isChecked()
-        token_str = tfo.over_ride_format_title.text() if enabled else ""
-        colon_replace = (
-            ColonReplace(tfo.title_colon_replace.currentData())
-            if enabled
-            else ColonReplace(self.title_colon_replace.currentData())
-        )
-        over_ride_rules = (
-            tfo.over_ride_replacement_table.get_replacements() if enabled else None
-        )
-        self._update_example(
-            token_str=token_str if token_str else w["title_token"].text(),
-            colon_replace=colon_replace,
-            file_name_mode=False,
-            qline=tfo.over_ride_format_file_name_token_example,
-            override_title_rules=over_ride_rules,
-        )
-
     @Slot()
     def _load_saved_settings(self) -> None:
         self._live_title_clean_rules = None
@@ -515,16 +444,10 @@ class SeriesManagementSettings(BaseSettings):
             w = self._format_widgets[fmt]
             w["file_token"].blockSignals(True)
             w["title_token"].blockSignals(True)
-            for tfo in w["tracker_override_map"].values():
-                tfo.blockSignals(True)
 
         self.rename_check_box.setChecked(self.config.settings.series.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.settings.series.replace_illegal_chars
-        )
-        self.load_combo_box(
+        self._load_filename_colon_combo(
             self.fn_colon_replace,
-            ColonReplace,
             self.config.settings.series.filename_colon_replace,
         )
         self.load_combo_box(
@@ -532,9 +455,7 @@ class SeriesManagementSettings(BaseSettings):
             ColonReplace,
             self.config.settings.series.title_colon_replace,
         )
-        self.parse_input_file_attributes.setChecked(
-            self.config.settings.series.parse_filename_attributes
-        )
+        self._load_claim_switches(self.config.settings.series.claims)
         self.load_combo_box(
             self.multi_episode_style_combo,
             MultiEpisodeStyle,
@@ -558,28 +479,6 @@ class SeriesManagementSettings(BaseSettings):
             if title_tok.strip():
                 self._update_qline_cursor_0(w["title_token"], title_tok)
 
-            for idx, tracker in enumerate(w["tracker_override_map"].keys()):
-                tfo = w["tracker_override_map"][tracker]
-                default_info = self.config.defaults.trackers.by_selection()[tracker]
-                tracker_info = self.config.settings.trackers.by_selection()[tracker]
-                override = (tracker_info.tvr_title_overrides or {}).get(
-                    fmt, TitleOverridePayload()
-                )
-                tfo.enabled_checkbox.setChecked(override.enabled)
-                tfo.set_colon_replace(str(override.colon_replace))
-                self._update_qline_cursor_0(tfo.over_ride_format_title, override.token)
-                default_override = (default_info.tvr_title_overrides or {}).get(
-                    fmt, TitleOverridePayload()
-                )
-                tfo.over_ride_replacement_table.set_default_rules(
-                    default_override.replace_map
-                )
-                tfo.over_ride_replacement_table.reset()
-                if override.replace_map:
-                    tfo.over_ride_replacement_table.add_rows(override.replace_map)
-                if idx == 0:
-                    self._update_tracker_override_example(fmt, tfo)
-
         self.fn_colon_replace.blockSignals(False)
         self.title_colon_replace.blockSignals(False)
         self.multi_episode_style_combo.blockSignals(False)
@@ -591,28 +490,17 @@ class SeriesManagementSettings(BaseSettings):
             w["title_token"].blockSignals(False)
 
         self._update_all_examples()
-        QTimer.singleShot(1, self._delayed_unblock_override_widgets)
-
-    def _delayed_unblock_override_widgets(self) -> None:
-        for fmt in self._FORMAT_ORDER:
-            for tfo in self._format_widgets[fmt]["tracker_override_map"].values():
-                tfo.blockSignals(False)
 
     @Slot()
     def _save_settings(self) -> None:
         self.config.settings.series.enabled = self.rename_check_box.isChecked()
-        self.config.settings.series.replace_illegal_chars = (
-            self.replace_illegal_chars.isChecked()
-        )
         self.config.settings.series.filename_colon_replace = ColonReplace(
             self.fn_colon_replace.currentData()
         )
         self.config.settings.series.title_colon_replace = ColonReplace(
             self.title_colon_replace.currentData()
         )
-        self.config.settings.series.parse_filename_attributes = (
-            self.parse_input_file_attributes.isChecked()
-        )
+        self.config.settings.series.claims = self._current_claim_switches()
         self.config.settings.series.multi_episode_style = MultiEpisodeStyle(
             self.multi_episode_style_combo.currentData()
         )
@@ -632,35 +520,14 @@ class SeriesManagementSettings(BaseSettings):
                 self.config.settings.series, fmt, w["title_token"].text()
             )
 
-            for tracker, tfo in w["tracker_override_map"].items():
-                existing = self.config.settings.trackers.by_selection()[
-                    tracker
-                ].tvr_title_overrides
-                if existing is None:
-                    existing = {}
-                    self.config.settings.trackers.by_selection()[
-                        tracker
-                    ].tvr_title_overrides = existing
-                existing[fmt] = TitleOverridePayload(
-                    enabled=tfo.enabled_checkbox.isChecked(),
-                    colon_replace=ColonReplace(tfo.title_colon_replace.currentData()),
-                    token=tfo.over_ride_format_title.text(),
-                    replace_map=tfo.over_ride_replacement_table.get_replacements(),
-                )
-
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.series.enabled)
-        self.replace_illegal_chars.setChecked(
-            self.config.defaults.series.replace_illegal_chars
+        self._select_filename_colon(
+            self.fn_colon_replace, self.config.defaults.series.filename_colon_replace
         )
-        self.fn_colon_replace.setCurrentIndex(
-            self.config.defaults.series.filename_colon_replace.value - 1
-        )
-        self.parse_input_file_attributes.setChecked(
-            self.config.defaults.series.parse_filename_attributes
-        )
+        self._load_claim_switches(self.config.defaults.series.claims)
         self.title_colon_replace.setCurrentIndex(
             self.config.defaults.series.title_colon_replace.value - 1
         )
@@ -681,26 +548,7 @@ class SeriesManagementSettings(BaseSettings):
             w["title_token"].setText(
                 get_tvr_title_token(self.config.defaults.series, fmt)
             )
-            self._apply_override_defaults(fmt)
         self.token_table.reset()
-
-    def _apply_override_defaults(self, fmt: EpisodeFormat) -> None:
-        w = self._format_widgets[fmt]
-        for tracker, tfo in w["tracker_override_map"].items():
-            default_override = (
-                self.config.defaults.trackers.by_selection()[
-                    tracker
-                ].tvr_title_overrides
-                or {}
-            ).get(fmt, TitleOverridePayload())
-            tfo.enabled_checkbox.setChecked(default_override.enabled)
-            tfo.set_colon_replace(str(default_override.colon_replace))
-            self._update_qline_cursor_0(
-                tfo.over_ride_format_title, default_override.token
-            )
-            tfo.over_ride_replacement_table.reset()
-            if default_override.replace_map:
-                tfo.over_ride_replacement_table.add_rows(default_override.replace_map)
 
     @Slot()
     def _show_example_input_data(self) -> None:
@@ -769,13 +617,24 @@ class SeriesManagementSettings(BaseSettings):
 
     @staticmethod
     def _build_colon_replace_combo(
-        lbl_txt: str, parent: QWidget
+        lbl_txt: str,
+        parent: QWidget,
+        options: Sequence[tuple[ColonReplace, str]] | None = None,
     ) -> tuple[QLabel, CustomComboBox]:
+        """Build a colon-replacement combo.
+
+        ``options`` defaults to every ColonReplace member, which is what the
+        title side wants. The filename side passes FILENAME_COLON_OPTIONS:
+        three members with their own labels, because "Keep" and "Delete"
+        describe the enum rather than what a filename ends up looking like.
+        """
         lbl = QLabel(lbl_txt, parent)
         lbl.setToolTip("Select how NfoForge handles colon replacement")
         combo = CustomComboBox(disable_mouse_wheel=True, parent=parent)
-        for colon_enum in ColonReplace:
-            combo.addItem(str(colon_enum), colon_enum.value)
+        for colon_enum, label in options or [
+            (member, str(member)) for member in ColonReplace
+        ]:
+            combo.addItem(label, colon_enum)
         return lbl, combo
 
     @staticmethod

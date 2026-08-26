@@ -22,7 +22,7 @@ from src.backend.upload_retry import TrackerRunOutcome
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.tracker_selection import TrackerSelection
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import ImageHostRef, ImageUploadData, ImageUploadFromTo
 
 
 def test_an_archived_base_makes_missing_original_media_usable(tmp_path: Path) -> None:
@@ -85,14 +85,17 @@ class _PluginManager:
         return frozenset()
 
 
+_CHEVERETO_V3 = ImageHostRef(ImageHost.CHEVERETO_V3)
+
+
 def _save(
     working_dir: Path,
     media: Path,
     name: str,
     *,
     prepared: bool = True,
-    destination: ImageHost | ImageSource = ImageHost.CHEVERETO_V3,
-    uploaded_to: ImageHost | ImageSource | None = ImageHost.CHEVERETO_V3,
+    destination: ImageHostRef | ImageSource = _CHEVERETO_V3,
+    uploaded_to: ImageHostRef | ImageSource | None = _CHEVERETO_V3,
     loaded_images: list[Path] | None = None,
 ) -> Path:
     """Write a job whose context restores cleanly.
@@ -421,7 +424,7 @@ def test_missing_screenshots_do_not_block_a_job_that_needs_none(
         working_dir,
         media,
         "uploaded",
-        uploaded_to=ImageHost.CHEVERETO_V3,
+        uploaded_to=ImageHostRef(ImageHost.CHEVERETO_V3),
         loaded_images=[media.parent / "never-existed.png"],
     )
     backend = _Backend()
@@ -458,8 +461,8 @@ def test_a_changed_image_host_makes_missing_screenshots_matter_again(
         working_dir,
         media,
         "moved-host",
-        uploaded_to=ImageHost.PIXHOST,
-        destination=ImageHost.CHEVERETO_V3,
+        uploaded_to=ImageHostRef(ImageHost.PIXHOST),
+        destination=ImageHostRef(ImageHost.CHEVERETO_V3),
         loaded_images=[media.parent / "never-existed.png"],
     )
     backend = _Backend()
@@ -479,7 +482,7 @@ def test_a_disabled_tracker_never_makes_screenshots_required(
         media,
         "disabled",
         uploaded_to=None,
-        destination=ImageHost.DISABLED,
+        destination=ImageHostRef(ImageHost.DISABLED),
         loaded_images=[media.parent / "never-existed.png"],
     )
     backend = _Backend()

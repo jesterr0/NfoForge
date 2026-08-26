@@ -4,7 +4,7 @@ from html import escape
 from pathlib import Path
 import shutil
 import traceback
-from typing import Any
+from typing import Any, TypeVar
 
 from PySide6.QtCore import SignalInstance
 from tenacity import Retrying, retry_if_exception, stop_after_attempt
@@ -84,17 +84,14 @@ from src.backend.trackers import (
     utp_uploader,
     yus_uploader,
 )
-from src.backend.trackers.beyondhd import BHDUploader
-from src.backend.trackers.hdb import HDBUploader
 from src.backend.trackers.health import ensure_tracker_health
 from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
     UNIT3D_TRACKERS,
     UNSUPPORTED_SERIES_TRACKERS,
 )
-from src.backend.trackers.seedpool import SeedPoolUploader
-from src.backend.trackers.torrentleech import TLUploader
-from src.backend.trackers.unit3d_base import Unit3dBaseSearch, Unit3dBaseUploader
+from src.backend.trackers.title_render import normalise_title, render_tracker_title
+from src.backend.trackers.title_rules import TITLE_RULES, ReleaseProperties
+from src.backend.trackers.unit3d_base import Unit3dBaseSearch
 from src.backend.trackers.utils import format_image_tag
 from src.backend.upload_retry import (
     RETRY_ATTEMPTS,
@@ -105,6 +102,7 @@ from src.backend.upload_retry import (
 )
 from src.backend.utils.anime import is_anime_release
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.hdr_identity import resolve_hdr_identity
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
     format_image_data_to_comparison,
@@ -119,7 +117,7 @@ from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
 from src.enums.multi_episode_style import MultiEpisodeStyle
-from src.enums.token_replacer import UnfilledTokenRemoval
+from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.torrent_client import TorrentClientSelection
 from src.enums.tracker_selection import TrackerSelection
 from src.enums.upload_process import RunPhase
@@ -130,7 +128,13 @@ from src.exceptions import (
     TrackerError,
 )
 from src.logger.nfo_forge_logger import LOG
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import (
+    DISABLED_HOST,
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
+from src.payloads.image_hosts import CheveretoV3Payload, CheveretoV4Payload
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
 from src.payloads.series import (
@@ -139,7 +143,6 @@ from src.payloads.series import (
     describe_missing_upload_fields,
 )
 from src.payloads.tracker_search_result import TrackerSearchResult
-from src.payloads.trackers import TrackerInfo
 from src.payloads.watch_folder import WatchFolder
 from src.plugins.api import (
     DuplicateCheckRequest,
@@ -151,6 +154,8 @@ from src.plugins.api import (
     UploadReporter,
 )
 from src.utils.secret_redaction import scrub_secrets
+
+PayloadT = TypeVar("PayloadT", bound=CheveretoV3Payload | CheveretoV4Payload)
 
 
 def _media_source_available(media_input: Any) -> bool:
@@ -996,19 +1001,35 @@ class ProcessBackEnd:
             '<br /><h3 style="margin-bottom: 0; padding-bottom: 0;">🌐 Trackers:</h3>'
         )
 
-        # A prepared job already carries finished titles and NFOs, so none of
-        # the generation below runs and neither prompt fires -- that silence is
-        # what lets such a job be uploaded unattended, by a queue or otherwise.
+        # A prepared job carries a finished NFO, so no NFO is rendered for it
+        # and neither prompt fires -- that silence is what lets such a job be
+        # uploaded unattended, by a queue or otherwise. Its title is a separate
+        # matter: titles come from the tracker's hardcoded rules and are always
+        # rebuilt, so a rules fix shipped in a release reaches a job that was
+        # prepared before it. Rebuilding one cannot prompt (see
+        # `generate_tracker_title`), so the unattended property is untouched.
         prepared_trackers = set(context.shared_data.tracker_release_data)
+        reused_nfo_trackers = tuple(
+            name for name in process_dict if TrackerSelection(name) in prepared_trackers
+        )
         trackers_to_generate = tuple(
             name
             for name in process_dict
             if TrackerSelection(name) not in prepared_trackers
         )
         already_prepared = not trackers_to_generate
-        if already_prepared:
+        if reused_nfo_trackers:
+            # a mixed job used to say nothing at all, since the old message was
+            # only printed when every tracker was prepared
+            scope = (
+                ""
+                if already_prepared
+                else ' for <span style="font-weight: bold;">'
+                f"{', '.join(reused_nfo_trackers)}</span>"
+            )
             queued_text_update(
-                "<br /><span>Using the titles and NFOs saved with this job</span>"
+                f"<br /><span>Reusing the NFOs saved with this job{scope}; titles "
+                "are rebuilt from the current tracker rules</span>"
             )
 
         # base user tokens, this will be filled with prompt tokens as well if needed
@@ -1051,23 +1072,31 @@ class ProcessBackEnd:
         )
         if not already_prepared:
             queued_text_update("<br /><span>Generating tracker titles and NFOs</span>")
-        for tracker_name in trackers_to_generate:
+        for tracker_name in process_dict:
             cur_tracker = TrackerSelection(tracker_name)
             tracker_info = self.config.settings.trackers.by_selection()[cur_tracker]
 
-            # generate tracker title first
-            tracker_title = None
-            if cur_tracker not in NO_RELEASE_NAME_FIELD:
-                generated_tracker_title = self.generate_tracker_title(
+            # Generate the tracker title first. It arrives already
+            # normalised -- the entry's separator, colon and vocabulary are
+            # part of rendering it now, rather than a second pass applied
+            # here and again in the uploader.
+            tracker_title = self.resolve_tracker_title(
+                cur_tracker,
+                self.generate_tracker_title(
                     tracker=cur_tracker,
-                    tracker_info=tracker_info,
                     context=context,
                     release_info=release_info,
-                )
-                if generated_tracker_title:
-                    tracker_title = self.tracker_title_formatting(
-                        cur_tracker, generated_tracker_title
-                    )
+                ),
+                context.media_input.require_input_path(),
+            )
+
+            # Everything below renders an NFO, which a prepared tracker
+            # already has. Its stored body is kept verbatim and only the
+            # freshly built title replaces what was saved.
+            reused = tracker_release_data.get(cur_tracker)
+            if reused is not None:
+                tracker_release_data[cur_tracker] = {**reused, "title": tracker_title}
+                continue
 
             nfo_template = (
                 self.template_selector_be.read_template(name=tracker_info.nfo_template)
@@ -1618,9 +1647,9 @@ class ProcessBackEnd:
             dict[TrackerSelection, dict[int, ImageUploadData]]: A dictionary mapping trackers to their
             corresponding uploaded image data.
         """
-        to_image_hosts: set[ImageHost] = set()
+        to_image_hosts: set[ImageHostRef] = set()
         to_url = False
-        tracker_to_host_map: dict[TrackerSelection, ImageHost | ImageSource] = {}
+        tracker_to_host_map: dict[TrackerSelection, ImageHostRef | ImageSource] = {}
         img_from: ImageSource | None = None
         files_to_upload: Sequence[Path] | None = None
 
@@ -1654,7 +1683,7 @@ class ProcessBackEnd:
                     continue
 
                 # track the image host to be used for each tracker
-                if isinstance(img_to, ImageHost) and img_to is not ImageHost.DISABLED:
+                if isinstance(img_to, ImageHostRef) and img_to != DISABLED_HOST:
                     to_image_hosts.add(img_to)
                 elif not to_url and img_to is ImageSource.URLS:
                     to_url = True
@@ -1707,7 +1736,7 @@ class ProcessBackEnd:
                 servable = sorted(
                     str(host)
                     for host in context.shared_data.uploaded_images_by_host
-                    if isinstance(host, ImageHost) and host is not ImageHost.DISABLED
+                    if isinstance(host, ImageHostRef) and host != DISABLED_HOST
                 )
                 if servable:
                     raise ImageHostError(
@@ -1758,7 +1787,7 @@ class ProcessBackEnd:
                 )
                 async_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(async_loop)
-                upload_results: dict[ImageHost, dict[int, ImageUploadData]] = (
+                upload_results: dict[ImageHostRef, dict[int, ImageUploadData]] = (
                     async_loop.run_until_complete(
                         self.handle_image_upload(
                             to_image_hosts, files_to_upload, progress_bar_cb
@@ -1869,7 +1898,7 @@ class ProcessBackEnd:
     def needs_local_images(
         context: ProcessingContext,
         tracker: TrackerSelection,
-        destination: ImageHost | ImageSource,
+        destination: ImageHostRef | ImageSource,
     ) -> bool:
         """Whether this tracker still needs screenshot files on disk.
 
@@ -1879,7 +1908,7 @@ class ProcessBackEnd:
         uploads nothing (a URL passthrough, or `DISABLED`), and one whose
         images already went to that same host.
         """
-        if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
+        if not isinstance(destination, ImageHostRef) or destination == DISABLED_HOST:
             return False
         return (
             ProcessBackEnd._reusable_uploaded_images(context, tracker, destination)
@@ -1890,7 +1919,7 @@ class ProcessBackEnd:
     def _reusable_uploaded_images(
         context: ProcessingContext,
         tracker: TrackerSelection,
-        destination: ImageHost | ImageSource,
+        destination: ImageHostRef | ImageSource,
     ) -> dict[int, ImageUploadData] | None:
         """Previously uploaded images for `tracker`, when still valid.
 
@@ -1906,9 +1935,11 @@ class ProcessBackEnd:
         gain from sending the same screenshots again -- and an archive whose
         local copies are gone has nothing to send.
         """
-        if not isinstance(destination, ImageHost) or destination is ImageHost.DISABLED:
+        if not isinstance(destination, ImageHostRef) or destination == DISABLED_HOST:
             return None
-        if context.shared_data.uploaded_image_hosts.get(tracker) is destination:
+        # `==`, not `is`: a destination is a value now, and two refs naming
+        # the same host are equal without being the same object
+        if context.shared_data.uploaded_image_hosts.get(tracker) == destination:
             images = context.shared_data.uploaded_images.get(tracker)
             if images:
                 return dict(images)
@@ -1942,20 +1973,20 @@ class ProcessBackEnd:
 
     async def handle_image_upload(
         self,
-        to_image_hosts: set[ImageHost],
+        to_image_hosts: set[ImageHostRef],
         filepaths: Sequence[Path],
         progress_bar_cb: Callable[[float], None],
-    ) -> dict[ImageHost, dict[int, ImageUploadData]]:
+    ) -> dict[ImageHostRef, dict[int, ImageUploadData]]:
         """
         Handles the image upload process to multiple image hosts asynchronously.
 
         Args:
-            to_image_hosts (set[ImageHost]): The set of image hosts to upload to.
+            to_image_hosts (set[ImageHostRef]): The set of image hosts to upload to.
             filepaths (Sequence[Path]): The file paths of the images to be uploaded.
             progress_bar_cb (Callable[[float], None): Callback function to track upload progress.
 
         Returns:
-            dict[ImageHost, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
+            dict[ImageHostRef, dict[int, ImageUploadData]]: A mapping of image hosts to uploaded image data.
         """
 
         def progress_callback(_job: str, _ind: float, overall: float) -> None:
@@ -1963,8 +1994,8 @@ class ProcessBackEnd:
 
         image_uploader = ImageUploader(progress_signal=progress_callback)
 
-        jobs: dict[str, ImageHost] = {}
-        host_to_job: dict[ImageHost, str] = {}
+        jobs: dict[str, ImageHostRef] = {}
+        host_to_job: dict[ImageHostRef, str] = {}
 
         # register image hosts and their corresponding uploaders
         self._register_image_hosts(
@@ -1981,17 +2012,17 @@ class ProcessBackEnd:
 
     def _register_image_hosts(
         self,
-        to_image_hosts: set[ImageHost],
+        to_image_hosts: set[ImageHostRef],
         filepaths: Sequence[Path],
         image_uploader: ImageUploader,
-        jobs: dict[str, ImageHost],
-        host_to_job: dict[ImageHost, str],
+        jobs: dict[str, ImageHostRef],
+        host_to_job: dict[ImageHostRef, str],
     ) -> None:
         """
         Registers image hosts and associates them with upload jobs.
 
         Args:
-            to_image_hosts (set[ImageHost]): The set of image hosts to register.
+            to_image_hosts (set[ImageHostRef]): The set of image hosts to register.
             filepaths (Sequence[Path]): The file paths of images to be uploaded.
             image_uploader (ImageUploader): The image uploader instance.
             jobs (dict): Dictionary mapping job IDs to image hosts.
@@ -2002,20 +2033,23 @@ class ProcessBackEnd:
                 continue
 
             uploader = self._get_uploader_for_host(img_host)
-            image_uploader.register_uploader(str(img_host), uploader)
+            # `key()`, not `str()`: two Chevereto instances may carry the same
+            # user-chosen label, and would then collide in the uploader registry
+            image_uploader.register_uploader(img_host.key(), uploader)
 
             job_id = image_uploader.add_job(
-                str(img_host), ImageUploadRequest(filepaths=filepaths)
+                img_host.key(), ImageUploadRequest(filepaths=filepaths)
             )
             jobs[job_id] = img_host
             host_to_job[img_host] = job_id
 
-    def _get_uploader_for_host(self, img_host: ImageHost) -> BaseImageHostUploader:
+    def _get_uploader_for_host(self, img_host: ImageHostRef) -> BaseImageHostUploader:
         """
         Retrieves the appropriate uploader instance for a given image host.
 
         Args:
-            img_host (ImageHost): The image host.
+            img_host (ImageHostRef): The image host, including which Chevereto
+                instance is meant when the kind holds several.
 
         Returns:
             BaseImageHostUploader: The corresponding uploader instance.
@@ -2023,24 +2057,41 @@ class ProcessBackEnd:
         Raises:
             ImageHostError: If the image host is unsupported.
         """
-        if img_host is ImageHost.CHEVERETO_V4:
-            return self._create_chevereto_v4_uploader()
-        elif img_host is ImageHost.CHEVERETO_V3:
-            return self._create_chevereto_v3_uploader()
-        elif img_host is ImageHost.IMAGE_BOX:
+        kind = img_host.kind
+        if kind is ImageHost.CHEVERETO_V4:
+            return self._create_chevereto_v4_uploader(img_host)
+        elif kind is ImageHost.CHEVERETO_V3:
+            return self._create_chevereto_v3_uploader(img_host)
+        elif kind is ImageHost.IMAGE_BOX:
             return ImageBoxUploader()
-        elif img_host is ImageHost.IMAGE_BB:
+        elif kind is ImageHost.IMAGE_BB:
             return self._create_imgbb_uploader()
-        elif img_host is ImageHost.ONLY_IMAGE:
+        elif kind is ImageHost.ONLY_IMAGE:
             return self._create_onlyimage_uploader()
-        elif img_host is ImageHost.PIXHOST:
+        elif kind is ImageHost.PIXHOST:
             return PixhostUploader()
-        elif img_host is ImageHost.LENSDUMP:
+        elif kind is ImageHost.LENSDUMP:
             return self._create_lensdump_uploader()
-        elif img_host is ImageHost.PLUGIN:
+        elif kind is ImageHost.PLUGIN:
             return self._get_plugin_image_host_uploader()
         else:
             raise ImageHostError(f"Unsupported image host: {img_host}")
+
+    def _resolve_chevereto_instance(
+        self, img_host: ImageHostRef, instances: Sequence[PayloadT]
+    ) -> PayloadT:
+        """The configured instance `img_host` names.
+
+        A job or a per-tracker selection can outlive the instance it points at,
+        so say which one went missing rather than failing on a blank credential.
+        """
+        for instance in instances:
+            if instance.instance_id == img_host.instance_id:
+                return instance
+        raise ImageHostError(
+            f"Image host '{img_host}' is no longer configured. Add it back under "
+            "Settings > Screenshots > Image Hosts, or pick another host."
+        )
 
     def _get_plugin_image_host_uploader(self) -> BaseImageHostUploader:
         """Retrieve the plugin configured as the image host uploader.
@@ -2063,40 +2114,54 @@ class ProcessBackEnd:
             )
         return record.definition.image_host_uploader
 
-    def _create_chevereto_v4_uploader(self) -> CheveretoV4Uploader:
+    def _create_chevereto_v4_uploader(
+        self, img_host: ImageHostRef
+    ) -> CheveretoV4Uploader:
         """
-        Creates an uploader instance for Chevereto V4.
+        Creates an uploader instance for one configured Chevereto V4 site.
 
         Returns:
             CheveretoV4Uploader: The uploader instance.
 
         Raises:
-            ImageHostError: If required credentials are missing.
+            ImageHostError: If the instance is gone or its credentials are missing.
         """
-        chv4_payload = self.config.settings.image_hosts.chevereto_v4
+        chv4_payload = self._resolve_chevereto_instance(
+            img_host, self.config.settings.image_hosts.chevereto_v4
+        )
         if not chv4_payload.api_key or not chv4_payload.base_url:
-            raise ImageHostError("Missing 'API Key' or 'Base URL' for CheveretoV4.")
+            raise ImageHostError(
+                f"Missing 'API Key' or 'Base URL' for Chevereto v4 host '{img_host}'."
+            )
         return CheveretoV4Uploader(
-            api_key=chv4_payload.api_key, url=chv4_payload.base_url
+            api_key=chv4_payload.api_key,
+            url=chv4_payload.base_url,
+            host_name=str(img_host),
         )
 
-    def _create_chevereto_v3_uploader(self) -> CheveretoV3Uploader:
+    def _create_chevereto_v3_uploader(
+        self, img_host: ImageHostRef
+    ) -> CheveretoV3Uploader:
         """
-        Creates an uploader instance for Chevereto V3.
+        Creates an uploader instance for one configured Chevereto V3 site.
 
         Returns:
             CheveretoV3Uploader: The uploader instance.
 
         Raises:
-            ImageHostError: If required credentials are missing.
+            ImageHostError: If the instance is gone or its credentials are missing.
         """
-        chv3_payload = self.config.settings.image_hosts.chevereto_v3
+        chv3_payload = self._resolve_chevereto_instance(
+            img_host, self.config.settings.image_hosts.chevereto_v3
+        )
         if (
             not chv3_payload.base_url
             or not chv3_payload.user
             or not chv3_payload.password
         ):
-            raise ImageHostError("Missing credentials for CheveretoV3.")
+            raise ImageHostError(
+                f"Missing credentials for Chevereto v3 host '{img_host}'."
+            )
         return CheveretoV3Uploader(
             base_url=chv3_payload.base_url,
             user=chv3_payload.user,
@@ -2150,9 +2215,9 @@ class ProcessBackEnd:
 
     def _map_uploaded_urls(
         self,
-        host_to_job: dict[ImageHost, str],
+        host_to_job: dict[ImageHostRef, str],
         results: dict[str, dict[int, ImageUploadData]],
-    ) -> dict[ImageHost, dict[int, ImageUploadData]]:
+    ) -> dict[ImageHostRef, dict[int, ImageUploadData]]:
         """
         Maps uploaded URLs to their respective image hosts.
 
@@ -2161,7 +2226,7 @@ class ProcessBackEnd:
             results (dict[str, dict[int, ImageUploadData]]): The upload results.
 
         Returns:
-            dict[ImageHost, dict[int, ImageUploadData]]: The mapped results.
+            dict[ImageHostRef, dict[int, ImageUploadData]]: The mapped results.
         """
         return {tracker: results[job_id] for tracker, job_id in host_to_job.items()}
 
@@ -2688,124 +2753,172 @@ class ProcessBackEnd:
     def generate_tracker_title(
         self,
         tracker: TrackerSelection,
-        tracker_info: TrackerInfo,
         context: ProcessingContext,
         release_info: SeriesReleaseInfo,
     ) -> str | None:
-        # The user's own override governs, for every tracker. Some were once
-        # locked to the packaged default here instead; that was dropped,
-        # because a locked template cannot differ between profiles (an encode
-        # profile and a disc profile want different titles) and what a tracker
-        # actually demands is applied in code at upload regardless -- see
-        # `tracker_title_formatting`.
-        override_source: TrackerInfo | None = tracker_info
+        """The release title one tracker will receive.
 
-        if release_info.is_series:
-            default_title = get_tvr_title_token(
-                self.config.settings.series,
-                release_info.episode_format,
+        Layout and normalisation come from that tracker's hardcoded entry
+        where it has them, and from the user's global title settings
+        otherwise. Nothing here reads `TrackerInfo`: a title is a property
+        of the tracker's rules and the release, not of the user's settings
+        for that tracker.
+        """
+        global_template = (
+            get_tvr_title_token(
+                self.config.settings.series, release_info.episode_format
             )
-            series_override = (
-                override_source.tvr_title_overrides.get(release_info.episode_format)
-                if override_source is not None
-                else None
-            )
-            override_enabled = bool(series_override and series_override.enabled)
-            token_string = (
-                series_override.token
-                if (
-                    override_enabled
-                    and series_override is not None
-                    and series_override.token
-                )
-                else default_title
-            )
-            colon_replace = (
-                series_override.colon_replace
-                if override_enabled and series_override is not None
-                else self.config.settings.series.title_colon_replace
-            )
-            override_title_rules = (
-                series_override.replace_map
-                if (
-                    override_enabled
-                    and series_override is not None
-                    and series_override.replace_map
-                )
-                else None
-            )
-        else:
-            token_string = (
-                override_source.mvr_title_token_override
-                if (
-                    override_source is not None
-                    and override_source.mvr_title_token_override
-                    and override_source.mvr_title_override_enabled
-                )
-                else self.config.settings.movie.title_token
-            )
-            colon_replace = (
-                override_source.mvr_title_colon_replace
-                if (
-                    override_source is not None
-                    and override_source.mvr_title_colon_replace
-                    and override_source.mvr_title_override_enabled
-                )
-                else self.config.settings.movie.title_colon_replace
-            )
-            override_title_rules = (
-                override_source.mvr_title_replace_map
-                if (
-                    override_source is not None
-                    and override_source.mvr_title_replace_map
-                    and override_source.mvr_title_override_enabled
-                )
-                else None
-            )
+            if release_info.is_series
+            else self.config.settings.movie.title_token
+        )
+        global_colon = (
+            self.config.settings.series.title_colon_replace
+            if release_info.is_series
+            else self.config.settings.movie.title_colon_replace
+        )
         user_tokens = {
             k: v
             for k, (v, t) in self.config.settings.user_tokens.tokens.items()
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
-        # The same setting the rename pages pass. Without it {remux}, {hybrid}
-        # and {re_release} cannot resolve at all here, so a tracker title
-        # silently dropped REPACK/REMUX even when the release name carried it
-        # and the rename page displayed it -- and every REQUIRED tracker's
-        # packaged token already asks for {re_release}.
-        parse_filename_attributes = (
-            self.config.settings.series.parse_filename_attributes
-            if release_info.is_series
-            else self.config.settings.movie.parse_filename_attributes
+        dynamic_range = self.config.settings.global_management.video_dynamic_range
+
+        def render(token_string: str) -> str | None:
+            return TokenReplacer(
+                media_input_obj=context.media_input,
+                token_string=token_string,
+                colon_replace=ColonReplace.KEEP,
+                media_search_obj=context.media_search,
+                flatten=True,
+                file_name_mode=False,
+                token_type=FileToken,
+                unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+                edition_override=context.shared_data.dynamic_data.get(
+                    "edition_override"
+                ),
+                frame_size_override=context.shared_data.dynamic_data.get(
+                    "frame_size_override"
+                ),
+                override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
+                title_clean_rules=self.config.settings.global_management.title_clean_rules,
+                user_tokens=user_tokens,
+                video_dynamic_range=dynamic_range,
+                flat_filters=context.flat_filters,
+                custom_edition_info=context.custom_edition_info,
+                custom_cut_names=context.custom_cut_names,
+                **self._release_info_token_kwargs(
+                    release_info,
+                    self.config.settings.series.multi_episode_style,
+                ),
+            ).get_output()
+
+        # Colon handling belongs to the entry, so the replacer is told to
+        # keep colons and normalisation applies the rule -- the entry's
+        # where it names one, the user's otherwise.
+        return render_tracker_title(
+            tracker,
+            self._release_properties(context, release_info),
+            render=render,
+            global_template=global_template,
+            global_colon=global_colon,
+            custom_strings=dynamic_range.custom_strings if dynamic_range else None,
         )
-        format_str = TokenReplacer(
-            media_input_obj=context.media_input,
-            token_string=token_string,
-            colon_replace=colon_replace,
-            media_search_obj=context.media_search,
-            flatten=True,
-            file_name_mode=False,
-            token_type=FileToken,
-            parse_filename_attributes=parse_filename_attributes,
-            unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
-            edition_override=context.shared_data.dynamic_data.get("edition_override"),
-            frame_size_override=context.shared_data.dynamic_data.get(
-                "frame_size_override"
-            ),
-            override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
-            title_clean_rules=self.config.settings.global_management.title_clean_rules,
-            user_tokens=user_tokens,
-            override_title_rules=override_title_rules,
-            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
-            flat_filters=context.flat_filters,
-            custom_edition_info=context.custom_edition_info,
-            custom_cut_names=context.custom_cut_names,
-            **self._release_info_token_kwargs(
-                release_info,
-                self.config.settings.series.multi_episode_style,
-            ),
+
+    @staticmethod
+    def resolve_tracker_title(
+        tracker: TrackerSelection, generated: str | None, input_path: Path
+    ) -> str | None:
+        """What a tracker receives when the title came back empty.
+
+        Whether a fallback is permitted is derived from the entry rather
+        than declared, which is what stops it firing where it should not:
+
+        - a tracker with a composition is refused, naming itself. A
+          hardcoded composition producing nothing means something is
+          broken, and failing beats uploading a name its rules reject.
+        - a tracker without one falls back to the release name and logs
+          that it did. It is rendering the user's global template, where
+          the release name is the sensible last resort.
+
+        The old fallback was neither derived nor announced: an empty title
+        uploaded the renamed filename with no warning and no log, so a
+        malformed rule degraded silently into shipping a filename to a
+        tracker with strict naming requirements.
+        """
+        entry = TITLE_RULES.get(tracker)
+        if entry is not None and not entry.has_release_name_field:
+            return None
+        if generated:
+            return generated
+
+        if entry is not None and entry.composition is not None:
+            raise TrackerError(
+                f"{tracker} has hardcoded title rules that produced no title "
+                "for this release. Refusing to upload rather than send a "
+                "name its rules would reject."
+            )
+
+        # Normalised like any other title. The release name is a filename
+        # stem, so it arrives dotted -- which is what SeedPool wants and the
+        # opposite of what every other tracker here does.
+        fallback = release_stem(input_path)
+        if entry is not None:
+            fallback = normalise_title(
+                fallback, entry.normalisation, global_colon=ColonReplace.KEEP
+            )
+        LOG.warning(
+            LOG.LOG_SOURCE.BE,
+            f"{tracker} title rendered empty; falling back to the release "
+            f"name '{fallback}'.",
         )
-        output = format_str.get_output()
-        return output if output else None
+        return fallback
+
+    def _release_properties(
+        self, context: ProcessingContext, release_info: SeriesReleaseInfo
+    ) -> ReleaseProperties:
+        """The facts a tracker entry's conditions ask about.
+
+        Every field is a question about the release rather than a rule, so
+        answering them here duplicates no tracker's logic. Two are worth
+        noting:
+
+        `is_remux` reads the override token, which is the single answer the
+        rest of the codebase already uses -- the {remux} token, the codec
+        picker and the only_if/unless filters all resolve from it, so a
+        composition keyed off it cannot disagree with what is printed.
+
+        `episodes` is derived from the span's ends. Every span NfoForge
+        produces is contiguous -- the mapper sorts guessit's list and keeps
+        first and last -- so the range is exact rather than approximate for
+        everything but a hand-built non-contiguous mapping.
+        """
+        overrides = context.shared_data.dynamic_data.get("override_tokens") or {}
+        media_info = None
+        if context.media_input.file_list_mediainfo:
+            media_info = next(
+                iter(context.media_input.file_list_mediainfo.values()), None
+            )
+
+        resolution = 0
+        if media_info and media_info.video_tracks:
+            height = media_info.video_tracks[0].height
+            resolution = int(height) if height else 0
+
+        source = str(overrides.get("source", "")).lower()
+        episodes: tuple[int, ...] = ()
+        if release_info.episode_start is not None:
+            end = release_info.episode_end or release_info.episode_start
+            episodes = tuple(range(release_info.episode_start, end + 1))
+
+        return ReleaseProperties(
+            is_remux=bool(overrides.get("remux")),
+            is_disc=False,
+            is_dvd="dvd" in source,
+            resolution=resolution,
+            hdr_identity=resolve_hdr_identity(media_info),
+            season=release_info.season,
+            episodes=episodes,
+        )
 
     @staticmethod
     def _release_info_token_kwargs(
@@ -2821,37 +2934,6 @@ class ProcessBackEnd:
             "episode_format": release_info.episode_format,
             "multi_episode_style": multi_episode_style,
         }
-
-    def tracker_title_formatting(self, tracker: TrackerSelection, title: str) -> str:
-        """Apply tracker specific formatting if it has any, else return the title as it is."""
-        if tracker is TrackerSelection.TORRENT_LEECH:
-            return TLUploader.generate_release_title(title)
-        elif tracker is TrackerSelection.BEYOND_HD:
-            return BHDUploader.generate_release_title(title)
-        elif tracker is TrackerSelection.HDB:
-            return HDBUploader.generate_release_title(title)
-        # SeedPool is UNIT3D but names uploads after the release, so it wants
-        # the dotted form the rest of the family strips
-        elif tracker is TrackerSelection.SEEDPOOL:
-            return SeedPoolUploader.generate_release_title(title)
-        # Unit3d trackers
-        elif tracker in {
-            TrackerSelection.REELFLIX,
-            TrackerSelection.AITHER,
-            TrackerSelection.HUNO,
-            TrackerSelection.LST,
-            TrackerSelection.DARK_PEERS,
-            TrackerSelection.SHARE_ISLAND,
-            TrackerSelection.UPLOAD_CX,
-            TrackerSelection.ONLY_ENCODES,
-            TrackerSelection.BLUTOPIA,
-            TrackerSelection.UTOPIA,
-            TrackerSelection.YU_SCENE,
-            TrackerSelection.FEAR_NO_PEER,
-        }:
-            return Unit3dBaseUploader.generate_release_title(title)
-
-        return title
 
     def torrent_gen_cb(
         self,

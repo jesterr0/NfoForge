@@ -1,6 +1,6 @@
 import asyncio
 import base64
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from os import PathLike
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -11,7 +11,7 @@ from src.exceptions import ImageUploadError
 from src.logger.nfo_forge_logger import LOG
 from src.packages.custom_types import ImageUploadData
 
-AuthMode = Literal["body", "header"]
+AuthMode = Literal["body", "header", "both"]
 
 
 async def _post_image(
@@ -25,9 +25,9 @@ async def _post_image(
     """Uploads a base64-encoded image using aiohttp with retries and proper error handling."""
     data: dict[str, str] = {"image": image_data}
     headers: dict[str, str] | None = None
-    if auth_mode == "body":
+    if auth_mode in ("body", "both"):
         data["key"] = api_key
-    else:
+    if auth_mode in ("header", "both"):
         headers = {"X-API-Key": api_key}
 
     async with aiohttp.ClientSession() as session:
@@ -55,6 +55,54 @@ async def _post_image(
     return {"status": "Failed", "reason": "Failure on retry"}
 
 
+def _sub_mapping(source: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
+    value = source.get(key)
+    return value if isinstance(value, Mapping) else None
+
+
+def extract_image_urls(response: Mapping[str, Any]) -> ImageUploadData:
+    """Pull the full-size and medium URLs out of a Chevereto-family response.
+
+    The same API v1 has shipped three response shapes across versions and
+    deployments, and the hosts here span all three:
+
+        {"data": {"image": {"url": ...}, "medium": {"url": ...}}}   ImgBB
+        {"data": {"url": ...,            "medium": {"url": ...}}}   many v4
+        {"image": {"url": ..., "medium": {"url": ...}}}             some v3/v4
+
+    So unwrap `data` if it is there, then accept the full-size URL either
+    nested under `image` or sitting flat, and look for `medium` as a sibling
+    of whichever one answered.
+
+    `medium` is deliberately not defaulted to the full-size URL when absent
+    (Chevereto omits it for images below its medium threshold) -- the token
+    layer already documents and handles "medium_url if available, else url".
+    """
+    payload: Mapping[str, Any] = _sub_mapping(response, "data") or response
+    image = _sub_mapping(payload, "image")
+
+    full_url = ""
+    for candidate in (image, payload):
+        if candidate is None:
+            continue
+        value = candidate.get("url")
+        if isinstance(value, str) and value:
+            full_url = value
+            break
+
+    medium_url = ""
+    for candidate in (image, payload):
+        if candidate is None:
+            continue
+        medium = _sub_mapping(candidate, "medium")
+        value = medium.get("url") if medium else None
+        if isinstance(value, str) and value:
+            medium_url = value
+            break
+
+    return ImageUploadData(full_url, medium_url)
+
+
 async def _upload_batch(
     url: str,
     api_key: str,
@@ -70,13 +118,7 @@ async def _upload_batch(
         with open(filepath, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
             response = await _post_image(url, api_key, auth_mode, image_data, host_name)
-            data = response.get("data", {})
-            image_urls = data.get("image", {}) if isinstance(data, dict) else {}
-            medium_urls = data.get("medium", {}) if isinstance(data, dict) else {}
-            upload_data = ImageUploadData(
-                image_urls.get("url", "") if isinstance(image_urls, dict) else "",
-                medium_urls.get("url", "") if isinstance(medium_urls, dict) else "",
-            )
+            upload_data = extract_image_urls(response)
             if cb:
                 await cb(index + 1)
             return index, upload_data
@@ -99,12 +141,14 @@ async def api_key_image_upload(
     progress_callback: Callable[[int], Awaitable[None]] | None = None,
 ) -> dict[int, ImageUploadData] | None:
     """Shared upload flow for image hosts that accept a base64-encoded image
-    plus a static API key (either as a ``key`` form field or an
-    ``X-API-Key`` header) and respond with
-    ``{"data": {"image": {"url": ...}, "medium": {"url": ...}}}``.
+    plus a static API key (as a ``key`` form field, an ``X-API-Key`` header,
+    or both) and answer with one of the Chevereto-family response shapes
+    `extract_image_urls` knows.
 
-    Used by ImgBB, OnlyImage, and Lensdump -- identical shape apart from
-    where the API key goes.
+    Used by ImgBB, OnlyImage, Lensdump and every configured Chevereto v4
+    instance -- identical apart from where the API key goes. Chevereto
+    instances send ``both``, since a given site may honour only one of the two
+    and ignores the other.
     """
     if not api_key:
         raise ImageUploadError(f"You are required to have an API key for {host_name}")

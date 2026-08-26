@@ -1,7 +1,6 @@
 import asyncio
 from collections.abc import Sequence
 from copy import deepcopy
-from dataclasses import fields
 from html import escape
 from pathlib import Path
 import shutil
@@ -73,7 +72,12 @@ from src.frontend.custom_widgets.prompt_token_editor_dialog import (
 from src.frontend.global_signals import GSigs
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
 from src.logger.nfo_forge_logger import LOG
-from src.packages.custom_types import ImageUploadData, ImageUploadFromTo
+from src.packages.custom_types import (
+    DISABLED_HOST,
+    ImageHostRef,
+    ImageUploadData,
+    ImageUploadFromTo,
+)
 from src.payloads.image_hosts import ImagePayloadBase
 from src.payloads.tracker_search_result import TrackerSearchResult
 from src.utils.secret_redaction import scrub_secrets
@@ -1423,14 +1427,7 @@ class ProcessPage(BaseWizardPage):
             image_host_data,
         ) in self.context.shared_data.tracker_image_hosts.items():
             img_dest = image_host_data.img_to
-            try:
-                self.config.settings.trackers.last_used_image_host[tracker] = ImageHost(
-                    img_dest
-                )
-            except ValueError:
-                self.config.settings.trackers.last_used_image_host[tracker] = (
-                    ImageSource(img_dest)
-                )
+            self.config.settings.trackers.last_used_image_host[tracker] = img_dest
         if self.config.settings.trackers.last_used_image_host != start_data:
             self.config.save()
 
@@ -1485,8 +1482,9 @@ class ProcessPage(BaseWizardPage):
             restored_hosts = dict(self.context.shared_data.tracker_image_hosts)
             upload_type = ImageSource.IMAGES
             enabled_img_hosts: dict[
-                ImageHost | ImageSource, bool | ImagePayloadBase | list[ImageUploadData]
-            ] = {ImageHost.DISABLED: False}
+                ImageHostRef | ImageSource,
+                bool | ImagePayloadBase | list[ImageUploadData],
+            ] = {DISABLED_HOST: False}
 
             # if url data is detected add that to the potential options
             if self.context.shared_data.url_data:
@@ -1503,18 +1501,15 @@ class ProcessPage(BaseWizardPage):
                 enabled_img_hosts = enabled_img_hosts | {
                     key: value
                     for key, value in self.config.settings.image_hosts.by_selection().items()
-                    if value.enabled
-                    and all(
-                        getattr(value, field.name)
-                        for field in fields(value)
-                        if field.name != "enabled"
-                    )
+                    if value.enabled and value.is_configured()
                 }
                 # a plugin-provided image host has no `ImagePayloadBase` entry in
                 # `by_selection()` (it manages its own config); its availability
                 # here comes entirely from the Settings > Plugins selection instead
                 if self._plugin_image_host_available():
-                    enabled_img_hosts = enabled_img_hosts | {ImageHost.PLUGIN: True}
+                    enabled_img_hosts = enabled_img_hosts | {
+                        ImageHostRef(ImageHost.PLUGIN): True
+                    }
 
             # A host this job already uploaded to can be served from the stored
             # URLs alone -- no local screenshots, and no credentials, since
@@ -1524,8 +1519,8 @@ class ProcessPage(BaseWizardPage):
             enabled_img_hosts = enabled_img_hosts | {
                 host: True
                 for host in self.context.shared_data.uploaded_images_by_host
-                if isinstance(host, ImageHost)
-                and host is not ImageHost.DISABLED
+                if isinstance(host, ImageHostRef)
+                and host != DISABLED_HOST
                 and host not in enabled_img_hosts
             }
 
@@ -1542,7 +1537,7 @@ class ProcessPage(BaseWizardPage):
             for tracker in ordered_trackers:
                 combo_box = self.tracker_process_tree.add_row(
                     headers=(str(tracker), "", "⌛ Queued"),
-                    combo_data=[  # [int, [(str, (ImageUploadFromTo, (TrackerSelection, ImageHost)))]]
+                    combo_data=[  # [int, [(str, (ImageUploadFromTo, (TrackerSelection, ImageHostRef)))]]
                         (
                             1,
                             [
@@ -1602,19 +1597,17 @@ class ProcessPage(BaseWizardPage):
         caller says so out loud instead of letting the row imply the user
         picked it.
         """
+        del upload_type
+
         if restored_host:
-            index = combo_box.findText(
-                self._image_host_label(upload_type, restored_host.img_to)
-            )
+            index = self._find_destination_index(combo_box, restored_host.img_to)
             if index != -1:
                 combo_box.setCurrentIndex(index)
                 return None
 
         last_used_host = self.config.settings.trackers.last_used_image_host.get(tracker)
         if last_used_host:
-            index = combo_box.findText(
-                str(last_used_host), flags=Qt.MatchFlag.MatchContains
-            )
+            index = self._find_destination_index(combo_box, last_used_host)
             if index != -1:
                 combo_box.setCurrentIndex(index)
                 # the preference standing in for a job's own choice is the
@@ -1630,6 +1623,26 @@ class ProcessPage(BaseWizardPage):
             f"{tracker}: '{wanted}' is not available in this config, so this "
             f"run will use '{combo_box.currentText()}'"
         )
+
+    @staticmethod
+    def _find_destination_index(
+        combo_box: QComboBox, destination: ImageHostRef | ImageSource
+    ) -> int:
+        """Locate the row offering `destination`, matching on identity.
+
+        Not on the displayed label: a Chevereto instance's label is the user's
+        to rename, and `ImageHostRef` deliberately excludes it from equality so
+        a rename does not orphan the selection this is trying to restore.
+        """
+        for index in range(combo_box.count()):
+            data = combo_box.itemData(index)
+            value = getattr(data, "value", data)
+            if not isinstance(value, tuple) or not value:
+                continue
+            from_to = value[0]
+            if isinstance(from_to, ImageUploadFromTo) and from_to.img_to == destination:
+                return index
+        return -1
 
     def _show_image_host_notice(self, unavailable: Sequence[str]) -> None:
         """Put the image-host substitutions on the banner, or take it down.

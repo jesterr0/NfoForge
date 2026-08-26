@@ -11,7 +11,7 @@ from src.backend.process import ProcessBackEnd
 from src.config.config import ConfigManager
 from src.enums.image_host import ImageHost
 from src.exceptions import ImageHostError
-from src.packages.custom_types import ImageUploadData
+from src.packages.custom_types import ImageHostRef, ImageUploadData
 from src.plugins.api import PluginDefinition
 from src.plugins.manager import PluginManager
 
@@ -52,7 +52,7 @@ def test_returns_the_configured_plugin_uploader() -> None:
     )
     backend = _backend(enable_plugins=True, plugin_id="test.imghost", manager=manager)
 
-    result = backend._get_uploader_for_host(ImageHost.PLUGIN)
+    result = backend._get_uploader_for_host(ImageHostRef(ImageHost.PLUGIN))
 
     assert result is uploader
 
@@ -62,7 +62,7 @@ def test_raises_when_plugins_are_disabled() -> None:
     backend = _backend(enable_plugins=False, plugin_id="test.imghost", manager=manager)
 
     with pytest.raises(ImageHostError, match="disabled"):
-        backend._get_uploader_for_host(ImageHost.PLUGIN)
+        backend._get_uploader_for_host(ImageHostRef(ImageHost.PLUGIN))
 
 
 def test_raises_when_nothing_is_configured() -> None:
@@ -70,7 +70,7 @@ def test_raises_when_nothing_is_configured() -> None:
     backend = _backend(enable_plugins=True, plugin_id=None, manager=manager)
 
     with pytest.raises(ImageHostError, match="No plugin configured"):
-        backend._get_uploader_for_host(ImageHost.PLUGIN)
+        backend._get_uploader_for_host(ImageHostRef(ImageHost.PLUGIN))
 
 
 def test_raises_when_the_configured_plugin_is_unavailable() -> None:
@@ -78,4 +78,4 @@ def test_raises_when_the_configured_plugin_is_unavailable() -> None:
     backend = _backend(enable_plugins=True, plugin_id="missing.plugin", manager=manager)
 
     with pytest.raises(ImageHostError, match="not available"):
-        backend._get_uploader_for_host(ImageHost.PLUGIN)
+        backend._get_uploader_for_host(ImageHostRef(ImageHost.PLUGIN))

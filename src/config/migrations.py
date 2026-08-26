@@ -32,6 +32,26 @@ The versions so far:
   0--100 freeleech percentage. Disabled migrates to 0 and enabled to 100.
 - 7 -> 8: LST's torrent source flag changed from the incorrect ``LST`` to
   the tracker-required ``LST.GG``. Other user-configured values are preserved.
+- 8 -> 9: filename settings. ``replace_illegal_chars`` is dropped (nothing
+  read it), the filename colon control's five values map onto three, and
+  ``parse_filename_attributes`` expands into a master switch plus six
+  per-category ones. HYBRID follows the old flag and the other five default
+  on, which is what keeps output byte-identical -- see the migration itself
+  for why. The two dropped keys still appear in
+  ``_MOVIE_MANAGEMENT_SCALAR_KEYS`` above because the 1 -> 2 hop must still
+  carry them forward; this hop is where they leave.
+- 9 -> 10: every per-tracker title override is discarded, along with the
+  legacy ``mvr_default_title_*`` spelling of the same fields. Tracker titles
+  come from hardcoded rules now, so a stored override is a customisation the
+  design removes rather than a value to carry forward. The global movie and
+  series title tokens and the global title colon stay: the trackers with no
+  composition of their own render exactly those.
+- 10 -> 11: `[image_hosts.chevereto_v3]` and `[image_hosts.chevereto_v4]` stop
+  being one site each and become containers of user-labeled instances, keyed
+  by a generated id. A configured site migrates to a single instance with id
+  ``"1"``, labeled with the name it used to show in the UI; an unconfigured
+  one migrates to nothing. `last_used_img_host` values are rewritten from
+  display names to the new stable keys.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -80,6 +100,9 @@ SCHEMA_5_VERSION = 5
 SCHEMA_6_VERSION = 6
 SCHEMA_7_VERSION = 7
 SCHEMA_8_VERSION = 8
+SCHEMA_9_VERSION = 9
+SCHEMA_10_VERSION = 10
+SCHEMA_11_VERSION = 11
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -541,6 +564,23 @@ _TITLE_OVERRIDE_KEYS = (
     "tvr_title_overrides",
 )
 
+# An earlier spelling of the same three fields, dropped from the codebase
+# without ever being stripped from a profile, so old ones still carry them
+# (with pre-rename tokens inside, e.g. `{movie_clean_title}`). Nothing has
+# read them for some time and `validate_types` ignores keys the default does
+# not declare, so they are inert -- but they are per-tracker title overrides,
+# and schema 10 says a profile no longer has any.
+#
+# Kept separate from the tuple above rather than appended to it: that one is
+# also read by `migrate_v5_to_v6`, which refreshes each key from the packaged
+# default. These are in no packaged default, so adding them there would
+# change that older hop to no purpose.
+_LEGACY_TITLE_OVERRIDE_KEYS = (
+    "mvr_default_title_override_enabled",
+    "mvr_default_title_token_override",
+    "mvr_default_title_replace_map",
+)
+
 
 def migrate_v5_to_v6(
     old_doc: Mapping[str, Any],
@@ -669,6 +709,229 @@ def migrate_v7_to_v8(
     return new_doc, []
 
 
+# ColonReplace values as persisted: 1 KEEP, 2 DELETE, 3 REPLACE_WITH_DASH,
+# 4 REPLACE_WITH_SPACE_DASH, 5 REPLACE_WITH_SPACE_DASH_SPACE.
+_FILENAME_COLON_REMAP = {4: 3, 5: 3}
+
+_CLAIM_NAMES = (
+    "edition",
+    "frame_size",
+    "localization",
+    "re_release",
+    "remux",
+    "hybrid",
+)
+
+
+def _migrate_management_section(
+    section: Mapping[str, Any], prefix: str
+) -> dict[str, Any]:
+    """Apply the v9 changes to one management section.
+
+    ``prefix`` is "mvr" or "tvr".
+    """
+    migrated = dict(section)
+    migrated.pop(f"{prefix}_replace_illegal_chars", None)
+
+    colon_key = f"{prefix}_colon_replace_filename"
+    colon_value = _unwrap(migrated.get(colon_key))
+    if isinstance(colon_value, int) and colon_value in _FILENAME_COLON_REMAP:
+        migrated[colon_key] = _FILENAME_COLON_REMAP[colon_value]
+
+    old_flag = _unwrap(migrated.pop(f"{prefix}_parse_filename_attributes", None))
+    master = True if old_flag is None else bool(old_flag)
+    migrated[f"{prefix}_parse_claims"] = master
+    for claim in _CLAIM_NAMES:
+        # HYBRID follows the old flag; it is the one claim that flag
+        # genuinely controlled, so a profile with it off must keep emitting
+        # no HYBRID. The other five were pre-filled into override_tokens
+        # before the gate was consulted, so the flag never reached them and
+        # leaving them on preserves output while making master meaningful
+        # if the user turns it back on.
+        migrated[f"{prefix}_parse_claim_{claim}"] = (
+            master if claim == "hybrid" else True
+        )
+    return migrated
+
+
+def migrate_v8_to_v9(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Drop the dead illegal-character flag, reduce the filename colon
+    control to three options, and expand the single claim-parsing flag into
+    a master plus six category switches.
+
+    Output is byte-identical for every existing profile.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_9_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    for section_key, prefix in (
+        ("movie_management", "mvr"),
+        ("series_management", "tvr"),
+    ):
+        section = new_doc.get(section_key)
+        if isinstance(section, Mapping):
+            new_doc[section_key] = _migrate_management_section(section, prefix)
+
+    return new_doc, []
+
+
+def migrate_v9_to_v10(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Discard every per-tracker title override.
+
+    Unlike the hop before it, this one changes output deliberately. Tracker
+    titles are enforced from hardcoded rules now, so a stored override is a
+    customisation the design removes rather than a value to carry forward.
+    That is the feature: the shipped config was not derived from tracker
+    rules, and all five trackers checked against their published rules
+    during design had defects.
+
+    The global movie and series title tokens and the global title colon are
+    preserved untouched. Seven trackers have no composition of their own and
+    render exactly those, so discarding them would leave those trackers with
+    no title at all.
+
+    The legacy `mvr_default_title_*` spelling goes too. Nothing has read it
+    for some time, so removing it changes no behaviour -- but leaving a
+    per-tracker title override sitting in a profile this hop claims to have
+    cleared would make the claim false on the only evidence a user can see.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_10_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    discarded = frozenset(_TITLE_OVERRIDE_KEYS + _LEGACY_TITLE_OVERRIDE_KEYS)
+    trackers = new_doc.get("tracker")
+    if isinstance(trackers, Mapping):
+        migrated_trackers: dict[str, Any] = {}
+        for name, section in trackers.items():
+            if not isinstance(section, Mapping):
+                migrated_trackers[name] = section
+                continue
+            migrated_trackers[name] = {
+                key: value for key, value in section.items() if key not in discarded
+            }
+        new_doc["tracker"] = migrated_trackers
+
+    return new_doc, []
+
+
+# The Chevereto instance a schema 10 profile's single slot becomes. Fixed
+# rather than generated so the hop is reproducible -- only the UI's "add
+# instance" action mints random ids.
+_MIGRATED_CHEVERETO_ID = "1"
+
+# Per Chevereto kind: its `[image_hosts.*]` key, the label its single slot
+# used to carry in the UI, and the credential keys that decide whether it was
+# configured at all.
+_CHEVERETO_KINDS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("chevereto_v3", "Chevereto v3", ("base_url", "user", "password")),
+    ("chevereto_v4", "Chevereto v4", ("base_url", "api_key")),
+)
+
+# Old `last_used_img_host` values were the enum's *display* value; schema 11
+# stores `ImageHostRef.key()` instead. Only the two Chevereto kinds gain an
+# instance suffix; the rest just change spelling.
+_LAST_USED_HOST_REMAP = {
+    "chevereto v3": f"CHEVERETO_V3:{_MIGRATED_CHEVERETO_ID}",
+    "chevereto v4": f"CHEVERETO_V4:{_MIGRATED_CHEVERETO_ID}",
+    "imagebox": "IMAGE_BOX",
+    "imagebb": "IMAGE_BB",
+    "onlyimage": "ONLY_IMAGE",
+    "pixhost": "PIXHOST",
+    "lensdump": "LENSDUMP",
+    "plugin": "PLUGIN",
+    "disabled": "DISABLED",
+}
+
+
+def _migrate_chevereto_slot(
+    slot: Mapping[str, Any], label: str, credential_keys: tuple[str, ...]
+) -> dict[str, Any]:
+    """Turn one Chevereto slot into its container of instances.
+
+    An untouched slot (no credentials, not enabled) becomes an empty
+    container rather than an instance with nothing in it -- an empty instance
+    would show up in the settings list and the per-tracker picker as a host
+    the user never configured.
+    """
+    configured = any(
+        str(_unwrap(slot.get(key)) or "").strip() for key in credential_keys
+    )
+    if not configured and not bool(_unwrap(slot.get("enabled")) or False):
+        return {}
+
+    instance: dict[str, Any] = {"label": label}
+    for key in ("enabled", *credential_keys):
+        if key in slot:
+            instance[key] = slot[key]
+    return {_MIGRATED_CHEVERETO_ID: instance}
+
+
+def migrate_v10_to_v11(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Give the two Chevereto slots room for more than one site each.
+
+    One Chevereto build powers many sites -- ptscreens, and the OnlyImage and
+    Lensdump entries that only exist as their own hosts because this slot held
+    exactly one. A profile that had configured a Chevereto site keeps it, as
+    an instance labeled the way the UI used to label it, so nothing a user
+    selected per tracker is lost.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_11_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    image_hosts = new_doc.get("image_hosts")
+    if isinstance(image_hosts, Mapping):
+        migrated_hosts = dict(image_hosts)
+        for host_key, label, credential_keys in _CHEVERETO_KINDS:
+            slot = migrated_hosts.get(host_key)
+            migrated_hosts[host_key] = (
+                _migrate_chevereto_slot(slot, label, credential_keys)
+                if isinstance(slot, Mapping)
+                else {}
+            )
+        new_doc["image_hosts"] = migrated_hosts
+
+    trackers = new_doc.get("tracker")
+    if isinstance(trackers, Mapping):
+        settings = trackers.get("settings")
+        if isinstance(settings, Mapping):
+            last_used = settings.get("last_used_img_host")
+            if isinstance(last_used, Mapping):
+                migrated_last_used = {
+                    tracker: _LAST_USED_HOST_REMAP.get(
+                        str(_unwrap(value)).strip().lower(), _unwrap(value)
+                    )
+                    for tracker, value in last_used.items()
+                }
+                migrated_settings = dict(settings)
+                migrated_settings["last_used_img_host"] = migrated_last_used
+                migrated_trackers = dict(trackers)
+                migrated_trackers["settings"] = migrated_settings
+                new_doc["tracker"] = migrated_trackers
+
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -677,6 +940,9 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_5_VERSION: migrate_v5_to_v6,
     SCHEMA_6_VERSION: migrate_v6_to_v7,
     SCHEMA_7_VERSION: migrate_v7_to_v8,
+    SCHEMA_8_VERSION: migrate_v8_to_v9,
+    SCHEMA_9_VERSION: migrate_v9_to_v10,
+    SCHEMA_10_VERSION: migrate_v10_to_v11,
 }
 
 

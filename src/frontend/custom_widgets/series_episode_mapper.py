@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -763,8 +764,10 @@ class SeriesEpisodeMapper(QWidget):
 
         return best_match
 
-    def _get_absolute_order_episodes(self) -> list[dict[str, Any]]:
-        """Return TVDB's "Absolute Order" episode list, if one was fetched.
+    def _get_absolute_order_episodes(
+        self,
+    ) -> tuple[Any | None, list[dict[str, Any]]]:
+        """Return TVDB's "Absolute Order" episode list and its type id.
 
         This scans all season types the mapper knows about rather than only
         the currently selected TVDB order, so absolute-number matching keeps
@@ -772,19 +775,23 @@ class SeriesEpisodeMapper(QWidget):
         while the Anime/Absolute release format is selected -- the release
         format only controls title/filename tokens and doesn't change which
         TVDB order is displayed.
+
+        The type id comes back with the list because a mapping stored from
+        it did not come from the combo's ordering, and the row has to record
+        the list it actually used.
         """
-        for type_data in self.episodes_by_type.values():
+        for type_id, type_data in self.episodes_by_type.items():
             order_type = str(type_data.get("type", "")).lower()
             order_name = str(type_data.get("type_name", "")).lower()
             if "absolute" in order_type or "absolute" in order_name:
                 episodes = type_data.get("episodes", [])
                 if isinstance(episodes, list):
-                    return [
+                    return type_id, [
                         dict(episode)
                         for episode in episodes
                         if isinstance(episode, dict)
                     ]
-        return []
+        return None, []
 
     def _get_available_episodes_flat(self) -> list[dict[str, Any]]:
         """Flatten ``self.available_episodes`` (season -> episode -> data)
@@ -809,8 +816,10 @@ class SeriesEpisodeMapper(QWidget):
         absolute_format_active = (
             self.get_series_format() == EpisodeFormat.ANIME_ABSOLUTE
         )
-        absolute_episodes = (
-            self._get_absolute_order_episodes() if absolute_format_active else []
+        absolute_type_id, absolute_episodes = (
+            self._get_absolute_order_episodes()
+            if absolute_format_active
+            else (None, [])
         )
         daily_format_active = self.get_series_format() == EpisodeFormat.DAILY_DATE
 
@@ -830,11 +839,16 @@ class SeriesEpisodeMapper(QWidget):
             # multiple episodes (e.g. "S01E01E02"). keep the lowest as the
             # primary episode and carry the highest as the range end so a
             # single file's multi-episode span isn't collapsed to episode 1.
+            # the whole list is kept alongside them: the expand styles name
+            # every episode the file holds, and "S01E01E05" is a span whose
+            # ends alone describe wrongly.
             episode_end = None
+            episode_list: list[int] | None = None
             if isinstance(episode, list):
                 if episode:
-                    episode = sorted(episode)
-                    episode, episode_end = episode[0], episode[-1]
+                    sorted_episodes = sorted(episode)
+                    episode_list = sorted_episodes
+                    episode, episode_end = sorted_episodes[0], sorted_episodes[-1]
                     if episode_end == episode:
                         episode_end = None
                 else:
@@ -864,6 +878,8 @@ class SeriesEpisodeMapper(QWidget):
                     confidence,
                     method,
                     episode_end=episode_end,
+                    episode_list=episode_list,
+                    episode_order_type_id=self.episode_order_combo.currentData(),
                 )
                 self._update_file_row_assignment(
                     row, season, episode, confidence, method
@@ -905,6 +921,11 @@ class SeriesEpisodeMapper(QWidget):
                         # the raw absolute number. If the end number doesn't
                         # resolve, or resolves into a different season than
                         # the start, drop it rather than store a bogus value.
+                        #
+                        # The parsed episode list is deliberately not passed
+                        # on: it holds absolute numbers, and only its ends
+                        # have been translated into this season. _store_mapping
+                        # derives the in-season list from those instead.
                         matched_episode_end = None
                         if episode_end is not None:
                             end_match = match_by_absolute(
@@ -928,6 +949,7 @@ class SeriesEpisodeMapper(QWidget):
                             confidence,
                             method,
                             episode_end=matched_episode_end,
+                            episode_order_type_id=absolute_type_id,
                         )
                         self._update_file_row_assignment(
                             row, matched_season, matched_episode, confidence, method
@@ -974,6 +996,7 @@ class SeriesEpisodeMapper(QWidget):
                             daily_episode_data,
                             confidence,
                             method,
+                            episode_order_type_id=self.episode_order_combo.currentData(),
                         )
                         self._update_file_row_assignment(
                             row, matched_season, matched_episode, confidence, method
@@ -997,7 +1020,13 @@ class SeriesEpisodeMapper(QWidget):
                     method = "fuzzy"
 
                     self._store_mapping(
-                        file_path, season, episode, episode_data, confidence, method
+                        file_path,
+                        season,
+                        episode,
+                        episode_data,
+                        confidence,
+                        method,
+                        episode_order_type_id=self.episode_order_combo.currentData(),
                     )
                     self._update_file_row_assignment(
                         row, season, episode, confidence, method
@@ -1081,7 +1110,13 @@ class SeriesEpisodeMapper(QWidget):
                     method = "fuzzy"
 
                     self._store_mapping(
-                        file_path, season, episode, episode_data, confidence, method
+                        file_path,
+                        season,
+                        episode,
+                        episode_data,
+                        confidence,
+                        method,
+                        episode_order_type_id=self.episode_order_combo.currentData(),
                     )
                     self._update_file_row_assignment(
                         row, season, episode, confidence, method
@@ -1101,21 +1136,46 @@ class SeriesEpisodeMapper(QWidget):
         confidence: float,
         method: str,
         episode_end: int | None = None,
+        episode_list: Sequence[int] | None = None,
+        episode_order_type_id: Any | None = None,
     ) -> None:
         """Store file-to-episode mapping.
 
         ``episode_end`` carries the last episode number for a file that spans
         multiple episodes (e.g. a single "S01E01E02" file). It is ``None``
         for a normal single-episode mapping.
+
+        ``episode_list`` names every episode the file covers. Callers pass it
+        when they parsed one, which is the only way a non-contiguous span
+        such as "S01E01E05" can be recorded; otherwise it is derived from
+        ``episode`` and ``episode_end``, so every row carries a list and no
+        reader has to special-case the single-episode file.
+
+        ``episode_order_type_id`` records which TVDB episode ordering
+        ``episode_data`` came from. TVDB serves several -- aired, DVD,
+        absolute -- and the same (season, episode) pair can name different
+        episodes in each, so a later lookup for a *different* episode of the
+        same file has to read the same list. ``None`` means the flat
+        ``tvdb_data["episodes"]`` list, which is what rows written before
+        this field existed mean.
         """
+        if episode_list:
+            stored_episodes = sorted(episode_list)
+        elif episode_end is not None and episode_end > episode:
+            stored_episodes = list(range(episode, episode_end + 1))
+        else:
+            stored_episodes = [episode]
+
         self.file_episode_mappings[file_path] = {
             "season": season,
             "episode": episode,
             "episode_end": episode_end,
+            "episode_list": stored_episodes,
             "episode_data": episode_data,
             "episode_name": episode_data.get("name", "Unknown"),
             "confidence": confidence,
             "assignment_method": method,
+            "episode_order_type_id": episode_order_type_id,
         }
 
     def _update_file_row_assignment(
@@ -1530,6 +1590,16 @@ class SeriesEpisodeMapper(QWidget):
 
             # store the mapping
             existing_mapping = self.file_episode_mappings.get(file_path)
+            existing_end = None
+            existing_list = None
+            if existing_mapping is not None:
+                existing_end = existing_mapping.get("episode_end")
+                # The list only survives while it still describes this file's
+                # start. Retyping the episode moves the start, and a list
+                # detected from the old one would name episodes the file no
+                # longer claims; re-deriving from the ends is right there.
+                if existing_mapping.get("episode") == episode:
+                    existing_list = existing_mapping.get("episode_list")
             self._store_mapping(
                 file_path,
                 season,
@@ -1537,11 +1607,9 @@ class SeriesEpisodeMapper(QWidget):
                 episode_data,
                 confidence,
                 method,
-                episode_end=(
-                    existing_mapping.get("episode_end")
-                    if existing_mapping is not None
-                    else None
-                ),
+                episode_end=existing_end,
+                episode_list=existing_list,
+                episode_order_type_id=self.episode_order_combo.currentData(),
             )
 
             # update confidence and method columns

@@ -292,9 +292,7 @@ class BHDUploader:
         stream_optimized: bool = False,
     ) -> dict[str, Any]:
         upload_payload: dict[str, Any] = {
-            "name": tracker_title
-            if tracker_title
-            else self.generate_release_title(release_stem(self.input_path)),
+            "name": tracker_title,
             "category_id": self._category_id(),
             "type": self._type(),
             "source": self._source(),
@@ -461,14 +459,6 @@ class BHDUploader:
 
     def _cleaned_media_info(self) -> str:
         return MinimalMediaInfo(self.input_path).get_full_mi_str(cleansed=True)
-
-    @staticmethod
-    def generate_release_title(release_title: str) -> str:
-        name = release_title.replace(".", " ")
-        name = re.sub(r"\s{2,}", " ", name)
-        name = re.sub(r"\s(\d)\s([01])\s", r" \1.\2 ", name)
-        name = re.sub(r"\bDD\s+(\d\.[01])", r"DD\1", name)
-        return name
 
 
 class BHDSearch:

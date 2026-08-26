@@ -135,3 +135,83 @@ def test_failed_render_clears_stale_generated_name(
 
     assert page.output_entry.text() == ""
     assert page._input_ext is None
+
+
+def test_hybrid_is_pre_ticked_from_the_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # HYBRID had no pre-tick, so the claim was invisible until the user
+    # found the checkbox.
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=Path("Movie.2024.HYBRID.1080p.BluRay.x264-GRP.mkv"),
+    )
+
+    page.initializePage()
+
+    assert page.hybrid_checkbox.isChecked() is True
+
+
+def test_claims_are_pre_filled_from_the_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=Path(
+            "Movie.2024.Directors.Cut.IMAX.REPACK.1080p.BluRay.x264-GRP.mkv"
+        ),
+    )
+
+    page.initializePage()
+
+    assert page.edition_combo.currentText() == "Directors Cut"
+    assert page.frame_size_combo.currentText() == "IMAX"
+    assert page.re_release_combo.currentText() == "REPACK"
+
+
+def test_a_switched_off_category_is_not_pre_filled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=Path("Movie.2024.IMAX.REPACK.1080p.BluRay.x264-GRP.mkv"),
+    )
+    page.config.settings.movie.claims.frame_size = False
+
+    page.initializePage()
+
+    assert page.frame_size_combo.currentText() == ""
+    assert page.re_release_combo.currentText() == "REPACK"
+
+
+def test_release_group_falls_back_to_the_detected_value(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=Path("Movie.2024.1080p.WEB-DL.x264-OTHERGROUP.mkv"),
+    )
+    page.config.settings.movie.release_group = ""
+
+    page.initializePage()
+
+    assert page.release_group_entry.text() == "OTHERGROUP"
+
+
+def test_a_configured_release_group_wins_over_the_detected_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=Path("Movie.2024.1080p.WEB-DL.x264-OTHERGROUP.mkv"),
+    )
+    page.config.settings.movie.release_group = "MYGROUP"
+
+    page.initializePage()
+
+    assert page.release_group_entry.text() == "MYGROUP"

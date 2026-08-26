@@ -18,7 +18,6 @@ from src.backend.trackers.fearnopeer import FearNoPeerUploader
 from src.backend.trackers.huno import HunoUploader, huno_uploader
 from src.backend.trackers.lst import LSTUploader
 from src.backend.trackers.media_support import (
-    NO_RELEASE_NAME_FIELD,
     TRACKER_SUPPORTED_MEDIA,
     UNIT3D_TRACKERS,
     UNSUPPORTED_MOVIE_TRACKERS,
@@ -31,6 +30,7 @@ from src.backend.trackers.passthepopcorn import ptp_uploader
 from src.backend.trackers.reelflix import ReelFlixUploader
 from src.backend.trackers.seedpool import SeedPoolUploader
 from src.backend.trackers.shareisland import ShareIslandUploader
+from src.backend.trackers.title_rules import accepts_a_release_name
 from src.backend.trackers.torrentleech import TLUploader
 from src.backend.trackers.unit3d_base import Unit3dBaseUploader
 from src.backend.trackers.uploadcx import UploadCXUploader
@@ -752,6 +752,5 @@ def test_no_release_name_field_matches_uploaders_without_title_inputs() -> None:
     """Keep the title-override exclusions tied to the uploader contracts."""
     assert "tracker_title" not in inspect.signature(ptp_uploader).parameters
     assert "tracker_title" not in inspect.signature(huno_uploader).parameters
-    assert NO_RELEASE_NAME_FIELD == frozenset(
-        {TrackerSelection.PASS_THE_POPCORN, TrackerSelection.HUNO}
-    )
+    assert not accepts_a_release_name(TrackerSelection.PASS_THE_POPCORN)
+    assert not accepts_a_release_name(TrackerSelection.HUNO)
