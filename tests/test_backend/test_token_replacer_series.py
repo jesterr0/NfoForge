@@ -72,6 +72,17 @@ def test_active_file_drives_file_specific_tokens_in_series_pack() -> None:
     assert render(second_file) == f"720p|OTHER|{second_file.stem}"
 
 
+def test_tmdb_url_token_uses_the_tv_path_for_a_series() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ tmdb_url }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == f"https://www.themoviedb.org/tv/{EXAMPLE_SEARCH_PAYLOAD.tmdb_id}/"
+
+
 def _series_replacer(token: str) -> TokenReplacer:
     file_path = Path("Show.S01E02.mkv")
     return TokenReplacer(

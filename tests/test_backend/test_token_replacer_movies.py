@@ -366,6 +366,74 @@ def test_media_type_token_drives_the_movie_branch_of_a_conditional() -> None:
     assert output == "movie"
 
 
+def test_plot_token_renders_the_normalized_overview() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ plot }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == EXAMPLE_SEARCH_PAYLOAD.plot
+
+
+def test_plot_token_is_empty_when_unset() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ plot }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == ""
+
+
+def test_imdb_url_token_renders_the_full_imdb_url() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ imdb_url }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == f"https://www.imdb.com/title/{EXAMPLE_SEARCH_PAYLOAD.imdb_id}/"
+
+
+def test_imdb_url_token_is_empty_without_an_imdb_id() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ imdb_url }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == ""
+
+
+def test_tmdb_url_token_uses_the_movie_path_for_a_movie() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ tmdb_url }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert (
+        output == f"https://www.themoviedb.org/movie/{EXAMPLE_SEARCH_PAYLOAD.tmdb_id}/"
+    )
+
+
+def test_tmdb_url_token_is_empty_without_a_tmdb_id() -> None:
+    output = TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{{ tmdb_url }}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=MediaSearchPayload(media_type=MediaType.MOVIE),
+        jinja_engine=Jinja2TemplateEngine(),
+    ).get_output()
+
+    assert output == ""
+
+
 def test_is_anime_token_renders_for_an_anime_film() -> None:
     # AniList is queried on Animation genre plus Japanese original language,
     # with no media type condition, so anime films resolve too.

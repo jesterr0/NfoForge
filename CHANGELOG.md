@@ -10,6 +10,7 @@
 - Can now search via TMDBID/TMDB URL.
   - Improved code related to search.
   - Added a new help button to the right of the search label for information regarding these changes
+- New NFO template tokens: `{{ plot }}` for the overview/plot text, and `{{ imdb_url }}` / `{{ tmdb_url }}` for the full IMDb/TMDB links (TMDB uses the correct `/movie/` or `/tv/` path automatically). `{{ plot }}` follows your selected TMDB language, the same as `{{ title }}` already does.
 
 ### Changed
 

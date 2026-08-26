@@ -992,6 +992,15 @@ class TokenReplacer:
         if token_data.bracket_token == Tokens.MEDIA_TYPE.token:
             return self._media_type(token_data)
 
+        elif token_data.bracket_token == Tokens.PLOT.token:
+            return self._plot(token_data)
+
+        elif token_data.bracket_token == Tokens.IMDB_URL.token:
+            return self._imdb_url(token_data)
+
+        elif token_data.bracket_token == Tokens.TMDB_URL.token:
+            return self._tmdb_url(token_data)
+
         elif token_data.bracket_token == Tokens.IS_ANIME.token:
             return self._is_anime(token_data)
 
@@ -1982,6 +1991,15 @@ class TokenReplacer:
         imdb_id = self.media_search_obj.imdb_id if self.media_search_obj.imdb_id else ""
         return self._optional_user_input(imdb_id, token_data)
 
+    def _plot(self, token_data: TokenData) -> str:
+        plot = self.media_search_obj.plot or ""
+        return self._optional_user_input(plot, token_data)
+
+    def _imdb_url(self, token_data: TokenData) -> str:
+        imdb_id = self.media_search_obj.imdb_id
+        url = f"https://www.imdb.com/title/{imdb_id}/" if imdb_id else ""
+        return self._optional_user_input(url, token_data)
+
     def _original_title(
         self,
         token_data: TokenData,
@@ -2008,6 +2026,17 @@ class TokenReplacer:
     def _tmdb_id(self, token_data: TokenData) -> str:
         tmdb_id = self.media_search_obj.tmdb_id if self.media_search_obj.tmdb_id else ""
         return self._optional_user_input(tmdb_id, token_data)
+
+    def _tmdb_url(self, token_data: TokenData) -> str:
+        tmdb_id = self.media_search_obj.tmdb_id
+        if not tmdb_id:
+            return self._optional_user_input("", token_data)
+        endpoint = (
+            "movie" if self.media_input_obj.media_type is MediaType.MOVIE else "tv"
+        )
+        return self._optional_user_input(
+            f"https://www.themoviedb.org/{endpoint}/{tmdb_id}/", token_data
+        )
 
     def _tvdb_id(self, token_data: TokenData) -> str:
         tvdb_id = self.media_search_obj.tvdb_id if self.media_search_obj.tvdb_id else ""
