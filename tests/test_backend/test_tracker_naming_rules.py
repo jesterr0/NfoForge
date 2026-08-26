@@ -45,6 +45,7 @@ Each needs a new token rather than an edit to an entry:
   fixed for titles alone.
 """
 
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -924,16 +925,15 @@ def test_an_explicit_service_choice_is_honoured(tracker: TrackerSelection) -> No
 # pinning what an entry says and wrong for pinning what a release resolves
 # to: a hand-built season pack passes `episodes=()`, which
 # `build_series_release_info` never produces for one. A real pack maps every
-# file it contains, so its episodes are exactly as populated as a span's and
-# `is_pack` is the only thing telling the two apart. The two tests below go
-# through the production derivation instead.
+# file it contains, so its episodes are exactly as populated as a span's.
+# The tests below go through the production derivation instead.
 
 
-def _pack_media(episode_count: int):
-    """A season pack as the app builds one: a file per episode, each mapped."""
+def _pack_media(episodes: Sequence[int]):
+    """A pack as the app builds one: a file per episode, each mapped."""
     files = [
         Path(f"Show.Name.S01E{number:02d}.2160p.UHD.BluRay.x265-SomeGroup.mkv")
-        for number in range(1, episode_count + 1)
+        for number in episodes
     ]
     source_info = next(iter(EXAMPLE_MEDIA_INPUT_PAYLOAD.file_list_mediainfo.values()))
     return replace(
@@ -943,8 +943,8 @@ def _pack_media(episode_count: int):
         file_list=files,
         file_list_mediainfo={path: source_info for path in files},
         series_episode_map={
-            path: {"season": 1, "episode": number + 1}
-            for number, path in enumerate(files)
+            path: {"season": 1, "episode": number}
+            for path, number in zip(files, episodes, strict=True)
         },
     )
 
@@ -963,35 +963,92 @@ def _span_media():
     )
 
 
-def _designator_for(media) -> str:
+def _search_listing(season_length: int | None) -> MediaSearchPayload:
+    """A search payload whose TVDB data lists a season of `season_length`.
+
+    ``None`` carries no TVDB data at all, which is the state a lookup that
+    failed or was skipped leaves behind.
+    """
+    tvdb_data = (
+        {
+            "episodes": [
+                {"seasonNumber": 1, "number": number}
+                for number in range(1, season_length + 1)
+            ]
+        }
+        if season_length is not None
+        else None
+    )
+    return MediaSearchPayload(
+        media_type=MediaType.SERIES, title=SERIES_TITLE, tvdb_data=tvdb_data
+    )
+
+
+def _designator_for(media, search: MediaSearchPayload | None = None) -> str:
     """The designator a payload resolves to, through the production path."""
     release_info = build_series_release_info(media)
-    context = ProcessingContext(media_input=media, media_search=EXAMPLE_SEARCH_PAYLOAD)
+    context = ProcessingContext(
+        media_input=media,
+        media_search=search if search is not None else EXAMPLE_SEARCH_PAYLOAD,
+    )
     backend = object.__new__(ProcessBackEnd)
     release = backend._release_properties(context, release_info)
 
     composition = TITLE_RULES[TrackerSelection.AITHER].composition
     assert composition is not None
     token_string = compose_token_string(composition, release)
-    designator = re.search(r"\bS\d\d(?:E[\dE-]+)?", token_string)
+    designator = re.search(r"S\d\d(?:E[\dE-]+)?", token_string)
     assert designator is not None, token_string
     return designator.group(0)
 
 
-def test_a_season_pack_is_designated_by_its_season_alone() -> None:
-    """A pack is "Show S01 ...", never "Show S01E01-05 ...".
+def test_a_whole_season_is_designated_by_its_season_alone() -> None:
+    """A release covering every episode TVDB lists for the season is "S01".
 
-    It carries every episode it covers, so the range says nothing a reader
-    wants: the release is the season. `is_pack` is what distinguishes it,
-    and the filename side already reads that flag -- both
-    `SeriesReleaseInfo.display_tag` and the `{episode_number}` token kwarg
-    consult it, so a title that does not disagrees with the filename beside
+    The range says nothing a reader wants when the release *is* the season,
+    and the filename side already agrees: `SeriesReleaseInfo.display_tag`
+    and the `{episode_number}` token kwarg both collapse a pack to its
+    season, so a title carrying a range disagrees with the filename beside
     it.
     """
-    media = _pack_media(5)
-    assert build_series_release_info(media).is_pack
+    media = _pack_media(range(1, 11))
 
-    assert _designator_for(media) == "S01"
+    assert _designator_for(media, _search_listing(10)) == "S01"
+
+
+def test_a_partial_pack_keeps_its_episode_range() -> None:
+    """Five episodes of a ten-episode season is not the season.
+
+    Collapsing it to "S01" would claim the whole season, which is a worse
+    error than an over-precise range: someone downloading it gets half of
+    what the title promised.
+    """
+    media = _pack_media(range(1, 6))
+
+    assert _designator_for(media, _search_listing(10)) == "S01E01-05"
+
+
+def test_a_pack_missing_a_middle_episode_is_not_the_whole_season() -> None:
+    """Completeness is the set of episodes, not the span of their ends.
+
+    A pack of E01-E05 and E07-E10 has ends of 1 and 10, so an ends-based
+    check would call it complete. It is not: E06 is absent.
+    """
+    media = _pack_media([*range(1, 6), *range(7, 11)])
+
+    assert _designator_for(media, _search_listing(10)) != "S01"
+
+
+def test_an_unlistable_season_keeps_its_episode_range() -> None:
+    """No TVDB data means the season's length is unknown.
+
+    Unknown resolves to the range rather than to "S01": claiming a complete
+    season on absent evidence is the failure that matters, and a range is
+    merely more precise than it needs to be.
+    """
+    media = _pack_media(range(1, 11))
+
+    assert _designator_for(media, _search_listing(None)) == "S01E01-10"
 
 
 def test_a_single_file_span_keeps_its_episode_range() -> None:
@@ -1000,4 +1057,4 @@ def test_a_single_file_span_keeps_its_episode_range() -> None:
     media = _span_media()
     assert not build_series_release_info(media).is_pack
 
-    assert _designator_for(media) == "S01E01-02"
+    assert _designator_for(media, _search_listing(10)) == "S01E01-02"
