@@ -624,14 +624,16 @@ class MainWindowWizard(QWizard):
         page took that path, and Start Over then opened a brand new run
         partway through the wizard, on a context with nothing in it.
         """
-        if (
-            self.config.settings.general.enable_plugins
-            and self.config.settings.plugins.wizard_page
-            and self.config.plugin_manager.get(self.config.settings.plugins.wizard_page)
-        ):
+        plugin_id = self.config.settings.plugins.wizard_page
+        plugin_record = (
+            self.config.plugin_manager.get(plugin_id)
+            if self.config.settings.general.enable_plugins and plugin_id
+            else None
+        )
+        if plugin_record:
             self.setStartId(WizardPages.PLUGIN_INPUT_PAGE.value)
             GSigs().main_window_update_status_bar_label.emit(
-                self.config.settings.plugins.wizard_page
+                plugin_record.definition.display_name
             )
             return
 

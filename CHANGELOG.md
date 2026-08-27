@@ -12,6 +12,7 @@
 ### Fixed
 
 - A season pack is named after its season on every tracker with hardcoded title rules -- "Show S01 BluRay ..." rather than "Show S01E01-05 BluRay ...". A pack maps every episode it contains, and the title was reading those mappings as an episode range, so it disagreed with the filename beside it and with the season/episode values sent to the tracker. Only a release covering every episode TVDB lists for the season is named this way: a partial pack keeps its episode range rather than claiming a season it does not contain, as does a release whose season TVDB cannot list.
+- Plugin uses the correct case sensitive name in the status bar vs the internal name.
 
 ## [1.1.9] - 2026-08-26
 
