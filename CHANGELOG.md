@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Plugin uses the correct case sensitive name in the status bar vs the internal name.
+
 ## [1.1.9] - 2026-08-26
 
 ### Added
