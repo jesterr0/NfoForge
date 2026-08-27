@@ -15,12 +15,25 @@ from src.backend.upload_retry import (
     UploadRetryAction,
 )
 from src.config.config import ConfigManager
+from src.config.models import ClaimSwitches
 from src.context.processing_context import ProcessingContext
+from src.enums.media_type import MediaType
 from src.enums.tracker_selection import TrackerSelection
 from src.exceptions import ProcessCancelled, TrackerClientError, TrackerError
 from src.payloads.shared_data import SharedPayload
 from src.plugins.api import PluginDefinition, PostUploadOutcome, PostUploadRequest
 from src.plugins.manager import PluginManager
+
+_CLAIMS_OFF = ClaimSwitches(
+    enabled=False,
+    edition=False,
+    frame_size=False,
+    localization=False,
+    re_release=False,
+    remux=False,
+    hybrid=False,
+    release_group=False,
+)
 
 
 def _backend() -> ProcessBackEnd:
@@ -423,6 +436,10 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
                         TrackerSelection.BEYOND_HD: tracker_info,
                     }
                 ),
+                # Stage 1 seeding reads the claim switches for the run's
+                # media type; off means it detects nothing, which keeps these
+                # tests about retry behaviour.
+                movie=SimpleNamespace(claims=_CLAIMS_OFF),
                 user_tokens=SimpleNamespace(tokens={}),
                 dependencies=SimpleNamespace(mkbrr=None, enable_mkbrr=False),
                 torrent_clients=SimpleNamespace(
@@ -455,8 +472,13 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
             media_input=SimpleNamespace(
                 require_input_path=lambda: tmp_path / "media.mkv",
                 require_working_dir=lambda: tmp_path,
+                # Stage 1 runs for any path that reaches processing, so the
+                # stub carries what it reads.
+                file_list=[tmp_path / "media.mkv"],
+                media_type=MediaType.MOVIE,
             ),
             shared_data=SharedPayload(),
+            custom_edition_info=(),
         ),
     )
     process_dict = {
@@ -559,6 +581,10 @@ def _process_trackers_backend(
                     post_upload="test.notify",
                     token_replacer="",
                 ),
+                # Stage 1 seeding reads the claim switches for the run's
+                # media type; off means it detects nothing, which keeps these
+                # tests about retry behaviour.
+                movie=SimpleNamespace(claims=_CLAIMS_OFF),
                 user_tokens=SimpleNamespace(tokens={}),
                 dependencies=SimpleNamespace(mkbrr=None, enable_mkbrr=False),
                 torrent_clients=SimpleNamespace(
@@ -601,8 +627,13 @@ def _run_process_trackers(
             media_input=SimpleNamespace(
                 require_input_path=lambda: tmp_path / "media.mkv",
                 require_working_dir=lambda: tmp_path,
+                # Stage 1 runs for any path that reaches processing, so the
+                # stub carries what it reads.
+                file_list=[tmp_path / "media.mkv"],
+                media_type=MediaType.MOVIE,
             ),
             shared_data=SharedPayload(),
+            custom_edition_info=(),
         ),
     )
     process_dict = {"Aither": {"path": tmp_path / "aither.torrent"}}

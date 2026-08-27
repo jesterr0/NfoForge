@@ -43,6 +43,7 @@ def _backend(monkeypatch: pytest.MonkeyPatch) -> ProcessBackEnd:
                     enable_plugins=False,
                     enable_prompt_overview=True,
                     releasers_name="tester",
+                    release_group="",
                 ),
                 trackers=SimpleNamespace(
                     by_selection=lambda: {TrackerSelection.AITHER: info}

@@ -92,6 +92,7 @@ def _detected_claims_for(stem: str) -> str:
             re_release=True,
             remux=True,
             hybrid=True,
+            release_group=True,
         ),
     ).frame_size
 
@@ -235,6 +236,7 @@ def test_custom_edition_is_recognized_by_the_detector() -> None:
             re_release=True,
             remux=True,
             hybrid=True,
+            release_group=True,
         ),
         (RenameNormalization("Fan Edit", (r"fan[\s\.\-_]*edit",)),),
     )
@@ -685,6 +687,7 @@ def _title_replacer(
             re_release=True,
             remux=True,
             hybrid=True,
+            release_group=True,
         ),
     ).as_override_tokens()
     if not remux:
@@ -983,6 +986,7 @@ def test_settings_preview_and_rename_render_the_same_claims() -> None:
         re_release=True,
         remux=True,
         hybrid=True,
+        release_group=True,
     )
     claims = detect_filename_claims(
         [EXAMPLE_MEDIA_INPUT_PAYLOAD.input_path.stem], switches
@@ -1136,3 +1140,46 @@ def test_web_source_still_distinguishes_dl_from_rip(stem: str, expected: str) ->
     # The discriminator moves from a raw filename regex to guessit's own
     # `other: Rip`, which is the same information without a second scan.
     assert _claim_replacer("{source}", stem) == expected
+
+
+def _group_replacer(group_tag: str = "", **kwargs: object) -> str | None:
+    return TokenReplacer(
+        media_input_obj=EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        token_string="{release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        media_search_obj=EXAMPLE_SEARCH_PAYLOAD,
+        flatten=True,
+        file_name_mode=False,
+        token_type=FileToken,
+        unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
+        group_tag=group_tag,
+        **kwargs,  # pyright: ignore[reportArgumentType]
+    ).get_output()
+
+
+def test_the_configured_group_tag_renders_without_any_override() -> None:
+    """A run that never reached the rename page still carries the user's own
+    group. The tag is a constructor argument for exactly this reason: it does
+    not depend on a page having run."""
+    assert _group_replacer("MYGROUP") == "MYGROUP"
+
+
+def test_no_group_is_read_from_the_filename() -> None:
+    """The example filename ends in -SomeGroup and the renderer must not care.
+
+    Every switchable claim resolves from an override or not at all, and the
+    source group is one now. Reading it here would put a group the user never
+    saw into their output, and would make the parse switch a lie -- turning it
+    off could not stop what it does not feed.
+    """
+    assert EXAMPLE_MEDIA_INPUT_PAYLOAD.input_path.stem.endswith("-SomeGroup")
+
+    assert _group_replacer() == ""
+
+
+def test_an_override_beats_the_configured_group_tag() -> None:
+    """The rename page's field is stage 2, so it wins -- including when the
+    user cleared it, which arrives as "" rather than as a missing key."""
+    assert _group_replacer("MYGROUP", override_tokens={"release_group": "THEIRS"}) == (
+        "THEIRS"
+    )
+    assert _group_replacer("MYGROUP", override_tokens={"release_group": ""}) == ""

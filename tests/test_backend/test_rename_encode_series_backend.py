@@ -41,9 +41,11 @@ def test_series_renamer_uses_the_episode_being_rendered() -> None:
         media_file=second_file,
         # {re_release} used to appear here. It is a claim now, and claims are
         # pack-wide: they arrive as overrides rather than being read off the
-        # episode being rendered. {resolution} and {release_group} are still
-        # per-file, which is what this test is about.
-        token="{resolution} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        # episode being rendered. {release_group} left for the same reason,
+        # and because it is the user's own tag rather than anything the
+        # episode can claim. {resolution} is still per-file, which is what
+        # this test is about.
+        token="{resolution}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
         colon_replacement=ColonReplace.REPLACE_WITH_DASH,
         media_search_payload=_empty_series_search(),
         season_num=1,
@@ -55,7 +57,7 @@ def test_series_renamer_uses_the_episode_being_rendered() -> None:
         multi_episode_style=MultiEpisodeStyle.RANGE,
     )
 
-    assert result == Path("720p.OTHER.mkv")
+    assert result == Path("720p.mkv")
 
 
 def test_series_folder_renamer_renders_multi_season_range() -> None:
@@ -437,7 +439,7 @@ def test_a_lone_repack_still_reaches_that_episodes_filename() -> None:
             user_tokens=None,
             episode_format=EpisodeFormat.STANDARD,
             multi_episode_style=MultiEpisodeStyle.RANGE,
-            file_claims=file_claims,
+            file_claims={**file_claims, "release_group": "GRP"},
         )
 
     assert render(first_file, {}) == Path("GRP.mkv")
@@ -469,7 +471,7 @@ def test_a_pack_wide_choice_wins_over_the_files_own_claim() -> None:
         user_tokens=None,
         episode_format=EpisodeFormat.STANDARD,
         multi_episode_style=MultiEpisodeStyle.RANGE,
-        file_claims={"re_release": "REPACK"},
+        file_claims={"re_release": "REPACK", "release_group": "GRP"},
     )
 
     assert result == Path("PROPER.GRP.mkv")

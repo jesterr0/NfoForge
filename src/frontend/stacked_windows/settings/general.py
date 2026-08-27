@@ -100,6 +100,17 @@ class GeneralSettings(BaseSettings):
         releasers_name_lbl.setToolTip("Sets the releaser's name. As displayed in NFOs")
         self.releasers_name_entry = QLineEdit(self)
 
+        release_group_lbl = QLabel("Release Group")
+        release_group_lbl.setToolTip(
+            "Your group tag, printed by the {release_group} token in filenames, "
+            "titles and NFOs. Pre-fills the rename page, where it can still be "
+            "changed for a one-off release. Leave blank to take the group from "
+            "the input filename instead."
+        )
+        self.release_group_entry = QLineEdit(self)
+        self.release_group_entry.setToolTip(release_group_lbl.toolTip())
+        self.release_group_entry.setPlaceholderText("No group tag")
+
         global_timeout_lbl = QLabel("Global Timeout", self)
         global_timeout_lbl.setToolTip("Sets global timeout for network requests")
         self.global_timeout_spinbox = QSpinBox(self)
@@ -236,6 +247,7 @@ class GeneralSettings(BaseSettings):
         self.add_layout(
             create_form_layout(releasers_name_lbl, self.releasers_name_entry)
         )
+        self.add_layout(create_form_layout(release_group_lbl, self.release_group_entry))
         self.add_layout(
             create_form_layout(global_timeout_lbl, self.global_timeout_spinbox)
         )
@@ -270,6 +282,7 @@ class GeneralSettings(BaseSettings):
         self.load_combo_box(self.theme_combo, NfoForgeTheme, payload.theme)
         self._change_theme()
         self.releasers_name_entry.setText(payload.releasers_name)
+        self.release_group_entry.setText(payload.release_group)
         self.global_timeout_spinbox.setValue(payload.timeout)
         self._load_tmdb_language_combo(payload.tmdb_language)
         self.load_combo_box(
@@ -525,6 +538,9 @@ class GeneralSettings(BaseSettings):
         self.config.settings.general.releasers_name = (
             self.releasers_name_entry.text().strip()
         )
+        self.config.settings.general.release_group = (
+            self.release_group_entry.text().strip()
+        )
         self.config.settings.general.tmdb_language = (
             self.tmdb_language_combo.currentData()
         )
@@ -557,6 +573,7 @@ class GeneralSettings(BaseSettings):
         )
         self.theme_combo.setCurrentIndex(self.config.defaults.general.theme.value - 1)
         self.releasers_name_entry.clear()
+        self.release_group_entry.clear()
         # set TMDB language to default
         for i in range(self.tmdb_language_combo.count()):
             if (

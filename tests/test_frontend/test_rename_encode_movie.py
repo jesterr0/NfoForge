@@ -195,7 +195,7 @@ def test_release_group_falls_back_to_the_detected_value(
         monkeypatch,
         file_path=Path("Movie.2024.1080p.WEB-DL.x264-OTHERGROUP.mkv"),
     )
-    page.config.settings.movie.release_group = ""
+    page.config.settings.general.release_group = ""
 
     page.initializePage()
 
@@ -210,8 +210,50 @@ def test_a_configured_release_group_wins_over_the_detected_one(
         monkeypatch,
         file_path=Path("Movie.2024.1080p.WEB-DL.x264-OTHERGROUP.mkv"),
     )
-    page.config.settings.movie.release_group = "MYGROUP"
+    page.config.settings.general.release_group = "MYGROUP"
 
     page.initializePage()
 
     assert page.release_group_entry.text() == "MYGROUP"
+
+
+def test_switching_release_group_parsing_off_leaves_the_field_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The switch has to reach output, not just the control. The renderer
+    parses no filename of its own, so an undetected source group cannot
+    appear anywhere -- which is what makes the empty field honest."""
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=Path("Movie.2024.1080p.WEB-DL.x264-OTHERGROUP.mkv"),
+    )
+    page.config.settings.general.release_group = ""
+    page.config.settings.movie.claims.release_group = False
+
+    page.initializePage()
+
+    assert page.release_group_entry.text() == ""
+    assert page.backend.override_tokens["release_group"] == ""
+
+
+def test_clearing_the_field_beats_the_configured_group_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This page is stage 2, so a blank here is a decision -- "this release
+    carries no group" -- rather than an absence to fall through from. The
+    override is written as "" instead of being popped, which is what stops
+    the configured tag taking over."""
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_path=Path("Movie.2024.1080p.WEB-DL.x264-OTHERGROUP.mkv"),
+    )
+    page.config.settings.general.release_group = "MYGROUP"
+    page.initializePage()
+    assert page.backend.override_tokens["release_group"] == "MYGROUP"
+
+    page.release_group_entry.setText("")
+    page.update_generated_name()
+
+    assert page.backend.override_tokens["release_group"] == ""

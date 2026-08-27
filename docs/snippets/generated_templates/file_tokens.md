@@ -46,7 +46,7 @@
 | `{original_title_fallback_title_clean}` | Original title (fallback to {title_clean}) |
 | `{re_release}` | Repack/Proper |
 | `{release_date}` | Release date (movies - UTC) |
-| `{release_group}` | Release group |
+| `{release_group}` | Release group (from Settings > General, or the rename page) |
 | `{release_year}` | Release year |
 | `{release_year_parentheses}` | Release year with parentheses |
 | `{releasers_name}` | Releaser's name (Anonymous) |

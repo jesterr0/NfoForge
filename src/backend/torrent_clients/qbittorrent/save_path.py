@@ -294,6 +294,7 @@ def _render_save_path_template(
         token_type=FileToken,
         unfilled_token_mode=UnfilledTokenRemoval.KEEP,
         releasers_name=config.general.releasers_name,
+        group_tag=config.general.release_group,
         override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
         user_tokens=user_tokens,
         edition_override=context.shared_data.dynamic_data.get("edition_override"),
