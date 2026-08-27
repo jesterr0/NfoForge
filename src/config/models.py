@@ -83,6 +83,9 @@ class ProgramConfig:
     current_config: str | None = None
     main_window_position: str | None = None
     suppress_template_token_prompt: bool = False
+    last_update_check: str | None = None  # ISO 8601 UTC timestamp, or None
+    latest_known_version: str | None = None  # cached tag string (no leading "v")
+    latest_release_url: str | None = None  # cached GitHub release page URL
 
 
 @dataclass(slots=True)
@@ -103,10 +106,10 @@ class GeneralSettings:
     media_search_mode: MediaSearchMode
     timeout: int
     enable_prompt_overview: bool
-    enable_mkbrr: bool
     log_level: LogLevel
     log_total: int
     working_dir: Path
+    check_for_updates: bool
 
 
 @dataclass(slots=True)
@@ -115,6 +118,7 @@ class DependencySettings:
     ffprobe: Path | None
     frame_forge: Path | None
     mkbrr: Path | None
+    enable_mkbrr: bool
 
 
 @dataclass(slots=True)

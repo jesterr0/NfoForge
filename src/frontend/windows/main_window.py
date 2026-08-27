@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.backend.main_window import kill_child_processes
+from src.backend.update_checker import UpdateCheckResult, check_for_updates_job
 from src.backend.utils.file_utilities import file_bytes_to_str
 from src.backend.utils.working_dir import cleanable_size
 from src.config.config import ConfigManager
@@ -24,6 +25,7 @@ from src.enums.settings_window import SettingsTabs
 from src.frontend.custom_widgets.multi_prompt_dialog import MultiPromptDialog
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.settings import Settings
+from src.frontend.utils.general_worker import GeneralWorker
 from src.frontend.utils.main_window_utils import MainWindowWorker
 from src.frontend.utils.scaling_manager import FontScalingManager
 from src.frontend.wizards.wizard import MainWindowWizard
@@ -54,6 +56,10 @@ class MainWindow(QMainWindow):
             wizard_record.definition.display_name if wizard_record else "", self
         )
         self.status_bar.addPermanentWidget(self.status_profile_label)
+        self.status_update_label = QLabel(self)
+        self.status_update_label.setOpenExternalLinks(True)
+        self.status_update_label.hide()
+        self.status_bar.addPermanentWidget(self.status_update_label)
         self._check_suffix()
 
         # check dependencies
@@ -217,6 +223,7 @@ class MainWindow(QMainWindow):
     def _delayed_start_up_tasks(self) -> None:
         """Any task ran inside of this method should be triggered via a QTimer.singleShot"""
         QTimer.singleShot(3500, self.display_temp_directory_size)
+        QTimer.singleShot(4000, self.check_for_updates)
 
     def display_temp_directory_size(self) -> None:
         # only what clean up could actually reclaim; saved jobs are kept and
@@ -227,6 +234,29 @@ class MainWindow(QMainWindow):
         GSigs().main_window_update_status_tip.emit(
             f"Working directory size: {file_bytes_to_str(size)}", 8000
         )
+
+    def check_for_updates(self) -> None:
+        self.update_check_worker = GeneralWorker(
+            check_for_updates_job, self, self.config
+        )
+        self.update_check_worker.job_finished.connect(
+            self._handle_update_check_finished
+        )
+        self.update_check_worker.job_failed.connect(self._handle_update_check_failed)
+        self.update_check_worker.start()
+
+    @Slot(object)
+    def _handle_update_check_finished(self, result: object) -> None:
+        if isinstance(result, UpdateCheckResult) and result.update_available:
+            self.status_update_label.setText(
+                f'<a href="{result.release_url}">'
+                f"Update available: v{result.latest_version}</a>"
+            )
+            self.status_update_label.show()
+
+    @Slot(str)
+    def _handle_update_check_failed(self, message: str) -> None:
+        LOG.error(LOG.LOG_SOURCE.FE, f"Update check failed: {message}")
 
     @Slot(str, int)
     def update_status_tip(self, message: str, timer: int) -> None:

@@ -1,4 +1,4 @@
-schema_version = 12
+schema_version = 11
 
 [general]
 ui_suffix = ""
@@ -10,7 +10,7 @@ tmdb_language = "en-US"
 media_search_mode = "Movies & TV"
 timeout = 60
 enable_prompt_overview = true
-check_for_updates = true
+enable_mkbrr = true
 log_level = 20
 log_total = 50
 working_dir = ""
@@ -20,14 +20,13 @@ ffmpeg = ""
 ffprobe = ""
 frame_forge = ""
 mkbrr = ""
-enable_mkbrr = true
 
 [api_keys]
 tmdb_api_key = ""
 
 [tracker.settings]
 tracker_order = []
-last_used_img_host = {}
+last_used_img_host = {Aither = "CHEVERETO_V4:1", ReelFliX = "LENSDUMP"}
 
 [tracker.torrent_leech]
 upload_enabled = true
@@ -520,16 +519,18 @@ optimize_dl_url_images_percentage = 0.25
 indexer = 1
 image_plugin = 1
 
-# Chevereto sites are user-managed: each configured instance is added here as
-# its own sub-table, keyed by a generated id, e.g.
-#   [image_hosts.chevereto_v4.5f2c9a1e]
-#   label = "PTScreens"
-#   enabled = true
-#   base_url = "https://ptscreens.com/"
-#   api_key = ""
-[image_hosts.chevereto_v3]
+[image_hosts.chevereto_v3.1]
+label = "Chevereto v3"
+enabled = true
+base_url = "https://v3.example.com/"
+user = "someone"
+password = "hunter2"
 
-[image_hosts.chevereto_v4]
+[image_hosts.chevereto_v4.1]
+label = "Chevereto v4"
+enabled = true
+base_url = "https://ptscreens.com/"
+api_key = "v4-key"
 
 [image_hosts.image_bb]
 enabled = false

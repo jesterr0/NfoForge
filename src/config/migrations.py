@@ -52,6 +52,10 @@ The versions so far:
   ``"1"``, labeled with the name it used to show in the UI; an unconfigured
   one migrates to nothing. `last_used_img_host` values are rewritten from
   display names to the new stable keys.
+- 11 -> 12: `general.enable_mkbrr` moves to `dependencies.enable_mkbrr`, next
+  to the `mkbrr` path it governs. It was the only dependency with a
+  workflow-style toggle living outside `[dependencies]`, which needed a
+  jump-button in Settings -> General just to reach the path it enables.
 
 When does a bump warrant a migration?
 -------------------------------------
@@ -103,6 +107,7 @@ SCHEMA_8_VERSION = 8
 SCHEMA_9_VERSION = 9
 SCHEMA_10_VERSION = 10
 SCHEMA_11_VERSION = 11
+SCHEMA_12_VERSION = 12
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -932,6 +937,40 @@ def migrate_v10_to_v11(
     return new_doc, []
 
 
+def migrate_v11_to_v12(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Move mkbrr's enable switch from ``[general]`` into ``[dependencies]``.
+
+    Every other ``[general]`` entry is a UI/workflow preference; this one
+    only means anything alongside the `mkbrr` path it governs, which lives
+    in `[dependencies]`. Defaults to enabled if the key is somehow already
+    missing, matching the packaged default -- schema 11 always wrote it.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_12_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    general = new_doc.get("general")
+    enabled = True
+    if isinstance(general, Mapping) and "enable_mkbrr" in general:
+        enabled = bool(_unwrap(general["enable_mkbrr"]))
+        new_general = dict(general)
+        del new_general["enable_mkbrr"]
+        new_doc["general"] = new_general
+
+    dependencies = new_doc.get("dependencies")
+    new_dependencies = dict(dependencies) if isinstance(dependencies, Mapping) else {}
+    new_dependencies["enable_mkbrr"] = enabled
+    new_doc["dependencies"] = new_dependencies
+
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -943,6 +982,7 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_8_VERSION: migrate_v8_to_v9,
     SCHEMA_9_VERSION: migrate_v9_to_v10,
     SCHEMA_10_VERSION: migrate_v10_to_v11,
+    SCHEMA_11_VERSION: migrate_v11_to_v12,
 }
 
 

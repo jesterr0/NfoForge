@@ -35,6 +35,7 @@ from src.backend.utils.rename_normalizations import (
 )
 from src.backend.utils.resolution import VideoResolutionAnalyzer
 from src.backend.utils.streaming_services import abbreviate_streaming_service
+from src.backend.utils.tvdb_episodes import tvdb_episode_list
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.config.models import DynamicRangeSettings, HdrType, ResolutionKey
 from src.enums.media_type import MediaType
@@ -3463,33 +3464,13 @@ class TokenReplacer:
     ) -> list[dict[str, Any]]:
         """Episode list for one TVDB ordering, or the flat list.
 
-        ``episodes_by_type`` holds one list per ordering; the flat
-        ``episodes`` key is the official/aired order. An id that is absent,
-        or names an ordering this payload does not carry, falls back to the
-        flat list, which is what every lookup did before orderings were
-        recorded.
-
-        The id is matched against both the int and str forms of each key: a
-        saved job round-trips ``tvdb_data`` through JSON, which turns the int
-        keys of ``episodes_by_type`` into strings, while the mapping row's
-        id stays an int.
+        The payload's shape is described in `tvdb_episodes`, which the
+        tracker title's season-completeness check reads through as well.
         """
-        tvdb_data = self.media_search_obj.tvdb_data if self.media_search_obj else None
-        if not tvdb_data:
-            return []
-
-        if episode_order_type_id is not None:
-            episodes_by_type = tvdb_data.get("episodes_by_type") or {}
-            if isinstance(episodes_by_type, dict):
-                type_data = episodes_by_type.get(episode_order_type_id)
-                if type_data is None:
-                    type_data = episodes_by_type.get(str(episode_order_type_id))
-                if isinstance(type_data, dict):
-                    episodes = type_data.get("episodes")
-                    if isinstance(episodes, list):
-                        return cast(list[dict[str, Any]], episodes)
-
-        return cast(list[dict[str, Any]], tvdb_data.get("episodes", []))
+        return tvdb_episode_list(
+            self.media_search_obj.tvdb_data if self.media_search_obj else None,
+            episode_order_type_id,
+        )
 
     def _get_tvdb_episode_dict(
         self, season: int, episode: int, episode_order_type_id: Any | None = None

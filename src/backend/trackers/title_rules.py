@@ -7,15 +7,15 @@ setting that enforcement would override anyway.
 One entry per tracker, with no inheritance between them. Two entries that
 are currently identical stay written out separately: a tracker changing its
 rules must not require unpicking a shared abstraction, and must not be able
-to alter another tracker by accident. That is not a hypothetical -- the
-shipped config's worst defect was a template copied between two trackers
-whose published rules differ, which propagated an error into a tracker that
-never shared those rules. `test_no_two_entries_share_an_object` pins it.
+to alter another tracker by accident. Sharing one object between two
+trackers gives both of them whichever set of rules was written first, and
+two trackers are only identical until one of them publishes a change.
+`test_no_two_entries_share_an_object` pins it.
 
 An entry has two sections. Normalisation always applies. Composition is
 optional -- nine entries have none. Seven of those render the user's global
-title template, which is exactly what they do today; the remaining two
-render no title at all, having no release name field to put one in.
+title template; the remaining two render no title at all, having no release
+name field to put one in.
 
 A tracker rule never reaches a filename. Every rule lives in an entry, never
 in a token handler: handlers are shared, and `file_name_mode` selects only
@@ -114,13 +114,25 @@ class ReleaseProperties:
     earns its place from a checked tracker -- `is_remux` and `is_disc` from
     the remux order swap and BeyondHD's dynamic range baseline, `is_dvd`
     from BeyondHD's DVD order and the LST and ReelFliX omit rules,
+    `is_optical_source` from BeyondHD's source-before-resolution rule,
     `resolution` and `hdr_identity` from every dynamic range rule, and
     `season`/`episodes` from the designator.
+
+    `is_optical_source` is not `is_disc`. It says the release came off
+    optical media -- Blu-ray, UHD Blu-ray or DVD -- however it was encoded,
+    where `is_disc` says the upload *is* a full disc. An encode from a
+    Blu-ray is the first and not the second.
+
+    It is a positive test for optical media rather than a negative one for
+    web, so a release whose source could not be determined keeps the order
+    every tracker used before this rule existed instead of being named as a
+    disc on a guess.
     """
 
     is_remux: bool = False
     is_disc: bool = False
     is_dvd: bool = False
+    is_optical_source: bool = False
     resolution: int = 1080
     hdr_identity: HdrType = "SDR"
     season: int | None = None
@@ -238,6 +250,10 @@ def _is_dvd(release: ReleaseProperties) -> bool:
     return release.is_dvd
 
 
+def _is_optical_source(release: ReleaseProperties) -> bool:
+    return release.is_optical_source
+
+
 def _is_dvd_remux(release: ReleaseProperties) -> bool:
     return release.is_dvd and release.is_remux
 
@@ -251,10 +267,10 @@ def _is_series(release: ReleaseProperties) -> bool:
 # the entry's vocabulary rather than by a token that refuses to render it.
 _DUB = ("{audio_language_dual}", "{localization|unless(audio_language_dual)}")
 
-# Components carry no `:opt= :` prefix. The shipped templates needed one to
-# avoid a double space where a token did not resolve; normalisation closes
-# that gap for every entry now, so the plain form is enough and reads as the
-# published rules are written.
+# Components are plain tokens, carrying no `:opt= :` separator prefix.
+# Normalisation closes the gap an unresolved token leaves, for every entry,
+# so a component does not have to carry its own separator -- which lets the
+# list read the way the published rules are written.
 
 # Every entry is constructed inline. Two that read alike are still two
 # objects, so editing one cannot reach the other.
@@ -432,10 +448,9 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
             ),
         ),
-        # ReelFliX. Its shipped template was a near copy of BeyondHD's,
-        # but its published rules match LST and Aither -- so every remux was
-        # emitting audio before video where its rules require video first.
-        # That defect is why entries do not share objects.
+        # ReelFliX. Its published rules match LST and Aither rather than
+        # BeyondHD's, which is easy to get backwards given how alike the
+        # four read: video goes ahead of audio on a remux.
         TrackerSelection.REELFLIX: TrackerTitleEntry(
             normalisation=Normalisation(
                 colon=ColonReplace.KEEP,
@@ -487,8 +502,7 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 ),
             ),
         ),
-        # BeyondHD. Four differences from the shipped template, all from its
-        # published rules:
+        # BeyondHD. Six rules that set it apart from the other three:
         #
         # - audio is {audio_codec} plus channels, giving "DDP Atmos 5.1" as
         #   BeyondHD requires, not the "DDP 5.1 Atmos" the other three want.
@@ -496,6 +510,17 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         # - HYBRID sits against REMUX, since BeyondHD requires them adjacent.
         # - the DVD order is "MPEG-2 DD2.0", so the codec leads there
         #   where audio leads everywhere else.
+        # - an optical source leads its resolution -- "BluRay 1080p", "UHD
+        #   BluRay 2160p", "DVD 480p" -- where the other three write the
+        #   resolution first. Web keeps the resolution first, so a WEB-DL
+        #   still reads "2160p AMZN WEB-DL" with the service against WEB-DL
+        #   as every tracker requiring one wants it.
+        # - frame size, cut and localization are stated in that order ahead
+        #   of the source run: "IMAX Directors Cut Subbed REPACK UHD BluRay
+        #   2160p", or "... REPACK 2160p AMZN WEB-DL" off optical. The other
+        #   three order the first two the opposite way and suppress Subbed
+        #   through their vocabulary, so BeyondHD is the only entry that
+        #   states a subbed release at all.
         TrackerSelection.BEYOND_HD: TrackerTitleEntry(
             normalisation=Normalisation(
                 colon=ColonReplace.KEEP,
@@ -507,12 +532,19 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                     "{title_exact}",
                     "{release_year}",
                     Designator.SIMPLE,
-                    "{cut}",
                     "{frame_size}",
+                    "{cut}",
+                    "{localization}",
                     "{re_release}",
-                    "{resolution}",
-                    "{streaming_service}",
-                    "{source}",
+                    ConditionalOrder(
+                        when=_is_optical_source,
+                        then=("{source}", "{resolution}"),
+                        otherwise=(
+                            "{resolution}",
+                            "{streaming_service}",
+                            "{source}",
+                        ),
+                    ),
                     "{hybrid}",
                     "{remux}",
                     ConditionalOrder(
@@ -537,31 +569,27 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                 omit=(OmitRule(when=_is_series, components=("{release_year}",)),),
             ),
         ),
-        # The four below are transcribed from the shipped config rather than
-        # from published rules, none having been gathered for them. What the
-        # config says is copied rather than improved -- {edition} rather than
-        # {cut}, undivided {audio_codec}, dash colon handling and the
-        # over-1080 SDR form all stand.
+        # No published rules have been gathered for the four below, so their
+        # layout is assumed rather than checked: {edition} rather than {cut},
+        # undivided {audio_codec}, dash colon handling and the over-1080 SDR
+        # form. Hold an entry here more loosely than the four above, and
+        # replace it outright if that tracker's rules are ever gathered.
         #
-        # Two things do not come from the config, because the config had
-        # nothing to say about either.
+        # Two things are not assumed.
         #
-        # Their shipped overrides cover films only, so a series on these
-        # trackers used to render the user's global template. An entry has no
-        # media-type split, so the composition now serves both, with the
-        # designator supplying the season and episode and an episode title
-        # beside it. Aither names the episode from its published examples;
-        # only LST, ReelFliX and BeyondHD are known to leave it out.
+        # An entry has no media-type split, so one composition serves films
+        # and series alike, the designator supplying the season and episode
+        # and an episode title sitting beside it. Aither names the episode
+        # from its published examples; only LST, ReelFliX and BeyondHD are
+        # known to leave it out.
         #
-        # The title is {title_exact}, where the config said {title_clean}.
-        # Clean answers to the user's `title_clean_rules`, which ship
-        # aggressive: they unidecode, drop apostrophes and flatten every
-        # non-alphanumeric to a space, so "Amelie's Cafe: Fire & Ice" reached
-        # these four as "Amelies Cafe Fire and Ice" and reached the four with
-        # gathered rules intact. Nothing published asks for that, a tracker
-        # rule that varies with a user setting is not a rule, and the split
-        # tracked which entries were transcribed rather than anything about
-        # the trackers. The episode title matches at the same tier.
+        # The title is {title_exact} rather than {title_clean}. Clean answers
+        # to the user's `title_clean_rules`, which ship aggressive: they
+        # unidecode, drop apostrophes and flatten every non-alphanumeric to a
+        # space, so "Amelie's Cafe: Fire & Ice" would reach these four as
+        # "Amelies Cafe Fire and Ice" while reaching the other four intact.
+        # A tracker rule that varies with a user setting is not a rule. The
+        # episode title matches at the same tier.
         TrackerSelection.DARK_PEERS: TrackerTitleEntry(
             normalisation=Normalisation(
                 colon=ColonReplace.REPLACE_WITH_DASH,
@@ -668,10 +696,9 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
 def accepts_a_release_name(tracker: TrackerSelection) -> bool:
     """Whether an upload to `tracker` carries a release name at all.
 
-    Was a frozenset beside the media-type support tables, which answers a
-    different question. A tracker's title rules are one object now, and
-    "there is no title" is one of them, so the answer comes from the entry
-    rather than from a list that has to be kept in step with it.
+    A tracker's title rules are one object, and "there is no title" is one
+    of them, so the answer comes from the entry rather than from a separate
+    list that would have to be kept in step with it.
 
     This is the accessor for a caller holding only a `TrackerSelection`.
     The renderer and `resolve_tracker_title` have the entry in hand already

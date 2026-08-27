@@ -215,15 +215,28 @@ def test_start_over_never_inherits_a_resumed_job_start_page(
     assert wizard.startId() == WizardPages.INPUT_PAGE.value
 
 
-def test_a_configured_plugin_page_is_still_where_a_fresh_run_starts() -> None:
+def test_a_configured_plugin_page_starts_fresh_and_shows_its_display_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    emitted_labels: list[str] = []
+    status_signal = SimpleNamespace(emit=emitted_labels.append)
+    monkeypatch.setattr(
+        wizard_module,
+        "GSigs",
+        lambda: SimpleNamespace(main_window_update_status_bar_label=status_signal),
+    )
+    plugin_record = SimpleNamespace(
+        definition=SimpleNamespace(display_name="A Plugin Group")
+    )
     wizard = _wizard_for_start_page(
-        enable_plugins=True, wizard_page="a-plugin", plugin_found=object()
+        enable_plugins=True, wizard_page="a-plugin", plugin_found=plugin_record
     )
     wizard.setStartId(WizardPages.TRACKERS_PAGE.value)
 
     MainWindowWizard._set_start_page(wizard)  # pyright: ignore[reportArgumentType]
 
     assert wizard.startId() == WizardPages.PLUGIN_INPUT_PAGE.value
+    assert emitted_labels == ["A Plugin Group"]
 
 
 class _TeardownPage(QWizardPage):

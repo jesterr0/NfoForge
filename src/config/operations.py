@@ -232,7 +232,7 @@ class TypedTomlOperations:
             general_data["enable_prompt_overview"] = (
                 self.settings.general.enable_prompt_overview
             )
-            general_data["enable_mkbrr"] = self.settings.general.enable_mkbrr
+            general_data["check_for_updates"] = self.settings.general.check_for_updates
             general_data["log_level"] = LogLevel(self.settings.general.log_level).value
             general_data["log_total"] = self.settings.general.log_total
             general_data["working_dir"] = str(self.settings.general.working_dir)
@@ -251,6 +251,7 @@ class TypedTomlOperations:
             dependencies_data["mkbrr"] = self.resolve_dependency(
                 self.settings.dependencies.mkbrr
             )
+            dependencies_data["enable_mkbrr"] = self.settings.dependencies.enable_mkbrr
 
             # api keys
             api_keys_data = self._ensure_toml_table(self._toml_data, "api_keys")
@@ -1207,6 +1208,7 @@ class TypedTomlOperations:
             mkbrr = (
                 Path(dependencies_data["mkbrr"]) if dependencies_data["mkbrr"] else None
             )
+            enable_mkbrr = bool(dependencies_data["enable_mkbrr"])
 
             # trackers
             tracker_data = self._toml_mapping(toml_data, "tracker")
@@ -1741,7 +1743,7 @@ class TypedTomlOperations:
                     ),
                     timeout=int(general_data["timeout"]),
                     enable_prompt_overview=bool(general_data["enable_prompt_overview"]),
-                    enable_mkbrr=bool(general_data["enable_mkbrr"]),
+                    check_for_updates=bool(general_data["check_for_updates"]),
                     log_level=LogLevel(general_data["log_level"]),
                     log_total=int(general_data["log_total"]),
                     working_dir=Path(general_data["working_dir"])
@@ -1758,6 +1760,7 @@ class TypedTomlOperations:
                     ffprobe=ffprobe,
                     frame_forge=frame_forge,
                     mkbrr=mkbrr,
+                    enable_mkbrr=enable_mkbrr,
                 ),
                 trackers=TrackerSettings(
                     order=tracker_order,

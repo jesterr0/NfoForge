@@ -33,6 +33,23 @@ class SeriesReleaseInfo:
     season_end: int | None = None
     episode_start: int | None = None
     episode_end: int | None = None
+    episode_numbers: tuple[int, ...] = ()
+    """Every episode the release covers, not just the ends.
+
+    `episode_start`/`episode_end` cannot answer whether a release is a
+    complete season: a pack of E01-E05 and E07-E10 has ends of 1 and 10 and
+    is still missing an episode. Asking that question needs the set.
+    """
+
+    episode_order_type_id: Any | None = None
+    """Which TVDB ordering the mapping rows were built from, if they say.
+
+    The same season is a different length in different orderings, so a
+    completeness check has to count episodes in the ordering the user
+    mapped against. ``None`` means the rows predate the field or none was
+    recorded, and the flat official/aired list applies.
+    """
+
     episode_count: int = 0
     episode_format: EpisodeFormat = EpisodeFormat.STANDARD
     input_is_directory: bool = False
@@ -127,6 +144,10 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
     # file only covers a single episode) so a lone file spanning multiple
     # episodes (e.g. "S01E01E02") still contributes its true upper bound.
     episode_ends: list[int] = []
+    # the union of every file's own range, which is what a completeness
+    # check needs: the ends alone cannot see a hole in the middle.
+    episode_numbers: set[int] = set()
+    order_type_ids: list[Any] = []
     for file_path in file_list:
         mapping = _mapping_for_path(file_path, mappings)
         season = _int_or_none(mapping.get("season")) if mapping else None
@@ -136,7 +157,11 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
             seasons.append(season)
         if episode is not None:
             episode_starts.append(episode)
-            episode_ends.append(episode_end if episode_end is not None else episode)
+            upper = episode_end if episode_end is not None else episode
+            episode_ends.append(upper)
+            episode_numbers.update(range(episode, upper + 1))
+        if mapping and mapping.get("episode_order_type_id") is not None:
+            order_type_ids.append(mapping["episode_order_type_id"])
 
     # backfill each dimension independently: a partially mapped set (say every
     # file has a season but none has an episode) must not have guessit's
@@ -155,9 +180,9 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
                 episode_start, episode_end = _episode_range(parsed.get("episode"))
                 if episode_start is not None:
                     episode_starts.append(episode_start)
-                    episode_ends.append(
-                        episode_end if episode_end is not None else episode_start
-                    )
+                    upper = episode_end if episode_end is not None else episode_start
+                    episode_ends.append(upper)
+                    episode_numbers.update(range(episode_start, upper + 1))
 
     season = min(seasons) if seasons else None
     season_end = max(seasons) if seasons else None
@@ -174,6 +199,8 @@ def build_series_release_info(media_input: MediaInputPayload) -> SeriesReleaseIn
         season_end=season_end,
         episode_start=episode_start,
         episode_end=episode_end,
+        episode_numbers=tuple(sorted(episode_numbers)),
+        episode_order_type_id=order_type_ids[0] if order_type_ids else None,
         episode_count=episode_count,
         episode_format=media_input.series_episode_format,
         input_is_directory=media_input.input_is_directory(),

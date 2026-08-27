@@ -55,9 +55,9 @@ DISC_TITLE_REGEX = regex.compile(
 _CHANNEL_LAYOUT_REGEX = re.compile(r"(?<!\d)[1-9]\.[01](?:\.[0-9])?(?!\d)")
 _CHANNEL_LAYOUT_SENTINEL = "\x00"
 # A video codec's internal period is the same casualty as a channel layout:
-# nothing in the string distinguishes it from a separator. `H.264` shipped as
-# `H 264` to every tracker that spaces its titles, including one whose own
-# published example spells it `H.264`.
+# nothing in the string distinguishes it from a separator. Unprotected,
+# `H.264` reaches every tracker that spaces its titles as `H 264` -- including
+# one whose own published example spells it `H.264`.
 #
 # The left boundary excludes an alphanumeric rather than requiring whitespace,
 # because both title forms reach here: a composed title is space-separated,
@@ -79,8 +79,9 @@ def strip_title_dots(release_title: str) -> str:
 
     Both are protected before the periods are stripped rather than
     reconstructed afterwards. Reconstruction requires knowing every codec that can
-    precede the channels, and anything the list missed (AAC, Opus, LPCM, an Atmos
-    suffix between the codec and the channels, ...) silently shipped as "5 1".
+    precede the channels, and anything such a list missed (AAC, Opus, LPCM, an
+    Atmos suffix between the codec and the channels, ...) would silently become
+    "5 1".
     """
     name = _CHANNEL_LAYOUT_REGEX.sub(
         lambda match: match.group(0).replace(".", _CHANNEL_LAYOUT_SENTINEL),

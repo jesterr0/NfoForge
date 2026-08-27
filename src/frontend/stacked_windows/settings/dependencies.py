@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import QSize, Qt, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -66,11 +67,20 @@ class DependencySettings(BaseSettings):
             "mkbrr Path",
             "Not required, but if detected/enabled torrent generation will be done with this",
         )
+        self.enable_mkbrr = QCheckBox("Enable mkbrr", self)
+        self.enable_mkbrr.setToolTip(
+            "If mkbrr is detected torrent generation will be "
+            "completed by mkbrr\n(will fall back to torf if failure is detected)"
+        )
 
         self.add_layout(self._build_dependency_layout(*self.ffmpeg_widgets))
         self.add_layout(self._build_dependency_layout(*self.ffprobe_widgets))
         self.add_layout(self._build_dependency_layout(*self.frame_forge_widgets))
-        self.add_layout(self._build_dependency_layout(*self.mkbrr_widgets))
+        self.add_layout(
+            self._build_dependency_layout(
+                *self.mkbrr_widgets, extra_widget=self.enable_mkbrr
+            )
+        )
         self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
@@ -145,6 +155,7 @@ class DependencySettings(BaseSettings):
 
         mkbrr_path = self.config.settings.dependencies.mkbrr
         self.mkbrr_widgets[2].setText(str(mkbrr_path) if mkbrr_path else "")
+        self.enable_mkbrr.setChecked(self.config.settings.dependencies.enable_mkbrr)
 
     @Slot()
     def _save_settings(self) -> None:
@@ -167,6 +178,7 @@ class DependencySettings(BaseSettings):
         self.config.settings.dependencies.mkbrr = (
             Path(mkbrr_path) if mkbrr_path else None
         )
+        self.config.settings.dependencies.enable_mkbrr = self.enable_mkbrr.isChecked()
         self.updated_settings_applied.emit()
 
     def apply_defaults(self) -> None:
@@ -174,12 +186,14 @@ class DependencySettings(BaseSettings):
         self.ffprobe_widgets[2].clear()
         self.frame_forge_widgets[2].clear()
         self.mkbrr_widgets[2].clear()
+        self.enable_mkbrr.setChecked(self.config.defaults.dependencies.enable_mkbrr)
 
     @staticmethod
     def _build_dependency_layout(
         lbl_widget: QWidget,
         btn: DNDToolButton | DNDButton,
         entry: QLineEdit,
+        extra_widget: QWidget | None = None,
     ) -> QLayout:
         h_layout = QHBoxLayout()
         h_layout.setContentsMargins(0, 0, 0, 0)
@@ -189,6 +203,8 @@ class DependencySettings(BaseSettings):
         v_layout = QVBoxLayout()
         v_layout.addWidget(lbl_widget)
         v_layout.addLayout(h_layout)
+        if extra_widget is not None:
+            v_layout.addWidget(extra_widget)
         v_layout.addWidget(build_h_line((0, 1, 0, 1)))
         v_layout.addSpacerItem(
             QSpacerItem(20, 6, QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
