@@ -533,12 +533,11 @@ class MediaSearch(BaseWizardPage):
         return bool(invalid_entries)
 
     def _selected_title_is_ambiguous(self) -> bool:
-        """Whether another current result has the selected result's title.
+        """Whether another result has the selected title and year.
 
         TMDB can return remakes, reboots, and movie/series pairs with an
-        identical title. Years and media types distinguish their list rows,
-        but the duplicate title is the important signal to ask for a deliberate
-        selection before continuing.
+        identical title. A confirmation is only useful when two rows look
+        identical in the result list, so both their title and year must match.
         """
 
         selected = self._get_current_item_data()
@@ -546,12 +545,17 @@ class MediaSearch(BaseWizardPage):
             return False
 
         selected_title = self._normalized_result_title(selected.get("title"))
-        if not selected_title:
+        selected_year = self._normalized_result_year(selected.get("year"))
+        if not selected_title or not selected_year:
             return False
 
         return (
             sum(
-                self._normalized_result_title(item.get("title")) == selected_title
+                (
+                    self._normalized_result_title(item.get("title")),
+                    self._normalized_result_year(item.get("year")),
+                )
+                == (selected_title, selected_year)
                 for item in self.backend.media_data.values()
                 if isinstance(item, dict)
             )
@@ -565,6 +569,12 @@ class MediaSearch(BaseWizardPage):
         if not isinstance(title, str):
             return ""
         return " ".join(title.split()).casefold()
+
+    @staticmethod
+    def _normalized_result_year(year: object) -> str:
+        """Normalize a TMDB release year for duplicate-result comparison."""
+
+        return str(year).strip() if year is not None else ""
 
     def _confirm_ambiguous_title_selection(self) -> bool:
         """Require an explicit choice before accepting an ambiguous result."""

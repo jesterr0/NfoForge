@@ -111,21 +111,39 @@ def test_search_results_are_colored_by_media_type(tmp_path: Path) -> None:
             ("2) Show (2024)", {"media_type": "Series"}),
         ]
     )
-    page.backend.media_data = results
+    page.backend.media_data = results  # type: ignore[reportAttributeAccessIssue]
 
-    page._handle_search_result(results)
+    page._handle_search_result(results)  # type: ignore[reportAttributeAccessIssue]
 
     assert page.listbox.item(0).background().color() == page.MOVIE_ROW_COLOR
     assert page.listbox.item(1).background().color() == page.SERIES_ROW_COLOR
 
 
-def test_duplicate_result_titles_are_reported_as_ambiguous(tmp_path: Path) -> None:
+def test_duplicate_result_titles_with_different_years_are_not_ambiguous(
+    tmp_path: Path,
+) -> None:
     page = _make_page(tmp_path)
     first = "1) Bob (1992)"
     second = "2) Bob (2012)"
     page.backend.media_data = {
         first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
         second: {"title": " bob ", "year": "2012", "media_type": "Series"},
+    }
+    page.listbox.addItems([first, second])
+    page.listbox.setCurrentRow(1)
+
+    assert page._selected_title_is_ambiguous() is False
+
+
+def test_duplicate_result_titles_and_years_are_reported_as_ambiguous(
+    tmp_path: Path,
+) -> None:
+    page = _make_page(tmp_path)
+    first = "1) Bob (1992)"
+    second = "2) Bob (1992)"
+    page.backend.media_data = {
+        first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
+        second: {"title": " bob ", "year": 1992, "media_type": "Series"},
     }
     page.listbox.addItems([first, second])
     page.listbox.setCurrentRow(1)
@@ -152,10 +170,10 @@ def test_ambiguous_title_requires_confirmation_before_metadata_lookup(
 ) -> None:
     page = _make_page(tmp_path)
     first = "1) Bob (1992)"
-    second = "2) Bob (2012)"
+    second = "2) Bob (1992)"
     page.backend.media_data = {
         first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
-        second: {"title": "Bob", "year": "2012", "media_type": "Movie"},
+        second: {"title": "Bob", "year": "1992", "media_type": "Movie"},
     }
     page.listbox.addItems([first, second])
     page.listbox.setCurrentRow(1)

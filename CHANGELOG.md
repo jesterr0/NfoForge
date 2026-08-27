@@ -14,6 +14,7 @@
   - Clearing the Release Group field on the rename page now publishes with no group, rather than falling back to your configured one. It is the whole answer for that release.
   - A profile with renaming disabled and no release group configured emits no group. Set yours in Settings -> General.
 - Now shows human readable pice sizes when generating torrents on the process page.
+- MediaSearch page only warns if titles have identical name AND year.
 
 ### Fixed
 
