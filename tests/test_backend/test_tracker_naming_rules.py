@@ -21,7 +21,11 @@ The rules being pinned, quoted as saved:
 - ReelFliX ........ the same remux/encode split as Aither and LST, video
                     ahead of audio on a remux; blank tag preferred over a
                     NOGROUP placeholder
-- BeyondHD ........ remux/encode/web-dl with no tag must end "-NOGROUP"
+- BeyondHD ........ remux/encode/web-dl with no tag must end "-NOGROUP";
+                    an optical source leads its resolution ("BluRay 1080p"),
+                    while web keeps "2160p AMZN WEB-DL"; frame size, cut and
+                    localization are stated in that order ahead of the source
+                    ("IMAX Directors Cut Subbed REPACK UHD BluRay 2160p")
 
 Known gaps, deliberately not asserted because NfoForge has no token for them.
 Each needs a new token rather than an edit to an entry:
@@ -41,12 +45,15 @@ Each needs a new token rather than an edit to an entry:
   fixed for titles alone.
 """
 
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+import re
 
 import pytest
 
+from src.backend.process import ProcessBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
 from src.backend.trackers.title_render import (
@@ -70,10 +77,12 @@ from src.backend.utils.filename_claims import detect_filename_claims
 from src.backend.utils.hdr_identity import resolve_hdr_identity
 from src.config.models import ClaimSwitches
 from src.config.tv_tokens import SUPPORTED_TVR_FORMATS
+from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.token_replacer import ColonReplace, UnfilledTokenRemoval
 from src.enums.tracker_selection import TrackerSelection
 from src.payloads.media_search import MediaSearchPayload
+from src.payloads.series import build_series_release_info
 
 # The release shapes the rules distinguish. Only the *name* matters here: it
 # drives the filename attributes (REMUX/HYBRID/REPACK) and the source guess,
@@ -82,6 +91,13 @@ REMUX_NAME = "Movie.Name.2026.REPACK.UHD.BluRay.2160p.TrueHD.Atmos.7.1.DV.HEVC.R
 ENCODE_NAME = "Movie.Name.2026.1080p.BluRay.TrueHD.Atmos.7.1.DV.HEVC.x265-SomeGroup.mkv"
 WEB_NAME = (
     "Movie.Name.2026.2160p.AMZN.WEB-DL.TrueHD.Atmos.7.1.DV.HEVC.H.265-SomeGroup.mkv"
+)
+# Carries all three of the components BeyondHD states ahead of its source,
+# which the other three trackers order differently and one of which they do
+# not state at all.
+CLAIMED_NAME = (
+    "Movie.Name.2026.IMAX.Directors.Cut.Subbed.REPACK.UHD.BluRay.2160p."
+    "TrueHD.Atmos.7.1.DV.HEVC.REMUX-SomeGroup.mkv"
 )
 
 
@@ -139,10 +155,16 @@ def _series_payloads(
 ) -> tuple[object, MediaSearchPayload]:
     """Turn the example payload into one of the three series shapes.
 
-    A season pack maps no episode at all, which is how the app represents
-    one. A span carries `episode_end`, which is the only definition of a
-    span in the token replacer -- so a test cannot accidentally build a
-    span that the tokens would not recognise as one.
+    Passing no episodes stands in for a pack here, because `_render` builds
+    `ReleaseProperties` directly and a pack resolves to no episodes. It is
+    not how the app represents one: `build_series_release_info` reads the
+    per-file mappings, so a real pack carries every episode it covers. See
+    `test_a_season_pack_is_designated_by_its_season_alone`, which goes
+    through that derivation rather than around it.
+
+    A span carries `episode_end`, which is the only definition of a span in
+    the token replacer -- so a test cannot accidentally build a span that
+    the tokens would not recognise as one.
     """
     path = media.input_path
     episode_map: dict[Path, dict[str, object]] = {}
@@ -223,6 +245,7 @@ def _render(
     release = ReleaseProperties(
         is_remux=bool(overrides.get("remux")),
         is_dvd="dvd" in source.lower(),
+        is_optical_source="dvd" in source.lower() or "bluray" in source.lower(),
         resolution=height,
         hdr_identity=resolve_hdr_identity(media_info),
         season=season,
@@ -473,6 +496,78 @@ def test_beyondhd_glues_dd_to_its_channel_layout(
     ddp = _render(TrackerSelection.BEYOND_HD, WEB_NAME, "WEB-DL")
     assert "DDP 7.1" in ddp
     assert "DDP7.1" not in ddp
+
+
+@pytest.mark.parametrize(
+    ("name", "source", "expected"),
+    [
+        (ENCODE_NAME, "BluRay", "BluRay 2160p"),
+        (REMUX_NAME, "UHD BluRay", "UHD BluRay 2160p"),
+        (ENCODE_NAME, "DVD", "DVD 2160p"),
+        (WEB_NAME, "WEB-DL", "2160p AMZN WEB-DL"),
+    ],
+    ids=["encode", "remux", "dvd", "web"],
+)
+def test_beyondhd_leads_an_optical_source_with_the_source(
+    name: str, source: str, expected: str
+) -> None:
+    """BeyondHD writes "BluRay 1080p" where the other three write "1080p
+    BluRay". Web is the exception: the resolution still comes first, which
+    keeps the service abbreviation against WEB-DL where every tracker
+    asking for one wants it.
+
+    The DVD row pairs a source with the fixture's own 2160p, which no real
+    release does. What it pins is the branch rather than the pairing -- a
+    DVD is optical, so it leads on the same rule as the two Blu-ray shapes
+    rather than by way of the codec-first order it separately triggers.
+    """
+    assert expected in _render(TrackerSelection.BEYOND_HD, name, source)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("UHD BluRay", "IMAX Directors Cut Subbed REPACK UHD BluRay 2160p"),
+        ("WEB-DL", "IMAX Directors Cut Subbed REPACK 2160p AMZN WEB-DL"),
+    ],
+    ids=["optical", "web"],
+)
+def test_beyondhd_states_frame_size_cut_and_localization_before_the_source(
+    source: str, expected: str
+) -> None:
+    """Frame size, cut and localization, in that order, against the source.
+
+    The group travels with the source under the same optical rule, so a
+    WEB-DL reads the same up to the point where the resolution and source
+    swap places. REPACK keeps its own position between the group and the
+    source rather than moving with either.
+
+    The service is supplied rather than detected because the name carries
+    none, and it is supplied for both rows: the optical branch has no
+    `{streaming_service}` component, so an explicit choice cannot put one in
+    a Blu-ray title.
+    """
+    rendered = _render(
+        TrackerSelection.BEYOND_HD, CLAIMED_NAME, source, streaming_service="AMZN"
+    )
+
+    assert f"Movie Name 2026 {expected} " in rendered
+
+
+@pytest.mark.parametrize("tracker", REMUX_AUDIO_LAST)
+def test_the_other_three_order_the_cut_first_and_state_no_subbed(
+    tracker: TrackerSelection,
+) -> None:
+    """The control, so the BeyondHD test above is about BeyondHD.
+
+    Aither, LST and ReelFliX write the cut ahead of the frame size, and
+    their vocabulary maps "Subbed" to nothing -- so a subbed release is
+    named as one on BeyondHD alone.
+    """
+    rendered = _render(tracker, CLAIMED_NAME, "UHD BluRay")
+
+    assert "Directors Cut IMAX" in rendered
+    assert "Subbed" not in rendered
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
@@ -803,16 +898,15 @@ def test_a_non_web_release_carries_no_streaming_service(
     source change into a BluRay title."""
     rendered = _render(tracker, WEB_NAME, "BluRay")
 
-    # BeyondHD puts Atmos with the codec and the channels after it,
-    # where the other three spell it the other way round.
-    audio = (
-        "TrueHD Atmos 7.1"
-        if tracker is TrackerSelection.BEYOND_HD
-        else "TrueHD 7.1 Atmos"
-    )
+    # Two spellings BeyondHD does not share with the other three: an
+    # optical source leads its resolution, and Atmos goes with the codec
+    # rather than after the channels.
+    beyond_hd = tracker is TrackerSelection.BEYOND_HD
+    quality = "BluRay 2160p" if beyond_hd else "2160p BluRay"
+    audio = "TrueHD Atmos 7.1" if beyond_hd else "TrueHD 7.1 Atmos"
 
     assert "AMZN" not in rendered
-    assert rendered == (f"Movie Name 2026 2160p BluRay {audio} DV HDR x265-SomeGroup")
+    assert rendered == (f"Movie Name 2026 {quality} {audio} DV HDR x265-SomeGroup")
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
@@ -823,3 +917,144 @@ def test_an_explicit_service_choice_is_honoured(tracker: TrackerSelection) -> No
 
     assert " PMTP WEB-DL " in rendered
     assert "AMZN" not in rendered
+
+
+# -- the designator, from a real payload ----------------------------------
+#
+# Every test above builds ReleaseProperties by hand. That is right for
+# pinning what an entry says and wrong for pinning what a release resolves
+# to: a hand-built season pack passes `episodes=()`, which
+# `build_series_release_info` never produces for one. A real pack maps every
+# file it contains, so its episodes are exactly as populated as a span's.
+# The tests below go through the production derivation instead.
+
+
+def _pack_media(episodes: Sequence[int]):
+    """A pack as the app builds one: a file per episode, each mapped."""
+    files = [
+        Path(f"Show.Name.S01E{number:02d}.2160p.UHD.BluRay.x265-SomeGroup.mkv")
+        for number in episodes
+    ]
+    source_info = next(iter(EXAMPLE_MEDIA_INPUT_PAYLOAD.file_list_mediainfo.values()))
+    return replace(
+        EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        media_type=MediaType.SERIES,
+        input_path=Path("Show.Name.S01.2160p.UHD.BluRay.x265-SomeGroup"),
+        file_list=files,
+        file_list_mediainfo={path: source_info for path in files},
+        series_episode_map={
+            path: {"season": 1, "episode": number}
+            for path, number in zip(files, episodes, strict=True)
+        },
+    )
+
+
+def _span_media():
+    """One file covering two episodes, which is a span rather than a pack."""
+    path = Path("Show.Name.S01E01E02.2160p.UHD.BluRay.x265-SomeGroup.mkv")
+    source_info = next(iter(EXAMPLE_MEDIA_INPUT_PAYLOAD.file_list_mediainfo.values()))
+    return replace(
+        EXAMPLE_MEDIA_INPUT_PAYLOAD,
+        media_type=MediaType.SERIES,
+        input_path=path,
+        file_list=[path],
+        file_list_mediainfo={path: source_info},
+        series_episode_map={path: {"season": 1, "episode": 1, "episode_end": 2}},
+    )
+
+
+def _search_listing(season_length: int | None) -> MediaSearchPayload:
+    """A search payload whose TVDB data lists a season of `season_length`.
+
+    ``None`` carries no TVDB data at all, which is the state a lookup that
+    failed or was skipped leaves behind.
+    """
+    tvdb_data = (
+        {
+            "episodes": [
+                {"seasonNumber": 1, "number": number}
+                for number in range(1, season_length + 1)
+            ]
+        }
+        if season_length is not None
+        else None
+    )
+    return MediaSearchPayload(
+        media_type=MediaType.SERIES, title=SERIES_TITLE, tvdb_data=tvdb_data
+    )
+
+
+def _designator_for(media, search: MediaSearchPayload | None = None) -> str:
+    """The designator a payload resolves to, through the production path."""
+    release_info = build_series_release_info(media)
+    context = ProcessingContext(
+        media_input=media,
+        media_search=search if search is not None else EXAMPLE_SEARCH_PAYLOAD,
+    )
+    backend = object.__new__(ProcessBackEnd)
+    release = backend._release_properties(context, release_info)
+
+    composition = TITLE_RULES[TrackerSelection.AITHER].composition
+    assert composition is not None
+    token_string = compose_token_string(composition, release)
+    designator = re.search(r"S\d\d(?:E[\dE-]+)?", token_string)
+    assert designator is not None, token_string
+    return designator.group(0)
+
+
+def test_a_whole_season_is_designated_by_its_season_alone() -> None:
+    """A release covering every episode TVDB lists for the season is "S01".
+
+    The range says nothing a reader wants when the release *is* the season,
+    and the filename side already agrees: `SeriesReleaseInfo.display_tag`
+    and the `{episode_number}` token kwarg both collapse a pack to its
+    season, so a title carrying a range disagrees with the filename beside
+    it.
+    """
+    media = _pack_media(range(1, 11))
+
+    assert _designator_for(media, _search_listing(10)) == "S01"
+
+
+def test_a_partial_pack_keeps_its_episode_range() -> None:
+    """Five episodes of a ten-episode season is not the season.
+
+    Collapsing it to "S01" would claim the whole season, which is a worse
+    error than an over-precise range: someone downloading it gets half of
+    what the title promised.
+    """
+    media = _pack_media(range(1, 6))
+
+    assert _designator_for(media, _search_listing(10)) == "S01E01-05"
+
+
+def test_a_pack_missing_a_middle_episode_is_not_the_whole_season() -> None:
+    """Completeness is the set of episodes, not the span of their ends.
+
+    A pack of E01-E05 and E07-E10 has ends of 1 and 10, so an ends-based
+    check would call it complete. It is not: E06 is absent.
+    """
+    media = _pack_media([*range(1, 6), *range(7, 11)])
+
+    assert _designator_for(media, _search_listing(10)) != "S01"
+
+
+def test_an_unlistable_season_keeps_its_episode_range() -> None:
+    """No TVDB data means the season's length is unknown.
+
+    Unknown resolves to the range rather than to "S01": claiming a complete
+    season on absent evidence is the failure that matters, and a range is
+    merely more precise than it needs to be.
+    """
+    media = _pack_media(range(1, 11))
+
+    assert _designator_for(media, _search_listing(None)) == "S01E01-10"
+
+
+def test_a_single_file_span_keeps_its_episode_range() -> None:
+    """The control. One file covering two episodes is not a pack, and its
+    range is the whole point of the designator."""
+    media = _span_media()
+    assert not build_series_release_info(media).is_pack
+
+    assert _designator_for(media, _search_listing(10)) == "S01E01-02"

@@ -111,6 +111,7 @@ from src.backend.utils.images import (
     get_parity_images_to_str,
 )
 from src.backend.utils.token_utils import get_prompt_tokens
+from src.backend.utils.tvdb_episodes import season_episode_numbers
 from src.config.config import ConfigManager
 from src.config.tv_tokens import get_tvr_title_token
 from src.context.processing_context import ProcessingContext
@@ -2887,10 +2888,17 @@ class ProcessBackEnd:
         picker and the only_if/unless filters all resolve from it, so a
         composition keyed off it cannot disagree with what is printed.
 
-        `episodes` is derived from the span's ends. Every span NfoForge
-        produces is contiguous -- the mapper sorts guessit's list and keeps
-        first and last -- so the range is exact rather than approximate for
-        everything but a hand-built non-contiguous mapping.
+        `episodes` is derived from the span's ends, and only where the
+        release is not the whole season -- see `_is_whole_season`. Every
+        span NfoForge produces is contiguous -- the mapper sorts guessit's
+        list and keeps first and last -- so the range is exact rather than
+        approximate for everything but a hand-built non-contiguous mapping.
+
+        `is_dvd` and `is_optical_source` both read the source override, so
+        an entry ordering its components by source cannot disagree with the
+        source the `{source}` token prints beside them. A source that is
+        absent or unrecognised leaves both false, which is the answer that
+        changes no tracker's order.
         """
         overrides = context.shared_data.dynamic_data.get("override_tokens") or {}
         media_info = None
@@ -2906,7 +2914,9 @@ class ProcessBackEnd:
 
         source = str(overrides.get("source", "")).lower()
         episodes: tuple[int, ...] = ()
-        if release_info.episode_start is not None:
+        if release_info.episode_start is not None and not self._is_whole_season(
+            context, release_info
+        ):
             end = release_info.episode_end or release_info.episode_start
             episodes = tuple(range(release_info.episode_start, end + 1))
 
@@ -2914,11 +2924,51 @@ class ProcessBackEnd:
             is_remux=bool(overrides.get("remux")),
             is_disc=False,
             is_dvd="dvd" in source,
+            is_optical_source="dvd" in source or "bluray" in source,
             resolution=resolution,
             hdr_identity=resolve_hdr_identity(media_info),
             season=release_info.season,
             episodes=episodes,
         )
+
+    @staticmethod
+    def _is_whole_season(
+        context: ProcessingContext, release_info: SeriesReleaseInfo
+    ) -> bool:
+        """Whether the release is the season itself rather than episodes of it.
+
+        Only a release covering every episode TVDB lists for the season is
+        designated "S01". Anything short of that keeps its range, because
+        "S01" on a partial pack claims a whole season the download does not
+        contain -- a worse error than a range that is merely more precise
+        than it needs to be.
+
+        Completeness is decided on the episode *set*, not the ends: a pack
+        of E01-E05 and E07-E10 spans 1 to 10 and is still missing one.
+
+        Two answers are given without asking TVDB. A release spanning more
+        than one season is a pack whatever its episodes are, since no single
+        episode range describes it. And a season TVDB does not list -- no
+        data at all, a failed lookup, a season it does not cover -- is
+        unproven rather than complete, so it keeps its range: an empty set
+        is a subset of everything, and treating that as complete would put
+        "S01" on every release whose lookup failed.
+        """
+        if not release_info.is_pack or release_info.season is None:
+            return False
+
+        if (
+            release_info.season_end is not None
+            and release_info.season_end != release_info.season
+        ):
+            return True
+
+        listed = season_episode_numbers(
+            context.media_search.tvdb_data,
+            release_info.season,
+            release_info.episode_order_type_id,
+        )
+        return bool(listed) and listed <= set(release_info.episode_numbers)
 
     @staticmethod
     def _release_info_token_kwargs(

@@ -80,6 +80,6 @@ UNIT3D_TRACKERS: frozenset[TrackerSelection] = frozenset(
 )
 
 # Whether a tracker's upload has a release-name field at all is a title rule,
-# so it lives on that tracker's entry -- see `accepts_a_release_name` in
-# `title_rules.py`. It used to be a frozenset here, beside the media-type
-# support tables, which answer a different question.
+# so it lives on that tracker's entry rather than here beside the media-type
+# support tables, which answer a different question -- see
+# `accepts_a_release_name` in `title_rules.py`.
