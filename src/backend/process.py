@@ -2279,7 +2279,7 @@ class ProcessBackEnd:
 
         # try mkbrr first if enabled, fallback to torf if not available or on error
         try:
-            if self.config.settings.general.enable_mkbrr and (
+            if self.config.settings.dependencies.enable_mkbrr and (
                 self.config.settings.dependencies.mkbrr
                 and self.config.settings.dependencies.mkbrr.exists()
             ):
@@ -2300,7 +2300,7 @@ class ProcessBackEnd:
         except Exception as mkbrr_error:
             # only show error if mkbrr was available but failed
             if (
-                self.config.settings.general.enable_mkbrr
+                self.config.settings.dependencies.enable_mkbrr
                 and self.config.settings.dependencies.mkbrr
             ):
                 queued_text_update(

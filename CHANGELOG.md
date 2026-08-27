@@ -8,6 +8,7 @@
 
 ### Changed
 
+- Configuration schema 12. **Enable mkbrr** moved from Settings -> General to Settings -> Dependencies, next to the mkbrr path it governs -- no more jumping between tabs to turn it on and point it at a binary.
 - **BeyondHD release titles order their components differently.** Three changes, to BeyondHD alone:
   - A Blu-ray, UHD Blu-ray or DVD source leads its resolution -- "BluRay 1080p" rather than "1080p BluRay". A WEB-DL is unaffected.
   - Frame size, cut and localization are stated in that order immediately ahead of the source: "IMAX Directors Cut Subbed REPACK UHD BluRay 2160p". The frame size and the cut previously came the other way round.

@@ -414,7 +414,6 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
             settings=SimpleNamespace(
                 general=SimpleNamespace(
                     timeout=60,
-                    enable_mkbrr=False,
                     enable_plugins=False,
                     enable_prompt_overview=False,
                 ),
@@ -425,7 +424,7 @@ def test_injection_cancel_marks_remaining_trackers_and_disconnects(
                     }
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
-                dependencies=SimpleNamespace(mkbrr=None),
+                dependencies=SimpleNamespace(mkbrr=None, enable_mkbrr=False),
                 torrent_clients=SimpleNamespace(
                     qbittorrent=SimpleNamespace(enabled=False)
                 ),
@@ -549,7 +548,6 @@ def _process_trackers_backend(
             settings=SimpleNamespace(
                 general=SimpleNamespace(
                     timeout=60,
-                    enable_mkbrr=False,
                     enable_plugins=True,
                     enable_prompt_overview=False,
                 ),
@@ -562,7 +560,7 @@ def _process_trackers_backend(
                     token_replacer="",
                 ),
                 user_tokens=SimpleNamespace(tokens={}),
-                dependencies=SimpleNamespace(mkbrr=None),
+                dependencies=SimpleNamespace(mkbrr=None, enable_mkbrr=False),
                 torrent_clients=SimpleNamespace(
                     qbittorrent=SimpleNamespace(enabled=False)
                 ),

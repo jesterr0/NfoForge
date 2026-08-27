@@ -106,7 +106,6 @@ class GeneralSettings:
     media_search_mode: MediaSearchMode
     timeout: int
     enable_prompt_overview: bool
-    enable_mkbrr: bool
     log_level: LogLevel
     log_total: int
     working_dir: Path
@@ -119,6 +118,7 @@ class DependencySettings:
     ffprobe: Path | None
     frame_forge: Path | None
     mkbrr: Path | None
+    enable_mkbrr: bool
 
 
 @dataclass(slots=True)

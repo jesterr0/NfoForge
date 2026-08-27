@@ -40,7 +40,6 @@ def _backend(monkeypatch: pytest.MonkeyPatch) -> ProcessBackEnd:
             settings=SimpleNamespace(
                 general=SimpleNamespace(
                     timeout=60,
-                    enable_mkbrr=False,
                     enable_plugins=False,
                     enable_prompt_overview=True,
                     releasers_name="tester",
@@ -51,7 +50,7 @@ def _backend(monkeypatch: pytest.MonkeyPatch) -> ProcessBackEnd:
                 torrent_clients=SimpleNamespace(
                     qbittorrent=SimpleNamespace(enabled=False)
                 ),
-                dependencies=SimpleNamespace(mkbrr=None),
+                dependencies=SimpleNamespace(mkbrr=None, enable_mkbrr=False),
                 user_tokens=SimpleNamespace(tokens={}),
                 global_management=SimpleNamespace(
                     title_clean_rules=[], video_dynamic_range=None
