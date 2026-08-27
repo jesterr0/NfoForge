@@ -668,6 +668,7 @@ class TemplateSelector(QWidget):
                     episode_format=release_info.episode_format,
                     multi_episode_style=self.config.settings.series.multi_episode_style,
                     releasers_name=self.config.settings.general.releasers_name,
+                    group_tag=self.config.settings.general.release_group,
                     dummy_screen_shots=False
                     if self.context.shared_data.url_data
                     or self.context.shared_data.loaded_images

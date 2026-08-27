@@ -56,9 +56,12 @@ def test_active_file_drives_file_specific_tokens_in_series_pack() -> None:
             media_input_obj=payload,
             media_search_obj=MediaSearchPayload(media_type=MediaType.SERIES),
             # {re_release} is a claim now, detected pack-wide in stage 1 and
-            # supplied as an override, so it no longer varies per file. The
-            # rest still resolve from whichever file is active.
-            token_string="{resolution}|{release_group}|{original_filename}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+            # supplied as an override, so it no longer varies per file.
+            # {release_group} is not file-specific at all any more -- it is
+            # the user's own group tag, one per release, so a pack of files
+            # from different groups still carries whichever one they chose.
+            # The rest still resolve from whichever file is active.
+            token_string="{resolution}|{original_filename}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
             colon_replace=ColonReplace.REPLACE_WITH_DASH,
             flatten=True,
             file_name_mode=False,
@@ -68,8 +71,8 @@ def test_active_file_drives_file_specific_tokens_in_series_pack() -> None:
             active_file=active_file,
         ).get_output()
 
-    assert render(first_file) == f"1080p|GRP|{first_file.stem}"
-    assert render(second_file) == f"720p|OTHER|{second_file.stem}"
+    assert render(first_file) == f"1080p|{first_file.stem}"
+    assert render(second_file) == f"720p|{second_file.stem}"
 
 
 def test_tmdb_url_token_uses_the_tv_path_for_a_series() -> None:

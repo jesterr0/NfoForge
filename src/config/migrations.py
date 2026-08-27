@@ -108,6 +108,7 @@ SCHEMA_9_VERSION = 9
 SCHEMA_10_VERSION = 10
 SCHEMA_11_VERSION = 11
 SCHEMA_12_VERSION = 12
+SCHEMA_13_VERSION = 13
 
 # A migration accepts (document, packaged_default) and returns the migrated
 # document plus a list of sections it could not account for.
@@ -718,6 +719,8 @@ def migrate_v7_to_v8(
 # 4 REPLACE_WITH_SPACE_DASH, 5 REPLACE_WITH_SPACE_DASH_SPACE.
 _FILENAME_COLON_REMAP = {4: 3, 5: 3}
 
+# Frozen at the six claims schema 9 defined. A claim added later belongs in
+# `operations._CLAIM_KEYS`; adding it here would rewrite what this hop wrote.
 _CLAIM_NAMES = (
     "edition",
     "frame_size",
@@ -971,6 +974,61 @@ def migrate_v11_to_v12(
     return new_doc, []
 
 
+def migrate_v12_to_v13(
+    old_doc: Mapping[str, Any],
+    default_document: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Fold the two release group keys into one, and switch release group
+    parsing.
+
+    The group tag printed on output is the user's publishing identity, not a
+    property of whether the release is a film or a show, so the movie and
+    series copies become a single ``[general]`` entry beside `releasers_name`.
+    Neither old key ever had a UI, so at most one is realistically set; the
+    first non-empty wins and the movie side is checked first.
+
+    The source group -- what the input filename claims -- becomes a switchable
+    claim like the other six, so both sections gain a
+    ``*_parse_claim_release_group`` key. It is written explicitly rather than
+    left to the loader's default, matching how schema 9 introduced the
+    original six, and set to True so parsing keeps working as it did.
+
+    Unlike most hops this one can change output: a profile with renaming
+    disabled and no group tag set used to have the source group read straight
+    out of the filename by the renderer. That read is gone -- the claim
+    switches now govern every path -- so such a profile emits no group until
+    one is configured.
+    """
+
+    del default_document
+    new_doc: dict[str, Any] = {"schema_version": SCHEMA_13_VERSION}
+    for key, value in old_doc.items():
+        if key != "schema_version":
+            new_doc[key] = value
+
+    group_tag = ""
+    for section_key, old_key, prefix in (
+        ("movie_management", "mvr_release_group", "mvr"),
+        ("series_management", "tvr_release_group", "tvr"),
+    ):
+        section = new_doc.get(section_key)
+        if not isinstance(section, Mapping):
+            continue
+        new_section = dict(section)
+        if not group_tag:
+            group_tag = str(_unwrap(new_section.get(old_key, "")) or "").strip()
+        new_section.pop(old_key, None)
+        new_section[f"{prefix}_parse_claim_release_group"] = True
+        new_doc[section_key] = new_section
+
+    general = new_doc.get("general")
+    new_general = dict(general) if isinstance(general, Mapping) else {}
+    new_general["release_group"] = group_tag
+    new_doc["general"] = new_general
+
+    return new_doc, []
+
+
 MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_1_VERSION: migrate_unversioned_to_v2,
     SCHEMA_2_VERSION: migrate_v2_to_v3,
@@ -983,6 +1041,7 @@ MIGRATIONS: dict[int, MigrationFn] = {
     SCHEMA_9_VERSION: migrate_v9_to_v10,
     SCHEMA_10_VERSION: migrate_v10_to_v11,
     SCHEMA_11_VERSION: migrate_v11_to_v12,
+    SCHEMA_12_VERSION: migrate_v12_to_v13,
 }
 
 

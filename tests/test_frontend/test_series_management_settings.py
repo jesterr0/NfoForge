@@ -175,7 +175,7 @@ def test_illegal_chars_checkbox_is_gone(
     assert not hasattr(widget, "replace_illegal_chars")
 
 
-def test_the_six_claim_switches_are_offered(
+def test_every_claim_switch_is_offered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     widget, _ = _make_series_management_settings(tmp_path, monkeypatch)
@@ -187,6 +187,7 @@ def test_the_six_claim_switches_are_offered(
         "re_release",
         "remux",
         "hybrid",
+        "release_group",
     }
 
 

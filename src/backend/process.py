@@ -102,6 +102,7 @@ from src.backend.upload_retry import (
 )
 from src.backend.utils.anime import is_anime_release
 from src.backend.utils.file_utilities import release_stem
+from src.backend.utils.filename_claims import detect_filename_claims
 from src.backend.utils.hdr_identity import resolve_hdr_identity
 from src.backend.utils.image_optimizer import MultiProcessImageOptimizer
 from src.backend.utils.images import (
@@ -181,6 +182,41 @@ class ProcessBackEnd:
         self.transmission_client: TransmissionClient | None = None
         self.watch_folder_counter = 0
         self.clients_can_logout = (self.qbit_client, self.deluge_client)
+
+    def _seed_claim_overrides(self, context: ProcessingContext) -> None:
+        """Run stage 1 for a run that never reached a rename page.
+
+        Renaming is optional (`mvr_enabled`/`tvr_enabled`), and with it off
+        the wizard routes straight past the page that detects claims and
+        populates the overrides. Nothing else did it, so the NFO and the
+        tracker titles rendered as though the filenames claimed nothing --
+        every claim token empty, including the group.
+
+        Detection belongs to the run rather than to one page, so it happens
+        here for any path that reaches processing without it. The switches
+        still govern: a category the user turned off is not detected, which
+        is the whole point of it being a switch.
+
+        A run that *did* reach the rename page is left alone. Its overrides
+        are the user's stage-2 decisions, and a blank there is one of them.
+        """
+        if context.shared_data.dynamic_data.get("override_tokens") is not None:
+            return
+
+        file_list = context.media_input.file_list
+        if not file_list:
+            return
+
+        claims = detect_filename_claims(
+            [path.stem for path in file_list],
+            self.config.settings.series.claims
+            if context.media_input.media_type is MediaType.SERIES
+            else self.config.settings.movie.claims,
+            context.custom_edition_info,
+        )
+        context.shared_data.dynamic_data["override_tokens"] = (
+            claims.as_override_tokens()
+        )
 
     async def dupe_checks(
         self,
@@ -950,6 +986,10 @@ class ProcessBackEnd:
         # make sure we have all the latest templates in case changes was made during the wizard
         self.template_selector_be.load_templates()
 
+        # Before anything reads the overrides -- the qBittorrent save path
+        # below is the first to.
+        self._seed_claim_overrides(context)
+
         def record_outcome(
             tracker: TrackerSelection, outcome: TrackerRunOutcome
         ) -> None:
@@ -1147,6 +1187,7 @@ class ProcessBackEnd:
                     media_search_obj=context.media_search,
                     unfilled_token_mode=UnfilledTokenRemoval.KEEP,
                     releasers_name=self.config.settings.general.releasers_name,
+                    group_tag=self.config.settings.general.release_group,
                     screen_shots=formatted_screens,
                     screen_shots_comparison=comparison_screens,
                     screen_shots_even_obj=even_screens,
@@ -2801,6 +2842,7 @@ class ProcessBackEnd:
                     "frame_size_override"
                 ),
                 override_tokens=context.shared_data.dynamic_data.get("override_tokens"),
+                group_tag=self.config.settings.general.release_group,
                 title_clean_rules=self.config.settings.global_management.title_clean_rules,
                 user_tokens=user_tokens,
                 video_dynamic_range=dynamic_range,

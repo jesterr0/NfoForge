@@ -44,6 +44,7 @@ def _backend(
         ConfigManager,
         SimpleNamespace(
             settings=SimpleNamespace(
+                general=SimpleNamespace(release_group=""),
                 movie=SimpleNamespace(
                     title_token=movie_template,
                     title_colon_replace=movie_colon,

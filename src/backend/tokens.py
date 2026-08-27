@@ -193,7 +193,10 @@ class Tokens:
         "{original_language_iso_639_2}",
         "Original language (ENG)",
     )
-    RELEASE_GROUP = FileToken("{release_group}", "Release group")
+    RELEASE_GROUP = FileToken(
+        "{release_group}",
+        "Release group (from Settings > General, or the rename page)",
+    )
     RELEASE_DATE = FileToken("{release_date}", "Release date (movies - UTC)")
     RELEASERS_NAME = FileToken("{releasers_name}", "Releaser's name (Anonymous)")
     RELEASE_YEAR = FileToken("{release_year}", "Release year")

@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Your release group is a setting now**, in Settings -> General beside Releasers Name. It pre-fills the rename page's Release Group and is what `{release_group}` prints wherever the rename page has not run. The value was always in the config file but had no field to set it in.
+- A seventh claim switch, **Release group**, alongside the other six on the movie and series settings pages. Off means the group in an input filename is never read -- not into the field, and not into your output.
+
+### Changed
+
+- Configuration schema 13. The movie and series release group settings fold into one entry in `[general]`. Your release group is who you publish as rather than a property of a film or a show, so it is one value for both. A profile with either of the old keys set keeps it; the movie side wins if somehow both were.
+- **The release group in your output is only ever one you chose.** It comes from the rename page's field, or from your configured group where that page has not run. Nothing reads a group out of the input filename except the claim detector, which the new switch governs. Previously the renderer parsed the filename itself, so it could print the group of whoever made the file you were working from, regardless of what the rename page showed.
+  - Clearing the Release Group field on the rename page now publishes with no group, rather than falling back to your configured one. It is the whole answer for that release.
+  - A profile with renaming disabled and no release group configured emits no group. Set yours in Settings -> General.
+
+### Fixed
+
+- The NFO template preview shows the release group the NFO will actually carry. It rendered your edition from what you chose on the rename page but parsed the group out of the filename separately, so typing a group and previewing the template showed two different groups.
+- The filename and title examples on the movie and series settings pages show your configured release group instead of the example filename's `SomeGroup`.
+- With renaming disabled, editions, frame sizes, re-release markers and the rest are read from the input filenames again. Claim detection only ever ran on the rename page, so a run that skipped it rendered every claim empty.
+
 ## [1.1.10] - 2026-08-26
 
 ### Added

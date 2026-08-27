@@ -1,4 +1,4 @@
-schema_version = 13
+schema_version = 12
 
 [general]
 ui_suffix = ""
@@ -6,9 +6,6 @@ ui_scale_factor = 1.0
 nfo_forge_theme = 1
 enable_plugins = false
 releasers_name = ""
-# The group tag printed on output. Blank means the rename page decides, from
-# the input filename's own group when release group parsing is on.
-release_group = ""
 tmdb_language = "en-US"
 media_search_mode = "Movies & TV"
 timeout = 60
@@ -409,7 +406,7 @@ mvr_colon_replace_filename = 3
 mvr_colon_replace_title = 3
 # Claims MediaInfo cannot verify, read out of the input filename. A claim is
 # parsed only when mvr_parse_claims and its own switch are both true.
-# Quality/source and streaming service are always parsed.
+# Quality/source, streaming service and release group are always parsed.
 mvr_parse_claims = true
 mvr_parse_claim_edition = true
 mvr_parse_claim_frame_size = true
@@ -417,9 +414,10 @@ mvr_parse_claim_localization = true
 mvr_parse_claim_re_release = true
 mvr_parse_claim_remux = true
 mvr_parse_claim_hybrid = true
-mvr_parse_claim_release_group = true
 mvr_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
 mvr_title_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+# TODO: move to global at the top?
+mvr_release_group = ""
 
 [series_management]
 tvr_enabled = true
@@ -427,7 +425,7 @@ tvr_colon_replace_filename = 3
 tvr_colon_replace_title = 3
 # Claims MediaInfo cannot verify, read out of the input filename. A claim is
 # parsed only when tvr_parse_claims and its own switch are both true.
-# Quality/source and streaming service are always parsed.
+# Quality/source, streaming service and release group are always parsed.
 tvr_parse_claims = true
 tvr_parse_claim_edition = true
 tvr_parse_claim_frame_size = true
@@ -435,7 +433,6 @@ tvr_parse_claim_localization = true
 tvr_parse_claim_re_release = true
 tvr_parse_claim_remux = true
 tvr_parse_claim_hybrid = true
-tvr_parse_claim_release_group = true
 tvr_standard_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 tvr_daily_episode_token = "{title_clean} {episode_air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 tvr_anime_episode_token = "{title_clean} S{season_number|zfill(2)}E{episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
@@ -445,6 +442,7 @@ tvr_multi_episode_style = 4
 tvr_standard_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 tvr_daily_title_token = "{title_clean} {episode_air_date} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
 tvr_anime_title_token = "{title_clean} S{season_number|zfill(2)}{:opt=E:episode_number|zfill(2)} {episode_number_absolute|zfill(3)} {episode_title_clean} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_dynamic_range_type_inc_sdr_over_1080} {video_codec}{:opt=-:release_group}"
+tvr_release_group = ""
 
 [global_management]
 title_clean_rules = [

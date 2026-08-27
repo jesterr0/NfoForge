@@ -113,11 +113,19 @@ def _media(name: str):
     )
 
 
-_CLAIM_KEYS = ("edition", "frame_size", "localization", "re_release", "remux", "hybrid")
+_CLAIM_KEYS = (
+    "edition",
+    "frame_size",
+    "localization",
+    "re_release",
+    "remux",
+    "hybrid",
+    "release_group",
+)
 
 
 def _claim_overrides(name: str) -> dict[str, str]:
-    """The six switchable claims stage 1 reads from a release name."""
+    """The switchable claims stage 1 reads from a release name."""
     detected = detect_filename_claims(
         [Path(name).stem],
         ClaimSwitches(
@@ -128,6 +136,7 @@ def _claim_overrides(name: str) -> dict[str, str]:
             re_release=True,
             remux=True,
             hybrid=True,
+            release_group=True,
         ),
     ).as_override_tokens()
     return {k: v for k, v in detected.items() if k in _CLAIM_KEYS}
@@ -219,12 +228,13 @@ def _render(
     Passing a season switches the payload to a series one, so the episode
     tokens are asked the same question the app asks them.
     """
-    # Stage 3 no longer reads the six switchable claims off the filename, so
-    # they arrive as overrides -- exactly what generate_tracker_title
-    # receives from the rename page. Streaming service and release group are
-    # deliberately not injected unless a test asks: those are still detected
-    # downstream, and an override would bypass the service token's own
-    # web-source gating.
+    # Stage 3 reads no claim off the filename, so they arrive as overrides --
+    # exactly what generate_tracker_title receives from the rename page. The
+    # release group is among them now, and an explicit `release_group`
+    # argument still wins, which is how a test states a group its fixture
+    # name does not carry. Streaming service is deliberately not injected
+    # unless a test asks: it is still detected downstream, and an override
+    # would bypass the service token's own web-source gating.
     overrides: dict[str, str] = _claim_overrides(name)
     overrides["source"] = source
     if release_group is not None:

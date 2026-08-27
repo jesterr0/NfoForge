@@ -235,10 +235,13 @@ class RenameEncode(BaseWizardPage):
 
         release_group_lbl = QLabel("Release Group", self)
         release_group_lbl.setToolTip(
-            "Release group name (this requires the token {release_group} in the token string)"
+            "The group name on your output. Pre-filled from Settings > General, "
+            "or from the input filename when release group parsing is on. "
+            "Clearing it publishes this release with no group."
         )
         self.release_group_entry = QLineEdit(self)
         self.release_group_entry.setToolTip(release_group_lbl.toolTip())
+        self.release_group_entry.setPlaceholderText("No group tag")
         self.release_group_entry.textEdited.connect(self.update_generated_name)
 
         token_override_lbl = QLabel("Override File Name Tokens", self)
@@ -321,7 +324,7 @@ class RenameEncode(BaseWizardPage):
     def initializePage(self) -> None:
         # this is a movie so there's only ever 1 to rename, grab it with index 0
         media_file = self.context.media_input.file_list[0]
-        release_group_name = self.config.settings.movie.release_group
+        release_group_name = self.config.settings.general.release_group
 
         self.media_label.setText(media_file.stem)
         self.media_label.setToolTip(media_file.stem)
@@ -348,11 +351,11 @@ class RenameEncode(BaseWizardPage):
             if quality_idx > -1:
                 self.quality_combo.setCurrentIndex(quality_idx)
 
-        # The settings value means "my group"; the detected one means
-        # "whoever made the source file". Configured wins, but a blank
-        # setting must not leave the field empty while the output silently
-        # carries the detected group -- that is the invisible claim this
-        # design removes everywhere else.
+        # The settings value is the user's group tag; the detected one is the
+        # source group, meaning whoever made the input file. Configured wins,
+        # and with parsing off there is nothing to fall back to -- the
+        # renderer has no filename parse of its own, so what this field shows
+        # is what the output carries.
         self.release_group_entry.setText(release_group_name or claims.release_group)
 
         self.update_generated_name()
@@ -779,12 +782,13 @@ class RenameEncode(BaseWizardPage):
         else:
             self.token_override.setText(token)
 
-        # treat release group as a pure override token
-        release_group = self.release_group_entry.text().strip()
-        if release_group:
-            self.backend.override_tokens["release_group"] = release_group
-        else:
-            self.backend.override_tokens.pop("release_group", None)
+        # This page is stage 2, so the field is the whole answer: written
+        # unconditionally, including blank. A blank here is the user deciding
+        # this release carries no group, which has to beat the configured tag
+        # rather than fall through to it.
+        self.backend.override_tokens["release_group"] = (
+            self.release_group_entry.text().strip()
+        )
 
         user_tokens = {
             k: v
