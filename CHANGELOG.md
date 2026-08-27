@@ -15,6 +15,7 @@
   - A profile with renaming disabled and no release group configured emits no group. Set yours in Settings -> General.
 - Now shows human readable pice sizes when generating torrents on the process page.
 - MediaSearch page only warns if titles have identical name AND year.
+- MediaSearch no longer shows numbers.
 
 ### Fixed
 

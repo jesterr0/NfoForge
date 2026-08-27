@@ -1,7 +1,8 @@
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtWidgets import QGroupBox, QMessageBox
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QGroupBox, QLabel, QMessageBox
 import pytest
 
 from src.backend.media_search import MediaSearchBackEnd
@@ -103,20 +104,71 @@ def test_metadata_and_plot_share_one_info_group(tmp_path: Path) -> None:
     assert page.main_layout.indexOf(page.info_box) >= 0
 
 
-def test_search_results_are_colored_by_media_type(tmp_path: Path) -> None:
+def test_search_results_are_grouped_by_media_type(tmp_path: Path) -> None:
     page = _make_page(tmp_path)
     results = OrderedDict(
         [
-            ("1) Movie (2024)", {"media_type": "Movie"}),
-            ("2) Show (2024)", {"media_type": "Series"}),
+            (
+                "1) Movie One (2024)",
+                {"media_type": "Movie", "title": "Movie One", "year": "2024"},
+            ),
+            (
+                "2) Show (2024)",
+                {"media_type": "Series", "title": "Show", "year": "2024"},
+            ),
+            (
+                "3) Movie Two (2023)",
+                {"media_type": "Movie", "title": "Movie Two", "year": "2023"},
+            ),
         ]
     )
     page.backend.media_data = results  # type: ignore[reportAttributeAccessIssue]
 
     page._handle_search_result(results)  # type: ignore[reportAttributeAccessIssue]
 
-    assert page.listbox.item(0).background().color() == page.MOVIE_ROW_COLOR
-    assert page.listbox.item(1).background().color() == page.SERIES_ROW_COLOR
+    movie_header = page.listbox.item(0)
+    series_header = page.listbox.item(3)
+    assert movie_header.flags() == Qt.ItemFlag.NoItemFlags
+    assert series_header.flags() == Qt.ItemFlag.NoItemFlags
+    assert page.listbox.itemWidget(movie_header).findChild(QLabel).text() == "MOVIES"  # type: ignore[union-attr]
+    assert (
+        page.listbox.itemWidget(series_header).findChild(QLabel).text() == "TV SERIES"
+    )  # type: ignore[union-attr]
+    assert [page.listbox.item(index).text() for index in (1, 2, 4)] == [
+        "Movie One (2024)",
+        "Movie Two (2023)",
+        "Show (2024)",
+    ]
+    assert page.listbox.currentItem().text() == "Movie One (2024)"
+    page.listbox.setCurrentRow(4)
+    assert page._get_current_item_data() == results["2) Show (2024)"]
+    assert not hasattr(page, "MOVIE_ROW_COLOR")
+
+
+@pytest.mark.parametrize(
+    ("media_type", "heading"),
+    [("Movie", "MOVIES"), ("Series", "TV SERIES")],
+)
+def test_single_type_results_still_show_a_section_heading(
+    media_type: str, heading: str, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    results = OrderedDict(
+        [
+            (
+                "1) Result (2024)",
+                {"media_type": media_type, "title": "Result", "year": "2024"},
+            )
+        ]
+    )
+    page.backend.media_data = results  # type: ignore[reportAttributeAccessIssue]
+
+    page._handle_search_result(results)  # type: ignore[reportAttributeAccessIssue]
+
+    header = page.listbox.item(0)
+    assert header.flags() == Qt.ItemFlag.NoItemFlags
+    assert page.listbox.itemWidget(header).findChild(QLabel).text() == heading  # type: ignore[union-attr]
+    assert page.listbox.item(1).text() == "Result (2024)"
 
 
 def test_duplicate_result_titles_with_different_years_are_not_ambiguous(

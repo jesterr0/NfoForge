@@ -14,7 +14,7 @@ from urllib import parse as url_parse
 import webbrowser
 
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QColor, QCursor, QImage, QMouseEvent, QPixmap
+from PySide6.QtGui import QCursor, QImage, QMouseEvent, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -270,8 +270,7 @@ class LinkLabel(QLabel):
 
 
 class MediaSearch(BaseWizardPage):
-    MOVIE_ROW_COLOR = QColor(52, 152, 219, 72)
-    SERIES_ROW_COLOR = QColor(155, 89, 182, 72)
+    _RESULT_KEY_ROLE = Qt.ItemDataRole.UserRole
 
     def __init__(
         self,
@@ -629,7 +628,7 @@ class MediaSearch(BaseWizardPage):
         if current_item_widget is None:
             GSigs().main_window_set_disabled.emit(False)
             return
-        current_item = current_item_widget.text()
+        current_item = self._result_item_key(current_item_widget)
         item_data = self.backend.media_data.get(current_item)
         if item_data:
             # Establish the canonical base payload before the worker receives an
@@ -782,7 +781,10 @@ class MediaSearch(BaseWizardPage):
         return message_box.clickedButton() is continue_button
 
     def _update_payload_data(self, media_data: dict[str, Any] | None = None) -> None:
-        current_item = self.listbox.currentItem().text()
+        current_item_widget = self.listbox.currentItem()
+        if current_item_widget is None:
+            raise MediaSearchError("Failed to parse TMDB")
+        current_item = self._result_item_key(current_item_widget)
         item_data = self.backend.media_data.get(current_item)
         if not item_data:
             raise MediaSearchError("Failed to parse TMDB")
@@ -996,7 +998,7 @@ class MediaSearch(BaseWizardPage):
         current_item_widget = self.listbox.currentItem()
         if current_item_widget is None:
             return None
-        current_item = current_item_widget.text()
+        current_item = self._result_item_key(current_item_widget)
         item_data = self.backend.media_data.get(current_item)
         if isinstance(item_data, dict):
             return dict(item_data)
@@ -1113,6 +1115,59 @@ class MediaSearch(BaseWizardPage):
 
         self._failed_search(error_str)
 
+    def _add_result_section(self, title: str) -> None:
+        """Add an inert type heading that keeps result groups visually distinct."""
+
+        header_item = QListWidgetItem()
+        header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+
+        header_widget = QWidget(self.listbox)
+        header_layout = QVBoxLayout(header_widget)
+        header_layout.setContentsMargins(8, 8, 8, 2)
+        header_layout.setSpacing(3)
+
+        heading = QLabel(title, header_widget)
+        heading_font = heading.font()
+        heading_font.setBold(True)
+        heading.setFont(heading_font)
+
+        divider = QFrame(header_widget)
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setFrameShadow(QFrame.Shadow.Sunken)
+
+        header_layout.addWidget(heading)
+        header_layout.addWidget(divider)
+        header_item.setSizeHint(header_widget.sizeHint())
+        self.listbox.addItem(header_item)
+        self.listbox.setItemWidget(header_item, header_widget)
+
+    @classmethod
+    def _result_item_key(cls, item: QListWidgetItem) -> str:
+        """Return the backend key stored on a result, with legacy fallback."""
+
+        result_key = item.data(cls._RESULT_KEY_ROLE)
+        return result_key if isinstance(result_key, str) else item.text()
+
+    @staticmethod
+    def _result_display_text(item_key: str, item_data: object) -> str:
+        """Build a clean label without exposing the internal unique key."""
+
+        if not isinstance(item_data, dict):
+            return item_key
+
+        title = item_data.get("title")
+        if not isinstance(title, str) or not title.strip():
+            return item_key
+
+        year = item_data.get("year")
+        return f"{title} ({year})" if year else title
+
+    def _add_result_item(self, item_key: str, item_data: object) -> QListWidgetItem:
+        item = QListWidgetItem(self._result_display_text(item_key, item_data))
+        item.setData(self._RESULT_KEY_ROLE, item_key)
+        self.listbox.addItem(item)
+        return item
+
     @Slot(object)
     def _handle_search_result(
         self,
@@ -1127,18 +1182,43 @@ class MediaSearch(BaseWizardPage):
 
         self.listbox.clear()
         if result_data:
+            grouped_results: dict[MediaType, list[tuple[str, dict[str, Any]]]] = {
+                MediaType.MOVIE: [],
+                MediaType.SERIES: [],
+            }
+            ungrouped_results: list[tuple[str, object]] = []
             for item_text, item_data in result_data.items():
-                item = QListWidgetItem(item_text)
-                if isinstance(item_data, dict):
-                    media_type = MediaType.search_type(
-                        str(item_data.get("media_type") or "")
-                    )
-                    if media_type is MediaType.MOVIE:
-                        item.setBackground(self.MOVIE_ROW_COLOR)
-                    elif media_type is MediaType.SERIES:
-                        item.setBackground(self.SERIES_ROW_COLOR)
-                self.listbox.addItem(item)
-            self.listbox.setCurrentRow(0)
+                media_type = (
+                    MediaType.search_type(str(item_data.get("media_type") or ""))
+                    if isinstance(item_data, dict)
+                    else None
+                )
+                if media_type is not None:
+                    grouped_results[media_type].append((item_text, item_data))
+                else:
+                    ungrouped_results.append((item_text, item_data))
+
+            first_result: QListWidgetItem | None = None
+            for media_type, section_title in (
+                (MediaType.MOVIE, "MOVIES"),
+                (MediaType.SERIES, "TV SERIES"),
+            ):
+                section_results = grouped_results[media_type]
+                if not section_results:
+                    continue
+                self._add_result_section(section_title)
+                for item_text, item_data in section_results:
+                    item = self._add_result_item(item_text, item_data)
+                    if first_result is None:
+                        first_result = item
+
+            for item_text, item_data in ungrouped_results:
+                item = self._add_result_item(item_text, item_data)
+                if first_result is None:
+                    first_result = item
+
+            if first_result is not None:
+                self.listbox.setCurrentItem(first_result)
         else:
             self.listbox.addItem("No results, try again...")
 
@@ -1199,7 +1279,7 @@ class MediaSearch(BaseWizardPage):
             self._clear_poster()
             return
 
-        item_key = current_item.text()
+        item_key = self._result_item_key(current_item)
         item_data = self.backend.media_data.get(item_key)
 
         if item_data:
