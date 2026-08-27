@@ -2314,8 +2314,14 @@ class ProcessBackEnd:
                 )
 
         exponent = piece_exponent(content_size(media_input))
+        piece_size = 1 << exponent
+        piece_size_label = (
+            f"{piece_size // (1024**2)} MiB"
+            if piece_size >= 1024**2
+            else f"{piece_size // 1024} KiB"
+        )
         queued_text_update(
-            f"<br /><span>Piece size: {1 << exponent} bytes (2^{exponent})</span>"
+            f"<br /><span>Piece size: {piece_size_label}</span>"
         )
 
         # try mkbrr first if enabled, fallback to torf if not available or on error

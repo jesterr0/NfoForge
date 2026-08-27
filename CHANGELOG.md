@@ -13,6 +13,7 @@
 - **The release group in your output is only ever one you chose.** It comes from the rename page's field, or from your configured group where that page has not run. Nothing reads a group out of the input filename except the claim detector, which the new switch governs. Previously the renderer parsed the filename itself, so it could print the group of whoever made the file you were working from, regardless of what the rename page showed.
   - Clearing the Release Group field on the rename page now publishes with no group, rather than falling back to your configured one. It is the whole answer for that release.
   - A profile with renaming disabled and no release group configured emits no group. Set yours in Settings -> General.
+- Now shows human readable pice sizes when generating torrents on the process page.
 
 ### Fixed
 
