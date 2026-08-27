@@ -86,6 +86,9 @@ class ConfigManager(TypedTomlOperations):
         self.program.suppress_template_token_prompt = bool(
             data.get("suppress_template_token_prompt", False)
         )
+        self.program.last_update_check = data.get("last_update_check")
+        self.program.latest_known_version = data.get("latest_known_version")
+        self.program.latest_release_url = data.get("latest_release_url")
 
     def save_program(self) -> None:
         """Converts config payload object to TOML and writes to a file"""
@@ -101,6 +104,19 @@ class ConfigManager(TypedTomlOperations):
             )
             self._program_conf_toml_data["suppress_template_token_prompt"] = (
                 self.program.suppress_template_token_prompt
+            )
+            self._program_conf_toml_data["last_update_check"] = (
+                self.program.last_update_check if self.program.last_update_check else ""
+            )
+            self._program_conf_toml_data["latest_known_version"] = (
+                self.program.latest_known_version
+                if self.program.latest_known_version
+                else ""
+            )
+            self._program_conf_toml_data["latest_release_url"] = (
+                self.program.latest_release_url
+                if self.program.latest_release_url
+                else ""
             )
 
             serialized = self.codec.dumps(self._program_conf_toml_data)

@@ -156,6 +156,12 @@ class GeneralSettings(BaseSettings):
         mkbrr_h_box.addWidget(self.enable_mkbrr)
         mkbrr_h_box.addWidget(check_mkbrr, alignment=Qt.AlignmentFlag.AlignRight)
 
+        self.check_for_updates = QCheckBox("Check for Updates", self)
+        self.check_for_updates.setToolTip(
+            "Periodically checks GitHub for a newer NfoForge release and "
+            "shows a link in the status bar when one is available"
+        )
+
         log_level_lbl = QLabel("Log Level", self)
         log_level_lbl.setToolTip("Sets minimum log level")
 
@@ -258,6 +264,7 @@ class GeneralSettings(BaseSettings):
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(self.enable_prompt_overview))
         self.add_layout(create_form_layout(mkbrr_widget))
+        self.add_layout(create_form_layout(self.check_for_updates))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(log_level_lbl, self.log_level_combo))
         self.add_layout(
@@ -290,6 +297,7 @@ class GeneralSettings(BaseSettings):
         self.tmdb_api_key_entry.setText(self.config.settings.api_keys.tmdb_api_key)
         self.enable_prompt_overview.setChecked(payload.enable_prompt_overview)
         self.enable_mkbrr.setChecked(payload.enable_mkbrr)
+        self.check_for_updates.setChecked(payload.check_for_updates)
         self.load_combo_box(self.log_level_combo, LogLevel, payload.log_level)
         self.max_log_files_spinbox.setValue(payload.log_total)
         self.working_dir_entry.setText(
@@ -553,6 +561,9 @@ class GeneralSettings(BaseSettings):
             self.enable_prompt_overview.isChecked()
         )
         self.config.settings.general.enable_mkbrr = self.enable_mkbrr.isChecked()
+        self.config.settings.general.check_for_updates = (
+            self.check_for_updates.isChecked()
+        )
         self.config.settings.general.log_level = LogLevel(
             self.log_level_combo.currentData()
         )
@@ -588,6 +599,9 @@ class GeneralSettings(BaseSettings):
             self.config.settings.general.enable_prompt_overview
         )
         self.enable_mkbrr.setChecked(self.config.defaults.general.enable_mkbrr)
+        self.check_for_updates.setChecked(
+            self.config.defaults.general.check_for_updates
+        )
         self.working_dir_entry.setText(str(self.config.defaults.general.working_dir))
 
     def _disable_scrollwheel_spinbox(self, spinbox: QSpinBox) -> None:

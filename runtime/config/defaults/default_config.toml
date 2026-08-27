@@ -11,6 +11,7 @@ media_search_mode = "Movies & TV"
 timeout = 60
 enable_prompt_overview = true
 enable_mkbrr = true
+check_for_updates = true
 log_level = 20
 log_total = 50
 working_dir = ""

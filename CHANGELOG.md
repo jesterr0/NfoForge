@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Now automatically checks github for updates on app launch ~4 seconds after launch (once every 12 hours / can opt-out in Settings -> General)
+
 ### Changed
 
 - **BeyondHD release titles order their components differently.** Three changes, to BeyondHD alone:
@@ -56,7 +60,7 @@
 - Checked trackers could be un-checked during tv flow if they didn't support it and would stay un-checked for the next movie run
 - Small logging related error
 
-## [1.1.8] - 2026-08-19
+## [1.1.9] - 2026-08-19
 
 ### Added
 

@@ -83,6 +83,9 @@ class ProgramConfig:
     current_config: str | None = None
     main_window_position: str | None = None
     suppress_template_token_prompt: bool = False
+    last_update_check: str | None = None  # ISO 8601 UTC timestamp, or None
+    latest_known_version: str | None = None  # cached tag string (no leading "v")
+    latest_release_url: str | None = None  # cached GitHub release page URL
 
 
 @dataclass(slots=True)
@@ -107,6 +110,7 @@ class GeneralSettings:
     log_level: LogLevel
     log_total: int
     working_dir: Path
+    check_for_updates: bool
 
 
 @dataclass(slots=True)
