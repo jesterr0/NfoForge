@@ -159,9 +159,7 @@ def test_piece_size_status_uses_human_readable_units(
     media.write_bytes(b"media payload")
     messages: list[str] = []
 
-    monkeypatch.setattr(
-        process_module, "content_size", lambda _path: 4 * 1024**3 + 1
-    )
+    monkeypatch.setattr(process_module, "content_size", lambda _path: 4 * 1024**3 + 1)
     monkeypatch.setattr(process_module, "generate_torrent", MagicMock())
     monkeypatch.setattr(
         process_module, "write_torrent", lambda _torrent, destination: destination

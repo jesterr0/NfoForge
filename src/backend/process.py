@@ -2320,9 +2320,7 @@ class ProcessBackEnd:
             if piece_size >= 1024**2
             else f"{piece_size // 1024} KiB"
         )
-        queued_text_update(
-            f"<br /><span>Piece size: {piece_size_label}</span>"
-        )
+        queued_text_update(f"<br /><span>Piece size: {piece_size_label}</span>")
 
         # try mkbrr first if enabled, fallback to torf if not available or on error
         try:
