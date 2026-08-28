@@ -73,6 +73,7 @@ line-length = 88
 include = [
     "pyproject.toml",
     "src/**/*.py",
+    "plugins/**/*.py",
     "scripts/**/*.py",
     "tests/**/*.py",
     "typings/**/*.py",
