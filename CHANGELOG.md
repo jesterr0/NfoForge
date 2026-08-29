@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.1.11] - 2026-08-29
 
 ### Added
 
@@ -25,7 +25,7 @@
 - The filename and title examples on the movie and series settings pages show your configured release group instead of the example filename's `SomeGroup`.
 - With renaming disabled, editions, frame sizes, re-release markers and the rest are read from the input filenames again. Claim detection only ever ran on the rename page, so a run that skipped it rendered every claim empty.
 
-## [1.1.10] - 2026-08-26
+## [1.1.11] - 2026-08-26
 
 ### Added
 
