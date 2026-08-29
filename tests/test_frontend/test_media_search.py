@@ -101,9 +101,9 @@ def test_search_page_uses_split_results_and_selected_title_panels(
     page = _make_page(tmp_path)
 
     group_titles = [group.title() for group in page.findChildren(QGroupBox)]
-    assert group_titles.count("SEARCH RESULTS") == 1
-    assert group_titles.count("SELECTED TITLE") == 1
-    assert group_titles.count("SEARCH QUERY") == 1
+    assert group_titles.count("RESULTS") == 1
+    assert group_titles.count("TITLE") == 1
+    assert group_titles.count("QUERY") == 1
     assert page.info_box.layout() is not None
     assert page.top_splitter.widget(0) is page.results_box
     assert page.top_splitter.widget(1) is page.info_box
@@ -176,8 +176,8 @@ def test_search_results_are_grouped_by_media_type(tmp_path: Path) -> None:
     assert series_header.flags() == Qt.ItemFlag.NoItemFlags
     assert page.listbox.itemWidget(movie_header).findChild(QLabel).text() == "MOVIES"  # type: ignore[union-attr]
     assert (
-        page.listbox.itemWidget(series_header).findChild(QLabel).text() == "TV SERIES"
-    )  # type: ignore[union-attr]
+        page.listbox.itemWidget(series_header).findChild(QLabel).text() == "TV SERIES"  # type: ignore[reportOptionalMemberAccess]
+    )
     assert [page.listbox.item(index).text() for index in (1, 2, 4)] == [
         "Movie One (2024)",
         "Movie Two (2023)",
