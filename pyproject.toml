@@ -1,6 +1,6 @@
 [project]
 name = "NfoForge"
-version = "1.1.10"
+version = "1.1.11"
 description = "NFO generator and upload assistant"
 license = "GPL-3.0-or-later"
 readme = "README.md"
@@ -17,7 +17,7 @@ dependencies = [
     "shortuuid>=1.0.13",
     "torf>=4.3.0",
     "pillow>=12.3.0",
-    "platformdirs>=4.11.4",
+    "platformdirs>=4.11.5",
     "pyside6-essentials==6.11.1",
     "psutil>=7.2.0",
     "pyimgbox>=1.0.7",
@@ -73,6 +73,7 @@ line-length = 88
 include = [
     "pyproject.toml",
     "src/**/*.py",
+    "plugins/**/*.py",
     "scripts/**/*.py",
     "tests/**/*.py",
     "typings/**/*.py",

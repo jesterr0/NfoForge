@@ -248,7 +248,7 @@ def test_illegal_chars_checkbox_is_gone(
     assert not hasattr(widget, "replace_illegal_chars")
 
 
-def test_the_six_claim_switches_are_offered(
+def test_every_claim_switch_is_offered(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     widget, _ = _make_movies_management_settings(tmp_path, monkeypatch)
@@ -260,6 +260,7 @@ def test_the_six_claim_switches_are_offered(
         "re_release",
         "remux",
         "hybrid",
+        "release_group",
     }
 
 
@@ -350,3 +351,37 @@ def test_preview_drops_every_category_when_the_master_is_off(
     assert "IMAX" not in example
     assert "Directors.Cut" not in example
     assert "HYBRID" not in example
+
+
+def test_the_preview_shows_the_configured_group_tag_not_the_examples(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The example filename ends in -SomeGroup, which stage 1 detects and
+    supplies as an override. Without the tag winning over it, a user with a
+    group configured saw someone else's in the one place that exists to show
+    them their own output.
+    """
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+    token = "{release_group}"  # noqa: S105 - NFO template token string used as test fixture data, not a credential
+
+    manager.settings.general.release_group = ""
+    assert (
+        widget._update_example(
+            token,
+            manager.settings.movie.filename_colon_replace,
+            True,
+            widget.format_file_name_token_example,
+        )
+        == "SomeGroup.mkv"
+    )
+
+    manager.settings.general.release_group = "MYGROUP"
+    assert (
+        widget._update_example(
+            token,
+            manager.settings.movie.filename_colon_replace,
+            True,
+            widget.format_file_name_token_example,
+        )
+        == "MYGROUP.mkv"
+    )

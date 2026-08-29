@@ -89,6 +89,9 @@ from src.payloads.watch_folder import WatchFolder
 
 PayloadT = TypeVar("PayloadT", bound=CheveretoV3Payload | CheveretoV4Payload)
 
+# `migrations._CLAIM_NAMES` is a separate, frozen copy of the first six: the
+# v8->v9 hop must keep writing exactly the keys schema 9 defined, so a claim
+# added here does not belong there.
 _CLAIM_KEYS = (
     "edition",
     "frame_size",
@@ -96,6 +99,7 @@ _CLAIM_KEYS = (
     "re_release",
     "remux",
     "hybrid",
+    "release_group",
 )
 
 
@@ -224,6 +228,7 @@ class TypedTomlOperations:
             ).value
             general_data["enable_plugins"] = self.settings.general.enable_plugins
             general_data["releasers_name"] = self.settings.general.releasers_name
+            general_data["release_group"] = self.settings.general.release_group
             general_data["tmdb_language"] = self.settings.general.tmdb_language
             general_data["media_search_mode"] = (
                 self.settings.general.media_search_mode.value
@@ -885,7 +890,6 @@ class TypedTomlOperations:
                 )
             movie_management["mvr_token"] = self.settings.movie.filename_token
             movie_management["mvr_title_token"] = self.settings.movie.title_token
-            movie_management["mvr_release_group"] = self.settings.movie.release_group
 
             # series management
             series_management = self._toml_table(self._toml_data, "series_management")
@@ -929,7 +933,6 @@ class TypedTomlOperations:
                 self.settings.series.anime_title_token
             )
             series_management.pop("tvr_title_token", None)
-            series_management["tvr_release_group"] = self.settings.series.release_group
 
             # global management
             global_management = self._toml_table(self._toml_data, "global_management")
@@ -1737,6 +1740,7 @@ class TypedTomlOperations:
                     theme=nfo_forge_theme,
                     enable_plugins=bool(general_data["enable_plugins"]),
                     releasers_name=str(general_data["releasers_name"]),
+                    release_group=str(general_data["release_group"]),
                     tmdb_language=str(general_data["tmdb_language"]),
                     media_search_mode=MediaSearchMode(
                         general_data["media_search_mode"]
@@ -1801,7 +1805,6 @@ class TypedTomlOperations:
                     claims=_load_claims(movie_management, "mvr"),
                     filename_token=str(movie_management["mvr_token"]),
                     title_token=str(movie_management["mvr_title_token"]),
-                    release_group=str(movie_management["mvr_release_group"]),
                 ),
                 series=SeriesSettings(
                     enabled=bool(series_management["tvr_enabled"]),
@@ -1833,7 +1836,6 @@ class TypedTomlOperations:
                     standard_title_token=load_series_token("tvr_standard_title_token"),
                     daily_title_token=load_series_token("tvr_daily_title_token"),
                     anime_title_token=load_series_token("tvr_anime_title_token"),
-                    release_group=str(series_management["tvr_release_group"]),
                 ),
                 global_management=GlobalManagementSettings(
                     title_clean_rules=[

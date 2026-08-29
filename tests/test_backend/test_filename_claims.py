@@ -17,6 +17,7 @@ def _switches(**overrides: bool) -> ClaimSwitches:
         "re_release": True,
         "remux": True,
         "hybrid": True,
+        "release_group": True,
     }
     base.update(overrides)
     return ClaimSwitches(**base)  # pyright: ignore[reportArgumentType]
@@ -96,15 +97,28 @@ def test_master_off_suppresses_all_six() -> None:
     assert claims.hybrid == ""
 
 
-def test_always_parsed_categories_ignore_the_master_switch() -> None:
-    # Quality/source, streaming service and release group are identity
-    # fields the user always wants pre-filled, so they have no switch.
+def test_streaming_service_ignores_the_master_switch() -> None:
+    # Quality/source and streaming service have no switch: nothing competes
+    # with them, so "off" would mean nothing.
     stem = "Movie.2024.1080p.AMZN.WEB-DL.x264-GRP"
 
     claims = detect_filename_claims([stem], _switches(enabled=False))
 
     assert claims.streaming_service == "AMZN"
-    assert claims.release_group == "GRP"
+
+
+def test_the_source_group_obeys_its_own_switch() -> None:
+    # Turning the switch off has to reach output, not just the control: the
+    # renderer parses no filename of its own, so an undetected source group
+    # is one that cannot appear anywhere.
+    stem = "Movie.2024.1080p.BluRay.x264-GRP"
+
+    assert detect_filename_claims([stem], _switches()).release_group == "GRP"
+    assert (
+        detect_filename_claims([stem], _switches(release_group=False)).release_group
+        == ""
+    )
+    assert detect_filename_claims([stem], _switches(enabled=False)).release_group == ""
 
 
 def test_no_files_yields_no_claims() -> None:

@@ -544,13 +544,14 @@ def test_a_switched_off_category_leaves_the_others_alone(
 def test_release_group_falls_back_to_the_detected_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The settings value means "my group"; the filename's means "whoever
-    # made the source". With settings blank the field showed empty while
-    # the output carried OTHERGROUP -- the field and the output disagreed.
+    # The settings value is the user's group tag; the filename's is the
+    # source group, meaning whoever made the input. With settings blank the
+    # field showed empty while the output carried OTHERGROUP -- the field and
+    # the output disagreed.
     page = _series_page_with_episodes(
         tmp_path, monkeypatch, Path("Show.S01E01.1080p.WEB-DL.x264-OTHERGROUP.mkv")
     )
-    page.config.settings.series.release_group = ""
+    page.config.settings.general.release_group = ""
 
     page.initializePage()
 
@@ -563,8 +564,44 @@ def test_a_configured_release_group_wins_over_the_detected_one(
     page = _series_page_with_episodes(
         tmp_path, monkeypatch, Path("Show.S01E01.1080p.WEB-DL.x264-OTHERGROUP.mkv")
     )
-    page.config.settings.series.release_group = "MYGROUP"
+    page.config.settings.general.release_group = "MYGROUP"
 
     page.initializePage()
 
     assert page.release_group_entry.text() == "MYGROUP"
+
+
+def test_switching_release_group_parsing_off_leaves_the_field_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The switch has to reach output, not just the control. The renderer
+    parses no filename of its own, so an undetected source group cannot
+    appear anywhere -- which is what makes the empty field honest."""
+    page = _series_page_with_episodes(
+        tmp_path, monkeypatch, Path("Show.S01E01.1080p.WEB-DL.x264-OTHERGROUP.mkv")
+    )
+    page.config.settings.general.release_group = ""
+    page.config.settings.series.claims.release_group = False
+
+    page.initializePage()
+
+    assert page.release_group_entry.text() == ""
+    assert page.backend.override_tokens["release_group"] == ""
+
+
+def test_clearing_the_field_beats_the_configured_group_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This page is stage 2, so a blank here is a decision -- "this release
+    carries no group" -- rather than an absence to fall through from."""
+    page = _series_page_with_episodes(
+        tmp_path, monkeypatch, Path("Show.S01E01.1080p.WEB-DL.x264-OTHERGROUP.mkv")
+    )
+    page.config.settings.general.release_group = "MYGROUP"
+    page.initializePage()
+    assert page.backend.override_tokens["release_group"] == "MYGROUP"
+
+    page.release_group_entry.setText("")
+    page.update_generated_name()
+
+    assert page.backend.override_tokens["release_group"] == ""

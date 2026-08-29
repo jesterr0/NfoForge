@@ -134,3 +134,23 @@ def test_media_search_mode_loads_saves_and_resets(
         MediaSearchMode(widget.media_search_mode_combo.currentData())
         is MediaSearchMode.BOTH
     )
+
+
+def test_release_group_loads_saves_and_resets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The group tag had no UI at all before this: it round-tripped through
+    the config file but could only be set by hand-editing TOML."""
+    widget, manager = _make_general_settings(tmp_path, monkeypatch)
+
+    assert widget.release_group_entry.text() == ""
+
+    widget.release_group_entry.setText("  MYGROUP  ")
+    widget._save_settings()
+    assert manager.settings.general.release_group == "MYGROUP"
+    manager.save()
+    reloaded = ConfigManager("test", manager.paths)
+    assert reloaded.settings.general.release_group == "MYGROUP"
+
+    widget.apply_defaults()
+    assert widget.release_group_entry.text() == ""

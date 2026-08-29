@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.backend.utils.filename_claims import FilenameClaims
 from src.config.config import ConfigManager
 from src.config.models import ClaimSwitches
 from src.enums.token_replacer import FILENAME_COLON_OPTIONS, ColonReplace
@@ -133,8 +134,7 @@ class BaseSettings(QWidget):
         master = QCheckBox("Parse claims from input filename", parent)
         master.setToolTip(
             "Read claims that MediaInfo cannot verify out of the input "
-            "filename. Quality/source, streaming service and release group "
-            "are always parsed."
+            "filename. Quality/source and streaming service are always parsed."
         )
         return master
 
@@ -149,6 +149,7 @@ class BaseSettings(QWidget):
                 ("re_release", "Re-release (PROPER / REPACK)"),
                 ("remux", "REMUX"),
                 ("hybrid", "HYBRID"),
+                ("release_group", "Release group"),
             )
         }
 
@@ -168,6 +169,14 @@ class BaseSettings(QWidget):
         # `toggled` does not fire when the checked state is unchanged, so
         # the greyed state is applied explicitly rather than relied upon.
         self._on_claims_master_toggled(claims.enabled)
+
+    def _preview_overrides(self, claims: FilenameClaims) -> dict[str, str]:
+        """What the example filename claims, with the configured group tag
+        winning over its own group as it does on the rename page."""
+        overrides = claims.as_override_tokens()
+        if group_tag := self.config.settings.general.release_group:
+            overrides["release_group"] = group_tag
+        return overrides
 
     def _current_claim_switches(self) -> ClaimSwitches:
         return ClaimSwitches(

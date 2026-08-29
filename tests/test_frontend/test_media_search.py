@@ -1,7 +1,8 @@
 from collections import OrderedDict
 from pathlib import Path
 
-from PySide6.QtWidgets import QGroupBox, QMessageBox
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QMessageBox, QSizePolicy
 import pytest
 
 from src.backend.media_search import MediaSearchBackEnd
@@ -13,6 +14,7 @@ from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
+from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.wizards.media_search import (
     MediaSearch,
     MediaSearchJobResult,
@@ -93,39 +95,151 @@ def test_empty_search_result_does_not_complete_page(tmp_path: Path) -> None:
     assert page.listbox.item(0).text() == "No results, try again..."
 
 
-def test_metadata_and_plot_share_one_info_group(tmp_path: Path) -> None:
+def test_search_page_uses_split_results_and_selected_title_panels(
+    tmp_path: Path,
+) -> None:
     page = _make_page(tmp_path)
 
     group_titles = [group.title() for group in page.findChildren(QGroupBox)]
-    assert group_titles.count("Info") == 1
-    assert "Plot" not in group_titles
+    assert group_titles.count("RESULTS") == 1
+    assert group_titles.count("TITLE") == 1
+    assert group_titles.count("QUERY") == 1
     assert page.info_box.layout() is not None
-    assert page.main_layout.indexOf(page.info_box) >= 0
+    assert page.top_splitter.widget(0) is page.results_box
+    assert page.top_splitter.widget(1) is page.info_box
+    assert isinstance(page.top_splitter, CustomSplitter)
+    assert page.main_layout.indexOf(page.top_splitter) >= 0
+    assert page.main_layout.indexOf(page.search_box) >= 0
+    assert page.search_label.alignment() == (
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    )
+    assert (
+        page.search_label.sizePolicy().horizontalPolicy() is QSizePolicy.Policy.Ignored
+    )
 
 
-def test_search_results_are_colored_by_media_type(tmp_path: Path) -> None:
+def test_selected_result_populates_detail_heading(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    item_name = "1) Movie (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "title": "Movie",
+            "year": "2024",
+            "media_type": "Movie",
+        }
+    }
+
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+
+    assert page.selected_title_label.text() == "Movie (2024)"
+    assert page.selected_title_label.font().bold()
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    app_font = app.font(page.selected_title_label)
+    if app_font.pixelSize() > 0:
+        assert page.selected_title_label.font().pixelSize() == round(
+            app_font.pixelSize() * 1.2
+        )
+    else:
+        assert page.selected_title_label.font().pointSizeF() == pytest.approx(
+            app_font.pointSizeF() * 1.2
+        )
+    assert page.poster_stack.currentWidget() is page.poster_placeholder
+
+
+def test_search_results_are_grouped_by_media_type(tmp_path: Path) -> None:
     page = _make_page(tmp_path)
     results = OrderedDict(
         [
-            ("1) Movie (2024)", {"media_type": "Movie"}),
-            ("2) Show (2024)", {"media_type": "Series"}),
+            (
+                "1) Movie One (2024)",
+                {"media_type": "Movie", "title": "Movie One", "year": "2024"},
+            ),
+            (
+                "2) Show (2024)",
+                {"media_type": "Series", "title": "Show", "year": "2024"},
+            ),
+            (
+                "3) Movie Two (2023)",
+                {"media_type": "Movie", "title": "Movie Two", "year": "2023"},
+            ),
         ]
     )
-    page.backend.media_data = results
+    page.backend.media_data = results  # type: ignore[reportAttributeAccessIssue]
 
-    page._handle_search_result(results)
+    page._handle_search_result(results)  # type: ignore[reportAttributeAccessIssue]
 
-    assert page.listbox.item(0).background().color() == page.MOVIE_ROW_COLOR
-    assert page.listbox.item(1).background().color() == page.SERIES_ROW_COLOR
+    movie_header = page.listbox.item(0)
+    series_header = page.listbox.item(3)
+    assert movie_header.flags() == Qt.ItemFlag.NoItemFlags
+    assert series_header.flags() == Qt.ItemFlag.NoItemFlags
+    assert page.listbox.itemWidget(movie_header).findChild(QLabel).text() == "MOVIES"  # type: ignore[union-attr]
+    assert (
+        page.listbox.itemWidget(series_header).findChild(QLabel).text() == "TV SERIES"  # type: ignore[reportOptionalMemberAccess]
+    )
+    assert [page.listbox.item(index).text() for index in (1, 2, 4)] == [
+        "Movie One (2024)",
+        "Movie Two (2023)",
+        "Show (2024)",
+    ]
+    assert page.listbox.currentItem().text() == "Movie One (2024)"
+    page.listbox.setCurrentRow(4)
+    assert page._get_current_item_data() == results["2) Show (2024)"]
+    assert not hasattr(page, "MOVIE_ROW_COLOR")
 
 
-def test_duplicate_result_titles_are_reported_as_ambiguous(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("media_type", "heading"),
+    [("Movie", "MOVIES"), ("Series", "TV SERIES")],
+)
+def test_single_type_results_still_show_a_section_heading(
+    media_type: str, heading: str, tmp_path: Path
+) -> None:
+    page = _make_page(tmp_path)
+    results = OrderedDict(
+        [
+            (
+                "1) Result (2024)",
+                {"media_type": media_type, "title": "Result", "year": "2024"},
+            )
+        ]
+    )
+    page.backend.media_data = results  # type: ignore[reportAttributeAccessIssue]
+
+    page._handle_search_result(results)  # type: ignore[reportAttributeAccessIssue]
+
+    header = page.listbox.item(0)
+    assert header.flags() == Qt.ItemFlag.NoItemFlags
+    assert page.listbox.itemWidget(header).findChild(QLabel).text() == heading  # type: ignore[union-attr]
+    assert page.listbox.item(1).text() == "Result (2024)"
+
+
+def test_duplicate_result_titles_with_different_years_are_not_ambiguous(
+    tmp_path: Path,
+) -> None:
     page = _make_page(tmp_path)
     first = "1) Bob (1992)"
     second = "2) Bob (2012)"
     page.backend.media_data = {
         first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
         second: {"title": " bob ", "year": "2012", "media_type": "Series"},
+    }
+    page.listbox.addItems([first, second])
+    page.listbox.setCurrentRow(1)
+
+    assert page._selected_title_is_ambiguous() is False
+
+
+def test_duplicate_result_titles_and_years_are_reported_as_ambiguous(
+    tmp_path: Path,
+) -> None:
+    page = _make_page(tmp_path)
+    first = "1) Bob (1992)"
+    second = "2) Bob (1992)"
+    page.backend.media_data = {
+        first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
+        second: {"title": " bob ", "year": 1992, "media_type": "Series"},
     }
     page.listbox.addItems([first, second])
     page.listbox.setCurrentRow(1)
@@ -152,10 +266,10 @@ def test_ambiguous_title_requires_confirmation_before_metadata_lookup(
 ) -> None:
     page = _make_page(tmp_path)
     first = "1) Bob (1992)"
-    second = "2) Bob (2012)"
+    second = "2) Bob (1992)"
     page.backend.media_data = {
         first: {"title": "Bob", "year": "1992", "media_type": "Movie"},
-        second: {"title": "Bob", "year": "2012", "media_type": "Movie"},
+        second: {"title": "Bob", "year": "1992", "media_type": "Movie"},
     }
     page.listbox.addItems([first, second])
     page.listbox.setCurrentRow(1)

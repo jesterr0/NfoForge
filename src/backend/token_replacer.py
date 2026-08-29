@@ -114,6 +114,7 @@ class TokenReplacer:
         "token_type",
         "unfilled_token_mode",
         "releasers_name",
+        "group_tag",
         "override_tokens",
         "user_tokens",
         "edition_override",
@@ -170,6 +171,7 @@ class TokenReplacer:
         token_type: Iterable[TokenType] | type[TokenType] | None = None,
         unfilled_token_mode: UnfilledTokenRemoval = UnfilledTokenRemoval.KEEP,
         releasers_name: str | None = "",
+        group_tag: str = "",
         override_tokens: dict[str, str] | None = None,
         user_tokens: dict[str, str] | None = None,
         edition_override: str | None = None,
@@ -214,6 +216,10 @@ class TokenReplacer:
             unfilled_token_mode (UnfilledTokenRemoval): What to do with unused tokens.
             eg. (TokenType, TokenType).
             releasers_name (Optional[str]): Releasers name.
+            group_tag (str): The user's configured group tag, printed by
+              {release_group} where no override supplies one. This is the only
+              fallback that token has -- nothing here parses a filename for a
+              group, so a caller that omits both emits none.
             override_tokens (Optional[dict[str, str]]): Override tokens with a supplied value regardless of logic.
             user_tokens (Optional[dict[str, str]]): User tokens (must be prefixed with usr_).
             edition_override (Optional[str]): Edition override.
@@ -276,6 +282,7 @@ class TokenReplacer:
         self.token_type = token_type
         self.unfilled_token_mode = UnfilledTokenRemoval(unfilled_token_mode)
         self.releasers_name = releasers_name
+        self.group_tag = group_tag
         self.override_tokens = override_tokens
         self.user_tokens = user_tokens
         self.edition_override = edition_override
@@ -2090,8 +2097,15 @@ class TokenReplacer:
             )
 
     def _release_group(self, token_data: TokenData) -> str:
-        release_group = str(self.guess_name.get("release_group", ""))
-        return self._optional_user_input(release_group.lstrip("-"), token_data)
+        """The user's group tag.
+
+        Stage 1 detects the source group; an accepted claim arrives as an
+        override and short-circuits this handler before it runs, so a blank
+        the user typed stays blank rather than falling through to the tag.
+        Nothing is parsed out of the filename here, for the same reason as
+        {edition} -- a claim the user never saw must not reach output.
+        """
+        return self._optional_user_input(self.group_tag, token_data)
 
     def _release_date(self, token_data: TokenData) -> str:
         if self.media_search_obj.media_type is not MediaType.MOVIE:

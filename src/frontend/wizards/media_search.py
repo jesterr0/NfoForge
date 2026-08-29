@@ -14,7 +14,7 @@ from urllib import parse as url_parse
 import webbrowser
 
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
-from PySide6.QtGui import QColor, QCursor, QImage, QMouseEvent, QPixmap
+from PySide6.QtGui import QCursor, QImage, QMouseEvent, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 from PySide6.QtWidgets import (
     QFormLayout,
@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QSizePolicy,
+    QStackedLayout,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -55,6 +56,8 @@ from src.frontend.custom_widgets.adv_tooltip import (
     PopupTrigger,
     QTAIconStr,
 )
+from src.frontend.custom_widgets.custom_splitter import CustomSplitter
+from src.frontend.custom_widgets.elided_label import EllipsisLabel
 from src.frontend.custom_widgets.image_label import ImageLabel
 from src.frontend.global_signals import GSigs
 from src.frontend.utils import QWidgetTempStyle
@@ -270,8 +273,7 @@ class LinkLabel(QLabel):
 
 
 class MediaSearch(BaseWizardPage):
-    MOVIE_ROW_COLOR = QColor(52, 152, 219, 72)
-    SERIES_ROW_COLOR = QColor(155, 89, 182, 72)
+    _RESULT_KEY_ROLE = Qt.ItemDataRole.UserRole
 
     def __init__(
         self,
@@ -305,24 +307,48 @@ class MediaSearch(BaseWizardPage):
         self.other_ids_parsed = False
 
         self.listbox = QListWidget()
-        self.listbox.setFrameShape(QFrame.Shape.Box)
-        self.listbox.setFrameShadow(QFrame.Shadow.Sunken)
+        self.listbox.setFrameShape(QFrame.Shape.NoFrame)
+        self.listbox.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.listbox.itemSelectionChanged.connect(self._select_media)
 
         self.plot_text = QPlainTextEdit()
         self.plot_text.setReadOnly(True)
         self.plot_text.setFrameShape(QFrame.Shape.NoFrame)
+        self.plot_text.setPlaceholderText(
+            "Choose a search result to preview its overview."
+        )
+        self.plot_text.setMinimumHeight(54)
         self.poster_img: QImage | None = None
-        self.poster_label = ImageLabel(self)
+        self.poster_frame = QFrame(self)
+        self.poster_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        self.poster_frame.setFrameShadow(QFrame.Shadow.Sunken)
+        self.poster_frame.setMinimumSize(88, 132)
+        self.poster_frame.setMaximumSize(190, 285)
+        self.poster_frame.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Preferred,
+        )
+
+        self.poster_placeholder = QLabel(
+            "NO POSTER", wordWrap=True, parent=self.poster_frame
+        )
+        self.poster_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.poster_label = ImageLabel(
+            self.poster_frame,
+            preferred_size=QSize(118, 177),
+        )
         self.poster_label.setToolTip("TMDB poster")
-        self.poster_label.hide()
+
+        self.poster_stack = QStackedLayout(self.poster_frame)
+        self.poster_stack.setContentsMargins(3, 3, 3, 3)
+        self.poster_stack.addWidget(self.poster_placeholder)
+        self.poster_stack.addWidget(self.poster_label)
+        self.poster_stack.setCurrentWidget(self.poster_placeholder)
+
         self.poster_network_manager = QNetworkAccessManager(self)
         self._poster_reply: QNetworkReply | None = None
         self._poster_cache: dict[str, QImage] = {}
-        self.plot_layout = QHBoxLayout()
-        self.plot_layout.setContentsMargins(0, 0, 0, 0)
-        self.plot_layout.addWidget(self.poster_label, stretch=1)
-        self.plot_layout.addWidget(self.plot_text, stretch=4)
 
         imdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "imdb.png").resolve()))
         imdb_image = imdb_image.scaled(
@@ -337,6 +363,7 @@ class MediaSearch(BaseWizardPage):
         imdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.imdb_id_entry = QLineEdit()
         self.imdb_id_entry.setPlaceholderText("Automatic")
+        self.imdb_id_entry.setToolTip("IMDb ID")
         self.imdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
         tmdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tmdb.png").resolve()))
@@ -350,6 +377,7 @@ class MediaSearch(BaseWizardPage):
         tmdb_label.setPixmap(tmdb_image)
         tmdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.tmdb_id_entry = QLineEdit()
+        self.tmdb_id_entry.setToolTip("TMDB ID")
         self.tmdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
         tvdb_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "tvdb.png").resolve()))
@@ -364,6 +392,7 @@ class MediaSearch(BaseWizardPage):
         tvdb_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.tvdb_id_entry = QLineEdit()
         self.tvdb_id_entry.setPlaceholderText("Automatic")
+        self.tvdb_id_entry.setToolTip("TVDB ID")
         self.tvdb_id_entry.textEdited.connect(self._mark_metadata_dirty)
 
         mal_image = QPixmap(str(Path(RUNTIME_DIR / "images" / "mal.png").resolve()))
@@ -378,22 +407,22 @@ class MediaSearch(BaseWizardPage):
         mal_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.mal_id_entry = QLineEdit()
         self.mal_id_entry.setPlaceholderText("Automatic")
+        self.mal_id_entry.setToolTip("MyAnimeList ID")
 
-        id_row_1_layout = QHBoxLayout()
-        id_row_1_layout.addWidget(imdb_label)
-        id_row_1_layout.addWidget(self.imdb_id_entry)
-        id_row_1_layout.addWidget(tmdb_label)
-        id_row_1_layout.addWidget(self.tmdb_id_entry)
-
-        id_row_2_layout = QHBoxLayout()
-        id_row_2_layout.addWidget(tvdb_label)
-        id_row_2_layout.addWidget(self.tvdb_id_entry)
-        id_row_2_layout.addWidget(mal_label)
-        id_row_2_layout.addWidget(self.mal_id_entry)
-
-        tmdb_imdb_v_layout = QVBoxLayout()
-        tmdb_imdb_v_layout.addLayout(id_row_1_layout)
-        tmdb_imdb_v_layout.addLayout(id_row_2_layout)
+        ids_layout = QGridLayout()
+        ids_layout.setContentsMargins(0, 0, 0, 0)
+        ids_layout.setHorizontalSpacing(6)
+        ids_layout.setVerticalSpacing(5)
+        ids_layout.addWidget(imdb_label, 0, 0)
+        ids_layout.addWidget(self.imdb_id_entry, 0, 1)
+        ids_layout.addWidget(tmdb_label, 0, 2)
+        ids_layout.addWidget(self.tmdb_id_entry, 0, 3)
+        ids_layout.addWidget(tvdb_label, 1, 0)
+        ids_layout.addWidget(self.tvdb_id_entry, 1, 1)
+        ids_layout.addWidget(mal_label, 1, 2)
+        ids_layout.addWidget(self.mal_id_entry, 1, 3)
+        ids_layout.setColumnStretch(1, 1)
+        ids_layout.setColumnStretch(3, 1)
 
         release_date_icon = IconWidget()
         release_date_icon.setCursor(Qt.CursorShape.WhatsThisCursor)
@@ -429,30 +458,49 @@ class MediaSearch(BaseWizardPage):
         self.media_type_label.setMinimumWidth(80)
 
         additional_info_layout = QFormLayout()
+        additional_info_layout.setContentsMargins(0, 0, 0, 0)
+        additional_info_layout.setSpacing(6)
         additional_info_layout.addRow(release_date_icon, self.release_date_label)
         additional_info_layout.addRow(rating_icon, self.rating_label)
         additional_info_layout.addRow(media_type_icon, self.media_type_label)
 
-        metadata_layout = QHBoxLayout()
-        metadata_layout.addLayout(tmdb_imdb_v_layout)
-        metadata_layout.addLayout(additional_info_layout)
+        hero_layout = QHBoxLayout()
+        hero_layout.setContentsMargins(0, 0, 0, 0)
+        hero_layout.setSpacing(12)
+        hero_layout.addWidget(self.poster_frame, alignment=Qt.AlignmentFlag.AlignTop)
+        hero_layout.addLayout(additional_info_layout, stretch=1)
 
-        self.info_box = QGroupBox("Info")
-        info_layout = QVBoxLayout(self.info_box)
-        info_layout.addLayout(metadata_layout)
-        info_layout.addLayout(self.plot_layout, stretch=1)
-
-        self.search_label = QLabel()
-        self.search_label.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.MinimumExpanding
+        self.selected_title_label = EllipsisLabel(
+            "Select a result to view its details Select a result to view its detailsSelect a result to view its detailsSelect a result to view its detailsSelect a result to view its detailsSelect a result to view its details",
+            parent=self,
+            font_scale=1.2,
+            bold=True,
         )
-        self.search_label.setCursor(QCursor(Qt.CursorShape.WhatsThisCursor))
+        self.selected_title_label.setToolTip(self.selected_title_label._text)
+        self.selected_title_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
+        self.info_box = QGroupBox("TITLE")
+        self.info_box.setMinimumWidth(330)
+        info_layout = QVBoxLayout(self.info_box)
+        info_layout.setSpacing(6)
+        info_layout.addWidget(self.selected_title_label)
+        info_layout.addLayout(hero_layout)
+        info_layout.addLayout(ids_layout)
+        info_layout.addWidget(self.plot_text, stretch=1)
+
+        self.results_box = QGroupBox("RESULTS")
+        self.results_box.setMinimumWidth(180)
+        results_layout = QVBoxLayout(self.results_box)
+        results_layout.setContentsMargins(4, 8, 4, 4)
+        results_layout.addWidget(self.listbox)
+
+        self.search_label = EllipsisLabel(parent=self)
+        self.search_label.setCursor(Qt.CursorShape.WhatsThisCursor)
 
         search_help_icon = AdvPopupBtn(
             title="",
-            # text=("<span>You can also search via TMDB URL "
-            # "<b><i>(https://www.themoviedb.org/movie/10378-big-buck-bunny)</i></b> "
-            # "<br />or with a prefix <b><i>(tmdb:10378)</i></b></span> to help filter results"),
             text="""\
             To help filter results you can search via <b>TMDB URL</b> or <b>TMDB ID</b>
             <ul>
@@ -465,25 +513,42 @@ class MediaSearch(BaseWizardPage):
         )
 
         self.search_entry = QLineEdit()
+        self.search_entry.setPlaceholderText("Search by title, TMDB URL, or tmdb:ID")
         self.search_entry.returnPressed.connect(self._search_tmdb_api)
         self.search_button = QToolButton(self)
         QTAThemeSwap().register(
             self.search_button, "ph.file-search-light", icon_size=QSize(24, 24)
         )
-        self.search_button.setFixedSize(24, 24)
+        self.search_button.setFixedSize(28, 28)
+        self.search_button.setToolTip("Search TMDB")
         self.search_button.clicked.connect(self._search_tmdb_api)
 
-        search_box = QGroupBox("Search")
-        search_layout = QGridLayout(search_box)
-        search_layout.addWidget(self.search_label, 0, 0, 1, 4)
+        input_label = QLabel("Input:")
+        input_label_font = input_label.font()
+        input_label_font.setBold(True)
+        input_label.setFont(input_label_font)
+
+        self.search_box = QGroupBox("QUERY")
+        search_layout = QGridLayout(self.search_box)
+        search_layout.setVerticalSpacing(6)
+        search_layout.addWidget(input_label, 0, 0)
+        search_layout.addWidget(self.search_label, 0, 1)
         search_layout.addWidget(search_help_icon, 0, 4, 1, 1)
         search_layout.addWidget(self.search_entry, 1, 0, 1, 4)
         search_layout.addWidget(self.search_button, 1, 4, 1, 1)
+        search_layout.setColumnStretch(1, 1)
+
+        self.top_splitter = CustomSplitter(Qt.Orientation.Horizontal, self)
+        self.top_splitter.addWidget(self.results_box)
+        self.top_splitter.addWidget(self.info_box)
+        self.top_splitter.setStretchFactor(0, 1)
+        self.top_splitter.setStretchFactor(1, 2)
+        self.top_splitter.setSizes([210, 420])
 
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.addWidget(self.listbox)
-        self.main_layout.addWidget(self.info_box)
-        self.main_layout.addWidget(search_box)
+        self.main_layout.setSpacing(8)
+        self.main_layout.addWidget(self.top_splitter, stretch=1)
+        self.main_layout.addWidget(self.search_box)
 
     def validatePage(self) -> bool:
         if not self.loading_complete or not self._get_current_item_data():
@@ -533,12 +598,11 @@ class MediaSearch(BaseWizardPage):
         return bool(invalid_entries)
 
     def _selected_title_is_ambiguous(self) -> bool:
-        """Whether another current result has the selected result's title.
+        """Whether another result has the selected title and year.
 
         TMDB can return remakes, reboots, and movie/series pairs with an
-        identical title. Years and media types distinguish their list rows,
-        but the duplicate title is the important signal to ask for a deliberate
-        selection before continuing.
+        identical title. A confirmation is only useful when two rows look
+        identical in the result list, so both their title and year must match.
         """
 
         selected = self._get_current_item_data()
@@ -546,12 +610,17 @@ class MediaSearch(BaseWizardPage):
             return False
 
         selected_title = self._normalized_result_title(selected.get("title"))
-        if not selected_title:
+        selected_year = self._normalized_result_year(selected.get("year"))
+        if not selected_title or not selected_year:
             return False
 
         return (
             sum(
-                self._normalized_result_title(item.get("title")) == selected_title
+                (
+                    self._normalized_result_title(item.get("title")),
+                    self._normalized_result_year(item.get("year")),
+                )
+                == (selected_title, selected_year)
                 for item in self.backend.media_data.values()
                 if isinstance(item, dict)
             )
@@ -565,6 +634,12 @@ class MediaSearch(BaseWizardPage):
         if not isinstance(title, str):
             return ""
         return " ".join(title.split()).casefold()
+
+    @staticmethod
+    def _normalized_result_year(year: object) -> str:
+        """Normalize a TMDB release year for duplicate-result comparison."""
+
+        return str(year).strip() if year is not None else ""
 
     def _confirm_ambiguous_title_selection(self) -> bool:
         """Require an explicit choice before accepting an ambiguous result."""
@@ -619,7 +694,7 @@ class MediaSearch(BaseWizardPage):
         if current_item_widget is None:
             GSigs().main_window_set_disabled.emit(False)
             return
-        current_item = current_item_widget.text()
+        current_item = self._result_item_key(current_item_widget)
         item_data = self.backend.media_data.get(current_item)
         if item_data:
             # Establish the canonical base payload before the worker receives an
@@ -772,7 +847,10 @@ class MediaSearch(BaseWizardPage):
         return message_box.clickedButton() is continue_button
 
     def _update_payload_data(self, media_data: dict[str, Any] | None = None) -> None:
-        current_item = self.listbox.currentItem().text()
+        current_item_widget = self.listbox.currentItem()
+        if current_item_widget is None:
+            raise MediaSearchError("Failed to parse TMDB")
+        current_item = self._result_item_key(current_item_widget)
         item_data = self.backend.media_data.get(current_item)
         if not item_data:
             raise MediaSearchError("Failed to parse TMDB")
@@ -972,7 +1050,7 @@ class MediaSearch(BaseWizardPage):
         if not input_path:
             raise MediaFileNotFoundError("Failed to load input path")
 
-        self.search_label.setText(f"Input: {input_path.name}")
+        self.search_label.setText(input_path.name)
         self.search_label.setToolTip(input_path.name)
         self._search_tmdb_api(infer_title=True)
 
@@ -986,7 +1064,7 @@ class MediaSearch(BaseWizardPage):
         current_item_widget = self.listbox.currentItem()
         if current_item_widget is None:
             return None
-        current_item = current_item_widget.text()
+        current_item = self._result_item_key(current_item_widget)
         item_data = self.backend.media_data.get(current_item)
         if isinstance(item_data, dict):
             return dict(item_data)
@@ -1103,6 +1181,59 @@ class MediaSearch(BaseWizardPage):
 
         self._failed_search(error_str)
 
+    def _add_result_section(self, title: str) -> None:
+        """Add an inert type heading that keeps result groups visually distinct."""
+
+        header_item = QListWidgetItem()
+        header_item.setFlags(Qt.ItemFlag.NoItemFlags)
+
+        header_widget = QWidget(self.listbox)
+        header_layout = QVBoxLayout(header_widget)
+        header_layout.setContentsMargins(8, 8, 8, 2)
+        header_layout.setSpacing(3)
+
+        heading = QLabel(title, header_widget)
+        heading_font = heading.font()
+        heading_font.setBold(True)
+        heading.setFont(heading_font)
+
+        divider = QFrame(header_widget)
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setFrameShadow(QFrame.Shadow.Sunken)
+
+        header_layout.addWidget(heading)
+        header_layout.addWidget(divider)
+        header_item.setSizeHint(header_widget.sizeHint())
+        self.listbox.addItem(header_item)
+        self.listbox.setItemWidget(header_item, header_widget)
+
+    @classmethod
+    def _result_item_key(cls, item: QListWidgetItem) -> str:
+        """Return the backend key stored on a result, with legacy fallback."""
+
+        result_key = item.data(cls._RESULT_KEY_ROLE)
+        return result_key if isinstance(result_key, str) else item.text()
+
+    @staticmethod
+    def _result_display_text(item_key: str, item_data: object) -> str:
+        """Build a clean label without exposing the internal unique key."""
+
+        if not isinstance(item_data, dict):
+            return item_key
+
+        title = item_data.get("title")
+        if not isinstance(title, str) or not title.strip():
+            return item_key
+
+        year = item_data.get("year")
+        return f"{title} ({year})" if year else title
+
+    def _add_result_item(self, item_key: str, item_data: object) -> QListWidgetItem:
+        item = QListWidgetItem(self._result_display_text(item_key, item_data))
+        item.setData(self._RESULT_KEY_ROLE, item_key)
+        self.listbox.addItem(item)
+        return item
+
     @Slot(object)
     def _handle_search_result(
         self,
@@ -1117,18 +1248,43 @@ class MediaSearch(BaseWizardPage):
 
         self.listbox.clear()
         if result_data:
+            grouped_results: dict[MediaType, list[tuple[str, dict[str, Any]]]] = {
+                MediaType.MOVIE: [],
+                MediaType.SERIES: [],
+            }
+            ungrouped_results: list[tuple[str, object]] = []
             for item_text, item_data in result_data.items():
-                item = QListWidgetItem(item_text)
-                if isinstance(item_data, dict):
-                    media_type = MediaType.search_type(
-                        str(item_data.get("media_type") or "")
-                    )
-                    if media_type is MediaType.MOVIE:
-                        item.setBackground(self.MOVIE_ROW_COLOR)
-                    elif media_type is MediaType.SERIES:
-                        item.setBackground(self.SERIES_ROW_COLOR)
-                self.listbox.addItem(item)
-            self.listbox.setCurrentRow(0)
+                media_type = (
+                    MediaType.search_type(str(item_data.get("media_type") or ""))
+                    if isinstance(item_data, dict)
+                    else None
+                )
+                if media_type is not None:
+                    grouped_results[media_type].append((item_text, item_data))
+                else:
+                    ungrouped_results.append((item_text, item_data))
+
+            first_result: QListWidgetItem | None = None
+            for media_type, section_title in (
+                (MediaType.MOVIE, "MOVIES"),
+                (MediaType.SERIES, "TV SERIES"),
+            ):
+                section_results = grouped_results[media_type]
+                if not section_results:
+                    continue
+                self._add_result_section(section_title)
+                for item_text, item_data in section_results:
+                    item = self._add_result_item(item_text, item_data)
+                    if first_result is None:
+                        first_result = item
+
+            for item_text, item_data in ungrouped_results:
+                item = self._add_result_item(item_text, item_data)
+                if first_result is None:
+                    first_result = item
+
+            if first_result is not None:
+                self.listbox.setCurrentItem(first_result)
         else:
             self.listbox.addItem("No results, try again...")
 
@@ -1189,10 +1345,13 @@ class MediaSearch(BaseWizardPage):
             self._clear_poster()
             return
 
-        item_key = current_item.text()
+        item_key = self._result_item_key(current_item)
         item_data = self.backend.media_data.get(item_key)
 
         if item_data:
+            self.selected_title_label.setText(
+                self._result_display_text(item_key, item_data)
+            )
             self.imdb_id_entry.setText(item_data.get("imdb_id", ""))
             self.tmdb_id_entry.setText(item_data.get("tmdb_id", ""))
             self.plot_text.setPlainText(item_data.get("plot", ""))
@@ -1201,7 +1360,9 @@ class MediaSearch(BaseWizardPage):
             self.media_type_label.setText(item_data.get("media_type", ""))
             self._load_poster(item_data.get("poster_path"))
         else:
+            self.selected_title_label.setText("Select a result to view its details")
             self._clear_poster()
+        self.selected_title_label.setToolTip(self.selected_title_label._text)
 
     @staticmethod
     def _tmdb_poster_url(poster_path: object) -> str | None:
@@ -1221,11 +1382,12 @@ class MediaSearch(BaseWizardPage):
 
         # Reserve the poster's space while the asynchronous request is in flight
         # so the plot does not resize when the image arrives.
-        self.poster_label.show()
+        self.poster_placeholder.setText("LOADING…")
+        self.poster_stack.setCurrentWidget(self.poster_placeholder)
         self.cached_image = self._poster_cache.get(poster_url)
         if self.cached_image is not None:
             self.poster_label.setImage(self.cached_image)
-            self.poster_label.show()
+            self.poster_stack.setCurrentWidget(self.poster_label)
             return
 
         request = QNetworkRequest(QUrl(poster_url))
@@ -1255,10 +1417,11 @@ class MediaSearch(BaseWizardPage):
             if not self.poster_img.isNull():
                 self._poster_cache[poster_url] = self.poster_img
                 self.poster_label.setImage(self.poster_img)
-                self.poster_label.show()
+                self.poster_stack.setCurrentWidget(self.poster_label)
                 image_loaded = True
         if not image_loaded:
-            self.poster_label.hide()
+            self.poster_placeholder.setText("NO POSTER")
+            self.poster_stack.setCurrentWidget(self.poster_placeholder)
         reply.deleteLater()
 
     def _cancel_poster_request(self) -> None:
@@ -1278,7 +1441,8 @@ class MediaSearch(BaseWizardPage):
     def _clear_poster(self, clear_cache: bool = False) -> None:
         self._cancel_poster_request()
         self.poster_label.clearImage()
-        self.poster_label.hide()
+        self.poster_placeholder.setText("NO POSTER")
+        self.poster_stack.setCurrentWidget(self.poster_placeholder)
         if clear_cache:
             self._poster_cache.clear()
 
@@ -1338,6 +1502,7 @@ class MediaSearch(BaseWizardPage):
         self.rating_label.clear()
         self.plot_text.clear()
         self.media_type_label.clear()
+        self.selected_title_label.setText("Select a result to view its details")
         self.poster_img = None
         self._clear_poster(clear_cache=True)
 

@@ -150,6 +150,27 @@ def test_the_base_is_written_outside_every_tracker_directory(
     assert not list(tmp_path.glob(f"*/{base.name}"))
 
 
+def test_piece_size_status_uses_human_readable_units(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The process page should not expose raw byte counts or exponents."""
+    backend = _backend(monkeypatch)
+    media = tmp_path / "release.mkv"
+    media.write_bytes(b"media payload")
+    messages: list[str] = []
+
+    monkeypatch.setattr(process_module, "content_size", lambda _path: 4 * 1024**3 + 1)
+    monkeypatch.setattr(process_module, "generate_torrent", MagicMock())
+    monkeypatch.setattr(
+        process_module, "write_torrent", lambda _torrent, destination: destination
+    )
+
+    backend._prepare_base_torrent(tmp_path, media, None, messages.append)
+
+    assert "<br /><span>Piece size: 4 MiB</span>" in messages
+    assert all("bytes" not in message and "2^" not in message for message in messages)
+
+
 def test_the_base_carries_no_tracker_identity_after_a_full_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

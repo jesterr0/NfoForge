@@ -5,10 +5,16 @@ the two cannot disagree about what a filename claims. Pure: no Qt, no
 config object, no filesystem access, no MediaInfo.
 
 A claim here is something MediaInfo cannot verify -- an edition, an IMAX
-framing, a REPACK marker. The six such claims are switchable. Streaming
-service and release group are always parsed, because they are identity
-fields a user always wants pre-filled rather than opinions about the
-release.
+framing, a REPACK marker, the group that made the input file. All seven
+such claims are switchable.
+
+Streaming service is the one identity field still parsed unconditionally,
+and it stays that way because nothing competes with it: there is no "my
+streaming service" for a user to configure, and the two trackers that
+require the abbreviation scope it to web sources. The source group left
+this class when it gained a competing user-owned value -- the group tag in
+`[general]` -- which gave "do not read this from the filename" a meaning it
+did not have before.
 
 Every claim is pack-wide: it is reported only when every file agrees. One
 dissenting episode means the claim is not the pack's.
@@ -109,13 +115,17 @@ def detect_file_claims(
         ),
         remux=switched("remux", lambda s: "REMUX" if "remux" in s.lower() else ""),
         hybrid=switched("hybrid", lambda s: "HYBRID" if "hybrid" in s.lower() else ""),
-        # No switch: identity fields the user always wants pre-filled.
+        # `lstrip("-")` strips a leading dash guessit sometimes leaves on the
+        # value. This is now the only place a source group is read: the
+        # renderer has no filename parse of its own to disagree with.
+        release_group=switched(
+            "release_group",
+            lambda _: str(guess.get("release_group", "") or "").lstrip("-"),
+        ),
+        # No switch: nothing competes with it, so "off" would mean nothing.
         streaming_service=abbreviate_streaming_service(
             str(guess.get("streaming_service", "") or "")
         ),
-        # `lstrip("-")` mirrors the token handler, which has always stripped
-        # a leading dash guessit sometimes leaves on the value.
-        release_group=str(guess.get("release_group", "") or "").lstrip("-"),
     )
 
 

@@ -281,10 +281,7 @@ class MoviesManagementSettings(BaseSettings):
             video_dynamic_range=self._get_live_video_dynamic_range(),
             override_title_rules=override_title_rules,
             user_tokens=user_tokens,
-            # Stage 1 detection, the same function the rename pages call,
-            # so the preview and the wizard cannot disagree about what the
-            # example filename claims.
-            override_tokens=self._detected_claims().as_override_tokens(),
+            override_tokens=self._preview_overrides(self._detected_claims()),
             flat_filters=self.config.plugin_manager.flat_filters(
                 enabled=self.config.settings.general.enable_plugins
             ),

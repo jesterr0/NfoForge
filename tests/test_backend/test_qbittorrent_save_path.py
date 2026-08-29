@@ -51,7 +51,7 @@ def _config(
                 )
             ),
             user_tokens=SimpleNamespace(tokens=user_tokens or {}),
-            general=SimpleNamespace(releasers_name=""),
+            general=SimpleNamespace(releasers_name="", release_group=""),
             global_management=SimpleNamespace(
                 title_clean_rules=[],
                 video_dynamic_range=None,

@@ -102,6 +102,9 @@ class GeneralSettings:
     theme: NfoForgeTheme
     enable_plugins: bool
     releasers_name: str
+    # The group tag printed on output. The user's publishing identity, so it
+    # is theirs rather than the movie or series side's -- see CONTEXT.md.
+    release_group: str
     tmdb_language: str
     media_search_mode: MediaSearchMode
     timeout: int
@@ -190,9 +193,8 @@ class ClaimSwitches:
     """Which claims are read out of the input filename.
 
     A claim is parsed if and only if `enabled` and its own switch are both
-    true. The six are claims MediaInfo cannot verify; quality/source,
-    streaming service and release group are always parsed and have no
-    switch, because they are identity fields the user always wants.
+    true. All seven are claims MediaInfo cannot verify; quality/source and
+    streaming service are always parsed and have no switch.
     """
 
     enabled: bool
@@ -202,6 +204,7 @@ class ClaimSwitches:
     re_release: bool
     remux: bool
     hybrid: bool
+    release_group: bool
 
 
 @dataclass(slots=True)
@@ -212,7 +215,6 @@ class MovieSettings:
     claims: ClaimSwitches
     filename_token: str
     title_token: str
-    release_group: str
 
 
 @dataclass(slots=True)
@@ -234,7 +236,6 @@ class SeriesSettings:
     standard_title_token: str
     daily_title_token: str
     anime_title_token: str
-    release_group: str
 
 
 @dataclass(slots=True)

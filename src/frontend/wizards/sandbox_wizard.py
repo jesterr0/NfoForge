@@ -206,7 +206,7 @@ class SandboxWizard(QWizard):
             # check if selected media is a series
             current_item = self.search_page.media_search.listbox.currentItem()
             if current_item:
-                item_key = current_item.text()
+                item_key = self.search_page.media_search._result_item_key(current_item)
                 item_data = self.search_page.media_search.backend.media_data.get(
                     item_key
                 )

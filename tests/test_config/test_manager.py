@@ -990,12 +990,16 @@ def test_load_profile_migrates_schema1_and_archives_original(
 
     reloaded = tomlkit.parse(profile.read_text(encoding="utf-8"))
     assert reloaded["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
-    assert reloaded["movie_management"]["mvr_release_group"] == "CustomReleaseGroup"  # type: ignore[reportIndexIssue]
+    # The group tag folded into [general] on the way up; the two per-media-type
+    # keys it came from are gone rather than left behind to drift.
+    assert reloaded["general"]["release_group"] == "CustomReleaseGroup"  # type: ignore[reportIndexIssue]
+    assert "mvr_release_group" not in reloaded["movie_management"]  # type: ignore[reportOperatorIssue]
+    assert "tvr_release_group" not in reloaded["series_management"]  # type: ignore[reportOperatorIssue]
     assert "movie_rename" not in reloaded
     backups = list((profile.parent / "old_configs").glob("test_*.toml"))
     assert len(backups) == 1
     assert backups[0].read_text(encoding="utf-8") == original_text
-    assert manager.settings.movie.release_group == "CustomReleaseGroup"
+    assert manager.settings.general.release_group == "CustomReleaseGroup"
     assert manager.settings.trackers.torrent_leech.username == "custom_tl_user"
 
 
@@ -1016,7 +1020,7 @@ def test_load_profile_migrates_schema2_to_current(
     assert reloaded["schema_version"] == TomlConfigCodec.SCHEMA_VERSION
     # user settings survive the hop
     assert manager.settings.general.releasers_name == "SchemaTwoUser"
-    assert manager.settings.movie.release_group == "SchemaTwoGroup"
+    assert manager.settings.general.release_group == "SchemaTwoGroup"
     assert manager.settings.trackers.last_used_image_host == {}
     # the removed image host is dropped, taking its stale API key with it
     image_hosts = cast(MutableMapping[str, Any], reloaded["image_hosts"])
