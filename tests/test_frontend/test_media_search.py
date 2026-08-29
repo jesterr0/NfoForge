@@ -2,7 +2,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QLabel, QMessageBox
+from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QMessageBox, QSizePolicy
 import pytest
 
 from src.backend.media_search import MediaSearchBackEnd
@@ -14,6 +14,7 @@ from src.enums.media_search_mode import MediaSearchMode
 from src.enums.media_type import MediaType
 from src.enums.tmdb_genres import TMDBGenreIDsMovies, TMDBGenreIDsSeries
 from src.exceptions import MediaSearchError, MediaSearchUnavailableError
+from src.frontend.custom_widgets.custom_splitter import CustomSplitter
 from src.frontend.wizards.media_search import (
     MediaSearch,
     MediaSearchJobResult,
@@ -94,14 +95,57 @@ def test_empty_search_result_does_not_complete_page(tmp_path: Path) -> None:
     assert page.listbox.item(0).text() == "No results, try again..."
 
 
-def test_metadata_and_plot_share_one_info_group(tmp_path: Path) -> None:
+def test_search_page_uses_split_results_and_selected_title_panels(
+    tmp_path: Path,
+) -> None:
     page = _make_page(tmp_path)
 
     group_titles = [group.title() for group in page.findChildren(QGroupBox)]
-    assert group_titles.count("Info") == 1
-    assert "Plot" not in group_titles
+    assert group_titles.count("SEARCH RESULTS") == 1
+    assert group_titles.count("SELECTED TITLE") == 1
+    assert group_titles.count("SEARCH QUERY") == 1
     assert page.info_box.layout() is not None
-    assert page.main_layout.indexOf(page.info_box) >= 0
+    assert page.top_splitter.widget(0) is page.results_box
+    assert page.top_splitter.widget(1) is page.info_box
+    assert isinstance(page.top_splitter, CustomSplitter)
+    assert page.main_layout.indexOf(page.top_splitter) >= 0
+    assert page.main_layout.indexOf(page.search_box) >= 0
+    assert page.search_label.alignment() == (
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    )
+    assert (
+        page.search_label.sizePolicy().horizontalPolicy() is QSizePolicy.Policy.Ignored
+    )
+
+
+def test_selected_result_populates_detail_heading(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    item_name = "1) Movie (2024)"
+    page.backend.media_data = {
+        item_name: {
+            "title": "Movie",
+            "year": "2024",
+            "media_type": "Movie",
+        }
+    }
+
+    page.listbox.addItem(item_name)
+    page.listbox.setCurrentRow(0)
+
+    assert page.selected_title_label.text() == "Movie (2024)"
+    assert page.selected_title_label.font().bold()
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    app_font = app.font(page.selected_title_label)
+    if app_font.pixelSize() > 0:
+        assert page.selected_title_label.font().pixelSize() == round(
+            app_font.pixelSize() * 1.2
+        )
+    else:
+        assert page.selected_title_label.font().pointSizeF() == pytest.approx(
+            app_font.pointSizeF() * 1.2
+        )
+    assert page.poster_stack.currentWidget() is page.poster_placeholder
 
 
 def test_search_results_are_grouped_by_media_type(tmp_path: Path) -> None:
