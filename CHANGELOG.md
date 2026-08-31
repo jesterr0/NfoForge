@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- A subbed or dubbed release detected by a plugin pre-fills Localization on the **series** rename page, not just the movie one. Plugins write the same answer for a film and a season, but the series page never read it, so on a season the value was discarded and the release went out unmarked.
+
 ## [1.1.11] - 2026-08-29
 
 ### Added

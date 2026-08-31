@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import partial
 from pathlib import Path
 from queue import Queue
@@ -10,6 +10,7 @@ from PySide6.QtGui import QCursor, QIcon
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QFormLayout,
     QFrame,
     QLayout,
@@ -261,6 +262,32 @@ class QWidgetTempStyle:
             QApplication.beep()
         self.timers[widget] = timer
         return timer
+
+
+def apply_plugin_override(
+    dynamic_data: Mapping[str, Any], key: str, combo: QComboBox
+) -> None:
+    """Put a plugin-supplied claim into the control that owns it.
+
+    Not gated by `settings.*.claims`: those switches govern what is read out
+    of an input filename, and a plugin's value is evidence from elsewhere --
+    an encoder log, a MediaInfo parse -- which the user has no filename
+    setting to express an opinion about.
+
+    Call after the filename pre-fill, so the plugin's value wins where both
+    have something to say. A value the combo does not offer is ignored
+    rather than forced in.
+
+    Shared by both rename pages. The movie page carried this inline and the
+    series page carried nothing, so a plugin's value reached one of them and
+    was silently dropped by the other.
+    """
+    value = dynamic_data.get(key)
+    if not value:
+        return
+    idx = combo.findText(value)
+    if idx > -1:
+        combo.setCurrentIndex(idx)
 
 
 def block_all_signals(widget: QWidget, block: bool) -> None:
