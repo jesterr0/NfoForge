@@ -9,8 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import traceback
+from types import MethodType
 from typing import Any, Protocol
 from urllib import parse as url_parse
+from weakref import WeakMethod
 import webbrowser
 
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
@@ -268,10 +270,25 @@ class LinkLabel(QLabel):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._on_click = on_click
+        # A label is normally owned by the object whose bound method handles
+        # the click. Keeping that method strongly would form a cycle
+        # (owner -> child label -> bound method -> owner), leaving Qt to tear
+        # down the widget tree later during cyclic garbage collection. PySide
+        # QObject graphs need to be destroyed deterministically because an
+        # arbitrary GC order can invalidate wrappers still being traversed.
+        if isinstance(on_click, MethodType):
+            self._on_click_ref = WeakMethod(on_click)
+            self._on_click = None
+        else:
+            self._on_click_ref = None
+            self._on_click = on_click
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        self._on_click(event)
+        on_click = (
+            self._on_click_ref() if self._on_click_ref is not None else self._on_click
+        )
+        if on_click is not None:
+            on_click(event)
         super().mousePressEvent(event)
 
 

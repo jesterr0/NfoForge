@@ -1,6 +1,8 @@
 from collections import OrderedDict
+import gc
 from pathlib import Path
 from typing import Any
+import weakref
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QMessageBox, QSizePolicy
@@ -147,6 +149,24 @@ def test_selected_result_populates_detail_heading(tmp_path: Path) -> None:
             app_font.pointSizeF() * 1.2
         )
     assert page.poster_stack.currentWidget() is page.poster_placeholder
+
+
+def test_link_callbacks_do_not_keep_an_unparented_page_alive(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    page_ref = weakref.ref(page)
+
+    # A MediaSearch page created without its production wizard parent must be
+    # released by reference counting. If its child LinkLabels retain the
+    # page's bound methods, teardown is deferred to cyclic GC, where PySide can
+    # destroy the native QObject graph in an invalid order.
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        del page
+        assert page_ref() is None
+    finally:
+        if was_enabled:
+            gc.enable()
 
 
 def test_search_results_are_grouped_by_media_type(tmp_path: Path) -> None:
