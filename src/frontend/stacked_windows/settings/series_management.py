@@ -521,12 +521,12 @@ class SeriesManagementSettings(BaseSettings):
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.series.enabled)
-        self._select_filename_colon(
+        self._select_colon(
             self.fn_colon_replace, self.config.defaults.series.filename_colon_replace
         )
         self._load_claim_switches(self.config.defaults.series.claims)
-        self.title_colon_replace.setCurrentIndex(
-            self.config.defaults.series.title_colon_replace.value - 1
+        self._select_colon(
+            self.title_colon_replace, self.config.defaults.series.title_colon_replace
         )
         self.multi_episode_style_combo.setCurrentIndex(
             self.config.defaults.series.multi_episode_style.value

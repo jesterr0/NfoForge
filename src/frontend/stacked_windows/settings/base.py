@@ -195,11 +195,14 @@ class BaseSettings(QWidget):
             check.setEnabled(checked)
 
     @staticmethod
-    def _select_filename_colon(combo: CustomComboBox, saved: ColonReplace) -> None:
+    def _select_colon(combo: CustomComboBox, saved: ColonReplace) -> None:
         """Select a value by data rather than by index arithmetic.
 
         `apply_defaults` used `value - 1`, which only lands correctly
-        because the three surviving members happen to be 1, 2 and 3.
+        because the three surviving members happen to be 1, 2 and 3. The
+        title combos relied on the same coincidence one size up -- five
+        members, listed in enum order, valued 1 to 5 -- so they take this
+        route too rather than each carrying its own arithmetic.
         """
         index = combo.findData(saved)
         combo.setCurrentIndex(index if index > -1 else 0)
@@ -217,7 +220,7 @@ class BaseSettings(QWidget):
         combo.clear()
         for colon_enum, label in FILENAME_COLON_OPTIONS:
             combo.addItem(label, colon_enum)
-        cls._select_filename_colon(combo, saved)
+        cls._select_colon(combo, saved)
 
     @staticmethod
     def load_combo_box(

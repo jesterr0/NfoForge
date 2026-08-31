@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- The two **Colon Replacement** dropdowns on the movie settings page now say which they govern, Filename and Title, matching the series page. Both carried the same label, and the filename one sits apart from the box it belongs to.
+
 ### Fixed
 
 - A subbed or dubbed release detected by a plugin pre-fills Localization on the **series** rename page, not just the movie one. Plugins write the same answer for a film and a season, but the series page never read it, so on a season the value was discarded and the release went out unmarked.

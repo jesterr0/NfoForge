@@ -113,7 +113,9 @@ class MoviesManagementSettings(BaseSettings):
         # the Series tab, where it cannot sit inside the Filename box: that
         # box is per-format and colon handling is shared across all three.
         fn_colon_replace_lbl, self.fn_colon_replace = self._build_colon_replace_combo(
-            "Colon Replacement", self, FILENAME_COLON_OPTIONS
+            """<span><span style="font-weight: bold;">Filename</span> Colon Replacement</span>""",
+            self,
+            FILENAME_COLON_OPTIONS,
         )
         self.fn_colon_replace.currentIndexChanged.connect(
             self._update_file_token_example
@@ -164,7 +166,10 @@ class MoviesManagementSettings(BaseSettings):
         # format release title
         # colon replace for title
         title_colon_replace_lbl, self.title_colon_replace = (
-            self._build_colon_replace_combo("Colon Replacement", self)
+            self._build_colon_replace_combo(
+                """<span><span style="font-weight: bold;">Title</span> Colon Replacement</span>""",
+                self,
+            )
         )
         self.title_colon_replace.currentIndexChanged.connect(
             self._update_title_token_example
@@ -363,15 +368,15 @@ class MoviesManagementSettings(BaseSettings):
 
     def apply_defaults(self) -> None:
         self.rename_check_box.setChecked(self.config.defaults.movie.enabled)
-        self._select_filename_colon(
+        self._select_colon(
             self.fn_colon_replace, self.config.defaults.movie.filename_colon_replace
         )
         self._load_claim_switches(self.config.defaults.movie.claims)
         self.format_file_name_token_input.setText(
             self.config.defaults.movie.filename_token
         )
-        self.title_colon_replace.setCurrentIndex(
-            self.config.defaults.movie.title_colon_replace.value - 1
+        self._select_colon(
+            self.title_colon_replace, self.config.defaults.movie.title_colon_replace
         )
         self.format_release_title_input.setText(self.config.defaults.movie.title_token)
         self.token_table.reset()
