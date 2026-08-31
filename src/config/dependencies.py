@@ -6,12 +6,41 @@ from typing import TYPE_CHECKING
 from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
 from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.dependencies import Dependencies
+from src.enums.screen_shot_mode import ScreenShotMode
 
 if TYPE_CHECKING:
     from src.config.models import DependencySettings
 
 # determine os exe
 OS_EXE = get_executable_string_by_os()
+
+
+def unavailable_screenshot_dependency(
+    mode: ScreenShotMode,
+    ffmpeg_path: Path | None,
+    frame_forge_path: Path | None,
+) -> Dependencies | None:
+    """Return the executable missing for ``mode``, if one is required.
+
+    Callers can pass either persisted paths or paths from an unsaved settings
+    draft. Keeping this check independent of the UI prevents the two paths
+    from applying different availability rules.
+    """
+    dependency: Dependencies
+    path: Path | None
+    if mode in (
+        ScreenShotMode.BASIC_SS_GEN,
+        ScreenShotMode.SIMPLE_SS_COMP,
+    ):
+        dependency = Dependencies.FFMPEG
+        path = ffmpeg_path
+    elif mode == ScreenShotMode.ADV_SS_COMP:
+        dependency = Dependencies.FRAME_FORGE
+        path = frame_forge_path
+    else:
+        return None
+
+    return dependency if path is None or not path.is_file() else None
 
 
 class FindDependencies:

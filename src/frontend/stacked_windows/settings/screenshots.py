@@ -18,12 +18,10 @@ from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
 from src.enums.screen_shot_mode import ScreenShotMode
-from src.enums.settings_window import SettingsTabs
 from src.enums.subtitles import SubtitleAlignment
 from src.frontend.custom_widgets.color_selection_shape import ColorSelectionShape
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.image_host_listbox import ImageHostListBox
-from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
 
@@ -47,7 +45,6 @@ class ScreenShotSettings(BaseSettings):
             "Enable image handling (enables image wizard page as well as logic to handle screenshots)"
         )
         self.ss_enabled_btn = QCheckBox(self)
-        self.ss_enabled_btn.clicked.connect(self._ss_enable_toggle_check)
 
         ss_count_lbl = QLabel("Screenshot Count", self)
         ss_count_lbl.setToolTip(
@@ -59,7 +56,6 @@ class ScreenShotSettings(BaseSettings):
         self.ss_mode_combo = CustomComboBox(
             completer=True, disable_mouse_wheel=True, parent=self
         )
-        self.ss_mode_combo.activated.connect(self._ss_mode_changed)
 
         ss_trim_start_lbl = QLabel("Video Start %", self)
         ss_trim_start_lbl.setToolTip(
@@ -295,54 +291,6 @@ class ScreenShotSettings(BaseSettings):
         self.add_layout(self.reset_layout, add_stretch=True)
 
         self._load_saved_settings()
-
-    def _ss_toggle_check(self, ss_mode: ScreenShotMode) -> None:
-        if ss_mode in (
-            ScreenShotMode.BASIC_SS_GEN,
-            ScreenShotMode.SIMPLE_SS_COMP,
-        ):
-            ffmpeg = self.config.settings.dependencies.ffmpeg
-            if not ffmpeg or (ffmpeg and not ffmpeg.exists()):
-                QMessageBox.critical(
-                    self,
-                    "Dependency Error",
-                    (
-                        "FFMPEG isn't detected and is required for basic and "
-                        "simple comparison screenshots.\n\nDisabling image "
-                        "generation until executable path is provided."
-                    ),
-                )
-                self.config.settings.screenshots.enabled = False
-                self.ss_enabled_btn.setChecked(False)
-                self.config.save()
-                GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
-
-        elif ss_mode == ScreenShotMode.ADV_SS_COMP:
-            frame_forge = self.config.settings.dependencies.frame_forge
-            if not frame_forge or (frame_forge and not frame_forge.exists()):
-                QMessageBox.critical(
-                    self,
-                    "Dependency Error",
-                    (
-                        "FrameForge isn't detected and is required for advanced "
-                        "comparison screenshots.\n\nDisabling image "
-                        "generation until executable path is provided."
-                    ),
-                )
-                self.config.settings.screenshots.enabled = False
-                self.ss_enabled_btn.setChecked(False)
-                self.config.save()
-                GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
-
-    @Slot(bool)
-    def _ss_enable_toggle_check(self, _: bool) -> None:
-        if self.ss_enabled_btn.isChecked():
-            self._ss_toggle_check(self.config.settings.screenshots.mode)
-
-    @Slot(int)
-    def _ss_mode_changed(self, idx: int) -> None:
-        if idx > -1:
-            self._ss_toggle_check(self.ss_mode_combo.currentData())
 
     @Slot(object)
     def _update_sub_entry_color(self, color: QColor) -> None:

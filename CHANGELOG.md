@@ -5,6 +5,7 @@
 ### Changed
 
 - The two **Colon Replacement** dropdowns on the movie settings page now say which they govern, Filename and Title, matching the series page. Both carried the same label, and the filename one sits apart from the box it belongs to.
+- Improved apply time for new config validation to prevent warnings for un-committed settings.
 
 ### Fixed
 

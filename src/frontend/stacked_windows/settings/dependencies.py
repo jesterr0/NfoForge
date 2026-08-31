@@ -157,26 +157,31 @@ class DependencySettings(BaseSettings):
         self.mkbrr_widgets[2].setText(str(mkbrr_path) if mkbrr_path else "")
         self.enable_mkbrr.setChecked(self.config.settings.dependencies.enable_mkbrr)
 
+    @staticmethod
+    def _pending_path(entry: QLineEdit) -> Path | None:
+        value = entry.text().strip()
+        return Path(value) if value else None
+
+    @property
+    def pending_ffmpeg_path(self) -> Path | None:
+        return self._pending_path(self.ffmpeg_widgets[2])
+
+    @property
+    def pending_frame_forge_path(self) -> Path | None:
+        return self._pending_path(self.frame_forge_widgets[2])
+
     @Slot()
     def _save_settings(self) -> None:
-        ffmpeg_path = self.ffmpeg_widgets[2].text().strip()
-        self.config.settings.dependencies.ffmpeg = (
-            Path(ffmpeg_path) if ffmpeg_path else None
+        self.config.settings.dependencies.ffmpeg = self.pending_ffmpeg_path
+
+        self.config.settings.dependencies.ffprobe = self._pending_path(
+            self.ffprobe_widgets[2]
         )
 
-        ffprobe_path = self.ffprobe_widgets[2].text().strip()
-        self.config.settings.dependencies.ffprobe = (
-            Path(ffprobe_path) if ffprobe_path else None
-        )
+        self.config.settings.dependencies.frame_forge = self.pending_frame_forge_path
 
-        frame_forge_path = self.frame_forge_widgets[2].text().strip()
-        self.config.settings.dependencies.frame_forge = (
-            Path(frame_forge_path) if frame_forge_path else None
-        )
-
-        mkbrr_path = self.mkbrr_widgets[2].text().strip()
-        self.config.settings.dependencies.mkbrr = (
-            Path(mkbrr_path) if mkbrr_path else None
+        self.config.settings.dependencies.mkbrr = self._pending_path(
+            self.mkbrr_widgets[2]
         )
         self.config.settings.dependencies.enable_mkbrr = self.enable_mkbrr.isChecked()
         self.updated_settings_applied.emit()
