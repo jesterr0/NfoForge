@@ -9,8 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 import re
 import traceback
+from types import MethodType
 from typing import Any, Protocol
 from urllib import parse as url_parse
+from weakref import WeakMethod
 import webbrowser
 
 from PySide6.QtCore import QObject, QSize, Qt, QThread, QTimer, QUrl, Signal, Slot
@@ -93,6 +95,7 @@ class MediaSearchJobResult:
     query: str | None
     results: OrderedDict[str, Any]
     title_error: str | None = None
+    preferred_result_key: str | None = None
 
 
 def _run_media_search_job(
@@ -131,9 +134,11 @@ def _run_media_search_job(
             f"(confidence: {inference.confidence:.1%})",
         )
 
+    results = OrderedDict(backend._parse_tmdb_api(query, search_mode))
     return MediaSearchJobResult(
         query=query,
-        results=OrderedDict(backend._parse_tmdb_api(query, search_mode)),
+        results=results,
+        preferred_result_key=MediaSearchBackEnd.best_match_key(query, results),
     )
 
 
@@ -265,10 +270,25 @@ class LinkLabel(QLabel):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._on_click = on_click
+        # A label is normally owned by the object whose bound method handles
+        # the click. Keeping that method strongly would form a cycle
+        # (owner -> child label -> bound method -> owner), leaving Qt to tear
+        # down the widget tree later during cyclic garbage collection. PySide
+        # QObject graphs need to be destroyed deterministically because an
+        # arbitrary GC order can invalidate wrappers still being traversed.
+        if isinstance(on_click, MethodType):
+            self._on_click_ref = WeakMethod(on_click)
+            self._on_click = None
+        else:
+            self._on_click_ref = None
+            self._on_click = on_click
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        self._on_click(event)
+        on_click = (
+            self._on_click_ref() if self._on_click_ref is not None else self._on_click
+        )
+        if on_click is not None:
+            on_click(event)
         super().mousePressEvent(event)
 
 
@@ -1243,8 +1263,10 @@ class MediaSearch(BaseWizardPage):
             if result.query is not None:
                 self.search_entry.setText(result.query)
             result_data = result.results
+            preferred_result_key = result.preferred_result_key
         else:
             result_data = result
+            preferred_result_key = None
 
         self.listbox.clear()
         if result_data:
@@ -1265,6 +1287,7 @@ class MediaSearch(BaseWizardPage):
                     ungrouped_results.append((item_text, item_data))
 
             first_result: QListWidgetItem | None = None
+            result_items: dict[str, QListWidgetItem] = {}
             for media_type, section_title in (
                 (MediaType.MOVIE, "MOVIES"),
                 (MediaType.SERIES, "TV SERIES"),
@@ -1275,16 +1298,21 @@ class MediaSearch(BaseWizardPage):
                 self._add_result_section(section_title)
                 for item_text, item_data in section_results:
                     item = self._add_result_item(item_text, item_data)
+                    result_items[item_text] = item
                     if first_result is None:
                         first_result = item
 
             for item_text, item_data in ungrouped_results:
                 item = self._add_result_item(item_text, item_data)
+                result_items[item_text] = item
                 if first_result is None:
                     first_result = item
 
             if first_result is not None:
-                self.listbox.setCurrentItem(first_result)
+                preferred_result = result_items.get(preferred_result_key or "")
+                self.listbox.setCurrentItem(
+                    preferred_result if preferred_result is not None else first_result
+                )
         else:
             self.listbox.addItem("No results, try again...")
 

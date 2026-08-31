@@ -1,5 +1,8 @@
 from collections import OrderedDict
+import gc
 from pathlib import Path
+from typing import Any
+import weakref
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QGroupBox, QLabel, QMessageBox, QSizePolicy
@@ -148,6 +151,24 @@ def test_selected_result_populates_detail_heading(tmp_path: Path) -> None:
     assert page.poster_stack.currentWidget() is page.poster_placeholder
 
 
+def test_link_callbacks_do_not_keep_an_unparented_page_alive(tmp_path: Path) -> None:
+    page = _make_page(tmp_path)
+    page_ref = weakref.ref(page)
+
+    # A MediaSearch page created without its production wizard parent must be
+    # released by reference counting. If its child LinkLabels retain the
+    # page's bound methods, teardown is deferred to cyclic GC, where PySide can
+    # destroy the native QObject graph in an invalid order.
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        del page
+        assert page_ref() is None
+    finally:
+        if was_enabled:
+            gc.enable()
+
+
 def test_search_results_are_grouped_by_media_type(tmp_path: Path) -> None:
     page = _make_page(tmp_path)
     results = OrderedDict(
@@ -187,6 +208,48 @@ def test_search_results_are_grouped_by_media_type(tmp_path: Path) -> None:
     page.listbox.setCurrentRow(4)
     assert page._get_current_item_data() == results["2) Show (2024)"]
     assert not hasattr(page, "MOVIE_ROW_COLOR")
+
+
+def test_preferred_result_is_selected_across_media_type_groups(
+    tmp_path: Path,
+) -> None:
+    page = _make_page(tmp_path)
+    movie_key = "1) Similar Movie (2023)"
+    series_key = "2) Exact Show (2024)"
+    results: OrderedDict[str, Any] = OrderedDict(
+        [
+            (
+                movie_key,
+                {"media_type": "Movie", "title": "Similar Movie", "year": "2023"},
+            ),
+            (
+                series_key,
+                {"media_type": "Series", "title": "Exact Show", "year": "2024"},
+            ),
+        ]
+    )
+    page.backend.media_data = results  # type: ignore[reportAttributeAccessIssue]
+
+    page._handle_search_result(
+        MediaSearchJobResult(
+            query="Exact Show 2024",
+            results=results,
+            preferred_result_key=series_key,
+        )
+    )
+
+    assert page.listbox.currentItem().text() == "Exact Show (2024)"
+    assert page._get_current_item_data() == results[series_key]
+
+    page._handle_search_result(
+        MediaSearchJobResult(
+            query="Exact Show 2024",
+            results=results,
+            preferred_result_key="missing-result",
+        )
+    )
+
+    assert page.listbox.currentItem().text() == "Similar Movie (2023)"
 
 
 @pytest.mark.parametrize(
@@ -374,6 +437,7 @@ def test_automatic_search_uses_inferred_title_and_selected_files(
     assert result == MediaSearchJobResult(
         query="Inferred Movie",
         results=OrderedDict([("Inferred Movie", {"title": "Inferred Movie"})]),
+        preferred_result_key="Inferred Movie",
     )
     assert calls == [(input_path, (selected_file,))]
     assert search_modes == [MediaSearchMode.BOTH]
@@ -409,6 +473,7 @@ def test_manual_search_bypasses_title_inference(monkeypatch) -> None:
     assert result.query == "Manual Movie"
     assert list(result.results) == ["Manual Movie"]
     assert result.title_error is None
+    assert result.preferred_result_key == "Manual Movie"
     assert search_modes == [MediaSearchMode.MOVIES]
 
 

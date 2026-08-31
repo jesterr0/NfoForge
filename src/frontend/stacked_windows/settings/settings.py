@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
 
 from src.backend.main_window import restart_application
 from src.config.config import ConfigManager
+from src.config.dependencies import unavailable_screenshot_dependency
+from src.enums.dependencies import Dependencies
 from src.enums.settings_window import SettingsTabs
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.about import AboutTab
@@ -179,6 +181,9 @@ class Settings(QWidget):
             self._apply_settings()
 
     def _apply_settings(self) -> None:
+        if not self._pending_screenshot_dependencies_are_valid():
+            return
+
         self._save_approved_counter = 0
         self._enable_plugins_before_apply = self.config.settings.general.enable_plugins
         self.general_settings_content.update_saved_settings.emit()
@@ -193,6 +198,37 @@ class Settings(QWidget):
         self.screenshots_settings_content.update_saved_settings.emit()
         self.dependencies_settings_content.update_saved_settings.emit()
         self.about_content.update_saved_settings.emit()
+
+    def _pending_screenshot_dependencies_are_valid(self) -> bool:
+        screenshots = self.screenshots_settings_content
+        if not screenshots.ss_enabled_btn.isChecked():
+            return True
+
+        dependencies = self.dependencies_settings_content
+        unavailable = unavailable_screenshot_dependency(
+            screenshots.ss_mode_combo.currentData(),
+            dependencies.pending_ffmpeg_path,
+            dependencies.pending_frame_forge_path,
+        )
+        if unavailable is None:
+            return True
+
+        requirement = (
+            "basic and simple comparison screenshots"
+            if unavailable is Dependencies.FFMPEG
+            else "advanced comparison screenshots"
+        )
+        QMessageBox.critical(
+            self,
+            "Dependency Error",
+            (
+                f"{unavailable} isn't detected and is required for {requirement}."
+                "\n\nChoose a valid executable in Dependencies before applying "
+                "these settings."
+            ),
+        )
+        self.tab_widget.setCurrentWidget(self.dependencies_settings_content)
+        return False
 
     @Slot()
     def _update_applied_settings_counter(self) -> None:

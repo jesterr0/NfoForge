@@ -20,7 +20,8 @@ from src.backend.update_checker import UpdateCheckResult, check_for_updates_job
 from src.backend.utils.file_utilities import file_bytes_to_str
 from src.backend.utils.working_dir import cleanable_size
 from src.config.config import ConfigManager
-from src.enums.screen_shot_mode import ScreenShotMode
+from src.config.dependencies import unavailable_screenshot_dependency
+from src.enums.dependencies import Dependencies
 from src.enums.settings_window import SettingsTabs
 from src.frontend.custom_widgets.multi_prompt_dialog import MultiPromptDialog
 from src.frontend.global_signals import GSigs
@@ -170,46 +171,38 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(title)
 
     def _check_dependencies(self) -> None:
-        if self.config.settings.screenshots.enabled:
-            ss_mode = self.config.settings.screenshots.mode
-            if ss_mode in (
-                ScreenShotMode.BASIC_SS_GEN,
-                ScreenShotMode.SIMPLE_SS_COMP,
-            ):
-                ffmpeg = self.config.settings.dependencies.ffmpeg
-                if not ffmpeg or (ffmpeg and not ffmpeg.exists()):
-                    QMessageBox.critical(
-                        self,
-                        "Dependency Error",
-                        (
-                            "FFMPEG isn't detected and is required for basic and "
-                            "simple comparison screenshots.\n\nDisabling image "
-                            "generation until executable path is provided."
-                        ),
-                    )
-                    self.config.settings.screenshots.enabled = False
-                    self.config.save()
-                    self.settings.re_load_settings.emit()
-                    self.stacked_widget.setCurrentWidget(self.settings)
-                    GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+        screenshots = self.config.settings.screenshots
+        if not screenshots.enabled:
+            return
 
-            elif ss_mode == ScreenShotMode.ADV_SS_COMP:
-                frame_forge = self.config.settings.dependencies.frame_forge
-                if not frame_forge or (frame_forge and not frame_forge.exists()):
-                    QMessageBox.critical(
-                        self,
-                        "Dependency Error",
-                        (
-                            "FrameForge isn't detected and is required for advanced "
-                            "comparison screenshots.\n\nDisabling image "
-                            "generation until executable path is provided."
-                        ),
-                    )
-                    self.config.settings.screenshots.enabled = False
-                    self.config.save()
-                    self.settings.re_load_settings.emit()
-                    self.stacked_widget.setCurrentWidget(self.settings)
-                    GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
+        dependencies = self.config.settings.dependencies
+        unavailable = unavailable_screenshot_dependency(
+            screenshots.mode,
+            dependencies.ffmpeg,
+            dependencies.frame_forge,
+        )
+        if unavailable is None:
+            return
+
+        requirement = (
+            "basic and simple comparison screenshots"
+            if unavailable is Dependencies.FFMPEG
+            else "advanced comparison screenshots"
+        )
+        QMessageBox.critical(
+            self,
+            "Dependency Error",
+            (
+                f"{unavailable} isn't detected and is required for {requirement}."
+                "\n\nDisabling image generation until a valid executable path "
+                "is provided."
+            ),
+        )
+        screenshots.enabled = False
+        self.config.save()
+        self.settings.re_load_settings.emit()
+        self.stacked_widget.setCurrentWidget(self.settings)
+        GSigs().settings_swap_tab.emit(SettingsTabs.DEPENDENCIES_SETTINGS)
 
     def setup_logger(self) -> None:
         threaded_worker = MainWindowWorker(self._setup_logger, parent=self)

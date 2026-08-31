@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.12] - 2026-08-31
+
+### Changed
+
+- The two **Colon Replacement** dropdowns on the movie settings page now say which they govern, Filename and Title, matching the series page. Both carried the same label, and the filename one sits apart from the box it belongs to.
+- Improved apply time for new config validation to prevent warnings for un-committed settings.
+
+### Fixed
+
+- A subbed or dubbed release detected by a plugin pre-fills Localization on the **series** rename page, not just the movie one. Plugins write the same answer for a film and a season, but the series page never read it, so on a season the value was discarded and the release went out unmarked.
+
 ## [1.1.11] - 2026-08-29
 
 ### Added
@@ -20,6 +31,7 @@
   - MediaSearch page only warns if titles have identical name AND year.
   - MediaSearch no longer shows numbers.
   - Rebuilt media search page to look a lot better/make better use of the space
+  - Initially selects the closest title and release-year match instead of the first search result.
 
 ### Fixed
 
