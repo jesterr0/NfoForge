@@ -20,6 +20,7 @@
   - MediaSearch page only warns if titles have identical name AND year.
   - MediaSearch no longer shows numbers.
   - Rebuilt media search page to look a lot better/make better use of the space
+  - Initially selects the closest title and release-year match instead of the first search result.
 
 ### Fixed
 

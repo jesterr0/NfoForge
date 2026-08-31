@@ -28,6 +28,8 @@ _ANILIST_SESSION = new_http_session()
 
 
 class MediaSearchBackEnd:
+    _MATCH_TITLE_THRESHOLD = 70.0
+
     def __init__(
         self,
         language: str = "en-US",
@@ -149,6 +151,92 @@ class MediaSearchBackEnd:
         self.media_data.clear()
         self.media_data = media_dict
         return self.media_data
+
+    @classmethod
+    def best_match_key(
+        cls,
+        input_string: str,
+        media_data: Mapping[str, Mapping[str, Any]],
+    ) -> str | None:
+        """Return the result key that best matches a title/year query.
+
+        A release year is only allowed to influence results with a credible
+        title match. This prevents an unrelated same-year result from beating
+        the intended title while still making the year a strong discriminator
+        between remakes and similarly named releases.
+        """
+
+        if not media_data:
+            return None
+
+        fallback_key = next(iter(media_data))
+        query_title, query_year_raw = cls._guessit(input_string)
+        normalized_query = cls._normalize_match_title(query_title)
+        if not normalized_query:
+            return fallback_key
+
+        query_year = cls._coerce_match_year(query_year_raw)
+        scored_results: list[tuple[str, float, int, int]] = []
+        for index, (item_key, item_data) in enumerate(media_data.items()):
+            title_score = max(
+                (
+                    fuzz.WRatio(normalized_query, normalized_title)
+                    for candidate_title in (
+                        item_data.get("title"),
+                        item_data.get("original_title"),
+                    )
+                    if (normalized_title := cls._normalize_match_title(candidate_title))
+                ),
+                default=0.0,
+            )
+            year_rank = cls._match_year_rank(
+                query_year,
+                cls._coerce_match_year(item_data.get("year")),
+            )
+            scored_results.append((item_key, title_score, year_rank, index))
+
+        credible_results = [
+            result
+            for result in scored_results
+            if result[1] >= cls._MATCH_TITLE_THRESHOLD
+        ]
+        if credible_results:
+            return max(
+                credible_results,
+                key=lambda result: (result[2], result[1], -result[3]),
+            )[0]
+
+        # With no credible title, year evidence is unsafe. Pick the closest
+        # title and retain TMDB's response order when scores tie.
+        return max(
+            scored_results,
+            key=lambda result: (result[1], -result[3]),
+        )[0]
+
+    @staticmethod
+    def _normalize_match_title(value: object) -> str:
+        if not isinstance(value, str):
+            return ""
+        normalized = unidecode(value).casefold()
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", normalized).split())
+
+    @staticmethod
+    def _coerce_match_year(value: object) -> int | None:
+        if isinstance(value, bool):
+            return None
+        text = str(value).strip() if value is not None else ""
+        return int(text) if re.fullmatch(r"\d{4}", text) else None
+
+    @staticmethod
+    def _match_year_rank(query_year: int | None, result_year: int | None) -> int:
+        if query_year is None or result_year is None:
+            return 0
+        difference = abs(query_year - result_year)
+        if difference == 0:
+            return 2
+        if difference == 1:
+            return 1
+        return 0
 
     def _build_media_row(
         self,

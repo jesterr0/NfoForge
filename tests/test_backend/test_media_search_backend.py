@@ -103,6 +103,89 @@ def test_guessit_list_title_uses_first_title(monkeypatch: pytest.MonkeyPatch) ->
     assert backend._guessit("ignored filename") == ("Primary", "2024")
 
 
+def test_best_match_prefers_exact_then_adjacent_release_year() -> None:
+    results = {
+        "1) Bob Dylan (1986)": {
+            "title": "Bob Dylan",
+            "original_title": "Bob Dylan",
+            "year": "1986",
+        },
+        "2) Bob Dylan (1992)": {
+            "title": "Bob Dylan",
+            "original_title": "Bob Dylan",
+            "year": "1992",
+        },
+        "3) Bob Dylan (1993)": {
+            "title": "Bob Dylan",
+            "original_title": "Bob Dylan",
+            "year": "1993",
+        },
+    }
+
+    assert (
+        MediaSearchBackEnd.best_match_key("Bob Dylon 1993", results)
+        == "3) Bob Dylan (1993)"
+    )
+
+    del results["3) Bob Dylan (1993)"]
+    assert (
+        MediaSearchBackEnd.best_match_key("Bob Dylon 1993", results)
+        == "2) Bob Dylan (1992)"
+    )
+
+
+def test_best_match_does_not_promote_an_unrelated_exact_year() -> None:
+    results = {
+        "1) Bob Dylan (1986)": {
+            "title": "Bob Dylan",
+            "original_title": "Bob Dylan",
+            "year": "1986",
+        },
+        "2) A Completely Different Film (1993)": {
+            "title": "A Completely Different Film",
+            "original_title": "A Completely Different Film",
+            "year": "1993",
+        },
+    }
+
+    assert (
+        MediaSearchBackEnd.best_match_key("Bob Dylon 1993", results)
+        == "1) Bob Dylan (1986)"
+    )
+
+
+def test_best_match_normalizes_titles_and_checks_original_title() -> None:
+    results = {
+        "1) Other (2001)": {
+            "title": "Other",
+            "original_title": "Other",
+            "year": "2001",
+        },
+        "2) Amelie (2001)": {
+            "title": "Am\u00e9lie",
+            "original_title": "Le Fabuleux Destin d'Am\u00e9lie Poulain",
+            "year": "2001",
+        },
+    }
+
+    assert (
+        MediaSearchBackEnd.best_match_key(
+            "Le.Fabuleux.Destin.d.Amelie.Poulain.2001", results
+        )
+        == "2) Amelie (2001)"
+    )
+
+
+def test_best_match_without_usable_evidence_preserves_tmdb_order() -> None:
+    results = {
+        "first": {"title": "", "year": "not-a-year"},
+        "second": {"title": None, "year": "2024"},
+    }
+
+    assert MediaSearchBackEnd.best_match_key("...", results) == "first"
+    assert MediaSearchBackEnd.best_match_key("anything", {}) is None
+
+
 def test_tmdb_empty_successful_search_disables_results() -> None:
     backend = MediaSearchBackEnd()
     backend.session.get = lambda *_args, **_kwargs: _Response({"results": []})  # type: ignore[method-assign]
