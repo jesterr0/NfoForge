@@ -541,6 +541,40 @@ def test_a_switched_off_category_leaves_the_others_alone(
     assert page.re_release_combo.currentText() == "REPACK"
 
 
+def test_a_plugin_localization_override_survives_a_switched_off_category(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The defect this page had: the movie page applied a plugin's value and
+    this one never looked for it, so a value written on the way in was
+    silently dropped. The claims switches govern filename parsing, and a
+    plugin's value is evidence from elsewhere, so the switch does not
+    suppress it here either."""
+    page = _series_page_with_episodes(
+        tmp_path, monkeypatch, Path("Show.S01E01.1080p.WEB-DL.x264-GRP.mkv")
+    )
+    page.config.settings.series.claims.localization = False
+    page.context.shared_data.dynamic_data["localization_override"] = "Subbed"
+
+    page.initializePage()
+
+    assert page.localization_combo.currentText() == "Subbed"
+
+
+def test_a_plugin_localization_override_beats_the_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both have something to say, so ordering decides: the pre-fill runs
+    first and the plugin's value overwrites it."""
+    page = _series_page_with_episodes(
+        tmp_path, monkeypatch, Path("Show.S01E01.DUBBED.1080p.WEB-DL.x264-GRP.mkv")
+    )
+    page.context.shared_data.dynamic_data["localization_override"] = "Subbed"
+
+    page.initializePage()
+
+    assert page.localization_combo.currentText() == "Subbed"
+
+
 def test_release_group_falls_back_to_the_detected_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -240,6 +240,24 @@ def test_filename_colon_combo_round_trips_each_option(
         assert manager.settings.movie.filename_colon_replace is expected
 
 
+def test_apply_defaults_selects_the_configured_title_colon(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`apply_defaults` reached the title combo by `value - 1`, which lands
+    correctly only while all five members are listed in enum order with
+    values 1 to 5 -- the same coincidence the filename side already stopped
+    relying on. Pinning the contract, default in and that member selected,
+    is what makes a future reorder fail here rather than silently select
+    its neighbour."""
+    widget, manager = _make_movies_management_settings(tmp_path, monkeypatch)
+
+    for expected in ColonReplace:
+        manager.defaults.movie.title_colon_replace = expected
+        widget.apply_defaults()
+
+        assert widget.title_colon_replace.currentData() is expected
+
+
 def test_illegal_chars_checkbox_is_gone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

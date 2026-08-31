@@ -57,7 +57,7 @@ from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
-from src.frontend.utils import build_h_line
+from src.frontend.utils import apply_plugin_override, build_h_line
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
 from src.frontend.utils.rename_operation import RenameOperationController
 from src.frontend.wizards.wizard_base_page import BaseWizardPage
@@ -355,6 +355,12 @@ class RenameEncodeSeries(BaseWizardPage):
         # attributes are otherwise resolved from each active file during rendering.
         claims = self._pre_load_attribute_combos(
             [Path(path).stem for path in media_files]
+        )
+
+        apply_plugin_override(
+            self.context.shared_data.dynamic_data,
+            "localization_override",
+            self.localization_combo,
         )
 
         # Use series token from config
