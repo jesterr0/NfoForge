@@ -519,8 +519,21 @@ class RenameEncode(BaseWizardPage):
         return claims
 
     def _detected_claims(self) -> FilenameClaims:
+        """The film's claims -- the film's alone.
+
+        `file_list` is not one file. The input page has no media type to
+        branch on (it is not set until the next page), so a folder input
+        keeps every video that is not a sample, and a film shipped with an
+        `Extras` folder arrives as several paths. Reading the whole list
+        here applied the pack-agreement rule to bloopers, which then
+        outvoted the film: switching Quality to a disc source cleared the
+        REMUX tick the film had earned.
+
+        Index 0 is the film, the same assumption `initializePage` states
+        and pre-fills from, so the two now answer alike.
+        """
         return detect_filename_claims(
-            [path.stem for path in self.context.media_input.file_list],
+            [self.context.media_input.file_list[0].stem],
             self.config.settings.movie.claims,
             self.context.custom_edition_info,
         )
