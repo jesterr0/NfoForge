@@ -1,9 +1,11 @@
 import pytest
 
 from src.backend.utils.filename_claims import (
+    PER_FILE_CLAIM_KEYS,
     FilenameClaims,
     detect_file_claims,
     detect_filename_claims,
+    resolve_file_claims,
 )
 from src.config.models import ClaimSwitches
 
@@ -174,3 +176,59 @@ def test_per_file_claims_honour_the_switches() -> None:
     )
 
     assert claims.re_release == ""
+
+
+def test_a_per_file_edit_wins_over_the_filenames_own_claim() -> None:
+    # The user is looking at the episode and disagreeing with its name. That
+    # is a decision, and detection does not get to overrule it.
+    detected = detect_file_claims(
+        "Show.S01E02.REPACK.1080p.WEB-DL.H.264-GRP", _switches()
+    )
+
+    resolved = resolve_file_claims(detected, {"re_release": "PROPER"})
+
+    assert resolved["re_release"] == "PROPER"
+
+
+def test_a_cleared_per_file_edit_suppresses_the_claim() -> None:
+    # Clearing the cell is a decision -- "this episode is not a repack,
+    # whatever its name says" -- so it has to reach output as an empty
+    # override rather than falling back through to detection.
+    detected = detect_file_claims(
+        "Show.S01E02.REPACK.1080p.WEB-DL.H.264-GRP", _switches()
+    )
+
+    resolved = resolve_file_claims(detected, {"re_release": ""})
+
+    assert resolved["re_release"] == ""
+
+
+def test_an_unedited_claim_falls_through_to_the_filename() -> None:
+    detected = detect_file_claims(
+        "Show.S01E02.REPACK.1080p.WEB-DL.H.264-GRP", _switches()
+    )
+
+    resolved = resolve_file_claims(detected, {})
+
+    assert resolved["re_release"] == "REPACK"
+
+
+def test_an_undetected_unedited_claim_is_omitted_not_emptied() -> None:
+    # Omission leaves a gap for whatever renders next; "" would assert the
+    # file has no such claim, which nothing here is entitled to say.
+    detected = detect_file_claims("Show.S01E02.1080p.WEB-DL.H.264-GRP", _switches())
+
+    resolved = resolve_file_claims(detected, {})
+
+    assert "re_release" not in resolved
+    assert "edition" not in resolved
+
+
+def test_the_group_is_never_resolved_per_file() -> None:
+    # A release has at most one group tag, so the group is whole-release
+    # even though it is detected per file like everything else.
+    detected = detect_file_claims("Show.S01E02.1080p.WEB-DL.H.264-GRP", _switches())
+
+    assert detected.release_group == "GRP"
+    assert "release_group" not in resolve_file_claims(detected, {})
+    assert "release_group" not in PER_FILE_CLAIM_KEYS
