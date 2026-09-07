@@ -1,15 +1,22 @@
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QDialog, QMessageBox
 import pytest
 
 from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
+from src.backend.utils.filename_claims import PER_FILE_CLAIM_KEYS
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.media_type import MediaType
 from src.enums.series import EpisodeFormat
+from src.frontend.custom_widgets.episode_claims_table import (
+    CLAIM_COLUMNS,
+    VALUE_CLAIMS,
+    _is_checked,
+)
 from src.frontend.wizards.rename_encode_series import RenameEncodeSeries
 from src.payloads.media_inputs import MediaInputPayload
 from src.payloads.media_search import MediaSearchPayload
@@ -639,3 +646,498 @@ def test_clearing_the_field_beats_the_configured_group_tag(
     page.update_generated_name()
 
     assert page.backend.override_tokens["release_group"] == ""
+
+
+def _select(combo, text: str) -> None:
+    """Pick an entry the way the dropdown does.
+
+    `CustomComboBox` is always editable, and on an editable combo
+    `setCurrentText` writes the line edit without moving the index, so the
+    `currentIndexChanged` handlers never run.
+    """
+    index = combo.findText(text)
+    assert index > -1, f"{text!r} is not in the combo"
+    combo.setCurrentIndex(index)
+
+
+def _two_episode_page(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> RenameEncodeSeries:
+    """A pack where episode 2 is a repack and episode 1 is not."""
+    return _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={
+            Path("Show.S01E01.1080p.WEB-DL.x264-GRP.mkv"): {"season": 1, "episode": 1},
+            Path("Show.S01E02.REPACK.1080p.WEB-DL.x264-GRP.mkv"): {
+                "season": 1,
+                "episode": 2,
+            },
+        },
+    )
+
+
+def test_each_episode_row_seeds_from_its_own_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case the pack controls cannot express: one combo cannot say
+    "REPACK, but only episode 2"."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+
+    page.initializePage()
+
+    table = page.episode_claims
+    assert page.re_release_combo.currentText() == ""
+    assert (
+        table.resolved_claims_for(Path("Show.S01E01.1080p.WEB-DL.x264-GRP.mkv")).get(
+            "re_release"
+        )
+        is None
+    )
+    assert (
+        table.resolved_claims_for(Path("Show.S01E02.REPACK.1080p.WEB-DL.x264-GRP.mkv"))[
+            "re_release"
+        ]
+        == "REPACK"
+    )
+
+
+def test_a_pack_claim_leaves_the_episode_rows_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Setting the pack control is not a statement about any episode."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+
+    _select(page.re_release_combo, "PROPER")
+
+    assert page.backend.override_tokens["re_release"] == "PROPER"
+    assert (
+        page.episode_claims.resolved_claims_for(
+            Path("Show.S01E01.1080p.WEB-DL.x264-GRP.mkv")
+        ).get("re_release")
+        is None
+    )
+
+
+def test_apply_to_all_stamps_the_pack_value_on_every_episode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    _select(page.re_release_combo, "PROPER")
+
+    page._apply_claim_to_all("re_release")  # pyright: ignore[reportPrivateUsage]
+
+    claims = page.episode_claims
+    for media_file in page.context.media_input.file_list:
+        assert claims.resolved_claims_for(media_file)["re_release"] == "PROPER"
+
+
+def test_revert_to_detected_undoes_an_accidental_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Q7's shortcut has to be survivable when it was a misclick."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    _select(page.re_release_combo, "PROPER")
+    page._apply_claim_to_all("re_release")  # pyright: ignore[reportPrivateUsage]
+
+    page.episode_claims.revert_to_detected("re_release")
+
+    claims = page.episode_claims
+    assert (
+        claims.resolved_claims_for(Path("Show.S01E01.1080p.WEB-DL.x264-GRP.mkv")).get(
+            "re_release"
+        )
+        is None
+    )
+    assert (
+        claims.resolved_claims_for(
+            Path("Show.S01E02.REPACK.1080p.WEB-DL.x264-GRP.mkv")
+        )["re_release"]
+        == "REPACK"
+    )
+
+
+def test_a_web_source_suppresses_remux_on_every_episode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A per-file REMUX on a web pack is not a thing, so the column is
+    cleared outright rather than parked in hidden state."""
+    media_file = Path("Show.S01E01.1080p.BluRay.REMUX.AVC-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={media_file: {"season": 1, "episode": 1}},
+    )
+    page.initializePage()
+    assert page.episode_claims.resolved_claims_for(media_file)["remux"] == "REMUX"
+
+    _select(page.quality_combo, "WEB-DL")
+
+    assert page.episode_claims.resolved_claims_for(media_file)["remux"] == ""
+
+
+def test_returning_to_a_disc_source_restores_the_detected_remux(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Suppression has to be survivable. The pack checkbox re-detects when
+    the quality comes back, so leaving the episodes suppressed would strand
+    them disagreeing with it, invisibly."""
+    media_file = Path("Show.S01E01.1080p.BluRay.REMUX.AVC-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={media_file: {"season": 1, "episode": 1}},
+    )
+    page.initializePage()
+    _select(page.quality_combo, "WEB-DL")
+    assert page.episode_claims.resolved_claims_for(media_file)["remux"] == ""
+
+    _select(page.quality_combo, "BluRay")
+
+    assert page.episode_claims.resolved_claims_for(media_file)["remux"] == "REMUX"
+    assert page.remux_checkbox.isChecked() is True
+
+
+def test_apply_to_all_reads_the_pack_value_from_the_override_tokens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One answer to "what does the pack say", not two. The claim controls
+    all write `override_tokens`, so bulk apply reads it rather than asking
+    the widgets a second time."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    page.backend.override_tokens["re_release"] = "PROPER"
+
+    page._apply_claim_to_all("re_release")  # pyright: ignore[reportPrivateUsage]
+
+    claims = page.episode_claims
+    for media_file in page.context.media_input.file_list:
+        assert claims.resolved_claims_for(media_file)["re_release"] == "PROPER"
+
+
+def test_the_pack_name_preview_shows_what_the_pack_controls_produce(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pack's controls produce one string, and nothing on the page showed
+    it. Setting a pack claim has to move it."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.config.settings.series.season_folder_token = (
+        "{title_clean} S{season_number|zfill(2)} {re_release}"  # noqa: S105 - NFO template token string used as test fixture data, not a credential
+    )
+
+    page.initializePage()
+    assert page.pack_name_preview.text() == "Show.Title.S01"
+
+    _select(page.re_release_combo, "REPACK")
+
+    assert page.pack_name_preview.text() == "Show.Title.S01.REPACK"
+
+
+def test_the_pack_preview_does_not_steal_the_override_grid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both renderers assign `backend.token_replacer`. The grid reads it
+    expecting the episode's tokens, so the folder render has to come first."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.config.settings.series.standard_episode_token = TEST_TOKEN
+
+    page.initializePage()
+    page.token_override.setText(TEST_TOKEN)
+    page.override_group.setChecked(True)
+
+    token_values = page.rename_token_control.get_token_values()
+    assert token_values.get("{episode_number}") == "01"
+
+
+def test_column_widths_do_not_move_when_values_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Widths come from the full option list at construction, not from what
+    the cells happen to hold. Sizing to contents made the table reflow when
+    a long edition was picked and again when it was cleared."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    table = page.episode_claims.table
+    before = [table.columnWidth(c) for c in range(table.columnCount())]
+
+    page.episode_claims.apply_to_all("edition", "Directors Cut")
+    during = [table.columnWidth(c) for c in range(table.columnCount())]
+    page.episode_claims.revert_to_detected("edition")
+
+    assert during == before
+    assert [table.columnWidth(c) for c in range(table.columnCount())] == before
+
+
+def test_every_dropdown_column_shares_one_width(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    table = page.episode_claims.table
+
+    widths = {table.columnWidth(c) for c in range(1, 6)}
+
+    assert len(widths) == 1
+
+
+def test_a_switched_off_category_is_not_detected_per_episode_either(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both halves of the page read the same switches. A category the user
+    turned off must not come back through the episode table, which is the
+    one surface that reads each filename individually."""
+    repacked = Path("Show.S01E02.REPACK.1080p.WEB-DL.x264-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={repacked: {"season": 1, "episode": 2}},
+    )
+    page.config.settings.series.claims.re_release = False
+
+    page.initializePage()
+
+    assert page.re_release_combo.currentText() == ""
+    assert "re_release" not in page.episode_claims.resolved_claims_for(repacked)
+
+
+def test_the_master_switch_reaches_the_episode_table(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    media_file = Path("Show.S01E01.IMAX.REPACK.HYBRID.1080p.BluRay.REMUX.AVC-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={media_file: {"season": 1, "episode": 1}},
+    )
+    page.config.settings.series.claims.enabled = False
+
+    page.initializePage()
+
+    resolved = page.episode_claims.resolved_claims_for(media_file)
+    assert not {"edition", "frame_size", "re_release", "remux", "hybrid"} & set(
+        resolved
+    )
+
+
+def test_a_switched_off_category_is_still_settable_by_hand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Switching a category off means "do not read this from the filename",
+    not "this release cannot have one" -- so the column stays editable, the
+    way the pack combo stays selectable."""
+    media_file = Path("Show.S01E01.1080p.WEB-DL.x264-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={media_file: {"season": 1, "episode": 1}},
+    )
+    page.config.settings.series.claims.re_release = False
+    page.initializePage()
+
+    table = page.episode_claims.table
+    re_release_column = 1 + [k for k, _ in VALUE_CLAIMS].index("re_release")
+
+    assert table.item(0, re_release_column).flags() & Qt.ItemFlag.ItemIsEditable
+
+
+def test_streaming_service_is_detected_per_episode_despite_the_master_switch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The documented asymmetry, pinned so it stays deliberate: service has
+    no switch because nothing competes with it, and the settings tooltip
+    says so. It is the one column the claim switches never gate."""
+    media_file = Path("Show.S01E01.1080p.AMZN.WEB-DL.x264-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path,
+        monkeypatch,
+        episode_map={media_file: {"season": 1, "episode": 1}},
+    )
+    page.config.settings.series.claims.enabled = False
+
+    page.initializePage()
+
+    claims = page.episode_claims.resolved_claims_for(media_file)
+    assert claims["streaming_service"] == "AMZN"
+
+
+def _remux_index(page: RenameEncodeSeries, row: int = 0):
+    table = page.episode_claims.table
+    column = 1 + len(VALUE_CLAIMS)
+    return table.model().index(row, column)
+
+
+def test_clicking_a_remux_cell_toggles_it_both_ways(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression guard: `index.data(CheckStateRole)` returns a plain int and
+    PySide6 enums do not compare equal to ints, so `data(...) ==
+    Qt.CheckState.Checked` was always False. The delegate therefore painted
+    every box empty and read every cell as unchecked, which turned toggling
+    off into a no-op and made bulk apply look broken."""
+    media_file = Path("Show.S01E01.1080p.BluRay.x264-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path, monkeypatch, episode_map={media_file: {"season": 1, "episode": 1}}
+    )
+    page.initializePage()
+    claims = page.episode_claims
+    model = claims.table.model()
+    index = _remux_index(page)
+
+    model.setData(index, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+    assert claims.resolved_claims_for(media_file)["remux"] == "REMUX"
+
+    model.setData(index, Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+    assert claims.resolved_claims_for(media_file)["remux"] == ""
+
+
+def test_the_delegate_reads_the_check_state_it_is_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """What the delegate paints has to follow the model. This asserts the
+    int/enum conversion directly, since a wrong answer here is invisible in
+    every other test -- the data is right, only the pixels are wrong."""
+    media_file = Path("Show.S01E01.1080p.BluRay.REMUX.AVC-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path, monkeypatch, episode_map={media_file: {"season": 1, "episode": 1}}
+    )
+    page.initializePage()
+
+    assert _is_checked(_remux_index(page)) is True
+
+    page.episode_claims.apply_to_all("remux", "")
+
+    assert _is_checked(_remux_index(page)) is False
+
+
+def test_pack_level_apply_to_all_reaches_the_remux_column(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    page.remux_checkbox.setChecked(True)
+
+    page._apply_claim_to_all("remux")  # pyright: ignore[reportPrivateUsage]
+
+    claims = page.episode_claims
+    for media_file in page.context.media_input.file_list:
+        assert claims.resolved_claims_for(media_file)["remux"] == "REMUX"
+    assert _is_checked(_remux_index(page, 0))
+    assert _is_checked(_remux_index(page, 1))
+
+
+def test_a_checkbox_cell_never_fills_with_the_selection_colour(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On this palette `highlight()` is the exact colour the checkbox
+    indicator is drawn in, so a selected cell painted the box out of
+    existence. The episode name column solves it by not being selectable;
+    these do the same, and clicking still toggles because `editorEvent`
+    reaches enabled items whether or not they can be selected."""
+    media_file = Path("Show.S01E01.1080p.BluRay.x264-GRP.mkv")
+    page = _make_series_rename_page(
+        tmp_path, monkeypatch, episode_map={media_file: {"season": 1, "episode": 1}}
+    )
+    page.initializePage()
+    table = page.episode_claims.table
+
+    for offset in range(2):
+        item = table.item(0, 1 + len(VALUE_CLAIMS) + offset)
+        assert not item.flags() & Qt.ItemFlag.ItemIsSelectable
+        assert item.flags() & Qt.ItemFlag.ItemIsUserCheckable
+
+    # still togglable through the model, which is what a click drives
+    index = _remux_index(page)
+    table.model().setData(index, Qt.CheckState.Checked, Qt.ItemDataRole.CheckStateRole)
+    assert page.episode_claims.resolved_claims_for(media_file)["remux"] == "REMUX"
+
+
+def test_a_narrow_window_scrolls_rather_than_crushing_the_episode_column(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The episode name is the only column that stretches, so with no floor
+    it absorbs every pixel the claim columns need and collapses to a sliver
+    before anything else gives. It floors instead, and the overflow becomes
+    the table's own scroll bar -- under the table, where the problem is,
+    rather than the wizard's at the bottom of the window."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    table = page.episode_claims.table
+
+    page.show()
+    try:
+        # the column is fitted from the viewport width, which only settles
+        # once the layout has actually run
+        page.resize(1600, 700)
+        QTest.qWait(1)
+        wide = table.columnWidth(0)
+
+        page.resize(700, 700)
+        QTest.qWait(1)
+        narrow = table.columnWidth(0)
+
+        assert wide > narrow, "the episode column should stretch when there is room"
+        assert narrow >= 200, "and stop shrinking before it becomes unreadable"
+        assert all(table.columnWidth(c) > 0 for c in range(table.columnCount())), (
+            "no column may be squeezed out of existence"
+        )
+        assert table.horizontalScrollBar().isVisible(), (
+            "the overflow belongs to the table, not to the page"
+        )
+    finally:
+        page.hide()
+
+
+def test_the_episode_column_fills_on_open_without_a_resize(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fitting from the widget's own `resizeEvent` read a viewport that had
+    not been laid out yet, so the column opened at its floor and only found
+    its width once the user dragged the window. The viewport's own resize is
+    the event that knows the answer."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    page.resize(1600, 800)
+    page.show()
+    try:
+        QTest.qWait(1)
+        table = page.episode_claims.table
+
+        assert table.columnWidth(0) > 400, "should fill, not sit at its floor"
+        assert not table.horizontalScrollBar().isVisible()
+    finally:
+        page.hide()
+
+
+def test_the_scroll_bar_does_not_oscillate_across_the_threshold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fitting from a stale viewport width set a column wrong by exactly the
+    delta, which the next event corrected -- during a drag that is a scroll
+    bar blinking on and off. Sweeping the threshold must cross it once."""
+    page = _two_episode_page(tmp_path, monkeypatch)
+    page.initializePage()
+    page.resize(1150, 800)
+    page.show()
+    try:
+        QTest.qWait(1)
+        table = page.episode_claims.table
+        seen: list[bool] = []
+        for width in range(1150, 950, -10):
+            page.resize(width, 800)
+            QTest.qWait(1)
+            seen.append(table.horizontalScrollBar().isVisible())
+
+        transitions = sum(a != b for a, b in zip(seen, seen[1:], strict=False))
+        assert transitions <= 1, f"scroll bar flickered: {seen}"
+    finally:
+        page.hide()
+
+
+def test_every_per_file_claim_has_a_column() -> None:
+    """The table's columns and the resolver's keys are written out
+    separately, so adding a field to `FilenameClaims` would otherwise give it
+    a resolved value with nowhere on screen to set it."""
+    assert set(CLAIM_COLUMNS) == PER_FILE_CLAIM_KEYS

@@ -44,6 +44,7 @@ def _make_movie_rename_page(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     file_path: Path = Path("Movie.2020.mkv"),
+    file_list: list[Path] | None = None,
 ) -> RenameEncode:
     monkeypatch.setattr(
         "src.config.config.FindDependencies.update_dependencies",
@@ -55,7 +56,7 @@ def _make_movie_rename_page(
     media_input = MediaInputPayload(
         input_path=Path("Movie Folder"),
         media_type=MediaType.MOVIE,
-        file_list=[file_path],
+        file_list=file_list if file_list is not None else [file_path],
     )
     media_search = MediaSearchPayload(media_type=MediaType.MOVIE, title="Movie Title")
     context = ProcessingContext(media_input=media_input, media_search=media_search)
@@ -151,6 +152,27 @@ def test_hybrid_is_pre_ticked_from_the_filename(
     page.initializePage()
 
     assert page.hybrid_checkbox.isChecked() is True
+
+
+def test_extras_in_the_folder_do_not_erase_the_films_claims(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A movie's file_list can hold more than one file: the input page has no
+    media-type branch, so a folder with an Extras subfolder yields several
+    videos. The page pre-fills from the film alone but re-detected across the
+    whole list under the pack-agreement rule, so switching Quality to a disc
+    source silently cleared the REMUX tick the film had earned."""
+    page = _make_movie_rename_page(
+        tmp_path,
+        monkeypatch,
+        file_list=[
+            Path("Movie.2024.1080p.BluRay.REMUX.AVC-GRP.mkv"),
+            Path("Deleted-Scenes.mkv"),
+            Path("Bloopers.mkv"),
+        ],
+    )
+
+    assert page._detected_claims().remux == "REMUX"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_claims_are_pre_filled_from_the_filename(

@@ -3,6 +3,7 @@ from pathlib import Path
 from src.backend.rename_encode import RenameEncodeBackEnd
 from src.backend.token_replacer import TokenReplacer
 from src.backend.tokens import FileToken
+from src.backend.utils.filename_claims import PER_FILE_CLAIM_KEYS
 from src.config.models import DynamicRangeSettings
 from src.enums.multi_episode_style import MultiEpisodeStyle
 from src.enums.series import EpisodeFormat
@@ -46,12 +47,14 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             user_tokens: User-defined tokens
             episode_format: Episode format (Standard, Daily, Anime)
             multi_episode_style: How multi-episode spans render in {episode_number}
-            file_claims: Claims this episode's own filename carries, applied
-                beneath the pack-wide overrides. A pack where one episode is
-                a REPACK agrees on nothing, so no control can carry that
-                claim -- but the episode still deserves its marker. A value
-                the user set wins, because these fill gaps rather than
-                overrule choices.
+            file_claims: This episode's resolved claims, from
+                `resolve_file_claims`. The pack's own claims are stripped
+                before these are applied: the pack and its files are
+                separate surfaces, so a pack flagged REPACK says nothing
+                about any one episode, and an episode flagged REPACK says
+                nothing about the pack. Everything else the user overrode
+                (source, audio codec, the group tag) is not a per-file
+                claim and still reaches the filename.
             season_end: Highest season number in a multi-season pack, for {season_number}
                 range rendering. None (or equal to season_num) keeps single-season output.
 
@@ -70,7 +73,12 @@ class RenameEncodeSeriesBackEnd(RenameEncodeBackEnd):
             unfilled_token_mode=UnfilledTokenRemoval.TOKEN_ONLY,
             title_clean_rules=title_clean_rules,
             video_dynamic_range=video_dynamic_range,
-            override_tokens={**(file_claims or {}), **(self.override_tokens or {})},
+            override_tokens={
+                k: v
+                for k, v in (self.override_tokens or {}).items()
+                if k not in PER_FILE_CLAIM_KEYS
+            }
+            | (file_claims or {}),
             user_tokens=user_tokens,
             season_number=season_num,
             season_end=season_end,

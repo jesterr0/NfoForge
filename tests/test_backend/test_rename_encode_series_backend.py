@@ -76,6 +76,60 @@ def test_series_folder_renamer_renders_multi_season_range() -> None:
     assert result == Path("S01-S05")
 
 
+def test_the_pack_folder_ignores_what_the_episodes_claim() -> None:
+    """The other half of the split. A pack assembled from individually
+    repacked episodes is itself a first release, so a REPACK sitting in the
+    episode filenames must not reach the folder -- and through the folder,
+    the torrent name and the release title."""
+    repacked = Path("Show.S01E02.REPACK.1080p.WEB-DL-GRP.mkv")
+    payload = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[Path("Show.S01E01.1080p.WEB-DL-GRP.mkv"), repacked],
+    )
+    backend = RenameEncodeSeriesBackEnd()
+
+    result = backend.series_folder_renamer(
+        media_input_obj=payload,
+        token="S{season_number|zfill(2)} {re_release}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+        media_search_payload=_empty_series_search(),
+        season_num=1,
+        title_clean_rules=None,
+        video_dynamic_range=None,
+        user_tokens=None,
+        season_end=1,
+    )
+
+    assert result == Path("S01")
+
+
+def test_the_pack_folder_carries_the_packs_own_claim() -> None:
+    """Independence runs both ways: a pack the user did flag renders it,
+    whatever the episodes say."""
+    payload = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[Path("Show.S01E01.1080p.WEB-DL-GRP.mkv")],
+    )
+    backend = RenameEncodeSeriesBackEnd()
+    backend.override_tokens["re_release"] = "REPACK"
+
+    result = backend.series_folder_renamer(
+        media_input_obj=payload,
+        token="S{season_number|zfill(2)} {re_release}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+        media_search_payload=_empty_series_search(),
+        season_num=1,
+        title_clean_rules=None,
+        video_dynamic_range=None,
+        user_tokens=None,
+        season_end=1,
+    )
+
+    assert result == Path("S01.REPACK")
+
+
 def test_series_folder_renamer_single_season_includes_title() -> None:
     backend = RenameEncodeSeriesBackEnd()
     result = backend.series_folder_renamer(
@@ -446,9 +500,10 @@ def test_a_lone_repack_still_reaches_that_episodes_filename() -> None:
     assert render(second_file, {"re_release": "REPACK"}) == Path("REPACK.GRP.mkv")
 
 
-def test_a_pack_wide_choice_wins_over_the_files_own_claim() -> None:
-    """File claims fill gaps; they do not overrule a decision. A user who
-    cleared the control must not have the claim handed back per file."""
+def test_a_pack_wide_claim_does_not_reach_an_episodes_filename() -> None:
+    """The pack and its files are separate surfaces. A pack flagged PROPER
+    says nothing about what any one episode is, so the pack's claim stops at
+    the folder, torrent and title -- the episode renders its own."""
     media_file = Path("Show.S01E02.REPACK.1080p.WEB-DL-GRP.mkv")
     payload = MediaInputPayload(
         input_path=Path("Show.S01"),
@@ -474,4 +529,37 @@ def test_a_pack_wide_choice_wins_over_the_files_own_claim() -> None:
         file_claims={"re_release": "REPACK", "release_group": "GRP"},
     )
 
-    assert result == Path("PROPER.GRP.mkv")
+    assert result == Path("REPACK.GRP.mkv")
+
+
+def test_a_pack_wide_override_that_is_not_a_claim_still_reaches_the_filename() -> None:
+    """Only claims are split by surface. Source, codecs and the group tag
+    describe the whole release, so they keep reaching every episode -- the
+    partition must not swallow them along with the claims."""
+    media_file = Path("Show.S01E02.1080p.WEB-DL-GRP.mkv")
+    payload = MediaInputPayload(
+        input_path=Path("Show.S01"),
+        media_type=MediaType.SERIES,
+        file_list=[media_file],
+    )
+    backend = RenameEncodeSeriesBackEnd()
+    backend.override_tokens["source"] = "BluRay"
+    backend.override_tokens["release_group"] = "GRP"
+
+    result = backend.series_renamer(
+        media_input_obj=payload,
+        media_file=media_file,
+        token="{source} {release_group}",  # noqa: S106 - NFO template token string used as test fixture data, not a credential
+        colon_replacement=ColonReplace.REPLACE_WITH_DASH,
+        media_search_payload=_empty_series_search(),
+        season_num=1,
+        episode_num=2,
+        title_clean_rules=None,
+        video_dynamic_range=None,
+        user_tokens=None,
+        episode_format=EpisodeFormat.STANDARD,
+        multi_episode_style=MultiEpisodeStyle.RANGE,
+        file_claims={},
+    )
+
+    assert result == Path("BluRay.GRP.mkv")
