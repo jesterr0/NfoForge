@@ -22,7 +22,7 @@ dissenting episode means the claim is not the pack's.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 import re
 
@@ -73,6 +73,42 @@ class FilenameClaims:
             )
             if value
         }
+
+
+PER_FILE_CLAIM_KEYS = frozenset(FilenameClaims.__dataclass_fields__) - {"release_group"}
+"""Claim keys an episode may answer for on its own.
+
+Every claim but the group, and the reason is that the key is shared. The
+`release_group` this module detects is a source group -- whoever made the
+input file. The override token of the same name is the user's group tag,
+the identity they publish under, and a release carries at most one of
+those. Resolving that key per episode would let one input file's source
+group reach the output as the release's tag, which is the conflation the
+two terms exist to keep apart.
+"""
+
+
+def resolve_file_claims(
+    detected: FilenameClaims,
+    edits: Mapping[str, str],
+) -> dict[str, str]:
+    """What one file renders, given its own name and the user's edits to it.
+
+    An edit wins; detection fills the gaps. Presence in `edits` is what
+    makes something an edit, so a value of "" is a decision ("this episode
+    is not a repack") and suppresses the claim, where an absent key falls
+    through to what the filename says. That is the same distinction
+    `as_override_tokens` draws, moved to where the user can act on it.
+
+    An undetected, unedited claim is omitted rather than sent as "", so it
+    stays a gap for whatever renders next rather than becoming an assertion
+    that the file has no such claim.
+    """
+    return {
+        key: edits[key] if key in edits else getattr(detected, key)
+        for key in PER_FILE_CLAIM_KEYS
+        if key in edits or getattr(detected, key)
+    }
 
 
 def _normalized_value(table: Sequence[RenameNormalization], stem: str) -> str:

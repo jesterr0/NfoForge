@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QScrollArea,
     QSizePolicy,
@@ -31,6 +32,7 @@ from src.backend.rename_encode_series import RenameEncodeSeriesBackEnd
 from src.backend.rename_files import RenamePlan, RenameResult
 from src.backend.tokens import FileToken, Tokens, TokenSelection, TokenType
 from src.backend.utils.filename_claims import (
+    PER_FILE_CLAIM_KEYS,
     FilenameClaims,
     detect_file_claims,
     detect_filename_claims,
@@ -54,6 +56,7 @@ from src.config.tv_tokens import (
 from src.context.processing_context import ProcessingContext
 from src.enums.rename import QualitySelection
 from src.frontend.custom_widgets.combo_box import CustomComboBox
+from src.frontend.custom_widgets.episode_claims_table import EpisodeClaimsTable
 from src.frontend.custom_widgets.rename_preview_dialog import RenamePreviewDialog
 from src.frontend.custom_widgets.token_table import TokenTable
 from src.frontend.global_signals import GSigs
@@ -121,15 +124,20 @@ class RenameEncodeSeries(BaseWizardPage):
 
         main_layout = QVBoxLayout(main_widget)
 
-        # Episode list section (shows count only)
-        episode_list_group = QGroupBox("Episodes to Rename")
+        # The episode half of the release. Built before the pack controls
+        # below, because each of those carries a menu that acts on it.
+        episode_list_group = QGroupBox("Episodes (filenames)")
         episode_list_layout = QVBoxLayout(episode_list_group)
 
-        self.episode_count_label = QLabel("No episodes loaded")
-        episode_list_layout.addWidget(self.episode_count_label)
+        self.episode_claims = EpisodeClaimsTable(
+            context.custom_edition_info, parent=self
+        )
+        self.episode_claims.claims_changed.connect(self.update_generated_name)
+        episode_list_layout.addWidget(self.episode_claims)
 
-        # Options section (similar to movies but adapted for series)
-        options_group_box = QGroupBox("Rename Options")
+        # The pack half. These drive the folder, the torrent and the release
+        # title, and nothing here reaches an episode filename.
+        options_group_box = QGroupBox("Pack (folder, torrent, release title)")
         options_group_box.setSizePolicy(
             QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Maximum
         )
@@ -251,7 +259,10 @@ class RenameEncodeSeries(BaseWizardPage):
         checkboxes_layout = QHBoxLayout()
         checkboxes_layout.setContentsMargins(0, 0, 0, 0)
         checkboxes_layout.addWidget(self.remux_checkbox)
+        checkboxes_layout.addWidget(self._bulk_button("remux"))
         checkboxes_layout.addWidget(self.hybrid_checkbox)
+        checkboxes_layout.addWidget(self._bulk_button("hybrid"))
+        checkboxes_layout.addStretch(1)
 
         # Release group
         release_group_lbl = QLabel("Release Group", self)
@@ -298,13 +309,19 @@ class RenameEncodeSeries(BaseWizardPage):
 
         # Layout options widgets
         options_layout.addWidget(edition_lbl, 0, 0)
-        options_layout.addWidget(self.edition_combo, 1, 0)
+        options_layout.addLayout(self._claim_row(self.edition_combo, "edition"), 1, 0)
         options_layout.addWidget(frame_size_lbl, 0, 1)
-        options_layout.addWidget(self.frame_size_combo, 1, 1)
+        options_layout.addLayout(
+            self._claim_row(self.frame_size_combo, "frame_size"), 1, 1
+        )
         options_layout.addWidget(localization_lbl, 0, 2)
-        options_layout.addWidget(self.localization_combo, 1, 2)
+        options_layout.addLayout(
+            self._claim_row(self.localization_combo, "localization"), 1, 2
+        )
         options_layout.addWidget(re_release_lbl, 2, 0)
-        options_layout.addWidget(self.re_release_combo, 3, 0)
+        options_layout.addLayout(
+            self._claim_row(self.re_release_combo, "re_release"), 3, 0
+        )
         options_layout.addWidget(self.repack_reason_lbl, 2, 1)
         options_layout.addWidget(self.repack_reason_combo, 3, 1, 1, 2)
         options_layout.addWidget(self.proper_reason_lbl, 2, 1)
@@ -312,7 +329,9 @@ class RenameEncodeSeries(BaseWizardPage):
         options_layout.addWidget(quality_combo_lbl, 4, 0)
         options_layout.addWidget(self.quality_combo, 5, 0)
         options_layout.addWidget(service_combo_lbl, 4, 1)
-        options_layout.addWidget(self.service_combo, 5, 1)
+        options_layout.addLayout(
+            self._claim_row(self.service_combo, "streaming_service"), 5, 1
+        )
         options_layout.addLayout(checkboxes_layout, 6, 0, 1, 1)
         options_layout.addWidget(build_h_line((6, 4, 6, 4)), 18, 0, 1, 3)
         options_layout.addWidget(release_group_lbl, 19, 0)
@@ -324,8 +343,22 @@ class RenameEncodeSeries(BaseWizardPage):
         self.options_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         self.options_scroll_area.setWidget(options_widget)
 
+        # The pack's controls produce one string and nothing on this page
+        # showed it. Cheap to render, unlike the episode names: one call
+        # against the folder token rather than one per episode.
+        pack_name_lbl = QLabel("Pack Name", self)
+        pack_name_lbl.setToolTip(
+            "The renamed folder, which the .torrent is also named after"
+        )
+        self.pack_name_preview = QLineEdit(self)
+        self.pack_name_preview.setReadOnly(True)
+        self.pack_name_preview.setPlaceholderText("No pack name generated")
+        self.pack_name_preview.setToolTip(pack_name_lbl.toolTip())
+
         group_box_layout = QVBoxLayout(options_group_box)
         group_box_layout.setContentsMargins(0, 0, 0, 0)
+        group_box_layout.addWidget(pack_name_lbl)
+        group_box_layout.addWidget(self.pack_name_preview)
         group_box_layout.addWidget(self.options_scroll_area)
 
         # Add all sections to main layout
@@ -337,6 +370,53 @@ class RenameEncodeSeries(BaseWizardPage):
         page_layout = QVBoxLayout(self)
         page_layout.addWidget(main_scroll)
 
+    # -- pack controls acting on the episode table ---------------------
+    def _claim_row(self, control: QWidget, key: str) -> QHBoxLayout:
+        """A pack control paired with the menu that reaches the episodes.
+
+        The menu sits here rather than on the table's column header because
+        both its actions need a pack value to work from: "apply to all"
+        copies this control, and the control is what the user has just set
+        when they reach for it.
+        """
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(control)
+        layout.addWidget(self._bulk_button(key))
+        return layout
+
+    def _bulk_button(self, key: str) -> QToolButton:
+        """The menu that lets a pack control reach every episode.
+
+        The two surfaces are otherwise independent, which makes the common
+        case -- the whole release is a REPACK -- one edit per episode. This
+        is the shortcut, and the way back from it.
+        """
+        button = QToolButton(self)
+        button.setText("...")
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        button.setToolTip("Apply this to every episode, or undo doing so")
+        menu = QMenu(button)
+        menu.addAction("Apply to all episodes", partial(self._apply_claim_to_all, key))
+        menu.addAction(
+            "Revert episodes to detected",
+            partial(self.episode_claims.revert_to_detected, key),
+        )
+        button.setMenu(menu)
+        return button
+
+    def _apply_claim_to_all(self, key: str) -> None:
+        """Copy the pack's answer for `key` onto every episode.
+
+        Read from `override_tokens` rather than from the widgets. Every
+        claim control already writes its value there through
+        `_update_override_tokens`, so asking the widgets again would be a
+        second answer to the same question, free to drift from the first.
+        An absent key means the control is empty, which applies as a
+        deliberate blank.
+        """
+        self.episode_claims.apply_to_all(key, self.backend.override_tokens.get(key, ""))
+
     def initializePage(self) -> None:
         """Initialize the page with series data and load episode batch."""
         media_files = self.context.media_input.file_list
@@ -345,17 +425,13 @@ class RenameEncodeSeries(BaseWizardPage):
         if not media_files:
             raise FileNotFoundError("No files found in media input payload")
 
-        # Display episode count only
-        episode_count = len(media_files)
-        self.episode_count_label.setText(
-            f"Found {episode_count} episode{'s' if episode_count != 1 else ''} to rename"
-        )
-
-        # Only infer a pack-wide override when every episode agrees. File-specific
-        # attributes are otherwise resolved from each active file during rendering.
+        # The pack controls still read the pack: a claim every episode agrees
+        # on is the release's claim. What they no longer do is speak for the
+        # episodes, which now seed themselves from their own filenames.
         claims = self._pre_load_attribute_combos(
             [Path(path).stem for path in media_files]
         )
+        self._load_episode_claims()
 
         apply_plugin_override(
             self.context.shared_data.dynamic_data,
@@ -445,10 +521,6 @@ class RenameEncodeSeries(BaseWizardPage):
 
         rename_map: dict[Path, Path] = {}
         failed_files: list[Path] = []
-        # Detected once for the pack rather than per episode: the per-file
-        # lookup below only needs to know which categories the pack agrees
-        # on, and guessit is not cheap.
-        pack_overrides = self._detected_claims().as_override_tokens()
         for (
             media_file,
             media_data,
@@ -456,7 +528,7 @@ class RenameEncodeSeries(BaseWizardPage):
             renamed_file = self.backend.series_renamer(
                 media_input_obj=self.context.media_input,
                 media_file=media_file,
-                file_claims=self._file_claim_overrides(media_file, pack_overrides),
+                file_claims=self._file_claim_overrides(media_file),
                 token=token,
                 colon_replacement=self.config.settings.series.filename_colon_replace,
                 media_search_payload=self.context.media_search,
@@ -700,23 +772,51 @@ class RenameEncodeSeries(BaseWizardPage):
         self.hybrid_checkbox.setChecked(bool(claims.hybrid))
         return claims
 
-    def _file_claim_overrides(
-        self, media_file: Path, pack_overrides: dict[str, str]
-    ) -> dict[str, str]:
-        """This episode's own claims, for categories the pack does not share.
+    def _load_episode_claims(self) -> None:
+        """Seed the episode table from each file's own name.
 
-        Where every file agrees, the control carries the claim and the user
-        can clear it; re-supplying it per file would quietly undo that.
-        Where the files disagree there is no control value to clear -- one
-        combo cannot say "REPACK, but only episode 2" -- so the episode's
-        own filename is the best answer available.
+        Ordered by season then episode rather than by however the files came
+        off disk: at several hundred rows across several seasons, filesystem
+        order is not how anyone reads a pack. The mapping is the source
+        because it is what `validatePage` iterates, so no row can exist
+        without somewhere to rename to.
         """
-        own = detect_file_claims(
-            media_file.stem,
-            self.config.settings.series.claims,
-            self.context.custom_edition_info,
-        ).as_override_tokens()
-        return {k: v for k, v in own.items() if k not in pack_overrides}
+        episode_map = self.context.media_input.series_episode_map or {}
+        ordered = sorted(
+            episode_map.items(),
+            key=lambda item: (
+                item[1].get("season") or 0,
+                item[1].get("episode") or 0,
+                item[0].name,
+            ),
+        )
+        self.episode_claims.load(
+            [
+                (
+                    media_file,
+                    detect_file_claims(
+                        media_file.stem,
+                        self.config.settings.series.claims,
+                        self.context.custom_edition_info,
+                    ),
+                )
+                for media_file, _ in ordered
+            ]
+        )
+
+    def _file_claim_overrides(self, media_file: Path) -> dict[str, str]:
+        """This episode's claims, as the table currently holds them.
+
+        The pack's claims are not consulted. A pack flagged REPACK says
+        nothing about any one episode, and this is the episode's answer:
+        what its filename claims, with whatever the user typed over the top.
+
+        The table is the only source. It and every caller here are built
+        from `series_episode_map`, so a file without a row cannot arise; a
+        detect-on-the-spot fallback for that case would run guessit again
+        for every claim-free episode, which is most of a pack.
+        """
+        return self.episode_claims.resolved_claims_for(media_file)
 
     def _detected_claims(self) -> FilenameClaims:
         return detect_filename_claims(
@@ -870,7 +970,9 @@ class RenameEncodeSeries(BaseWizardPage):
     def _update_quality_combo(self, _: int) -> None:
         cur_text = self.quality_combo.currentText()
 
-        # If not using DVD or Bluray disable REMUX
+        # If not using DVD or Bluray disable REMUX. The rule is about the
+        # release rather than the control, so it reaches the episode column
+        # too -- a per-file REMUX on a web pack is not a thing.
         if cur_text:
             if QualitySelection(cur_text) not in {
                 QualitySelection.DVD,
@@ -879,11 +981,14 @@ class RenameEncodeSeries(BaseWizardPage):
             }:
                 self.remux_checkbox.setChecked(False)
                 self.remux_checkbox.setEnabled(False)
+                self.episode_claims.set_claim_enabled("remux", False)
             else:
                 self.remux_checkbox.setEnabled(True)
+                self.episode_claims.set_claim_enabled("remux", True)
                 self._auto_check_remux_checkbox()
         else:
             self.remux_checkbox.setEnabled(True)
+            self.episode_claims.set_claim_enabled("remux", True)
             self._auto_check_remux_checkbox()
 
         self._sync_service_combo_to_quality(cur_text)
@@ -900,6 +1005,7 @@ class RenameEncodeSeries(BaseWizardPage):
         """
         if not quality_text:
             self.service_combo.setEnabled(True)
+            self.episode_claims.set_claim_enabled("streaming_service", True)
             return
 
         is_web = QualitySelection(quality_text) in {
@@ -909,6 +1015,7 @@ class RenameEncodeSeries(BaseWizardPage):
         if not is_web:
             self.service_combo.setCurrentIndex(0)
         self.service_combo.setEnabled(is_web)
+        self.episode_claims.set_claim_enabled("streaming_service", is_web)
 
     @Slot(int)
     def _update_service_combo(self, _: int) -> None:
@@ -936,6 +1043,31 @@ class RenameEncodeSeries(BaseWizardPage):
         else:
             self.backend.override_tokens[k] = v
         self.update_generated_name()
+
+    def _update_pack_name_preview(self, user_tokens: dict[str, str]) -> None:
+        """Render the folder name the pack controls currently produce.
+
+        The same call `validatePage` makes, so what is shown is what will be
+        written. A pack with no resolvable season has no folder name to
+        render, which is the one case the field goes empty.
+        """
+        release_info = build_series_release_info(self.context.media_input)
+        if release_info.season is None:
+            self.pack_name_preview.clear()
+            return
+
+        folder_path = self.backend.series_folder_renamer(
+            media_input_obj=self.context.media_input,
+            token=self.config.settings.series.season_folder_token,
+            colon_replacement=self.config.settings.series.filename_colon_replace,
+            media_search_payload=self.context.media_search,
+            title_clean_rules=self.config.settings.global_management.title_clean_rules,
+            video_dynamic_range=self.config.settings.global_management.video_dynamic_range,
+            user_tokens=user_tokens,
+            season_num=release_info.season,
+            season_end=release_info.season_end,
+        )
+        self.pack_name_preview.setText(folder_path.name if folder_path else "")
 
     @Slot(int)
     def update_generated_name(self, _: int | None = None) -> None:
@@ -973,12 +1105,15 @@ class RenameEncodeSeries(BaseWizardPage):
             if TokenSelection(t) is TokenSelection.FILE_TOKEN
         }
 
+        # Before the episode render, not after: both renderers assign
+        # `backend.token_replacer`, and the override grid below reads it
+        # expecting the episode's tokens rather than the folder's.
+        self._update_pack_name_preview(user_tokens)
+
         get_file_name = self.backend.series_renamer(
             media_input_obj=self.context.media_input,
             media_file=representative_path,
-            file_claims=self._file_claim_overrides(
-                representative_path, self._detected_claims().as_override_tokens()
-            ),
+            file_claims=self._file_claim_overrides(representative_path),
             token=token,
             colon_replacement=self.config.settings.series.filename_colon_replace,
             media_search_payload=self.context.media_search,
@@ -1002,10 +1137,16 @@ class RenameEncodeSeries(BaseWizardPage):
                 r"\{(?:[:][^:}]+:)*([a-z_]+)(?:\|[^:}]*)?(?:[:][^:}]+:)*\}", token
             )
             sort_token_data = self.backend.token_replacer.token_data.get_dict()  # pyright: ignore[reportAttributeAccessIssue]
+            # Claims are excluded: the episode table owns them now. This grid
+            # shows one representative episode's values but writes pack-wide,
+            # so leaving a claim here would be a second control for the same
+            # value, disagreeing with the first about which surface it means.
             sorted_token_data = {
                 k: sort_token_data[k]
                 for k in sort_token_order
-                if k in sort_token_data and sort_token_data[k]
+                if k in sort_token_data
+                and sort_token_data[k]
+                and k not in PER_FILE_CLAIM_KEYS
             }
             self.rename_token_control.populate_table(sorted_token_data)
 
