@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Independent pack-level and per-episode release claims.
+- Per-episode editing for edition, resolution, localization, re-release, remux, hybrid, and streaming service claims.
+- Bulk actions to apply pack claims to all episodes or restore detected filename values.
+- Season pack folder/torrent name preview.
+- Filename-claim logic with explicit override/clear behavior.
+
+### Changed
+
+- Pack metadata no longer automatically cascades into episode filenames.
+
+### Fixed
+
+- Fixed movie claim detection being incorrectly overridden by files in folders such as Extras.
+
 ## [1.1.12] - 2026-08-31
 
 ### Changed
