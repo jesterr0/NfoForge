@@ -13,6 +13,7 @@
 ### Changed
 
 - Pack metadata no longer automatically cascades into episode filenames.
+- Updated dependency platformdirs
 
 ### Fixed
 
