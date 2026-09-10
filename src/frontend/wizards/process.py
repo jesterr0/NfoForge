@@ -457,7 +457,7 @@ class ProcessPage(BaseWizardPage):
         self.save_job_btn.setToolTip(
             "Saves this configured upload so it can be loaded and processed later"
         )
-        self.save_job_btn.clicked.connect(self._save_job)
+        self.save_job_btn.clicked.connect(self._on_save_job_clicked)
 
         self.prepare_job_btn = QPushButton("Prepare && Save Job", self)
         self.prepare_job_btn.setToolTip(
@@ -530,6 +530,17 @@ class ProcessPage(BaseWizardPage):
         )
 
     @Slot()
+    def _on_save_job_clicked(self) -> None:
+        """Button entry point for `_save_job`, which takes an argument.
+
+        `clicked(bool)` hands its `checked` flag to any slot that can accept
+        one, `@Slot()` included, so wiring the button straight to `_save_job`
+        lands `False` in `keep_trackers` -- a job narrowed to a tracker set
+        that is not a set. Anything connected to a signal goes through here
+        so the only callers passing `keep_trackers` are the ones that mean to.
+        """
+        self._save_job()
+
     def _save_job(self, keep_trackers: set[TrackerSelection] | None = None) -> None:
         """Persist this configured run so it can be processed later.
 

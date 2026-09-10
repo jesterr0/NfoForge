@@ -19,6 +19,7 @@ from src.config.config import ConfigManager
 from src.config.dependencies import unavailable_screenshot_dependency
 from src.enums.dependencies import Dependencies
 from src.enums.settings_window import SettingsTabs
+from src.exceptions import ConfigError
 from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.about import AboutTab
 from src.frontend.stacked_windows.settings.base import BaseSettings
@@ -176,12 +177,16 @@ class Settings(QWidget):
             dir=str(self.config.paths.user_configs),
         )
         if save_cfg_path:
-            self.config.save_as(Path(save_cfg_path))
+            if not self._write_config(Path(save_cfg_path)):
+                return
             self.general_settings_content.load_selected_configs()
             self._apply_settings()
 
     def _apply_settings(self) -> None:
         if not self._pending_screenshot_dependencies_are_valid():
+            return
+
+        if not self._pending_client_settings_are_valid():
             return
 
         self._save_approved_counter = 0
@@ -230,15 +235,64 @@ class Settings(QWidget):
         self.tab_widget.setCurrentWidget(self.dependencies_settings_content)
         return False
 
+    def _pending_client_settings_are_valid(self) -> bool:
+        """Refuse an apply the config layer would reject on write.
+
+        Checked before any tab applies, because the save at the end of an
+        apply cannot un-apply them: a value `validate_settings` rejects used
+        to abort it with every pending change already in the live config,
+        nothing on disk, and an unhandled exception naming a TOML key.
+        """
+        error = self.clients_settings_content.validation_error()
+        if error is None:
+            return True
+
+        QMessageBox.critical(
+            self,
+            "Client Error",
+            f"{error}\n\nFix this in Clients before applying these settings.",
+        )
+        self.tab_widget.setCurrentWidget(self.clients_settings_content)
+        return False
+
     @Slot()
     def _update_applied_settings_counter(self) -> None:
         self._save_approved_counter += 1
         if self._save_approved_counter == len(self.settings_map):
             self._save_all_settings()
 
+    def _write_config(self, save_path: Path | None = None) -> bool:
+        """Write the config, reporting a failed write instead of raising.
+
+        `ConfigManager.save` converts everything that can go wrong -- a denied
+        path, a full disk, a value it refuses -- into `ConfigError`, and both
+        callers are Qt slots, where that escapes to the global handler as an
+        unhandled exception traceback. The pending values are already in the
+        live config by the time the write runs, so the session keeps working
+        on them; what the user cannot otherwise tell is that none of it
+        reached disk.
+        """
+        try:
+            if save_path is None:
+                self.config.save()
+            else:
+                self.config.save_as(save_path)
+        except ConfigError as error:
+            QMessageBox.critical(
+                self,
+                "Save Failed",
+                f"Your settings could not be written to disk:\n\n{error}\n\n"
+                "They are applied for this session, but closing NfoForge now "
+                "would lose them.",
+            )
+            return False
+        return True
+
     def _save_all_settings(self) -> None:
         self._save_approved_counter = 0
-        self.config.save()
+        if not self._write_config():
+            return
+
         plugins_toggled = (
             self.config.settings.general.enable_plugins
             != self._enable_plugins_before_apply

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Slot
 
+from src.config.codec import TomlConfigCodec
 from src.config.config import ConfigManager
 from src.config.models import TorrentClientSettings
 from src.frontend.custom_widgets.client_settings import ClientSettingsWidget
@@ -68,6 +69,18 @@ class ClientsSettings(BaseSettings):
         )
         self._baseline_clients = copy.deepcopy(self.config.settings.torrent_clients)
         self.client_widget.load_from_config(self._working_config)
+
+    def validation_error(self) -> str | None:
+        """Pending client state the config layer would refuse to write.
+
+        Flushes the editors first: they hold the pending values until
+        `_save_settings` runs, and it is the working copy that gets checked,
+        never the live config.
+        """
+        self.client_widget.save_editor_settings()
+        return TomlConfigCodec.qbittorrent_save_path_error(
+            self._working_config.settings
+        )
 
     def _apply_working_client_changes(self) -> None:
         live_clients = self.config.settings.torrent_clients.by_selection()
