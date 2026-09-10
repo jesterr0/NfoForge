@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **Save Job** on the process page failed with "'bool' object is not iterable", every press, just after you had named the job. The button passed its own pressed state to the save as the set of trackers to keep, and the save died as soon as it read that set. Nothing was written and nothing was left behind. **Prepare && Save Job** and the offer to save the trackers a run could not upload were never affected.
+- Applying settings with qBittorrent's save location mode set to **Template** and the template left empty failed with a configuration error naming an internal config key. The check ran during the save at the end of an apply, so the window stayed open with your other changes applied in memory and nothing written to disk, and later saves in the same session kept failing until the field was filled in or NfoForge was restarted. Apply now says which field needs a value and takes you to **Clients**, leaving the rest of your changes alone.
+- Settings that cannot be written to disk -- a read-only location, a full disk, a path the system refuses -- now tell you so instead of failing with a configuration error. Apply leaves the settings window open so your values are still there to retry, and **Save As** stops at the failure rather than carrying on to apply settings it could not write.
+
 ## [1.1.13] - 2026-09-07
 
 ### Added
