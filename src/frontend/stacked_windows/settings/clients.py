@@ -73,10 +73,9 @@ class ClientsSettings(BaseSettings):
     def validation_error(self) -> str | None:
         """Pending client state the config layer would refuse to write.
 
-        The editors hold the pending values until `_save_settings` runs, so
-        they are flushed into the working copy first and that copy is what
-        gets checked -- never the live config, which must not see a value
-        that cannot be saved.
+        Flushes the editors first: they hold the pending values until
+        `_save_settings` runs, and it is the working copy that gets checked,
+        never the live config.
         """
         self.client_widget.save_editor_settings()
         return TomlConfigCodec.qbittorrent_save_path_error(

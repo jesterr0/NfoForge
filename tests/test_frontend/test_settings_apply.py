@@ -1,4 +1,4 @@
-"""Coverage for the checks Apply runs before any settings tab applies."""
+"""Coverage for the settings window's Apply path: its gates and its write."""
 
 from pathlib import Path
 from typing import cast
@@ -9,7 +9,9 @@ from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.enums.screen_shot_mode import ScreenShotMode
 from src.enums.torrent_client import QBittorrentSavePathMode, TorrentClientSelection
+from src.exceptions import ConfigError
 from src.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
+from src.frontend.global_signals import GSigs
 import src.frontend.stacked_windows.settings.settings as settings_module
 from src.frontend.stacked_windows.settings.settings import Settings
 from tests.repo_paths import DEFAULT_CONFIG_DIR
@@ -141,12 +143,8 @@ def test_template_save_path_mode_without_a_template_blocks_apply(
 ) -> None:
     """Apply must say what is wrong rather than fail the write.
 
-    `validate_settings` refuses a Template save path with no template, and it
-    runs inside the save at the *end* of an apply -- after every settings tab
-    has pushed its pending values into the live config. So the refusal reached
-    the user as an unhandled exception naming a TOML key, with nothing on disk
-    and a settings window still open on changes applied in memory only.
-    Blocking up front is what keeps the live config clean.
+    Pins the gate and what it protects: the live config stays clean, so the
+    refusal cannot strand an unsavable value there.
     """
     widget, manager = _make_settings(tmp_path, monkeypatch)
     editor = _qbittorrent_editor(widget)
@@ -193,3 +191,73 @@ def test_apply_accepts_a_template_save_path_that_has_a_template(
     assert not critical_calls
     assert live.save_path_mode is QBittorrentSavePathMode.TEMPLATE
     assert live.save_path_template == r"\\server\media\{title_exact}"
+
+
+def _refuse_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail every config write the way a denied path or a full disk does.
+
+    Patched at `ConfigManager.save`, where every failure becomes a
+    `ConfigError`, so `save_as` (which calls it) fails for real too.
+    """
+
+    def _raise(*args: object, **kwargs: object) -> None:
+        raise ConfigError("Error saving config file: Permission denied")
+
+    monkeypatch.setattr(ConfigManager, "save", _raise)
+
+
+def test_a_failed_write_is_reported_and_leaves_settings_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A write that cannot land must not close the window or crash.
+
+    Staying open is the point: every tab has already applied into the live
+    config, so closing would strand those values with nothing said.
+    """
+    widget, _ = _make_settings(tmp_path, monkeypatch)
+    critical_calls = _capture_criticals(monkeypatch)
+    _refuse_writes(monkeypatch)
+
+    closed: list[int] = []
+
+    def _on_close() -> None:
+        closed.append(1)
+
+    GSigs().settings_close.connect(_on_close)
+    try:
+        widget._save_all_settings()
+    finally:
+        GSigs().settings_close.disconnect(_on_close)
+
+    assert len(critical_calls) == 1
+    assert "Permission denied" in str(critical_calls[0][2])
+    assert not closed
+
+
+def test_a_save_as_that_cannot_be_written_does_not_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Save As stops at the failed write rather than applying on top of it.
+
+    `save_as` sets the profile it is writing before writing it, so carrying on
+    into `_apply_settings` would re-save everything under the name that failed.
+    """
+    widget, _ = _make_settings(tmp_path, monkeypatch)
+    target = tmp_path / "user" / "new-profile.toml"
+    monkeypatch.setattr(
+        settings_module.QFileDialog,
+        "getSaveFileName",
+        lambda *args, **kwargs: (str(target), ""),
+    )
+    critical_calls = _capture_criticals(monkeypatch)
+    _refuse_writes(monkeypatch)
+
+    applied: list[int] = []
+    monkeypatch.setattr(Settings, "_apply_settings", lambda self: applied.append(1))
+
+    widget._save_new_config()
+
+    assert len(critical_calls) == 1
+    assert "Permission denied" in str(critical_calls[0][2])
+    assert not applied
+    assert not target.exists()

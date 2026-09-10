@@ -238,12 +238,10 @@ class Settings(QWidget):
     def _pending_client_settings_are_valid(self) -> bool:
         """Refuse an apply the config layer would reject on write.
 
-        Checked here, before any tab has applied anything, because the save
-        that `_save_all_settings` ends with runs only once every tab in
-        `settings_map` has reported in: a value `validate_settings` rejects
-        aborts that save with every pending change already in the live config
-        and nothing on disk, which reached the user as an unhandled exception
-        naming a TOML key.
+        Checked before any tab applies, because the save at the end of an
+        apply cannot un-apply them: a value `validate_settings` rejects used
+        to abort it with every pending change already in the live config,
+        nothing on disk, and an unhandled exception naming a TOML key.
         """
         error = self.clients_settings_content.validation_error()
         if error is None:

@@ -114,12 +114,8 @@ class TomlConfigCodec:
     def qbittorrent_save_path_error(cls, config: AppConfig) -> str | None:
         """Why the qBittorrent save path cannot be written, in plain words.
 
-        Shared with the settings window so the dialog that blocks Apply and
-        the `ConfigError` raised below cannot disagree about what counts as a
-        valid save path. The UI needs the reason before a write is attempted:
-        by the time `save` refuses a document, every settings tab has already
-        pushed its pending values into the live config and the only thing the
-        user sees is a failed save naming a TOML key.
+        Shared with the settings window so its dialog and the `ConfigError`
+        below cannot disagree about what a valid save path is.
         """
         qbit = config.torrent_clients.qbittorrent
         if (
