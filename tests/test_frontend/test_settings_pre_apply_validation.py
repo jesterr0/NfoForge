@@ -1,10 +1,15 @@
+"""Coverage for the checks Apply runs before any settings tab applies."""
+
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from src.config.config import ConfigManager
 from src.config.paths import ConfigPaths
 from src.enums.screen_shot_mode import ScreenShotMode
+from src.enums.torrent_client import QBittorrentSavePathMode, TorrentClientSelection
+from src.frontend.custom_widgets.client_listbox import QBittorrentClientEdit
 import src.frontend.stacked_windows.settings.settings as settings_module
 from src.frontend.stacked_windows.settings.settings import Settings
 from tests.repo_paths import DEFAULT_CONFIG_DIR
@@ -44,6 +49,17 @@ def _make_settings(
     return widget, manager
 
 
+def _capture_criticals(monkeypatch: pytest.MonkeyPatch) -> list[tuple[object, ...]]:
+    """Collect the args of every `QMessageBox.critical` the window raises."""
+    critical_calls: list[tuple[object, ...]] = []
+    monkeypatch.setattr(
+        settings_module.QMessageBox,
+        "critical",
+        lambda *args, **kwargs: critical_calls.append(args),
+    )
+    return critical_calls
+
+
 @pytest.mark.parametrize(
     ("mode", "dependency_widget", "config_attribute", "executable_name"),
     (
@@ -76,12 +92,7 @@ def test_apply_validates_current_mode_and_new_dependency_path(
     ]
     dependency_entry.setText(str(executable))
 
-    critical_calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr(
-        settings_module.QMessageBox,
-        "critical",
-        lambda *args, **kwargs: critical_calls.append(args),
-    )
+    critical_calls = _capture_criticals(monkeypatch)
 
     widget._apply_settings()
 
@@ -102,12 +113,7 @@ def test_invalid_pending_dependency_blocks_apply_without_discarding_draft(
     dependencies = widget.dependencies_settings_content
     dependencies.ffmpeg_widgets[2].setText(str(missing_ffmpeg))
 
-    critical_calls: list[tuple[object, ...]] = []
-    monkeypatch.setattr(
-        settings_module.QMessageBox,
-        "critical",
-        lambda *args, **kwargs: critical_calls.append(args),
-    )
+    critical_calls = _capture_criticals(monkeypatch)
 
     widget._apply_settings()
 
@@ -118,3 +124,72 @@ def test_invalid_pending_dependency_blocks_apply_without_discarding_draft(
     assert screenshots.ss_enabled_btn.isChecked() is True
     assert dependencies.ffmpeg_widgets[2].text() == str(missing_ffmpeg)
     assert widget.tab_widget.currentWidget() is dependencies
+
+
+def _qbittorrent_editor(widget: Settings) -> QBittorrentClientEdit:
+    """The pending qBittorrent editor behind the Clients tab."""
+    return cast(
+        QBittorrentClientEdit,
+        widget.clients_settings_content.client_widget._editor_map[
+            TorrentClientSelection.QBITTORRENT
+        ],
+    )
+
+
+def test_template_save_path_mode_without_a_template_blocks_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Apply must say what is wrong rather than fail the write.
+
+    `validate_settings` refuses a Template save path with no template, and it
+    runs inside the save at the *end* of an apply -- after every settings tab
+    has pushed its pending values into the live config. So the refusal reached
+    the user as an unhandled exception naming a TOML key, with nothing on disk
+    and a settings window still open on changes applied in memory only.
+    Blocking up front is what keeps the live config clean.
+    """
+    widget, manager = _make_settings(tmp_path, monkeypatch)
+    editor = _qbittorrent_editor(widget)
+    editor.save_path_mode.setCurrentIndex(
+        editor.save_path_mode.findData(QBittorrentSavePathMode.TEMPLATE.value)
+    )
+    # whitespace only, the case a `bool(text)` guard would wave through
+    editor.save_path_template.setText("   ")
+
+    critical_calls = _capture_criticals(monkeypatch)
+
+    widget._apply_settings()
+
+    live = manager.settings.torrent_clients.qbittorrent
+    assert len(critical_calls) == 1
+    assert "save location template" in str(critical_calls[0][2])
+    assert live.save_path_mode is QBittorrentSavePathMode.CLIENT_DEFAULT
+    assert widget.tab_widget.currentWidget() is widget.clients_settings_content
+    # the draft survives the refusal, so the fix is a keystroke away
+    assert editor.save_path_template.text() == "   "
+
+
+def test_apply_accepts_a_template_save_path_that_has_a_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard must only block what the config layer would actually reject.
+
+    Pins the other side of the check: Template mode with a template set
+    applies and persists, so a guard that fired on the mode alone -- or on an
+    unrelated section of the live config -- fails here.
+    """
+    widget, manager = _make_settings(tmp_path, monkeypatch)
+    editor = _qbittorrent_editor(widget)
+    editor.save_path_mode.setCurrentIndex(
+        editor.save_path_mode.findData(QBittorrentSavePathMode.TEMPLATE.value)
+    )
+    editor.save_path_template.setText(r"\\server\media\{title_exact}")
+
+    critical_calls = _capture_criticals(monkeypatch)
+
+    widget._apply_settings()
+
+    live = manager.settings.torrent_clients.qbittorrent
+    assert not critical_calls
+    assert live.save_path_mode is QBittorrentSavePathMode.TEMPLATE
+    assert live.save_path_template == r"\\server\media\{title_exact}"

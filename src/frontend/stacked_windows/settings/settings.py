@@ -184,6 +184,9 @@ class Settings(QWidget):
         if not self._pending_screenshot_dependencies_are_valid():
             return
 
+        if not self._pending_client_settings_are_valid():
+            return
+
         self._save_approved_counter = 0
         self._enable_plugins_before_apply = self.config.settings.general.enable_plugins
         self.general_settings_content.update_saved_settings.emit()
@@ -228,6 +231,28 @@ class Settings(QWidget):
             ),
         )
         self.tab_widget.setCurrentWidget(self.dependencies_settings_content)
+        return False
+
+    def _pending_client_settings_are_valid(self) -> bool:
+        """Refuse an apply the config layer would reject on write.
+
+        Checked here, before any tab has applied anything, because the save
+        that `_save_all_settings` ends with runs only once every tab in
+        `settings_map` has reported in: a value `validate_settings` rejects
+        aborts that save with every pending change already in the live config
+        and nothing on disk, which reached the user as an unhandled exception
+        naming a TOML key.
+        """
+        error = self.clients_settings_content.validation_error()
+        if error is None:
+            return True
+
+        QMessageBox.critical(
+            self,
+            "Client Error",
+            f"{error}\n\nFix this in Clients before applying these settings.",
+        )
+        self.tab_widget.setCurrentWidget(self.clients_settings_content)
         return False
 
     @Slot()

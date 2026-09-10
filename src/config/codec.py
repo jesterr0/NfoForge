@@ -110,13 +110,31 @@ class TomlConfigCodec:
     def dumps(document: Mapping[str, Any]) -> str:
         return tomlkit.dumps(document)
 
-    @staticmethod
-    def validate_settings(config: AppConfig) -> None:
+    @classmethod
+    def qbittorrent_save_path_error(cls, config: AppConfig) -> str | None:
+        """Why the qBittorrent save path cannot be written, in plain words.
+
+        Shared with the settings window so the dialog that blocks Apply and
+        the `ConfigError` raised below cannot disagree about what counts as a
+        valid save path. The UI needs the reason before a write is attempted:
+        by the time `save` refuses a document, every settings tab has already
+        pushed its pending values into the live config and the only thing the
+        user sees is a failed save naming a TOML key.
+        """
         qbit = config.torrent_clients.qbittorrent
         if (
             qbit.save_path_mode is QBittorrentSavePathMode.TEMPLATE
             and not qbit.save_path_template.strip()
         ):
+            return (
+                "qBittorrent's save location mode is 'Template', which needs "
+                "a save location template."
+            )
+        return None
+
+    @classmethod
+    def validate_settings(cls, config: AppConfig) -> None:
+        if cls.qbittorrent_save_path_error(config):
             raise ConfigError(
                 "Invalid configuration value at "
                 "torrent_client.qbittorrent.specific_params.save_path_template"
