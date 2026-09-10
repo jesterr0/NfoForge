@@ -1794,3 +1794,36 @@ def test_a_job_name_with_markup_is_rendered_as_plain_text_in_the_saved_box(
     # Pins the working directory to the fixture: revert it to a hardcoded path
     # and this fails here rather than only on a Linux runner.
     assert (working_dir / "jobs" / "test-id").is_dir()
+
+
+def test_the_save_job_button_does_not_pass_its_clicked_flag_as_trackers(
+    qapp: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`clicked(bool)` must not reach `_save_job`'s `keep_trackers`.
+
+    Qt hands a button's `checked` flag to any slot that can take one, `@Slot()`
+    included, so the button wired straight to `_save_job` saved with
+    `keep_trackers=False`. That is not None, so the save narrowed itself to a
+    tracker set that was a bool and died in `_job_summary` with "'bool' object
+    is not iterable" -- every press, after the user had already named the job.
+
+    Driven through a real press rather than by calling `_save_job`, which is
+    how the suite missed this: a direct call gets the default. `_save_job` is
+    replaced before the page is built, since the connection binds at
+    construction.
+    """
+    captured: list[object] = []
+    monkeypatch.setattr(
+        ProcessPage,
+        "_save_job",
+        lambda self, keep_trackers=None: captured.append(keep_trackers),
+    )
+    page = ProcessPage(
+        SimpleNamespace(settings=SimpleNamespace()),  # pyright: ignore[reportArgumentType]
+        ProcessingContext(),
+        QMainWindow(),  # pyright: ignore[reportArgumentType]
+    )
+
+    page.save_job_btn.click()
+
+    assert captured == [None]
