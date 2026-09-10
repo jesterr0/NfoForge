@@ -501,8 +501,9 @@ class GeneralSettings(BaseSettings):
     @Slot()
     def _handle_working_dir_clean_up_click(self) -> None:
         working_dir = self.config.settings.general.working_dir
-        removable = cleanable_items(working_dir)
-        total_size = cleanable_size(working_dir)
+        data_root = self.config.paths.data_root()
+        removable = cleanable_items(working_dir, data_root)
+        total_size = cleanable_size(working_dir, data_root)
 
         msg = (
             "Would you like to clean up the working directory now?\n\n"

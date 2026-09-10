@@ -221,7 +221,10 @@ class MainWindow(QMainWindow):
     def display_temp_directory_size(self) -> None:
         # only what clean up could actually reclaim; saved jobs are kept and
         # would otherwise inflate a number the user reads as "reclaimable"
-        size = cleanable_size(self.config.settings.general.working_dir)
+        size = cleanable_size(
+            self.config.settings.general.working_dir,
+            self.config.paths.data_root(),
+        )
         if size <= 0:
             return
         GSigs().main_window_update_status_tip.emit(
