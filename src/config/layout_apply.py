@@ -15,12 +15,18 @@ agreeing is exactly what runs.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import os
 from pathlib import Path
 import shutil
 
 from src.config.layout_migration import ActionKind, MigrationPlan
+from src.config.layout_version import (
+    pending_hops,
+    read_layout_version,
+    write_layout_version,
+)
 
 CONFLICTS_DIR_NAME = "migration-conflicts"
 """Where something goes when its destination is already occupied."""
@@ -41,6 +47,28 @@ class Diversion:
 @dataclass(frozen=True, slots=True)
 class MigrationOutcome:
     diverted: tuple[Diversion, ...] = ()
+
+
+def migrate_layout(plan: MigrationPlan) -> MigrationOutcome:
+    """Run whichever hops `plan`'s data directory still needs, in order.
+
+    The recorded version decides, not the plan. A plan is built before the user
+    is asked anything, so by the time one is applied the tree may already have
+    been migrated -- by a previous run, or by another copy of the application.
+    Replaying it would move an already-moved tree.
+
+    The version is written after each hop rather than once at the end, so a run
+    interrupted part way resumes from where it stopped. Nothing is written
+    before the work it describes has happened.
+    """
+    pending = pending_hops(read_layout_version(plan.state_root))
+    outcome = MigrationOutcome()
+
+    for hop in pending:
+        outcome = _HOPS[hop](plan)
+        write_layout_version(plan.state_root, hop)
+
+    return outcome
 
 
 def apply_plan(plan: MigrationPlan) -> MigrationOutcome:
@@ -145,3 +173,16 @@ def _move(source: Path, destination: Path) -> None:
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
     os.replace(source, destination)
+
+
+_HOPS: dict[int, Callable[[MigrationPlan], MigrationOutcome]] = {
+    1: apply_plan,
+}
+"""Each hop keyed by the version it produces.
+
+A dictionary rather than a straight call because this is the shape that carries
+someone who skipped releases: they run each hop in turn. Never renumber an entry
+and never key one off the application version -- a hop is defined by the layout
+it accepts, so renumbering silently changes which trees it runs against. The
+same discipline `migrations.py` documents for its own schema chain.
+"""

@@ -11,8 +11,24 @@ from pathlib import Path
 
 import pytest
 
-from src.config.layout_apply import Diversion, MigrationError, apply_plan
-from src.config.layout_migration import ActionKind, MigrationPlan, PlannedAction
+from src.config.layout_apply import (
+    Diversion,
+    MigrationError,
+    apply_plan,
+    migrate_layout,
+)
+from src.config.layout_migration import (
+    ActionKind,
+    MigrationPlan,
+    PlannedAction,
+    plan_migration,
+)
+from src.config.layout_version import (
+    CURRENT_LAYOUT_VERSION,
+    LayoutRecordError,
+    read_layout_version,
+    write_layout_version,
+)
 from tests.repo_paths import REPO_ROOT
 
 FORBIDDEN_CALLS = frozenset({"unlink", "rmtree", "rmdir", "remove", "move"})
@@ -223,3 +239,63 @@ def test_an_occupied_destination_is_never_overwritten(tmp_path: Path) -> None:
     diverted = state_root / "migration-conflicts" / "templates"
     assert (diverted / "imported.jinja").read_bytes() == b"diverted"
     assert outcome.diverted == (Diversion(planned=existing, actual=diverted),)
+
+
+def _legacy_tree(tmp_path: Path) -> Path:
+    state_root = tmp_path / "user_data"
+    (state_root / "jobs").mkdir(parents=True)
+    (state_root / "jobs" / "saved.torrent").write_bytes(b"j" * 5)
+    return state_root
+
+
+def test_a_legacy_tree_is_migrated_and_recorded(tmp_path: Path) -> None:
+    """The version is written only once the work it describes has happened."""
+    state_root = _legacy_tree(tmp_path)
+
+    migrate_layout(plan_migration(state_root))
+
+    assert (state_root / "workspace" / "jobs" / "saved.torrent").exists()
+    assert read_layout_version(state_root) == CURRENT_LAYOUT_VERSION
+
+
+def test_a_tree_already_current_is_left_alone(tmp_path: Path) -> None:
+    """The silent path, and the one nearly every launch takes.
+
+    The plan is built before the version is consulted, so a stale plan against
+    an already-migrated tree must be refused rather than replayed.
+    """
+    state_root = _legacy_tree(tmp_path)
+    plan = plan_migration(state_root)
+    write_layout_version(state_root, CURRENT_LAYOUT_VERSION)
+
+    migrate_layout(plan)
+
+    assert (state_root / "jobs" / "saved.torrent").exists()
+    assert not (state_root / "workspace").exists()
+
+
+def test_a_tree_from_a_newer_build_is_not_touched(tmp_path: Path) -> None:
+    """Migrating backwards would rearrange a layout this build cannot read."""
+    state_root = _legacy_tree(tmp_path)
+    plan = plan_migration(state_root)
+    write_layout_version(state_root, CURRENT_LAYOUT_VERSION + 5)
+
+    migrate_layout(plan)
+
+    assert (state_root / "jobs" / "saved.torrent").exists()
+    assert not (state_root / "workspace").exists()
+
+
+def test_an_unreadable_record_stops_the_migration_before_it_starts(
+    tmp_path: Path,
+) -> None:
+    """Not knowing the layout is a reason to do nothing, not to guess."""
+    state_root = _legacy_tree(tmp_path)
+    plan = plan_migration(state_root)
+    (state_root / "layout.json").write_text("{broken", encoding="utf-8")
+
+    with pytest.raises(LayoutRecordError):
+        migrate_layout(plan)
+
+    assert (state_root / "jobs" / "saved.torrent").exists()
+    assert not (state_root / "workspace").exists()
