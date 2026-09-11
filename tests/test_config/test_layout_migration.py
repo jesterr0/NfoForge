@@ -12,6 +12,8 @@ import pytest
 
 from src.config.layout_migration import (
     ActionKind,
+    Finding,
+    FindingKind,
     LegacyInstall,
     PlannedAction,
     plan_migration,
@@ -243,3 +245,141 @@ def test_the_legacy_program_configuration_is_planned_as_a_file(tmp_path: Path) -
         )
         in plan.actions
     )
+
+
+def test_an_unrecognised_entry_is_reported_for_review(tmp_path: Path) -> None:
+    """Left alone is not the same as left unmentioned.
+
+    The data directory was the default working directory, so whatever a user put
+    there is still there after the migration, sitting beside a layout that does
+    not account for it. Reporting it is what lets them decide; the alternative is
+    a tidy-looking directory with their files quietly stranded in it.
+    """
+    state_root = tmp_path / "user_data"
+    theirs = state_root / "notes and scratch files"
+    theirs.mkdir(parents=True)
+    (theirs / "thoughts.txt").write_text("keep me", encoding="utf-8")
+
+    plan = plan_migration(state_root)
+
+    assert plan.findings == (
+        Finding(kind=FindingKind.UNRECOGNISED_ENTRY, path=theirs, size=7),
+    )
+
+
+def test_the_layout_itself_is_not_reported_as_a_leftover(tmp_path: Path) -> None:
+    """A report that names every directory is one nobody reads.
+
+    The point of the leftover list is that it is short and every line on it
+    wants a decision. Both the layout's own directories and the entries that
+    have a planned action belong off it.
+    """
+    state_root = tmp_path / "user_data"
+    for name in ("config", "logs", "templates", "cookies", "workspace", "jobs"):
+        (state_root / name).mkdir(parents=True)
+    (state_root / "frameforge_indexes").mkdir()
+    (state_root / "Example.Release.Name.2024_09.11.2026_10.09.39").mkdir()
+
+    plan = plan_migration(state_root)
+
+    assert plan.findings == ()
+
+
+def test_a_configured_path_inside_the_legacy_install_is_reported(
+    tmp_path: Path,
+) -> None:
+    """Reported and named, never silently rewritten.
+
+    A path the user pointed at something inside their old installation keeps
+    working right up until they delete that folder, which the summary tells them
+    to consider doing. Guessing a new location for it would be this code
+    inventing an answer; naming the setting lets them give one.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    script = legacy.root / "extras" / "custom.py"
+    script.parent.mkdir(parents=True)
+    script.write_bytes(b"s")
+
+    plan = plan_migration(
+        state_root, legacy=legacy, configured_paths=[("example setting", script)]
+    )
+
+    assert (
+        Finding(
+            kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
+            path=script,
+            detail="example setting",
+        )
+        in plan.findings
+    )
+
+
+def test_a_configured_path_outside_the_legacy_install_is_not_reported(
+    tmp_path: Path,
+) -> None:
+    """Somewhere else on the disk is not the migration's business.
+
+    A tool or working directory the user keeps elsewhere survives replacing the
+    release untouched, which is the whole point of configuring one.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    legacy.root.mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere" / "custom.py"
+    elsewhere.parent.mkdir(parents=True)
+    elsewhere.write_bytes(b"s")
+
+    plan = plan_migration(
+        state_root, legacy=legacy, configured_paths=[("example setting", elsewhere)]
+    )
+
+    assert plan.findings == ()
+
+
+def test_run_folders_in_a_configured_working_directory_are_reported(
+    tmp_path: Path,
+) -> None:
+    """Reported with their size, and not swept.
+
+    A configured working directory is somewhere the user chose, often on another
+    disk and often large. Reclaiming space there is worth telling them about;
+    deciding to is theirs, and a sweep that reached outside the data directory
+    would be the cleanup bug this work exists to fix, at a larger scale.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    working_dir = tmp_path / "media work"
+    run_folder = working_dir / "Example.Release.Name.2024_09.11.2026_10.09.39"
+    run_folder.mkdir(parents=True)
+    (run_folder / "screenshot.png").write_bytes(b"y" * 4)
+
+    plan = plan_migration(state_root, working_dirs=[working_dir])
+
+    assert plan.actions == ()
+    assert (
+        Finding(kind=FindingKind.RUN_FOLDER_IN_WORKING_DIR, path=run_folder, size=4)
+        in plan.findings
+    )
+
+
+def test_a_working_directory_that_is_the_data_directory_is_not_reported_twice(
+    tmp_path: Path,
+) -> None:
+    """The old default working directory was the data directory itself.
+
+    So the common case is a configured working directory that is exactly the
+    tree already being relocated. Its run folders have planned moves; listing
+    them as leftovers as well would tell the user to review files the migration
+    has already dealt with.
+    """
+    state_root = tmp_path / "user_data"
+    run_folder = state_root / "Example.Release.Name.2024_09.11.2026_10.09.39"
+    run_folder.mkdir(parents=True)
+
+    plan = plan_migration(state_root, working_dirs=[state_root])
+
+    assert [action.source for action in plan.actions] == [run_folder]
+    assert plan.findings == ()

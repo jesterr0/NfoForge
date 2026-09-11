@@ -13,6 +13,7 @@ deletes.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -20,7 +21,11 @@ import re
 
 from src.backend.utils.file_utilities import get_dir_size
 from src.backend.utils.frameforge_index_cache import FrameForgeIndexCache
-from src.backend.utils.working_dir import JOBS_DIR_NAME, WORKSPACE_DIR_NAME
+from src.backend.utils.working_dir import (
+    JOBS_DIR_NAME,
+    WORKSPACE_DIR_NAME,
+    normalise_path,
+)
 
 CACHE_DIR_NAME = "cache"
 """Where derived data that can be rebuilt lives in the new layout."""
@@ -74,9 +79,54 @@ class LegacyInstall:
     plugins: Path
 
 
+class FindingKind(Enum):
+    """Something the user is told about rather than something that is done."""
+
+    UNRECOGNISED_ENTRY = "unrecognised-entry"
+    """Sits at the root of the data directory and is not part of any layout."""
+
+    PATH_INSIDE_LEGACY_INSTALL = "path-inside-legacy-install"
+    """A setting points into the old installation, which the user may delete."""
+
+    RUN_FOLDER_IN_WORKING_DIR = "run-folder-in-working-dir"
+    """Reclaimable run output in a directory the user chose. Never swept."""
+
+
+@dataclass(frozen=True, slots=True)
+class Finding:
+    kind: FindingKind
+    path: Path
+    size: int = 0
+    detail: str = ""
+
+
 @dataclass(frozen=True, slots=True)
 class MigrationPlan:
     actions: tuple[PlannedAction, ...]
+    findings: tuple[Finding, ...] = ()
+
+
+_KNOWN_ROOT_NAMES = frozenset(
+    {
+        "layout.json",
+        "config",
+        "templates",
+        "cookies",
+        "logs",
+        "tools",
+        "migration-conflicts",
+        CACHE_DIR_NAME,
+        PLUGINS_DIR_NAME,
+        WORKSPACE_DIR_NAME,
+        JOBS_DIR_NAME,
+        FrameForgeIndexCache.CACHE_DIR_NAME,
+    }
+)
+"""Everything the data directory holds, before and after the move.
+
+Anything else at that root came from the user, because the old default working
+directory was this directory.
+"""
 
 
 _LEGACY_ENTRIES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
@@ -98,7 +148,10 @@ directory copied whole, so what is nested inside arrives with it -- a profile's
 
 
 def plan_migration(
-    state_root: Path, legacy: LegacyInstall | None = None
+    state_root: Path,
+    legacy: LegacyInstall | None = None,
+    configured_paths: Iterable[tuple[str, Path]] = (),
+    working_dirs: Iterable[Path] = (),
 ) -> MigrationPlan:
     """Everything the move to the new layout would do.
 
@@ -108,6 +161,7 @@ def plan_migration(
     application itself was installed.
     """
     actions: list[PlannedAction] = []
+    findings: list[Finding] = []
 
     jobs = state_root / JOBS_DIR_NAME
     if jobs.is_dir():
@@ -134,16 +188,36 @@ def plan_migration(
         )
 
     for entry in _children(state_root):
-        if not entry.is_dir() or not _RUN_FOLDER_STAMP.search(entry.name):
-            continue
-        actions.append(
-            PlannedAction(
-                kind=ActionKind.MOVE,
-                source=entry,
-                destination=state_root / WORKSPACE_DIR_NAME / entry.name,
-                size=get_dir_size(entry),
+        if entry.is_dir() and _RUN_FOLDER_STAMP.search(entry.name):
+            actions.append(
+                PlannedAction(
+                    kind=ActionKind.MOVE,
+                    source=entry,
+                    destination=state_root / WORKSPACE_DIR_NAME / entry.name,
+                    size=_size(entry),
+                )
             )
-        )
+        elif entry.name.casefold() not in _KNOWN_ROOT_NAMES:
+            findings.append(
+                Finding(
+                    kind=FindingKind.UNRECOGNISED_ENTRY,
+                    path=entry,
+                    size=_size(entry),
+                )
+            )
+
+    for working_dir in working_dirs:
+        if normalise_path(working_dir) == normalise_path(state_root):
+            continue
+        for entry in _children(working_dir):
+            if entry.is_dir() and _RUN_FOLDER_STAMP.search(entry.name):
+                findings.append(
+                    Finding(
+                        kind=FindingKind.RUN_FOLDER_IN_WORKING_DIR,
+                        path=entry,
+                        size=_size(entry),
+                    )
+                )
 
     if legacy is not None:
         for source_parts, destination_parts in _LEGACY_ENTRIES:
@@ -154,7 +228,17 @@ def plan_migration(
         if legacy.plugins.is_dir():
             actions.append(_copy(legacy.plugins, state_root / PLUGINS_DIR_NAME))
 
-    return MigrationPlan(actions=tuple(actions))
+        for label, configured in configured_paths:
+            if _is_inside(configured, legacy.root):
+                findings.append(
+                    Finding(
+                        kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,
+                        path=configured,
+                        detail=label,
+                    )
+                )
+
+    return MigrationPlan(actions=tuple(actions), findings=tuple(findings))
 
 
 def _copy(source: Path, destination: Path) -> PlannedAction:
@@ -164,6 +248,18 @@ def _copy(source: Path, destination: Path) -> PlannedAction:
         destination=destination,
         size=_size(source),
     )
+
+
+def _is_inside(path: Path, root: Path) -> bool:
+    """Whether `path` sits within `root`, comparing what the filesystem means.
+
+    Both sides are normalised first, so a configured path written with a
+    different case, a relative segment or a short name is still recognised as
+    the same place. `resolve` only recovers real casing for a path that exists,
+    but `is_relative_to` compares case-insensitively on Windows anyway, which is
+    the platform where that matters.
+    """
+    return normalise_path(path).is_relative_to(normalise_path(root))
 
 
 def _size(path: Path) -> int:
