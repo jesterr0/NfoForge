@@ -8,7 +8,12 @@ from platformdirs import user_data_dir
 from src.backend.utils.working_dir import IS_FROZEN, RUNTIME_DIR, asset_root
 
 DATA_DIR_ENV_VAR = "NFOFORGE_DATA_DIR"
-"""Redirects the state root. A test hook, not a supported feature."""
+"""Redirects every root this module resolves, for development and rehearsal.
+
+Honoured from source and by the debug executable, refused by a released build.
+Point it at a *copy* of an installation to rehearse a migration against real
+data; pointing it at the original defeats the purpose of rehearsing.
+"""
 
 
 @dataclass(frozen=True)
@@ -123,13 +128,13 @@ class AppPaths:
     def data_root() -> Path:
         """NfoForge's own per-user directory, and nothing above it.
 
-        Named separately from `default_working_dir` because the two are the
-        same path only for as long as the working directory defaults to the
-        root of this directory. Cleanup asks for this one: it needs to know
-        what it must never be able to delete, which is not the same question
-        as where a run's output goes.
+        Forwards to `resolve_data_root` rather than asking platformdirs itself,
+        so that the source/installed split and `NFOFORGE_DATA_DIR` reach every
+        caller. This used to be the direct lookup, which meant neither applied
+        here -- and this is the root the default working directory, the saved
+        jobs and the index cache all derive from.
         """
-        return Path(user_data_dir(appname="nfoforge", appauthor=False))
+        return resolve_data_root()
 
     @staticmethod
     def default_working_dir(ensure_exists: bool = False) -> Path:
@@ -157,10 +162,46 @@ def _override_allowed() -> bool:
     return "debug" in Path(sys.executable).name.casefold()
 
 
+def _override() -> Path | None:
+    """The directory `NFOFORGE_DATA_DIR` names, if this process honours it.
+
+    Every root consults this one function. An override that moved some of them
+    and not others would be worse than none at all: a rehearsal pointed at a
+    copy of a real installation would look isolated while still writing into
+    the original.
+    """
+    value = environ.get(DATA_DIR_ENV_VAR, "").strip()
+    if not value or not _override_allowed():
+        return None
+    return Path(value)
+
+
+def resolve_data_root() -> Path:
+    """NfoForge's own per-user directory for this process.
+
+    A source run gets a different directory from an installed one, because a
+    developer has both and they would otherwise share every profile, credential
+    and saved job -- with the source run offering to migrate the data the
+    installed copy is using. Isolating by default leaves no variable to
+    remember and no way for forgetting one to reach real data.
+
+    Named separately from `default_working_dir` because the two are the same
+    path only for as long as the working directory defaults to the root of this
+    directory. Cleanup asks for this one: it needs to know what it must never
+    be able to delete, which is not the same question as where a run's output
+    goes.
+    """
+    override = _override()
+    if override is not None:
+        return override
+    appname = "nfoforge" if IS_FROZEN else "nfoforge-dev"
+    return Path(user_data_dir(appname=appname, appauthor=False))
+
+
 def default_paths() -> AppPaths:
     """The roots this process actually runs against."""
-    state_root = RUNTIME_DIR
-    override = environ.get(DATA_DIR_ENV_VAR, "").strip()
-    if override and _override_allowed():
-        state_root = Path(override)
-    return AppPaths(state_root=state_root, asset_root=asset_root())
+    override = _override()
+    return AppPaths(
+        state_root=override if override is not None else RUNTIME_DIR,
+        asset_root=asset_root(),
+    )

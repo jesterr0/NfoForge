@@ -12,7 +12,13 @@ import sys
 from platformdirs import user_data_dir
 import pytest
 
-from src.config.paths import DATA_DIR_ENV_VAR, AppPaths, ConfigPaths, default_paths
+from src.config.paths import (
+    DATA_DIR_ENV_VAR,
+    AppPaths,
+    ConfigPaths,
+    default_paths,
+    resolve_data_root,
+)
 
 
 def test_config_paths_is_the_same_class(tmp_path: Path) -> None:
@@ -133,6 +139,60 @@ def test_the_override_is_honoured_by_the_debug_build(
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
     assert default_paths().state_root == tmp_path / "rehearsal"
+
+
+def test_running_from_source_gets_its_own_per_user_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source run must not share the directory an installed copy uses.
+
+    Both resolve the same per-user location today, so once user state moves
+    there a source run reads and writes the same profiles, credentials and
+    saved jobs as the release the developer also has installed -- and offers to
+    migrate them. Isolating by default means there is no variable to remember,
+    and forgetting one cannot reach someone's working data.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+
+    resolved = resolve_data_root()
+
+    assert resolved != Path(user_data_dir(appname="nfoforge", appauthor=False))
+    assert resolved.name == "nfoforge-dev"
+
+
+def test_the_override_redirects_the_per_user_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One variable has to move every location, not just the state root.
+
+    A rehearsal points this at a copy of a real installation, and the point of
+    doing that is that nothing escapes to the original. The per-user directory
+    is where the default working directory, the saved jobs and the index cache
+    resolve from, so an override that moved the state root and left this behind
+    would rehearse the migration while writing into live data.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
+
+    assert resolve_data_root() == tmp_path / "rehearsal"
+    assert default_paths().state_root == tmp_path / "rehearsal"
+
+
+def test_the_per_user_directory_ignores_the_override_in_a_released_build(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same reasoning as the state root: the environment must not move real data.
+
+    This one matters more, because it is the directory holding saved jobs.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
+
+    assert resolve_data_root() == Path(
+        user_data_dir(appname="nfoforge", appauthor=False)
+    )
 
 
 def test_no_test_can_reach_the_real_per_user_directory(tmp_path: Path) -> None:
