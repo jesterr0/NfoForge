@@ -51,27 +51,34 @@ class PluginLoader:
         manager: PluginManager,
         update_status: Callable[[str], None] | None = None,
         plugin_dir: Path | None = None,
+        shipped_dir: Path | None = None,
     ) -> None:
         self.manager = manager
         self.update_status = update_status
         self.plugin_dir = plugin_dir or CURRENT_DIR / "plugins"
+        self.shipped_dir = shipped_dir
         self.failures: list[PluginLoadFailure] = []
 
     def load_plugins(self) -> PluginLoadReport:
         """Discover, validate, and register every available plugin.
 
-        Local plugin directories are scanned first, sorted by casefolded
-        directory name, followed by installed `nfoforge.plugins` entry points,
-        sorted by name. Registration is first-come-first-served: `PluginManager
-        .register` rejects a second registration under an already-used plugin
-        ID, so on an ID collision the plugin registered first wins and the
-        later one fails with a duplicate-ID error, recorded as a load failure
-        rather than applied silently. Because local directories are scanned
-        before entry points, a local plugin always wins a collision against an
-        installed package sharing its ID. This precedence is deliberate, not
-        incidental: local plugins are the recommended installation method (see
-        `docs/view/plugins/plugin-system.md`), so an installed package must not
-        be able to silently shadow one.
+        The user's own plugin directory is scanned first, sorted by casefolded
+        directory name, then the examples shipped with the release, then
+        installed `nfoforge.plugins` entry points, sorted by name. Registration
+        is first-come-first-served: `PluginManager.register` rejects a second
+        registration under an already-used plugin ID, so on an ID collision the
+        plugin registered first wins and the later one fails with a duplicate-ID
+        error, recorded as a load failure rather than applied silently.
+
+        That ordering is deliberate at both boundaries. A local plugin beats an
+        installed package because local plugins are the recommended installation
+        method (see `docs/view/plugins/plugin-system.md`), and the user's own
+        directory beats the shipped examples for the same reason: what the user
+        put there must not be silently shadowed by something that arrived with a
+        release.
+
+        Only the user's directory is created when missing. The shipped
+        directory lives inside the release, which is read-only territory.
         """
 
         self.failures.clear()
@@ -82,10 +89,7 @@ class PluginLoader:
             self._record_failure(str(self.plugin_dir), error)
             return PluginLoadReport(self.manager.records, tuple(self.failures))
 
-        for root in sorted(
-            (item for item in self.plugin_dir.iterdir() if item.is_dir()),
-            key=lambda item: item.name.casefold(),
-        ):
+        for root in self._local_roots():
             manifest = root / LOCAL_MANIFEST
             if not manifest.is_file():
                 continue
@@ -128,6 +132,26 @@ class PluginLoader:
             loaded = ", ".join(record.plugin_id for record in self.manager.records)
             LOG.debug(LOG.LOG_SOURCE.FE, f"Detected plugins: {loaded}")
         return PluginLoadReport(self.manager.records, tuple(self.failures))
+
+    def _local_roots(self) -> list[Path]:
+        """Candidate plugin directories, the user's own first.
+
+        Each directory is sorted by casefolded name so load order does not
+        depend on the filesystem, and the two are concatenated rather than
+        merged and re-sorted, which is what makes the user's copy win a
+        collision.
+        """
+        roots: list[Path] = []
+        for directory in (self.plugin_dir, self.shipped_dir):
+            if directory is None or not directory.is_dir():
+                continue
+            roots.extend(
+                sorted(
+                    (item for item in directory.iterdir() if item.is_dir()),
+                    key=lambda item: item.name.casefold(),
+                )
+            )
+        return roots
 
     @staticmethod
     def _read_local_manifest(root: Path, manifest: Path) -> _LocalCandidate:

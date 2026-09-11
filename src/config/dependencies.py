@@ -4,7 +4,6 @@ import shutil
 from typing import TYPE_CHECKING
 
 from src.backend.utils.get_os_executable_ext import get_executable_string_by_os
-from src.backend.utils.working_dir import RUNTIME_DIR
 from src.enums.dependencies import Dependencies
 from src.enums.screen_shot_mode import ScreenShotMode
 
@@ -44,7 +43,16 @@ def unavailable_screenshot_dependency(
 
 
 class FindDependencies:
-    """A utility class for finding and verifying dependencies required by a program"""
+    """A utility class for finding and verifying dependencies required by a program
+
+    `tools_root` is where the user may place optional executables themselves,
+    one directory per tool. It travels with the rest of their state rather than
+    sitting beside the installed application, so replacing a release does not
+    take a hand-assembled toolchain with it.
+    """
+
+    def __init__(self, tools_root: Path) -> None:
+        self.tools_root = tools_root
 
     def update_dependencies(self, dependencies: "DependencySettings") -> None:
         for dependency in Dependencies:
@@ -64,8 +72,8 @@ class FindDependencies:
         self, app_folder_name: str, executable: str, user_defined: PathLike[str] | None
     ) -> Path | None:
         """
-        Finds a single dependency, first the user-defined location, then beside the
-        program and finally on the system PATH.
+        Finds a single dependency, first the user-defined location, then the user's
+        own tools directory and finally on the system PATH.
         """
         # user-defined path
         if user_defined:
@@ -73,20 +81,18 @@ class FindDependencies:
             if user_path.exists():
                 return user_path
 
-        # beside the program
-        beside_program = self._locate_beside_program(app_folder_name, executable)
-        if beside_program:
-            return beside_program
+        # the user's own tools directory
+        in_tools = self._locate_in_tools(app_folder_name, executable)
+        if in_tools:
+            return in_tools
 
         # system PATH
         return self._locate_on_system_path(executable)
 
-    def _locate_beside_program(
-        self, app_folder_name: str, executable: str
-    ) -> Path | None:
-        """Checks if the dependency exists beside the program in a predefined structure"""
-        path = Path(RUNTIME_DIR / "apps" / app_folder_name / f"{executable}{OS_EXE}")
-        return path if path.exists() and path.is_file() else None
+    def _locate_in_tools(self, app_folder_name: str, executable: str) -> Path | None:
+        """Checks the user's tools directory for the dependency's own folder."""
+        path = self.tools_root / app_folder_name / f"{executable}{OS_EXE}"
+        return path if path.is_file() else None
 
     def _locate_on_system_path(self, executable: str) -> Path | None:
         """Checks if the dependency exists on the system PATH"""

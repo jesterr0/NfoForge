@@ -84,6 +84,16 @@ class AppPaths:
         return self.state_root / "logs"
 
     @property
+    def tools(self) -> Path:
+        """Optional executables the user places here themselves, one folder each.
+
+        A documented extension point, so it belongs with the user's own state
+        rather than beside the installed application: a hand-assembled
+        toolchain must survive replacing a release.
+        """
+        return self.state_root / "tools"
+
+    @property
     def fonts(self) -> Path:
         return self.asset_root / "fonts"
 
@@ -98,6 +108,16 @@ class AppPaths:
     @property
     def docs(self) -> Path:
         return self.asset_root / "docs"
+
+    @property
+    def plugin_examples(self) -> Path:
+        """Example plugins shipped with the release, loaded read-only.
+
+        They live here rather than in the directory the user installs into, so
+        a release can update its own examples without touching anything the
+        user put there, and so migration can tell the two apart.
+        """
+        return self.asset_root / "plugin_examples"
 
     @staticmethod
     def data_root() -> Path:

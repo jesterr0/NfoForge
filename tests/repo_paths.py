@@ -15,7 +15,7 @@ ASSET_DIR = REPO_ROOT / "assets"
 DEFAULT_CONFIG_DIR = ASSET_DIR / "config" / "defaults"
 DEFAULT_CONFIG_TOML = DEFAULT_CONFIG_DIR / "default_config.toml"
 CONFIG_FIXTURE_DIR = REPO_ROOT / "tests" / "test_config" / "fixtures"
-METADATA_PLUGIN_EXAMPLE_DIR = REPO_ROOT / "plugins" / "metadata_plugin_example"
+METADATA_PLUGIN_EXAMPLE_DIR = ASSET_DIR / "plugin_examples" / "metadata_plugin_example"
 
 
 def build_app_paths(tmp_path: Path) -> AppPaths:

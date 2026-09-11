@@ -391,4 +391,6 @@ class ConfigManager(TypedTomlOperations):
 
     def _init_dependencies(self) -> None:
         """Initialize dependencies and updates the config if needed"""
-        FindDependencies().update_dependencies(self.settings.dependencies)
+        FindDependencies(self.paths.tools).update_dependencies(
+            self.settings.dependencies
+        )

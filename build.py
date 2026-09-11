@@ -251,9 +251,8 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
     # change directory back to the original directory
     os.chdir(project_root)
 
-    # bail out loudly instead of silently shipping a folder that only
-    # contains the plugins directory created below - a failed PyInstaller
-    # run must fail the build (and CI), not produce a bogus "successful" one
+    # bail out loudly rather than reporting success for a folder with no
+    # executable in it - a failed PyInstaller run must fail the build (and CI)
     if build_job.returncode != 0:
         raise RuntimeError(f"PyInstaller failed with exit code {build_job.returncode}.")
     if not exe_path.is_file():
@@ -261,26 +260,6 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
             f"PyInstaller reported success but the expected executable is "
             f"missing: {exe_path}"
         )
-
-    # create plugin folder
-    plugin_folder = Path(exe_path.parent / "plugins")
-    plugin_folder.mkdir(parents=True)
-
-    # copy example jinja2 plugin example to the release
-    shutil.copytree(
-        project_root / "plugins" / "jinja2_plugin_example",
-        plugin_folder / "jinja2_plugin_example",
-        ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
-        copy_function=shutil.copy,
-    )
-
-    # copy example metadata plugin example to the release
-    shutil.copytree(
-        project_root / "plugins" / "metadata_plugin_example",
-        plugin_folder / "metadata_plugin_example",
-        ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
-        copy_function=shutil.copy,
-    )
 
     # Return a success message
     return success

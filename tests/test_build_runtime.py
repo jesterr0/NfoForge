@@ -1,93 +1,35 @@
 """A release must not carry the maintainer's own data out of their checkout.
 
-The bundled runtime is seeded from `runtime/` as it exists on the build
-machine, not from a clean template, so it arrives holding whatever that
-machine accumulated: saved credentials and config under `config/`, a log
-history, cookies. Stripping it by file extension is what let a plugin's JSON
-credentials and a rotated `.log.1` reach a build, since the patterns were
-written around NfoForge's own `.toml` and `.log` names.
+This used to be enforced by copying the mutable tree into the bundle and then
+deleting the user's own files back out of it, which meant a release shipped
+whatever that pass happened to miss -- a plugin's JSON credentials and a
+rotated `.log.1` both reached builds that way, because the sweep was written
+around NfoForge's own `.toml` and `.log` names.
 
-CI is unaffected either way -- a fresh checkout has none of this, as
-`.gitignore` keeps it all untracked -- which is exactly why a local build is
-the one that leaks and the one nobody checks.
+The guarantee is now structural: the build bundles the asset tree, which holds
+only files put there deliberately, and does not bundle the mutable tree at all.
+There is nothing to strip, so there is nothing for a stripping pass to miss.
+
+CI was never the build that leaked -- a fresh checkout has no local state, since
+`.gitignore` keeps it all untracked -- which is why the local build was the one
+that leaked and the one nobody checked. That is also why this is asserted
+against the build script rather than against a built tree: the leak only ever
+existed on a machine that had accumulated something to leak.
 """
 
-from pathlib import Path
-
-from build import strip_local_state
-
-# Files a maintainer's checkout accumulates that must never reach a release.
-# A plugin's saved credential and a rotated log are the two that really
-# shipped: one survived because the config sweep only matched `*.toml`, the
-# other because the log sweep only matched `*.log`.
-LOCAL_STATE = (
-    "config/plugins/example_plugin_auth.json",
-    "config/plugins/example_plugin.toml",
-    "config/user/user_config.toml",
-    "config/program/program_conf.toml",
-    "logs/nfoforge.log",
-    "logs/nfoforge.log.1",
-    "logs/crash.log",
-    "cookies/session.pkl",
-    "cookies/session.dat",
-    "templates/my_template.txt",
-    "templates/my_template.jinja",
-    "user_packages/mypkg/module.py",
-    "plugins/some_plugin/plugin.py",
-)
-
-# What a release genuinely needs, sitting in the same tree. `docs/` is
-# gitignored like the local state above, but the build generates it, so
-# "drop everything untracked" would silently ship a release with no docs.
-SHIPPED = (
-    "config/defaults/default_config.toml",
-    "config/defaults/default_program_conf.toml",
-    "config/audio_conventions/default.json",
-    "docs/index.html",
-    "fonts/Roboto/Roboto-Regular.ttf",
-    "images/NfoForge_logo.png",
-)
+from tests.repo_paths import REPO_ROOT
 
 
-def build_runtime(root: Path) -> Path:
-    """A bundled runtime holding both local state and what a release needs."""
-    for relative in LOCAL_STATE + SHIPPED:
-        path = root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("x", encoding="utf-8")
-    return root
+def test_the_build_does_not_reference_the_mutable_tree() -> None:
+    """Re-adding the mutable tree to the bundle must not be a quiet change.
 
+    Naming it anywhere in the build is the tell, whether as bundled data or as
+    a path to copy in afterwards. The asset tree is the only thing a release
+    ships, and nothing the user owns lives there.
+    """
+    build_script = (REPO_ROOT / "build.py").read_text(encoding="utf-8")
 
-def test_local_state_does_not_survive_into_a_release(tmp_path) -> None:
-    runtime = build_runtime(tmp_path / "runtime")
-
-    strip_local_state(runtime)
-
-    survivors = sorted(
-        relative for relative in LOCAL_STATE if (runtime / relative).exists()
+    assert "runtime" not in build_script, (
+        "build.py names the mutable tree again; a release must bundle assets/ "
+        "only, or the user state that tree accumulates ships with it"
     )
-    assert not survivors, (
-        f"these carry the build machine's own data into a release: {survivors}"
-    )
-
-
-def test_packaged_defaults_and_generated_docs_survive(tmp_path) -> None:
-    # the same sweep that removes local state must leave a working release
-    runtime = build_runtime(tmp_path / "runtime")
-
-    strip_local_state(runtime)
-
-    missing = sorted(
-        relative for relative in SHIPPED if not (runtime / relative).exists()
-    )
-    assert not missing, f"a release needs these and the sweep removed them: {missing}"
-
-
-def test_a_runtime_missing_the_optional_directories_is_not_an_error(tmp_path) -> None:
-    # not every checkout has run the app, so these may never have been created
-    runtime = tmp_path / "runtime"
-    (runtime / "config" / "defaults").mkdir(parents=True)
-
-    strip_local_state(runtime)
-
-    assert (runtime / "config" / "defaults").is_dir()

@@ -47,7 +47,7 @@ Only `request.payload` should be mutated and returned. `plugin_data` is availabl
 
 After installing the plugin, enable external plugins and select it under **Settings -> Plugins -> Metadata Transformer**. The built-in TMDB selection disables external transformation.
 
-The deterministic example at `plugins/metadata_plugin_example/plugin_metadata` uses an in-memory dictionary and includes records for `tt1254207`, `tt0111161`, and `tt0944947`.
+The deterministic example at `assets/plugin_examples/metadata_plugin_example/plugin_metadata` uses an in-memory dictionary and includes records for `tt1254207`, `tt0111161`, and `tt0944947`.
 
 ## User-selected titles
 
