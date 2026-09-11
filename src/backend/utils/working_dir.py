@@ -61,6 +61,14 @@ JOBS_DIR_NAME = "jobs"
 PROCESSING_DIR_NAME = "processing"
 """Per-run artifacts (screenshots, torrents, NFOs). Safe to delete."""
 
+WORKSPACE_DIR_NAME = "workspace"
+"""Parent of the two above, once the working directory lives inside `<user data>`.
+
+Named here rather than in the layout migration that introduces it, because it is
+the new parent of the two names above and splitting the three across modules
+would invite the layout and the working directory drifting apart.
+"""
+
 
 def normalise_path(path: Path) -> Path:
     """Return `path` in the form used to compare configured paths for identity.
