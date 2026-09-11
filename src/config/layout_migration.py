@@ -25,6 +25,9 @@ from src.backend.utils.working_dir import JOBS_DIR_NAME, WORKSPACE_DIR_NAME
 CACHE_DIR_NAME = "cache"
 """Where derived data that can be rebuilt lives in the new layout."""
 
+PLUGINS_DIR_NAME = "plugins"
+"""Where the user's own plugins live, once they stop living beside the release."""
+
 _RUN_FOLDER_STAMP = re.compile(r"_\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}$")
 """The date and time `generate_unique_date_name` appends to a run folder name.
 
@@ -57,12 +60,53 @@ class PlannedAction:
 
 
 @dataclass(frozen=True, slots=True)
+class LegacyInstall:
+    """Where a pre-migration installation keeps the things worth importing.
+
+    Resolved by discovery rather than derived here, because the two legacy
+    layouts disagree: a release keeps its state under `bundle/runtime` with the
+    plugin directory a level above beside the executable, while a source tree
+    has `runtime/` and `plugins/` as siblings.
+    """
+
+    root: Path
+    state: Path
+    plugins: Path
+
+
+@dataclass(frozen=True, slots=True)
 class MigrationPlan:
     actions: tuple[PlannedAction, ...]
 
 
-def plan_migration(state_root: Path) -> MigrationPlan:
-    """Everything the move to the new layout would do to `state_root`."""
+_LEGACY_ENTRIES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("cookies",), ("cookies",)),
+    (("templates",), ("templates",)),
+    (("config", "plugins"), ("config", "plugins")),
+    (("config", "user"), ("config", "profiles")),
+    (("config", "program", "conf.toml"), ("config", "program.toml")),
+    (("apps",), ("tools",)),
+)
+"""Legacy state, as (source, destination) relative to each root.
+
+Three carry a rename. `config/user` becomes `config/profiles` because the new
+name says what is in it, `apps` becomes `tools`, and the program preferences
+lose the directory that existed to hold one file. Every other entry is a
+directory copied whole, so what is nested inside arrives with it -- a profile's
+`old_configs` backups have no entry of their own for that reason.
+"""
+
+
+def plan_migration(
+    state_root: Path, legacy: LegacyInstall | None = None
+) -> MigrationPlan:
+    """Everything the move to the new layout would do.
+
+    Relocations inside `state_root` are planned whether or not a legacy
+    installation is supplied: saved jobs and run output accumulated at the root
+    of the data directory under the old layout regardless of where the
+    application itself was installed.
+    """
     actions: list[PlannedAction] = []
 
     jobs = state_root / JOBS_DIR_NAME
@@ -101,7 +145,32 @@ def plan_migration(state_root: Path) -> MigrationPlan:
             )
         )
 
+    if legacy is not None:
+        for source_parts, destination_parts in _LEGACY_ENTRIES:
+            source = legacy.state.joinpath(*source_parts)
+            if not source.exists():
+                continue
+            actions.append(_copy(source, state_root.joinpath(*destination_parts)))
+        if legacy.plugins.is_dir():
+            actions.append(_copy(legacy.plugins, state_root / PLUGINS_DIR_NAME))
+
     return MigrationPlan(actions=tuple(actions))
+
+
+def _copy(source: Path, destination: Path) -> PlannedAction:
+    return PlannedAction(
+        kind=ActionKind.COPY,
+        source=source,
+        destination=destination,
+        size=_size(source),
+    )
+
+
+def _size(path: Path) -> int:
+    """Bytes at `path`, whether it is a file or a directory."""
+    if path.is_file():
+        return path.stat().st_size
+    return get_dir_size(path)
 
 
 def _children(directory: Path) -> list[Path]:

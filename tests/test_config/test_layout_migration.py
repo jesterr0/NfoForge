@@ -8,7 +8,28 @@ someone before any of it happens.
 
 from pathlib import Path
 
-from src.config.layout_migration import ActionKind, PlannedAction, plan_migration
+import pytest
+
+from src.config.layout_migration import (
+    ActionKind,
+    LegacyInstall,
+    PlannedAction,
+    plan_migration,
+)
+
+
+def _frozen_install(tmp_path: Path) -> LegacyInstall:
+    """A pre-migration installation as a release lays one out.
+
+    State lives under `bundle/runtime`, but the plugin directory sits beside the
+    executable, a level above it. The two legacy layouts differ in exactly that
+    way -- a source tree has `runtime/` and `plugins/` as siblings -- which is
+    why planning is handed the resolved locations rather than deriving them.
+    """
+    root = tmp_path / "install"
+    return LegacyInstall(
+        root=root, state=root / "bundle" / "runtime", plugins=root / "plugins"
+    )
 
 
 def test_saved_jobs_at_the_root_are_planned_into_the_workspace(tmp_path: Path) -> None:
@@ -102,6 +123,123 @@ def test_the_index_cache_is_planned_into_the_cache_directory(tmp_path: Path) -> 
             source=cache,
             destination=state_root / "cache" / "frameforge_indexes",
             size=7,
+        )
+        in plan.actions
+    )
+
+
+def test_a_legacy_cookie_store_is_planned_as_a_copy(tmp_path: Path) -> None:
+    """Anything from outside the data directory is copied, never moved.
+
+    The source is an installation the user still has, and which they are told to
+    review before deleting. A migration that emptied it would take that choice
+    away, and would have nothing to fall back to if the import went wrong.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    (legacy.state / "cookies").mkdir(parents=True)
+    (legacy.state / "cookies" / "tracker.txt").write_bytes(b"c" * 5)
+
+    plan = plan_migration(state_root, legacy=legacy)
+
+    assert (
+        PlannedAction(
+            kind=ActionKind.COPY,
+            source=legacy.state / "cookies",
+            destination=state_root / "cookies",
+            size=5,
+        )
+        in plan.actions
+    )
+
+
+@pytest.mark.parametrize(
+    ("source_parts", "destination_parts"),
+    [
+        (("templates",), ("templates",)),
+        (("config", "plugins"), ("config", "plugins")),
+        (("config", "user"), ("config", "profiles")),
+        (("apps",), ("tools",)),
+    ],
+)
+def test_legacy_state_directories_map_to_their_new_homes(
+    tmp_path: Path, source_parts: tuple[str, ...], destination_parts: tuple[str, ...]
+) -> None:
+    """Two of these are renames, and both have to be deliberate.
+
+    `config/user` becomes `config/profiles` because the new layout says what the
+    directory holds, and `apps` becomes `tools`. Copying a directory wholesale
+    also carries what is nested inside it, which is how a profile's `old_configs`
+    backups arrive without an entry of their own.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    source = legacy.state.joinpath(*source_parts)
+    source.mkdir(parents=True)
+    (source / "payload").write_bytes(b"p" * 3)
+
+    plan = plan_migration(state_root, legacy=legacy)
+
+    assert (
+        PlannedAction(
+            kind=ActionKind.COPY,
+            source=source,
+            destination=state_root.joinpath(*destination_parts),
+            size=3,
+        )
+        in plan.actions
+    )
+
+
+def test_legacy_plugins_are_planned_from_beside_the_executable(tmp_path: Path) -> None:
+    """The plugin directory is the one thing not under the legacy state root.
+
+    It sat beside the executable, which is also why it cannot be found by
+    walking the state tree, and why `LegacyInstall` carries its location.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    (legacy.plugins / "a_plugin").mkdir(parents=True)
+    (legacy.plugins / "a_plugin" / "plugin.py").write_bytes(b"q" * 6)
+
+    plan = plan_migration(state_root, legacy=legacy)
+
+    assert (
+        PlannedAction(
+            kind=ActionKind.COPY,
+            source=legacy.plugins,
+            destination=state_root / "plugins",
+            size=6,
+        )
+        in plan.actions
+    )
+
+
+def test_the_legacy_program_configuration_is_planned_as_a_file(tmp_path: Path) -> None:
+    """Program preferences are one file, and they change name on the way.
+
+    `config/program/conf.toml` becomes `config/program.toml`: the old nesting
+    existed to give one file a directory of its own. It is the only entry that
+    is not a directory, which is why size cannot assume one.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    conf = legacy.state / "config" / "program" / "conf.toml"
+    conf.parent.mkdir(parents=True)
+    conf.write_bytes(b"k" * 9)
+
+    plan = plan_migration(state_root, legacy=legacy)
+
+    assert (
+        PlannedAction(
+            kind=ActionKind.COPY,
+            source=conf,
+            destination=state_root / "config" / "program.toml",
+            size=9,
         )
         in plan.actions
     )
