@@ -91,6 +91,69 @@ class LegacyInstall:
     plugins: Path
 
 
+_LEGACY_STATE_LOCATIONS: tuple[tuple[str, ...], ...] = (
+    ("bundle", "runtime"),
+    ("runtime",),
+)
+"""Where a pre-migration installation keeps its state, relative to its root.
+
+A release nests it inside the bundle directory PyInstaller writes; a source
+checkout has it beside the code. The plugin directory is at the root either way.
+"""
+
+
+LEGACY_SEARCH_DEPTH = 2
+"""How far below a chosen folder to look for an installation.
+
+Two levels, because people pick the folder they extracted into rather than the
+one they extracted, and sometimes the folder above that. Not more, because a
+home directory is a plausible choice and walking a whole drive to find a
+configuration file is a filesystem scan nobody asked for.
+"""
+
+
+def recognise_legacy_install(
+    candidate: Path, max_depth: int = LEGACY_SEARCH_DEPTH
+) -> LegacyInstall | None:
+    """`candidate`, or something just below it, as a previous installation.
+
+    Identified by holding configuration, rather than by its name or by an
+    executable: the user named the folder, and an unpacked release nobody has
+    run has nothing worth importing. Refusing is the useful answer there --
+    accepting it would produce a migration that reports success having moved
+    nothing.
+
+    Searched breadth-first, so the shallowest match wins and a nested copy
+    cannot shadow the installation it sits inside.
+    """
+    generation = [candidate]
+    for _ in range(max_depth + 1):
+        for root in generation:
+            found = _install_at(root)
+            if found is not None:
+                return found
+        generation = [
+            child for root in generation for child in _children(root) if child.is_dir()
+        ]
+    return None
+
+
+def _install_at(candidate: Path) -> LegacyInstall | None:
+    for parts in _LEGACY_STATE_LOCATIONS:
+        state = candidate.joinpath(*parts)
+        if not _holds_configuration(state):
+            continue
+        return LegacyInstall(
+            root=candidate, state=state, plugins=candidate / PLUGINS_DIR_NAME
+        )
+    return None
+
+
+def _holds_configuration(state: Path) -> bool:
+    config = state / "config"
+    return (config / "user").is_dir() or (config / "program" / "conf.toml").is_file()
+
+
 class FindingKind(Enum):
     """Something the user is told about rather than something that is done."""
 

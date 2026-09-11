@@ -17,6 +17,7 @@ from src.config.layout_migration import (
     LegacyInstall,
     PlannedAction,
     plan_migration,
+    recognise_legacy_install,
     render_plan,
 )
 
@@ -473,3 +474,84 @@ def test_a_repointed_setting_is_rendered_without_a_size(tmp_path: Path) -> None:
 
     assert "Repoint these settings:" in rendered
     assert "0.00 B" not in rendered
+
+
+def test_a_release_installation_is_recognised_by_its_state_tree(tmp_path: Path) -> None:
+    """A folder is a previous installation if it has configuration in it.
+
+    Not by its name, which the user chose when they extracted the release, and
+    not by the executable, which tells us nothing about whether there is
+    anything worth importing. Configuration is the thing being looked for, so
+    configuration is what identifies it.
+    """
+    install = tmp_path / "some folder the user named"
+    state = install / "bundle" / "runtime"
+    (state / "config" / "user").mkdir(parents=True)
+
+    found = recognise_legacy_install(install)
+
+    assert found == LegacyInstall(
+        root=install, state=state, plugins=install / "plugins"
+    )
+
+
+def test_a_source_checkout_is_recognised_too(tmp_path: Path) -> None:
+    """The other legacy layout, and the one a developer upgrades from.
+
+    `runtime/` and `plugins/` sit side by side rather than nested in a bundle.
+    """
+    install = tmp_path / "checkout"
+    state = install / "runtime"
+    (state / "config" / "program").mkdir(parents=True)
+    (state / "config" / "program" / "conf.toml").write_text("", encoding="utf-8")
+
+    found = recognise_legacy_install(install)
+
+    assert found == LegacyInstall(
+        root=install, state=state, plugins=install / "plugins"
+    )
+
+
+def test_a_folder_with_no_configuration_is_not_an_installation(tmp_path: Path) -> None:
+    """Refusing is the useful answer when there is nothing to import.
+
+    An empty folder, or one holding an unpacked release nobody has run yet, has
+    nothing worth migrating, and accepting it would produce a migration that
+    reports success having moved nothing.
+    """
+    install = tmp_path / "empty"
+    (install / "bundle" / "runtime").mkdir(parents=True)
+
+    assert recognise_legacy_install(install) is None
+
+
+def test_an_installation_nested_below_the_chosen_folder_is_found(
+    tmp_path: Path,
+) -> None:
+    """People pick the folder they extracted into, not the one they extracted.
+
+    A picker that refused the obvious choice would send the user back to try
+    again with no idea what was wrong, so a choice is probed downwards before it
+    is rejected.
+    """
+    chosen = tmp_path / "downloads"
+    install = chosen / "extracted release"
+    (install / "bundle" / "runtime" / "config" / "user").mkdir(parents=True)
+
+    found = recognise_legacy_install(chosen)
+
+    assert found is not None
+    assert found.root == install
+
+
+def test_the_search_below_a_chosen_folder_is_bounded(tmp_path: Path) -> None:
+    """Two levels, because a user's home directory is a plausible choice.
+
+    Walking a whole drive to find a configuration file is not a folder picker,
+    it is a filesystem scan the user did not ask for and cannot interrupt.
+    """
+    chosen = tmp_path / "downloads"
+    buried = chosen / "one" / "two" / "three"
+    (buried / "bundle" / "runtime" / "config" / "user").mkdir(parents=True)
+
+    assert recognise_legacy_install(chosen) is None
