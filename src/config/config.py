@@ -12,7 +12,7 @@ from src.config.dependencies import FindDependencies
 from src.config.migrations import document_version, migrate_document
 from src.config.models import AppConfig, ProgramConfig
 from src.config.operations import TypedTomlOperations
-from src.config.paths import ConfigPaths
+from src.config.paths import ConfigPaths, default_paths
 from src.config.persistence import atomic_write_text
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.logger.nfo_forge_logger import LOG
@@ -30,7 +30,7 @@ class ConfigManager(TypedTomlOperations):
         config_file: str | None,
         paths: ConfigPaths | None = None,
     ):
-        self.paths = paths or ConfigPaths()
+        self.paths = paths or default_paths()
         self.codec = TomlConfigCodec()
         self._program_snapshot: str | None = None
         self._config_snapshot: str | None = None
@@ -373,7 +373,7 @@ class ConfigManager(TypedTomlOperations):
         paths: ConfigPaths | None = None,
     ) -> Path:
         """Archive an incompatible profile and replace it with the default config."""
-        config_paths = paths or ConfigPaths()
+        config_paths = paths or default_paths()
         if not config_path.exists():
             atomic_write_text(
                 config_path,

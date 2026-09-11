@@ -20,7 +20,7 @@ from pathlib import Path
 import tomlkit
 from tomlkit.exceptions import TOMLKitError
 
-from src.config.paths import ConfigPaths
+from src.config.paths import ConfigPaths, default_paths
 from src.logger.nfo_forge_logger import LOG
 
 PROFILE_SUFFIX = ".toml"
@@ -52,7 +52,7 @@ def profile_working_dirs(paths: ConfigPaths | None = None) -> dict[str, Path]:
     A profile that declares nothing usable falls back to the same default
     `ConfigManager` would have given it, so its jobs are still found.
     """
-    config_paths = paths or ConfigPaths()
+    config_paths = paths or default_paths()
     fallback = ConfigPaths.default_working_dir()
 
     discovered: dict[str, Path] = {}

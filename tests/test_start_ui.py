@@ -14,9 +14,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.config.paths import ConfigPaths
+from src.config.paths import AppPaths
 from src.exceptions import ConfigError, ConfigSchemaError
 import start_ui
+from tests.repo_paths import build_app_paths
 
 
 def _bare_nfoforge(config_file: str | None) -> start_ui.NfoForge:
@@ -76,14 +77,8 @@ def test_plain_config_error_routes_to_generic_recovery_handler(
         "ConfigManager",
         lambda config_file: (_ for _ in ()).throw(ConfigError("boom")),
     )
-    test_paths = ConfigPaths(
-        default_config=tmp_path / "default_config.toml",
-        default_program=tmp_path / "default_program_conf.toml",
-        program=tmp_path / "program" / "conf.toml",
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    test_paths = build_app_paths(tmp_path)
+    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
 
     recovery_calls = []
     monkeypatch.setattr(
@@ -126,14 +121,10 @@ def test_config_error_falls_back_to_fatal_when_path_unresolvable(
         "ConfigManager",
         lambda config_file: (_ for _ in ()).throw(ConfigError("boom")),
     )
-    unresolvable_paths = ConfigPaths(
-        default_config=Path("does-not-matter.toml"),
-        default_program=Path("does-not-matter.toml"),
-        program=Path("nonexistent") / "conf.toml",
-        user_configs=Path("nonexistent") / "user",
-        tracker_cookies=Path("nonexistent") / "cookies",
+    unresolvable_paths = AppPaths(
+        state_root=Path("nonexistent"), asset_root=Path("nonexistent")
     )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: unresolvable_paths)
+    monkeypatch.setattr(start_ui, "default_paths", lambda: unresolvable_paths)
 
     recovery_calls = []
     monkeypatch.setattr(
@@ -162,17 +153,10 @@ def test_resolve_config_path_defaults_missing_current_config_key(
     to "config", matching `ConfigManager.decode_program`'s default, instead
     of giving up and returning `None`.
     """
-    program_path = tmp_path / "program" / "conf.toml"
-    program_path.parent.mkdir(parents=True, exist_ok=True)
-    program_path.write_text('main_window_position = ""\n', encoding="utf-8")
-    test_paths = ConfigPaths(
-        default_config=tmp_path / "default_config.toml",
-        default_program=tmp_path / "default_program_conf.toml",
-        program=program_path,
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    test_paths = build_app_paths(tmp_path)
+    test_paths.program.parent.mkdir(parents=True, exist_ok=True)
+    test_paths.program.write_text('main_window_position = ""\n', encoding="utf-8")
+    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge(None)
 
@@ -189,17 +173,10 @@ def test_malformed_program_config_offers_recovery_not_a_fatal_error(
     `_handle_config_error` can offer to regenerate it instead of falling
     through to the fatal quit path.
     """
-    program_path = tmp_path / "program" / "conf.toml"
-    program_path.parent.mkdir(parents=True, exist_ok=True)
-    program_path.write_text('current_config = "unterminated', encoding="utf-8")
-    test_paths = ConfigPaths(
-        default_config=tmp_path / "default_config.toml",
-        default_program=tmp_path / "default_program_conf.toml",
-        program=program_path,
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    test_paths = build_app_paths(tmp_path)
+    test_paths.program.parent.mkdir(parents=True, exist_ok=True)
+    test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
+    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge(None)
     result = app._resolve_config_path()
@@ -219,17 +196,10 @@ def test_handle_config_error_routes_malformed_program_config_to_its_own_recovery
     archive+regenerate path (which would show the wrong, more alarming
     "settings will reset" wording for a file that holds none).
     """
-    program_path = tmp_path / "program" / "conf.toml"
-    program_path.parent.mkdir(parents=True, exist_ok=True)
-    program_path.write_text('current_config = "unterminated', encoding="utf-8")
-    test_paths = ConfigPaths(
-        default_config=tmp_path / "default_config.toml",
-        default_program=tmp_path / "default_program_conf.toml",
-        program=program_path,
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    test_paths = build_app_paths(tmp_path)
+    test_paths.program.parent.mkdir(parents=True, exist_ok=True)
+    test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
+    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
 
     program_reset_calls = []
     monkeypatch.setattr(
@@ -270,17 +240,10 @@ def test_resolve_config_path_detects_malformed_program_config_even_with_a_known_
     `config_file` is already known, not silently skipped in favor of
     resolving that (fine) profile's path.
     """
-    program_path = tmp_path / "program" / "conf.toml"
-    program_path.parent.mkdir(parents=True, exist_ok=True)
-    program_path.write_text('current_config = "unterminated', encoding="utf-8")
-    test_paths = ConfigPaths(
-        default_config=tmp_path / "default_config.toml",
-        default_program=tmp_path / "default_program_conf.toml",
-        program=program_path,
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    test_paths = build_app_paths(tmp_path)
+    test_paths.program.parent.mkdir(parents=True, exist_ok=True)
+    test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
+    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge("test")
     result = app._resolve_config_path()
@@ -301,17 +264,10 @@ def test_malformed_program_config_takes_priority_over_a_known_profile_name(
     actually broken (the program config, which `_offer_archive_and_regenerate`
     doesn't even look at).
     """
-    program_path = tmp_path / "program" / "conf.toml"
-    program_path.parent.mkdir(parents=True, exist_ok=True)
-    program_path.write_text('current_config = "unterminated', encoding="utf-8")
-    test_paths = ConfigPaths(
-        default_config=tmp_path / "default_config.toml",
-        default_program=tmp_path / "default_program_conf.toml",
-        program=program_path,
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    test_paths = build_app_paths(tmp_path)
+    test_paths.program.parent.mkdir(parents=True, exist_ok=True)
+    test_paths.program.write_text('current_config = "unterminated', encoding="utf-8")
+    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
     monkeypatch.setattr(
         start_ui,
         "ConfigManager",
@@ -346,17 +302,10 @@ def test_malformed_program_config_takes_priority_over_a_known_profile_name(
 def test_last_used_config_is_returned_only_when_profile_exists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    program_path = tmp_path / "program" / "conf.toml"
-    program_path.parent.mkdir(parents=True, exist_ok=True)
-    program_path.write_text('current_config = "second"\n', encoding="utf-8")
-    test_paths = ConfigPaths(
-        default_config=tmp_path / "default_config.toml",
-        default_program=tmp_path / "default_program_conf.toml",
-        program=program_path,
-        user_configs=tmp_path / "user",
-        tracker_cookies=tmp_path / "cookies",
-    )
-    monkeypatch.setattr(start_ui, "ConfigPaths", lambda: test_paths)
+    test_paths = build_app_paths(tmp_path)
+    test_paths.program.parent.mkdir(parents=True, exist_ok=True)
+    test_paths.program.write_text('current_config = "second"\n', encoding="utf-8")
+    monkeypatch.setattr(start_ui, "default_paths", lambda: test_paths)
 
     app = _bare_nfoforge(None)
 

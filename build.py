@@ -26,57 +26,6 @@ PLUGIN_API_MODULES: list[str] = [
 ]
 
 
-# Directories in the bundled runtime that hold nothing but local state. The
-# runtime is seeded from `runtime/` on the build machine rather than from a
-# clean template, so each of these arrives holding whatever that machine
-# accumulated. They are cleared wholesale rather than by file extension: the
-# old patterns matched NfoForge's own `.toml` and `.log` names, which let a
-# plugin's JSON credentials and a rotated `.log.1` reach a build.
-#
-# `docs` is deliberately absent. It is untracked like these are, but the build
-# generates it, so clearing it would ship a release with no documentation.
-LOCAL_STATE_DIRS = ("apps", "cookies", "logs", "templates", "user_packages")
-
-# Under `config`, everything is the user's own except these two, which are the
-# packaged defaults a release starts from.
-PACKAGED_CONFIG_DIRS = ("audio_conventions", "defaults")
-
-
-def _clear_directory(directory: Path) -> None:
-    """Empty a directory, leaving it in place, if it is there at all."""
-    if not directory.is_dir():
-        return
-    for item in directory.iterdir():
-        if item.is_dir():
-            shutil.rmtree(item, ignore_errors=True)
-        else:
-            item.unlink(missing_ok=True)
-
-
-def strip_local_state(bundled_runtime: Path) -> None:
-    """Remove the build machine's own data from the runtime a release ships.
-
-    Credentials, saved configuration, logs and cookies all live under the
-    runtime directory this build copies verbatim, so without this a release
-    carries whatever the maintainer's install happened to hold.
-    """
-    for name in LOCAL_STATE_DIRS:
-        _clear_directory(bundled_runtime / name)
-
-    config = bundled_runtime / "config"
-    if config.is_dir():
-        for item in config.iterdir():
-            if item.name in PACKAGED_CONFIG_DIRS:
-                continue
-            if item.is_dir():
-                shutil.rmtree(item, ignore_errors=True)
-            else:
-                item.unlink(missing_ok=True)
-
-    # local plugin installs, which are not part of a release
-    shutil.rmtree(bundled_runtime / "plugins", ignore_errors=True)
-
-
 def get_std_lib() -> list:
     """Return all standard library modules removing 'this' and 'antigravity'"""
     standard_lib = stdlib_list()
@@ -180,7 +129,7 @@ def run_doc_stuff(project_root: Path) -> Path:
 
     # build final docs
     print("Generating documentation")
-    out = project_root / "runtime" / "docs"
+    out = project_root / "assets" / "docs"
     if out.exists():
         shutil.rmtree(out)
     out.mkdir()
@@ -223,17 +172,18 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
 
     # define paths before changing directory
     entry_script = project_root / "start_ui.py"
-    icon_path = project_root / "runtime" / "images" / "hammer_merged.ico"
+    icon_path = project_root / "assets" / "images" / "hammer_merged.ico"
     if platform.system() == "Darwin":
-        icns_candidate = project_root / "runtime" / "images" / "hammer_merged.icns"
+        icns_candidate = project_root / "assets" / "images" / "hammer_merged.icns"
         if icns_candidate.exists():
             icon_path = icns_candidate
     site_packages = get_site_packages()
     babel_fish = site_packages / "babelfish"
     guessit = site_packages / "guessit"
 
-    # dev runtime path to pull into final package
-    dev_runtime = project_root / "runtime"
+    # read-only files the release ships; nothing the user owns lives here, so
+    # there is no stripping pass to run afterwards
+    assets = project_root / "assets"
 
     # change directory so PyInstaller outputs all of its files in its own folder
     os.chdir(pyinstaller_folder)
@@ -247,7 +197,7 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
             # "--onefile",
             "-w" if not debug else "-c",
             f"--icon={icon_path}",
-            f"--add-data={dev_runtime}:runtime",
+            f"--add-data={assets}:assets",
             f"--add-data={babel_fish}:./babelfish",
             f"--add-data={guessit}:./guessit",
             "--contents-directory",
@@ -331,9 +281,6 @@ def build_app(folder_name: str, include_std_lib: bool, debug: bool = False):
         ignore=lambda dir, files: [f for f in files if f == "__pycache__"],
         copy_function=shutil.copy,
     )
-
-    # remove dev files
-    strip_local_state(Path(exe_path.parent / "bundle" / "runtime"))
 
     # Return a success message
     return success

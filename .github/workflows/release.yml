@@ -99,14 +99,14 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           set -e
-          ICONSET="runtime/images/hammer_merged.iconset"
+          ICONSET="assets/images/hammer_merged.iconset"
           mkdir -p "$ICONSET"
           for sz in 16 32 128 256 512; do
-            sips -z $sz $sz runtime/images/hammer_merged.png --out "$ICONSET/icon_${sz}x${sz}.png"
+            sips -z $sz $sz assets/images/hammer_merged.png --out "$ICONSET/icon_${sz}x${sz}.png"
             dsz=$((sz * 2))
-            sips -z $dsz $dsz runtime/images/hammer_merged.png --out "$ICONSET/icon_${sz}x${sz}@2x.png"
+            sips -z $dsz $dsz assets/images/hammer_merged.png --out "$ICONSET/icon_${sz}x${sz}@2x.png"
           done
-          iconutil -c icns "$ICONSET" -o runtime/images/hammer_merged.icns
+          iconutil -c icns "$ICONSET" -o assets/images/hammer_merged.icns
 
       - name: Check version matches release tag
         shell: bash

@@ -13,13 +13,15 @@ dev_scripts/
 *.csv
 runtime/apps/
 runtime/cookies/
+runtime/config/
 runtime/docs/
-runtime/config/*
-!runtime/config/audio_conventions/
-!runtime/config/defaults/
 runtime/logs/
 runtime/templates/
 runtime/user_packages/
+# generated at build time from docs/, not tracked
+assets/docs/
+assets/images/*.iconset/
+assets/images/*.icns
 beyondhd-parser/
 plugins/*
 !plugins/jinja2_plugin_example/

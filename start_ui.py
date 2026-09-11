@@ -6,7 +6,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from src.backend.utils.working_dir import CURRENT_DIR, IS_FROZEN, RUNTIME_DIR
+from src.backend.utils.working_dir import (
+    CURRENT_DIR,
+    IS_FROZEN,
+    RUNTIME_DIR,
+    asset_root,
+)
 
 # The portable/frozen build must not trust an arbitrary `.env` placed beside
 # the executable.  Development installs may still use the convenience file,
@@ -41,7 +46,7 @@ from src.backend.utils.template_token_migration import (
     scan_template_dir,
 )
 from src.config.config import ConfigManager
-from src.config.paths import ConfigPaths
+from src.config.paths import default_paths
 from src.exceptions import ConfigError, ConfigSchemaError
 from src.frontend.custom_widgets.scrollable_error_dialog import ScrollableErrorDialog
 from src.frontend.windows.main_window import MainWindow
@@ -73,7 +78,7 @@ class NfoForge:
         self.app = QApplication(sys.argv)
 
         self.app.setWindowIcon(
-            QIcon(str(Path(RUNTIME_DIR / "images" / "hammer_merged.png")))
+            QIcon(str(Path(asset_root() / "images" / "hammer_merged.png")))
         )
         self.app.setStyle("Fusion")
 
@@ -169,7 +174,7 @@ class NfoForge:
         faulthandler.enable(file=handle)
 
     def _setup_font(self) -> None:
-        font_folder = RUNTIME_DIR / "fonts"
+        font_folder = asset_root() / "fonts"
 
         for font_file in font_folder.rglob("*.ttf"):
             QFontDatabase.addApplicationFont(str(font_file))
@@ -295,7 +300,7 @@ class NfoForge:
         attribute) is raised without a fully constructed `ConfigManager` to
         ask instead."""
         try:
-            paths = ConfigPaths()
+            paths = default_paths()
             config_file = self.config_file
             # `ConfigManager.load_program` parses `paths.program` on every
             # init regardless of whether a profile name was already
@@ -351,7 +356,7 @@ class NfoForge:
         # requesting it.
         self.program_config_malformed = False
 
-        paths = ConfigPaths()
+        paths = default_paths()
         response = QMessageBox.question(
             self.splash_screen,
             "Invalid Program Config",
@@ -531,7 +536,7 @@ class NfoForge:
     def _get_available_configs(self) -> list[str] | None:
         """Get list of available config file names (without .toml extension)"""
         try:
-            config_dir = ConfigPaths().user_configs
+            config_dir = default_paths().user_configs
             if not config_dir.exists():
                 return
             return sorted([x.stem for x in config_dir.glob("*.toml")])
@@ -550,7 +555,7 @@ class NfoForge:
         selected by the combo box.
         """
         try:
-            program_path = ConfigPaths().program
+            program_path = default_paths().program
             if not program_path.exists():
                 return None
             program_document = tomlkit.parse(program_path.read_text(encoding="utf-8"))

@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.config.config import ConfigManager
 from src.frontend.custom_widgets.masked_qline_edit import MaskedQLineEdit
 from src.frontend.global_signals import GSigs
@@ -83,7 +83,7 @@ class AboutTab(BaseSettings):
 
         self.update_saved_settings.connect(self._save_settings)
 
-        docs_index_path = RUNTIME_DIR / "docs" / "index.html"
+        docs_index_path = asset_root() / "docs" / "index.html"
         self.about_lbl = QLabel(
             about_txt.replace(
                 "<OFFLINE_DOCS_PATH_REP>",
@@ -113,7 +113,7 @@ class AboutTab(BaseSettings):
         tvdb_frame_layout.addWidget(tvdb_info_attr_info, stretch=1)
 
         # tmdb
-        tmdb_icon = QPixmap(str(RUNTIME_DIR / "images" / "tmdb_med.png")).scaled(
+        tmdb_icon = QPixmap(str(asset_root() / "images" / "tmdb_med.png")).scaled(
             *self.ATTRIBUTION_SIZE,
             aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
             mode=Qt.TransformationMode.SmoothTransformation,
@@ -143,7 +143,7 @@ class AboutTab(BaseSettings):
         self.bitcoin_lbl = QLabel("<h4>Bitcoin</h4>", self)
         self.bitcoin_qr_img = QLabel(self)
         self.bitcoin_qr_img.setPixmap(
-            QPixmap(str(RUNTIME_DIR / "images" / "bitcoin_qr.png")).scaled(
+            QPixmap(str(asset_root() / "images" / "bitcoin_qr.png")).scaled(
                 160,
                 160,
                 aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
@@ -176,7 +176,7 @@ class AboutTab(BaseSettings):
         self.ethereum_lbl = QLabel("<h4>Ethereum</h4>", self)
         self.ethereum_qr_img = QLabel(self)
         self.ethereum_qr_img.setPixmap(
-            QPixmap(str(RUNTIME_DIR / "images" / "eth_qr.png")).scaled(
+            QPixmap(str(asset_root() / "images" / "eth_qr.png")).scaled(
                 160,
                 160,
                 aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
@@ -244,13 +244,13 @@ class AboutTab(BaseSettings):
     def _update_tvdb_image(self, color_scheme: Qt.ColorScheme) -> None:
         """Updates the image based on the color scheme."""
         if color_scheme == Qt.ColorScheme.Dark:
-            tvdb_icon = QPixmap(str(RUNTIME_DIR / "images" / "tvdb_dark.png")).scaled(
+            tvdb_icon = QPixmap(str(asset_root() / "images" / "tvdb_dark.png")).scaled(
                 *self.ATTRIBUTION_SIZE,
                 aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
                 mode=Qt.TransformationMode.SmoothTransformation,
             )
         else:
-            tvdb_icon = QPixmap(str(RUNTIME_DIR / "images" / "tvdb.png")).scaled(
+            tvdb_icon = QPixmap(str(asset_root() / "images" / "tvdb.png")).scaled(
                 *self.ATTRIBUTION_SIZE,
                 aspectMode=Qt.AspectRatioMode.KeepAspectRatio,
                 mode=Qt.TransformationMode.SmoothTransformation,

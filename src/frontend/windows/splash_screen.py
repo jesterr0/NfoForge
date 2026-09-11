@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 import qtawesome as qta
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.backend.utils.working_dir import asset_root
 from src.config.config import ConfigManager
 from src.frontend.custom_widgets.combo_box import CustomComboBox
 from src.plugins.loader import PluginLoader
@@ -216,7 +216,7 @@ class SplashScreen(QWidget):
         self._continue_shortcuts: list[QShortcut] = []
 
         # this must be defined first to fill the background
-        pixmap = QPixmap(RUNTIME_DIR / "images" / "nfoforge_splash_screen_4.png")
+        pixmap = QPixmap(asset_root() / "images" / "nfoforge_splash_screen_4.png")
         self.splash_img = QLabel(self)
         self.splash_img.setPixmap(pixmap)
         self.splash_img.setScaledContents(True)
@@ -333,7 +333,7 @@ class SplashScreen(QWidget):
         )
         self.config_combo.setStyleSheet(
             config_splash_combo_style.format(
-                str(Path(RUNTIME_DIR / "svg" / "arrow_down.svg").as_posix())
+                str(Path(asset_root() / "svg" / "arrow_down.svg").as_posix())
             )
         )
         self.config_combo.setCursor(Qt.CursorShape.PointingHandCursor)

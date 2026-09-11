@@ -23,6 +23,33 @@ def _get_working_directories() -> tuple[Path, Path, bool]:
 
 CURRENT_DIR, RUNTIME_DIR, IS_FROZEN = _get_working_directories()
 
+ASSET_DIR_NAME = "assets"
+"""Read-only files shipped with a release: fonts, images, SVGs, packaged defaults."""
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+def asset_root() -> Path:
+    """Where the files shipped with this release live.
+
+    A function rather than a module constant so nothing binds a path at import
+    time, and so tests can exercise both branches.
+
+    Frozen builds ask PyInstaller via `sys._MEIPASS` instead of deriving a path
+    from `sys.executable`. On Windows and Linux the two coincide, because
+    `--contents-directory` renames PyInstaller's own folder to the same name the
+    old exe-relative path used. They do not coincide on macOS, where the
+    executable sits in `Contents/MacOS` and collected data does not, so an
+    exe-relative path names a directory that is not there.
+
+    From source the root is resolved against this file's location, not
+    `Path.cwd()`, so launching from anywhere still finds the project's assets.
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if getattr(sys, "frozen", False) and meipass:
+        return Path(meipass) / ASSET_DIR_NAME
+    return _PROJECT_ROOT / ASSET_DIR_NAME
+
 
 # The user-configurable working directory is laid out so that disposable
 # artifacts and deliberately saved work never share a parent. "Clean Up" in
