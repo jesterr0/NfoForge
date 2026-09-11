@@ -182,6 +182,14 @@ class Finding:
 @dataclass(frozen=True, slots=True)
 class MigrationPlan:
     actions: tuple[PlannedAction, ...]
+    state_root: Path = Path()
+    """The data directory this plan is for.
+
+    Carried on the plan rather than passed alongside it, so that applying one
+    needs nothing but the plan the user read. Anything derived at apply time
+    from a second argument could differ from what they agreed to.
+    """
+
     findings: tuple[Finding, ...] = ()
 
 
@@ -338,7 +346,9 @@ def plan_migration(
                     )
                 )
 
-    return MigrationPlan(actions=tuple(actions), findings=tuple(findings))
+    return MigrationPlan(
+        actions=tuple(actions), state_root=state_root, findings=tuple(findings)
+    )
 
 
 def _copy(source: Path, destination: Path) -> PlannedAction:
