@@ -33,6 +33,10 @@ CACHE_DIR_NAME = "cache"
 PLUGINS_DIR_NAME = "plugins"
 """Where the user's own plugins live, once they stop living beside the release."""
 
+TOOLS_DIR_NAME = "tools"
+LEGACY_TOOLS_DIR_NAME = "apps"
+"""The same directory, before and after. A rename, so both names are needed."""
+
 _RUN_FOLDER_STAMP = re.compile(r"_\d{2}\.\d{2}\.\d{4}_\d{2}\.\d{2}\.\d{2}$")
 """The date and time `generate_unique_date_name` appends to a run folder name.
 
@@ -53,6 +57,8 @@ class ActionKind(Enum):
 
     MOVE = "move"
     COPY = "copy"
+    REWRITE = "rewrite"
+    """Repoints a setting. Touches a configuration value, not the filesystem."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +67,13 @@ class PlannedAction:
     source: Path
     destination: Path
     size: int
-    """Bytes, so a summary can say what a step will cost before running it."""
+    """Bytes, so a summary can say what a step will cost before running it.
+
+    Zero for a rewrite, which moves no data.
+    """
+
+    detail: str = ""
+    """Which setting, for a rewrite. Nothing else needs naming."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,7 +125,7 @@ _KNOWN_ROOT_NAMES = frozenset(
         "templates",
         "cookies",
         "logs",
-        "tools",
+        TOOLS_DIR_NAME,
         "migration-conflicts",
         CACHE_DIR_NAME,
         PLUGINS_DIR_NAME,
@@ -135,7 +147,7 @@ _LEGACY_ENTRIES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("config", "plugins"), ("config", "plugins")),
     (("config", "user"), ("config", "profiles")),
     (("config", "program", "conf.toml"), ("config", "program.toml")),
-    (("apps",), ("tools",)),
+    ((LEGACY_TOOLS_DIR_NAME,), (TOOLS_DIR_NAME,)),
 )
 """Legacy state, as (source, destination) relative to each root.
 
@@ -228,8 +240,22 @@ def plan_migration(
         if legacy.plugins.is_dir():
             actions.append(_copy(legacy.plugins, state_root / PLUGINS_DIR_NAME))
 
+        legacy_tools = legacy.state / LEGACY_TOOLS_DIR_NAME
         for label, configured in configured_paths:
-            if _is_inside(configured, legacy.root):
+            if _is_inside(configured, legacy_tools):
+                remainder = normalise_path(configured).relative_to(
+                    normalise_path(legacy_tools)
+                )
+                actions.append(
+                    PlannedAction(
+                        kind=ActionKind.REWRITE,
+                        source=configured,
+                        destination=state_root / TOOLS_DIR_NAME / remainder,
+                        size=0,
+                        detail=label,
+                    )
+                )
+            elif _is_inside(configured, legacy.root):
                 findings.append(
                     Finding(
                         kind=FindingKind.PATH_INSIDE_LEGACY_INSTALL,

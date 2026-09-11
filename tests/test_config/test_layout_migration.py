@@ -383,3 +383,39 @@ def test_a_working_directory_that_is_the_data_directory_is_not_reported_twice(
 
     assert [action.source for action in plan.actions] == [run_folder]
     assert plan.findings == ()
+
+
+def test_a_dependency_under_the_legacy_tools_directory_is_rewritten(
+    tmp_path: Path,
+) -> None:
+    """This is the one configured path with an answer worth guessing.
+
+    The old tools directory is itself being copied to a known new location, so
+    the setting's replacement is derivable rather than invented. Leaving it
+    would point the setting at a folder the user is being told they may delete,
+    and rediscovery would find nothing: the next run would fail on a missing
+    dependency that is sitting right there under its new name.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    tool = legacy.state / "apps" / "example_tool" / "example_tool.exe"
+    tool.parent.mkdir(parents=True)
+    tool.write_bytes(b"t")
+
+    plan = plan_migration(
+        state_root, legacy=legacy, configured_paths=[("dependency: example tool", tool)]
+    )
+
+    assert (
+        PlannedAction(
+            kind=ActionKind.REWRITE,
+            source=tool,
+            destination=state_root / "tools" / "example_tool" / "example_tool.exe",
+            size=0,
+            detail="dependency: example tool",
+        )
+        in plan.actions
+    )
+    assert [finding.kind for finding in plan.findings] == []
+
