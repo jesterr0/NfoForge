@@ -8,6 +8,7 @@ import pytest
 from src.backend.images import FrameForgeImageGeneration
 from src.backend.utils import frameforge_index_cache as cache_module
 from src.backend.utils.frameforge_index_cache import FrameForgeIndexCache
+from src.config.paths import AppPaths
 from src.enums.cropping import Cropping
 from src.enums.image_plugin import ImagePlugin
 from src.enums.indexer import Indexer
@@ -264,7 +265,20 @@ def test_prune_refuses_to_delete_through_a_symlink(tmp_path: Path) -> None:
     assert (victim / "precious.txt").exists()
 
 
-def test_fallback_cache_root_is_not_in_shared_temp(tmp_path: Path) -> None:
+def test_fallback_cache_root_is_not_in_shared_temp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fallback belongs in this user's own directory, not a shared one.
+
+    The per-user directory is pinned to a path outside the system temp here,
+    deliberately overriding the suite-wide sandbox, which lives under pytest's
+    ``tmp_path`` and so is itself inside the shared temp directory. Without
+    that, the shared-temp assertion would be checking the sandbox rather than
+    where the code actually puts the cache.
+    """
+    monkeypatch.setattr(
+        AppPaths, "data_root", staticmethod(lambda: Path("/somewhere/user_data"))
+    )
     # The configured root sits inside the media tree, so the fallback fires.
     media_root = tmp_path / "media"
     media_root.mkdir()
@@ -272,5 +286,6 @@ def test_fallback_cache_root_is_not_in_shared_temp(tmp_path: Path) -> None:
 
     fallback = cache._safe_cache_root(media_root)
 
+    assert fallback.is_relative_to(Path("/somewhere/user_data"))
     assert tempfile.gettempdir() not in str(fallback)
     assert not fallback.is_relative_to(media_root)

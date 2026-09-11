@@ -9,6 +9,7 @@ nothing could be reconfigured afterwards.
 from pathlib import Path
 import sys
 
+from platformdirs import user_data_dir
 import pytest
 
 from src.config.paths import DATA_DIR_ENV_VAR, AppPaths, ConfigPaths, default_paths
@@ -132,6 +133,30 @@ def test_the_override_is_honoured_by_the_debug_build(
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
     assert default_paths().state_root == tmp_path / "rehearsal"
+
+
+def test_no_test_can_reach_the_real_per_user_directory(tmp_path: Path) -> None:
+    """The suite must not be able to touch the directory a real install uses.
+
+    `data_root` is not a passive lookup. `ConfigOperations` calls
+    `default_working_dir(ensure_exists=True)` for any configuration with no
+    explicit working directory, which creates whatever it resolves to, and the
+    per-user directory is where a real install keeps its saved jobs, its index
+    cache and its run output. A test that reached it would be writing into
+    someone's working data.
+
+    Neither the `AppPaths` instance under test nor `NFOFORGE_DATA_DIR` prevents
+    that on its own, because this resolves through a static method that consults
+    neither. So the suite sandboxes it for every test, and this asserts the
+    sandbox is in place -- without calling `ensure_exists`, which on a broken
+    sandbox would create the very directory being guarded.
+    """
+    sandboxed = AppPaths.data_root()
+
+    assert sandboxed != Path(user_data_dir(appname="nfoforge", appauthor=False))
+    assert sandboxed.is_relative_to(tmp_path), (
+        f"data_root() resolved to {sandboxed}, outside this test's tmp_path"
+    )
 
 
 def test_a_blank_override_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:

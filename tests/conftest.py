@@ -44,6 +44,7 @@ from src.backend.utils.example_parsed_series_data import (
     EXAMPLE_MEDIA_INPUT_PAYLOAD as SERIES_EXAMPLE_PAYLOAD,
 )
 from src.backend.utils.media_info_utils import clear_restored_mediainfo
+from src.config.paths import AppPaths
 from src.context.processing_context import ProcessingContext
 from src.enums.image_host import ImageHost, ImageSource
 from src.enums.media_type import MediaType
@@ -101,6 +102,30 @@ def _no_blocking_modals(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     monkeypatch.setattr(QDialog, "exec", refuse)
+
+
+@pytest.fixture(autouse=True)
+def _sandbox_the_per_user_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Point the real per-user directory at a throwaway one, for every test.
+
+    ``AppPaths.data_root`` is a static method that asks platformdirs where this
+    user's data lives, so it answers with the directory a real installation is
+    using regardless of which ``AppPaths`` a test built or what
+    ``NFOFORGE_DATA_DIR`` says. And it is not read-only:
+    ``ConfigOperations._load`` calls ``default_working_dir(ensure_exists=True)``
+    for any configuration with no explicit working directory, which creates it.
+
+    On a developer's machine that directory holds saved jobs, the index cache
+    and run output, so "no test writes there" is not something to leave to
+    every future test author noticing. Redirecting rather than failing means a
+    test that legitimately compares against the default working directory still
+    gets a consistent answer -- just a disposable one.
+    """
+    monkeypatch.setattr(
+        AppPaths, "data_root", staticmethod(lambda: tmp_path / "user_data")
+    )
 
 
 @pytest.fixture(autouse=True)
