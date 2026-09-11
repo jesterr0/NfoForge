@@ -61,13 +61,21 @@ def test_saved_jobs_at_the_root_are_planned_into_the_workspace(tmp_path: Path) -
     )
 
 
-def test_a_run_folder_at_the_root_is_planned_into_the_workspace(tmp_path: Path) -> None:
+def test_a_run_folder_at_the_root_is_planned_into_the_processing_folder(
+    tmp_path: Path,
+) -> None:
     """Run output landed at the root too, for the same reason saved jobs did.
 
     The name is the tell: `generate_unique_date_name` stamps a truncated release
     name with a date and time, so a folder carrying that suffix is one this
     application created. Matching on shape is what lets the plan leave anything
     it does not recognise alone.
+
+    It lands under `processing/` rather than loose in the workspace, because
+    that is what a run folder is -- the old equivalent of what now goes there --
+    and because clean up empties `processing/` and nothing else. Loose in the
+    workspace it would be stranded: reclaimable before the migration and
+    unreachable after it.
     """
     state_root = tmp_path / "user_data"
     run_folder = state_root / "Example.Release.Name.2024_09.11.2026_10.09.39"
@@ -80,7 +88,7 @@ def test_a_run_folder_at_the_root_is_planned_into_the_workspace(tmp_path: Path) 
         PlannedAction(
             kind=ActionKind.MOVE,
             source=run_folder,
-            destination=state_root / "workspace" / run_folder.name,
+            destination=state_root / "workspace" / "processing" / run_folder.name,
             size=4,
         )
         in plan.actions
@@ -197,11 +205,24 @@ def test_legacy_state_directories_map_to_their_new_homes(
     )
 
 
-def test_legacy_plugins_are_planned_from_beside_the_executable(tmp_path: Path) -> None:
+def _write_plugin(directory: Path, plugin_id: str) -> Path:
+    """A plugin directory with a manifest the loader would accept."""
+    directory.mkdir(parents=True)
+    (directory / "nfoforge-plugin.toml").write_text(
+        f'schema_version = 1\nid = "{plugin_id}"\nmodule = "whatever"\n',
+        encoding="utf-8",
+    )
+    return directory
+
+
+def test_legacy_plugins_are_planned_one_directory_at_a_time(tmp_path: Path) -> None:
     """The plugin directory is the one thing not under the legacy state root.
 
     It sat beside the executable, which is also why it cannot be found by
     walking the state tree, and why `LegacyInstall` carries its location.
+
+    Planned per plugin rather than as one directory, because which plugins are
+    imported is a decision the next test depends on being able to make.
     """
     state_root = tmp_path / "user_data"
     state_root.mkdir()
@@ -214,12 +235,41 @@ def test_legacy_plugins_are_planned_from_beside_the_executable(tmp_path: Path) -
     assert (
         PlannedAction(
             kind=ActionKind.COPY,
-            source=legacy.plugins,
-            destination=state_root / "plugins",
+            source=legacy.plugins / "a_plugin",
+            destination=state_root / "plugins" / "a_plugin",
             size=6,
         )
         in plan.actions
     )
+
+
+def test_a_shipped_example_plugin_is_not_imported(tmp_path: Path) -> None:
+    """Importing one would break plugin loading on every subsequent start.
+
+    The examples used to live in the user's plugin directory and now ship in the
+    release, so a legacy directory holds a copy of each. Import them and both
+    copies get scanned, the second registration is rejected as a duplicate ID,
+    and the user gets load failures for plugins they never installed.
+
+    Matched on the manifest ID rather than the directory name, because the
+    directory is the user's to rename and the ID is what collides.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    shipped = tmp_path / "assets" / "plugin_examples"
+    _write_plugin(shipped / "an_example", "example.one")
+    _write_plugin(legacy.plugins / "renamed_by_the_user", "example.one")
+    _write_plugin(legacy.plugins / "their_own_plugin", "something.else")
+
+    plan = plan_migration(state_root, legacy=legacy, shipped_plugins=shipped)
+
+    copied = [
+        action.source.name
+        for action in plan.actions
+        if action.kind is ActionKind.COPY and action.source.parent == legacy.plugins
+    ]
+    assert copied == ["their_own_plugin"]
 
 
 def test_the_legacy_program_configuration_is_planned_as_a_file(tmp_path: Path) -> None:

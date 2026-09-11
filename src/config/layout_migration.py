@@ -19,13 +19,17 @@ from enum import Enum
 from pathlib import Path
 import re
 
+import tomllib
+
 from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
 from src.backend.utils.frameforge_index_cache import FrameForgeIndexCache
 from src.backend.utils.working_dir import (
     JOBS_DIR_NAME,
+    PROCESSING_DIR_NAME,
     WORKSPACE_DIR_NAME,
     normalise_path,
 )
+from src.plugins.loader import LOCAL_MANIFEST
 
 CACHE_DIR_NAME = "cache"
 """Where derived data that can be rebuilt lives in the new layout."""
@@ -227,6 +231,7 @@ def plan_migration(
     legacy: LegacyInstall | None = None,
     configured_paths: Iterable[tuple[str, Path]] = (),
     working_dirs: Iterable[Path] = (),
+    shipped_plugins: Path | None = None,
 ) -> MigrationPlan:
     """Everything the move to the new layout would do.
 
@@ -268,7 +273,10 @@ def plan_migration(
                 PlannedAction(
                     kind=ActionKind.MOVE,
                     source=entry,
-                    destination=state_root / WORKSPACE_DIR_NAME / entry.name,
+                    destination=state_root
+                    / WORKSPACE_DIR_NAME
+                    / PROCESSING_DIR_NAME
+                    / entry.name,
                     size=_size(entry),
                 )
             )
@@ -300,8 +308,11 @@ def plan_migration(
             if not source.exists():
                 continue
             actions.append(_copy(source, state_root.joinpath(*destination_parts)))
-        if legacy.plugins.is_dir():
-            actions.append(_copy(legacy.plugins, state_root / PLUGINS_DIR_NAME))
+        shipped_ids = _plugin_ids(shipped_plugins) if shipped_plugins else frozenset()
+        for entry in _children(legacy.plugins):
+            if not entry.is_dir() or _plugin_id(entry) in shipped_ids:
+                continue
+            actions.append(_copy(entry, state_root / PLUGINS_DIR_NAME / entry.name))
 
         legacy_tools = legacy.state / LEGACY_TOOLS_DIR_NAME
         for label, configured in configured_paths:
@@ -387,6 +398,27 @@ def render_plan(plan: MigrationPlan) -> str:
     if not sections:
         return "Nothing to migrate."
     return "\n\n".join(sections)
+
+
+def _plugin_ids(directory: Path) -> frozenset[str]:
+    """Every plugin ID declared directly below `directory`."""
+    found = {_plugin_id(entry) for entry in _children(directory) if entry.is_dir()}
+    return frozenset(plugin_id for plugin_id in found if plugin_id is not None)
+
+
+def _plugin_id(directory: Path) -> str | None:
+    """The ID a plugin declares, or None if there is no readable manifest.
+
+    None for a directory that is not a plugin, which is deliberately not the
+    same as an ID that matches nothing: a directory with no manifest is still
+    the user's and is still imported.
+    """
+    manifest = directory / LOCAL_MANIFEST
+    try:
+        declared = tomllib.loads(manifest.read_text(encoding="utf-8")).get("id")
+    except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return None
+    return declared.strip() if isinstance(declared, str) and declared.strip() else None
 
 
 def _is_inside(path: Path, root: Path) -> bool:
