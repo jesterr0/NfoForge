@@ -19,7 +19,7 @@ from enum import Enum
 from pathlib import Path
 import re
 
-from src.backend.utils.file_utilities import get_dir_size
+from src.backend.utils.file_utilities import file_bytes_to_str, get_dir_size
 from src.backend.utils.frameforge_index_cache import FrameForgeIndexCache
 from src.backend.utils.working_dir import (
     JOBS_DIR_NAME,
@@ -274,6 +274,56 @@ def _copy(source: Path, destination: Path) -> PlannedAction:
         destination=destination,
         size=_size(source),
     )
+
+
+_ACTION_HEADINGS = {
+    ActionKind.MOVE: "Move within the data directory",
+    ActionKind.COPY: "Copy from the previous installation",
+    ActionKind.REWRITE: "Repoint these settings",
+}
+
+_FINDING_HEADING = "Review these yourself"
+"""One heading for every finding, because they all want the same thing.
+
+Splitting them by kind would imply the user should treat a leftover folder
+differently from a setting pointing at one, when the ask is identical: look, and
+decide. The lines carry the difference.
+"""
+
+
+def render_plan(plan: MigrationPlan) -> str:
+    """A plan as text, grouped by what happens and sized.
+
+    Deliberately plain text rather than anything the GUI owns, so that the same
+    output can be read in a dialog, written beside a migration as a record, or
+    printed by a rehearsal that never starts the application at all.
+    """
+    sections: list[str] = []
+
+    for kind, heading in _ACTION_HEADINGS.items():
+        matching = [action for action in plan.actions if action.kind is kind]
+        if not matching:
+            continue
+        sized = kind is not ActionKind.REWRITE
+        total = sum(action.size for action in matching)
+        lines = [f"{heading} ({file_bytes_to_str(total)}):" if sized else f"{heading}:"]
+        for action in matching:
+            prefix = f"{action.detail}: " if action.detail else ""
+            suffix = f" ({file_bytes_to_str(action.size)})" if sized else ""
+            lines.append(f"  {prefix}{action.source} -> {action.destination}{suffix}")
+        sections.append("\n".join(lines))
+
+    if plan.findings:
+        lines = [f"{_FINDING_HEADING}:"]
+        for finding in plan.findings:
+            suffix = f" ({file_bytes_to_str(finding.size)})" if finding.size else ""
+            detail = f" -- {finding.detail}" if finding.detail else ""
+            lines.append(f"  {finding.path}{suffix}{detail}")
+        sections.append("\n".join(lines))
+
+    if not sections:
+        return "Nothing to migrate."
+    return "\n\n".join(sections)
 
 
 def _is_inside(path: Path, root: Path) -> bool:

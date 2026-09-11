@@ -17,6 +17,7 @@ from src.config.layout_migration import (
     LegacyInstall,
     PlannedAction,
     plan_migration,
+    render_plan,
 )
 
 
@@ -419,3 +420,56 @@ def test_a_dependency_under_the_legacy_tools_directory_is_rewritten(
     )
     assert [finding.kind for finding in plan.findings] == []
 
+
+def test_a_plan_renders_as_text_grouped_by_what_it_does(tmp_path: Path) -> None:
+    """The dry run has to be readable by the person deciding whether to run it.
+
+    Grouped by what happens, because "copied from an installation you keep" and
+    "moved within your own data" carry different risk, and sized, because the
+    cost of a step is most of what someone wants to know before agreeing to it.
+    """
+    state_root = tmp_path / "user_data"
+    (state_root / "jobs").mkdir(parents=True)
+    (state_root / "jobs" / "saved").write_bytes(b"j" * 2048)
+    theirs = state_root / "notes"
+    theirs.mkdir()
+
+    rendered = render_plan(plan_migration(state_root))
+
+    assert "Move within the data directory" in rendered
+    assert str(state_root / "jobs") in rendered
+    assert str(state_root / "workspace" / "jobs") in rendered
+    assert "2.00 KB" in rendered
+    assert "Review these yourself" in rendered
+    assert str(theirs) in rendered
+
+
+def test_rendering_a_plan_with_nothing_to_do_says_so(tmp_path: Path) -> None:
+    """Silence would read as a failure rather than as a clean result."""
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+
+    assert "Nothing to migrate" in render_plan(plan_migration(state_root))
+
+
+def test_a_repointed_setting_is_rendered_without_a_size(tmp_path: Path) -> None:
+    """A rewrite moves no bytes, so a size on it is noise that invites doubt.
+
+    Rendering one anyway produced a heading reading "Repoint these settings
+    (0.00 B)", which says nothing except that something might be wrong.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    tool = legacy.state / "apps" / "example_tool" / "example_tool.exe"
+    tool.parent.mkdir(parents=True)
+    tool.write_bytes(b"t")
+
+    rendered = render_plan(
+        plan_migration(
+            state_root, legacy=legacy, configured_paths=[("a setting", tool)]
+        )
+    )
+
+    assert "Repoint these settings:" in rendered
+    assert "0.00 B" not in rendered
