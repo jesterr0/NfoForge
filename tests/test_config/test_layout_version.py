@@ -16,6 +16,7 @@ from src.config.layout_version import (
     LayoutRecordError,
     pending_hops,
     read_layout_version,
+    record_import,
     write_layout_version,
 )
 
@@ -171,3 +172,46 @@ def test_an_unreadable_record_is_not_overwritten(tmp_path: Path) -> None:
         write_layout_version(state_root, 1, record={"migrated_at": "now"})
 
     assert damaged.read_text(encoding="utf-8").startswith('{"layout_version": 1')
+
+
+def test_an_import_is_recorded_without_changing_the_layout_version(
+    tmp_path: Path,
+) -> None:
+    """Importing is not a layout hop, so it must not look like one.
+
+    A hop happens once per tree and is what the version tracks. An import can
+    happen any number of times, long after the layout is current, and advancing
+    the version for one would claim work that did not happen.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    write_layout_version(state_root, CURRENT_LAYOUT_VERSION, record={"moved": ["a"]})
+
+    record_import(state_root, {"legacy_source": "somewhere"})
+
+    document = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
+    assert document["layout_version"] == CURRENT_LAYOUT_VERSION
+    assert document["moved"] == ["a"]
+    assert document["imports"] == [{"legacy_source": "somewhere"}]
+
+
+def test_a_second_import_is_added_rather_than_replacing_the_first(
+    tmp_path: Path,
+) -> None:
+    """The trail is the whole history, not the most recent entry.
+
+    Merging an import into the top level would overwrite the account of the
+    migration itself, and the second import would overwrite the first.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    write_layout_version(state_root, CURRENT_LAYOUT_VERSION)
+
+    record_import(state_root, {"legacy_source": "first"})
+    record_import(state_root, {"legacy_source": "second"})
+
+    document = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
+    assert [entry["legacy_source"] for entry in document["imports"]] == [
+        "first",
+        "second",
+    ]

@@ -83,6 +83,34 @@ def write_layout_version(
     document = _existing_document(path)
     document.update(record or {})
     document["layout_version"] = version
+    _write(state_root, document)
+
+
+def record_import(state_root: Path, entry: Mapping[str, Any]) -> None:
+    """Add an import to the trail, leaving the layout version alone.
+
+    Importing is not a layout hop, so it must not look like one. A hop happens
+    once per tree and is what the version tracks; an import can happen any number
+    of times, long after the layout is current, and advancing the version for one
+    would claim work that did not happen.
+
+    Appended to a list rather than merged into the top level, which holds the
+    account of the migration itself. Merging would overwrite that, and a second
+    import would overwrite the first -- the trail is the whole history, not the
+    most recent entry.
+    """
+    path = state_root / LAYOUT_RECORD_NAME
+    document = _existing_document(path)
+    imports = document.get("imports")
+    if not isinstance(imports, list):
+        imports = []
+    imports.append(dict(entry))
+    document["imports"] = imports
+    _write(state_root, document)
+
+
+def _write(state_root: Path, document: dict[str, Any]) -> None:
+    path = state_root / LAYOUT_RECORD_NAME
     try:
         state_root.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
