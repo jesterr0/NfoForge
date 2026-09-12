@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
+import tomllib
 
 from src.config.layout_apply import (
     Diversion,
@@ -346,3 +347,117 @@ def test_a_migration_with_no_previous_installation_records_no_source(
     document = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
     assert document["legacy_source"] is None
     assert document["copied"] == []
+
+
+def _profile(state_root: Path, name: str, body: str) -> Path:
+    profiles = state_root / "config" / "profiles"
+    profiles.mkdir(parents=True, exist_ok=True)
+    path = profiles / f"{name}.toml"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def test_a_rewrite_repoints_the_setting_in_the_migrated_profile(
+    tmp_path: Path,
+) -> None:
+    """A planned rewrite has to reach the document, or it changed nothing.
+
+    Applied to the copy in the data directory, never to the installation it came
+    from: the original keeps its original values, so the user reviewing that
+    folder later still sees what it said.
+    """
+    state_root = tmp_path / "user_data"
+    profile = _profile(
+        state_root,
+        "main",
+        "# keep this comment\n"
+        "[general]\n"
+        'working_dir = "C:/old/place"\n'
+        "\n"
+        "[dependencies]\n"
+        'ffmpeg = "C:/old/tools/ffmpeg.exe"\n'
+        'mkbrr = "D:/elsewhere/mkbrr.exe"\n',
+    )
+
+    apply_plan(
+        MigrationPlan(
+            actions=(
+                PlannedAction(
+                    kind=ActionKind.REWRITE,
+                    source=Path("C:/old/place"),
+                    destination=state_root / "workspace",
+                    size=0,
+                    detail="working directory",
+                ),
+                PlannedAction(
+                    kind=ActionKind.REWRITE,
+                    source=Path("C:/old/tools/ffmpeg.exe"),
+                    destination=state_root / "tools" / "ffmpeg.exe",
+                    size=0,
+                    detail="dependency ffmpeg",
+                ),
+            ),
+            state_root=state_root,
+        )
+    )
+
+    document = tomllib.loads(profile.read_text(encoding="utf-8"))
+    assert Path(document["general"]["working_dir"]) == state_root / "workspace"
+    assert (
+        Path(document["dependencies"]["ffmpeg"]) == state_root / "tools" / "ffmpeg.exe"
+    )
+
+
+def test_a_setting_no_rewrite_names_is_left_exactly_as_it_was(tmp_path: Path) -> None:
+    """Only the paths a plan names are touched, and the file keeps its shape.
+
+    A dependency the user keeps on another disk was never moved, so changing it
+    would be the migration relocating something it did not relocate. The comment
+    and the ordering survive too, because this is the user's file and a
+    migration has no business reformatting it.
+    """
+    state_root = tmp_path / "user_data"
+    original = (
+        '# a comment the user wrote\n[dependencies]\nmkbrr = "D:/elsewhere/mkbrr.exe"\n'
+    )
+    profile = _profile(state_root, "main", original)
+
+    apply_plan(
+        MigrationPlan(
+            actions=(
+                PlannedAction(
+                    kind=ActionKind.REWRITE,
+                    source=Path("C:/old/tools/ffmpeg.exe"),
+                    destination=state_root / "tools" / "ffmpeg.exe",
+                    size=0,
+                    detail="dependency ffmpeg",
+                ),
+            ),
+            state_root=state_root,
+        )
+    )
+
+    assert profile.read_text(encoding="utf-8") == original
+
+
+def test_applied_rewrites_are_reported(tmp_path: Path) -> None:
+    """The summary says which settings changed, so nothing moves unannounced."""
+    state_root = tmp_path / "user_data"
+    _profile(state_root, "main", '[general]\nworking_dir = "C:/old/place"\n')
+
+    outcome = apply_plan(
+        MigrationPlan(
+            actions=(
+                PlannedAction(
+                    kind=ActionKind.REWRITE,
+                    source=Path("C:/old/place"),
+                    destination=state_root / "workspace",
+                    size=0,
+                    detail="working directory",
+                ),
+            ),
+            state_root=state_root,
+        )
+    )
+
+    assert outcome.rewritten == ("main: working directory",)

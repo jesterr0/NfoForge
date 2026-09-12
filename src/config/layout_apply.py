@@ -21,13 +21,18 @@ from datetime import datetime
 import os
 from pathlib import Path
 import shutil
+from typing import Any
 
-from src.config.layout_migration import ActionKind, MigrationPlan
+import tomlkit
+
+from src.backend.utils.working_dir import normalise_path
+from src.config.layout_migration import ActionKind, MigrationPlan, PlannedAction
 from src.config.layout_version import (
     pending_hops,
     read_layout_version,
     write_layout_version,
 )
+from src.logger.nfo_forge_logger import LOG
 
 CONFLICTS_DIR_NAME = "migration-conflicts"
 """Where something goes when its destination is already occupied."""
@@ -48,6 +53,8 @@ class Diversion:
 @dataclass(frozen=True, slots=True)
 class MigrationOutcome:
     diverted: tuple[Diversion, ...] = ()
+    rewritten: tuple[str, ...] = ()
+    """Which settings were repointed, named by profile, for the summary."""
 
 
 def migrate_layout(plan: MigrationPlan) -> MigrationOutcome:
@@ -88,6 +95,7 @@ def _record(plan: MigrationPlan, outcome: MigrationOutcome) -> dict[str, object]
             {"planned": str(one.planned), "actual": str(one.actual)}
             for one in outcome.diverted
         ],
+        "rewritten": list(outcome.rewritten),
     }
 
 
@@ -102,9 +110,10 @@ def _entries(plan: MigrationPlan, kind: ActionKind) -> list[dict[str, str]]:
 def apply_plan(plan: MigrationPlan) -> MigrationOutcome:
     """Carry out every action in `plan`.
 
-    Rewrites are not carried out here. They change a configuration value, and
-    layout migration runs before configuration is loaded, so there is nothing
-    to change yet -- they are for the caller to apply once there is.
+    Rewrites run last, because they edit the profile documents the copies put
+    there. Editing the migrated copy rather than the installation it came from
+    means the original keeps its original values, so a user reviewing that
+    folder later still sees what it said.
     """
     diverted: list[Diversion] = []
 
@@ -120,7 +129,79 @@ def apply_plan(plan: MigrationPlan) -> MigrationOutcome:
         else:
             _copy(action.source, destination)
 
-    return MigrationOutcome(diverted=tuple(diverted))
+    rewrites = tuple(
+        action for action in plan.actions if action.kind is ActionKind.REWRITE
+    )
+    return MigrationOutcome(
+        diverted=tuple(diverted),
+        rewritten=_apply_rewrites(rewrites, plan.state_root),
+    )
+
+
+def _apply_rewrites(
+    rewrites: tuple[PlannedAction, ...], state_root: Path
+) -> tuple[str, ...]:
+    """Repoint every setting a rewrite names, in each migrated profile.
+
+    Matched by comparing paths rather than strings, so a setting written with a
+    different separator or casing is still recognised as the same place.
+
+    Rewritten with `tomlkit` so the document keeps its comments, ordering and
+    spacing. This is the user's file and a migration has no business reformatting
+    it; only the values it names may change.
+    """
+    if not rewrites:
+        return ()
+
+    applied: list[str] = []
+    for document_path in sorted((state_root / "config" / "profiles").glob("*.toml")):
+        try:
+            document = tomlkit.parse(document_path.read_text(encoding="utf-8"))
+        except Exception as error:
+            # Unreadable or malformed: skipped rather than fatal, so one damaged
+            # profile does not cost the user the repointing of all the others.
+            # Broad because tomlkit raises several unrelated types for a bad
+            # document, and none of them matter here beyond "cannot be read".
+            LOG.warning(
+                LOG.LOG_SOURCE.BE,
+                f"Could not repoint settings in {document_path}, so its paths "
+                f"still name their old locations: {error}",
+            )
+            continue
+        changed = _repoint(document, rewrites)
+        if not changed:
+            continue
+        try:
+            document_path.write_text(tomlkit.dumps(document), encoding="utf-8")
+        except OSError as error:
+            raise MigrationError(
+                f"{document_path} could not be updated: {error}"
+            ) from error
+        applied.extend(f"{document_path.stem}: {detail}" for detail in changed)
+    return tuple(applied)
+
+
+def _repoint(document: Any, rewrites: tuple[PlannedAction, ...]) -> list[str]:
+    """Replace any value in `document` that a rewrite names, in place."""
+    changed: list[str] = []
+    for table_name, keys in (
+        ("general", ("working_dir",)),
+        ("dependencies", None),
+    ):
+        table = document.get(table_name)
+        if not isinstance(table, dict):
+            continue
+        for key in keys if keys is not None else tuple(table.keys()):
+            value = table.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            for rewrite in rewrites:
+                if normalise_path(Path(value)) != normalise_path(rewrite.source):
+                    continue
+                table[key] = str(rewrite.destination)
+                changed.append(rewrite.detail or key)
+                break
+    return changed
 
 
 def _conflict_path(destination: Path, state_root: Path) -> Path:
