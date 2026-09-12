@@ -18,6 +18,7 @@ from src.config.layout_apply import (
     MigrationError,
     apply_plan,
     migrate_layout,
+    startup_migration,
 )
 from src.config.layout_migration import (
     ActionKind,
@@ -32,6 +33,7 @@ from src.config.layout_version import (
     read_layout_version,
     write_layout_version,
 )
+from src.config.paths import AppPaths
 from tests.repo_paths import REPO_ROOT
 
 FORBIDDEN_CALLS = frozenset({"unlink", "rmtree", "rmdir", "remove", "move"})
@@ -461,3 +463,121 @@ def test_applied_rewrites_are_reported(tmp_path: Path) -> None:
     )
 
     assert outcome.rewritten == ("main: working directory",)
+
+
+def _legacy_with_cookies(tmp_path: Path) -> LegacyInstall:
+    root = tmp_path / "install"
+    legacy = LegacyInstall(
+        root=root, state=root / "bundle" / "runtime", plugins=root / "plugins"
+    )
+    (legacy.state / "config" / "user").mkdir(parents=True)
+    (legacy.state / "cookies").mkdir(parents=True)
+    (legacy.state / "cookies" / "a.txt").write_bytes(b"c")
+    return legacy
+
+
+def test_startup_does_nothing_when_the_layout_is_current(tmp_path: Path) -> None:
+    """The path almost every launch takes, and it must be silent and cheap.
+
+    No discovery, no question, no plan: a data directory already at this layout
+    has nothing to decide, so the user is not asked anything ever again.
+    """
+    state_root = _legacy_tree(tmp_path)
+    write_layout_version(state_root, CURRENT_LAYOUT_VERSION)
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+    asked = []
+
+    outcome = startup_migration(
+        paths, decide=lambda found: asked.append(found), probe_root=tmp_path
+    )
+
+    assert outcome is None
+    assert asked == []
+    assert (state_root / "jobs").exists()
+
+
+def test_startup_offers_the_installation_it_discovered(tmp_path: Path) -> None:
+    """Whatever was found beside the executable is what the user is asked about.
+
+    Handed to the decision rather than assumed, so the same code serves the
+    found state, a folder the user picks instead, and starting fresh.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _legacy_with_cookies(tmp_path)
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+    offered: list[LegacyInstall | None] = []
+
+    def decide(found: LegacyInstall | None) -> LegacyInstall | None:
+        offered.append(found)
+        return found
+
+    startup_migration(paths, decide=decide, probe_root=tmp_path)
+
+    assert offered and offered[0] is not None
+    assert offered[0].root == legacy.root
+
+
+def test_startup_imports_what_the_decision_accepts(tmp_path: Path) -> None:
+    state_root = _legacy_tree(tmp_path)
+    legacy = _legacy_with_cookies(tmp_path)
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+
+    startup_migration(paths, decide=lambda found: found, probe_root=tmp_path)
+
+    assert (state_root / "cookies" / "a.txt").read_bytes() == b"c"
+    assert (state_root / "workspace" / "jobs" / "saved.torrent").exists()
+    assert (legacy.state / "cookies" / "a.txt").exists()
+
+
+def test_declining_the_import_still_relocates_what_is_already_there(
+    tmp_path: Path,
+) -> None:
+    """Starting fresh is a choice about the old installation, not about this one.
+
+    Saved jobs and run output accumulated in the data directory under the old
+    layout regardless of where the application was installed, so they are
+    relocated either way. Leaving them would hide a user's saved jobs behind a
+    decision they made about something else.
+    """
+    state_root = _legacy_tree(tmp_path)
+    _legacy_with_cookies(tmp_path)
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+
+    startup_migration(paths, decide=lambda _found: None, probe_root=tmp_path)
+
+    assert (state_root / "workspace" / "jobs" / "saved.torrent").exists()
+    assert not (state_root / "cookies").exists()
+
+
+def test_a_declined_import_is_recorded_so_it_is_never_offered_again(
+    tmp_path: Path,
+) -> None:
+    """Asked once, ever. The record is what makes that true.
+
+    Distinguished from "no installation was found", because the two are not the
+    same fact: one day a user may ask why they were never offered the import,
+    and the answer has to be in the record.
+    """
+    state_root = _legacy_tree(tmp_path)
+    _legacy_with_cookies(tmp_path)
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+
+    startup_migration(paths, decide=lambda _found: None, probe_root=tmp_path)
+
+    record = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
+    assert record["import_declined"] is True
+    assert record["layout_version"] == CURRENT_LAYOUT_VERSION
+
+
+def test_nothing_is_recorded_as_declined_when_there_was_nothing_to_decline(
+    tmp_path: Path,
+) -> None:
+    """A genuinely fresh installation did not refuse anything."""
+    state_root = _legacy_tree(tmp_path)
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+
+    startup_migration(paths, decide=lambda found: found, probe_root=tmp_path)
+
+    record = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
+    assert "import_declined" not in record

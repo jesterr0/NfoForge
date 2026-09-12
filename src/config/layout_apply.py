@@ -25,13 +25,24 @@ from typing import Any
 
 import tomlkit
 
-from src.backend.utils.working_dir import normalise_path
-from src.config.layout_migration import ActionKind, MigrationPlan, PlannedAction
+from src.backend.utils.working_dir import CURRENT_DIR, normalise_path
+from src.config.layout_migration import (
+    ActionKind,
+    LegacyInstall,
+    LegacySettings,
+    MigrationPlan,
+    PlannedAction,
+    plan_migration,
+    read_legacy_settings,
+    recognise_legacy_install,
+)
 from src.config.layout_version import (
+    CURRENT_LAYOUT_VERSION,
     pending_hops,
     read_layout_version,
     write_layout_version,
 )
+from src.config.paths import AppPaths
 from src.logger.nfo_forge_logger import LOG
 
 CONFLICTS_DIR_NAME = "migration-conflicts"
@@ -55,6 +66,59 @@ class MigrationOutcome:
     diverted: tuple[Diversion, ...] = ()
     rewritten: tuple[str, ...] = ()
     """Which settings were repointed, named by profile, for the summary."""
+
+
+def startup_migration(
+    paths: AppPaths,
+    decide: Callable[[LegacyInstall | None], LegacyInstall | None],
+    probe_root: Path | None = None,
+) -> MigrationOutcome | None:
+    """Bring the data directory up to date, asking `decide` what to import.
+
+    Runs before configuration is loaded, because configuration is read from the
+    directory this is still assembling. Returns None when there was nothing to
+    do, which is the path almost every launch takes: no discovery, no question,
+    no plan.
+
+    `decide` is handed whatever was found beside the executable and answers with
+    the installation to import from -- the one offered, a different one the user
+    picked, or None to start fresh. Declining is a choice about the old
+    installation and not about this one, so saved jobs and run output already in
+    the data directory are relocated either way. They accumulated there under the
+    old layout regardless of where the application was installed, and leaving
+    them would hide a user's saved jobs behind a decision about something else.
+    """
+    if not pending_hops(read_layout_version(paths.state_root)):
+        return None
+
+    found = recognise_legacy_install(probe_root or CURRENT_DIR)
+    chosen = decide(found)
+    outcome = migrate_layout(_plan_for(paths, chosen))
+
+    if found is not None and chosen is None:
+        # Recorded apart from "nothing was found", because the two are different
+        # facts. One day a user asks why they were never offered the import, and
+        # the answer has to be in the record.
+        write_layout_version(
+            paths.state_root, CURRENT_LAYOUT_VERSION, record={"import_declined": True}
+        )
+    return outcome
+
+
+def _plan_for(paths: AppPaths, legacy: LegacyInstall | None) -> MigrationPlan:
+    """What to do, given the installation the user settled on."""
+    settings = (
+        read_legacy_settings(legacy)
+        if legacy is not None
+        else LegacySettings(working_dirs=(), configured_paths=())
+    )
+    return plan_migration(
+        paths.state_root,
+        legacy=legacy,
+        configured_paths=settings.configured_paths,
+        working_dirs=settings.working_dirs,
+        shipped_plugins=paths.plugin_examples,
+    )
 
 
 def migrate_layout(plan: MigrationPlan) -> MigrationOutcome:
