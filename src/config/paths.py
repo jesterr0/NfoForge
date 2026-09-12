@@ -5,7 +5,11 @@ import sys
 
 from platformdirs import user_data_dir
 
-from src.backend.utils.working_dir import IS_FROZEN, RUNTIME_DIR, asset_root
+from src.backend.utils.working_dir import (
+    IS_FROZEN,
+    WORKSPACE_DIR_NAME,
+    asset_root,
+)
 
 DATA_DIR_ENV_VAR = "NFOFORGE_DATA_DIR"
 """Redirects every root this module resolves, for development and rehearsal.
@@ -58,11 +62,20 @@ class AppPaths:
 
     @property
     def program(self) -> Path:
-        return self.config_dir / "program" / "conf.toml"
+        """Program preferences. One file, no longer in a directory of its own."""
+        return self.config_dir / "program.toml"
 
     @property
     def user_configs(self) -> Path:
-        return self.config_dir / "user"
+        """The profiles directory, which the migration writes as `profiles`.
+
+        The attribute keeps its old name because plugins hold it, but the
+        directory is named for what is in it rather than for who owns it. The
+        rename stays inside `config/` so that `user_configs.parent / "plugins"`
+        -- which is how a plugin finds its own storage -- still resolves to the
+        same place.
+        """
+        return self.config_dir / "profiles"
 
     @property
     def plugin_configs(self) -> Path:
@@ -138,7 +151,14 @@ class AppPaths:
 
     @staticmethod
     def default_working_dir(ensure_exists: bool = False) -> Path:
-        path = AppPaths.data_root()
+        """Where a profile writes when it names no working directory of its own.
+
+        The workspace inside the data directory, not the data directory itself.
+        Saved jobs and run output live in the workspace, so returning the root
+        would have the application looking for jobs beside them rather than in
+        them, and writing run output into the root the migration just cleared.
+        """
+        path = AppPaths.data_root() / WORKSPACE_DIR_NAME
         if ensure_exists:
             path.mkdir(parents=True, exist_ok=True)
         return path
@@ -199,9 +219,11 @@ def resolve_data_root() -> Path:
 
 
 def default_paths() -> AppPaths:
-    """The roots this process actually runs against."""
-    override = _override()
-    return AppPaths(
-        state_root=override if override is not None else RUNTIME_DIR,
-        asset_root=asset_root(),
-    )
+    """The roots this process actually runs against.
+
+    The state root is the per-user data directory, which is the move this whole
+    exercise is for: a release folder can be replaced wholesale without touching
+    anything the user owns. It was the mutable tree inside the installation,
+    which is why replacing a release meant reconstructing a configuration.
+    """
+    return AppPaths(state_root=resolve_data_root(), asset_root=asset_root())

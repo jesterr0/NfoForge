@@ -36,8 +36,8 @@ def test_state_paths_derive_from_the_state_root(tmp_path: Path) -> None:
     state = tmp_path / "state"
     paths = AppPaths(state_root=state, asset_root=tmp_path / "assets")
 
-    assert paths.program == state / "config" / "program" / "conf.toml"
-    assert paths.user_configs == state / "config" / "user"
+    assert paths.program == state / "config" / "program.toml"
+    assert paths.user_configs == state / "config" / "profiles"
     assert paths.tracker_cookies == state / "cookies"
 
 
@@ -84,14 +84,35 @@ def test_every_path_sits_under_one_of_the_two_roots(tmp_path: Path) -> None:
         )
 
 
-def test_state_root_defaults_to_the_mutable_tree(
+def test_the_state_root_is_the_per_user_data_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tree = Path("/somewhere/runtime")
-    monkeypatch.setattr("src.config.paths.RUNTIME_DIR", tree)
+    """The move this whole exercise is for: user state leaves the install.
+
+    A release folder can then be replaced wholesale without touching anything
+    the user owns, which is the upgrade experience being bought. Asserted
+    against platformdirs directly rather than against the function under test,
+    so the two cannot agree on a wrong answer.
+    """
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
     monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
 
-    assert default_paths().state_root == tree
+    assert default_paths().state_root == Path(
+        user_data_dir(appname="nfoforge-dev", appauthor=False)
+    )
+
+
+def test_a_released_build_puts_state_in_its_own_per_user_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """And the shipped build uses the real one, not the development directory."""
+    monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
+    monkeypatch.delenv(DATA_DIR_ENV_VAR, raising=False)
+
+    assert default_paths().state_root == Path(
+        user_data_dir(appname="nfoforge", appauthor=False)
+    )
 
 
 def test_the_data_directory_override_is_honoured_from_source(
@@ -117,13 +138,13 @@ def test_the_override_is_refused_by_a_released_build(
     Otherwise anything that can set a variable in the process environment
     decides where profiles, cookies and credentials are read from.
     """
-    mutable = Path("/installed/runtime")
     monkeypatch.setattr("src.config.paths.IS_FROZEN", True)
-    monkeypatch.setattr("src.config.paths.RUNTIME_DIR", mutable)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "NfoForge.exe"))
     monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "rehearsal"))
 
-    assert default_paths().state_root == mutable
+    assert default_paths().state_root == Path(
+        user_data_dir(appname="nfoforge", appauthor=False)
+    )
 
 
 def test_the_override_is_honoured_by_the_debug_build(
@@ -221,9 +242,69 @@ def test_no_test_can_reach_the_real_per_user_directory(tmp_path: Path) -> None:
 
 def test_a_blank_override_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty or whitespace value is an unset variable, not the filesystem root."""
-    tree = Path("/somewhere/runtime")
-    monkeypatch.setattr("src.config.paths.RUNTIME_DIR", tree)
     monkeypatch.setattr("src.config.paths.IS_FROZEN", False)
     monkeypatch.setenv(DATA_DIR_ENV_VAR, "   ")
 
-    assert default_paths().state_root == tree
+    assert default_paths().state_root == Path(
+        user_data_dir(appname="nfoforge-dev", appauthor=False)
+    )
+
+
+def test_the_config_layout_matches_where_migration_puts_things(tmp_path: Path) -> None:
+    """These two names have to agree with the migration, or nothing is found.
+
+    The migration copies a previous installation's program preferences to
+    `config/program.toml` and its profiles to `config/profiles`. Read the old
+    locations instead and a migrated installation starts with no preferences and
+    no profiles, having successfully moved both.
+
+    The nesting the old names carried is gone on purpose: `config/program/` was a
+    directory holding one file, and `user` said who owned the directory rather
+    than what was in it.
+    """
+    state = tmp_path / "state"
+    paths = AppPaths(state_root=state, asset_root=tmp_path / "assets")
+
+    assert paths.program == state / "config" / "program.toml"
+    assert paths.user_configs == state / "config" / "profiles"
+
+
+def test_plugin_storage_still_derives_from_the_profiles_path(tmp_path: Path) -> None:
+    """Plugins compute their own storage, so moving profiles must not move it.
+
+    A plugin asks for `paths.user_configs.parent / "plugins"` rather than being
+    handed a path, and plugins are user-installed and sometimes compiled, so this
+    release cannot patch them. Renaming the profiles directory changes what that
+    expression resolves to unless the parent stays put -- which is the whole
+    reason the rename happened inside `config/` rather than above it.
+    """
+    paths = AppPaths(state_root=tmp_path / "state", asset_root=tmp_path / "assets")
+
+    assert paths.user_configs.parent / "plugins" == paths.plugin_configs
+
+
+def test_the_default_working_directory_is_the_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same fault as a stale setting, in its no-setting form.
+
+    A profile with no working directory of its own falls back to this, and the
+    new layout keeps run output and saved jobs inside the workspace. Returning
+    the data directory root instead would have the application looking for jobs
+    beside the workspace rather than in it, and writing run output into the root
+    the migration just cleared.
+    """
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "data"))
+
+    assert AppPaths.default_working_dir() == tmp_path / "data" / "workspace"
+
+
+def test_the_default_working_directory_can_be_created_on_demand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Loading a configuration with no working directory set creates it."""
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "data"))
+
+    created = AppPaths.default_working_dir(ensure_exists=True)
+
+    assert created.is_dir()
