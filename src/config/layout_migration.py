@@ -155,6 +155,56 @@ def _holds_configuration(state: Path) -> bool:
     return (config / "user").is_dir() or (config / "program" / "conf.toml").is_file()
 
 
+@dataclass(frozen=True, slots=True)
+class LegacySettings:
+    """Path-valued settings read from a previous installation's profiles."""
+
+    working_dirs: tuple[Path, ...]
+    configured_paths: tuple[tuple[str, Path], ...]
+
+
+def read_legacy_settings(legacy: LegacyInstall) -> LegacySettings:
+    """The settings a plan needs, read before any configuration has been loaded.
+
+    The rewrites a migration plans come from settings, and settings live in the
+    installation being migrated from. Reading them through the configuration
+    layer is not available yet: that layer reads from the data directory, which
+    is the thing the migration is still assembling.
+
+    Boolean flags share the dependencies section with paths, so only path-valued
+    settings are returned. A flag handed on as a path would be reported to the
+    user as a setting pointing somewhere impossible.
+
+    One damaged document does not cost the user every other profile's plan.
+    """
+    working_dirs: list[Path] = []
+    configured: list[tuple[str, Path]] = []
+
+    for document_path in sorted((legacy.state / "config" / "user").glob("*.toml")):
+        try:
+            document = tomllib.loads(document_path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError, UnicodeDecodeError):
+            continue
+        profile = document_path.stem
+
+        working_dir = document.get("general", {}).get("working_dir")
+        if isinstance(working_dir, str) and working_dir.strip():
+            candidate = Path(working_dir)
+            if candidate not in working_dirs:
+                working_dirs.append(candidate)
+
+        for name, value in document.get("dependencies", {}).items():
+            if isinstance(value, bool) or not isinstance(value, str):
+                continue
+            if not value.strip():
+                continue
+            configured.append((f"{profile}: dependency {name}", Path(value)))
+
+    return LegacySettings(
+        working_dirs=tuple(working_dirs), configured_paths=tuple(configured)
+    )
+
+
 class FindingKind(Enum):
     """Something the user is told about rather than something that is done."""
 

@@ -17,6 +17,7 @@ from src.config.layout_migration import (
     LegacyInstall,
     PlannedAction,
     plan_migration,
+    read_legacy_settings,
     recognise_legacy_install,
     render_plan,
 )
@@ -718,3 +719,77 @@ def test_migration_destinations_agree_with_where_the_application_reads(
             f"the migration writes nothing to {expected}, which is where the "
             "application reads it from"
         )
+
+
+def test_configured_paths_are_read_from_a_previous_installation(
+    tmp_path: Path,
+) -> None:
+    """Planning needs these before any configuration has been loaded.
+
+    The rewrites a migration plans come from settings, and settings live in the
+    installation being migrated from. Reading them through the configuration
+    layer is not available yet: that layer reads from the data directory, which
+    is the thing the migration is still assembling.
+
+    Boolean flags share the dependencies section with paths, so only the
+    path-valued settings are returned -- a flag handed on as a path would be
+    reported as a setting pointing somewhere impossible.
+    """
+    legacy = _frozen_install(tmp_path)
+    profiles = legacy.state / "config" / "user"
+    profiles.mkdir(parents=True)
+    (profiles / "main.toml").write_text(
+        "[general]\n"
+        'working_dir = "C:/user data"\n'
+        "[dependencies]\n"
+        'ffmpeg = "C:/tools/ffmpeg.exe"\n'
+        'frame_forge = ""\n'
+        "enable_mkbrr = true\n",
+        encoding="utf-8",
+    )
+
+    settings = read_legacy_settings(legacy)
+
+    assert settings.working_dirs == (Path("C:/user data"),)
+    assert settings.configured_paths == (
+        ("main: dependency ffmpeg", Path("C:/tools/ffmpeg.exe")),
+    )
+
+
+def test_settings_are_read_from_every_profile(tmp_path: Path) -> None:
+    """Profiles are independent, and each can point somewhere of its own.
+
+    A shared working directory is reported once, because the plan that follows
+    needs the set of directories rather than one entry per profile.
+    """
+    legacy = _frozen_install(tmp_path)
+    profiles = legacy.state / "config" / "user"
+    profiles.mkdir(parents=True)
+    for name in ("alpha", "beta"):
+        (profiles / f"{name}.toml").write_text(
+            f'[general]\nworking_dir = "C:/shared"\n[dependencies]\nmkbrr = "C:/{name}.exe"\n',
+            encoding="utf-8",
+        )
+
+    settings = read_legacy_settings(legacy)
+
+    assert settings.working_dirs == (Path("C:/shared"),)
+    assert sorted(label for label, _ in settings.configured_paths) == [
+        "alpha: dependency mkbrr",
+        "beta: dependency mkbrr",
+    ]
+
+
+def test_an_unreadable_profile_does_not_stop_the_others(tmp_path: Path) -> None:
+    """One damaged document must not cost the user every other profile's plan."""
+    legacy = _frozen_install(tmp_path)
+    profiles = legacy.state / "config" / "user"
+    profiles.mkdir(parents=True)
+    (profiles / "broken.toml").write_text("[general\nnot valid", encoding="utf-8")
+    (profiles / "fine.toml").write_text(
+        '[general]\nworking_dir = "C:/fine"\n', encoding="utf-8"
+    )
+
+    settings = read_legacy_settings(legacy)
+
+    assert settings.working_dirs == (Path("C:/fine"),)
