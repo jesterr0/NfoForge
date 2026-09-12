@@ -31,9 +31,6 @@ from src.backend.utils.working_dir import (
 )
 from src.plugins.loader import LOCAL_MANIFEST
 
-CACHE_DIR_NAME = "cache"
-"""Where derived data that can be rebuilt lives in the new layout."""
-
 PLUGINS_DIR_NAME = "plugins"
 """Where the user's own plugins live, once they stop living beside the release."""
 
@@ -209,7 +206,6 @@ _KNOWN_ROOT_NAMES = frozenset(
         "logs",
         TOOLS_DIR_NAME,
         "migration-conflicts",
-        CACHE_DIR_NAME,
         PLUGINS_DIR_NAME,
         WORKSPACE_DIR_NAME,
         JOBS_DIR_NAME,
@@ -276,7 +272,7 @@ def plan_migration(
                 kind=ActionKind.MOVE,
                 source=index_cache,
                 destination=state_root
-                / CACHE_DIR_NAME
+                / WORKSPACE_DIR_NAME
                 / FrameForgeIndexCache.CACHE_DIR_NAME,
                 size=get_dir_size(index_cache),
             )

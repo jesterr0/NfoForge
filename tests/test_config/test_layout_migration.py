@@ -115,12 +115,17 @@ def test_a_directory_the_application_did_not_create_is_left_alone(
     assert plan.actions == ()
 
 
-def test_the_index_cache_is_planned_into_the_cache_directory(tmp_path: Path) -> None:
-    """The cache is relocated rather than discarded.
+def test_the_index_cache_is_planned_into_the_workspace(tmp_path: Path) -> None:
+    """The cache is relocated rather than discarded, and into the workspace.
 
     A rename costs the same as a delete on one volume, so deleting it would only
-    buy the user a re-index. It is moved out of the root because the new layout
-    gives it a home of its own.
+    buy the user a re-index.
+
+    It lands in the workspace because that is where the code looks for it:
+    `FrameForgeIndexCache` resolves its cache as `<working directory>` plus its
+    own name, and the workspace is the old working directory relocated. Putting
+    it anywhere else leaves a cache nothing reads, which is the same outcome as
+    deleting it with extra steps.
     """
     state_root = tmp_path / "user_data"
     cache = state_root / "frameforge_indexes"
@@ -133,7 +138,7 @@ def test_the_index_cache_is_planned_into_the_cache_directory(tmp_path: Path) -> 
         PlannedAction(
             kind=ActionKind.MOVE,
             source=cache,
-            destination=state_root / "cache" / "frameforge_indexes",
+            destination=state_root / "workspace" / "frameforge_indexes",
             size=7,
         )
         in plan.actions
