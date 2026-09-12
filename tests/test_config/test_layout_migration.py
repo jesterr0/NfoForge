@@ -20,6 +20,7 @@ from src.config.layout_migration import (
     recognise_legacy_install,
     render_plan,
 )
+from src.config.paths import AppPaths
 
 
 def _frozen_install(tmp_path: Path) -> LegacyInstall:
@@ -673,3 +674,47 @@ def test_profiles_sharing_a_working_directory_yield_one_rewrite(
     plan = plan_migration(state_root, working_dirs=[state_root, state_root])
 
     assert len([a for a in plan.actions if a.kind is ActionKind.REWRITE]) == 1
+
+
+def test_migration_destinations_agree_with_where_the_application_reads(
+    tmp_path: Path,
+) -> None:
+    """The two sides name these directories independently, so they can drift.
+
+    A migration that puts plugins, templates, cookies, tools or configuration
+    somewhere the application does not read produces the worst kind of success:
+    it reports having moved everything, and the user starts with nothing. Each
+    pairing below has already been wrong once during this work.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    legacy = _frozen_install(tmp_path)
+    for parts in (
+        ("cookies",),
+        ("templates",),
+        ("config", "plugins"),
+        ("config", "user"),
+        ("apps",),
+    ):
+        legacy.state.joinpath(*parts).mkdir(parents=True)
+    (legacy.state / "config" / "program").mkdir(parents=True, exist_ok=True)
+    (legacy.state / "config" / "program" / "conf.toml").write_text("", encoding="utf-8")
+    _write_plugin(legacy.plugins / "a_plugin", "theirs")
+
+    plan = plan_migration(state_root, legacy=legacy)
+    destinations = {action.destination for action in plan.actions}
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+
+    for expected in (
+        paths.tracker_cookies,
+        paths.templates,
+        paths.plugin_configs,
+        paths.user_configs,
+        paths.program,
+        paths.tools,
+        paths.plugins / "a_plugin",
+    ):
+        assert expected in destinations, (
+            f"the migration writes nothing to {expected}, which is where the "
+            "application reads it from"
+        )
