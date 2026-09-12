@@ -40,6 +40,7 @@ from src.config.layout_version import (
     CURRENT_LAYOUT_VERSION,
     pending_hops,
     read_layout_version,
+    record_import,
     write_layout_version,
 )
 from src.config.paths import AppPaths
@@ -102,6 +103,27 @@ def startup_migration(
         write_layout_version(
             paths.state_root, CURRENT_LAYOUT_VERSION, record={"import_declined": True}
         )
+    return outcome
+
+
+def import_legacy(paths: AppPaths, legacy: LegacyInstall) -> MigrationOutcome:
+    """Import a previous installation into a data directory already in use.
+
+    Offered from Settings at any time, which is why it cannot go through
+    `startup_migration`: that refuses an already-current tree, correctly for a
+    hop and wrongly for an import, so routed through it the Settings action would
+    silently do nothing. Nor through `migrate_layout`, for the same reason.
+
+    The layout version is left alone. An import is not a hop -- a hop happens
+    once per tree and is what the version tracks, while this can happen any number
+    of times -- so advancing it would claim work that did not happen.
+
+    Anything whose destination is occupied is diverted rather than merged, so
+    whatever the user produced before importing stays exactly where it is.
+    """
+    plan = _plan_for(paths, legacy)
+    outcome = apply_plan(plan)
+    record_import(paths.state_root, _record(plan, outcome))
     return outcome
 
 

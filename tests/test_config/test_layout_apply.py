@@ -17,6 +17,7 @@ from src.config.layout_apply import (
     Diversion,
     MigrationError,
     apply_plan,
+    import_legacy,
     migrate_layout,
     startup_migration,
 )
@@ -581,3 +582,73 @@ def test_nothing_is_recorded_as_declined_when_there_was_nothing_to_decline(
 
     record = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
     assert "import_declined" not in record
+
+
+def _migrated(tmp_path: Path) -> AppPaths:
+    """A data directory already at the current layout, as Settings would find it."""
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    write_layout_version(state_root, CURRENT_LAYOUT_VERSION)
+    return AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+
+
+def test_importing_later_copies_the_state_in(tmp_path: Path) -> None:
+    """Offered from Settings at any time, so it cannot depend on the version gate.
+
+    `startup_migration` refuses an already-current tree, which is right for a
+    hop and wrong for an import: routed through it, the Settings action would
+    silently do nothing.
+    """
+    paths = _migrated(tmp_path)
+    legacy = _legacy_with_cookies(tmp_path)
+
+    import_legacy(paths, legacy)
+
+    assert (paths.state_root / "cookies" / "a.txt").read_bytes() == b"c"
+
+
+def test_importing_later_leaves_the_layout_version_alone(tmp_path: Path) -> None:
+    """An import is not a hop, and must not claim to be one."""
+    paths = _migrated(tmp_path)
+
+    import_legacy(paths, _legacy_with_cookies(tmp_path))
+
+    assert read_layout_version(paths.state_root) == CURRENT_LAYOUT_VERSION
+
+
+def test_importing_later_is_added_to_the_trail(tmp_path: Path) -> None:
+    """Where the data came from is the first question asked afterwards."""
+    paths = _migrated(tmp_path)
+    legacy = _legacy_with_cookies(tmp_path)
+
+    import_legacy(paths, legacy)
+
+    document = json.loads(
+        (paths.state_root / "layout.json").read_text(encoding="utf-8")
+    )
+    assert document["imports"][0]["legacy_source"] == str(legacy.root)
+    assert document["imports"][0]["copied"]
+
+
+def test_importing_over_existing_work_diverts_rather_than_replacing_it(
+    tmp_path: Path,
+) -> None:
+    """The case the whole diversion path exists for, reached the way a user does.
+
+    Someone starts fresh, works for a while, then imports their old installation.
+    Whatever they produced in the meantime stays exactly where it is, and the
+    incoming copy goes somewhere they can look at it.
+    """
+    paths = _migrated(tmp_path)
+    theirs = paths.state_root / "cookies" / "mine.txt"
+    theirs.parent.mkdir(parents=True)
+    theirs.write_bytes(b"kept")
+    legacy = _legacy_with_cookies(tmp_path)
+
+    outcome = import_legacy(paths, legacy)
+
+    assert theirs.read_bytes() == b"kept"
+    assert not (paths.state_root / "cookies" / "a.txt").exists()
+    diverted = paths.state_root / "migration-conflicts" / "cookies" / "a.txt"
+    assert diverted.read_bytes() == b"c"
+    assert [one.planned for one in outcome.diverted] == [paths.state_root / "cookies"]
