@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 from src.backend.utils.working_dir import (
     CURRENT_DIR,
     IS_FROZEN,
-    RUNTIME_DIR,
     asset_root,
 )
 
@@ -485,7 +484,7 @@ class NfoForge:
             return
 
         try:
-            reports = scan_template_dir(RUNTIME_DIR / "templates")
+            reports = scan_template_dir(default_paths().templates)
             if not reports:
                 return
 

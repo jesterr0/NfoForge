@@ -1,27 +1,30 @@
 from pathlib import Path
 import sys
+import warnings
 
 
-def _get_working_directories() -> tuple[Path, Path, bool]:
-    """
-    Used to determine the correct working directory automatically.
-    This way we can utilize files/relative paths easily.
+def _get_working_directories() -> tuple[Path, bool]:
+    """Where this process was launched from, and whether it is a frozen build.
 
-    Returns:
-        (Path, Path, bool): Current working directory, runtime directory, frozen.
+    There used to be a third value here: a mutable tree inside the installation,
+    which is where every piece of user state lived. Nothing reads it any more,
+    because a path derived from the installation points at a directory a release
+    replaces. User state comes from the per-user data directory now, via
+    `AppPaths`, and files shipped with the release come from `asset_root`.
+
+    The old name is still importable for plugins. See `__getattr__` below.
     """
     # we're in a pyinstaller bundle
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        path = Path(sys.executable).parent
-        return path, path / "bundle" / "runtime", True
+        return Path(sys.executable).parent, True
 
     # we're running from a *.py file
-    else:
-        path = Path.cwd()
-        return path, path / "runtime", False
+    return Path.cwd(), False
 
 
-CURRENT_DIR, RUNTIME_DIR, IS_FROZEN = _get_working_directories()
+CURRENT_DIR, IS_FROZEN = _get_working_directories()
+"""Where the process was launched from. Only startup's `.env` lookup wants this."""
+
 
 ASSET_DIR_NAME = "assets"
 """Read-only files shipped with a release: fonts, images, SVGs, packaged defaults."""
@@ -172,3 +175,36 @@ def cleanable_size(working_dir: Path, data_root: Path) -> int:
         except OSError:
             continue
     return total
+
+
+def __getattr__(name: str) -> Path:
+    """Keep `RUNTIME_DIR` importable for plugins built against it.
+
+    It used to be the mutable tree inside the installation, and nothing in this
+    application reads it any more -- a test asserts that. Plugins are
+    user-installed and sometimes compiled, though, so this release cannot patch
+    them, and an `ImportError` on a name they have always been able to import
+    would stop them loading outright.
+
+    So it still resolves, to the directory that now holds what it used to: the
+    per-user state root. A plugin asking for `RUNTIME_DIR / "templates"` gets the
+    templates, which is what it meant. Resolved on each access rather than bound
+    once, because the state root depends on how the process was started.
+
+    Warned rather than logged, because importing the logger here would be a
+    cycle: the logger resolves its own path through the module that reads this
+    one.
+    """
+    if name != "RUNTIME_DIR":
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    warnings.warn(
+        "RUNTIME_DIR is deprecated. User state moved out of the installation and "
+        "into the per-user data directory; it resolves there now. Prefer the "
+        "paths object a plugin is given, which names each location directly.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from src.config.paths import default_paths
+
+    return default_paths().state_root

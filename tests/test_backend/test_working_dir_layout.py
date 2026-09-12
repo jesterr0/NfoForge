@@ -2,9 +2,11 @@
 
 import os
 from pathlib import Path
+import re
 
 import pytest
 
+from src.backend.utils import working_dir
 from src.backend.utils.working_dir import (
     JOBS_DIR_NAME,
     PROCESSING_DIR_NAME,
@@ -14,6 +16,8 @@ from src.backend.utils.working_dir import (
     normalise_path,
     processing_dir,
 )
+from src.config.paths import DATA_DIR_ENV_VAR
+from tests.repo_paths import REPO_ROOT
 
 
 @pytest.fixture
@@ -265,3 +269,53 @@ def test_cleanable_size_is_zero_for_an_empty_directory(
     tmp_path: Path, data_root: Path
 ) -> None:
     assert cleanable_size(tmp_path, data_root) == 0
+
+
+def test_nothing_in_the_application_reads_the_old_mutable_tree() -> None:
+    """Four separate places were still reading it, each silently wrong.
+
+    Templates, logs, plugins and the template token scan all derived a path from
+    the installation, so each would have read an empty directory inside the
+    release while the user's migrated files sat in the data directory. Nothing
+    fails when that happens -- the directory is simply empty -- which is why this
+    is asserted rather than left to review.
+
+    The name itself survives for plugins, so absence cannot be the guarantee.
+    What can be is that no module here uses it.
+    """
+    offenders = []
+    sources = [REPO_ROOT / "start_ui.py", *(REPO_ROOT / "src").rglob("*.py")]
+    for source in sources:
+        if source.name == "working_dir.py":
+            continue  # where the compatibility shim necessarily names it
+        if re.search(r"\bRUNTIME_DIR\b", source.read_text(encoding="utf-8")):
+            offenders.append(str(source.relative_to(REPO_ROOT)))
+
+    assert not offenders, (
+        f"{offenders} read RUNTIME_DIR. User state lives in the data directory; a "
+        "path derived from the installation points inside a folder a release "
+        "replaces, and reads as empty rather than failing."
+    )
+
+
+def test_the_old_name_still_resolves_for_plugins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Plugins are user-installed and sometimes compiled, so they cannot be patched.
+
+    Removing a name they have always imported would stop them loading outright.
+    It resolves to the directory that now holds what it used to, so a plugin
+    asking for `RUNTIME_DIR / "templates"` still gets the templates.
+    """
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "data"))
+
+    with pytest.warns(DeprecationWarning):
+        resolved = working_dir.RUNTIME_DIR
+
+    assert resolved == tmp_path / "data"
+
+
+def test_an_unknown_name_is_still_an_attribute_error() -> None:
+    """The shim answers for one name, not for anything asked of the module."""
+    with pytest.raises(AttributeError):
+        getattr(working_dir, "NO_SUCH_THING")  # noqa: B009 - the lookup is the subject
