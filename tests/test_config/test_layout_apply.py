@@ -652,3 +652,73 @@ def test_importing_over_existing_work_diverts_rather_than_replacing_it(
     diverted = paths.state_root / "migration-conflicts" / "cookies" / "a.txt"
     assert diverted.read_bytes() == b"c"
     assert [one.planned for one in outcome.diverted] == [paths.state_root / "cookies"]
+
+
+def test_progress_is_reported_for_each_step(tmp_path: Path) -> None:
+    """A copy of any size stops the application looking like it is working.
+
+    Relocation inside the data directory is renames and finishes immediately, so
+    the wait is entirely the copy from the previous installation. Naming what is
+    being copied and how large it is turns an unexplained pause into a step with
+    an end.
+    """
+    state_root = tmp_path / "user_data"
+    source = state_root / "jobs"
+    source.mkdir(parents=True)
+    (source / "saved.torrent").write_bytes(b"j" * 2048)
+    legacy_cookies = tmp_path / "install" / "cookies"
+    legacy_cookies.mkdir(parents=True)
+    (legacy_cookies / "a.txt").write_bytes(b"c" * 4096)
+
+    reported: list[str] = []
+    apply_plan(
+        MigrationPlan(
+            actions=(
+                PlannedAction(
+                    kind=ActionKind.MOVE,
+                    source=source,
+                    destination=state_root / "workspace" / "jobs",
+                    size=2048,
+                ),
+                PlannedAction(
+                    kind=ActionKind.COPY,
+                    source=legacy_cookies,
+                    destination=state_root / "cookies",
+                    size=4096,
+                ),
+            ),
+            state_root=state_root,
+        ),
+        progress=reported.append,
+    )
+
+    assert reported == ["Moving jobs", "Copying cookies (4.00 KB)"]
+
+
+def test_progress_is_optional(tmp_path: Path) -> None:
+    """Nothing in the migration depends on someone watching it."""
+    state_root = _legacy_tree(tmp_path)
+
+    apply_plan(plan_migration(state_root))
+
+    assert (state_root / "workspace" / "jobs").is_dir()
+
+
+def test_progress_reaches_the_whole_startup_sequence(tmp_path: Path) -> None:
+    """The thread that runs the migration is the one reporting it.
+
+    Startup is where progress is actually seen, so a callback that stopped at
+    `apply_plan` would report nothing on the only path a user takes.
+    """
+    state_root = _legacy_tree(tmp_path)
+    paths = AppPaths(state_root=state_root, asset_root=tmp_path / "assets")
+    reported: list[str] = []
+
+    startup_migration(
+        paths,
+        decide=lambda found: found,
+        probe_root=tmp_path,
+        progress=reported.append,
+    )
+
+    assert any("jobs" in message for message in reported)

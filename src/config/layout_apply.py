@@ -25,6 +25,7 @@ from typing import Any
 
 import tomlkit
 
+from src.backend.utils.file_utilities import file_bytes_to_str
 from src.backend.utils.working_dir import CURRENT_DIR, normalise_path
 from src.config.layout_migration import (
     ActionKind,
@@ -45,6 +46,15 @@ from src.config.layout_version import (
 )
 from src.config.paths import AppPaths
 from src.logger.nfo_forge_logger import LOG
+
+Progress = Callable[[str], None]
+"""Reports the step about to run, for a splash screen or a log.
+
+A message per action rather than a fraction. Relocation inside the data directory
+is renames and finishes immediately, so the wait is entirely the copy from the
+previous installation -- naming what is being copied and how large it is turns an
+unexplained pause into a step with an end.
+"""
 
 CONFLICTS_DIR_NAME = "migration-conflicts"
 """Where something goes when its destination is already occupied."""
@@ -73,6 +83,7 @@ def startup_migration(
     paths: AppPaths,
     decide: Callable[[LegacyInstall | None], LegacyInstall | None],
     probe_root: Path | None = None,
+    progress: Progress | None = None,
 ) -> MigrationOutcome | None:
     """Bring the data directory up to date, asking `decide` what to import.
 
@@ -94,7 +105,7 @@ def startup_migration(
 
     found = recognise_legacy_install(probe_root or CURRENT_DIR)
     chosen = decide(found)
-    outcome = migrate_layout(_plan_for(paths, chosen))
+    outcome = migrate_layout(_plan_for(paths, chosen), progress=progress)
 
     if found is not None and chosen is None:
         # Recorded apart from "nothing was found", because the two are different
@@ -143,7 +154,9 @@ def _plan_for(paths: AppPaths, legacy: LegacyInstall | None) -> MigrationPlan:
     )
 
 
-def migrate_layout(plan: MigrationPlan) -> MigrationOutcome:
+def migrate_layout(
+    plan: MigrationPlan, progress: Progress | None = None
+) -> MigrationOutcome:
     """Run whichever hops `plan`'s data directory still needs, in order.
 
     The recorded version decides, not the plan. A plan is built before the user
@@ -159,7 +172,7 @@ def migrate_layout(plan: MigrationPlan) -> MigrationOutcome:
     outcome = MigrationOutcome()
 
     for hop in pending:
-        outcome = _HOPS[hop](plan)
+        outcome = _HOPS[hop](plan, progress)
         write_layout_version(plan.state_root, hop, record=_record(plan, outcome))
 
     return outcome
@@ -193,7 +206,9 @@ def _entries(plan: MigrationPlan, kind: ActionKind) -> list[dict[str, str]]:
     ]
 
 
-def apply_plan(plan: MigrationPlan) -> MigrationOutcome:
+def apply_plan(
+    plan: MigrationPlan, progress: Progress | None = None
+) -> MigrationOutcome:
     """Carry out every action in `plan`.
 
     Rewrites run last, because they edit the profile documents the copies put
@@ -206,6 +221,8 @@ def apply_plan(plan: MigrationPlan) -> MigrationOutcome:
     for action in plan.actions:
         if action.kind not in (ActionKind.MOVE, ActionKind.COPY):
             continue
+        if progress is not None:
+            progress(_describe(action))
         destination = action.destination
         if destination.exists():
             destination = _conflict_path(action.destination, plan.state_root)
@@ -370,7 +387,7 @@ def _move(source: Path, destination: Path) -> None:
     os.replace(source, destination)
 
 
-_HOPS: dict[int, Callable[[MigrationPlan], MigrationOutcome]] = {
+_HOPS: dict[int, Callable[[MigrationPlan, Progress | None], MigrationOutcome]] = {
     1: apply_plan,
 }
 """Each hop keyed by the version it produces.
@@ -381,3 +398,18 @@ and never key one off the application version -- a hop is defined by the layout
 it accepts, so renumbering silently changes which trees it runs against. The
 same discipline `migrations.py` documents for its own schema chain.
 """
+
+
+def _describe(action: PlannedAction) -> str:
+    """What to say about a step while it runs, in the user's terms.
+
+    Named by destination rather than source: the user is watching their data
+    arrive somewhere, and for the renames the source no longer exists by the time
+    they could look. Size only where it explains a wait -- a rename does not.
+    """
+    what = action.destination.name
+    if action.kind is ActionKind.MOVE:
+        return f"Moving {what}"
+    if action.kind is ActionKind.COPY:
+        return f"Copying {what} ({file_bytes_to_str(action.size)})"
+    return f"Updating {action.detail or what}"
