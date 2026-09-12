@@ -433,7 +433,8 @@ def test_a_working_directory_that_is_the_data_directory_is_not_reported_twice(
 
     plan = plan_migration(state_root, working_dirs=[state_root])
 
-    assert [action.source for action in plan.actions] == [run_folder]
+    moved = [action.source for action in plan.actions if action.kind is ActionKind.MOVE]
+    assert moved == [run_folder]
     assert plan.findings == ()
 
 
@@ -605,3 +606,65 @@ def test_the_search_below_a_chosen_folder_is_bounded(tmp_path: Path) -> None:
     (buried / "bundle" / "runtime" / "config" / "user").mkdir(parents=True)
 
     assert recognise_legacy_install(chosen) is None
+
+
+def test_a_working_directory_that_is_the_data_directory_is_repointed(
+    tmp_path: Path,
+) -> None:
+    """Otherwise the migration hides every saved job it just moved.
+
+    Saved jobs are found at `<working directory>/jobs`, and the old default
+    working directory was the root of the data directory. Move `jobs/` into the
+    workspace and leave the setting alone, and the application looks in a
+    directory that no longer exists: the jobs are intact and invisible, which is
+    indistinguishable from having lost them.
+
+    Derivable rather than guessed, which is what makes repointing it right: the
+    directory it named has not gone away, it has become the workspace inside it.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+
+    plan = plan_migration(state_root, working_dirs=[state_root])
+
+    assert (
+        PlannedAction(
+            kind=ActionKind.REWRITE,
+            source=state_root,
+            destination=state_root / "workspace",
+            size=0,
+            detail="working directory",
+        )
+        in plan.actions
+    )
+
+
+def test_a_working_directory_elsewhere_is_left_pointing_where_it_is(
+    tmp_path: Path,
+) -> None:
+    """A directory the migration never touched needs no correction.
+
+    Jobs kept outside the data directory stay exactly where they were, so the
+    setting is still right and changing it would be the migration moving
+    someone's work for no reason.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    elsewhere = tmp_path / "media work"
+    elsewhere.mkdir()
+
+    plan = plan_migration(state_root, working_dirs=[elsewhere])
+
+    assert [a for a in plan.actions if a.kind is ActionKind.REWRITE] == []
+
+
+def test_profiles_sharing_a_working_directory_yield_one_rewrite(
+    tmp_path: Path,
+) -> None:
+    """Profiles commonly share one, and the setting has one correct new value."""
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+
+    plan = plan_migration(state_root, working_dirs=[state_root, state_root])
+
+    assert len([a for a in plan.actions if a.kind is ActionKind.REWRITE]) == 1

@@ -304,8 +304,18 @@ def plan_migration(
                 )
             )
 
+    workspace = state_root / WORKSPACE_DIR_NAME
     for working_dir in working_dirs:
         if normalise_path(working_dir) == normalise_path(state_root):
+            repoint = PlannedAction(
+                kind=ActionKind.REWRITE,
+                source=working_dir,
+                destination=workspace,
+                size=0,
+                detail="working directory",
+            )
+            if repoint not in actions:
+                actions.append(repoint)
             continue
         for entry in _children(working_dir):
             if entry.is_dir() and _RUN_FOLDER_STAMP.search(entry.name):
