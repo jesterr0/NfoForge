@@ -1,7 +1,7 @@
 from os import PathLike
 from pathlib import Path
 
-from src.backend.utils.working_dir import RUNTIME_DIR
+from src.config.paths import default_paths
 from src.enums.media_type import MediaType
 from src.logger.nfo_forge_logger import LOG
 
@@ -67,8 +67,16 @@ MediaInfo
 class TemplateSelectorBackEnd:
     __slots__ = ("template_dir", "templates")
 
-    def __init__(self) -> None:
-        self.template_dir = RUNTIME_DIR / "templates"
+    def __init__(self, template_dir: Path | None = None) -> None:
+        """Templates come from the user's own files, not from the installation.
+
+        Read from the installation instead and two things go wrong at once: the
+        templates a migration moved are invisible, and the directory being read
+        is inside a release folder the user is told they may replace wholesale.
+
+        A directory can be given explicitly so a caller can work somewhere else.
+        """
+        self.template_dir = template_dir or default_paths().templates
         self.template_dir.mkdir(exist_ok=True, parents=True)
         self.templates: dict[str, Path] = {}
 

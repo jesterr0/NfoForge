@@ -221,13 +221,12 @@ def _make_selector_with_real_templates(
 ) -> TemplateSelector:
     """A selector backed by real files, for exercising cross-instance resync.
 
-    `TemplateSelectorBackEnd` uses `__slots__`, so its `load_templates`
-    can't be monkeypatched per-instance -- real files on a patched
-    `RUNTIME_DIR` stand in for "another open editor changed the directory".
+    `TemplateSelectorBackEnd` uses `__slots__`, so its `load_templates` cannot be
+    monkeypatched per-instance -- real files standing in for "another open editor
+    changed the directory" is what makes the resync observable. The template
+    directory is already per-test, since it derives from the data directory the
+    suite sandboxes.
     """
-    monkeypatch.setattr(
-        "src.backend.template_selector.RUNTIME_DIR", tmp_path / "runtime"
-    )
     return _make_selector(tmp_path, monkeypatch)
 
 
