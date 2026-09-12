@@ -190,6 +190,13 @@ class MigrationPlan:
     from a second argument could differ from what they agreed to.
     """
 
+    legacy_root: Path | None = None
+    """The installation this plan imports from, if it imports from one.
+
+    Kept so the record written afterwards can say where the data came from,
+    which is the first thing anyone asks when something is missing.
+    """
+
     findings: tuple[Finding, ...] = ()
 
 
@@ -347,7 +354,10 @@ def plan_migration(
                 )
 
     return MigrationPlan(
-        actions=tuple(actions), state_root=state_root, findings=tuple(findings)
+        actions=tuple(actions),
+        state_root=state_root,
+        legacy_root=legacy.root if legacy is not None else None,
+        findings=tuple(findings),
     )
 
 

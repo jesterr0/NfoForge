@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 import os
 from pathlib import Path
 import shutil
@@ -66,9 +67,36 @@ def migrate_layout(plan: MigrationPlan) -> MigrationOutcome:
 
     for hop in pending:
         outcome = _HOPS[hop](plan)
-        write_layout_version(plan.state_root, hop)
+        write_layout_version(plan.state_root, hop, record=_record(plan, outcome))
 
     return outcome
+
+
+def _record(plan: MigrationPlan, outcome: MigrationOutcome) -> dict[str, object]:
+    """What happened, in the form someone reads afterwards.
+
+    Where the data came from, when, and every entry that moved, was copied, or
+    collided. Without it the only account of a migration is a dialog nobody
+    kept, and "where did my templates go" has no answer.
+    """
+    return {
+        "migrated_at": datetime.now().isoformat(timespec="seconds"),
+        "legacy_source": str(plan.legacy_root) if plan.legacy_root else None,
+        "moved": _entries(plan, ActionKind.MOVE),
+        "copied": _entries(plan, ActionKind.COPY),
+        "diverted": [
+            {"planned": str(one.planned), "actual": str(one.actual)}
+            for one in outcome.diverted
+        ],
+    }
+
+
+def _entries(plan: MigrationPlan, kind: ActionKind) -> list[dict[str, str]]:
+    return [
+        {"source": str(action.source), "destination": str(action.destination)}
+        for action in plan.actions
+        if action.kind is kind
+    ]
 
 
 def apply_plan(plan: MigrationPlan) -> MigrationOutcome:

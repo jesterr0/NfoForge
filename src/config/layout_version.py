@@ -13,8 +13,10 @@ configuration lives.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 from pathlib import Path
+from typing import Any
 
 LAYOUT_RECORD_NAME = "layout.json"
 
@@ -68,21 +70,44 @@ def read_layout_version(state_root: Path) -> int:
     return version
 
 
-def write_layout_version(state_root: Path, version: int) -> None:
+def write_layout_version(
+    state_root: Path, version: int, record: Mapping[str, Any] | None = None
+) -> None:
     """Record that `state_root` is now at `version`.
 
     Failure is not swallowed. Leaving the version behind quietly is what turns a
     migration nobody notices into a prompt on every launch, and worse, invites a
     second run of hops against a tree that has already had them.
     """
-    record = state_root / LAYOUT_RECORD_NAME
+    path = state_root / LAYOUT_RECORD_NAME
+    document = _existing_document(path)
+    document.update(record or {})
+    document["layout_version"] = version
     try:
         state_root.mkdir(parents=True, exist_ok=True)
-        record.write_text(
-            json.dumps({"layout_version": version}, indent=2) + "\n", encoding="utf-8"
-        )
+        path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     except OSError as error:
-        raise LayoutRecordError(f"{record} could not be written: {error}") from error
+        raise LayoutRecordError(f"{path} could not be written: {error}") from error
+
+
+def _existing_document(path: Path) -> dict[str, Any]:
+    """Whatever is already recorded, so a write adds to it rather than replaces.
+
+    One file holds the whole trail and more than one step writes to it: a hop
+    records what it moved, a refused import is recorded separately, and a later
+    hop writes again. A damaged document is refused rather than replaced,
+    because it is the only account of what already happened -- replacing it with
+    a fresh empty one loses that outright.
+    """
+    if not path.is_file():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise LayoutRecordError(f"{path} cannot be read: {error}") from error
+    if not isinstance(document, dict):
+        raise LayoutRecordError(f"{path} does not hold a record")
+    return document
 
 
 def pending_hops(version: int) -> tuple[int, ...]:

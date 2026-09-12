@@ -7,6 +7,7 @@ fixing a bug later.
 """
 
 import ast
+import json
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from src.config.layout_apply import (
 )
 from src.config.layout_migration import (
     ActionKind,
+    LegacyInstall,
     MigrationPlan,
     PlannedAction,
     plan_migration,
@@ -299,3 +301,48 @@ def test_an_unreadable_record_stops_the_migration_before_it_starts(
 
     assert (state_root / "jobs" / "saved.torrent").exists()
     assert not (state_root / "workspace").exists()
+
+
+def test_a_migration_records_what_it_did(tmp_path: Path) -> None:
+    """The trail is what a user, or someone helping them, reads afterwards.
+
+    Which entries moved, which were copied and from where, and which collided.
+    Without it the only account of a migration is a dialog nobody kept, and the
+    question "where did my templates go" has no answer.
+    """
+    state_root = _legacy_tree(tmp_path)
+    legacy_root = tmp_path / "install"
+    legacy = LegacyInstall(
+        root=legacy_root,
+        state=legacy_root / "bundle" / "runtime",
+        plugins=legacy_root / "plugins",
+    )
+    (legacy.state / "cookies").mkdir(parents=True)
+    (legacy.state / "cookies" / "a.txt").write_bytes(b"c")
+
+    migrate_layout(plan_migration(state_root, legacy=legacy))
+
+    document = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
+    assert document["legacy_source"] == str(legacy_root)
+    assert document["migrated_at"]
+    assert {
+        "source": str(state_root / "jobs"),
+        "destination": str(state_root / "workspace" / "jobs"),
+    } in document["moved"]
+    assert {
+        "source": str(legacy.state / "cookies"),
+        "destination": str(state_root / "cookies"),
+    } in document["copied"]
+
+
+def test_a_migration_with_no_previous_installation_records_no_source(
+    tmp_path: Path,
+) -> None:
+    """Starting fresh still relocates what accumulated at the root."""
+    state_root = _legacy_tree(tmp_path)
+
+    migrate_layout(plan_migration(state_root))
+
+    document = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
+    assert document["legacy_source"] is None
+    assert document["copied"] == []

@@ -5,6 +5,7 @@ every release, or worse, re-runs a migration against a tree that has already
 had it.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,40 @@ def test_a_newer_tree_is_never_migrated_backwards(tmp_path: Path) -> None:
     layout means.
     """
     assert pending_hops(CURRENT_LAYOUT_VERSION + 5) == ()
+
+
+def test_a_record_keeps_what_earlier_writes_put_there(tmp_path: Path) -> None:
+    """One file holds the whole audit trail, written by more than one step.
+
+    A hop records what it moved, the user's refusal of an import is recorded
+    separately, and a later hop writes again. Each write has to leave the
+    others alone, or the trail only ever shows the last thing that happened.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+
+    write_layout_version(state_root, 1, record={"import_declined": True})
+    write_layout_version(state_root, 1, record={"migrated_at": "2026-01-01T00:00:00"})
+
+    document = json.loads((state_root / "layout.json").read_text(encoding="utf-8"))
+    assert document["import_declined"] is True
+    assert document["migrated_at"] == "2026-01-01T00:00:00"
+    assert document["layout_version"] == 1
+
+
+def test_an_unreadable_record_is_not_overwritten(tmp_path: Path) -> None:
+    """Clobbering it would destroy the only account of what already happened.
+
+    The trail is what tells a user, or whoever is helping them, which entries
+    were moved and which collided. Replacing a damaged one with a fresh empty
+    one loses that outright, so the write refuses too.
+    """
+    state_root = tmp_path / "user_data"
+    state_root.mkdir()
+    damaged = state_root / "layout.json"
+    damaged.write_text('{"layout_version": 1, "moved": [ ...', encoding="utf-8")
+
+    with pytest.raises(LayoutRecordError):
+        write_layout_version(state_root, 1, record={"migrated_at": "now"})
+
+    assert damaged.read_text(encoding="utf-8").startswith('{"layout_version": 1')
