@@ -163,6 +163,7 @@ class SplashScreenLoader(QThread):
         plugin_loader = PluginLoader(
             self.config.plugin_manager,
             self.update_splash_msg.emit,
+            plugin_dir=self.config.paths.plugins,
             shipped_dir=self.config.paths.plugin_examples,
         )
         report = plugin_loader.load_plugins()

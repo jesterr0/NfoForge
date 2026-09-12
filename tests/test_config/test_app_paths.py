@@ -308,3 +308,16 @@ def test_the_default_working_directory_can_be_created_on_demand(
     created = AppPaths.default_working_dir(ensure_exists=True)
 
     assert created.is_dir()
+
+
+def test_the_user_plugin_directory_sits_in_the_data_directory(tmp_path: Path) -> None:
+    """Plugins the user installed are theirs, so they survive a release.
+
+    They used to sit beside the executable, which is why replacing a release meant
+    reinstalling them -- and why the shipped examples and the user's own plugins
+    shared one directory with no way to tell them apart.
+    """
+    state = tmp_path / "state"
+    paths = AppPaths(state_root=state, asset_root=tmp_path / "assets")
+
+    assert paths.plugins == state / "plugins"

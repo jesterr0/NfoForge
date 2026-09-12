@@ -10,7 +10,7 @@ from typing import Any
 
 import tomlkit
 
-from src.backend.utils.working_dir import CURRENT_DIR
+from src.config.paths import default_paths
 from src.exceptions import PluginError
 from src.logger.nfo_forge_logger import LOG
 from src.plugins.api import PluginDefinition, PluginRecord
@@ -55,7 +55,7 @@ class PluginLoader:
     ) -> None:
         self.manager = manager
         self.update_status = update_status
-        self.plugin_dir = plugin_dir or CURRENT_DIR / "plugins"
+        self.plugin_dir = plugin_dir or default_paths().plugins
         self.shipped_dir = shipped_dir
         self.failures: list[PluginLoadFailure] = []
 

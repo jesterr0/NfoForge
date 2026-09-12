@@ -102,6 +102,16 @@ class AppPaths:
         return self.state_root / "logs"
 
     @property
+    def plugins(self) -> Path:
+        """Plugins the user installed, which are theirs and survive a release.
+
+        They used to sit beside the executable, which is why replacing a release
+        meant reinstalling them, and why the shipped examples and the user's own
+        plugins shared one directory with nothing to tell them apart.
+        """
+        return self.state_root / "plugins"
+
+    @property
     def tools(self) -> Path:
         """Optional executables the user places here themselves, one folder each.
 

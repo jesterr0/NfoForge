@@ -4,6 +4,7 @@ from threading import Lock
 
 import pytest
 
+from src.config.paths import DATA_DIR_ENV_VAR
 from src.exceptions import PluginError, PluginExecutionError
 from src.payloads.media_search import MediaSearchPayload
 from src.plugins.api import (
@@ -675,3 +676,19 @@ def test_a_missing_shipped_directory_is_not_created(
     assert report.failures == ()
     assert plugin_dir.is_dir()
     assert not shipped_dir.exists()
+
+
+def test_the_plugin_directory_defaults_to_the_data_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not beside the executable, which a release replaces.
+
+    Defaulting there would have a migrated installation load nothing: the
+    plugins were copied into the data directory and the loader would be looking
+    in the release folder it was extracted from.
+    """
+    monkeypatch.setenv(DATA_DIR_ENV_VAR, str(tmp_path / "data"))
+
+    loader = PluginLoader(PluginManager())
+
+    assert loader.plugin_dir == tmp_path / "data" / "plugins"
