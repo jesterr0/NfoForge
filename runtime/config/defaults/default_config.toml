@@ -418,8 +418,8 @@ mvr_parse_claim_re_release = true
 mvr_parse_claim_remux = true
 mvr_parse_claim_hybrid = true
 mvr_parse_claim_release_group = true
-mvr_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
-mvr_title_token = "{title_clean} {release_year} {re_release} {source} {resolution} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+mvr_token = "{title_clean} {release_year} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
+mvr_title_token = "{title_clean} {release_year} {re_release} {resolution} {source} {audio_codec} {audio_channel_s} {video_codec}{:opt=-:release_group}"
 
 [series_management]
 tvr_enabled = true

@@ -298,8 +298,16 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
         TrackerSelection.TORRENT_LEECH: TrackerTitleEntry(
             normalisation=Normalisation(),
         ),
+        # Blutopia publishes ReelFliX's cut rules word for word, so its
+        # spellings are carried here even though it composes no layout of its
+        # own: they still reach the user's global template.
         TrackerSelection.BLUTOPIA: TrackerTitleEntry(
-            normalisation=Normalisation(),
+            normalisation=Normalisation(
+                vocabulary={
+                    "Directors Cut": "Director's Cut",
+                    "Extended Cut": "Extended",
+                },
+            ),
         ),
         TrackerSelection.UTOPIA: TrackerTitleEntry(
             normalisation=Normalisation(),
@@ -353,6 +361,29 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                     "HYBRID": "Hybrid",
                     "Dual Audio": "Dual-Audio",
                     "Subbed": None,
+                    # Published spellings, which outrank NfoForge's own.
+                    # The normalized names are internal identities as much as
+                    # they are text: BHDEdition.from_nfoforge_edition and
+                    # PTP's _remaster_title both key on them, and filenames
+                    # use them verbatim, where an apostrophe is unwanted.
+                    # A vocabulary row reaches the title alone, so the guide's
+                    # spelling can be honoured without disturbing any of that.
+                    "Directors Cut": "Director's Cut",
+                    "Extended Cut": "Extended",
+                    # LST forbids a theatrical cut in the name, where Aither
+                    # and ReelFliX allow it -- so this row is LST's alone and
+                    # is not an omission in the two entries below it.
+                    #
+                    # LST forbids the bare "Theatrical" too, and one row
+                    # covers both: {cut} cannot emit it. EDITION_INFO matches
+                    # theatrical with or without the word "Cut" and answers
+                    # with the same normalized "Theatrical Cut" either way,
+                    # and the ends-in-Cut fallback only runs where no entry
+                    # matched at all -- which, by that same pattern, means
+                    # the edition never said theatrical. A bare "Theatrical"
+                    # row would catch nothing more while stripping the word
+                    # from the title of any film whose own name carries it.
+                    "Theatrical Cut": None,
                 },
             ),
             composition=Composition(
@@ -409,6 +440,12 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                     "HYBRID": "Hybrid",
                     "Dual Audio": "Dual-Audio",
                     "Subbed": None,
+                    # Published spellings, which outrank NfoForge's own. The
+                    # normalized names stay as they are: other trackers key on
+                    # them and filenames use them, where an apostrophe is
+                    # unwanted. A vocabulary row reaches the title alone.
+                    "Directors Cut": "Director's Cut",
+                    "Extended Cut": "Extended",
                 },
             ),
             composition=Composition(
@@ -460,6 +497,12 @@ TITLE_RULES: Mapping[TrackerSelection, TrackerTitleEntry] = MappingProxyType(
                     "HYBRID": "Hybrid",
                     "Dual Audio": "Dual-Audio",
                     "Subbed": None,
+                    # Published spellings, which outrank NfoForge's own. The
+                    # normalized names stay as they are: other trackers key on
+                    # them and filenames use them, where an apostrophe is
+                    # unwanted. A vocabulary row reaches the title alone.
+                    "Directors Cut": "Director's Cut",
+                    "Extended Cut": "Extended",
                 },
             ),
             composition=Composition(

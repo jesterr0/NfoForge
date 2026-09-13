@@ -73,6 +73,41 @@ def test_a_global_series_template_is_shipped_for_every_format(
     assert get_tvr_title_token(manager.defaults.series, episode_format).strip()
 
 
+def test_every_shipped_default_writes_the_resolution_before_the_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One order across both media types, since nothing distinguishes them.
+
+    The two movie tokens used to write "{source} {resolution}" while all
+    five series tokens wrote the reverse, which read as an oversight rather
+    than a decision -- a film and a season are not different in any way this
+    ordering could be answering. Resolution first is the order Aither, LST
+    and ReelFliX all require in a title; BeyondHD is the exception, and its
+    entry flips the pair itself rather than relying on the template.
+
+    This says nothing about what a user's own tokens must do. Renaming is
+    theirs, and only the shipped starting point is pinned here.
+    """
+    manager = _config_manager(tmp_path, monkeypatch)
+    movie = manager.defaults.movie
+    series = manager.defaults.series
+    tokens = {
+        "mvr_token": movie.filename_token,
+        "mvr_title_token": movie.title_token,
+        "tvr_standard_episode_token": series.standard_episode_token,
+        "tvr_daily_episode_token": series.daily_episode_token,
+        "tvr_anime_episode_token": series.anime_episode_token,
+        "tvr_season_folder_token": series.season_folder_token,
+        "tvr_standard_title_token": series.standard_title_token,
+        "tvr_daily_title_token": series.daily_title_token,
+        "tvr_anime_title_token": series.anime_title_token,
+    }
+
+    for key, token in tokens.items():
+        assert "{resolution}" in token and "{source}" in token, key
+        assert token.index("{resolution}") < token.index("{source}"), key
+
+
 def test_the_global_movie_template_dangles_no_separator_without_a_group(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

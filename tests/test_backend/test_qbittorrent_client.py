@@ -2,6 +2,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from qbittorrentapi.exceptions import Conflict409Error
+from qbittorrentapi.torrents import TorrentsAddedMetadata
 
 from src.backend.torrent_clients.qbittorrent import QBittorrentClient
 from src.backend.torrent_clients.qbittorrent.save_path import (
@@ -12,15 +14,33 @@ from src.exceptions import TrackerClientError
 from src.payloads.clients import QBittorrentConfig
 
 
-def _config() -> QBittorrentConfig:
+def _config(super_seeding: bool = False) -> QBittorrentConfig:
     return QBittorrentConfig(
         host="http://127.0.0.1",
         port=8080,
         user="user",
         password="password",  # noqa: S106 - dummy test fixture credential for a mocked client, not a real secret
         category="Movies",
-        super_seeding=False,
+        super_seeding=super_seeding,
         save_path_mode=QBittorrentSavePathMode.CLIENT_DEFAULT,
+    )
+
+
+def _added(count: int = 1) -> TorrentsAddedMetadata:
+    """What Web API 2.15 answers an add with.
+
+    qBittorrent 5.2.0 replaced the "Ok."/"Fails." string with a JSON
+    summary, and qbittorrent-api parses it, so `torrents_add` hands back a
+    mapping. The three string mocks below are kept rather than converted:
+    they pin the older clients, which still answer the old way.
+    """
+    return TorrentsAddedMetadata(
+        {
+            "success_count": count,
+            "failure_count": 0,
+            "pending_count": 0,
+            "added_torrent_ids": ["0" * 40] * count,
+        }
     )
 
 
@@ -81,6 +101,78 @@ def test_blank_save_path_keeps_automatic_management(qbit_api: MagicMock) -> None
 
     assert api.torrents_add.call_args.kwargs["save_path"] is None
     assert api.torrents_add.call_args.kwargs["use_auto_torrent_management"] is True
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_inject_accepts_the_json_answer_from_web_api_2_15(
+    qbit_api: MagicMock,
+) -> None:
+    """The 5.2.x add, which used to be read as a failure.
+
+    `add_torrent != "Ok."` cannot be false for a mapping, so a torrent that
+    was added reported "qBittorrent injection failed" -- and returned before
+    super seeding on the way out.
+    """
+    api = qbit_api.return_value
+    api.torrents_add.return_value = _added()
+    client = QBittorrentClient(_config())
+
+    assert client.inject_torrent(Path("release.torrent")) == (
+        True,
+        "qBittorrent injection successful",
+    )
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.Torrent")
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_super_seeding_still_runs_after_a_json_answer(
+    qbit_api: MagicMock, torrent: MagicMock
+) -> None:
+    # The half of the same defect that was silent: the early return took
+    # super seeding with it, so the setting was ignored rather than reported.
+    api = qbit_api.return_value
+    api.torrents_add.return_value = _added()
+    torrent.read.return_value = MagicMock(infohash="a" * 40)
+    client = QBittorrentClient(_config(super_seeding=True))
+
+    assert client.inject_torrent(Path("release.torrent"))[0] is True
+
+    assert api.torrents_set_super_seeding.call_args.kwargs["torrent_hashes"] == "a" * 40
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_an_add_that_lands_nothing_is_a_soft_failure(qbit_api: MagicMock) -> None:
+    """A 409 is 2.15's "nothing was added", most often a duplicate.
+
+    The older clients answered that with `Fails.` and HTTP 200, which this
+    adapter turned into a `False` result. Left to the APIError handler it
+    became a `TrackerClientError` carrying the library's own message, so a
+    second injection of the same torrent went from a reported failure to a
+    raised one.
+    """
+    api = qbit_api.return_value
+    api.torrents_add.side_effect = Conflict409Error()
+    client = QBittorrentClient(_config())
+
+    added, message = client.inject_torrent(Path("release.torrent"))
+
+    assert added is False
+    assert "already in the client" in message
+
+
+@patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")
+def test_the_older_string_verdict_is_still_read(qbit_api: MagicMock) -> None:
+    # Web API 2.14 and below. Only the string form carries a verdict, and it
+    # still has to be honoured -- ignoring every non-"Ok." answer would make
+    # the widening above a pass-through.
+    api = qbit_api.return_value
+    api.torrents_add.return_value = "Fails."
+    client = QBittorrentClient(_config())
+
+    assert client.inject_torrent(Path("release.torrent")) == (
+        False,
+        "qBittorrent injection failed",
+    )
 
 
 @patch("src.backend.torrent_clients.qbittorrent.client.QBitClient")

@@ -39,10 +39,11 @@ Each needs a new token rather than an edit to an entry:
 - LST-only: Hi10P, 3D and RERip. "PQ10" is no longer a gap either: the
   dynamic range resolves to an identity and each entry spells it, so LST and
   ReelFliX say "PQ10" where Aither says nothing at all.
-- `{cut}` renders "Directors Cut" and "Extended Cut" where both trackers want
-  "Director's Cut" and "Extended". The normalization table behind it is shared
-  with filename generation, where an apostrophe is unwanted, so this cannot be
-  fixed for titles alone.
+- `{cut}` still renders "Directors Cut" and "Extended Cut" on BeyondHD, whose
+  cut rules have not been gathered. It is no longer a gap on the four whose
+  have: the normalization table is shared with filename generation, where an
+  apostrophe is unwanted, but a vocabulary row reaches the title alone -- see
+  `test_the_published_cut_spellings_reach_the_title`.
 """
 
 from collections.abc import Sequence
@@ -97,6 +98,23 @@ WEB_NAME = (
 # not state at all.
 CLAIMED_NAME = (
     "Movie.Name.2026.IMAX.Directors.Cut.Subbed.REPACK.UHD.BluRay.2160p."
+    "TrueHD.Atmos.7.1.DV.HEVC.REMUX-SomeGroup.mkv"
+)
+# The one cut the four entries disagree about. LST forbids it in a name;
+# Aither and ReelFliX allow it, so the same release is named differently on
+# each -- which is why the rule lives in LST's entry and not in {cut}.
+THEATRICAL_NAME = (
+    "Movie.Name.2026.Theatrical.Cut.UHD.BluRay.2160p."
+    "TrueHD.Atmos.7.1.DV.HEVC.REMUX-SomeGroup.mkv"
+)
+# The two cuts every published guide spells differently from NfoForge's own
+# normalization table, which filenames and other trackers key on.
+DIRECTORS_NAME = (
+    "Movie.Name.2026.Directors.Cut.UHD.BluRay.2160p."
+    "TrueHD.Atmos.7.1.DV.HEVC.REMUX-SomeGroup.mkv"
+)
+EXTENDED_NAME = (
+    "Movie.Name.2026.Extended.Cut.UHD.BluRay.2160p."
     "TrueHD.Atmos.7.1.DV.HEVC.REMUX-SomeGroup.mkv"
 )
 
@@ -211,7 +229,7 @@ def _series_payloads(
 def _render(
     tracker: TrackerSelection,
     name: str,
-    source: str,
+    source: str | None,
     *,
     release_group: str | None = None,
     streaming_service: str | None = None,
@@ -227,6 +245,12 @@ def _render(
 
     Passing a season switches the payload to a series one, so the episode
     tokens are asked the same question the app asks them.
+
+    `source=None` leaves the override out entirely and lets detection answer,
+    which is the shape of a run where the user never picked a quality --
+    renaming switched off, or a Quality combo that never fired its change
+    signal. It is not an edge case: `source` is not a switchable claim, so
+    the override is absent unless a user chose one.
     """
     # Stage 3 reads no claim off the filename, so they arrive as overrides --
     # exactly what generate_tracker_title receives from the rename page. The
@@ -236,7 +260,8 @@ def _render(
     # unless a test asks: it is still detected downstream, and an override
     # would bypass the service token's own web-source gating.
     overrides: dict[str, str] = _claim_overrides(name)
-    overrides["source"] = source
+    if source is not None:
+        overrides["source"] = source
     if release_group is not None:
         overrides["release_group"] = release_group
     if streaming_service is not None:
@@ -252,16 +277,6 @@ def _render(
         raw_height = media_info.video_tracks[0].height
         height = int(raw_height) if raw_height else 0
 
-    release = ReleaseProperties(
-        is_remux=bool(overrides.get("remux")),
-        is_dvd="dvd" in source.lower(),
-        is_optical_source="dvd" in source.lower() or "bluray" in source.lower(),
-        resolution=height,
-        hdr_identity=resolve_hdr_identity(media_info),
-        season=season,
-        episodes=episodes,
-    )
-
     def render(token_string: str) -> str | None:
         return TokenReplacer(
             media_input_obj=media,
@@ -276,6 +291,23 @@ def _render(
             season_number=season,
             episode_number=episodes[0] if episodes else None,
         ).get_output()
+
+    # The source the conditions are asked about is the one the `{source}`
+    # token prints, not the argument above -- the same question production
+    # asks, and the reason `source=None` is a case a test can write. Deriving
+    # it from the local instead is what hid the BeyondHD ordering defect: the
+    # token and the condition were fed one value by construction, so they
+    # could not disagree here the way they did in the app.
+    rendered_source = (render("{source}") or "").lower()
+    release = ReleaseProperties(
+        is_remux=bool(overrides.get("remux")),
+        is_dvd="dvd" in rendered_source,
+        is_optical_source="dvd" in rendered_source or "bluray" in rendered_source,
+        resolution=height,
+        hdr_identity=resolve_hdr_identity(media_info),
+        season=season,
+        episodes=episodes,
+    )
 
     output = render_tracker_title(
         tracker,
@@ -535,6 +567,29 @@ def test_beyondhd_leads_an_optical_source_with_the_source(
 
 
 @pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        (ENCODE_NAME, "UHD BluRay 2160p"),
+        (WEB_NAME, "2160p AMZN WEB-DL"),
+    ],
+    ids=["optical", "web"],
+)
+def test_beyondhd_orders_by_the_source_it_printed_not_the_one_it_was_told(
+    name: str, expected: str
+) -> None:
+    """The same two branches with no source override at all.
+
+    This is the defect that shipped: `is_optical_source` read the override
+    token while `{source}` fell back to detection, so a run that never set
+    one printed "UHD BluRay" beside a condition answering false, and every
+    BeyondHD title from it was ordered the web way -- "1080p BluRay" for a
+    disc. The web row is the control: detection has to be able to answer
+    false as well, or leading with the source would just be unconditional.
+    """
+    assert expected in _render(TrackerSelection.BEYOND_HD, name, None)
+
+
+@pytest.mark.parametrize(
     ("source", "expected"),
     [
         ("UHD BluRay", "IMAX Directors Cut Subbed REPACK UHD BluRay 2160p"),
@@ -573,11 +628,108 @@ def test_the_other_three_order_the_cut_first_and_state_no_subbed(
     Aither, LST and ReelFliX write the cut ahead of the frame size, and
     their vocabulary maps "Subbed" to nothing -- so a subbed release is
     named as one on BeyondHD alone.
+
+    The apostrophe is these three imposing their published spelling, which
+    BeyondHD does not; `test_the_published_cut_spellings_reach_the_title`
+    is where that is the subject rather than an incidental.
     """
     rendered = _render(tracker, CLAIMED_NAME, "UHD BluRay")
 
-    assert "Directors Cut IMAX" in rendered
+    assert "Director's Cut IMAX" in rendered
     assert "Subbed" not in rendered
+
+
+def test_lst_drops_a_theatrical_cut_from_the_title() -> None:
+    """LST forbids "Theatrical" and "Theatrical Cut" in a release name.
+
+    It shipped one anyway: {cut} classifies theatrical as a Cut, and no
+    entry's vocabulary touched an edition term, so a theatrical release
+    reached LST as "... 2026 Theatrical Cut 2160p ...".
+
+    The neighbours are asserted together rather than separately, so the
+    suppressed component cannot leave the doubled space behind that closing
+    it is the other half of.
+    """
+    rendered = _render(TrackerSelection.LST, THEATRICAL_NAME, "UHD BluRay")
+
+    assert "Theatrical" not in rendered
+    assert "Movie Name 2026 2160p UHD BluRay" in rendered
+    assert "  " not in rendered
+
+
+@pytest.mark.parametrize(
+    "tracker", (TrackerSelection.AITHER, TrackerSelection.REELFLIX)
+)
+def test_aither_and_reelflix_keep_a_theatrical_cut(
+    tracker: TrackerSelection,
+) -> None:
+    # The control, so the test above is about LST rather than about {cut}.
+    # Both allow the cut, and it keeps its place ahead of the resolution.
+    rendered = _render(tracker, THEATRICAL_NAME, "UHD BluRay")
+
+    assert "Movie Name 2026 Theatrical Cut 2160p" in rendered
+
+
+@pytest.mark.parametrize("tracker", REMUX_AUDIO_LAST)
+@pytest.mark.parametrize(
+    ("name", "expected", "superseded"),
+    [
+        (DIRECTORS_NAME, "Director's Cut", "Directors Cut"),
+        (EXTENDED_NAME, "Extended", "Extended Cut"),
+    ],
+    ids=["directors", "extended"],
+)
+def test_the_published_cut_spellings_reach_the_title(
+    tracker: TrackerSelection, name: str, expected: str, superseded: str
+) -> None:
+    """All four guides write "Director's Cut" and "Extended".
+
+    NfoForge's table answers "Directors Cut" and "Extended Cut", and it has
+    to keep doing so: those names are internal identities that
+    BHDEdition.from_nfoforge_edition and PTP's _remaster_title key on, and
+    they are the filename spelling, where an apostrophe is unwanted. So the
+    guide's spelling is imposed by a vocabulary row, which runs on the title
+    and nothing else -- which is why this was recorded as an unfixable gap
+    for as long as the table was thought to be the only place to fix it.
+    """
+    rendered = _render(tracker, name, "UHD BluRay")
+
+    assert expected in rendered
+    assert superseded not in rendered
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Movie Name 2026 Directors Cut 2160p", "Movie Name 2026 Director's Cut 2160p"),
+        ("Movie Name 2026 Extended Cut 2160p", "Movie Name 2026 Extended 2160p"),
+    ],
+    ids=["directors", "extended"],
+)
+def test_blutopia_imposes_the_same_spellings_on_the_user_template(
+    raw: str, expected: str
+) -> None:
+    """Blutopia publishes ReelFliX's cut rules and composes no layout.
+
+    Normalisation applies either way, so its rows reach the global template
+    the user writes. Asserted through `normalise_title` rather than
+    `_render`, because an entry with no composition has no title of its own
+    for a fixture name to produce.
+    """
+    normalisation = TITLE_RULES[TrackerSelection.BLUTOPIA].normalisation
+
+    assert (
+        normalise_title(raw, normalisation, global_colon=ColonReplace.KEEP) == expected
+    )
+
+
+def test_beyondhd_keeps_the_table_spelling() -> None:
+    # The control for both tests above. BeyondHD's cut rules have not been
+    # gathered, and title_rules.py holds an ungathered tracker to what it
+    # already did rather than assuming it matches its neighbours.
+    rendered = _render(TrackerSelection.BEYOND_HD, DIRECTORS_NAME, "UHD BluRay")
+
+    assert "Directors Cut" in rendered
 
 
 @pytest.mark.parametrize("tracker", ALL_FOUR)
@@ -1002,7 +1154,7 @@ def _designator_for(media, search: MediaSearchPayload | None = None) -> str:
         media_search=search if search is not None else EXAMPLE_SEARCH_PAYLOAD,
     )
     backend = object.__new__(ProcessBackEnd)
-    release = backend._release_properties(context, release_info)
+    release = backend._release_properties(context, release_info, "")
 
     composition = TITLE_RULES[TrackerSelection.AITHER].composition
     assert composition is not None

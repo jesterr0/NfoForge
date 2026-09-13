@@ -156,10 +156,64 @@ def test_cut_override_rejects_a_non_cut_edition_that_edition_still_includes() ->
     assert replacer._edition(_td()) == "Deluxe Edition"
 
 
+def test_special_edition_is_a_cut_despite_its_name() -> None:
+    """ReelFliX and Blutopia both list it among their cut examples.
+
+    It was classified as a marketing Edition and dropped, which lost a claim
+    the user had accepted. The name is what makes it look like packaging;
+    what it describes is a different version of the film.
+    """
+    replacer = _movie_replacer_with_edition_override("Special Edition")
+
+    assert replacer._cut(_td()) == "Special Edition"
+
+
+@pytest.mark.parametrize(
+    "edition", ["Collectors Edition", "Limited Edition", "Criterion Edition"]
+)
+def test_the_other_editions_are_still_not_cuts(edition: str) -> None:
+    # The guard on the test above: promoting Special Edition did not promote
+    # the packaging labels beside it, none of which any guide names as a cut.
+    replacer = _movie_replacer_with_edition_override(edition)
+
+    assert replacer._cut(_td()) == ""
+    assert replacer._edition(_td()) == edition
+
+
 def test_cut_override_rejects_unrecognized_freeform_text() -> None:
     replacer = _movie_replacer_with_edition_override("35th Anniversary Restoration")
 
     assert replacer._cut(_td()) == ""
+
+
+def test_cut_keeps_an_unrecognized_edition_that_names_itself_a_cut() -> None:
+    """EDITION_INFO cannot list every cut a release might carry.
+
+    It has no row for "Assembly Cut", and the closed allowlist dropped it --
+    so an edition the user had accepted reached a tracker as no cut at all.
+    The last word is the evidence, and it is kept as typed because there is
+    no published spelling to normalise it to.
+    """
+    replacer = _movie_replacer_with_edition_override("Assembly Cut")
+
+    assert replacer._cut(_td()) == "Assembly Cut"
+
+
+def test_cut_still_rejects_an_unrecognized_edition_that_does_not() -> None:
+    # The guard on the test above: the fallback reads the last word, so an
+    # unrecognized Edition stays an Edition rather than becoming a Cut.
+    replacer = _movie_replacer_with_edition_override("Assembly Edition")
+
+    assert replacer._cut(_td()) == ""
+
+
+def test_a_recognized_edition_outranks_the_ends_in_cut_fallback() -> None:
+    # Both would answer here, and classification has to win: the fallback
+    # emits what the user typed, and the table's whole purpose is that a
+    # tracker receives "Directors Cut" however the release spelled it.
+    replacer = _movie_replacer_with_edition_override("director's cut")
+
+    assert replacer._cut(_td()) == "Directors Cut"
 
 
 def test_cut_token_resolves_through_the_token_string() -> None:

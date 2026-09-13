@@ -73,6 +73,13 @@ _LEGACY_SOURCE_OVERRIDES = {"webdl": QualitySelection.WEB_DL}
 _TITLE_UNSAFE_CHARS = re.compile(r'[:\\/<>\?*"|]')
 _REPEATED_WHITESPACE = re.compile(r"\s{2,}")
 
+# An edition that names itself a Cut. EDITION_INFO recognises the cuts
+# common enough to have a spelling worth normalising; a release can carry
+# one it has never heard of ("Assembly Cut", "Rogue Cut"), and dropping
+# those was the only way {cut} could report an accepted cut as no cut at
+# all. Word-bounded, so "Uncut" is left to the table that already spells it.
+_ENDS_IN_CUT = re.compile(r"\bcut\s*$", re.IGNORECASE)
+
 
 class TokenReplacer:
     # Overrides that must not be emitted verbatim. `source` comes from the
@@ -1300,10 +1307,14 @@ class TokenReplacer:
         for the entries themselves, `custom_cut_names` for which of those
         count as a Cut.
 
-        The edition is still classified rather than emitted verbatim: one
-        that is not a known Cut is dropped, because an unrecognized string
-        cannot confidently be called one and the guide's own default for an
-        omitted Cut is "assumed Theatrical".
+        A recognized edition is emitted as its classified spelling rather
+        than as the user typed it, so "director's cut" reaches a tracker as
+        "Directors Cut". One the table does not recognize is kept only where
+        it names itself a Cut: "Assembly Cut" is a cut on the evidence of its
+        own last word, where "35th Anniversary Restoration" is a claim
+        nothing here can check, and the guides' default for an omitted Cut is
+        "assumed Theatrical". Classification runs first, so the fallback
+        cannot pre-empt a spelling the table publishes.
 
         Both carriers of the user's edition are read. {edition} is satisfied
         by either -- an override token short-circuits its handler before it
@@ -1326,6 +1337,8 @@ class TokenReplacer:
                         return self._optional_user_input(
                             rename_normalize.normalized, token_data
                         )
+            if _ENDS_IN_CUT.search(edition):
+                return self._optional_user_input(edition.strip(), token_data)
         return self._optional_user_input("", token_data)
 
     def _frame_size(self, token_data: TokenData) -> str:

@@ -64,16 +64,29 @@ EDITION_INFO: Sequence[RenameNormalization] = (
     RenameNormalization("Uncut", (r"uncut",)),
 )
 
-# Which EDITION_INFO entries are a "Cut" (per Aither's naming guide: stays in
-# the release title) versus a marketing "Edition" (guide says omit from the
-# title, mention in the description instead). EDITION_INFO stays the single
-# source of truth for *what's recognized*; this set only governs *which
-# recognized entries count as a Cut* -- see token_replacer._cut().
+# Which EDITION_INFO entries are a "Cut" -- a different version of the film --
+# versus a marketing "Edition", which the guides say to omit from the title and
+# mention in the description instead. EDITION_INFO stays the single source of
+# truth for *what's recognized*; this set only governs *which recognized
+# entries count as a Cut* -- see token_replacer._cut().
+#
+# One set rather than one per tracker, because the four published guides agree
+# on the question this set answers. Their example lists differ in length and
+# are all written "e.g.", so a name's absence from one of them is not that
+# tracker excluding it: LST states the rule outright as "included only if the
+# cut is not the Theatrical cut", which admits every non-theatrical cut here.
+# Where a tracker does differ, it differs on spelling or on whether it wants
+# the component at all, and both of those live in its title_rules entry.
+#
+# "Special Edition" is a Cut despite its name. ReelFliX and Blutopia both list
+# it among their cut examples, and it is a genuinely different version rather
+# than the packaging that "Collectors" or "Limited" describes.
 CUT_EDITION_NAMES: frozenset[str] = frozenset(
     {
         "Alternative Cut",
         "Directors Cut",
         "Extended Cut",
+        "Special Edition",
         "Theatrical Cut",
         "Uncut",
         "Unrated",
