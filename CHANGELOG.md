@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- The packaged **movie** filename and title templates now write the resolution before the source -- `Movie Name 2026 2160p UHD BluRay ...` -- which is what the five series templates have always done. Nothing distinguishes a film from a season here, so the two orders were an inconsistency rather than a choice, and resolution-first is the order Aither, LST and ReelFliX require in a title. This only changes the starting point for a new configuration: your own renaming tokens are untouched, and BeyondHD titles are unaffected either way, since BeyondHD's own rules set that order.
+
+### Fixed
+
+- **BeyondHD** release titles put the source back in front of the resolution on a disc -- `Movie Name 2026 UHD BluRay 2160p ...`, not `... 2160p UHD BluRay ...`. BeyondHD is the only tracker here that leads with the source, and the rule was only being applied when you had picked a quality on the rename page by hand. Every run that did not -- renaming switched off, or a source NfoForge detected for you -- was named the web way. WEB-DL titles are unchanged and still lead with the resolution. The same fix restores BeyondHD's DVD order and the LST and ReelFliX DVD rules, which read the same answer.
+- **qBittorrent 5.2 and newer** reported "qBittorrent injection failed" for torrents it had in fact added, and skipped super seeding on the way out. qBittorrent changed what its Web API answers an add with in 5.2.0 and NfoForge was still reading the old answer; testing the client kept passing, because that only signs in. Injecting a torrent the client already has now reports that plainly instead of raising an error. Older clients are unaffected.
+- **LST** uploads no longer carry `Theatrical Cut` in the release name. LST forbids both `Theatrical` and `Theatrical Cut` there, and a theatrical release had been going up as `Movie Name 2026 Theatrical Cut 2160p ...` ever since the cut became part of the title. Aither, ReelFliX and BeyondHD allow it and are unchanged, so the same release is still named with its cut on those.
+- Release titles on **Aither**, **LST**, **ReelFliX** and **Blutopia** now use the cut spellings those trackers publish: `Director's Cut` rather than `Directors Cut`, and `Extended` rather than `Extended Cut`. Filenames are unchanged -- they keep the apostrophe-free spelling -- and so is BeyondHD, whose cut rules have not been gathered.
+- **Special Edition** is now treated as a cut rather than as packaging, so it reaches the title and the filename instead of being dropped. ReelFliX and Blutopia both name it among their cut examples. `Collectors Edition`, `Limited Edition`, `Criterion Edition` and the rest are unchanged and still belong in the description.
+- An edition ending in **Cut** that NfoForge does not recognise -- `Assembly Cut`, `Rogue Cut` -- is now kept in the title and the filename instead of being silently dropped. Only the cuts with a published spelling were recognised before, so accepting one of these on the rename page had no visible effect anywhere. A recognised cut still wins, so `director's cut` continues to come out as `Directors Cut`, and an edition that does not name itself a cut is still left to `{edition}`.
+
 ## [1.1.14] - 2026-09-10
 
 ### Fixed

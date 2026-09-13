@@ -74,15 +74,35 @@ class QBittorrentClient:
             )
             if path_warning:
                 LOG.warning(LOG.LOG_SOURCE.BE, path_warning)
-            add_torrent = self.client.torrents_add(
-                torrent_files=str(torrent_file),
-                save_path=effective_save_path,
-                use_auto_torrent_management=effective_save_path is None,
-                is_skip_checking=effective_save_path is None,
-                category=self._get_category(),
-                requests_args={"timeout": self.timeout},
-            )
-            if add_torrent != "Ok.":
+            try:
+                add_torrent = self.client.torrents_add(
+                    torrent_files=str(torrent_file),
+                    save_path=effective_save_path,
+                    use_auto_torrent_management=effective_save_path is None,
+                    is_skip_checking=effective_save_path is None,
+                    category=self._get_category(),
+                    requests_args={"timeout": self.timeout},
+                )
+            except qbittorrentapi.exceptions.Conflict409Error:
+                # What "nothing was added" became in the same release, most
+                # often a torrent the client already holds. It was `Fails.`
+                # with HTTP 200 before, and a soft failure here, so it stays
+                # one rather than being raised at the user with the library's
+                # own wording. Only the add is caught: a 409 from anything
+                # else below would not mean this.
+                return False, (
+                    "qBittorrent injection failed; nothing was added. The "
+                    "torrent is most likely already in the client."
+                )
+            # Web API 2.14 and below answered the add with "Ok." or
+            # "Fails."; 2.15 -- qBittorrent 5.2.0, commit 7ddbf58a3 --
+            # answers with a JSON summary, which qbittorrent-api hands back
+            # as a mapping rather than a string. Compared against "Ok." that
+            # can only fail, so a successful add was reported as a failure,
+            # and the early return took super seeding out with it. Only the
+            # string form still carries a verdict; on the newer clients an
+            # add that lands nothing arrives as a 409 instead, caught below.
+            if isinstance(add_torrent, str) and add_torrent != "Ok.":
                 return False, "qBittorrent injection failed"
 
             if self.qbit_config.super_seeding:

@@ -2864,7 +2864,7 @@ class ProcessBackEnd:
         # where it names one, the user's otherwise.
         return render_tracker_title(
             tracker,
-            self._release_properties(context, release_info),
+            self._release_properties(context, release_info, render("{source}") or ""),
             render=render,
             global_template=global_template,
             global_colon=global_colon,
@@ -2921,7 +2921,10 @@ class ProcessBackEnd:
         return fallback
 
     def _release_properties(
-        self, context: ProcessingContext, release_info: SeriesReleaseInfo
+        self,
+        context: ProcessingContext,
+        release_info: SeriesReleaseInfo,
+        source: str,
     ) -> ReleaseProperties:
         """The facts a tracker entry's conditions ask about.
 
@@ -2940,11 +2943,17 @@ class ProcessBackEnd:
         list and keeps first and last -- so the range is exact rather than
         approximate for everything but a hand-built non-contiguous mapping.
 
-        `is_dvd` and `is_optical_source` both read the source override, so
-        an entry ordering its components by source cannot disagree with the
-        source the `{source}` token prints beside them. A source that is
-        absent or unrecognised leaves both false, which is the answer that
-        changes no tracker's order.
+        `is_dvd` and `is_optical_source` read the rendered `{source}`, which
+        is why it is a parameter rather than something looked up here: an
+        entry ordering its components by source must not disagree with the
+        source printed beside them. They used to read the override token
+        instead, and the token replacer defaults an undetectable source to
+        BluRay -- so a run with no source override printed "UHD BluRay" while
+        both flags said false, and BeyondHD ordered every one of those titles
+        the web way, "1080p BluRay" for a disc. The override is unset more
+        often than it sounds: it records that a user *picked* a source, and
+        renaming can be off entirely, or the Quality combo can never fire its
+        change signal.
         """
         overrides = context.shared_data.dynamic_data.get("override_tokens") or {}
         media_info = None
@@ -2958,7 +2967,7 @@ class ProcessBackEnd:
             height = media_info.video_tracks[0].height
             resolution = int(height) if height else 0
 
-        source = str(overrides.get("source", "")).lower()
+        source = source.lower()
         episodes: tuple[int, ...] = ()
         if release_info.episode_start is not None and not self._is_whole_season(
             context, release_info

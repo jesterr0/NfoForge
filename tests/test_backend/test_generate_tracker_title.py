@@ -112,6 +112,32 @@ def _title(
     )
 
 
+def test_a_composition_orders_by_the_source_that_reaches_the_title() -> None:
+    """No source override, and BeyondHD still gets the disc order.
+
+    An absent `source` override is the ordinary state rather than an odd
+    one: the key records that a user *picked* a quality, and source is not
+    a switchable claim, so a run with renaming switched off never writes it
+    at all. `{source}` detects "UHD BluRay" either way.
+
+    The two used to be asked separately -- the condition read the override
+    and answered false, while the token beside it printed a disc -- so every
+    BeyondHD title from such a run came out "2160p UHD BluRay", the web
+    order, on a Blu-ray.
+    """
+    context = _context()
+    overrides = context.shared_data.dynamic_data.get("override_tokens") or {}
+    assert "source" not in overrides, (
+        "The fixture now picks a source, so this no longer tests the case it "
+        "was written for."
+    )
+
+    title = _title(TrackerSelection.BEYOND_HD, context)
+
+    assert title is not None
+    assert "UHD BluRay 2160p" in title
+
+
 def test_a_composing_tracker_ignores_the_users_global_template() -> None:
     """Enforcement means overriding what the user chose.
 
