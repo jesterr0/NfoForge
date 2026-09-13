@@ -1,19 +1,16 @@
 """The one question a user is ever asked about the layout migration."""
 
-from pathlib import Path
-
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QLabel,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from src.config.layout_migration import LegacyInstall, recognise_legacy_install
+from src.config.layout_migration import LegacyInstall
+from src.frontend.windows.legacy_import import choose_legacy_install
 
 _WHAT_HAPPENS = (
     "Your settings, profiles, templates, tracker cookies, plugins and tools are "
@@ -106,31 +103,17 @@ class MigrationPromptDialog(QDialog):
     def _on_choose(self) -> None:
         """Let the user name the folder, and accept only a real installation.
 
-        Picking the wrong folder is easily done, so nothing was found there has
-        to leave the dialog open and say so. Closing on a bad choice would turn a
-        mistake into a decision to start fresh.
-        """
-        picked = QFileDialog.getExistingDirectory(
-            self, "Select your previous NfoForge folder"
-        )
-        if not picked:
-            # The user backed out of the picker, which is not an answer.
-            return
+        Picking the wrong folder is easily done, so nothing found there leaves the
+        dialog open. Closing on a bad choice would turn a mistake into a decision
+        to start fresh.
 
-        found = recognise_legacy_install(Path(picked))
+        The picking and its complaint are shared with the Settings import rather
+        than written twice, since getting the same wrong folder wrong in two
+        different ways would be worse than either.
+        """
+        found = choose_legacy_install(self)
         if found is None:
-            self._report_nothing_found(Path(picked))
             return
 
         self.chosen = found
         self.accept()
-
-    def _report_nothing_found(self, picked: Path) -> None:
-        QMessageBox.information(
-            self,
-            "Nothing to import there",
-            f"No NfoForge settings were found in:\n\n{picked}\n\n"
-            "Choose the folder you extracted NfoForge into, the one holding the "
-            "application itself. If you are not sure, start fresh -- you can "
-            "import later from Settings.",
-        )

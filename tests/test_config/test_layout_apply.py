@@ -645,13 +645,15 @@ def test_importing_over_existing_work_diverts_rather_than_replacing_it(
     theirs.write_bytes(b"kept")
     legacy = _legacy_with_cookies(tmp_path)
 
-    outcome = import_legacy(paths, legacy)
+    run = import_legacy(paths, legacy)
 
     assert theirs.read_bytes() == b"kept"
     assert not (paths.state_root / "cookies" / "a.txt").exists()
     diverted = paths.state_root / "migration-conflicts" / "cookies" / "a.txt"
     assert diverted.read_bytes() == b"c"
-    assert [one.planned for one in outcome.diverted] == [paths.state_root / "cookies"]
+    assert [one.planned for one in run.outcome.diverted] == [
+        paths.state_root / "cookies"
+    ]
 
 
 def test_progress_is_reported_for_each_step(tmp_path: Path) -> None:

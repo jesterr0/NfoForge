@@ -100,17 +100,19 @@ def test_closing_the_dialog_any_other_way_starts_fresh(
     assert found_dialog.chosen is None
 
 
-def test_picking_a_folder_that_holds_an_installation_chooses_it(
+def test_choosing_a_folder_uses_the_shared_picker(
     not_found_dialog: MigrationPromptDialog,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The answer to the not-found state, and the recovery from a wrong guess."""
+    """The answer to the not-found state, and the recovery from a wrong guess.
+
+    The picking itself lives with the Settings import and is covered there; what
+    matters here is that an installation it returns becomes the answer.
+    """
     elsewhere = _install(tmp_path, "somewhere else")
     monkeypatch.setattr(
-        prompt_module.QFileDialog,
-        "getExistingDirectory",
-        staticmethod(lambda *_args, **_kwargs: str(elsewhere.root)),
+        prompt_module, "choose_legacy_install", lambda _parent: elsewhere
     )
 
     not_found_dialog.choose_button.click()
@@ -119,53 +121,18 @@ def test_picking_a_folder_that_holds_an_installation_chooses_it(
     assert not_found_dialog.chosen.root == elsewhere.root
 
 
-def test_picking_a_folder_with_nothing_in_it_says_so_and_stays_open(
-    not_found_dialog: MigrationPromptDialog,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Closing on a bad choice would leave the user nowhere.
-
-    They picked the wrong folder, which is easily done, so the dialog has to say
-    nothing was there and let them try again rather than treating a mistake as a
-    decision to start fresh.
-    """
-    empty = tmp_path / "not an installation"
-    empty.mkdir()
-    monkeypatch.setattr(
-        prompt_module.QFileDialog,
-        "getExistingDirectory",
-        staticmethod(lambda *_args, **_kwargs: str(empty)),
-    )
-    warned: list[str] = []
-    monkeypatch.setattr(
-        not_found_dialog, "_report_nothing_found", lambda path: warned.append(str(path))
-    )
-
-    not_found_dialog.choose_button.click()
-
-    assert not_found_dialog.chosen is None
-    assert not_found_dialog.isVisible() is False  # never shown, so never hidden
-    assert warned == [str(empty)]
-    assert not_found_dialog.result() == 0
-
-
-def test_cancelling_the_folder_picker_changes_nothing(
+def test_declining_or_misplacing_the_folder_leaves_the_dialog_open(
     not_found_dialog: MigrationPromptDialog, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An empty answer is the user backing out of the picker, not a choice."""
-    monkeypatch.setattr(
-        prompt_module.QFileDialog,
-        "getExistingDirectory",
-        staticmethod(lambda *_args, **_kwargs: ""),
-    )
-    reported: list[object] = []
-    monkeypatch.setattr(
-        not_found_dialog, "_report_nothing_found", lambda path: reported.append(path)
-    )
+    """Backing out of the picker, or picking a folder with nothing in it.
+
+    Both come back as no installation, and neither is a decision. Closing on
+    either would turn a mistake into a choice to start fresh, leaving the user
+    nowhere.
+    """
+    monkeypatch.setattr(prompt_module, "choose_legacy_install", lambda _parent: None)
 
     not_found_dialog.choose_button.click()
 
     assert not_found_dialog.chosen is None
-    assert reported == []
     assert not_found_dialog.result() == 0

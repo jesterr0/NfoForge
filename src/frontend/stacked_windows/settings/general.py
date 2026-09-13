@@ -37,6 +37,10 @@ from src.frontend.global_signals import GSigs
 from src.frontend.stacked_windows.settings.base import BaseSettings
 from src.frontend.utils import build_h_line, create_form_layout
 from src.frontend.utils.qtawesome_theme_swapper import QTAThemeSwap
+from src.frontend.windows.legacy_import import (
+    LegacyImportRunner,
+    choose_legacy_install,
+)
 from src.logger.nfo_forge_logger import LOG
 
 if TYPE_CHECKING:
@@ -238,6 +242,36 @@ class GeneralSettings(BaseSettings):
         working_dir_layout.addWidget(self.working_dir_open_btn)
         working_dir_layout.addWidget(self.working_dir_clean_up)
 
+        data_dir_lbl = QLabel("Data Folder", self)
+        self.data_dir_entry = QLineEdit(self)
+        self.data_dir_entry.setReadOnly(True)
+        self.data_dir_entry.setText(str(self.config.paths.state_root))
+        self.data_dir_entry.setToolTip(
+            "Your settings, profiles, templates, plugins and tools live here, "
+            "outside the application, so replacing a release does not disturb them"
+        )
+
+        self.data_dir_open_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.data_dir_open_btn, "ph.eye-light", icon_size=QSize(20, 20)
+        )
+        self.data_dir_open_btn.setToolTip("Open data folder")
+        self.data_dir_open_btn.clicked.connect(self._handle_open_data_dir_click)
+
+        self.import_legacy_btn = QToolButton(self)
+        QTAThemeSwap().register(
+            self.import_legacy_btn, "ph.download-simple-light", icon_size=QSize(20, 20)
+        )
+        self.import_legacy_btn.setToolTip("Import from a previous installation")
+        self.import_legacy_btn.clicked.connect(self._handle_import_legacy_click)
+
+        data_dir_widget = QWidget()
+        data_dir_layout = QHBoxLayout(data_dir_widget)
+        data_dir_layout.setContentsMargins(0, 0, 0, 0)
+        data_dir_layout.addWidget(self.data_dir_entry, stretch=1)
+        data_dir_layout.addWidget(self.data_dir_open_btn)
+        data_dir_layout.addWidget(self.import_legacy_btn)
+
         self.add_layout(create_form_layout(config_lbl, config_widget))
         self.add_layout(create_form_layout(suffix_lbl, self.ui_suffix))
         self.add_layout(
@@ -268,6 +302,7 @@ class GeneralSettings(BaseSettings):
         self.add_layout(create_form_layout(open_logs_lbl, log_btn_widget))
         self.add_widget(build_h_line((10, 1, 10, 1)))
         self.add_layout(create_form_layout(working_dir_lbl, working_dir_widget))
+        self.add_layout(create_form_layout(data_dir_lbl, data_dir_widget))
         self.add_layout(self.reset_layout)
 
         self._load_saved_settings()
@@ -493,6 +528,28 @@ class GeneralSettings(BaseSettings):
             working_dir = Path(wd)
             self.working_dir_entry.setText(str(working_dir))
             self.config.settings.general.working_dir = working_dir
+
+    @Slot()
+    def _handle_open_data_dir_click(self) -> None:
+        open_explorer(self.config.paths.state_root)
+
+    @Slot()
+    def _handle_import_legacy_click(self) -> None:
+        """Bring a previous installation's settings in, whenever the user asks.
+
+        Offered permanently rather than only at first launch, so declining the
+        migration once is not a decision someone is stuck with -- and so a user
+        who upgraded on a different machine, or restored a backup, has a way in.
+
+        Anything whose destination is already occupied is put aside rather than
+        replacing what is there, and the summary afterwards says where it went.
+        """
+        found = choose_legacy_install(self)
+        if found is None:
+            return
+
+        self._legacy_import_runner = LegacyImportRunner(self.config.paths, self)
+        self._legacy_import_runner.start(found)
 
     @Slot()
     def _handle_open_working_dir_click(self) -> None:

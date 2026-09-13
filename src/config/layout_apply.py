@@ -131,7 +131,9 @@ def startup_migration(
     return MigrationRun(plan=plan, outcome=outcome)
 
 
-def import_legacy(paths: AppPaths, legacy: LegacyInstall) -> MigrationOutcome:
+def import_legacy(
+    paths: AppPaths, legacy: LegacyInstall, progress: Progress | None = None
+) -> MigrationRun:
     """Import a previous installation into a data directory already in use.
 
     Offered from Settings at any time, which is why it cannot go through
@@ -147,9 +149,9 @@ def import_legacy(paths: AppPaths, legacy: LegacyInstall) -> MigrationOutcome:
     whatever the user produced before importing stays exactly where it is.
     """
     plan = _plan_for(paths, legacy)
-    outcome = apply_plan(plan)
+    outcome = apply_plan(plan, progress=progress)
     record_import(paths.state_root, _record(plan, outcome))
-    return outcome
+    return MigrationRun(plan=plan, outcome=outcome)
 
 
 def _plan_for(paths: AppPaths, legacy: LegacyInstall | None) -> MigrationPlan:
